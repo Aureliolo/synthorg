@@ -402,7 +402,10 @@ _r.register(
         description=(
             "Whether a successful fetch also probes the site for an"
             " '/llms.txt' documentation index and reports it. Costs one small"
-            " request and often replaces several page fetches."
+            " request and often replaces several page fetches. The probe is"
+            " made by this process directly, even when the fetch itself went"
+            " through a vendor's reader, so turn it off if this process should"
+            " not contact the sites being read."
         ),
         group="Web Fetch",
         level=SettingLevel.ADVANCED,

@@ -17,18 +17,25 @@ from synthorg.core.types import require_not_blank
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import WEB_FETCH_FAILED
 from synthorg.tools.network_validator import (
+    DnsValidationOk,
     NetworkPolicy,
     is_allowed_http_scheme,
     validate_url_host,
 )
-from synthorg.tools.web._guarded_fetch import decode_body, pin_url, stream_bounded
+from synthorg.tools.web._guarded_fetch import (
+    RETRYABLE_STATUSES,
+    decode_body,
+    pin_url,
+    retry_after_seconds,
+    stream_bounded,
+)
 from synthorg.tools.web.errors import (
     WebFetchEgressBlockedError,
     WebFetchResponseError,
     WebFetchTransientError,
 )
 from synthorg.tools.web.extract import extract_markdown
-from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, FetchedPage
+from synthorg.tools.web.fetch_types import FetchBackend, FetchBudget, FetchedPage
 
 logger = get_logger(__name__)
 
@@ -104,13 +111,43 @@ class LocalFetchProvider:
         if isinstance(validation, str):
             raise WebFetchEgressBlockedError(validation)
 
+        raw, status, response_headers = await self._read(url, validation)
+        self._reject_bad_status(status, response_headers)
+        document = await extract_markdown(
+            decode_body(raw, response_headers),
+            char_budget=self._char_budget,
+            url=url,
+        )
+        return FetchedPage(
+            url=url,
+            final_url=url,
+            title=document.title,
+            markdown=document.markdown,
+            backend=FetchBackend.LOCAL,
+            truncated=document.truncated,
+            hidden_content_detected=document.hidden_content_detected,
+        )
+
+    async def _read(
+        self,
+        url: str,
+        validation: DnsValidationOk,
+    ) -> tuple[bytes, int, httpx.Headers]:
+        """Issue the DNS-pinned bounded GET.
+
+        Returns:
+            The body bytes (capped), the status code, and the response headers.
+
+        Raises:
+            WebFetchTransientError: On timeout or transport failure.
+        """
         request_url, headers = pin_url(
             url,
             {"Accept": _ACCEPT_HEADER, "User-Agent": self._user_agent},
             validation,
         )
         try:
-            raw, status, response_headers = await stream_bounded(
+            return await stream_bounded(
                 request_url,
                 "GET",
                 headers=headers,
@@ -133,6 +170,31 @@ class LocalFetchProvider:
             msg = f"web fetch transport error: {safe_error_description(exc)}"
             raise WebFetchTransientError(msg) from exc
 
+    @staticmethod
+    def _reject_bad_status(status: int, response_headers: httpx.Headers) -> None:
+        """Refuse every status this rung cannot extract a page from.
+
+        Raises:
+            WebFetchTransientError: On 429 or 5xx, which say "ask again", not
+                "this page is unreadable". Reported as transient so the caller
+                can honour a cooldown the origin asked for; classifying an
+                ordinary upstream outage as a response error puts the agent on
+                the next rung instead, which pays a vendor for a page that
+                would have answered on retry.
+            WebFetchResponseError: On any other error status, and on a
+                redirect.
+        """
+        if status in RETRYABLE_STATUSES:
+            retry_after = retry_after_seconds(response_headers)
+            logger.warning(
+                WEB_FETCH_FAILED,
+                backend=FetchBackend.LOCAL.value,
+                reason="retryable_status",
+                status_code=status,
+                retry_after_seconds=retry_after,
+            )
+            msg = f"web fetch target returned status {status}"
+            raise WebFetchTransientError(msg, retry_after_seconds=retry_after)
         if status >= _HTTP_BAD_REQUEST:
             logger.warning(
                 WEB_FETCH_FAILED,
@@ -142,7 +204,6 @@ class LocalFetchProvider:
             )
             msg = f"web fetch target returned status {status}"
             raise WebFetchResponseError(msg)
-
         if status >= _HTTP_MULTIPLE_CHOICES:
             # Redirects are not followed, because each hop is a new target
             # that has to clear the SSRF check on its own rather than inherit
@@ -164,21 +225,6 @@ class LocalFetchProvider:
                 " directly"
             )
             raise WebFetchResponseError(msg)
-
-        document = await extract_markdown(
-            decode_body(raw, response_headers),
-            char_budget=self._char_budget,
-            url=url,
-        )
-        return FetchedPage(
-            url=url,
-            final_url=url,
-            title=document.title,
-            markdown=document.markdown,
-            backend=FetchBackend.LOCAL,
-            truncated=document.truncated,
-            hidden_content_detected=document.hidden_content_detected,
-        )
 
 
 __all__ = ["LocalFetchProvider"]

@@ -24,10 +24,10 @@ from synthorg.tools.web.errors import (
     WebFetchTransientError,
 )
 from synthorg.tools.web.extract import TRUNCATION_MARKER
+from synthorg.tools.web.fetch_types import FetchBackend, FetchBudget, WebFetchProvider
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
 from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
-from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, WebFetchProvider
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -169,6 +169,39 @@ class TestLocalRung:
     async def test_a_transport_failure_is_transient(self) -> None:
         respx.get(_TARGET).mock(side_effect=httpx.ConnectError("down"))
         with pytest.raises(WebFetchTransientError):
+            await _local().fetch(_TARGET)
+
+    @pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+    @respx.mock
+    async def test_an_ask_again_status_is_transient(self, status: int) -> None:
+        """A rate limit or an outage says "ask again", not "unreadable".
+
+        Reported as a response error, the caller's retry path never runs and
+        the agent escalates to a rung that costs money for a page that would
+        have answered on its own.
+        """
+        respx.get(_TARGET).mock(return_value=httpx.Response(status))
+
+        with pytest.raises(WebFetchTransientError):
+            await _local().fetch(_TARGET)
+
+    @respx.mock
+    async def test_the_origins_own_cooldown_is_carried(self) -> None:
+        respx.get(_TARGET).mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "12"}),
+        )
+
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _local().fetch(_TARGET)
+
+        assert caught.value.retry_after_seconds == 12.0
+
+    @respx.mock
+    async def test_a_permanent_5xx_is_not_transient(self) -> None:
+        """501 names a condition retrying cannot change."""
+        respx.get(_TARGET).mock(return_value=httpx.Response(501))
+
+        with pytest.raises(WebFetchResponseError):
             await _local().fetch(_TARGET)
 
     async def test_a_private_target_is_blocked(self) -> None:

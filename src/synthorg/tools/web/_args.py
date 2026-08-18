@@ -58,7 +58,7 @@ HtmlExtractMode = Literal["text", "links", "metadata"]
 SearchRecency = Literal["day", "week", "month", "year"]
 
 
-# Mirrors ``tools.web.web_fetch.FetchBackend``; spelled as a Literal here so
+# Mirrors ``tools.web.fetch_types.FetchBackend``; spelled as a Literal here so
 # the args model stays importable without pulling the tool module in.
 FetchBackendName = Literal["local", "proxy", "render"]
 

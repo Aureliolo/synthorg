@@ -8,6 +8,13 @@ directly.
 
 from synthorg.tools.web.base_web_tool import BaseWebTool
 from synthorg.tools.web.config import WebToolsConfig
+from synthorg.tools.web.fetch_types import (
+    FetchBackend,
+    FetchedPage,
+    WebFetchProvider,
+    WebFetchRungs,
+    WebToolsWiring,
+)
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
 from synthorg.tools.web.readiness import (
@@ -15,14 +22,7 @@ from synthorg.tools.web.readiness import (
     WebSearchBlocker,
     resolve_web_research_readiness,
 )
-from synthorg.tools.web.web_fetch import (
-    FetchBackend,
-    FetchedPage,
-    WebFetchProvider,
-    WebFetchRungs,
-    WebFetchTool,
-    WebToolsWiring,
-)
+from synthorg.tools.web.web_fetch import WebFetchTool
 from synthorg.tools.web.web_search import (
     SearchFilters,
     SearchResult,

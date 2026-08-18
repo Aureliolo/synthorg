@@ -13,22 +13,25 @@ distinguishable from an operator misconfiguration.
 
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.web import WEB_FETCH_PROVIDER_BOUND
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.network_validator import NetworkPolicy
-from synthorg.tools.web.providers.fetch_presets import get_fetch_preset
-from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
-from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
-from synthorg.tools.web.web_fetch import (
+from synthorg.tools.web.fetch_types import (
     FetchBackend,
     FetchBudget,
     WebFetchProvider,
     WebFetchRungs,
 )
+from synthorg.tools.web.providers.fetch_presets import get_fetch_preset
+from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
+from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -49,8 +52,95 @@ async def build_web_fetch_rungs_or_none(
         than registered and unable to answer).
     """
     resolver = config_resolver_of(app_state)
+    if not await _feature_enabled(resolver):
+        return None
+    settings = await _resolve_fetch_settings(resolver)
+    if settings is None:
+        return None
+
+    web = app_state.config.web
+    network_policy = (
+        web.network_policy
+        if web is not None and web.network_policy is not None
+        else NetworkPolicy()
+    )
+    # One budget, built once and handed to every rung, so the operator's two
+    # ceilings cannot end up applying to one backend and not another.
+    budget = FetchBudget(
+        max_response_bytes=settings.max_response_bytes,
+        char_budget=settings.char_budget,
+    )
+    providers: dict[FetchBackend, WebFetchProvider] = {
+        FetchBackend.LOCAL: LocalFetchProvider(
+            network_policy=network_policy,
+            budget=budget,
+            timeout_seconds=settings.timeout_seconds,
+            user_agent=settings.user_agent,
+        )
+    }
+    if settings.proxy_enabled:
+        proxy = await _build_proxy_rung(
+            app_state,
+            budget=budget,
+            network_policy=network_policy,
+            timeout_seconds=settings.timeout_seconds,
+        )
+        if proxy is not None:
+            providers[FetchBackend.PROXY] = proxy
+
+    logger.info(
+        WEB_FETCH_PROVIDER_BOUND,
+        service="web_fetch",
+        note="wired",
+        backends=sorted(b.value for b in providers),
+        render_requested=settings.render_enabled,
+    )
+    return WebFetchRungs(
+        providers=providers,
+        discover_docs_index=settings.discover_docs_index,
+        render_enabled=settings.render_enabled,
+        char_budget=settings.char_budget,
+    )
+
+
+class _FetchSettings(BaseModel):
+    """The ``tools`` namespace values one boot of the ladder reads.
+
+    Read as a group because they are resolved as a group: any one of them
+    failing means the feature cannot be built, so the ladder is off and the
+    caller has nothing to do with a partial answer.
+
+    Attributes:
+        char_budget: Markdown ceiling handed to every rung.
+        max_response_bytes: Wire ceiling handed to every rung.
+        user_agent: What the local rung identifies itself as.
+        timeout_seconds: Per-request timeout shared by the rungs.
+        proxy_enabled: Whether the operator asked for the vendor reader.
+        render_enabled: Whether the operator asked for the rendered rung.
+        discover_docs_index: Whether a fetch also probes for ``llms.txt``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    char_budget: int
+    max_response_bytes: int
+    user_agent: str
+    timeout_seconds: float
+    proxy_enabled: bool
+    render_enabled: bool
+    discover_docs_index: bool
+
+
+async def _feature_enabled(resolver: ConfigResolver) -> bool:
+    """Read the master switch.
+
+    Returns:
+        Whether the fetch ladder should be built at all. A resolve failure
+        reads as off: the alternative is crashing the agent runtime over a
+        settings read.
+    """
     try:
-        enabled = await resolver.get_bool(_TOOLS_NS, "web_fetch_enabled")
+        return await resolver.get_bool(_TOOLS_NS, "web_fetch_enabled")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- degrade-to-None wiring
         reraise_critical(exc)
@@ -62,19 +152,32 @@ async def build_web_fetch_rungs_or_none(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
-    if not enabled:
-        return None
+        return False
 
+
+async def _resolve_fetch_settings(resolver: ConfigResolver) -> _FetchSettings | None:
+    """Read every setting the ladder needs.
+
+    Returns:
+        The resolved values, or ``None`` when any read failed.
+    """
     try:
-        char_budget = await resolver.get_int(_TOOLS_NS, "web_fetch_max_characters")
-        max_bytes = await resolver.get_int(_TOOLS_NS, "web_fetch_max_response_bytes")
-        user_agent = await resolver.get_str(_TOOLS_NS, "web_fetch_user_agent")
-        timeout = await resolver.get_float(_TOOLS_NS, "web_request_timeout_seconds")
-        proxy_enabled = await resolver.get_bool(_TOOLS_NS, "web_fetch_proxy_enabled")
-        render_enabled = await resolver.get_bool(_TOOLS_NS, "web_fetch_render_enabled")
-        discover = await resolver.get_bool(
-            _TOOLS_NS, "web_fetch_docs_index_discovery_enabled"
+        return _FetchSettings(
+            char_budget=await resolver.get_int(_TOOLS_NS, "web_fetch_max_characters"),
+            max_response_bytes=await resolver.get_int(
+                _TOOLS_NS, "web_fetch_max_response_bytes"
+            ),
+            user_agent=await resolver.get_str(_TOOLS_NS, "web_fetch_user_agent"),
+            timeout_seconds=await resolver.get_float(
+                _TOOLS_NS, "web_request_timeout_seconds"
+            ),
+            proxy_enabled=await resolver.get_bool(_TOOLS_NS, "web_fetch_proxy_enabled"),
+            render_enabled=await resolver.get_bool(
+                _TOOLS_NS, "web_fetch_render_enabled"
+            ),
+            discover_docs_index=await resolver.get_bool(
+                _TOOLS_NS, "web_fetch_docs_index_discovery_enabled"
+            ),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- degrade-to-None wiring
@@ -88,47 +191,6 @@ async def build_web_fetch_rungs_or_none(
             error=safe_error_description(exc),
         )
         return None
-
-    web = app_state.config.web
-    network_policy = (
-        web.network_policy
-        if web is not None and web.network_policy is not None
-        else NetworkPolicy()
-    )
-    # One budget, built once and handed to every rung, so the operator's two
-    # ceilings cannot end up applying to one backend and not another.
-    budget = FetchBudget(max_response_bytes=max_bytes, char_budget=char_budget)
-    providers: dict[FetchBackend, WebFetchProvider] = {
-        FetchBackend.LOCAL: LocalFetchProvider(
-            network_policy=network_policy,
-            budget=budget,
-            timeout_seconds=timeout,
-            user_agent=user_agent,
-        )
-    }
-    if proxy_enabled:
-        proxy = await _build_proxy_rung(
-            app_state,
-            budget=budget,
-            network_policy=network_policy,
-            timeout_seconds=timeout,
-        )
-        if proxy is not None:
-            providers[FetchBackend.PROXY] = proxy
-
-    logger.info(
-        WEB_FETCH_PROVIDER_BOUND,
-        service="web_fetch",
-        note="wired",
-        backends=sorted(b.value for b in providers),
-        render_requested=render_enabled,
-    )
-    return WebFetchRungs(
-        providers=providers,
-        discover_docs_index=discover,
-        render_enabled=render_enabled,
-        char_budget=char_budget,
-    )
 
 
 async def _build_proxy_rung(

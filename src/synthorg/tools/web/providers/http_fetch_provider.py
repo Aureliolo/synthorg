@@ -23,10 +23,6 @@ from pydantic import JsonValue
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
-from synthorg.core.resilience.retry_after import (
-    coerce_finite_nonneg_seconds,
-    parse_retry_after_seconds,
-)
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import require_not_blank
 from synthorg.integrations.rate_limiting.decorator import with_connection_rate_limit
@@ -43,7 +39,11 @@ from synthorg.tools.network_validator import (
     is_allowed_http_scheme,
     validate_url_host,
 )
-from synthorg.tools.web._guarded_fetch import stream_bounded
+from synthorg.tools.web._guarded_fetch import (
+    RETRYABLE_STATUSES,
+    retry_after_seconds,
+    stream_bounded,
+)
 from synthorg.tools.web.errors import (
     WebFetchConfigurationError,
     WebFetchEgressBlockedError,
@@ -51,11 +51,11 @@ from synthorg.tools.web.errors import (
     WebFetchTransientError,
 )
 from synthorg.tools.web.extract import extract_markdown, truncate_with_notice
+from synthorg.tools.web.fetch_types import FetchBackend, FetchBudget, FetchedPage
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_search_provider import (
     ConnectionCredentialSource,
 )
-from synthorg.tools.web.web_fetch import FetchBackend, FetchBudget, FetchedPage
 
 logger = get_logger(__name__)
 
@@ -64,7 +64,6 @@ _DEFAULT_RETRY_ATTEMPTS: Final[int] = 3
 _DEFAULT_RETRY_BASE: Final[float] = 0.5
 _DEFAULT_RETRY_CAP: Final[float] = 8.0
 _HTTP_BAD_REQUEST: Final[int] = 400
-_RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 _MAX_LINKS: Final[int] = 50
 
 
@@ -344,8 +343,8 @@ class HttpWebFetchProvider:
             WebFetchTransientError: On a retryable status.
             WebFetchResponseError: On a non-retryable status or bad JSON.
         """
-        if status in _RETRYABLE_STATUSES:
-            retry_after = self._retry_after_seconds(response_headers)
+        if status in RETRYABLE_STATUSES:
+            retry_after = retry_after_seconds(response_headers)
             logger.warning(
                 WEB_FETCH_FAILED,
                 provider=self._preset.id,
@@ -376,17 +375,6 @@ class HttpWebFetchProvider:
             msg = "web fetch reader returned a malformed JSON body"
             raise WebFetchResponseError(msg) from exc
         return await self._to_page(payload, url)
-
-    def _retry_after_seconds(self, response_headers: httpx.Headers) -> float | None:
-        """Parse a ``Retry-After`` header into seconds.
-
-        Returns:
-            The parsed non-negative delay, or ``None`` when absent.
-        """
-        raw = response_headers.get("Retry-After")
-        if raw is None:
-            return None
-        return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
 
     async def _to_page(self, payload: object, url: str) -> FetchedPage:
         """Walk the preset's result path and build the page.

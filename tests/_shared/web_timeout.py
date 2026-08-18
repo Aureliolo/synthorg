@@ -15,7 +15,7 @@ re-importing the model at every call site.
 """
 
 from synthorg.tools.web.config import WebToolsConfig
-from synthorg.tools.web.web_fetch import WebToolsWiring
+from synthorg.tools.web.fetch_types import WebToolsWiring
 
 DEFAULT_TEST_WEB_REQUEST_TIMEOUT: float = WebToolsConfig().request_timeout
 

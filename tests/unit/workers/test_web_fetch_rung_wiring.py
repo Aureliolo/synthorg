@@ -13,9 +13,9 @@ import pytest
 
 from synthorg.integrations.connections.models import Connection
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.web.fetch_types import FetchBackend
 from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
 from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
-from synthorg.tools.web.web_fetch import FetchBackend
 from synthorg.workers._web_fetch_rung_wiring import build_web_fetch_rungs_or_none
 from tests._shared import FakeClock, mock_of
 

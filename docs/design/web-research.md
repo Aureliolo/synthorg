@@ -149,6 +149,19 @@ against it and the new host goes through the check. Extracting the body of that
 `3xx` instead would hand back the origin's short "moved" stub as a successful,
 empty read.
 
+**An outage is not an unreadable page.** A `429` or an ordinary `5xx` says
+"ask again"; a `404` says the page is not there. Both rungs classify them the
+same way, from one shared set, so a rate limit reaches the caller as a
+transient failure carrying the origin's own `Retry-After` rather than as a
+response error that sends the agent up the ladder to pay a vendor for a page
+that would have answered on retry. The set is deliberately not "any `5xx`":
+`501`, `505` and `507` name a condition retrying cannot change.
+
+**A truncated read is cut to fit its notice.** The character budget is what the
+operator agreed to spend on one page, so the notice that says the page was cut
+is spent out of it rather than appended after it; otherwise every truncated
+read exceeded the ceiling by the notice's own length.
+
 ### Hidden content
 
 A page can carry text invisible to a reader that a model still consumes in
@@ -185,6 +198,17 @@ Under `proxy` the vendor opens the socket, so a target of `169.254.169.254`
 would be fetched by them and the cloud-metadata response handed straight back
 to us. The policy has to bind what we *ask for*, not only what we connect to.
 
+Two consequences of `proxy` are worth stating plainly, because an operator
+choosing it is choosing them. The vendor is told every URL that rung reads,
+including any token in the query string, and the vendor follows redirects on
+their own account, so a target that was checked here can move them somewhere
+that was not. Neither is fixable from this side: they follow from handing the
+fetch to somebody else, which is the entire point of the rung. Choosing
+`proxy` also does not make this process stop talking to the origin: the
+`llms.txt` probe is ours and runs directly, so an operator who picked the rung
+to avoid first-party egress can turn that probe off with
+`tools.web_fetch_docs_index_discovery_enabled`.
+
 The verdict is bound to the connection, not just to the request. Plain HTTP is
 pinned by rewriting the URL to the validated address; HTTPS cannot be, because
 TLS verifies the certificate against the hostname, so it pins the transport
@@ -218,7 +242,11 @@ one.
 
 Documentation sites increasingly publish `/llms.txt`, a curated index of the
 pages worth reading. A successful fetch probes the origin for one and reports
-it, which often replaces several page fetches. It only ever *reports*: it never
+it, which often replaces several page fetches. The origin probed is the one
+that actually served the markdown, not the one that was asked for: a rung that
+follows redirects can land on a different host entirely, and probing the
+requested URL would ask a host that answered nothing whether it indexes a page
+it does not serve. It only ever *reports*: it never
 redirects the fetch that was asked for, because answering from a different URL
 than the one requested makes the transcript a record of something that did not
 happen. The probe runs after the caller's fetch already succeeded, so a probe

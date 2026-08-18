@@ -13,12 +13,12 @@ from pydantic import JsonValue
 
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.web.errors import WebFetchResponseError
-from synthorg.tools.web.providers.render_fetch_provider import RenderFetchProvider
-from synthorg.tools.web.web_fetch import (
+from synthorg.tools.web.fetch_types import (
     FetchBackend,
     RenderedPageSource,
     WebFetchProvider,
 )
+from synthorg.tools.web.providers.render_fetch_provider import RenderFetchProvider
 
 pytestmark = pytest.mark.unit
 

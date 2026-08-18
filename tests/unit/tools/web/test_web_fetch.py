@@ -10,12 +10,13 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.network_validator import NetworkPolicy
-from synthorg.tools.web.web_fetch import (
+from synthorg.tools.web import web_fetch
+from synthorg.tools.web.fetch_types import (
     FetchBackend,
     FetchedPage,
     WebFetchProvider,
-    WebFetchTool,
 )
+from synthorg.tools.web.web_fetch import WebFetchTool
 
 pytestmark = pytest.mark.unit
 
@@ -33,11 +34,13 @@ class _StubRung:
         markdown: str = "# Title\n\nBody text.",
         error: Exception | None = None,
         capabilities: tuple[str, ...] = (),
+        final_url: str = "",
     ) -> None:
         self._backend = backend
         self._markdown = markdown
         self._error = error
         self._capabilities = capabilities
+        self._final_url = final_url
         self.calls: list[str] = []
 
     @property
@@ -54,7 +57,7 @@ class _StubRung:
             raise self._error
         return FetchedPage(
             url=url,
-            final_url=url,
+            final_url=self._final_url or url,
             title="Title",
             markdown=self._markdown,
             backend=self._backend,
@@ -238,3 +241,48 @@ class TestResultShape:
             arguments={"url": _URL, "via": "proxy"}
         )
         assert result.metadata["backend"] == "proxy"
+
+
+class TestDocumentationIndexProbe:
+    """The index belongs to the origin that SERVED the page.
+
+    A rung that follows redirects can land on a different host entirely, and
+    probing the requested URL's origin then asks a host that answered nothing
+    whether it publishes an index for a page it does not serve.
+    """
+
+    async def test_the_probe_follows_the_origin_that_answered(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        probed: list[str] = []
+
+        async def _record(url: str, **_: object) -> str:
+            probed.append(url)
+            return ""
+
+        monkeypatch.setattr(web_fetch, "discover_llms_txt", _record)
+        moved = "https://docs.example-provider.test/v2/api"
+        rung = _StubRung(FetchBackend.RENDER, final_url=moved)
+
+        await _tool(rung, discover=True).execute(arguments={"url": _URL})
+
+        assert probed == [moved]
+
+    async def test_a_rung_reporting_no_landing_probes_what_was_asked_for(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        probed: list[str] = []
+
+        async def _record(url: str, **_: object) -> str:
+            probed.append(url)
+            return ""
+
+        monkeypatch.setattr(web_fetch, "discover_llms_txt", _record)
+
+        await _tool(_StubRung(FetchBackend.LOCAL), discover=True).execute(
+            arguments={"url": _URL}
+        )
+
+        assert probed == [_URL]

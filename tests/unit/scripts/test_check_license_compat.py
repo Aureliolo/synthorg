@@ -480,6 +480,42 @@ def test_refusing_to_split_can_over_restrict_and_that_is_the_safe_direction() ->
     assert _MODULE._classify("mit and (gpl-2.0-only or mit)") == "gpl"
 
 
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("gpl-2.0-only and (mit or lgpl-2.1-only)", "gpl"),
+        ("gpl-2.0-only and lgpl-2.1-only", "gpl"),
+        ("agpl-3.0-only and lgpl-2.1-only", "agpl"),
+    ],
+)
+def test_a_bound_expression_takes_its_strongest_family(
+    expression: str,
+    expected: str,
+) -> None:
+    """Two copyleft names in one conjunction: the STRONGER one binds.
+
+    A whole-blob specificity scan tests ``lgpl`` before ``gpl``, because the
+    long form of the weaker licence contains the name of the stronger one.
+    That ordering is right for ONE identifier and inverted across several, so
+    the expression here reported ``lgpl``, the family the gate merely
+    attributes in NOTICE, rather than ``gpl``, the family it rejects.
+    """
+    assert _MODULE._classify(expression) == expected
+
+
+def test_a_membership_read_of_a_bound_expression_names_the_binding_family() -> None:
+    """``_offered_families`` answers about the same expression the same way.
+
+    It feeds the NOTICE-election check, so an answer weaker than
+    ``_classify_dist``'s would let a dist be rejected as GPL by one read and
+    recorded as an elected LGPL arm by the other.
+    """
+    dist = SimpleNamespace(metadata=_FakeMeta("GPL-2.0-only AND (MIT OR LGPL-2.1)", ()))
+
+    assert _MODULE._offered_families(dist) == {"gpl"}
+    assert _MODULE._classify_dist(dist) == "gpl"
+
+
 # ── expression and classifiers are classified apart ─────────────
 
 

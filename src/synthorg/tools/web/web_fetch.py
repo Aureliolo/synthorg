@@ -20,17 +20,18 @@ backing is configured); which available rung serves THIS call is the agent's.
 Nothing escalates by itself: a rung that comes back empty says so, names
 itself, and lists the rungs left, so the next attempt is a call the agent
 chose and the transcript records which backend produced which bytes.
+
+The contracts the rungs and the boot wiring share live in ``fetch_types``;
+this module is the tool that consumes them.
 """
 
-from enum import StrEnum
-from typing import ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Final, override
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_FETCH_BACKEND_UNAVAILABLE,
@@ -45,168 +46,21 @@ from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web._args import WebFetchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
+from synthorg.tools.web.fetch_types import (
+    FetchBackend,
+    FetchedPage,
+    WebFetchProvider,
+)
 from synthorg.tools.web.llms_txt import (
     INDEX_PROBE_TTL_SECONDS,
     IndexProbeCache,
     discover_llms_txt,
     discovery_notice,
 )
-from synthorg.tools.web.web_search import WebSearchProvider
 
 logger = get_logger(__name__)
 
 _DEFAULT_PROBE_TIMEOUT: Final[float] = 5.0
-
-
-class FetchBackend(StrEnum):
-    """Which rung served, or is being asked to serve, a fetch."""
-
-    LOCAL = "local"
-    PROXY = "proxy"
-    RENDER = "render"
-
-
-class FetchedPage(BaseModel):
-    """One page read as markdown.
-
-    Attributes:
-        url: The URL as requested.
-        final_url: Where the read actually landed, when the backend reports it.
-        title: Page title, empty when the page declares none.
-        markdown: Extracted content; empty when nothing readable survived.
-        backend: The rung that produced this.
-        truncated: Whether the content was cut to fit the character budget.
-        links: Outbound links, only when the backend returns them.
-        hidden_content_detected: Whether the page carried substantial text
-            invisible to a reader. That text is stripped before extraction, so
-            this is an alarm rather than a hazard: a documentation page has no
-            reason to hide prose from the human and show it to the machine.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    url: NotBlankStr
-    final_url: str = ""
-    title: str = ""
-    markdown: str
-    backend: FetchBackend
-    truncated: bool = False
-    links: tuple[str, ...] = ()
-    hidden_content_detected: bool = False
-
-
-@runtime_checkable
-class WebFetchProvider(Protocol):
-    """One rung of the fetch ladder."""
-
-    @property
-    def backend(self) -> FetchBackend:
-        """Which rung this provider is."""
-        ...
-
-    @property
-    def capabilities(self) -> tuple[str, ...]:
-        """What this rung offers beyond markdown, for the agent to weigh."""
-        ...
-
-    async def fetch(self, url: str) -> FetchedPage:
-        """Read *url* and return it as markdown."""
-        ...
-
-
-class FetchBudget(BaseModel):
-    """How much of a response a rung accepts.
-
-    The two ceilings travel together: bytes bound what is read off the wire,
-    characters bound what reaches the agent, and every rung needs both. They
-    are one argument because they are one decision, and because a rung
-    configured with one and not the other is not a state an operator can
-    express.
-
-    Attributes:
-        max_response_bytes: Hard ceiling on the body read from the wire.
-        char_budget: Ceiling on the markdown handed back.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    max_response_bytes: int = Field(gt=0)
-    char_budget: int = Field(gt=0)
-
-
-@runtime_checkable
-class RenderedPageSource(Protocol):
-    """The slice of the browser tool the render rung drives.
-
-    Declared beside the wiring that carries it rather than beside the provider
-    that consumes it: the provider imports this module, so a field typed from
-    there would close an import cycle and have to fall back to ``object``,
-    which is a field that accepts anything and decides at runtime.
-    """
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, object],
-    ) -> ToolExecutionResult:
-        """Run one browser operation."""
-        ...
-
-
-class WebFetchRungs(BaseModel):
-    """The ladder resolved from settings, plus what the tool needs to build it.
-
-    The render rung is declared here but completed in the tool factory, which
-    is the first place the browser tool exists; boot has the settings but not
-    the sandbox.
-
-    Attributes:
-        providers: The rungs already built, keyed by backend.
-        discover_docs_index: Whether a fetch also probes for ``llms.txt``.
-        render_enabled: Whether the operator asked for the rendered rung.
-        char_budget: Markdown ceiling, needed to finish the render rung.
-    """
-
-    model_config = ConfigDict(
-        frozen=True,
-        allow_inf_nan=False,
-        extra="forbid",
-        arbitrary_types_allowed=True,
-    )
-
-    providers: dict[FetchBackend, WebFetchProvider]
-    discover_docs_index: bool = True
-    render_enabled: bool = False
-    char_budget: int = Field(gt=0)
-
-
-class WebToolsWiring(BaseModel):
-    """Everything the tool factory needs to build the web cohort.
-
-    Grouped because these five travel together through every layer of the
-    factory and passing them individually pushed the cohort builder over the
-    argument cap.
-
-    Attributes:
-        network_policy: SSRF policy shared by every web tool.
-        request_timeout: Per-request timeout for the plain HTTP tool.
-        search_provider: The bound search backend, or ``None`` when unset.
-        fetch_rungs: The resolved fetch ladder, or ``None`` when off.
-        render_source: The browser tool backing the rendered rung, or ``None``.
-    """
-
-    model_config = ConfigDict(
-        frozen=True,
-        allow_inf_nan=False,
-        extra="forbid",
-        arbitrary_types_allowed=True,
-    )
-
-    network_policy: NetworkPolicy | None = None
-    request_timeout: float = Field(gt=0)
-    search_provider: WebSearchProvider | None = None
-    fetch_rungs: WebFetchRungs | None = None
-    render_source: RenderedPageSource | None = None
 
 
 class WebFetchTool(BaseWebTool):
@@ -295,22 +149,7 @@ class WebFetchTool(BaseWebTool):
 
         provider = self._providers.get(requested)
         if provider is None:
-            # Logged because it is the signal that agents want a rung the
-            # operator has not enabled; without it the only evidence is an
-            # error the agent absorbs silently.
-            logger.info(
-                WEB_FETCH_BACKEND_UNAVAILABLE,
-                url=redact_url(url),
-                backend=requested.value,
-                available=self._available_names(),
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Backend {requested.value!r} is not configured. "
-                    f"Available: {self._available_names()}."
-                ),
-                is_error=True,
-            )
+            return self._unavailable_result(url, requested)
 
         validation = await self._validate_url(url)
         if isinstance(validation, str):
@@ -324,36 +163,102 @@ class WebFetchTool(BaseWebTool):
             page = await provider.fetch(url)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(
-                WEB_FETCH_FAILED,
-                url=redact_url(url),
-                backend=requested.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Fetch failed via {requested.value}. "
-                    f"{self._remaining_hint(requested)}"
-                ),
-                is_error=True,
-            )
+            return self._failed_result(url, requested, exc)
 
         if not page.markdown.strip():
-            logger.info(WEB_FETCH_EMPTY, url=redact_url(url), backend=requested.value)
-            return ToolExecutionResult(
-                content=(
-                    f"No readable content extracted from {url} via "
-                    f"{requested.value}. {self._remaining_hint(requested)}"
-                ),
-                metadata={
-                    "url": url,
-                    "backend": requested.value,
-                    "result_characters": 0,
-                },
-            )
+            return self._empty_result(url, requested)
+        return await self._page_result(page, url=url, requested=requested)
 
-        docs_index = await self._discover_index(url)
+    def _unavailable_result(
+        self,
+        url: str,
+        requested: FetchBackend,
+    ) -> ToolExecutionResult:
+        """Answer a call naming a rung the operator has not enabled.
+
+        Returns:
+            The error result naming what is configured instead.
+        """
+        # Logged because it is the signal that agents want a rung the
+        # operator has not enabled; without it the only evidence is an
+        # error the agent absorbs silently.
+        logger.info(
+            WEB_FETCH_BACKEND_UNAVAILABLE,
+            url=redact_url(url),
+            backend=requested.value,
+            available=self._available_names(),
+        )
+        return ToolExecutionResult(
+            content=(
+                f"Backend {requested.value!r} is not configured. "
+                f"Available: {self._available_names()}."
+            ),
+            is_error=True,
+        )
+
+    def _failed_result(
+        self,
+        url: str,
+        requested: FetchBackend,
+        exc: Exception,
+    ) -> ToolExecutionResult:
+        """Answer a rung that raised, naming the rungs still untried.
+
+        Returns:
+            The error result.
+        """
+        logger.warning(
+            WEB_FETCH_FAILED,
+            url=redact_url(url),
+            backend=requested.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ToolExecutionResult(
+            content=(
+                f"Fetch failed via {requested.value}. {self._remaining_hint(requested)}"
+            ),
+            is_error=True,
+        )
+
+    def _empty_result(self, url: str, requested: FetchBackend) -> ToolExecutionResult:
+        """Answer a rung that read the page and found nothing readable.
+
+        Returns:
+            A non-error result: an empty read is an answer, and the agent
+            decides from it whether to spend another rung.
+        """
+        logger.info(WEB_FETCH_EMPTY, url=redact_url(url), backend=requested.value)
+        return ToolExecutionResult(
+            content=(
+                f"No readable content extracted from {url} via "
+                f"{requested.value}. {self._remaining_hint(requested)}"
+            ),
+            metadata={
+                "url": url,
+                "backend": requested.value,
+                "result_characters": 0,
+            },
+        )
+
+    async def _page_result(
+        self,
+        page: FetchedPage,
+        *,
+        url: str,
+        requested: FetchBackend,
+    ) -> ToolExecutionResult:
+        """Render a read page, probing its origin for a documentation index.
+
+        Returns:
+            The success result.
+        """
+        # Probed at the origin that actually SERVED the markdown. A rung that
+        # follows redirects can land on a different host entirely (a vendor
+        # docs site moved behind its own domain), and probing the requested
+        # URL's origin then asks a host that answered nothing whether it
+        # publishes an index for a page it does not serve.
+        docs_index = await self._discover_index(page.final_url or url)
         logger.info(
             WEB_FETCH_SUCCESS,
             url=redact_url(url),
@@ -442,11 +347,4 @@ class WebFetchTool(BaseWebTool):
         return "\n".join([*header, "", page.markdown])
 
 
-__all__ = [
-    "FetchBackend",
-    "FetchedPage",
-    "WebFetchProvider",
-    "WebFetchRungs",
-    "WebFetchTool",
-    "WebToolsWiring",
-]
+__all__ = ["WebFetchTool"]

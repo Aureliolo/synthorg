@@ -17,6 +17,10 @@ from urllib.parse import ParseResult, urlparse, urlunparse
 import httpx
 
 from synthorg.core.normalization import compare_ci
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import DnsValidationOk
 
@@ -25,6 +29,12 @@ from synthorg.tools.network_validator import DnsValidationOk
 # spans several reads and this is a backstop against an unbounded hold, not a
 # performance budget.
 _TOTAL_DEADLINE_MULTIPLIER: Final[int] = 6
+
+#: Statuses that mean "ask again", shared by every rung so a page that would
+#: have answered on retry is not classified as unreadable by one backend and
+#: retryable by another. Deliberately not "any 5xx": 501, 505 and 507 name a
+#: permanent condition, and retrying them only spends the ladder.
+RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
 
 def _explicit_port(parsed: ParseResult) -> int | None:
@@ -226,6 +236,19 @@ async def _read_bounded(
     return b"".join(chunks)[:budget], status_code, resp_headers
 
 
+def retry_after_seconds(headers: httpx.Headers) -> float | None:
+    """Parse a ``Retry-After`` response header into seconds.
+
+    Returns:
+        The parsed non-negative delay, or ``None`` when the header is absent
+        or states something that is not a delay.
+    """
+    raw = headers.get("Retry-After")
+    if raw is None:
+        return None
+    return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
+
+
 def decode_body(raw: bytes, headers: httpx.Headers) -> str:
     """Decode a response body using the charset the response declared.
 
@@ -249,4 +272,10 @@ def decode_body(raw: bytes, headers: httpx.Headers) -> str:
         return raw.decode("utf-8", errors="replace")
 
 
-__all__ = ["decode_body", "pin_url", "stream_bounded"]
+__all__ = [
+    "RETRYABLE_STATUSES",
+    "decode_body",
+    "pin_url",
+    "retry_after_seconds",
+    "stream_bounded",
+]

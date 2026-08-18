@@ -42,9 +42,9 @@ from synthorg.tools.sandbox.factory import (
     merge_secure_backend_defaults,
     resolve_sandbox_for_category,
 )
+from synthorg.tools.web.fetch_types import RenderedPageSource, WebToolsWiring
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
-from synthorg.tools.web.web_fetch import RenderedPageSource, WebToolsWiring
 
 if TYPE_CHECKING:
     # This factory loads deep inside the eager ``config.schema`` init chain
@@ -80,7 +80,7 @@ if TYPE_CHECKING:
     from synthorg.tools.sandbox.protocol import SandboxBackend
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
     from synthorg.tools.terminal.config import TerminalConfig
-    from synthorg.tools.web.web_fetch import WebFetchRungs
+    from synthorg.tools.web.fetch_types import WebFetchRungs
 
 logger = get_logger(__name__)
 
@@ -258,13 +258,11 @@ def _build_web_fetch_tool(
     """
     if rungs is None or not rungs.providers:
         return None
+    from synthorg.tools.web.fetch_types import FetchBackend  # noqa: PLC0415
     from synthorg.tools.web.providers.render_fetch_provider import (  # noqa: PLC0415
         RenderFetchProvider,
     )
-    from synthorg.tools.web.web_fetch import (  # noqa: PLC0415
-        FetchBackend,
-        WebFetchTool,
-    )
+    from synthorg.tools.web.web_fetch import WebFetchTool  # noqa: PLC0415
 
     providers = dict(rungs.providers)
     if rungs.render_enabled and render_source is not None:

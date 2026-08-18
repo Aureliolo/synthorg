@@ -647,20 +647,21 @@ async def _sync_keystore(
     _save_keystore(state_path, list(merged.values()))
 
 
-def _bounded_content(html: str, limit: int | None) -> tuple[str, bool]:
+def _bounded_content(html: str, limit: int) -> tuple[str, bool]:
     """Cap the serialised DOM at *limit* characters.
 
     The document's size is chosen by the page, and this envelope is handed
     back as a single JSON string over the sandbox result channel, so an
     unbounded capture lets any target decide how much memory the host spends
-    parsing its reply.
+    parsing its reply. The ceiling is required rather than optional, because
+    an absent one read as "no cap" is that unbounded capture.
 
     Returns:
         The (possibly cut) HTML and whether anything was dropped. Cutting
         mid-tag is safe for the consumer: every reader of this field parses
         with recovery on, which is what reads real-world markup at all.
     """
-    if limit is None or limit <= 0 or len(html) <= limit:
+    if len(html) <= limit:
         return html, False
     return html[:limit], True
 
@@ -698,10 +699,11 @@ async def _dispatch_page(
         if operation in _STORAGE_OPERATIONS:
             storage_result = await _STORAGE_HANDLERS[operation](page, payload)
         if operation == "content":
-            content_html, content_truncated = _bounded_content(
-                await page.content(),
-                payload.get("content_max_characters"),
-            )
+            limit = payload.get("content_max_characters")
+            if limit is None or limit <= 0:
+                raise ValueError("content_max_characters must be a positive integer")
+            html = await page.content()
+            content_html, content_truncated = _bounded_content(html, limit)
         # Persist session state while the page (and its origin's
         # localStorage) is still open, so a later call sees the writes.
         await _persist_storage_state(context, payload)

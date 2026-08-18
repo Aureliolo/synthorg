@@ -114,12 +114,26 @@ def truncate_with_notice(text: str, budget: int) -> tuple[str, bool]:
     only set the flag hands the agent a document it believes is complete. Every
     path that shortens content for an agent goes through here.
 
+    The notice is spent OUT of the budget, not added to it: the budget is what
+    the operator agreed to pay for one page, and a cut that appended the notice
+    afterwards put every truncated read over that ceiling by the notice's own
+    length.
+
     Returns:
         The possibly-cut text, carrying :data:`TRUNCATION_MARKER` when cut, and
         whether a cut happened.
     """
-    body, truncated = truncate_at_block(text, budget)
-    return (f"{body}{TRUNCATION_MARKER}" if truncated else body), truncated
+    if len(text) <= budget:
+        return text, False
+    room = budget - len(TRUNCATION_MARKER)
+    if room <= 0:
+        # A budget under the notice's own length cannot say both things, and a
+        # sliced notice no longer reads as one. The notice wins: a page the
+        # agent knows it did not finish beats a longer one it thinks it did.
+        # The setting's floor keeps this off every configured path.
+        return TRUNCATION_MARKER, True
+    body, _ = truncate_at_block(text, room)
+    return f"{body}{TRUNCATION_MARKER}", True
 
 
 async def extract_markdown(

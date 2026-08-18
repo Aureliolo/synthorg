@@ -17,6 +17,7 @@ import pytest
 
 from synthorg.tools.browser._args import BrowserToolArgs
 from synthorg.tools.browser._constants import CONTENT_SOURCE_BUDGET_MULTIPLIER
+from synthorg.tools.browser._executor import _bounded_content
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser.browser_tool import BrowserTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -228,6 +229,19 @@ class TestTheCaptureItselfIsBounded:
         assert payload["content_max_characters"] == 1000 * (
             CONTENT_SOURCE_BUDGET_MULTIPLIER
         )
+
+    def test_the_ceiling_is_required_so_there_is_no_unbounded_reading(self) -> None:
+        """A ceiling of ``None`` used to mean "no cap".
+
+        That is the one shape turning a malformed payload into the unbounded
+        capture this guard exists to prevent, so the container's cut takes a
+        ceiling it cannot read as absent and the operation refuses one before
+        calling it.
+        """
+        capped, truncated = _bounded_content("x" * 100, 40)
+
+        assert capped == "x" * 40
+        assert truncated is True
 
     async def test_a_capped_capture_is_reported_as_truncated(
         self,

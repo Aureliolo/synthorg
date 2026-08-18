@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 
 import { WebResearchBanner } from '@/components/layout/WebResearchBanner'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { successFor } from '@/mocks/handlers'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import { server } from '@/test-setup'
@@ -46,37 +47,44 @@ const NO_PROVIDER: Capabilities = {
   web_search_notify: true,
 }
 
+function serveCapabilities(matrix: Capabilities): void {
+  server.use(
+    http.get('/api/v1/capabilities/', () =>
+      HttpResponse.json(successFor<typeof getCapabilities>(matrix)),
+    ),
+  )
+}
+
 /**
- * Serve `matrix`, exposing a `requested` promise that settles once it was read.
+ * Reports whether the capability read has finished, for the absence tests.
  *
  * Asserting a banner is ABSENT is satisfied by a page that has not rendered
  * yet, so an absence test with nothing to wait on passes before the capability
  * request has even been issued: it would go on passing if the component
- * stopped fetching altogether. Awaiting `requested` first makes the absence a
- * statement about a matrix that arrived. Wrapped in an object so the tests
- * asserting a PRESENT banner (already gated on finding it) can ignore the
- * handle without each having to disclaim a promise they do not need.
+ * stopped fetching altogether. A signal raised inside the MSW resolver does
+ * not close that window either, because it fires when the handler STARTS
+ * answering, which is before the response reaches `getCapabilities()` or
+ * React. `loading` turning false is the first moment the matrix has actually
+ * been applied, so that is what the absence assertions wait on.
  */
-function serveCapabilities(matrix: Capabilities): { requested: Promise<void> } {
-  let seen: () => void = () => undefined
-  const requested = new Promise<void>((resolve) => {
-    seen = resolve
-  })
-  server.use(
-    http.get('/api/v1/capabilities/', () => {
-      seen()
-      return HttpResponse.json(successFor<typeof getCapabilities>(matrix))
-    }),
-  )
-  return { requested }
+function CapabilitiesProbe() {
+  const { loading } = useCapabilities()
+  return <span data-testid="capability-state">{loading ? 'loading' : 'settled'}</span>
 }
 
 function renderBanner() {
   return render(
     <MemoryRouter>
+      <CapabilitiesProbe />
       <WebResearchBanner />
     </MemoryRouter>,
   )
+}
+
+async function capabilitiesSettled() {
+  await waitFor(() => {
+    expect(screen.getByTestId('capability-state')).toHaveTextContent('settled')
+  })
 }
 
 /**
@@ -102,21 +110,17 @@ describe('WebResearchBanner', () => {
   })
 
   it('stays silent when search is configured', async () => {
-    const requested = serveCapabilities(READY)
+    serveCapabilities(READY)
     renderBanner()
-    await requested.requested
-    await waitFor(() => {
-      expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
-    })
+    await capabilitiesSettled()
+    expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
   })
 
   it('stays silent once the notice is dismissed, even though search is still blocked', async () => {
-    const requested = serveCapabilities({ ...NO_PROVIDER, web_search_notify: false })
+    serveCapabilities({ ...NO_PROVIDER, web_search_notify: false })
     renderBanner()
-    await requested.requested
-    await waitFor(() => {
-      expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
-    })
+    await capabilitiesSettled()
+    expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
   })
 
   it('names a saved connection for the selected provider instead of asking again', async () => {
@@ -206,8 +210,7 @@ describe('WebResearchBanner', () => {
       http.get('/api/v1/capabilities/', () => HttpResponse.json({}, { status: 500 })),
     )
     renderBanner()
-    await waitFor(() => {
-      expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
-    })
+    await capabilitiesSettled()
+    expect(screen.queryByText('Web search is not configured')).not.toBeInTheDocument()
   })
 })

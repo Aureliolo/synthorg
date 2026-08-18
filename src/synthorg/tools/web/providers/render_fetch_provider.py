@@ -15,7 +15,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.web import WEB_FETCH_FAILED
 from synthorg.tools.web.errors import WebFetchResponseError
 from synthorg.tools.web.extract import extract_markdown
-from synthorg.tools.web.web_fetch import (
+from synthorg.tools.web.fetch_types import (
     FetchBackend,
     FetchedPage,
     RenderedPageSource,

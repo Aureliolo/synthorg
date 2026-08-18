@@ -322,7 +322,7 @@ def _offered_families(dist: metadata.Distribution) -> set[str]:
     expression = _license_expression(dist)
     if not expression:
         return {_classify_one(_license_classifiers(dist))}
-    return {_classify_one(arm) for arm in _disjunction_arms(expression)}
+    return {_classify_bound(arm) for arm in _disjunction_arms(expression)}
 
 
 #: Copyleft families ordered most to least restrictive, so a disjunction can
@@ -333,6 +333,10 @@ _FAMILY_RANK: dict[str, int] = {"agpl": 3, "gpl": 2, "lgpl": 1, "permissive": 0}
 #: conjunction binds its side to every arm of any disjunction beside it, and a
 #: parenthesis can nest one anywhere, so neither can be resolved by splitting.
 _UNPARSEABLE_EXPRESSION_TOKENS: tuple[str, ...] = ("(", ")", " and ")
+
+#: Everything an SPDX licence identifier cannot contain, so splitting on it
+#: yields one identifier per token (``lgpl-2.1-only``, ``mpl-1.1``).
+_IDENTIFIER_SPLIT: re.Pattern[str] = re.compile(r"[^a-z0-9.+-]+")
 
 
 def _classify(blob: str) -> str:
@@ -358,10 +362,37 @@ def _classify(blob: str) -> str:
     arms = _disjunction_arms(blob)
     if len(arms) > 1:
         return min(
-            (_classify_one(arm) for arm in arms),
+            (_classify_bound(arm) for arm in arms),
             key=lambda family: _FAMILY_RANK[family],
         )
-    return _classify_one(blob)
+    return _classify_bound(blob)
+
+
+def _classify_bound(blob: str) -> str:
+    """Classify an expression every named licence of which BINDS.
+
+    A conjunction is refused by :func:`_disjunction_arms` and reaches here
+    whole, and a whole-blob specificity scan answers the wrong question for
+    one: ``_classify_one`` tests ``lgpl`` before ``gpl`` because the long form
+    of the weaker licence contains the name of the stronger one, which is
+    right for ONE identifier and inverted across several. In
+    ``GPL-2.0-only AND (MIT OR LGPL-2.1-only)`` the GPL half binds whichever
+    inner arm is elected, yet the scan reports ``lgpl``, which is the family
+    the gate merely attributes in NOTICE rather than the one it rejects.
+
+    So every identifier in the blob is classified on its own and the
+    STRONGEST wins, alongside the whole-blob answer, which is what still
+    catches a long-form name whose words tokenise apart (``lesser general
+    public license``).
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    families = [
+        _classify_one(blob),
+        *(_classify_one(token) for token in _IDENTIFIER_SPLIT.split(blob) if token),
+    ]
+    return max(families, key=lambda family: _FAMILY_RANK[family])
 
 
 def _disjunction_arms(blob: str) -> list[str]:

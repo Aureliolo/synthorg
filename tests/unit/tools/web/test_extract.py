@@ -277,9 +277,11 @@ class TestTruncation:
 
     async def test_truncated_extraction_says_so_in_the_content(self) -> None:
         """The model must be able to tell a partial read from a whole one."""
-        doc = await extract_markdown(_DOCS_HTML, char_budget=80)
+        budget = len(TRUNCATION_MARKER) + 20
+        doc = await extract_markdown(_DOCS_HTML, char_budget=budget)
         assert doc.truncated is True
         assert TRUNCATION_MARKER.strip() in doc.markdown
+        assert len(doc.markdown) <= budget
 
 
 class TestTruncateWithNotice:
@@ -295,17 +297,40 @@ class TestTruncateWithNotice:
         assert TRUNCATION_MARKER.strip() not in text
 
     def test_a_cut_text_carries_the_notice(self) -> None:
-        text, cut = truncate_with_notice("z" * 500, 100)
+        text, cut = truncate_with_notice("z" * 500, len(TRUNCATION_MARKER) + 100)
         assert cut is True
         assert TRUNCATION_MARKER.strip() in text
 
+    def test_the_notice_is_spent_out_of_the_budget_not_added_to_it(self) -> None:
+        """A cut result stays inside the ceiling the operator configured.
+
+        Appending the notice afterwards put every truncated read over that
+        ceiling by the notice's own length, which is the one case the budget
+        exists to bound.
+        """
+        budget = len(TRUNCATION_MARKER) + 100
+        text, cut = truncate_with_notice("z" * 500, budget)
+        assert cut is True
+        assert len(text) <= budget
+
     def test_the_notice_agrees_with_the_boundary_helper(self) -> None:
-        """The two must cut identically, or the marker would move the text."""
-        source = "a" * 60 + "\n\n" + "b" * 60
-        plain, plain_cut = truncate_at_block(source, 100)
-        noticed, noticed_cut = truncate_with_notice(source, 100)
+        """The body is the same cut, taken against the reserved budget."""
+        source = "a" * 60 + "\n\n" + "b" * 300
+        budget = len(TRUNCATION_MARKER) + 100
+        plain, plain_cut = truncate_at_block(source, budget - len(TRUNCATION_MARKER))
+        noticed, noticed_cut = truncate_with_notice(source, budget)
         assert plain_cut is noticed_cut
         assert noticed.startswith(plain)
+
+    def test_a_budget_under_the_notice_answers_with_the_notice(self) -> None:
+        """The one thing worth saying when nothing else fits.
+
+        A sliced notice no longer reads as one, so it is emitted whole; the
+        setting's own floor keeps this branch off every configured path.
+        """
+        text, cut = truncate_with_notice("z" * 500, 10)
+        assert cut is True
+        assert text == TRUNCATION_MARKER
 
 
 class TestShortPagesKeepStructure:

@@ -62,8 +62,8 @@ from synthorg.tools.sandbox.factory import (
     merge_secure_backend_defaults,
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.tools.web.fetch_types import WebFetchRungs, WebToolsWiring
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
-from synthorg.tools.web.web_fetch import WebFetchRungs, WebToolsWiring
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
     boot_docs_tool_factory_provider,
