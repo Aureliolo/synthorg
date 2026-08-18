@@ -89,11 +89,13 @@ class TestWhatCountsAsAWaveLoop:
                     "from x import (\n"
                     "    abandon_after,\n"
                     "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
                     "    build_execution_waves,\n"
                     "    gate_wave,\n"
                     ")\n"
                     "def dispatch():\n"
                     "    groups = build_execution_waves()\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -164,6 +166,38 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 1
 
+    def test_a_loop_that_never_parks_what_no_wave_holds_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """A subtask the builder placed in no wave is in no wave's gate.
+
+        The three parking calls all take groups, so every one of them is
+        blind to a subtask the builder could not place at all: it appears in
+        no group, so no wave gates it, no stop is after it, and no wave
+        stranded it. A live run left such a row at CREATED with nothing that
+        would ever move it.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "grouped_only.py": (
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    build_execution_waves,\n"
+                    "    gate_wave,\n"
+                    ")\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
     def test_reaching_the_gate_through_the_shared_runner_passes(
         self, tmp_path: Path
     ) -> None:
@@ -199,8 +233,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -230,8 +270,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return parking.park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -266,8 +312,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return parking.park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -299,8 +351,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -328,8 +386,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -362,8 +426,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -388,8 +458,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -420,8 +496,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return parking.park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -452,8 +534,14 @@ class TestWhatCountsAsAWaveLoop:
                     "    return park_everything(groups)\n"
                 ),
                 "parking.py": (
-                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "from x import (\n"
+                    "    abandon_after,\n"
+                    "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
+                    "    gate_wave,\n"
+                    ")\n"
                     "def park_everything(groups):\n"
+                    "    abandon_unreachable(groups, subtask_ids=())\n"
                     "    runnable = [gate_wave(g) for g in groups]\n"
                     "    abandon_stranded(groups[0], 0)\n"
                     "    abandon_after(groups, 0)\n"
@@ -501,12 +589,14 @@ class TestWhatCountsAsAWaveLoop:
                     "from x import (\n"
                     "    abandon_after,\n"
                     "    abandon_stranded,\n"
+                    "    abandon_unreachable,\n"
                     "    build_execution_waves,\n"
                     "    gate_wave,\n"
                     ")\n"
                     "def dispatch():\n"
                     "    abandon_after(0)\n"
                     "    abandon_stranded(0)\n"
+                    "    abandon_unreachable(0)\n"
                     "    return gate_wave(build_execution_waves())\n"
                 ),
             },

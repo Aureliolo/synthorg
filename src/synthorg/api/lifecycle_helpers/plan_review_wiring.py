@@ -52,6 +52,7 @@ from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import (
     PlanProvenance,
@@ -194,6 +195,7 @@ class PlanReviewApprovalGate:
     __slots__ = (
         "_approval_store",
         "_clock",
+        "_ledger",
         "_notifier",
         "_plans",
         "_projects",
@@ -209,6 +211,7 @@ class PlanReviewApprovalGate:
         projects: ProjectRepository,
         clock: Clock,
         notifier: PlanNotifier | None = None,
+        ledger: LiveRunLedger | None = None,
     ) -> None:
         # A service, not the repository: every status this gate writes is a
         # transition the lifecycle ledger has to carry, and a gate holding the
@@ -219,6 +222,13 @@ class PlanReviewApprovalGate:
         self._projects = projects
         self._clock = clock
         self._notifier = notifier
+        # Held from the moment a shell exists until the plan leaves PLANNING.
+        # Writing a plan is a live drive like dispatching one, and recovery
+        # cannot tell "still being written" from "was being written when the
+        # process died" by looking at the row: both read PLANNING. A live run
+        # took 642 seconds over a panel and two revision rounds, and the
+        # recovery sweep failed the plan out from under it at 600.
+        self._ledger = ledger
 
     def _announce(self, plan: Plan) -> None:
         """Tell open viewers the plan moved, if a publisher is wired.
@@ -331,6 +341,10 @@ class PlanReviewApprovalGate:
             )
         )
         await self._plans.create(shell)
+        # Claimed before the shell is announced, so no sweep can see a PLANNING
+        # row this process is about to fill without also seeing the claim.
+        if self._ledger is not None:
+            self._ledger.try_claim(str(shell.id))
         logger.info(
             PIPELINE_PLAN_SHELL_OPENED,
             plan_id=str(shell.id),
@@ -338,6 +352,19 @@ class PlanReviewApprovalGate:
             task_id=str(task.id),
         )
         return shell.id
+
+    def release_plan(self, plan_id: UUID) -> None:
+        """Stop claiming *plan_id* as being written in this process.
+
+        Called on every route out of decomposition, so the claim covers
+        exactly the window in which the row says PLANNING and this process is
+        the reason. Idempotent, and safe to call for a plan never claimed.
+
+        Args:
+            plan_id: The plan whose writing has finished, however it finished.
+        """
+        if self._ledger is not None:
+            self._ledger.release(str(plan_id))
 
     async def request_plan_approval(
         self,
@@ -365,6 +392,11 @@ class PlanReviewApprovalGate:
                 retired and the plan is failed, so a shutdown mid-park leaves
                 nothing an operator can still act on.
         """
+        # The plan stops being one this process is writing the moment it is
+        # filled, whatever happens to the parking below: from here on the row
+        # is PENDING_REVIEW and recovery reads it as awaiting a human, which
+        # it skips for its own reasons.
+        self.release_plan(plan_id)
         await self._require_parent(task, plan_id)
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
@@ -541,6 +573,10 @@ class PlanReviewApprovalGate:
         the failed handoff `_plan_review` returns) nor turn a handled failure
         into a 500 -- which is exactly what an unguarded write here would do.
         """
+        # Released first: this is the last thing that happens to a plan whose
+        # writing did not work out, and holding the claim past it would leave
+        # recovery skipping a row nobody is driving.
+        self.release_plan(plan_id)
         key = NotBlankStr(str(plan_id))
         marked_reason = NotBlankStr(reason or "decomposition failed")
 
@@ -642,6 +678,9 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
         raise SubsystemDeclinedError(msg)
     from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
+        live_run_ledger_of,
+    )
 
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
@@ -650,6 +689,9 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         projects=backend.projects,
         clock=app_state.clock,
         notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
+        # The same ledger recovery reads, so a plan this process is writing is
+        # one recovery can see it must not touch.
+        ledger=live_run_ledger_of(app_state),
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)
     logger.info(API_APP_STARTUP, service="plan_review_gate", note="wired")

@@ -47,7 +47,11 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_ROLE_SWEEP_FAILED,
 )
 from tests._shared import as_uuid, mock_of, sid
-from tests._shared.model_binding import bound_ref, model_ref_resolver
+from tests._shared.model_binding import (
+    bound_ref,
+    model_ref_resolver,
+    provider_catalogue,
+)
 from tests._shared.staffing import roster_capability_policy
 from tests.unit.api.fakes import FakeTaskRepository
 
@@ -235,6 +239,9 @@ async def _build(
             registry=registry,
             approval_store=ApprovalStore(),
             config_resolver=model_ref_resolver(default=bound_ref()),
+            # The pair is proposed from the operator's configured models, so a
+            # sweep that finishes an approved hire needs something to bind to.
+            provider_catalogue=provider_catalogue(),
         )
         if with_hiring
         else None

@@ -318,6 +318,65 @@ def parse_tool_call_response(
     raise DecompositionError(msg)
 
 
+def _embedded_json_object(text: str) -> dict[str, JsonValue] | None:
+    """Return the first complete JSON object embedded in *text*.
+
+    Scanned rather than matched with a regular expression, because braces
+    nest: a plan carries subtask objects and option objects, so the first
+    closing brace is nowhere near the end of the object that opened.
+
+    String literals are tracked so a brace inside a description ("clear a
+    line {sic}") does not end the scan, and an escape inside a string is
+    skipped so a trailing backslash before a quote cannot close it early.
+
+    Args:
+        text: The model's content, already stripped of any fence.
+
+    Returns:
+        The decoded object, or ``None`` when the text holds no complete one
+        or holds something that is not an object.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return _decoded_object(text[start : index + 1])
+    return None
+
+
+def _decoded_object(candidate: str) -> dict[str, JsonValue] | None:
+    """Decode *candidate* when it is a JSON object.
+
+    Returns:
+        The object, or ``None`` when it does not decode or decodes to
+        something else (a bare array of subtasks is not a plan).
+    """
+    try:
+        decoded: JsonValue = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
 def parse_content_response(
     response: CompletionResponse,
     parent_task_id: str,
@@ -350,22 +409,40 @@ def parse_content_response(
         )
         raise DecompositionError(msg)
 
-    text = response.content.strip()
+    raw = response.content.strip()
+    text = raw
 
     match = _MARKDOWN_FENCE_RE.search(text)
+    fenced = match is not None
     if match:
         text = match.group(1).strip()
 
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        msg = f"Failed to parse JSON from content: {safe_error_description(exc)}"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-            parent_task_id=parent_task_id,
-        )
-        raise DecompositionError(msg) from exc
+        # The prompt asks for "a JSON object" when a tool call is not
+        # possible, and a model answering in prose puts one INSIDE a
+        # sentence: "Here is the plan: {...}". Refusing that reads as the
+        # model having produced nothing, when it produced the plan and a
+        # greeting. Retrying cannot fix it either: the same prompt to the
+        # same model returns the same shape, so three attempts buy latency
+        # and nothing else.
+        embedded = _embedded_json_object(text)
+        if embedded is None:
+            # What it looked like, never what it said: the content is model
+            # output over attacker-influenced input, so its shape is
+            # diagnosable and its text is not.
+            msg = f"Failed to parse JSON from content: {safe_error_description(exc)}"
+            logger.warning(
+                DECOMPOSITION_LLM_PARSE_ERROR,
+                error=msg,
+                parent_task_id=parent_task_id,
+                content_length=len(raw),
+                fenced=fenced,
+                starts_with_brace=text.startswith("{"),
+            )
+            raise DecompositionError(msg) from exc
+        data = embedded
 
     try:
         return _args_to_plan(data, parent_task_id, available_roles)

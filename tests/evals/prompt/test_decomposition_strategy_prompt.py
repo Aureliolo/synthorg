@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestDecompositionStrategyPromptContract:
     """Guard rails for the LLM decomposition prompt surface."""
 
-    PINNED_FP = "8369fba3996a72c2"
+    PINNED_FP = "d359d7d5848e4c30"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Decomposition temperature must be drawn from config, not a literal."""

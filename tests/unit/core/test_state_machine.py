@@ -49,6 +49,16 @@ class TestStateMachineValidation:
         with pytest.raises(ValueError, match="Invalid color transition"):
             machine.validate(_Color.BLUE, _Color.RED)
 
+    def test_a_refusal_out_of_a_terminal_state_says_it_is_final(self) -> None:
+        # The refusal text is what an operator reads: these messages reach the
+        # dashboard through the failure detail of whatever was refused. An
+        # empty allowed set rendered as a list is a fact about the transition
+        # table, not an answer to "why can I not do this".
+        machine = _make_machine()
+        with pytest.raises(ValueError, match="'blue' is final") as raised:
+            machine.validate(_Color.BLUE, _Color.RED)
+        assert "[]" not in str(raised.value)
+
 
 @pytest.mark.unit
 class TestStateMachineCoverageCheck:

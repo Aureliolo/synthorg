@@ -292,6 +292,7 @@ class TestEventConstants:
             "research",
             "role",
             "routing",
+            "run_recovery",
             "backup",
             "blueprint",
             "sandbox",

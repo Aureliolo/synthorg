@@ -612,6 +612,8 @@
         "plan_item_reply_service",
         "flight_recorder_sink",
         "review_staffing_scheduler",
+        "run_recovery_scheduler",
+        "live_run_ledger",
         "capability_policy"
       ]
     },
@@ -1549,6 +1551,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-18T07:07:02.515894Z",
+  "generated_at": "2026-08-18T22:45:31.070766Z",
   "schema_version": 1
 }
