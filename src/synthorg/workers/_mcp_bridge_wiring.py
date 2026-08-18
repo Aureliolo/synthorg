@@ -10,7 +10,7 @@ to sandbox-on defaults) and connecting the configured/installed MCP servers via
 from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.observability import get_logger, safe_error_description
@@ -51,8 +51,19 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
         # because the reconciliation pass asks one question of every
         # container it finds: which deployment created it. An MCP runtime
         # with no answer is never reclaimed.
+        # Checked HERE, where the guard below can still absorb it. The
+        # annotation alone does not check: it only runs inside a Pydantic
+        # model, so a blank derivation travels as ``""`` and first fails
+        # validation in the fallback construction, which sits inside the
+        # handler whose whole job is to guarantee a return. A raise there has
+        # nothing left to catch it and takes boot down, which is the outcome
+        # this helper exists to prevent. Failing here instead leaves the id
+        # unset and the container unattributed, which the handler reports.
         deployment_id = NotBlankStr(
-            deployment_id_for(agent_workspace_root_of(app_state))
+            require_not_blank(
+                deployment_id_for(agent_workspace_root_of(app_state)),
+                "deployment_id",
+            )
         )
         # The same runtime the agent sandbox uses. An operator who installed
         # gVisor did it to contain code they do not trust, and this is the

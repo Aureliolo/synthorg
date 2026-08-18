@@ -368,9 +368,15 @@ async def test_a_run_that_died_still_stops_reading_as_busy(
         agent_state_repository_provider=lambda: repository,
     )
 
-    await engine.run(
+    result = await engine.run(
         identity=sample_agent_with_personality,
         task=sample_task_with_criteria,
     )
 
+    # Both halves. Recording IDLE is what stops the agent reading as busy,
+    # but on its own it is also what a run that swallowed the death and
+    # reported success would produce, and a loop that died reporting success
+    # is the failure the fail-loud rule exists to prevent.
+    assert result.execution_result.termination_reason is TerminationReason.ERROR
+    assert result.execution_result.error_type == _LoopDiedError.__name__
     assert saved[-1].status is ExecutionStatus.IDLE

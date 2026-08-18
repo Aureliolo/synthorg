@@ -324,11 +324,12 @@ class MCPClient:
         metric_transport = (
             "mcp_stdio" if self._config.transport == "stdio" else "mcp_http"
         )
+        timeout = self._disconnect_timeout()
         if self._exit_stack is not None:
             try:
                 await asyncio.wait_for(
                     self._exit_stack.aclose(),
-                    timeout=_DISCONNECT_TIMEOUT_SECONDS,
+                    timeout=timeout,
                 )
             except TimeoutError:
                 # The transport close did not confirm within the bound, so the
@@ -339,8 +340,7 @@ class MCPClient:
                 logger.warning(
                     MCP_CLIENT_DISCONNECT_FAILED,
                     server=self._config.name,
-                    error=f"disconnect timed out after "
-                    f"{_DISCONNECT_TIMEOUT_SECONDS}s; child may be hung",
+                    error=f"disconnect timed out after {timeout}s; child may be hung",
                 )
                 record_client_disconnect(
                     transport=metric_transport,
@@ -589,6 +589,27 @@ class MCPClient:
         await self.disconnect()
 
     # ── Private helpers ──────────────────────────────────────────
+
+    def _disconnect_timeout(self) -> float:
+        """Return the close bound for the transport actually in use.
+
+        The container bound is DERIVED from the container transport's own
+        teardown budget, so it means nothing to a transport that has no
+        container to tear down: an HTTP session or a directly-spawned stdio
+        child answers to the SDK's escalation alone, and waiting the longer
+        bound only delays latching the client unrestartable.
+
+        Returns:
+            Seconds to allow the transport close.
+        """
+        containerised = (
+            self._config.transport == "stdio"
+            and self._sandbox is not None
+            and self._sandbox.enabled
+        )
+        if containerised:
+            return _DISCONNECT_TIMEOUT_SECONDS
+        return _SDK_TEARDOWN_BOUND_SECONDS
 
     def _require_session(self) -> ClientSession:
         """Return the active session or raise.

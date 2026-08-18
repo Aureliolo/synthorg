@@ -134,6 +134,9 @@ SELECT
     metadata,
     hard_token_ceiling,
     blocked_reason,
+    -- SQLite's %f is seconds AND milliseconds (SS.SSS), not a bare fraction,
+    -- so it supplies the seconds field here; the literal 000 after it pads
+    -- those milliseconds out to the microsecond precision the readers parse.
     STRFTIME('%Y-%m-%dT%H:%M:%f000+00:00', 'now') AS created_at
 FROM tasks;
 

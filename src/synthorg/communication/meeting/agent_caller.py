@@ -289,10 +289,26 @@ class UnconfiguredAgentCaller:
     def __init__(self, *, missing_dependencies: tuple[str, ...]) -> None:
         """Bind the dependency names the refusal reports.
 
+        Checked here rather than in the factory alone, because this is the
+        one place every construction passes through. An instance built with
+        nothing missing refuses every turn while naming no reason, and the
+        refusal it raises validates the same tuple, so the only report an
+        operator gets arrives at first meeting instead of at wire time and
+        names the caller rather than the absent collaborator.
+
         Args:
             missing_dependencies: Names of the dependencies missing at wire
-                time.
+                time. Must be non-empty.
+
+        Raises:
+            ValueError: If *missing_dependencies* is empty.
         """
+        if not missing_dependencies:
+            msg = (
+                "UnconfiguredAgentCaller requires at least one entry in "
+                "missing_dependencies"
+            )
+            raise ValueError(msg)
         self.missing_dependencies: tuple[str, ...] = missing_dependencies
 
     async def __call__(

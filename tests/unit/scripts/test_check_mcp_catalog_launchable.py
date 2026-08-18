@@ -167,7 +167,7 @@ class TestEveryEntryMustNameADeclaredProgram:
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
     @pytest.mark.parametrize("absent", ["npm_package", "npm_version"])
-    def test_a_stdio_entry_missing_an_npm_field_is_a_configuration_error(
+    def test_a_stdio_entry_missing_an_npm_field_is_a_violation(
         self, tmp_path: Path, absent: str
     ) -> None:
         """The transport alone does not say an entry can launch.
@@ -175,6 +175,12 @@ class TestEveryEntryMustNameADeclaredProgram:
         ``installation_to_server_config`` refuses a stdio entry missing either
         field, so reading the launcher off the transport would let the gate
         certify an entry the installer rejects at install time.
+
+        Reported as a violation (1) rather than a configuration error (2):
+        the catalog was read perfectly well and what it says is the defect.
+        Exit 2 means the gate could not establish the facts it judges on, and
+        spending it here would send a reader to the gate rather than to the
+        entry that cannot start.
         """
         entry: dict[str, object] = {
             "id": "brave-search-mcp",
@@ -185,7 +191,7 @@ class TestEveryEntryMustNameADeclaredProgram:
         del entry[absent]
         root = _tree(tmp_path, entries=[entry])
 
-        assert _MODULE.main(["--repo-root", str(root)]) == 2
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
 
 
 class TestFailClosed:

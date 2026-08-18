@@ -134,6 +134,14 @@ def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
     into a single mapping with *config* rather than rendering separately,
     because both share one ``GIT_CONFIG_COUNT``.
 
+    :data:`RELATIVE_WORKTREE_GIT_CONFIG` rides along for the same reason it
+    exists: a worktree created here is opened by an agent through a different
+    mount path, and only a relative git-dir reference is true under both. It
+    needs git 2.48 or newer, and an older binary ignores the key silently
+    rather than refusing it, so the requirement is stated with the constant.
+    None of these keys collide, including the TLS pair, so the merge order
+    above only decides what a caller's own *config* may override.
+
     Args:
         config: Per-invocation git config, for a credential that must
             reach git without being written anywhere it outlives the

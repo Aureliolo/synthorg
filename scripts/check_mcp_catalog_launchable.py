@@ -158,12 +158,19 @@ def _image_packages(repo_root: Path) -> set[str]:
     return packages
 
 
-def _entry_launchers(repo_root: Path) -> dict[str, str]:
+def _entry_launchers(repo_root: Path) -> tuple[dict[str, str], list[str]]:
     """Work out which program each bundled entry would be launched through.
 
+    An entry that names no launchable command is a violation of the rule this
+    gate enforces, not a source the gate failed to read, so it is returned
+    alongside the map rather than raised: raising would exit 2 and report a
+    real catalog defect as gate breakage, sending the reader to the gate
+    instead of to the entry.
+
     Returns:
-        Entry id mapped to the program its launch names. An entry needing no
-        local runtime (a remote transport) is absent.
+        Entry id mapped to the program its launch names, and the violations
+        found while building it. An entry needing no local runtime (a remote
+        transport) is absent from both.
 
     Raises:
         GateSourceError: The catalog or the installer cannot be read.
@@ -180,6 +187,7 @@ def _entry_launchers(repo_root: Path) -> dict[str, str]:
         msg = f"{_CATALOG_REL}: no catalog entries found"
         raise GateSourceError(msg)
     launchers: dict[str, str] = {}
+    violations: list[str] = []
     for entry in servers:
         if not isinstance(entry, dict):
             msg = f"{_CATALOG_REL}: an entry is not an object"
@@ -196,14 +204,15 @@ def _entry_launchers(repo_root: Path) -> dict[str, str]:
             field for field in ("npm_package", "npm_version") if not entry.get(field)
         ]
         if missing:
-            msg = (
+            violations.append(
                 f"{_CATALOG_REL}: stdio entry {entry_id!r} declares no "
                 f"{' or '.join(missing)}, so it names no launchable command; "
-                "the installer refuses it and this gate cannot vouch for it"
+                "the installer refuses it, and an operator who installs it "
+                "gets a server that never starts"
             )
-            raise GateSourceError(msg)
+            continue
         launchers[entry_id] = npm_launcher
-    return launchers
+    return launchers, violations
 
 
 def _npm_launcher(repo_root: Path) -> str:
@@ -296,10 +305,12 @@ def _check(repo_root: Path) -> list[str]:
         for program, package in sorted(programs.items())
         if package not in packages
     ]
+    launchers, unlaunchable = _entry_launchers(repo_root)
+    violations.extend(unlaunchable)
     violations.extend(
         f"{_CATALOG_REL}: entry {entry_id!r} is launched through {launcher!r}, "
         f"which {_DECLARATION} does not declare; no shipped image provides it"
-        for entry_id, launcher in sorted(_entry_launchers(repo_root).items())
+        for entry_id, launcher in sorted(launchers.items())
         if launcher not in programs
     )
     return violations

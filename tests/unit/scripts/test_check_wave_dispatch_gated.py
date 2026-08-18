@@ -210,6 +210,37 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
+    def test_gating_through_a_bare_relative_import_passes(self, tmp_path: Path) -> None:
+        """``from . import parking`` reaches a sibling like any other form.
+
+        This spelling leaves ``ImportFrom.module`` empty and puts the sibling
+        in the alias list, so a reading that consults ``module`` alone sees no
+        import here at all and the dispatcher reads as one that never gates.
+        Which import style a module happens to use cannot decide whether the
+        rule applies to it.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from . import parking\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return parking.park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 0
+
     def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
         """Following imports must not become a way to pass by association.
 

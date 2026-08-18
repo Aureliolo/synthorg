@@ -18,6 +18,7 @@ from synthorg import __version__
 from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
+from synthorg.tools.sandbox._container_limits import nano_cpus
 from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
 from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
@@ -857,6 +858,34 @@ class TestMemoryLimitParsing:
     ) -> None:
         with pytest.raises(ValueError, match=r"[Mm]emory|invalid literal"):
             DockerSandbox._parse_memory_limit(invalid_limit)
+
+
+class TestCpuQuotaConversion:
+    """``nano_cpus`` refuses what the daemon would misread."""
+
+    @pytest.mark.parametrize(
+        ("cores", "expected"),
+        [(1.0, 1_000_000_000), (0.5, 500_000_000), (2.0, 2_000_000_000)],
+        ids=["one-core", "half-core", "two-cores"],
+    )
+    def test_a_finite_quota_converts(self, cores: float, expected: int) -> None:
+        assert nano_cpus(cores) == expected
+
+    @pytest.mark.parametrize(
+        "cores",
+        [float("nan"), float("inf"), float("-inf")],
+        ids=["nan", "inf", "-inf"],
+    )
+    def test_a_non_finite_quota_is_refused_as_a_value_error(self, cores: float) -> None:
+        """The sign test alone lets both through, and neither fails usefully.
+
+        Every comparison against NaN is False and infinity is positive, so
+        both reach the arithmetic: NaN raises a bare ValueError carrying none
+        of this function's contract, and infinity raises OverflowError, which
+        is not what callers are told to catch.
+        """
+        with pytest.raises(ValueError, match="finite"):
+            nano_cpus(cores)
 
 
 # ── Container hardening ────────────────────────────────────────

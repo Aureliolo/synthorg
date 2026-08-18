@@ -123,6 +123,47 @@ async def test_an_app_state_missing_its_config_still_yields_secure_defaults(
     assert config.runtime is None
 
 
+async def test_a_blank_deployment_id_degrades_instead_of_poisoning_boot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fail-secure return must not be the thing that raises.
+
+    ``NotBlankStr`` only validates inside a Pydantic model, so a blank
+    derivation travels as ``""`` and first fails validation in the fallback
+    construction, which sits inside the handler whose whole job is to
+    guarantee a return. Nothing catches a raise there and boot dies. Checked
+    against a blank derivation because that is the input that produced it.
+    """
+
+    def _blank(_app_state: object) -> str:
+        return "   "
+
+    monkeypatch.setattr(
+        "synthorg.workers._mcp_bridge_wiring.deployment_id_for",
+        _blank,
+    )
+    monkeypatch.setattr(
+        "synthorg.workers._mcp_bridge_wiring.agent_workspace_root_of",
+        lambda _app_state: Path("/workspace"),
+    )
+
+    def _unwired(_app_state: object) -> ConfigResolver:
+        msg = "settings resolver not wired"
+        raise ServiceUnavailableError(msg)
+
+    monkeypatch.setattr(
+        "synthorg.workers._mcp_bridge_wiring.config_resolver_of",
+        _unwired,
+    )
+
+    config = await _resolve_mcp_sandbox_config(_app_state("runsc"))
+
+    # Unattributed, which is the recoverable outcome the handler reports,
+    # rather than an exception escaping a helper the caller does not guard.
+    assert config.deployment_id is None
+    assert config.enabled is True
+
+
 async def test_an_unwired_resolver_falls_back_rather_than_raising(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

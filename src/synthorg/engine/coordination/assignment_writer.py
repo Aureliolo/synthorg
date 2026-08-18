@@ -126,12 +126,22 @@ class AssignmentWriter:
         if engine is None:
             return group
         runnable: list[AgentAssignment] = []
+        # One read per dependency for the whole wave. Subtasks in a level
+        # routinely declare the same input (a fan-out shares its parent), so
+        # reading per assignment repeats the round trip; worse, it lets two
+        # subtasks in the same gate decide against different views of one
+        # dependency if it moves between their reads.
+        known: dict[str, TaskStatus | None] = {}
         for assignment in group.assignments:
             task_id = str(assignment.task.id)
             declared = dependencies.get(task_id, ())
+            for dependency_id in declared:
+                if dependency_id not in known:
+                    known[dependency_id] = await self._dependency_status(
+                        engine, dependency_id
+                    )
             statuses = {
-                dependency_id: await self._dependency_status(engine, dependency_id)
-                for dependency_id in declared
+                dependency_id: known[dependency_id] for dependency_id in declared
             }
             unmet = unmet_dependencies(statuses)
             if not unmet:

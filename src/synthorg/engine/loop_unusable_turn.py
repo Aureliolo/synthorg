@@ -34,10 +34,17 @@ from synthorg.providers.models import ChatMessage, CompletionResponse
 
 logger = get_logger(__name__)
 
+#: A call arrives and is dropped for three different reasons: it carried no
+#: function at all, it named no tool or no id, or its arguments were not a
+#: well-formed JSON object. Naming only the last would tell a model that sent
+#: perfectly good arguments to go and fix them, which is the same unactionable
+#: instruction the no-call wording below exists to avoid.
 DROPPED_CALL_NUDGE: Final[str] = (
-    "Your last turn asked to call a tool but the call did not arrive: its "
-    "arguments were not valid JSON. Re-issue it as one well-formed call with "
-    "complete arguments, or state your result in the reply itself."
+    "Your last turn asked to call a tool but the call did not arrive in a "
+    "usable form: it was missing the name or id that identifies it, or its "
+    "arguments were not a well-formed JSON object. Re-issue it as one "
+    "well-formed call with complete arguments, or state your result in the "
+    "reply itself."
 )
 
 #: The other way a turn claims a tool and delivers none: the provider sent no

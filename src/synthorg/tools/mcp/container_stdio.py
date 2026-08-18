@@ -37,6 +37,12 @@ from aiodocker.stream import Stream
 from aiodocker.types import JSONObject
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import types
+
+# A private module, deliberately: ``TransportStreams`` is the type the SDK's
+# own transports yield and this one has to match them, and in the pinned
+# release it is exported from nowhere public. The exact ``mcp==2.0.0`` pin in
+# ``pyproject.toml`` is what makes that safe, so an SDK upgrade must recheck
+# this import rather than assume it survived.
 from mcp.client._transport import TransportStreams
 from mcp.shared.message import SessionMessage
 

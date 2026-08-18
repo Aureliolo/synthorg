@@ -396,6 +396,7 @@ class OpenHandsLoop:
                 loop_type=_LOOP_TYPE,
                 note="turn observer raised",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _finalize(self, state: _RunState, outcome: OpenHandsOutcome) -> ExecutionResult:

@@ -697,15 +697,21 @@ class TestContextDependentDispatcher:
             _explode,
         )
 
+        executor = _mock_executor()
         dispatcher = ContextDependentDispatcher()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
-            parallel_executor=_mock_executor(),
+            parallel_executor=executor,
             workspace_service=ws_service,
             config=CoordinationConfig(),
         )
 
+        # The preparation raised, so the wave never dispatched. Pinned rather
+        # than assumed: releasing the worktrees is only correct BECAUSE no
+        # agent is running in them, and a dispatch that went ahead anyway
+        # would make this teardown the bug instead of the fix.
+        executor.execute_group.assert_not_awaited()
         ws_service.setup_group.assert_called_once()
         ws_service.teardown_group.assert_awaited_once()
         assert ws_service.teardown_group.await_args is not None

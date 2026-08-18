@@ -343,12 +343,47 @@ func TestMigrationNetworkMatchesTheComposeDeclaration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the compose template: %v", err)
 	}
-	if !strings.Contains(string(tmpl), "name: "+composeNetworkName) {
+	if declared := declaredNetworkName(t, string(tmpl)); declared != composeNetworkName {
 		t.Errorf(
-			"composeNetworkName %q is not the network compose.yml.tmpl declares",
-			composeNetworkName,
+			"composeNetworkName is %q but compose.yml.tmpl declares %q",
+			composeNetworkName, declared,
 		)
 	}
+}
+
+// declaredNetworkName returns the name the top-level networks block declares.
+//
+// Read from that block rather than searched for across the whole template:
+// "name:" is an ordinary compose key and appears under other top-level blocks,
+// so a substring match keeps this test green on a match that has nothing to do
+// with the network. That is the one failure it exists to catch, since the
+// migration removing a network nobody uses is silently useless.
+func declaredNetworkName(t *testing.T, tmpl string) string {
+	t.Helper()
+
+	inNetworks := false
+	for line := range strings.SplitSeq(tmpl, "\n") {
+		if strings.HasPrefix(line, "networks:") {
+			inNetworks = true
+			continue
+		}
+		if !inNetworks {
+			continue
+		}
+		// Template directives start at column 0 and are not the next block.
+		if strings.HasPrefix(strings.TrimSpace(line), "{{") {
+			continue
+		}
+		// Any other unindented content is the next top-level block.
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "name:"); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	t.Fatal("found no network name in the compose template")
+	return ""
 }
 
 // labelPairs turns the "--label k=v" argument list into a map.

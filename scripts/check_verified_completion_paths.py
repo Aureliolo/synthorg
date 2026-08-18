@@ -466,6 +466,14 @@ def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
             elif isinstance(sub, ast.Lambda):
                 if id(sub) not in deferred:
                     pending.append(sub)
+            elif isinstance(sub, ast.GeneratorExp):
+                # A generator bounds a scope for ORDERING, because its body
+                # runs when something consumes it rather than where it is
+                # written. Reachability is the other question: the consumer is
+                # right there, so the calls inside it do run and this walk has
+                # to see them. Re-queued unconditionally because a generator,
+                # unlike a lambda, cannot be bound to a name and left uncalled.
+                pending.append(sub)
             elif isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
                 # Load only: the target of ``_helper = lambda: ...`` is a Name
                 # too, and counting it would make every binding its own
@@ -868,14 +876,20 @@ def _check_frames_precede_review(root: Path) -> list[str]:
 
 
 def _call_line(node: ast.AST, name: str) -> int | None:
-    """Find the line of the first call to *name* inside *node*.
+    """Find the line of the first call to *name* in *node*'s own scope.
+
+    Own scope, not everything underneath: this line is read as a position in
+    the run, and a call written inside a nested ``def``, a lambda or a
+    generator expression executes when something invokes or consumes that
+    body, which can be after the review it is supposed to precede. Reading it
+    where it is WRITTEN would report an ordering the run does not have.
 
     Returns:
         The line number, or ``None`` when the call is absent.
     """
     lines = [
         child.lineno
-        for child in ast.walk(node)
+        for child in _own_scope(node)
         if isinstance(child, ast.Call) and _called_name(child) == name
     ]
     return min(lines) if lines else None

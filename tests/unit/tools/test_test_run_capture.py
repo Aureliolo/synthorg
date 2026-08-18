@@ -277,6 +277,34 @@ class TestForgedTestEvidence:
         """The nested-shell rule targets the pipeline, not the nesting."""
         assert is_test_run('bash -c "pytest -q"')
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "set +o pipefail && pytest -q | tail -5",
+            "set +o pipefail && npm test 2>&1 | tail",
+        ],
+    )
+    def test_a_line_that_turns_pipefail_off_before_a_pipe_is_refused(
+        self, command: str
+    ) -> None:
+        """The line can revoke the option the pipe's trust rests on.
+
+        ``|`` is read as conjunctive only because the wrapper runs the line
+        under ``pipefail``. A line whose first command unsets it puts the
+        pipeline back to reporting ``tail``'s status, so the suite can fail
+        and the line still exit zero, which is the forged pass this module
+        exists to refuse.
+        """
+        assert not is_test_run(command)
+
+    def test_turning_pipefail_on_is_not_a_refusal(self) -> None:
+        """The rule targets the disable, not the builtin."""
+        assert is_test_run("set -o pipefail && pytest -q | tail -5")
+
+    def test_unsetting_another_option_leaves_the_pipe_alone(self) -> None:
+        """Only ``pipefail`` decides how a pipeline reports its status."""
+        assert is_test_run("set +o errexit && pytest -q | tail -5")
+
 
 class TestRecordIfTestRun:
     async def test_a_test_run_is_recorded(self) -> None:

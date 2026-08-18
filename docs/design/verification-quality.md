@@ -89,7 +89,7 @@ Protocol: `CoordinationMiddleware` (`engine/middleware/coordination_protocol.py`
 | `before_decompose` | Before Phase 1 | Clarification gate |
 | `after_decompose` | After Phase 1 | Post-decomposition analysis |
 | `before_dispatch` | Before Phase 3-5 | Plan review gate, task ledger |
-| `after_rollup` | After Phase 6 | Progress ledger, replan hook |
+| `after_rollup` | After Phase 6 | Extension point; no default occupant |
 | `before_update_parent` | Before Phase 7 | Authority deference scan |
 
 Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `authority_deference_coordination`.

@@ -461,7 +461,6 @@ class TestMultiAgentCoordinator:
         routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
 
         agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
-        agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
 
         engine = _status_engine(
             {"sub-a": TaskStatus.FAILED, "sub-b": TaskStatus.BLOCKED}
@@ -469,9 +468,12 @@ class TestMultiAgentCoordinator:
         coordinator = _make_coordinator(
             decomp_result=decomp,
             routing_result=routing,
+            # Only wave 0 is scripted. Wave 1 must never dispatch, and
+            # scripting a result for it would let a regression that dispatched
+            # it anyway consume that result and pass; with nothing there, the
+            # second dispatch exhausts the list and the test says so.
             exec_results=[
                 make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
-                make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
             ],
             task_engine=engine,
         )

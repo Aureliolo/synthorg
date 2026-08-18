@@ -359,11 +359,10 @@ class TestComputeStatusRollup:
 class TestRunUpdateParentPhase:
     """Unit coverage for the ``run_update_parent_phase`` wrapper."""
 
-    def _context(self, *, plan_id: str | None = None) -> CoordinationContext:
+    def _context(self) -> CoordinationContext:
         return CoordinationContext(
             task=make_assignment_task(id="parent-1"),
             available_agents=(make_assignment_agent("alice"),),
-            plan_id=None if plan_id is None else NotBlankStr(plan_id),
         )
 
     async def test_no_task_engine_is_noop(self) -> None:

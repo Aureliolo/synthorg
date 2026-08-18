@@ -234,6 +234,62 @@ class TestPerAgentLiveness:
 
         assert destroyed == ["c-0"]
 
+    async def test_two_stale_probes_destroy_the_container_once(self) -> None:
+        """Reaping is the eviction's other half, so only the evictor reaps.
+
+        The liveness probe runs outside the lock, which is deliberate: it is
+        a round-trip to the container backend and holding the lock across it
+        would serialise every acquire in the process. The consequence is that
+        two acquires for one owner can hold the same handle and both find it
+        dead. Only one of them takes it out of the cache; reaping regardless
+        of that hands one container to ``destroy_fn`` twice.
+        """
+        strategy = _make_strategy()
+        created: list[str] = []
+        destroyed: list[str] = []
+        both_probing = asyncio.Barrier(2)
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def destroy_fn(handle: ContainerHandle) -> None:
+            destroyed.append(handle.container_id)
+
+        async def dead_once_both_hold_it(_handle: ContainerHandle) -> bool:
+            # A rendezvous rather than a sleep: it puts both probes on the
+            # same handle before either can evict, which is the whole race.
+            await both_probing.wait()
+            return False
+
+        await strategy.acquire(
+            owner_id="a1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
+        )
+
+        async with asyncio.TaskGroup() as group:
+            probes = [
+                group.create_task(
+                    strategy.acquire(
+                        owner_id="a1",
+                        create_fn=create_fn,
+                        destroy_fn=destroy_fn,
+                        alive_fn=dead_once_both_hold_it,
+                    )
+                )
+                for _ in range(2)
+            ]
+
+        # Both acquires returned a live container; neither was left holding
+        # the handle they agreed was dead.
+        assert all(probe.result().container_id != "c-0" for probe in probes)
+
+        # The loser of the ensuing create race is destroyed too, which is a
+        # different container and a different rule; this one is about c-0.
+        assert destroyed.count("c-0") == 1
+
     async def test_probe_failure_is_treated_as_dead(self) -> None:
         """An unanswerable probe replaces rather than gambles.
 

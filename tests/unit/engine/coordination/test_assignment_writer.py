@@ -562,6 +562,11 @@ class TestAbandonNamesWhatActuallyHappened:
             stopped_at=2,
         )
 
+        # Both halves, because ``parked == 0`` alone is also what a writer
+        # that never tried would produce, and that is the opposite defect:
+        # this test is about a write that was made and refused, so it has to
+        # pin that the write was made.
+        assert engine.submit.await_count == 1
         assert parked == 0
 
     async def test_an_unreadable_row_does_not_end_the_abandonment(self) -> None:

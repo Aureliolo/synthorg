@@ -370,33 +370,40 @@ class _PerWaveWorkspaces:
                 wave_index=wave_idx,
                 retained_workspaces=len(held) - len(settled),
             )
-        if verdict.success and settled:
-            merge_result, merge_phase = await merge_workspaces(
-                workspace_service,
-                settled,
-                clock=self._clock,
-                phase_name=f"merge_wave_{wave_idx}",
-                project_id=self._project_id,
-                repo_root=self._repo_root,
-            )
-            phases.append(merge_phase)
-            if merge_result is not None:
-                self.merges.append(merge_result)
-        elif verdict.failed:
-            # Recorded as a phase as well as logged; the docstring says why.
-            merge_error = verdict.error or "Skipped merge: wave failed"
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=f"merge_wave_{wave_idx}",
-                error=merge_error,
-            )
-            phases.append(
-                CoordinationPhaseResult(
+        try:
+            if verdict.success and settled:
+                merge_result, merge_phase = await merge_workspaces(
+                    workspace_service,
+                    settled,
+                    clock=self._clock,
+                    phase_name=f"merge_wave_{wave_idx}",
+                    project_id=self._project_id,
+                    repo_root=self._repo_root,
+                )
+                phases.append(merge_phase)
+                if merge_result is not None:
+                    self.merges.append(merge_result)
+            elif verdict.failed:
+                # Recorded as a phase as well as logged; the docstring says why.
+                merge_error = verdict.error or "Skipped merge: wave failed"
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
                     phase=f"merge_wave_{wave_idx}",
-                    success=False,
-                    duration_seconds=0.0,
                     error=merge_error,
                 )
-            )
-        if settled:
-            await teardown_workspaces(workspace_service, settled)
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=f"merge_wave_{wave_idx}",
+                        success=False,
+                        duration_seconds=0.0,
+                        error=merge_error,
+                    )
+                )
+        finally:
+            # A merge that raises leaves these workspaces held for the life of
+            # the process: the wave has been popped from ``_held``, so nothing
+            # else knows they exist, and each is a git worktree and a
+            # container. The failure still propagates; it just does not take
+            # the cleanup with it.
+            if settled:
+                await teardown_workspaces(workspace_service, settled)

@@ -107,6 +107,23 @@ _STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
 #: The pipe, whose conjunctive reading holds only under ``pipefail``.
 _PIPE: Final[str] = "|"
 
+#: The builtin that can turn ``pipefail`` off, and the flag that does it.
+_SET_BUILTIN: Final[str] = "set"
+_UNSET_OPTION: Final[str] = "+o"
+_PIPEFAIL_OPTION: Final[str] = "pipefail"
+
+
+def _disables_pipefail(command: Sequence[str]) -> bool:
+    """Whether *command* turns ``pipefail`` off for the rest of the line.
+
+    Returns:
+        ``True`` for a ``set`` builtin unsetting ``pipefail``.
+    """
+    if not command or command[0] != _SET_BUILTIN:
+        return False
+    return _UNSET_OPTION in command and _PIPEFAIL_OPTION in command
+
+
 #: Prefixes that run another program without changing what is being run.
 #: Each entry is matched then dropped, repeatedly, until the head is the
 #: program itself: ``uv run python -m pytest`` reduces to ``pytest``.
@@ -283,6 +300,14 @@ def _conjunctive_commands(
             if token == _PIPE and not pipefail:
                 return None
             if current:
+                # A line may revoke the option the pipe's trustworthiness
+                # rests on: after ``set +o pipefail`` a pipeline reports its
+                # LAST command's status again, so ``pytest | tail`` exits 0
+                # whatever the suite did. Read per segment rather than once
+                # up front, because the disable and the pipeline are separate
+                # commands and only a pipe AFTER the disable is affected.
+                if _disables_pipefail(current):
+                    pipefail = False
                 segments.append(tuple(current))
             current = []
             continue

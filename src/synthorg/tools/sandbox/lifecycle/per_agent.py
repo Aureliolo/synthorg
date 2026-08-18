@@ -71,12 +71,20 @@ class PerAgentStrategy:
             # Identity-checked: a concurrent acquire may already have
             # replaced the entry, and evicting that one would destroy a
             # container somebody else is about to use.
-            if self._containers.get(owner_id) is handle:
+            evicted = self._containers.get(owner_id) is handle
+            if evicted:
                 self._containers.pop(owner_id, None)
                 self._last_used.pop(owner_id, None)
                 self._destroy_fns.pop(owner_id, None)
                 self._cancel_timer(owner_id)
                 self._cancel_idle_timer(owner_id)
+        if not evicted:
+            # Two probes can find the same handle dead at once. Only one of
+            # them takes it out of the cache, and reaping is the eviction's
+            # other half: doing it here regardless would destroy one
+            # container twice, so the loser returns and leaves the reap to
+            # whoever actually removed it.
+            return
         await reap(
             handle,
             strategy="per-agent",

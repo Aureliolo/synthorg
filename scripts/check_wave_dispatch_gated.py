@@ -229,7 +229,15 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
         if isinstance(node, ast.ImportFrom):
             # A relative import inside the package names the sibling
             # directly; an absolute one carries the package path in front.
-            if node.module and (node.level or _SCAN_PACKAGE in node.module):
+            if node.module is None:
+                # ``from . import parking`` puts the sibling in the alias
+                # list and leaves ``module`` empty, so reading ``module``
+                # alone sees no import at all. It is an ordinary way to reach
+                # a sibling, and missing it makes a loop that gates through
+                # one read as a loop that does not gate.
+                if node.level:
+                    siblings.update(alias.name for alias in node.names)
+            elif node.level or _SCAN_PACKAGE in node.module:
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):
             for alias in node.names:

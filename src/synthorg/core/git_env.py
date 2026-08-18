@@ -75,6 +75,15 @@ SHARED_GROUP_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
 #: /data/agent-workspaces/...``, naming a path that exists on one side of
 #: the mount and not the other, while ``git status`` in the project root
 #: succeeded two turns earlier. Relative paths are true under both names.
+#:
+#: Requires git 2.48, which is where the option landed. Git ignores a config
+#: key it does not know, so an older binary applies nothing, reports nothing,
+#: and hands back worktrees carrying the absolute path again: the failure
+#: reappears one layer away, inside a sandbox, as the same misleading "not a
+#: git repository" naming a path that exists on the other side of the mount.
+#: The shipped image takes git from ``docker/backend/apko.yaml``, whose weekly
+#: lock refresh keeps it far above that floor; pinning an older one there
+#: silently costs every agent worktree.
 RELATIVE_WORKTREE_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
     {"worktree.useRelativePaths": "true"}
 )

@@ -486,6 +486,12 @@
       "ratio": 0.988,
       "tier": "code"
     },
+    "src/synthorg/engine/coordination/assignment_writer.py": {
+      "cap": 600,
+      "loc": 480,
+      "ratio": 0.8,
+      "tier": "service"
+    },
     "src/synthorg/engine/coordination/parent_rollup.py": {
       "cap": 500,
       "loc": 411,
@@ -1580,8 +1586,8 @@
     },
     "src/synthorg/tools/mcp/client.py": {
       "cap": 700,
-      "loc": 631,
-      "ratio": 0.901,
+      "loc": 649,
+      "ratio": 0.927,
       "tier": "adapter"
     },
     "src/synthorg/tools/network_validator.py": {
@@ -1917,7 +1923,7 @@
     },
     "synthorg.engine.coordination.assignment_writer:AssignmentWriter": {
       "lcom4": 1,
-      "loc": 422
+      "loc": 427
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,

@@ -9,6 +9,7 @@ take; the daemon API takes bytes and nano-cpus, and converting in one module
 is what keeps a limit meaning the same thing everywhere it is applied.
 """
 
+import math
 from typing import Final
 
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -91,8 +92,22 @@ def nano_cpus(cores: float) -> int:
         The same quota in billionths of a core.
 
     Raises:
-        ValueError: If the quota is not positive, or is too small to express.
+        ValueError: If the quota is not finite, is not positive, or is too
+            small to express.
     """
+    # Checked before the sign test, because a non-finite value passes it: every
+    # comparison against NaN is False, and infinity is genuinely positive. Both
+    # then reach the arithmetic below, where NaN raises a bare ValueError with
+    # no event logged and infinity raises OverflowError, which is outside the
+    # contract this function documents and so is not caught where it is called.
+    if not math.isfinite(cores):
+        msg = f"Cpu quota must be a finite number, got: {cores!r}"
+        logger.warning(
+            SANDBOX_CPU_LIMIT_INVALID,
+            reason="not_finite",
+            error_type=ValueError.__name__,
+        )
+        raise ValueError(msg)
     if cores <= 0:
         msg = f"Cpu quota must be positive, got: {cores!r}"
         logger.warning(
