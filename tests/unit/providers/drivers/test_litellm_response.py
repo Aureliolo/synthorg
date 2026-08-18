@@ -89,3 +89,25 @@ class TestDroppedToolCalls:
 
         assert mapped.dropped_tool_calls is False
         assert mapped.finish_reason is FinishReason.STOP
+
+    def test_calls_arriving_as_a_one_shot_iterable_are_read_once(self) -> None:
+        """Extraction and the count are two reads of one sequence.
+
+        A provider object that hands back an iterator is spent by the first
+        read, so taking the loss from a second pass over it would either
+        measure nothing or raise on an object with no length. Every other
+        case here passes a list, which cannot tell the two apart.
+        """
+        calls = [
+            make_mock_tool_call(call_id="call_ok", name="read_file"),
+            make_mock_tool_call(call_id="call_bad", arguments="{not json"),
+        ]
+        response = make_mock_response(
+            content=None, tool_calls=None, finish_reason="tool_calls"
+        )
+        response.choices[0].message.tool_calls = iter(calls)
+
+        mapped = map_response(response, _MODEL, provider_name="test-provider")
+
+        assert [c.id for c in mapped.tool_calls] == ["call_ok"]
+        assert mapped.dropped_tool_calls is True
