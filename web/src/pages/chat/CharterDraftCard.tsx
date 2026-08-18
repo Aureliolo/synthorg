@@ -97,6 +97,7 @@ interface CharterBudgetRowProps {
   amountValid: boolean
   disabled: boolean
   currency: string
+  assumed: boolean
   onAmountChange: (value: string) => void
 }
 
@@ -105,21 +106,31 @@ function CharterBudgetRow({
   amountValid,
   disabled,
   currency,
+  assumed,
   onAmountChange,
 }: CharterBudgetRowProps) {
   // The budget IS the approval ceiling; a separate read-only "Approved
   // ceiling" field just echoed the same number. One editable field with the
   // currency as a hint removes the duplication.
   return (
-    <InputField
-      label="Budget"
-      type="number"
-      value={amount}
-      onValueChange={onAmountChange}
-      disabled={disabled}
-      hint={currency}
-      error={amountValid ? undefined : 'Budget must be a positive number.'}
-    />
+    <div className="space-y-1">
+      {assumed && (
+        <div className="flex items-center gap-2 text-sm font-medium">
+          Budget
+          <AssumedBadge />
+        </div>
+      )}
+      <InputField
+        label="Budget"
+        hideLabel={assumed}
+        type="number"
+        value={amount}
+        onValueChange={onAmountChange}
+        disabled={disabled}
+        hint={currency}
+        error={amountValid ? undefined : 'Budget must be a positive number.'}
+      />
+    </div>
   )
 }
 
@@ -275,6 +286,7 @@ function CharterDraftCardInner({
           amountValid={amountValid}
           disabled={editingDisabled}
           currency={charter.envelope.currency}
+          assumed={charter.assumed_facets.includes('envelope')}
           onAmountChange={setAmount}
         />
         {awaitsDispatch(charter) && (

@@ -10,6 +10,7 @@ shadow and auto-rewrite modes at a boundary, not just at the evaluator.
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -27,10 +28,20 @@ from synthorg.core.task_enums import (
     Priority,
     Stakes,
     TaskStatus,
+    TaskStructure,
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
+from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
+from synthorg.engine.decomposition.plan_mapping import (
+    PlanProvenance,
+    plan_from_decomposition,
+)
 from synthorg.engine.initiative.evaluate_session import (
     SubmitEvaluationTool,
     _EvaluationCapture,
@@ -53,7 +64,7 @@ from synthorg.tools.file_system.edit_file import EditFileTool
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.forge.forge_tools import _guard_forge_text
 from synthorg.tools.git_tools import GitCommitTool
-from tests._shared import mock_of
+from tests._shared import mock_of, sid
 
 _EM_DASH = chr(0x2014)
 
@@ -449,6 +460,120 @@ def _submit_args(summary: str, evidence: str) -> dict[str, object]:
             }
         ],
     }
+
+
+def _subtask(**overrides: object) -> SubtaskDefinition:
+    defaults: dict[str, object] = {
+        "id": sid("sub-1"),
+        "title": "Build the core loop",
+        "description": "Blocks fall, move, rotate, and lines clear",
+        "acceptance_criteria": (NotBlankStr("the core loop is playable"),),
+        "expected_artifacts": (NotBlankStr("src/engine.js"),),
+    }
+    defaults.update(overrides)
+    return SubtaskDefinition(**defaults)  # type: ignore[arg-type]
+
+
+def _decomposition(
+    subtask: SubtaskDefinition,
+    *,
+    assumptions: tuple[NotBlankStr, ...] = (),
+    open_questions: tuple[NotBlankStr, ...] = (),
+) -> DecompositionResult:
+    return DecompositionResult(
+        plan=DecompositionPlan(
+            parent_task_id=NotBlankStr("root"),
+            subtasks=(subtask,),
+            task_structure=TaskStructure.SEQUENTIAL,
+            assumptions=assumptions,
+            open_questions=open_questions,
+        ),
+        created_tasks=(
+            Task(
+                id=UUID(subtask.id),
+                title="Subtask",
+                description="A subtask the decomposition created",
+                type=TaskType.DEVELOPMENT,
+                priority=Priority.MEDIUM,
+                project="beachhead",
+                created_by="ceo",
+            ),
+        ),
+    )
+
+
+def _provenance() -> PlanProvenance:
+    return PlanProvenance(
+        project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Beachhead"),
+        objective_id=NotBlankStr("objective-1"),
+        objective_title=NotBlankStr("Ship the game"),
+        parent_task_id=NotBlankStr("root"),
+        created_at=datetime(2026, 8, 19, tzinfo=UTC),
+    )
+
+
+@pytest.mark.usefixtures("_wired_service")
+class TestPlanProseBoundary:
+    """A plan is agent output the operator reads, so it is guarded like one.
+
+    Every item title, description and done-when criterion, and every
+    plan-level assumption and open question, is written by a model and
+    rendered on the plan page the operator approves. The run that found this
+    gap produced a plan whose first assumption carried the one punctuation
+    mark the policy ships a hard rule against.
+    """
+
+    def test_an_item_title_blocks(self) -> None:
+        result = _decomposition(_subtask(title=f"Build the core loop {_EM_DASH} v1"))
+        with pytest.raises(OutputPolicyViolationError):
+            plan_from_decomposition(result, _provenance())
+
+    def test_an_item_description_blocks(self) -> None:
+        result = _decomposition(
+            _subtask(description=f"Blocks fall {_EM_DASH} and lines clear")
+        )
+        with pytest.raises(OutputPolicyViolationError):
+            plan_from_decomposition(result, _provenance())
+
+    def test_a_done_when_criterion_blocks(self) -> None:
+        result = _decomposition(
+            _subtask(
+                acceptance_criteria=(NotBlankStr(f"playable {_EM_DASH} end to end"),)
+            )
+        )
+        with pytest.raises(OutputPolicyViolationError):
+            plan_from_decomposition(result, _provenance())
+
+    def test_a_plan_assumption_blocks(self) -> None:
+        result = _decomposition(
+            _subtask(),
+            assumptions=(NotBlankStr(f"the workspace is empty {_EM_DASH} for now"),),
+        )
+        with pytest.raises(OutputPolicyViolationError):
+            plan_from_decomposition(result, _provenance())
+
+    def test_an_open_question_blocks(self) -> None:
+        result = _decomposition(
+            _subtask(),
+            open_questions=(NotBlankStr(f"which runtime {_EM_DASH} node or python"),),
+        )
+        with pytest.raises(OutputPolicyViolationError):
+            plan_from_decomposition(result, _provenance())
+
+    def test_an_artifact_path_is_not_prose(self) -> None:
+        # A file name is read by a tool before a person, so rewriting one
+        # renames the deliverable. The carve-out is deliberate and stated
+        # here so it cannot be closed by accident.
+        result = _decomposition(
+            _subtask(expected_artifacts=(NotBlankStr(f"src/a{_EM_DASH}b.js"),))
+        )
+        plan = plan_from_decomposition(result, _provenance())
+        assert plan.items[0].expected_artifacts[0].endswith("b.js")
+
+    def test_a_clean_plan_maps(self) -> None:
+        plan = plan_from_decomposition(_decomposition(_subtask()), _provenance())
+        assert plan.items[0].title == "Build the core loop"
 
 
 class TestEvaluationVerdictBoundary:

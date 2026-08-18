@@ -72,6 +72,15 @@ describe('a charter carrying the org’s own assumptions', () => {
     expect(screen.getAllByText('Assumed')).toHaveLength(2)
   })
 
+  it('marks the budget field, which the banner also names', () => {
+    // The envelope is the one assumed facet with no list of its own, so a
+    // marker that only reaches the lists names it in the banner and leaves
+    // the field it is talking about unmarked.
+    renderCharter(makeCharter({ assumed_facets: ['envelope'] }))
+    expect(screen.getAllByText('Assumed')).toHaveLength(1)
+    expect(screen.getByLabelText('Budget')).toBeInTheDocument()
+  })
+
   it('says nothing when the human settled everything', () => {
     renderCharter(makeCharter())
     expect(screen.queryByText('Assumed')).toBeNull()

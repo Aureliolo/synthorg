@@ -21,6 +21,10 @@ from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
+from synthorg.engine.decomposition._plan_output_guard import (
+    guard_plan_text,
+    guard_plan_texts,
+)
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -104,11 +108,13 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
     """
     return PlanItem(
         id=subtask.id,
-        title=subtask.title,
-        description=subtask.description,
+        title=guard_plan_text(subtask.title),
+        description=guard_plan_text(subtask.description),
         dependencies=subtask.dependencies,
         owner=subtask.required_role,
-        acceptance_criteria=subtask.acceptance_criteria,
+        acceptance_criteria=guard_plan_texts(subtask.acceptance_criteria),
+        # Artefact paths are not prose: a file name is read by a tool before
+        # it is read by a person, and rewriting one renames the deliverable.
         expected_artifacts=subtask.expected_artifacts,
         required_skills=subtask.required_skills,
         required_tags=subtask.required_tags,
@@ -177,8 +183,8 @@ def plan_from_decomposition(
         review=provenance.review,
         review_absent_reason=provenance.review_absent_reason,
         objective_criteria=provenance.objective_criteria,
-        open_questions=result.plan.open_questions,
-        assumptions=result.plan.assumptions,
+        open_questions=guard_plan_texts(result.plan.open_questions),
+        assumptions=guard_plan_texts(result.plan.assumptions),
         planning_strategy=result.plan.planning_strategy,
         created_at=provenance.created_at,
         updated_at=provenance.created_at,
