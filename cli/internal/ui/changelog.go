@@ -69,14 +69,71 @@ var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*
 // H2 sections in the release body (e.g. "## Migration notes") are kept.
 var releaseHeadingRe = regexp.MustCompile(`^##\s+\[[^\]]+\](?:\([^)]+\))?(?:\s+\([^)]+\))?\s*$`)
 
-// stripANSI removes ANSI escape sequences from s. Applied at every renderer
-// boundary so user-controlled release-body content cannot inject styling /
-// cursor-movement / clear-screen escapes into the operator's terminal.
-func stripANSI(s string) string {
+// stripEscapes removes the CSI / OSC sequences ansiEscapeRe matches. It is
+// only ever half the job: see sanitizeUntrusted.
+func stripEscapes(s string) string {
 	if !strings.ContainsRune(s, '\x1b') {
 		return s
 	}
 	return ansiEscapeRe.ReplaceAllString(s, "")
+}
+
+// isSpoofingRune reports whether r can visually reorder or hide neighbouring
+// text without being a control character: the bidirectional overrides and
+// isolates behind Trojan-Source spoofing, the zero-width joiners and marks,
+// and the BOM. Git restricts none of them in a ref name, so they survive
+// into the version string an operator reads immediately before consenting
+// to an install.
+func isSpoofingRune(r rune) bool {
+	switch {
+	case r >= 0x200B && r <= 0x200F: // ZWSP, ZWNJ, ZWJ, LRM, RLM
+		return true
+	case r >= 0x202A && r <= 0x202E: // LRE, RLE, PDF, LRO, RLO
+		return true
+	case r >= 0x2066 && r <= 0x2069: // LRI, RLI, FSI, PDI
+		return true
+	case r == 0xFEFF: // zero-width no-break space / BOM
+		return true
+	}
+	return false
+}
+
+func stripSpoofingRunes(s string) string {
+	return strings.Map(func(r rune) rune {
+		if isSpoofingRune(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// sanitizeUntrusted scrubs remote-sourced multi-line text (a release body)
+// of everything that can act on a terminal rather than print in it, keeping
+// the newlines and tabs the layout needs. Escape sequences go first so their
+// printable payload (the "[0;31m" of a CSI) leaves with them instead of
+// surviving as text.
+//
+// The escape regex alone is not enough: it matches CSI and OSC, leaving bare
+// CR, backspace, BEL and the non-CSI introducers (DCS, APC, and the two-byte
+// RIS full-terminal-reset) free to overwrite or hide what the operator is
+// reading. Git constrains none of those in a commit subject or an author
+// name, and the static renderers write their output raw, where it lands in
+// log files and captured CI output that somebody later cats back to a real
+// terminal.
+func sanitizeUntrusted(s string) string {
+	return stripSpoofingRunes(stripControl(stripEscapes(s)))
+}
+
+// SanitizeUntrustedLine is sanitizeUntrusted for a value that must occupy a
+// single line: a tag name, a version label, a commit subject. It drops the
+// newlines and tabs the multi-line form keeps, so a hostile value cannot
+// break out of the row it is rendered into.
+//
+// Exported because the same remote values are printed by the surrounding
+// command (the release index above the changelog), not only by the
+// renderers in this package.
+func SanitizeUntrustedLine(s string) string {
+	return stripSpoofingRunes(stripControlStrict(stripEscapes(s)))
 }
 
 // RenderHighlights formats the styled-block content of a release Highlights
@@ -86,7 +143,7 @@ func stripANSI(s string) string {
 // release body cannot inject terminal styling / cursor moves into the walk.
 func RenderHighlights(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
+	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {
@@ -120,10 +177,10 @@ func formatHighlightLine(line string, st changelogStyle) string {
 // RenderCommits formats the commit-based changelog of a release. body is
 // expected to be the output of selfupdate.ExtractCommits. ANSI escape
 // sequences embedded in the input are stripped before rendering -- see
-// stripANSI for the threat model.
+// sanitizeUntrusted for the threat model.
 func RenderCommits(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
+	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {

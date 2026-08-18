@@ -186,7 +186,21 @@ func TestRenderFallbackNote_plainNoANSI(t *testing.T) {
 	}
 }
 
-func TestStripANSI(t *testing.T) {
+// Trojan-Source code points, written as UTF-8 byte escapes. The literal
+// characters are invisible in a diff, staticcheck rejects them in a string
+// literal (ST1018), and a literal BOM is not legal Go source at all.
+const (
+	rloRune  = "\xe2\x80\xae" // U+202E RIGHT-TO-LEFT OVERRIDE
+	pdfRune  = "\xe2\x80\xac" // U+202C POP DIRECTIONAL FORMATTING
+	lriRune  = "\xe2\x81\xa6" // U+2066 LEFT-TO-RIGHT ISOLATE
+	pdiRune  = "\xe2\x81\xa9" // U+2069 POP DIRECTIONAL ISOLATE
+	zwspRune = "\xe2\x80\x8b" // U+200B ZERO WIDTH SPACE
+	zwjRune  = "\xe2\x80\x8d" // U+200D ZERO WIDTH JOINER
+	bomRune  = "\xef\xbb\xbf" // U+FEFF BYTE ORDER MARK
+	nelRune  = "\xc2\x90"     // U+0090 DEVICE CONTROL STRING (C1)
+)
+
+func TestSanitizeUntrusted(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
@@ -200,13 +214,42 @@ func TestStripANSI(t *testing.T) {
 		{"strip_osc_hyperlink", "click \x1b]8;;https://evil.com\x07here\x1b]8;;\x07!", "click here!"},
 		{"empty_unchanged", "", ""},
 		{"no_escape_unchanged", "no escapes here \\x1b not literal", "no escapes here \\x1b not literal"},
+		// The CSI/OSC regex passes all of these; only the control-character
+		// sweep behind it catches them, and each one can overwrite or hide
+		// what the operator is reading.
+		{"strip_bare_cr", "real subject\rspoofed subject", "real subjectspoofed subject"},
+		{"strip_backspace", "safe\x08\x08\x08\x08evil", "safeevil"},
+		{"strip_bel", "ring\x07ring", "ringring"},
+		{"strip_vertical_tab_and_formfeed", "a\x0bb\x0cc", "abc"},
+		{"strip_bare_ris_reset", "before\x1bcafter", "beforecafter"},
+		{"strip_c1_control", "a" + nelRune + "b", "ab"},
+		{"keep_newline_and_tab", "line one\nline\ttwo", "line one\nline\ttwo"},
+		// Trojan-Source shapes: not control characters, so no control
+		// sweep catches them, and git permits them in a ref name.
+		{"strip_bidi_override", "v1.0.0" + rloRune + "gnitset" + pdfRune, "v1.0.0gnitset"},
+		{"strip_bidi_isolate", "v1" + lriRune + ".0" + pdiRune + ".0", "v1.0.0"},
+		{"strip_zero_width", "v1." + zwspRune + "0." + zwjRune + "0" + bomRune, "v1.0.0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := stripANSI(tt.in); got != tt.want {
-				t.Errorf("stripANSI(%q) = %q, want %q", tt.in, got, tt.want)
+			if got := sanitizeUntrusted(tt.in); got != tt.want {
+				t.Errorf("sanitizeUntrusted(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// SanitizeUntrustedLine is for values rendered into a single row, so unlike
+// its multi-line sibling it must also drop the newlines and tabs that would
+// let a hostile value break out of that row.
+func TestSanitizeUntrustedLine_dropsLayoutBreakingWhitespace(t *testing.T) {
+	got := SanitizeUntrustedLine("v1.0.0\nfake release line\tpadded")
+	want := "v1.0.0fake release linepadded"
+	if got != want {
+		t.Errorf("SanitizeUntrustedLine = %q, want %q", got, want)
+	}
+	if strings.ContainsAny(got, "\n\t") {
+		t.Errorf("result still carries layout-breaking whitespace: %q", got)
 	}
 }
 

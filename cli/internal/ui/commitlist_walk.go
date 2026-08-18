@@ -209,6 +209,9 @@ func (m commitWalkModel) renderView() string {
 // commitWalkTitle renders the "── dev channel: v1 -> v2  N commits" line that
 // heads both the interactive walk and its static render, so the two cannot
 // drift apart.
+//
+// The target label is a remote tag name; see versionHeader for why that
+// needs scrubbing even though git rejects control bytes in a ref.
 func commitWalkTitle(installed, target string, total int, opts Options) string {
 	plain := opts.NoColor || opts.Plain
 	muted := lipgloss.NewStyle()
@@ -224,6 +227,7 @@ func commitWalkTitle(installed, target string, total int, opts Options) string {
 	}
 
 	return muted.Render(prefix) +
-		header.Render(fmt.Sprintf("dev channel: %s -> %s", installed, target)) +
+		header.Render(fmt.Sprintf("dev channel: %s -> %s",
+			SanitizeUntrustedLine(installed), SanitizeUntrustedLine(target))) +
 		"  " + muted.Render(fmt.Sprintf("%d commits", total))
 }

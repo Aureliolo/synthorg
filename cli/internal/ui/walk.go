@@ -1,8 +1,10 @@
-// Package ui walk.go contains the bubbletea-based per-version Highlights
-// walk used by `synthorg update` to show release context between installed
-// and target versions. One Program runs per batch of <=3 versions; the
-// caller is responsible for orchestrating multiple batches and threading
-// session-level toggle state across them via WalkBatchResult.FinalView.
+// Package ui walk.go contains the per-version Highlights rendering used by
+// `synthorg update` to show release context between installed and target
+// versions, in two presentations over one set of pre-rendered content: an
+// interactive bubbletea Program, one per batch of <=3 versions, with the
+// caller orchestrating the batches and threading session-level toggle state
+// across them via WalkBatchResult.FinalView; and RenderWalkStatic, which
+// returns every version as a plain string for callers that cannot page.
 package ui
 
 import (
@@ -67,9 +69,10 @@ type WalkBatchInput struct {
 	Width, Height int
 	// Options carries colour / plain / quiet flags from GlobalOpts.
 	Options Options
-	// Output is the writer bubbletea drives. The walk gate guarantees the
-	// writer is a TTY before RunWalkBatch is invoked, so this is the same
-	// stream the surrounding command writes summary / fallback lines to.
+	// Output is the writer bubbletea drives. RunWalkBatch is reached only
+	// when the caller selects its interactive presentation, which requires
+	// a TTY writer, so this is the same stream the surrounding command
+	// writes summary / fallback lines to.
 	// Falls back to os.Stdout when nil so existing call sites that haven't
 	// been updated still work.
 	Output io.Writer
@@ -303,13 +306,17 @@ func (m walkModel) viewportHeight() int {
 // versionHeader renders the "── v0.7.3 ─────────────── [1/3]" line shown
 // above every version's content. The position indicator is added in
 // walkModel.View() so it can include the live idx.
+//
+// The tag name is remote: git's ref rules keep control bytes out of it, but
+// they permit the bidi overrides that reorder what an operator reads in the
+// one string identifying what is about to be installed.
 func versionHeader(r selfupdate.Release, opts Options) string {
 	plain := opts.NoColor || opts.Plain
 	style := lipgloss.NewStyle()
 	if !plain {
 		style = style.Foreground(colorBrand).Bold(true)
 	}
-	return style.Render(r.TagName)
+	return style.Render(SanitizeUntrustedLine(r.TagName))
 }
 
 // Init implements tea.Model. We request an initial window size so the

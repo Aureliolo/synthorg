@@ -164,7 +164,7 @@ func TestPrintOfflineNotice(t *testing.T) {
 		CurrentVersion: "v0.7.1",
 		LatestVersion:  "v0.7.5",
 	}
-	printOfflineNotice(cmd, result)
+	printOfflineNotice(changelogUI(cmd, walkModeStatic), result)
 	out := buf.String()
 	if !strings.Contains(out, "v0.7.5") {
 		t.Errorf("offline notice should contain target version\n--- got ---\n%s", out)
@@ -247,7 +247,7 @@ func TestRunStableHighlightsWalk_warnsOnReleasesBetweenError(t *testing.T) {
 	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.5"}
 	state := config.DefaultState()
 
-	runStableHighlightsWalk(cmd.Context(), cmd, result, state, walkModeStatic)
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, state, walkModeStatic)
 
 	got := buf.String()
 	requireContains(t, got,
@@ -267,7 +267,7 @@ func TestRunStableHighlightsWalk_warnsOnEmptyRange(t *testing.T) {
 	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: "v0.7.5"}
 	state := config.DefaultState()
 
-	runStableHighlightsWalk(cmd.Context(), cmd, result, state, walkModeStatic)
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, state, walkModeStatic)
 
 	got := buf.String()
 	requireContains(t, got,
@@ -279,9 +279,9 @@ func TestRunStableHighlightsWalk_warnsOnEmptyRange(t *testing.T) {
 	)
 }
 
-// The static path is what every non-interactive invocation now takes, so
-// the whole changelog has to survive the trip to stdout: the summary index
-// AND every release body, with nothing waiting on a keypress.
+// The static path is what every non-interactive invocation takes, so the
+// whole changelog has to survive the trip to stdout: the summary index AND
+// every release body, with nothing waiting on a key press.
 func TestRunStableHighlightsWalk_staticPrintsEveryRelease(t *testing.T) {
 	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
 		return []selfupdate.Release{
@@ -292,7 +292,7 @@ func TestRunStableHighlightsWalk_staticPrintsEveryRelease(t *testing.T) {
 	cmd, buf := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.3"}
 
-	runStableHighlightsWalk(cmd.Context(), cmd, result, config.DefaultState(), walkModeStatic)
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, config.DefaultState(), walkModeStatic)
 
 	requireContains(t, buf.String(),
 		"2 releases",
@@ -302,6 +302,108 @@ func TestRunStableHighlightsWalk_staticPrintsEveryRelease(t *testing.T) {
 		"No AI highlights",
 		"Newer thing", // Highlights block for the release that has one
 	)
+}
+
+// newQuietWalkTestCmd is newWalkTestCmd with --quiet, the mode an unattended
+// run is actually invoked in.
+func newQuietWalkTestCmd(t *testing.T) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Quiet: true, Hints: "always"}))
+	return cmd, &buf
+}
+
+// Static mode outranks --quiet, and it has to do so for the whole
+// presentation: printing the release bodies while the flag eats the index
+// above them leaves a record that reads complete and is missing the publish
+// dates and Highlights markers that appear nowhere else.
+func TestRunStableHighlightsWalk_quietStaticKeepsTheSummary(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return []selfupdate.Release{
+			{TagName: "v0.7.2", PublishedAt: "2026-04-22T10:00:00Z", Body: "## [0.7.2]\n### Features\n* older thing\n---\n"},
+		}, nil
+	})
+	cmd, buf := newQuietWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.2"}
+
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, config.DefaultState(), walkModeStatic)
+
+	requireContains(t, buf.String(),
+		"1 release:",   // the summary heading
+		"2026-04-22",   // the publish date, which the bodies never carry
+		"commit-based", // the per-release marker, likewise
+		"older thing",  // and the body itself
+	)
+}
+
+// The fallback notice is the only output there is when the fetch fails, so
+// letting --quiet eat it means the changelog step prints nothing at all and
+// an operator cannot tell a silent success from a silent failure.
+func TestRunStableHighlightsWalk_quietStaticKeepsTheFallbackNotice(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return nil, errors.New("simulated GitHub 503")
+	})
+	cmd, buf := newQuietWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.5"}
+
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, config.DefaultState(), walkModeStatic)
+
+	requireContains(t, buf.String(), "New version available: v0.7.5")
+}
+
+func TestRunDevCommitWalk_quietStaticPrintsTheChangelog(t *testing.T) {
+	withCommitsBetween(t, func(_ context.Context, _, _ string) (selfupdate.CommitRange, error) {
+		return selfupdate.CommitRange{
+			TotalCommits: 1,
+			Commits: []selfupdate.Commit{
+				{SHA: "abc1234567890abcdef0123456789abcdef01234", Subject: "only change", Author: "Ada", Date: "2026-04-25"},
+			},
+		}, nil
+	})
+	cmd, buf := newQuietWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.3-dev.18", LatestVersion: "v0.7.3-dev.19"}
+
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
+
+	requireContains(t, buf.String(), "dev channel: v0.7.3-dev.18 -> v0.7.3-dev.19", "only change")
+}
+
+// Driving runChangelogWalk itself rather than the walk beneath it, so the
+// wiring is covered too: the walks receive whatever UI the entry point
+// hands them, and a quiet one there would put the summary back out of reach.
+func TestRunChangelogWalk_quietStillRendersTheWholePresentation(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return []selfupdate.Release{
+			{TagName: "v0.7.2", PublishedAt: "2026-04-22T10:00:00Z", Body: "## [0.7.2]\n### Features\n* older thing\n---\n"},
+		}, nil
+	})
+	cmd, buf := newQuietWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: "v0.7.2"}
+
+	runChangelogWalk(cmd.Context(), cmd, result, config.DefaultState(), false)
+
+	requireContains(t, buf.String(), "1 release:", "2026-04-22", "older thing")
+}
+
+// --json is the one mode that suppresses the changelog, and it must keep
+// doing so through changelogUI, which clears the quiet flag static mode
+// would otherwise inherit.
+func TestChangelogUI_jsonStillSuppresses(t *testing.T) {
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{JSON: true}))
+
+	printOfflineNotice(changelogUI(cmd, walkModeStatic), selfupdate.CheckResult{
+		CurrentVersion: "v0.7.1", LatestVersion: "v0.7.5",
+	})
+
+	if strings.TrimSpace(buf.String()) != "" {
+		t.Errorf("JSON mode must emit no human output\n--- got ---\n%s", buf.String())
+	}
 }
 
 func TestRunDevCommitWalk_staticPrintsEveryCommit(t *testing.T) {
@@ -317,7 +419,7 @@ func TestRunDevCommitWalk_staticPrintsEveryCommit(t *testing.T) {
 	cmd, buf := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "v0.7.3-dev.18", LatestVersion: "v0.7.3-dev.19"}
 
-	runDevCommitWalk(cmd.Context(), cmd, result, walkModeStatic)
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
 
 	requireContains(t, buf.String(),
 		"dev channel: v0.7.3-dev.18 -> v0.7.3-dev.19",
@@ -344,7 +446,7 @@ func TestRunDevCommitWalk_warnsOnCompareError(t *testing.T) {
 	// "v0.7.3-dev.11..v0.7.3-dev.19" before passing to commitsBetween.
 	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.11", LatestVersion: "v0.7.3-dev.19"}
 
-	runDevCommitWalk(cmd.Context(), cmd, result, walkModeStatic)
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
 
 	got := buf.String()
 	requireContains(t, got,
@@ -363,7 +465,7 @@ func TestRunDevCommitWalk_warnsOnEmptyRange(t *testing.T) {
 	cmd, buf := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "v0.7.3-dev.18", LatestVersion: "v0.7.3-dev.19"}
 
-	runDevCommitWalk(cmd.Context(), cmd, result, walkModeStatic)
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
 
 	got := buf.String()
 	requireContains(t, got,
@@ -390,7 +492,7 @@ func TestRunDevCommitWalk_normalisesVersionRefs(t *testing.T) {
 	cmd, _ := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.11", LatestVersion: "0.7.3-dev.19"}
 
-	runDevCommitWalk(cmd.Context(), cmd, result, walkModeStatic)
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
 
 	if seenBase != "v0.7.3-dev.11" {
 		t.Errorf("base passed to commitsBetween = %q, want %q", seenBase, "v0.7.3-dev.11")
@@ -424,7 +526,7 @@ func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
 	cmd, buf := newWalkTestCmd(t)
 	result := selfupdate.CheckResult{CurrentVersion: "0.7.3-dev.20", LatestVersion: "0.7.3-dev.24"}
 
-	runDevCommitWalk(cmd.Context(), cmd, result, walkModeStatic)
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
 
 	if seenBase != buildSHA {
 		t.Errorf("base passed to commitsBetween = %q, want embedded SHA %q", seenBase, buildSHA)

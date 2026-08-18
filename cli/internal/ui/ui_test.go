@@ -679,6 +679,25 @@ func TestHintCategories(t *testing.T) {
 	})
 }
 
+// StepAlways is the counterpart of WarnAlways: it exists for the step whose
+// whole value is surviving the flag an unattended run sets, so a test that
+// only proved it prints normally would prove nothing.
+func TestStepAlways_survivesQuietButNotJSON(t *testing.T) {
+	t.Parallel()
+
+	var quiet bytes.Buffer
+	NewUIWithOptions(&quiet, Options{Quiet: true}).StepAlways("installed without confirmation")
+	if !strings.Contains(quiet.String(), "installed without confirmation") {
+		t.Errorf("StepAlways must survive --quiet, got %q", quiet.String())
+	}
+
+	var jsonMode bytes.Buffer
+	NewUIWithOptions(&jsonMode, Options{JSON: true}).StepAlways("installed without confirmation")
+	if jsonMode.Len() != 0 {
+		t.Errorf("StepAlways must stay out of JSON output, got %q", jsonMode.String())
+	}
+}
+
 func TestSpinnerQuietMode(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer

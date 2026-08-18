@@ -71,13 +71,13 @@ func RenderCommitList(r selfupdate.CommitRange, width int, opts Options) string 
 	}
 	rows := make([]prepared, len(r.Commits))
 	for i, c := range r.Commits {
-		// Strip ANSI escapes from every operator-visible field so a
-		// hostile commit subject / author / SHA cannot inject terminal
-		// control sequences into the walk. See stripANSI in changelog.go.
+		// Scrub every operator-visible field so a hostile commit subject /
+		// author / SHA cannot act on the terminal instead of printing in
+		// it. See sanitizeUntrusted in changelog.go for the threat model.
 		// Sanitize once per commit and reuse the cleaned values; passing
 		// a still-dirty `c` into formatMeta would re-do the work and risk
 		// drift if a future field is added without the helper coverage.
-		clean := stripANSIInCommit(c)
+		clean := sanitizeCommit(c)
 		rows[i] = prepared{
 			shortSHA: shortSHA(clean.SHA),
 			subject:  strings.TrimSpace(clean.Subject),
@@ -139,14 +139,14 @@ func formatMeta(c selfupdate.Commit) string {
 	return "(" + strings.Join(parts, ", ") + ")"
 }
 
-// stripANSIInCommit returns a copy of c with ANSI escape sequences scrubbed
+// sanitizeCommit returns a copy of c with terminal-acting sequences scrubbed
 // from every operator-visible field. Used by the commit-list renderer at the
 // boundary between attacker-controllable git data and the operator's terminal.
-func stripANSIInCommit(c selfupdate.Commit) selfupdate.Commit {
-	c.Author = stripANSI(c.Author)
-	c.Date = stripANSI(c.Date)
-	c.Subject = stripANSI(c.Subject)
-	c.SHA = stripANSI(c.SHA)
+func sanitizeCommit(c selfupdate.Commit) selfupdate.Commit {
+	c.Author = SanitizeUntrustedLine(c.Author)
+	c.Date = SanitizeUntrustedLine(c.Date)
+	c.Subject = SanitizeUntrustedLine(c.Subject)
+	c.SHA = SanitizeUntrustedLine(c.SHA)
 	return c
 }
 

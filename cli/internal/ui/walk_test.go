@@ -151,6 +151,21 @@ func TestRenderWalkStatic_fallsBackForReleaseWithoutHighlights(t *testing.T) {
 	}
 }
 
+// A tag name is remote and git permits bidi overrides in a ref, so the
+// version string identifying what is about to be installed can be made to
+// read as something else. It must never reach the terminal as authored.
+func TestRenderWalkStatic_sanitisesTagName(t *testing.T) {
+	in := makeWalkInput(t, 1, nil, true, viewHighlights)
+	in.Versions[0].TagName = "v9.9.9" + rloRune + "0.0.1v"
+	out := RenderWalkStatic(in)
+	if strings.ContainsRune(out, 0x202E) {
+		t.Errorf("bidi override survived into the header\n--- got ---\n%q", out)
+	}
+	if !strings.Contains(out, "v9.9.90.0.1v") {
+		t.Errorf("scrubbed tag should still render its own characters\n--- got ---\n%q", out)
+	}
+}
+
 func TestRenderWalkStatic_emptyInput(t *testing.T) {
 	in := makeWalkInput(t, 0, nil, true, viewHighlights)
 	if out := RenderWalkStatic(in); out != "" {

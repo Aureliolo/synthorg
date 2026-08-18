@@ -79,6 +79,33 @@ func TestRenderCommitWalkStatic_ignoresTerminalHeight(t *testing.T) {
 	}
 }
 
+// The target label is a remote tag name (see the walk.go counterpart): the
+// title is where an operator reads what they are about to install, so a
+// bidi override there is a spoof of exactly the string that matters.
+func TestRenderCommitWalkStatic_sanitisesVersionLabels(t *testing.T) {
+	in := makeCommitInput(Options{NoColor: true})
+	in.Target = "v9.9.9" + rloRune + "0.0.1v"
+	out := RenderCommitWalkStatic(in)
+	if strings.ContainsRune(out, 0x202E) {
+		t.Errorf("bidi override survived into the title\n--- got ---\n%q", out)
+	}
+	if !strings.Contains(out, "v9.9.90.0.1v") {
+		t.Errorf("scrubbed label should still render its own characters\n--- got ---\n%q", out)
+	}
+}
+
+// A commit subject is remote and git constrains nothing in it, so a bare CR
+// can overwrite the line an operator already read. The static render goes
+// straight to stdout, where that lands in log files too.
+func TestRenderCommitWalkStatic_sanitisesCommitSubjects(t *testing.T) {
+	in := makeCommitInput(Options{NoColor: true})
+	in.Commits.Commits[0].Subject = "harmless subject\rrewritten by carriage return"
+	out := RenderCommitWalkStatic(in)
+	if strings.ContainsAny(out, "\r\x08\x07") {
+		t.Errorf("terminal-acting control byte survived\n--- got ---\n%q", out)
+	}
+}
+
 func TestRenderCommitWalkStatic_keepsTruncationNotice(t *testing.T) {
 	in := makeCommitInput(Options{NoColor: true})
 	in.Commits.TotalCommits = 400 // more than the compare API returned

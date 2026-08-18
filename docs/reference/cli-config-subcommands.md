@@ -60,7 +60,7 @@ The warning is **not** suppressed under `--quiet` or `--json`; a safety-critical
 
 ## `auto_update_cli`
 
-Boolean, default `false`. Answers the `synthorg update` install confirm (`Update CLI from vX to vY?`) with yes, and prints the changelog instead of paging it, so an update runs start to finish without a key press while still showing what it installs. The install itself announces that the setting answered for you, so nothing is skipped silently.
+Boolean, default `false`. Answers the `synthorg update` install confirm (`Update CLI from vX to vY?`) with yes, and prints the changelog instead of paging it, so an update runs start to finish without a key press while still showing what it installs. The install announces that the setting answered for you, and that line survives `--quiet` (the mode an unattended run is invoked in), so an install nobody confirmed always leaves a record saying so.
 
 It covers the CLI binary alone. The compose apply, image pull and container restart that follow keep their own keys (`auto_apply_compose`, `auto_pull`, `auto_restart`), so a fully unattended `synthorg update` sets all four.
 
@@ -72,11 +72,15 @@ The changelog is presented one of three ways, decided per invocation:
 
 | Presentation | When | Behaviour |
 |---|---|---|
-| Interactive walk | a terminal on stdin and stdout, no `--yes` or `--quiet`, `auto_update_cli` off | scrollable pager, three releases per screen, advanced with `enter` |
-| Static | anything else: `auto_update_cli` on, `--yes`, `--quiet`, or output redirected to a file or pipe | every release printed in full, no keys, no height cap |
+| Interactive walk | a terminal on **both** stdin and stdout, no `--yes` or `--quiet`, `auto_update_cli` off | scrollable pager, advanced with `enter` |
+| Static | anything else: `auto_update_cli` on, `--yes`, `--quiet`, stdin not a terminal (piped or redirected), or stdout redirected to a file or pipe | everything printed in full, no keys, no height cap |
 | Suppressed | `--json` | no human-readable output at all |
 
-Only `--json` loses the content. What an update is about to install is worth showing even when nothing is going to ask about it, so every other non-interactive context downgrades to the static print rather than dropping to a one-line notice.
+Both triggers on the input side count independently: `synthorg update < /dev/null` renders static even on a terminal with no flags set, because there is no one there to answer a pager.
+
+On the stable channel the interactive walk moves three releases at a time; the dev channel has no batches, being one continuous commit list either way (see below).
+
+Only `--json` loses the content, and `--quiet` is deliberately not an exception: what an update is about to install is worth showing even when nothing is going to ask about it, so every other non-interactive context downgrades to the static print rather than dropping to a one-line notice. That covers the whole presentation, not just the release bodies: the summary index, the per-release publish dates and markers, and the fallback notice on a fetch failure all survive `--quiet` too, because half a record is worse than none.
 
 On the `dev` channel `changelog_view` is moot: dev pre-releases have no Highlights block, so the changelog is always a single combined commit list fetched by paginating the GitHub list-commits endpoint (`/repos/.../commits?sha=&per_page=25&page=N`) backwards from the target release until the installed commit SHA is encountered. The compare endpoint is deliberately not used because it inlines a `files[]` patch array per commit and routinely overruns the API response cap on multi-hundred-file release ranges.
 

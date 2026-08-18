@@ -55,13 +55,31 @@ func runChangelogWalk(
 	if mode == walkModeSuppressed {
 		return
 	}
+	out := changelogUI(cmd, mode)
 
 	if state.Channel == "dev" {
-		runDevCommitWalk(ctx, cmd, result, mode)
+		runDevCommitWalk(ctx, cmd, out, result, mode)
 		return
 	}
 
-	runStableHighlightsWalk(ctx, cmd, result, state, mode)
+	runStableHighlightsWalk(ctx, cmd, out, result, state, mode)
+}
+
+// changelogUI builds the UI the whole changelog presentation writes through.
+//
+// Static mode outranks --quiet, and it has to do so for every part of the
+// presentation rather than just the body: the summary index carries the
+// publish dates and the Highlights markers that appear nowhere else, and the
+// fallback notice is the only output at all when the fetch fails. Printing
+// the body raw while letting the flag eat those leaves a record that reads
+// complete and is not. --json still suppresses everything, and never reaches
+// static mode.
+func changelogUI(cmd *cobra.Command, mode walkMode) *ui.UI {
+	opts := GetGlobalOpts(cmd.Context()).UIOptions()
+	if mode == walkModeStatic {
+		opts.Quiet = false
+	}
+	return ui.NewUIWithOptions(cmd.OutOrStdout(), opts)
 }
 
 // runStableHighlightsWalk fetches every release in (installed, target] and
@@ -71,12 +89,12 @@ func runChangelogWalk(
 func runStableHighlightsWalk(
 	ctx context.Context,
 	cmd *cobra.Command,
+	out *ui.UI,
 	result selfupdate.CheckResult,
 	state config.State,
 	mode walkMode,
 ) {
 	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	// Normalise to vX.Y.Z[-dev.N] so release/compare API failures and the
 	// user-facing range labels stay consistent with the dev-channel path.
@@ -89,7 +107,7 @@ func runStableHighlightsWalk(
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v", base, head, err))
 		out.HintError("Showing terse update notice instead. Re-run later or check release notes manually.")
-		printOfflineNotice(cmd, result)
+		printOfflineNotice(out, result)
 		return
 	}
 	if len(releases) == 0 {
@@ -97,7 +115,7 @@ func runStableHighlightsWalk(
 			"No releases found strictly between %s and %s -- the walk has nothing to show.",
 			base, head))
 		out.HintError("This is unusual on the stable channel; check the GitHub releases page if a release was pruned.")
-		printOfflineNotice(cmd, result)
+		printOfflineNotice(out, result)
 		return
 	}
 
@@ -164,8 +182,9 @@ func printStaticBlock(cmd *cobra.Command, block string) {
 }
 
 // runDevCommitWalk fetches all commits between the installed and target dev
-// (or stable) tag via the GitHub compare API and renders them in a single
-// scrollable bubbletea program. Dev pre-releases have no Highlights blocks,
+// (or stable) tag via the GitHub compare API and renders them as a single
+// combined list: a scrollable bubbletea program when interactive, one
+// printed block when static. Dev pre-releases have no Highlights blocks,
 // so a per-release walk is uninformative -- a flat commit list is what the
 // user actually wants to see.
 //
@@ -183,9 +202,14 @@ func printStaticBlock(cmd *cobra.Command, block string) {
 // explaining why the rich walk did not render -- silent fallbacks have
 // repeatedly bitten users who could not tell whether the changelog was
 // missing because of an empty range or a real error.
-func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult, mode walkMode) {
+func runDevCommitWalk(
+	ctx context.Context,
+	cmd *cobra.Command,
+	out *ui.UI,
+	result selfupdate.CheckResult,
+	mode walkMode,
+) {
 	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	base := normalizeVersionRef(result.CurrentVersion)
 	head := normalizeVersionRef(result.LatestVersion)
@@ -202,13 +226,13 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 		errMsg := scrubAPIBase(err.Error(), apiBase, base)
 		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %s", base, head, errMsg))
 		out.HintError(devCommitWalkErrorHint(apiBase != base))
-		printOfflineNotice(cmd, result)
+		printOfflineNotice(out, result)
 		return
 	}
 	if len(commitRange.Commits) == 0 {
 		out.Warn(fmt.Sprintf(
 			"GitHub returned 0 commits between %s and %s -- range looks empty.", base, head))
-		printOfflineNotice(cmd, result)
+		printOfflineNotice(out, result)
 		return
 	}
 	width, height := terminalSize(cmd)
@@ -227,7 +251,7 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 	}
 	if _, err := ui.RunCommitWalk(ctx, in); err != nil {
 		out.Warn(fmt.Sprintf("commit walk failed: %v", err))
-		printOfflineNotice(cmd, result)
+		printOfflineNotice(out, result)
 	}
 }
 
@@ -370,13 +394,16 @@ func terminalSize(cmd *cobra.Command) (int, int) {
 }
 
 // printWalkSummary prints an index of what the changelog covers above the
-// releases themselves. Worded for both presentations: the interactive walk
-// and the static block show the same list underneath it.
+// releases themselves, carrying the publish date and the Highlights marker
+// that appear nowhere in the releases underneath it. Worded for both
+// presentations, and written through the caller's UI, which clears the
+// quiet flag for the static one so this index cannot go missing from the
+// only record an unattended run leaves.
 func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupdate.CheckResult) {
 	out.Section(fmt.Sprintf("%d release%s: %s -> %s",
 		len(releases), pluralS(len(releases)),
-		normalizeVersionRef(result.CurrentVersion),
-		normalizeVersionRef(result.LatestVersion),
+		ui.SanitizeUntrustedLine(normalizeVersionRef(result.CurrentVersion)),
+		ui.SanitizeUntrustedLine(normalizeVersionRef(result.LatestVersion)),
 	))
 	for _, r := range releases {
 		_, hasHighlights := selfupdate.ExtractHighlights(r.Body)
@@ -384,7 +411,10 @@ func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupda
 		if hasHighlights {
 			marker = "Highlights"
 		}
-		out.KeyValue(r.TagName, fmt.Sprintf("%s   %s", formatPublishedDate(r.PublishedAt), marker))
+		// Same remote tag the renderers scrub: this index prints it too,
+		// so it needs the same treatment or the spoof just moves up a line.
+		out.KeyValue(ui.SanitizeUntrustedLine(r.TagName), fmt.Sprintf("%s   %s",
+			ui.SanitizeUntrustedLine(formatPublishedDate(r.PublishedAt)), marker))
 	}
 	out.Blank()
 }
@@ -435,11 +465,9 @@ func batchReleases(releases []selfupdate.Release, size int) [][]selfupdate.Relea
 // the line never reads "v0.7.3-dev.19 (current: 0.7.3-dev.11)" -- the
 // installed version is stamped without the "v" prefix at build time, but
 // the user-facing notice should match the GitHub release tag style.
-func printOfflineNotice(cmd *cobra.Command, result selfupdate.CheckResult) {
-	opts := GetGlobalOpts(cmd.Context())
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	current := normalizeVersionRef(result.CurrentVersion)
-	latest := normalizeVersionRef(result.LatestVersion)
+func printOfflineNotice(out *ui.UI, result selfupdate.CheckResult) {
+	current := ui.SanitizeUntrustedLine(normalizeVersionRef(result.CurrentVersion))
+	latest := ui.SanitizeUntrustedLine(normalizeVersionRef(result.LatestVersion))
 	out.Step(fmt.Sprintf("New version available: %s (current: %s)", latest, current))
 	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/%s",
 		version.RepoURL, latest))
