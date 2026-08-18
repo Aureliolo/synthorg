@@ -15,6 +15,7 @@ from sqlglot.expressions import DataType
 if __package__ in {None, ""}:
     from _schema_drift_constraints import (  # type: ignore[import-not-found]
         column_default,
+        is_zero_one_in_check,
         table_checks,
         table_foreign_keys,
     )
@@ -27,6 +28,7 @@ if __package__ in {None, ""}:
 else:
     from ._schema_drift_constraints import (
         column_default,
+        is_zero_one_in_check,
         table_checks,
         table_foreign_keys,
     )
@@ -217,7 +219,7 @@ def _has_boolean_check_in_column(
 ) -> bool:
     """Return True if any column constraint encodes ``IN (0, 1)`` for *column_name*."""
     for c in constraints:
-        if isinstance(c.kind, exp.CheckColumnConstraint) and _is_zero_one_in_check(
+        if isinstance(c.kind, exp.CheckColumnConstraint) and is_zero_one_in_check(
             c.kind.this, column_name
         ):
             return True
@@ -229,29 +231,7 @@ def _has_boolean_check_in_table(
     table_check_exprs: list[exp.Expression],
 ) -> bool:
     """Return True if any table-level CHECK encodes ``IN (0, 1)`` for *column_name*."""
-    return any(_is_zero_one_in_check(expr, column_name) for expr in table_check_exprs)
-
-
-def _is_zero_one_in_check(expr: exp.Expression, column_name: str) -> bool:
-    """Return True iff *expr* is the AST shape ``column_name IN (0, 1)``.
-
-    Order of values is irrelevant: ``IN (1, 0)`` matches too. String
-    literals (``IN ('0', '1')``) do NOT match: that is a TEXT-stored
-    flag, not a SQLite boolean idiom.
-    """
-    if not isinstance(expr, exp.In):
-        return False
-    target = expr.this
-    if not isinstance(target, exp.Column):
-        return False
-    if target.name != column_name:
-        return False
-    values = {
-        literal.this
-        for literal in expr.expressions
-        if isinstance(literal, exp.Literal) and not literal.is_string
-    }
-    return values == {"0", "1"}
+    return any(is_zero_one_in_check(expr, column_name) for expr in table_check_exprs)
 
 
 def _normalise_index(stmt: exp.Create, dialect: str) -> NormalizedIndex | None:

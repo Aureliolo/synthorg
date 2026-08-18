@@ -285,10 +285,20 @@ not "as a fallback" when a lookup misses.
 **Where the name comes from.** The backend resolves it, once per response, and
 sends it beside the id it stands for (`assigned_to` + `assigned_to_name`,
 `owner` + `owner_name`, `lead` + `lead_name`, `task_id` + `task_title`). The
-browser never resolves an id itself: a client-side lookup has to fetch the
-roster first, which means an id renders on the first paint of every cold load
-and renders forever for anyone the fetched page did not cover. That is not a
-timing bug to tighten; it is the wrong place for the question.
+browser never resolves a reference a row carries: a client-side lookup has to
+fetch the roster first, which means an id renders on the first paint of every
+cold load and renders forever for anyone the fetched page did not cover. That
+is not a timing bug to tighten; it is the wrong place for the question.
+
+A page reading the entity it is **about** is a different thing and stays in
+the browser. `useProjectName` and `useWorkflowName` each take a route
+parameter and read that one row; no response could carry the answer, because
+the page's own content is what the request is for. Two rules still hold there:
+the key never renders (the hook answers `Unknown project` while unresolved,
+never the identifier from the URL), and the resolved name is stored **with the
+id it was read for**. A name held on its own outlives its route, so moving
+between two projects labels the new one with the previous one's name until the
+next read lands, and permanently if that read fails.
 
 **What to show when there is no name.** The surface's own words, never the
 key: `Unassigned` for nobody assigned, `Unknown agent` for an actor the roster

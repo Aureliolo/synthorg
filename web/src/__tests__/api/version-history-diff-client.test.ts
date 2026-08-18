@@ -108,10 +108,55 @@ describe('version-history per-domain diff', () => {
     expect(url).toBe('/api/v1/workflows/wf-1/diff')
     expect(diff.from_version).toBe(2)
     expect(diff.to_version).toBe(4)
+    // Named by label, never by id: `node:n1` in the drawer describes a change
+    // to something the operator has never seen. The unlabelled edge falls back
+    // to the two steps it joins, which is how it is known.
     expect(diff.entries).toEqual([
-      { path: 'node:n1', before: null, after: { type: 'task' } },
-      { path: 'edge:e1', before: { from: 'a' }, after: null },
+      { path: 'node:Draft brief', before: null, after: { type: 'task' } },
+      { path: 'edge:Draft brief to Review', before: { from: 'a' }, after: null },
       { path: 'metadata:name', before: 'old', after: 'new' },
+    ])
+  })
+
+  it('workflow: names an unlabelled node and edge in its own words, not by id', async () => {
+    server.use(
+      http.get('/api/v1/workflows/:id/diff', ({ params: p }) => {
+        const data: WorkflowDiff = {
+          definition_id: String(p['id']),
+          from_version: 1,
+          to_version: 2,
+          node_changes: [
+            {
+              node_id: 'n9', node_label: null,
+              change_type: 'removed', old_value: { type: 'task' }, new_value: null,
+            },
+          ],
+          edge_changes: [
+            {
+              edge_id: 'e9', edge_label: null,
+              source_label: null, target_label: null,
+              change_type: 'added', old_value: null, new_value: { to: 'z' },
+            },
+          ],
+          metadata_changes: [],
+          summary: '2 changes',
+        }
+        return HttpResponse.json({
+          data,
+          error: null,
+          error_detail: null,
+          success: true,
+        })
+      }),
+    )
+
+    const diff = await diffWorkflowVersions('wf-1', 1, 2)
+
+    // Nothing named either one, so the surface says so. It never falls back to
+    // the key, which is the outcome the label fields exist to prevent.
+    expect(diff.entries).toEqual([
+      { path: 'node:an unnamed step', before: { type: 'task' }, after: null },
+      { path: 'edge:an unnamed connection', before: null, after: { to: 'z' } },
     ])
   })
 })

@@ -18,6 +18,21 @@ import type { WsChannel } from '@/api/types/websocket'
 const DASHBOARD_POLL_INTERVAL = 30_000
 const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] as const satisfies readonly WsChannel[]
 
+/** Separator between two reasons one panel is reporting at once. */
+const REASON_SEPARATOR = '; '
+
+/**
+ * Every reason present, or `null` when there are none.
+ *
+ * The panel makes a positive claim out of an empty list, so it has to name each
+ * input it is missing rather than the first: two failed reads leave two
+ * different halves of the answer unknown.
+ */
+function joinErrors(...reasons: readonly (string | null)[]): string | null {
+  const present = reasons.filter((reason): reason is string => reason !== null)
+  return present.length === 0 ? null : present.join(REASON_SEPARATOR)
+}
+
 export interface UseDashboardDataReturn {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
@@ -129,7 +144,10 @@ export function useDashboardData(): UseDashboardDataReturn {
     // fetch must never reach the panel as an empty list, because both halves
     // make a positive claim about the org when their list is empty.
     runningError: snapshotError,
-    blockersError: subsystemsError ?? blockedTasksError,
+    // Both, when both failed. The store keeps them apart precisely so the panel
+    // can name which input is missing, and selecting one would report a single
+    // reason while two halves of the answer are unknown.
+    blockersError: joinErrors(subsystemsError, blockedTasksError),
     runningLoading: snapshotLoading,
     blockersLoading: pulseLoading,
     loading,

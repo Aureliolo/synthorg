@@ -73,14 +73,42 @@ function buildCommunicationEdges(
 type OrgTree = ReturnType<typeof buildOrgTree>
 
 /**
- * Strip child agents whose parent department is collapsed, mark the
- * collapsed dept nodes with `isCollapsed: true`, and prune edges that
- * pointed at removed nodes. Mutates the tree in place so the dagre
- * pass that follows sees the smaller set.
+ * Whether any ancestor of `node` is collapsed.
+ *
+ * The whole chain, not the immediate parent: a department holding teams has
+ * agents whose parent is the team, so removing direct children alone takes the
+ * team away and leaves its agents behind. React Flow renders a node whose
+ * parent is gone as a top-level one, so those agents reappear loose on the
+ * canvas, which is the opposite of what collapsing asked for.
+ *
+ * The `seen` set bounds the climb, because `parentId` comes from server data
+ * and a cycle in it would otherwise spin with the canvas already mounted.
+ */
+function _hasCollapsedAncestor(
+  node: { parentId?: string | undefined },
+  byId: ReadonlyMap<string, { parentId?: string | undefined }>,
+  collapsedDeptIds: ReadonlySet<string>,
+): boolean {
+  const seen = new Set<string>()
+  let ancestorId = node.parentId
+  while (ancestorId !== undefined && !seen.has(ancestorId)) {
+    if (collapsedDeptIds.has(ancestorId)) return true
+    seen.add(ancestorId)
+    ancestorId = byId.get(ancestorId)?.parentId
+  }
+  return false
+}
+
+/**
+ * Strip every descendant of a collapsed department, mark the collapsed dept
+ * nodes with `isCollapsed: true`, and prune edges that pointed at removed
+ * nodes. Mutates the tree in place so the dagre pass that follows sees the
+ * smaller set.
  */
 function _applyCollapse(tree: OrgTree, collapsedDeptIds: ReadonlySet<string>): void {
+  const byId = new Map(tree.nodes.map((n) => [n.id, n]))
   tree.nodes = tree.nodes
-    .filter((n) => !(n.parentId && collapsedDeptIds.has(n.parentId)))
+    .filter((n) => !_hasCollapsedAncestor(n, byId, collapsedDeptIds))
     .map((n) =>
       n.type === 'department' && collapsedDeptIds.has(n.id)
         ? { ...n, data: { ...n.data, isCollapsed: true } }

@@ -314,7 +314,16 @@ function DeptCardHeaderBlock({
   return (
     <div className="flex flex-col" style={{ gap: DEPT_HEADER_ROW_GAP }}>
       {deptHeaderRows(inputs).map((kind) => (
-        <div key={kind} style={{ height: DEPT_HEADER_ROW_HEIGHT[kind] }}>
+        // Clipped, because a fixed height alone does not stop content painting
+        // past it. The layout reserves exactly this band above the agent cards,
+        // so a row that outgrows it (a restyle, a longer label, a stats pill
+        // that wraps after all) would paint straight onto them, which is the
+        // overlap this whole reserve exists to remove.
+        <div
+          key={kind}
+          className="overflow-hidden"
+          style={{ height: DEPT_HEADER_ROW_HEIGHT[kind] }}
+        >
           <DeptHeaderRow kind={kind} id={id} data={data} />
         </div>
       ))}

@@ -12,10 +12,10 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
-from synthorg.api._read_names import agent_name_map, task_titles
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
+from synthorg.api.controllers._task_names import names_and_titles
 from synthorg.api.controllers._task_removal import remove_task
 from synthorg.api.dto import (
     ApiResponse,
@@ -162,13 +162,8 @@ async def _named(app_state: AppState, task: Task) -> TaskRow:
     Returns:
         The task as the dashboard reads it.
     """
-    # Neither read needs the other's answer, and this runs on every
-    # single-task response including the mutation path, so they overlap rather
-    # than stacking.
-    async with asyncio.TaskGroup() as group:
-        name_read = group.create_task(agent_name_map(app_state))
-        title_read = group.create_task(task_titles(app_state, task.dependencies))
-    return TaskRow.of(task, name_read.result(), title_read.result())
+    names, titles = await names_and_titles(app_state, task.dependencies)
+    return TaskRow.of(task, names, titles)
 
 
 class TaskController(Controller):
@@ -231,8 +226,15 @@ class TaskController(Controller):
         )
         meta = meta.model_copy(update={"total": total})
         logger.debug(API_TASK_LISTED, count=len(page), total=total)
-        names = await agent_name_map(app_state)
-        return PaginatedResponse(data=task_rows(page, names), pagination=meta)
+        # Once for the whole page, not once per row. Titled here as well as on
+        # the detail read because the field promises the same thing on both, and
+        # a row answering "nothing could name this" on the list while the detail
+        # named it would be making that claim falsely.
+        names, titles = await names_and_titles(
+            app_state,
+            [dependency for task in page for dependency in task.dependencies],
+        )
+        return PaginatedResponse(data=task_rows(page, names, titles), pagination=meta)
 
     @get("/{task_id:str}")
     async def get_task(

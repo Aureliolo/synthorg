@@ -55,13 +55,17 @@ async def agent_name_map(app_state: AppState) -> dict[str, str]:
     """Resolve the configured agents once into an id to display-name map.
 
     Best-effort: a roster that cannot be read yields an empty map, so the
-    surface falls back to naming nobody rather than failing the request.
+    surface falls back to naming nobody rather than failing the request. Bounded
+    like every other read here, because the response is already complete without
+    the names: a stalled roster must cost the rows their names, never cost the
+    caller a task, meeting or interrupt page that was ready to send.
 
     Returns:
-        Map of normalised agent id to display name (empty on failure).
+        Map of normalised agent id to display name (empty on failure or timeout).
     """
     try:
-        agents = await config_resolver_of(app_state).get_agents()
+        async with asyncio.timeout(_NAME_READ_TIMEOUT_SECONDS):
+            agents = await config_resolver_of(app_state).get_agents()
     except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
         # lint-allow: swallow-ok -- a name is context, not the response; the
         # gap is reported and every caller degrades to an unnamed actor.

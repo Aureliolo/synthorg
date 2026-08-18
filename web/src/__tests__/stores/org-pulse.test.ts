@@ -146,6 +146,31 @@ describe('useOrgPulseStore', () => {
     expect(seen).not.toContain(true)
   })
 
+  it('stays out of loading on a poll that finds an all-clear org', async () => {
+    // The healthy answer is two empty lists, every time. Inferring "first read"
+    // from emptiness makes every 30s poll look like the first, so the panel of
+    // a perfectly healthy org flashes its loading state forever.
+    server.use(subsystemsHandler('active'), emptyTasks())
+    await useOrgPulseStore.getState().fetchOrgPulse()
+    expect(useOrgPulseStore.getState().subsystems).toHaveLength(1)
+    expect(useOrgPulseStore.getState().blockedTasks).toEqual([])
+
+    const seen: boolean[] = []
+    const unsubscribe = useOrgPulseStore.subscribe((state) => {
+      seen.push(state.loading)
+    })
+    await useOrgPulseStore.getState().fetchOrgPulse()
+    unsubscribe()
+
+    expect(seen).not.toContain(true)
+  })
+
+  it('counts a wholly failed read as having read, so the next poll is quiet', async () => {
+    server.use(failingSubsystems(), failingTasks())
+    await useOrgPulseStore.getState().fetchOrgPulse()
+    expect(useOrgPulseStore.getState().loaded).toBe(true)
+  })
+
   it('clears every field on reset', async () => {
     server.use(subsystemsHandler('blocked'), failingTasks())
     await useOrgPulseStore.getState().fetchOrgPulse()
@@ -158,5 +183,7 @@ describe('useOrgPulseStore', () => {
     expect(state.subsystemsError).toBeNull()
     expect(state.blockedTasksError).toBeNull()
     expect(state.loading).toBe(false)
+    // Reset means never read, so the next fetch is a first read again.
+    expect(state.loaded).toBe(false)
   })
 })

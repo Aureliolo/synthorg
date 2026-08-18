@@ -146,6 +146,51 @@ describe('routeHierarchyEdges', () => {
     for (const edge of routed) expect(edge.data).toBeUndefined()
   })
 
+  it('clears the card enclosing a target, not just the target', () => {
+    // A head wired to two team leads. Each lead sits at the top of its team
+    // card, and that card also holds the lead's reports, so it runs well below
+    // the lead. Routing on the lead cards alone puts the second row's bus
+    // midway between the two leads, which is a y inside the first team card,
+    // and the line crosses the reports in it.
+    const nodes: Node[] = [
+      box('head', 0, 0),
+      box('team-a', -200, 200, 300, 400),
+      { ...box('lead-a', 0, 0), parentId: 'team-a' },
+      box('team-b', -200, 700, 300, 400),
+      { ...box('lead-b', 0, 0), parentId: 'team-b' },
+    ]
+    const routed = routeHierarchyEdges(nodes, [
+      hierarchyEdge('head', 'lead-a'),
+      hierarchyEdge('head', 'lead-b'),
+    ])
+    const second = routingOf(routed, 'head', 'lead-b')
+    // team-a spans y 200 to 600. The bus belongs below it, not at 420, which is
+    // where the two lead cards alone would have put it.
+    expect(second.busY).toBeGreaterThan(600)
+    expect(second.busY).toBeLessThan(700)
+  })
+
+  it('keeps two targets inside one card on a single row', () => {
+    // Both leads resolve to the same enclosing card, so it is one row member
+    // and they share the corridor rather than inventing a second row inside it.
+    const nodes: Node[] = [
+      box('head', 0, 0),
+      box('team-a', -200, 200, 300, 400),
+      { ...box('lead-a', 0, 0), parentId: 'team-a' },
+      { ...box('lead-b', 0, 100), parentId: 'team-a' },
+    ]
+    const routed = routeHierarchyEdges(nodes, [
+      hierarchyEdge('head', 'lead-a'),
+      hierarchyEdge('head', 'lead-b'),
+    ])
+    const a = routingOf(routed, 'head', 'lead-a')
+    const b = routingOf(routed, 'head', 'lead-b')
+    expect(a.busY).toBe(b.busY)
+    expect(a.busY).toBe(a.trunkY)
+    expect(a.riserX).toBeUndefined()
+    expect(b.riserX).toBeUndefined()
+  })
+
   it('terminates on a parentId cycle instead of spinning', () => {
     const nodes: Node[] = [
       { ...box('a', 0, 0), parentId: 'b' },

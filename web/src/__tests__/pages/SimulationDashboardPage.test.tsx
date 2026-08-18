@@ -113,11 +113,16 @@ describe('SimulationDashboardPage', () => {
     expect(screen.getByRole('button', { name: 'Report' })).toBeInTheDocument()
   })
 
-  it('shows the report card when Report is clicked', async () => {
+  it('names the run the report belongs to, without its key', async () => {
     seedRunningSimulation()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Report' }))
-    expect(await screen.findByText('Simulation report')).toBeInTheDocument()
+    // Runs share their statuses and round counts, so a heading that named
+    // neither left the operator unable to tell which report they were reading.
+    expect(
+      await screen.findByText(`Simulation report: ${RUNNING_PROJECT_NAME}`),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('sim-1')).not.toBeInTheDocument()
   })
 
   it('cancels a running simulation and reflects the cancelled status', async () => {

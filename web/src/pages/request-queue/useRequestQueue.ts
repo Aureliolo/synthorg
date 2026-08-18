@@ -26,18 +26,26 @@ function requirementMatchesQuery(requirement: unknown, query: string): boolean {
   )
 }
 
+/** Every field a typed query is matched against. */
+function matchesQuery(r: ClientRequestRow, query: string): boolean {
+  return (
+    r.request_id.toLowerCase().includes(query)
+    || r.client_id.toLowerCase().includes(query)
+    // The name is the only client field the card shows, so it has to be
+    // searchable: without it, typing what is on screen finds nothing and the
+    // one field that does match is invisible.
+    || (r.client_name?.toLowerCase().includes(query) ?? false)
+    || requirementMatchesQuery(r.requirement, query)
+  )
+}
+
 function matchesRequest(
   r: ClientRequestRow,
   statusFilter: RequestStatus | 'all',
   query: string,
 ): boolean {
   if (statusFilter !== 'all' && r.status !== statusFilter) return false
-  if (query === '') return true
-  return (
-    r.request_id.toLowerCase().includes(query)
-    || r.client_id.toLowerCase().includes(query)
-    || requirementMatchesQuery(r.requirement, query)
-  )
+  return query === '' || matchesQuery(r, query)
 }
 
 interface RequestActions {

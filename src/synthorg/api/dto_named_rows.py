@@ -281,17 +281,23 @@ class TaskRow(Task):
         Args:
             task: The task to name the references of.
             names: Agent id to display name, from :func:`agent_name_map`.
-            titles: Task id to title, from :func:`task_titles`. Only the
-                single-task read supplies it, because only the detail surface
-                renders the dependency list.
+            titles: Task id to title, from :func:`task_titles`. May cover a whole
+                page, because the list read resolves once across every row; the
+                row keeps only its own dependencies out of it, so the field means
+                the same thing on every surface that carries it.
 
         Returns:
             The task with its assignee and its dependencies resolved.
         """
+        resolved = titles or {}
         return cls(
             **dict(task),
             assigned_to_name=_as_name(resolved_actor_name(task.assigned_to, names)),
-            dependency_titles=dict(titles or {}),
+            dependency_titles={
+                dependency: resolved[dependency]
+                for dependency in task.dependencies
+                if dependency in resolved
+            },
         )
 
 
@@ -335,13 +341,21 @@ def project_rows(
     return tuple(ProjectRow.of(project, names) for project in projects)
 
 
-def task_rows(tasks: Iterable[Task], names: Mapping[str, str]) -> tuple[TaskRow, ...]:
-    """Name the assignee on every task in *tasks*.
+def task_rows(
+    tasks: Iterable[Task],
+    names: Mapping[str, str],
+    titles: Mapping[str, str] | None = None,
+) -> tuple[TaskRow, ...]:
+    """Name the assignee and title the dependencies on every task in *tasks*.
+
+    One title map for the whole page, resolved by the caller across every
+    dependency it references, so a list row carries the same map a detail row
+    would rather than a different one per row.
 
     Returns:
         The rows, in order.
     """
-    return tuple(TaskRow.of(task, names) for task in tasks)
+    return tuple(TaskRow.of(task, names, titles) for task in tasks)
 
 
 __all__ = [

@@ -227,17 +227,41 @@ _ALTER_TABLE_ADD_PK_PATTERN: Final[re.Pattern[str]] = re.compile(
 # table exists. Without this the Postgres side reads every table as having no
 # references at all, and a revision that changed ON DELETE would compare two
 # empty sets and pass.
+#: The reference modifiers that are not actions, as one alternation.
+#:
+#: A reference may carry more than its two actions, and ``pg_dump`` reproduces
+#: whatever the catalog holds: ``MATCH``, the deferral clauses, and ``NOT VALID``
+#: for a constraint added without an up-front scan (the shape this repository's
+#: own migrations use). None of them changes what a delete does, so none is
+#: compared; they are matched only so that carrying one does not make the whole
+#: ALTER unparseable. That failure is silent and one-sided: the reference simply
+#: does not appear on the Postgres side, and a gate whose entire job is catching
+#: a dropped reference reports clean because it dropped one itself.
+_FK_MODIFIER: Final[str] = (
+    r"(?:MATCH\s+(?:FULL|PARTIAL|SIMPLE)"
+    r"|NOT\s+DEFERRABLE|DEFERRABLE"
+    r"|INITIALLY\s+(?:DEFERRED|IMMEDIATE)"
+    r"|NOT\s+VALID)"
+)
 _ALTER_TABLE_ADD_FK_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
     r"ADD\s+CONSTRAINT\s+\w+\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s*"
     r"REFERENCES\s+(?:\w+\.)?(\w+)\s*(?:\(([^)]*)\))?"
+    # Modifiers are admitted on both sides of the actions because the grammar
+    # puts no order on them: ``MATCH FULL`` precedes them and the deferral
+    # clauses follow. Each repetition here begins with a mandatory separator and
+    # then a keyword, so none can match empty and none can share a character
+    # with its neighbour; the number of parses is linear in the modifier count
+    # rather than exponential.
+    rf"(?:\s+{_FK_MODIFIER})*"
     # The action is one of five literals, never a run of letters and spaces.
     # A class admitting the separator lets one repetition's tail and the next
     # one's leading ``\s+`` both claim the same space, so a clause with several
     # actions has exponentially many parses and a non-matching tail walks them
     # all. Naming the alternation is what makes each repetition consume exactly
     # one way.
-    rf"(?P<actions>(?:\s+ON\s+(?:DELETE|UPDATE)\s+{FK_ACTIONS})*)\s*;",
+    rf"(?P<actions>(?:\s+ON\s+(?:DELETE|UPDATE)\s+{FK_ACTIONS})*)"
+    rf"(?:\s+{_FK_MODIFIER})*\s*;",
     re.IGNORECASE,
 )
 _ALTER_TABLE_ADD_UNIQUE_PATTERN: Final[re.Pattern[str]] = re.compile(
@@ -780,30 +804,92 @@ def _diff_table_foreign_keys(
 ) -> list[str]:
     """Return reference drift for one table, target and actions alike.
 
-    Keyed on the referencing columns, so a reference whose action changed
-    reports as a changed action rather than as one vanishing and another
-    appearing. ``ON DELETE CASCADE`` retyped as the standard's unstated
-    default silently turns a cascading cleanup into a refusal.
+    Grouped on the referencing columns rather than keyed by them: a column may
+    carry more than one reference, and keying would keep whichever the iteration
+    reached last and compare a set the table does not have. Grouping means a
+    dropped second reference is reported instead of being dropped again here.
 
     Returns:
         One finding per missing reference, plus one per differing attribute.
     """
-    declared_keys = {fk.columns: fk for fk in declared.foreign_keys}
-    actual_keys = {fk.columns: fk for fk in actual.foreign_keys}
+    declared_groups = _foreign_keys_by_columns(declared)
+    actual_groups = _foreign_keys_by_columns(actual)
     findings: list[str] = []
     findings.extend(
         f"fk:{name}.{','.join(columns)}:missing_from_revisions"
-        for columns in sorted(set(declared_keys) - set(actual_keys))
+        for columns in sorted(set(declared_groups) - set(actual_groups))
     )
     findings.extend(
         f"fk:{name}.{','.join(columns)}:missing_from_declared"
-        for columns in sorted(set(actual_keys) - set(declared_keys))
+        for columns in sorted(set(actual_groups) - set(declared_groups))
     )
-    for columns in sorted(set(declared_keys) & set(actual_keys)):
+    for columns in sorted(set(declared_groups) & set(actual_groups)):
         findings.extend(
-            _diff_foreign_key_pair(name, declared_keys[columns], actual_keys[columns])
+            _diff_column_group(name, declared_groups[columns], actual_groups[columns])
         )
     return findings
+
+
+def _foreign_keys_by_columns(
+    table: NormalizedTable,
+) -> dict[tuple[str, ...], list[NormalizedForeignKey]]:
+    """Group *table*'s references by the columns doing the referencing.
+
+    Returns:
+        Referencing columns to every reference declared on them.
+    """
+    grouped: dict[tuple[str, ...], list[NormalizedForeignKey]] = {}
+    for foreign_key in table.foreign_keys:
+        grouped.setdefault(foreign_key.columns, []).append(foreign_key)
+    return grouped
+
+
+def _diff_column_group(
+    table: str,
+    declared: list[NormalizedForeignKey],
+    actual: list[NormalizedForeignKey],
+) -> list[str]:
+    """Compare every reference declared on one set of referencing columns.
+
+    One on each side is the ordinary case and the only one where the two are
+    unambiguously the same reference, so it is diffed attribute by attribute:
+    ``ON DELETE CASCADE`` retyped as the standard's unstated default reads as a
+    changed action rather than as one reference vanishing and another appearing,
+    which is what makes the finding say what actually happened.
+
+    With several on a side nothing identifies which is which, so they are
+    compared as sets of whole references and a change reads as a removal and an
+    addition. That is less precise and still exact: no reference is lost.
+
+    Returns:
+        The findings for this column group.
+    """
+    if len(declared) == 1 and len(actual) == 1:
+        return _diff_foreign_key_pair(table, declared[0], actual[0])
+    columns = ",".join(declared[0].columns)
+    declared_refs = {_canonical_reference(fk) for fk in declared}
+    actual_refs = {_canonical_reference(fk) for fk in actual}
+    findings = [
+        f"fk:{table}.{columns}:{reference}:missing_from_revisions"
+        for reference in sorted(declared_refs - actual_refs)
+    ]
+    findings.extend(
+        f"fk:{table}.{columns}:{reference}:missing_from_declared"
+        for reference in sorted(actual_refs - declared_refs)
+    )
+    return findings
+
+
+def _canonical_reference(foreign_key: NormalizedForeignKey) -> str:
+    """Render a whole reference, so two on one column set stay distinguishable.
+
+    Returns:
+        Target and both actions as one comparable token.
+    """
+    return (
+        f"{_foreign_key_target(foreign_key)}"
+        f":delete={foreign_key.on_delete}:update={foreign_key.on_update}"
+    )
 
 
 def _foreign_key_target(foreign_key: NormalizedForeignKey) -> str:

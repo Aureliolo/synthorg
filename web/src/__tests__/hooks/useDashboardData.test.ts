@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useDashboardData } from '@/hooks/useDashboardData'
 
 const mockFetchDashboardData = vi.fn().mockResolvedValue(undefined)
@@ -85,6 +86,25 @@ describe('useDashboardData', () => {
     useAnalyticsStore.setState({ error: 'Something broke' })
     const { result } = renderHook(() => useDashboardData())
     expect(result.current.error).toBe('Something broke')
+  })
+
+  it('reports both blocker reads when both fail, not just the first', () => {
+    // The panel makes a positive claim out of an empty list, so naming one
+    // failed read while the other is equally unknown understates what is
+    // missing. The store keeps them apart for exactly this reason.
+    useOrgPulseStore.setState({
+      subsystemsError: 'subsystem read failed',
+      blockedTasksError: 'task read failed',
+    })
+    const { result } = renderHook(() => useDashboardData())
+    expect(result.current.blockersError).toContain('subsystem read failed')
+    expect(result.current.blockersError).toContain('task read failed')
+  })
+
+  it('reports nothing when both blocker reads succeed', () => {
+    useOrgPulseStore.setState({ subsystemsError: null, blockedTasksError: null })
+    const { result } = renderHook(() => useDashboardData())
+    expect(result.current.blockersError).toBeNull()
   })
 
   it('sets up WebSocket with exactly 5 channel bindings', async () => {

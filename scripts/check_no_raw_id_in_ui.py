@@ -129,7 +129,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
@@ -443,6 +443,22 @@ def _is_text_child(source: str, start: int) -> bool:
 _QUOTES: Final[str] = "'\"`"
 
 
+def _continues_a_word(source: str, index: int) -> bool:
+    """Whether the character at *index* is preceded by a word character.
+
+    What separates ``Owner's`` from ``'text'``: no expression can put a string
+    literal straight after an identifier character, so an apostrophe in that
+    position is an English possessive rather than an opener.
+
+    Returns:
+        Whether the preceding character continues a word.
+    """
+    if index == 0:
+        return False
+    previous = source[index - 1]
+    return previous.isalnum() or previous == "_"
+
+
 def _without_comments(source: str) -> str:
     """*source* with every comment blanked, character for character.
 
@@ -455,6 +471,13 @@ def _without_comments(source: str) -> str:
     String literals are tracked, because ``'https://x'`` contains what would
     otherwise open a line comment and blanking from there would swallow the
     rest of the line.
+
+    An apostrophe that continues a word is prose, not a literal. ``Owner's plan``
+    as a JSX text child is the shape, and reading its apostrophe as an opener
+    leaves the scan inside a string until the next one anywhere in the file, so
+    comment blanking stops for that whole span and a brace documented in a later
+    comment is judged as code. The gate then fails a file that renders nothing of
+    the kind, which is the one failure a gate must not have.
 
     Returns:
         The source with comment bodies replaced by spaces.
@@ -474,6 +497,9 @@ def _without_comments(source: str) -> str:
             index += 1
             continue
         if char in _QUOTES:
+            if char == "'" and _continues_a_word(source, index):
+                index += 1
+                continue
             quote = char
             index += 1
             continue
@@ -702,8 +728,18 @@ class UnparseableSourceError(Exception):
     """
 
 
-def _bound_f_strings(tree: ast.Module) -> dict[str, ast.JoinedStr]:
-    """Every module-or-function-local name assigned an f-string.
+#: The nodes that open a new name scope, so an assignment inside one belongs to
+#: it and not to the body holding it.
+_SCOPE_NODES: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ClassDef,
+)
+
+
+def _own_f_strings(scope: ast.AST) -> dict[str, ast.JoinedStr]:
+    """Names assigned an f-string directly in *scope*, nested scopes excluded.
 
     ``description=f"..."`` written inline is the shape a reviewer notices. The
     shape that actually ships is a `desc = f"..."` one line above and
@@ -711,11 +747,18 @@ def _bound_f_strings(tree: ast.Module) -> dict[str, ast.JoinedStr]:
     throughout, so resolving one hop back is the difference between a rule and
     a decoration.
 
+    Resolving it has to respect scope. `desc` is the obvious name for exactly
+    this, so several functions in one module hold one each, and a single
+    module-wide map keeps whichever came last: a leaking `desc` is then judged
+    against a later clean one and reported nowhere, while a clean site is
+    reported because an earlier leaking one survived. Both directions are wrong,
+    and the false negative is the one that ships.
+
     Returns:
-        Name to the f-string last assigned to it.
+        Name to the f-string last assigned to it in this scope alone.
     """
     bound: dict[str, ast.JoinedStr] = {}
-    for node in ast.walk(tree):
+    for node in _walk_own_scope(scope):
         if not isinstance(node, ast.Assign) or not isinstance(
             node.value, ast.JoinedStr
         ):
@@ -726,8 +769,77 @@ def _bound_f_strings(tree: ast.Module) -> dict[str, ast.JoinedStr]:
     return bound
 
 
+def _walk_own_scope(scope: ast.AST) -> Iterator[ast.AST]:
+    """Every node under *scope* that is not inside a nested scope.
+
+    Yields:
+        The nodes belonging to this scope's own body.
+    """
+    for child in ast.iter_child_nodes(scope):
+        yield child
+        if not isinstance(child, _SCOPE_NODES):
+            yield from _walk_own_scope(child)
+
+
+def _scope_bindings(tree: ast.Module) -> dict[ast.AST, dict[str, ast.JoinedStr]]:
+    """Every scope in *tree*, mapped to the names it binds to an f-string.
+
+    Returns:
+        Scope node to its own bindings, the module included.
+    """
+    scopes: dict[ast.AST, dict[str, ast.JoinedStr]] = {tree: _own_f_strings(tree)}
+    for node in ast.walk(tree):
+        if isinstance(node, _SCOPE_NODES):
+            scopes[node] = _own_f_strings(node)
+    return scopes
+
+
+def _enclosing_scopes(tree: ast.Module) -> dict[ast.AST, ast.AST]:
+    """Each node's nearest enclosing scope, innermost first when resolved.
+
+    Returns:
+        Node to the scope whose body holds it.
+    """
+    enclosing: dict[ast.AST, ast.AST] = {}
+    stack: list[tuple[ast.AST, ast.AST]] = [(tree, tree)]
+    while stack:
+        node, scope = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            enclosing[child] = scope
+            stack.append((child, child if isinstance(child, _SCOPE_NODES) else scope))
+    return enclosing
+
+
+def _resolve_in_scope(
+    name: str,
+    scope: ast.AST,
+    scopes: Mapping[ast.AST, Mapping[str, ast.JoinedStr]],
+    enclosing: Mapping[ast.AST, ast.AST],
+) -> ast.JoinedStr | None:
+    """The f-string *name* carries, read outward from *scope*.
+
+    Outward rather than in one scope alone, because a module-level constant
+    built as an f-string is a real binding for every function below it.
+
+    Returns:
+        The f-string, or ``None`` when nothing in scope binds the name to one.
+    """
+    seen: set[ast.AST] = set()
+    current: ast.AST | None = scope
+    while current is not None and current not in seen:
+        seen.add(current)
+        found = scopes.get(current, {}).get(name)
+        if found is not None:
+            return found
+        current = enclosing.get(current)
+    return None
+
+
 def _prose_f_string(
-    value: ast.expr, bound: dict[str, ast.JoinedStr]
+    value: ast.expr,
+    scope: ast.AST,
+    scopes: Mapping[ast.AST, Mapping[str, ast.JoinedStr]],
+    enclosing: Mapping[ast.AST, ast.AST],
 ) -> ast.JoinedStr | None:
     """The f-string a ``description=`` keyword ultimately carries.
 
@@ -737,7 +849,7 @@ def _prose_f_string(
     if isinstance(value, ast.JoinedStr):
         return value
     if isinstance(value, ast.Name):
-        return bound.get(value.id)
+        return _resolve_in_scope(value.id, scope, scopes, enclosing)
     return None
 
 
@@ -758,15 +870,17 @@ def check_python_file(path: Path, source: str | None = None) -> list[Violation]:
     except SyntaxError as exc:
         message = f"{path.as_posix()}: {exc}"
         raise UnparseableSourceError(message) from exc
-    bound = _bound_f_strings(tree)
+    scopes = _scope_bindings(tree)
+    enclosing = _enclosing_scopes(tree)
     violations: list[Violation] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _constructs_an_event(node):
             continue
+        scope = enclosing.get(node, tree)
         for keyword in node.keywords:
             if keyword.arg != _TEXT_FIELD:
                 continue
-            prose = _prose_f_string(keyword.value, bound)
+            prose = _prose_f_string(keyword.value, scope, scopes, enclosing)
             if prose is None:
                 continue
             line = keyword.value.lineno

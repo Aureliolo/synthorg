@@ -5,7 +5,7 @@ across the two backends. Emits canonical drift keys (without trailing
 reason) suitable for comparison against baseline entries.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,6 +18,7 @@ if __package__ in {None, ""}:
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
+        NormalizedColumn,
         NormalizedIndex,
         NormalizedTable,
         bool_yn,
@@ -31,11 +32,16 @@ else:
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
+        NormalizedColumn,
         NormalizedIndex,
         NormalizedTable,
         bool_yn,
         yn,
     )
+
+#: What a finding prints on the side that declares nothing, matching the
+#: absent-column findings above it so one key format reads the same throughout.
+_NO_DEFAULT: Final[str] = "_"
 
 
 def diff_schemas(
@@ -121,7 +127,37 @@ def _diff_columns(
                 f"nullable:{table}:{col_name}:"
                 f"{yn(nullable=s_col.nullable)}:{yn(nullable=p_col.nullable)}"
             )
+        findings.extend(_default_finding(table, col_name, s_col, p_col))
     return findings
+
+
+def _default_finding(
+    table: str,
+    col_name: str,
+    sqlite_column: NormalizedColumn,
+    postgres_column: NormalizedColumn,
+) -> list[str]:
+    """Report a DEFAULT one backend applies and the other does not.
+
+    A default is the value every insert that omits the column receives, so two
+    backends disagreeing on one write different rows from identical statements:
+    the shape stays identical and the data diverges, which is the drift no
+    column-shape comparison can see. Compared on the canonical text
+    (:func:`canonical_default` already folds the dialects' spellings of the same
+    value together), because the raw text differs by dialect for defaults that
+    are in fact the same.
+
+    Returns:
+        The finding, or nothing when both sides agree.
+    """
+    if sqlite_column.default == postgres_column.default:
+        return []
+    finding = (
+        f"default:{table}:{col_name}:"
+        f"{sqlite_column.default or _NO_DEFAULT}:"
+        f"{postgres_column.default or _NO_DEFAULT}"
+    )
+    return [finding]
 
 
 def _diff_pk(

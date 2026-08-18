@@ -30,9 +30,25 @@ interface SimulationDashboardState {
   runs: readonly SimulationStatusResponse[]
   loading: boolean
   error: string | null
-  report: SimulationReport | null
+  report: ShownReport | null
   handleCancel: (simulationId: string) => Promise<void>
   handleShowReport: (simulationId: string) => Promise<void>
+}
+
+/** What a run's heading says when its project is gone. */
+const MISSING_PROJECT_LABEL = 'Project no longer available'
+
+/**
+ * A report and the run it belongs to, kept together.
+ *
+ * The panel is opened from a list whose runs share their statuses and round
+ * counts, so a heading that named neither left the operator unable to tell
+ * which run they were reading. The project is what a run simulates, so it is
+ * what names it; the identifier stays off the surface.
+ */
+interface ShownReport {
+  readonly report: SimulationReport
+  readonly projectName: string
 }
 
 function useSimulationDashboard(): SimulationDashboardState {
@@ -40,7 +56,7 @@ function useSimulationDashboard(): SimulationDashboardState {
   const [runs, setRuns] = useState<readonly SimulationStatusResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [report, setReport] = useState<SimulationReport | null>(null)
+  const [report, setReport] = useState<ShownReport | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -68,17 +84,25 @@ function useSimulationDashboard(): SimulationDashboardState {
     [refresh],
   )
 
-  const handleShowReport = useCallback(async (simulationId: string) => {
-    setReport(null)
-    try {
-      const fetched = await getSimulationReport(simulationId, 'summary')
-      setReport(fetched)
-      setError(null)
-    } catch (err) {
-      log.error('get_simulation_report_failed', err)
-      setError('Failed to load simulation report.')
-    }
-  }, [])
+  const handleShowReport = useCallback(
+    async (simulationId: string) => {
+      setReport(null)
+      // Read from the same list the row was rendered from, so the heading names
+      // the run the operator actually clicked.
+      const projectName =
+        runs.find((run) => run.simulation_id === simulationId)?.project_name
+        ?? MISSING_PROJECT_LABEL
+      try {
+        const fetched = await getSimulationReport(simulationId, 'summary')
+        setReport({ report: fetched, projectName })
+        setError(null)
+      } catch (err) {
+        log.error('get_simulation_report_failed', err)
+        setError('Failed to load simulation report.')
+      }
+    },
+    [runs],
+  )
 
   // Capability-gated effect: skip the network call entirely when the
   // simulations subsystem is not configured. The backend route is then
@@ -192,7 +216,7 @@ function SimulationRunItem({
           {/* A run is named by what it simulates: the buttons beside it carry
               its id, so the heading has nothing to spend on one. */}
           <div className="font-medium text-foreground">
-            {run.project_name ?? 'A project since deleted'}
+            {run.project_name ?? MISSING_PROJECT_LABEL}
           </div>
           <div className="text-xs text-text-secondary">
             {run.config.rounds} round(s)
@@ -296,9 +320,9 @@ export default function SimulationDashboardPage() {
       </ErrorBoundary>
 
       {s.report && (
-        <SectionCard title="Simulation report" icon={Activity}>
+        <SectionCard title={`Simulation report: ${s.report.projectName}`} icon={Activity}>
           <pre className="overflow-auto rounded-md border border-border bg-card-hover p-card text-xs text-foreground">
-            {JSON.stringify(s.report, null, 2)}
+            {JSON.stringify(s.report.report, null, 2)}
           </pre>
         </SectionCard>
       )}

@@ -146,12 +146,64 @@ def table_checks(
     )
 
 
-def _is_boolean_idiom(expr: exp.Expression, boolean_columns: frozenset[str]) -> bool:
-    """Return True iff *expr* is the ``IN (0, 1)`` check of a collapsed column."""
+def is_zero_one_vocabulary(expr: exp.In) -> bool:
+    """Return True iff *expr*'s value list is exactly the numeric literals 0 and 1.
+
+    Order is irrelevant, so ``IN (1, 0)`` answers True too. String literals
+    (``IN ('0', '1')``) answer False: that is a TEXT-stored flag, not the
+    integer pair SQLite spells a boolean with.
+
+    One owner for the question, because the two callers ask it about the same
+    values and a looser second copy is a hole rather than a variant: the
+    suppression below removes what it matches from the compared set, so a
+    predicate that matched more than the boolean idiom would delete real
+    constraints from the comparison.
+
+    Returns:
+        Whether the value list is exactly ``0`` and ``1``.
+    """
+    values = {
+        literal.this
+        for literal in expr.expressions
+        if isinstance(literal, exp.Literal) and not literal.is_string
+    }
+    return values == {"0", "1"}
+
+
+def is_zero_one_in_check(expr: exp.Expression, column_name: str) -> bool:
+    """Return True iff *expr* is the AST shape ``column_name IN (0, 1)``.
+
+    Order of values is irrelevant: ``IN (1, 0)`` matches too. String
+    literals (``IN ('0', '1')``) do NOT match: that is a TEXT-stored
+    flag, not a SQLite boolean idiom.
+
+    Returns:
+        Whether the expression is that column's boolean idiom.
+    """
     if not isinstance(expr, exp.In):
         return False
     target = expr.this
-    return isinstance(target, exp.Column) and target.name in boolean_columns
+    if not isinstance(target, exp.Column):
+        return False
+    if target.name != column_name:
+        return False
+    return is_zero_one_vocabulary(expr)
+
+
+def _is_boolean_idiom(expr: exp.Expression, boolean_columns: frozenset[str]) -> bool:
+    """Return True iff *expr* is the ``IN (0, 1)`` check of a collapsed column.
+
+    Both halves are required. A column normalised to BOOLEAN can carry a second,
+    unrelated ``IN`` check, and matching on the column alone would drop that one
+    from the compared set as well, leaving the same-backend gate blind to a
+    change in it.
+    """
+    if not isinstance(expr, exp.In):
+        return False
+    target = expr.this
+    if not isinstance(target, exp.Column) or target.name not in boolean_columns:
+        return False
+    return is_zero_one_vocabulary(expr)
 
 
 #: The five referential actions the standard defines, as one alternation.

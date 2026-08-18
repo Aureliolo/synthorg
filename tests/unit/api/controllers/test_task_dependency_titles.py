@@ -91,6 +91,49 @@ class TestTheDetailReadTitlesEveryDependency:
         assert resp.json()["data"]["dependency_titles"] == {}
 
 
+class TestTheListReadTitlesThemToo:
+    """One resolve across the page, and each row keeps only its own.
+
+    The field states that a dependency absent from the map is one nothing could
+    name. A list response that resolved none made that claim about every
+    dependency it carried, while the detail response named the same ones.
+    """
+
+    async def test_a_listed_task_carries_its_dependency_titles(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        await fake_persistence.tasks.save(_task(_RESOLVED, "Wire the login page"))
+        await fake_persistence.tasks.save(
+            _task(_SUBJECT, "Ship it", dependencies=(_RESOLVED, _GONE))
+        )
+
+        resp = await async_test_client.get("/api/v1/tasks")
+
+        assert resp.status_code == 200
+        rows = {row["id"]: row for row in resp.json()["data"]}
+        assert rows[_SUBJECT]["dependency_titles"] == {_RESOLVED: "Wire the login page"}
+
+    async def test_a_row_gets_its_own_dependencies_and_no_one_else_s(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """The read is per page; the map is per row."""
+        await fake_persistence.tasks.save(_task(_RESOLVED, "Wire the login page"))
+        await fake_persistence.tasks.save(
+            _task(_SUBJECT, "Ship it", dependencies=(_RESOLVED,))
+        )
+
+        resp = await async_test_client.get("/api/v1/tasks")
+
+        rows = {row["id"]: row for row in resp.json()["data"]}
+        # The dependency's own row depends on nothing, so it carries nothing,
+        # even though the page-wide read resolved a title for it.
+        assert rows[_RESOLVED]["dependency_titles"] == {}
+
+
 class TestTheMapCannotBeMutatedThroughTheFrozenRow:
     """`frozen=True` stops the field being reassigned and not the dict behind it."""
 

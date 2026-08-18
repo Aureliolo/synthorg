@@ -55,16 +55,30 @@ const UNNAMED_REASON = 'unnamed'
 /**
  * A failed phase is a fault; a waiting one may simply be mid-boot.
  *
- * Typed against the generated union rather than bare strings, so a phase added
- * to the backend enum is a compile error here instead of a silent miss. Every
- * phase other than `active` is reported, because `degraded` means up with a
+ * Exhaustive over the generated union, so a phase added to the backend enum is
+ * a compile error here rather than a silent miss. A set of the critical ones
+ * with a default for the rest looks like it does this and does not: it accepts
+ * a new phase silently and scores it `warning`, which is the miss. Every phase
+ * other than `active` is reported, because `degraded` means up with a
  * requirement it named gone, and `disabled` answers "why is this not up"
  * better than silence does.
  */
-const CRITICAL_PHASES: ReadonlySet<SubsystemPhase> = new Set<SubsystemPhase>([
-  'failed',
-  'unreachable',
-])
+const PHASE_SEVERITY: Record<SubsystemPhase, BlockerSeverity> = {
+  // Up, and never reported: filtered out before severity is asked for. Present
+  // because the map is exhaustive, which is the point of it being one.
+  active: 'warning',
+  failed: 'critical',
+  unreachable: 'critical',
+  // Up, with a requirement it named gone. Real, and not an outage.
+  degraded: 'warning',
+  // Mid-boot or mid-rebuild: the next reconciler pass may well clear it.
+  waiting: 'warning',
+  rebuilding: 'warning',
+  // Declined on a condition it declares, which the detail names.
+  blocked: 'warning',
+  // Off because somebody turned it off, which still answers "why is this down".
+  disabled: 'warning',
+}
 
 function pluralTasks(count: number): string {
   return count === 1 ? '1 task' : `${count} tasks`
@@ -153,9 +167,7 @@ function subsystemBlockers(subsystems: readonly SubsystemReport[]): Blocker[] {
     .filter((report) => report.phase !== 'active')
     .map((report) => ({
       id: `subsystem:${report.name}`,
-      severity: CRITICAL_PHASES.has(report.phase)
-        ? ('critical' as const)
-        : ('warning' as const),
+      severity: PHASE_SEVERITY[report.phase],
       title: `${formatLabel(report.name)} is ${report.phase}`,
       // Shown verbatim: an operator can act on "memory.embedder_model is unset"
       // and cannot act on "see the wiring log".

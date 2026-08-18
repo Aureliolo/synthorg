@@ -177,7 +177,9 @@ function resolveRiserX(rowsAbove: readonly (readonly Box[])[], sourceCentreX: nu
 
 /** The routing for each target of one source, keyed by target id. */
 function routeFromSource(source: Box, targets: Map<string, Box>): Map<string, HierarchyRouting> {
-  const rows = rowsOfTargets([...targets.values()])
+  // Deduplicated, because two targets inside one container share its routing
+  // unit and the same box listed twice would widen its own row by nothing.
+  const rows = rowsOfTargets([...new Set(targets.values())])
   const trunkY = corridorBetween(source.bottom, rowTop(rows[0]!))
   const busY = rows.map((row, index) =>
     index === 0 ? trunkY : corridorBetween(rowBottom(rows[index - 1]!), rowTop(row)),
@@ -202,21 +204,115 @@ function routeFromSource(source: Box, targets: Map<string, Box>): Map<string, Hi
   return routing
 }
 
-/** Group the routable edges by source, keeping each target's box to hand. */
+/** Each node's parent, for resolving what a connector has to get past. */
+function parentIds(nodes: readonly Node[]): Map<string, string> {
+  const parents = new Map<string, string>()
+  for (const node of nodes) {
+    if (node.parentId !== undefined) parents.set(node.id, node.parentId)
+  }
+  return parents
+}
+
+/**
+ * Every container `id` sits in, plus `id` itself.
+ *
+ * The `seen` guard bounds the climb for the same reason `absoluteBoxes` carries
+ * one: `parentId` is server data and a cycle in it must not spin the canvas.
+ */
+function ancestryOf(id: string, parentOf: ReadonlyMap<string, string>): Set<string> {
+  const chain = new Set<string>([id])
+  let current = parentOf.get(id)
+  while (current !== undefined && !chain.has(current)) {
+    chain.add(current)
+    current = parentOf.get(current)
+  }
+  return chain
+}
+
+/**
+ * The node whose box a connector from `sourceId` into `targetId` must clear.
+ *
+ * Not the target's own card. A card nested in a group is reached by a line that
+ * has to get past the whole group, and a group is taller than the card it is
+ * being entered for: a team box also holds that lead's reports, so it extends
+ * well below the lead. Routing on the lead cards alone puts the second row's bus
+ * midway between two leads, which is a y inside the first row's team box, and
+ * the line crosses the report cards in it.
+ *
+ * So the routing unit is the outermost container that still sits below whatever
+ * the source and target have in common: climb from the target until the next
+ * step up would enter something the source is already inside. For siblings that
+ * stops immediately and the unit is the target's own card, which is why the same
+ * rule serves departments under the root and agents under a lead alike.
+ */
+function routingUnitId(
+  targetId: string,
+  sourceAncestry: ReadonlySet<string>,
+  parentOf: ReadonlyMap<string, string>,
+): string {
+  const seen = new Set<string>([targetId])
+  let unit = targetId
+  let parent = parentOf.get(unit)
+  while (parent !== undefined && !sourceAncestry.has(parent) && !seen.has(parent)) {
+    seen.add(parent)
+    unit = parent
+    parent = parentOf.get(unit)
+  }
+  return unit
+}
+
+/**
+ * Group the routable edges by source, keeping the box each connector must clear.
+ *
+ * The box is the target's routing unit rather than the target itself, so the
+ * corridors are derived from what is actually in the way.
+ */
 function targetsBySource(
   edges: readonly Edge[],
   boxes: ReadonlyMap<string, Box>,
+  parentOf: ReadonlyMap<string, string>,
 ): Map<string, Map<string, Box>> {
   const bySource = new Map<string, Map<string, Box>>()
+  const ancestryFor = ancestryCache(parentOf)
   for (const edge of edges) {
-    if (edge.hidden === true || edge.type !== 'hierarchy') continue
-    const target = boxes.get(edge.target)
-    if (target === undefined || !boxes.has(edge.source)) continue
+    if (!isRoutable(edge, boxes)) continue
+    const unit = boxes.get(routingUnitId(edge.target, ancestryFor(edge.source), parentOf))
+    if (unit === undefined) continue
     const targets = bySource.get(edge.source) ?? new Map<string, Box>()
-    targets.set(edge.target, target)
+    targets.set(edge.target, unit)
     bySource.set(edge.source, targets)
   }
   return bySource
+}
+
+/** An edge this module plans, with both ends placed. */
+function isRoutable(edge: Edge, boxes: ReadonlyMap<string, Box>): boolean {
+  return (
+    edge.hidden !== true
+    && edge.type === 'hierarchy'
+    && boxes.has(edge.source)
+    && boxes.has(edge.target)
+  )
+}
+
+/**
+ * `ancestryOf`, memoised per source.
+ *
+ * Every edge leaving one source asks the same question, and a source at the top
+ * of a deep org answers it by walking the whole chain each time.
+ */
+function ancestryCache(
+  parentOf: ReadonlyMap<string, string>,
+): (id: string) => ReadonlySet<string> {
+  const cache = new Map<string, Set<string>>()
+  return (id: string) => {
+    let found = cache.get(id)
+    if (found === undefined) {
+      found = ancestryOf(id, parentOf)
+      cache.set(id, found)
+    }
+    return found
+  }
 }
 
 /**
@@ -246,7 +342,7 @@ export function hierarchyRoutingPlan(
   edges: readonly Edge[],
 ): HierarchyRoutingPlan {
   const boxes = absoluteBoxes(nodes)
-  const bySource = targetsBySource(edges, boxes)
+  const bySource = targetsBySource(edges, boxes, parentIds(nodes))
   const routing = new Map<string, ReadonlyMap<string, HierarchyRouting>>()
   for (const [sourceId, targets] of bySource) {
     const source = boxes.get(sourceId)

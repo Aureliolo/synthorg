@@ -136,4 +136,12 @@ describe('agentCardSize', () => {
     )
     expect(new Set(widths).size).toBe(1)
   })
+
+  it('falls back to the balanced footprint when no density is set', () => {
+    // `layout.ts` passes `density` straight from the caller's options, so this
+    // path runs whenever the operator's preferences carry none, which is every
+    // chart before the preference is first written.
+    expect(cardPaddingFor(undefined)).toBe(cardPaddingFor('balanced'))
+    expect(agentCardSize(undefined)).toEqual(agentCardSize('balanced'))
+  })
 })

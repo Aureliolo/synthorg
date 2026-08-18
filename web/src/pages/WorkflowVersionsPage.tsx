@@ -35,11 +35,18 @@ const UNKNOWN_WORKFLOW_NAME = 'Unknown workflow'
  * The page holds only the route parameter, and a heading reading
  * `a3f7b2c1-...` names nothing an operator could act on.
  *
+ * The name is stored with the id it was read for, and returned only while the
+ * two still agree. Held alone it outlives its own route: navigating to another
+ * workflow left the previous one's name over the new one's versions until the
+ * next read landed, and permanently if that read failed. A heading naming the
+ * wrong workflow is worse than one admitting it has no name yet, because
+ * nothing about it looks wrong.
+ *
  * @param id - Workflow identifier from the route.
  * @returns The workflow's name, or the page's own words while unresolved.
  */
 function useWorkflowName(id: string | undefined): string {
-  const [name, setName] = useState<string | null>(null)
+  const [resolved, setResolved] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     if (id === undefined) return
@@ -47,7 +54,7 @@ function useWorkflowName(id: string | undefined): string {
     const load = async () => {
       try {
         const definition = await getWorkflow(id)
-        if (!cancelled) setName(definition.name)
+        if (!cancelled) setResolved({ id, name: definition.name })
       } catch (err) {
         // The version list below reports its own failure; a missing name
         // must not also blank the page.
@@ -60,7 +67,7 @@ function useWorkflowName(id: string | undefined): string {
     }
   }, [id])
 
-  return name ?? UNKNOWN_WORKFLOW_NAME
+  return resolved !== null && resolved.id === id ? resolved.name : UNKNOWN_WORKFLOW_NAME
 }
 
 export default function WorkflowVersionsPage() {

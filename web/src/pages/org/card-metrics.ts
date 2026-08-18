@@ -117,7 +117,8 @@ export interface DeptHeaderInputs {
  * Both consumers read this rather than each testing the conditions themselves.
  * A toggle is not enough on its own: the budget row also needs an allocation to
  * show, so reserving on the toggle alone left an unallocated department with a
- * blank 26 px strip inside its header.
+ * blank 36 px strip inside its header: the row's own 30 px plus the 6 px gap
+ * that follows it.
  */
 export function deptHeaderRows(inputs: DeptHeaderInputs): DeptHeaderRowKind[] {
   const rows: DeptHeaderRowKind[] = ['title']

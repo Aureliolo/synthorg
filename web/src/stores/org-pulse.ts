@@ -31,6 +31,15 @@ interface OrgPulseState {
   blockedTasksError: string | null
   /** True only while the first read is in flight, so a poll cannot flash it. */
   loading: boolean
+  /**
+   * Whether a read has ever settled.
+   *
+   * Tracked rather than inferred from the lists, because an all-clear org
+   * answers with two empty lists every time and would otherwise look like a
+   * store that had never read anything: the panel would re-enter its loading
+   * state on all thirty-second polls, forever, exactly when nothing is wrong.
+   */
+  loaded: boolean
   fetchOrgPulse: () => Promise<void>
   reset: () => void
 }
@@ -90,7 +99,7 @@ function settle<T>(
 async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
   // Only the first read is a loading state. This is also the 30s poll, and a
   // panel that flashes "reading the org's state" every 30s reads as churn.
-  const first = get().subsystems.length === 0 && get().blockedTasks.length === 0
+  const first = !get().loaded
   set({ loading: first })
   try {
     // Independently useful: a failed subsystem read must not cost the operator
@@ -113,11 +122,18 @@ async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
       blockedTasks: parked.items ?? state.blockedTasks,
       blockedTasksError: parked.error,
       loading: false,
+      loaded: true,
     }))
   } catch (err) {
-    // Neither read settled, so both inputs are unknown.
+    // Neither read settled, so both inputs are unknown. Still loaded: the panel
+    // now has an answer, and "we tried and here is why not" is one.
     const message = getErrorMessage(err)
-    set({ loading: false, subsystemsError: message, blockedTasksError: message })
+    set({
+      loading: false,
+      loaded: true,
+      subsystemsError: message,
+      blockedTasksError: message,
+    })
   }
 }
 
@@ -127,6 +143,7 @@ const INITIAL: Omit<OrgPulseState, 'fetchOrgPulse' | 'reset'> = {
   subsystemsError: null,
   blockedTasksError: null,
   loading: false,
+  loaded: false,
 }
 
 export const useOrgPulseStore = create<OrgPulseState>((set, get) => ({

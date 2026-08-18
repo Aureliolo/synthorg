@@ -191,6 +191,20 @@ class TestComments:
     def test_a_commented_out_render_is_not_a_render(self) -> None:
         assert _hits("{/* was <span>{row.task_id}</span> */}") == []
 
+    def test_an_apostrophe_in_prose_does_not_stop_the_blanking(self) -> None:
+        # Read as a string opener, the apostrophe in ``Owner's`` leaves the scan
+        # inside a literal for the rest of the file, so the comment below it is
+        # judged as code and its documented brace reported as a render. The gate
+        # then fails a file that renders nothing of the kind.
+        source = "<span>Owner's plan</span>\n/** PATCH /agents/{id}. */\n"
+        assert _hits(source) == []
+
+    def test_an_apostrophe_in_prose_still_leaves_a_later_render_visible(self) -> None:
+        # The complement: treating the apostrophe as prose must not blind the
+        # scan to what follows it either.
+        source = "<span>Owner's plan</span>\n<span>{row.task_id}</span>\n"
+        assert _hits(source) == ["row.task_id"]
+
 
 class TestAccessibleNames:
     def test_an_identifier_read_aloud_is_flagged(self) -> None:
@@ -263,6 +277,32 @@ class TestTimelineProse:
 
     def test_a_schema_field_description_is_not_a_surface(self) -> None:
         assert _python_hits('Field(description=f"the {thing_id} to use")\n') == []
+
+    def test_a_local_name_is_read_in_its_own_function(self) -> None:
+        # ``desc`` is the obvious name for this, so two functions in one module
+        # each hold one. Resolved module-wide, the clean second binding wins and
+        # the leaking first site is reported nowhere.
+        source = (
+            "def leaks(record):\n"
+            '    desc = f"Task {record.task_id} started"\n'
+            "    return ActivityEvent(description=desc)\n"
+            "\n\n"
+            "def clean(record):\n"
+            '    desc = f"Task {record.status}"\n'
+            "    return ActivityEvent(description=desc)\n"
+        )
+        assert _python_hits(source) == ["record.task_id"]
+
+    def test_a_module_level_binding_still_reaches_a_function(self) -> None:
+        # Scoping resolves outward, so a constant built above the functions is
+        # a real binding for every one of them.
+        source = (
+            'DESC = f"Task {task_id} started"\n'
+            "\n\n"
+            "def emit():\n"
+            "    return ActivityEvent(description=DESC)\n"
+        )
+        assert _python_hits(source) == ["task_id"]
 
 
 class TestSuppression:

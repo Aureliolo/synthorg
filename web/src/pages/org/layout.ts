@@ -39,12 +39,22 @@ export type { LayoutOptions } from './layout-shared'
  * does NOT come here: those boxes still carry the order the operator chose and
  * still need the spine anchored, and this grid can express neither.
  */
+function emptyChartSize(node: Node): { w: number; h: number } {
+  if (node.type === 'owner') {
+    return { w: DEFAULT_NODE_WIDTH, h: DEFAULT_NODE_HEIGHT }
+  }
+  // A node that already carries a footprint keeps it. `sizeAgentNodes` runs
+  // before this branch is reached, so an agent card arrives measured at the
+  // size it renders at; handing it the empty-group box instead would place a
+  // card in a 320x180 slot and leave the canvas full of holes.
+  if (node.width !== undefined && node.height !== undefined) {
+    return { w: node.width, h: node.height }
+  }
+  return { w: EMPTY_GROUP_MIN_WIDTH, h: EMPTY_GROUP_HEIGHT }
+}
+
 function layoutEmptyChart(nodes: Node[]): Node[] {
-  const sizes = nodes.map((n) => ({
-    id: n.id,
-    w: n.type === 'owner' ? DEFAULT_NODE_WIDTH : EMPTY_GROUP_MIN_WIDTH,
-    h: n.type === 'owner' ? DEFAULT_NODE_HEIGHT : EMPTY_GROUP_HEIGHT,
-  }))
+  const sizes = nodes.map((n) => ({ id: n.id, ...emptyChartSize(n) }))
   const grid = flowIntoGrid(sizes, {
     gapX: DEFAULT_NODE_SEP,
     gapY: DEFAULT_RANK_SEP,
@@ -85,14 +95,6 @@ function splitPositioned(
   return { groupResults, topLevelLeaves }
 }
 
-/**
- * Apply dagre hierarchical layout to React Flow nodes and edges.
- *
- * Returns a new array of nodes with `position` set; edges are unchanged.
- * Units are sized from the inside out (teams, then the departments holding
- * them), each laid out in its own direction and its own separations, and the
- * top-level frame then arranges the resulting boxes top-to-bottom.
- */
 /** The layout's own inputs, with every option resolved to a value. */
 function resolveOptions(options: LayoutOptions): {
   params: DagreParams
@@ -120,6 +122,14 @@ function resolveOptions(options: LayoutOptions): {
   }
 }
 
+/**
+ * Apply dagre hierarchical layout to React Flow nodes and edges.
+ *
+ * Returns a new array of nodes with `position` set; edges are unchanged.
+ * Units are sized from the inside out (teams, then the departments holding
+ * them), each laid out in its own direction and its own separations, and the
+ * top-level frame then arranges the resulting boxes top-to-bottom.
+ */
 export function applyDagreLayout(
   nodes: Node[],
   edges: Edge[],

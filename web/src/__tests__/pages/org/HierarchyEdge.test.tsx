@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Position } from '@xyflow/react'
@@ -19,7 +20,7 @@ function MockBaseEdge({
 }: {
   id: string
   path: string
-  style: Record<string, unknown>
+  style: CSSProperties
 }) {
   return <path data-testid={`edge-${id}`} d={path} style={style} />
 }

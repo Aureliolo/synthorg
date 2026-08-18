@@ -131,8 +131,9 @@ Two complementary gates run in pre-push and CI:
   between its INSERT list and its SELECT produces an identical schema and
   writes each row's description into its title, so a table rebuild also
   needs a data-preservation test that seeds a fully populated row and
-  reads every column back (`tests/unit/persistence/
-  test_blocked_reason_migration.py` is the worked example).
+  reads every column back.
+  `tests/unit/persistence/test_blocked_reason_migration.py` is the worked
+  example.
 
 ## What You Must Not Do
 

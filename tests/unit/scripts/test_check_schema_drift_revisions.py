@@ -15,6 +15,7 @@ import sqlite3  # lint-allow: persistence-boundary -- reads the schema the gate 
 import tempfile
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
 from scripts._schema_drift_models import NormalizedTable
@@ -366,6 +367,33 @@ _INVENTED_ACTION = (
     "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
     "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE FROBNICATE;"
 )
+#: What ``pg_dump`` emits for a reference carrying more than its two actions.
+#: Every one is a valid catalog state this repository's own migrations reach:
+#: ``NOT VALID`` is how a constraint is added without an up-front scan.
+_ADD_FK: Final[str] = (
+    "ALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey FOREIGN KEY (parent) REFERENCES p(id)"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+)
+_MODIFIED_REFERENCES: Final[tuple[str, ...]] = (
+    f"{_ADD_FK} MATCH FULL ON DELETE CASCADE;",
+    f"{_ADD_FK} ON DELETE CASCADE MATCH FULL;",
+    f"{_ADD_FK} ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;",
+    f"{_ADD_FK} ON DELETE CASCADE NOT VALID;",
+    f"{_ADD_FK} NOT DEFERRABLE;",
+)
+#: Two references on the SAME referencing column, to different parents. Legal,
+#: and the shape a map keyed on the columns silently collapses to one.
+_TWO_ON_ONE_COLUMN = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_p_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_q_fkey "
+    "FOREIGN KEY (parent) REFERENCES q(id) ON DELETE RESTRICT;"
+)
+_ONE_ON_ONE_COLUMN = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_p_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+)
 
 
 class TestTheRebuildDimensions:
@@ -459,3 +487,48 @@ class TestTheRebuildDimensions:
         sqlglot refuses the DDL outright and the ALTER overlay never runs.
         """
         assert _MODULE._ALTER_TABLE_ADD_FK_PATTERN.search(_INVENTED_ACTION) is None
+
+    @pytest.mark.parametrize("statement", _MODIFIED_REFERENCES)
+    def test_a_modified_reference_is_still_read(self, statement: str) -> None:
+        """A modifier must not make the whole reference invisible.
+
+        None of these changes what a delete does, so none is compared. They are
+        matched so that carrying one does not drop the reference from the
+        Postgres side entirely, which is the gate reporting clean because it
+        lost the very thing it exists to watch.
+        """
+        match = _MODULE._ALTER_TABLE_ADD_FK_PATTERN.search(statement)
+        assert match is not None
+        actions = _MODULE.referential_actions(match.group("actions") or "")
+        assert actions.get("DELETE") in {"CASCADE", None}
+
+    def test_two_references_on_one_column_both_survive(self) -> None:
+        """Keyed on the columns, the second overwrote the first.
+
+        A column may carry more than one reference, and a map keyed by the
+        referencing columns keeps whichever the iteration reached last, so the
+        comparison ran against a set the table does not have.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_TWO_ON_ONE_COLUMN), _TWO_ON_ONE_COLUMN
+        )
+        assert len(patched["t"].foreign_keys) == 2
+
+    def test_dropping_one_of_two_references_on_a_column_is_drift(self) -> None:
+        declared = _MODULE._patch_constraints_from_alter(
+            _one_table(_TWO_ON_ONE_COLUMN), _TWO_ON_ONE_COLUMN
+        )
+        actual = _MODULE._patch_constraints_from_alter(
+            _one_table(_ONE_ON_ONE_COLUMN), _ONE_ON_ONE_COLUMN
+        )
+        findings = _MODULE._diff_tables(declared, actual)
+        # The dropped reference is named as gone. Keyed by the columns, the two
+        # sides each collapsed to one entry and the pair was diffed against
+        # each other, which reports either nothing at all or a target that
+        # changed: both say a reference is still there.
+        assert [
+            finding
+            for finding in findings
+            if "q(id)" in finding and finding.endswith("missing_from_revisions")
+        ]
+        assert not any(":target:" in finding for finding in findings)

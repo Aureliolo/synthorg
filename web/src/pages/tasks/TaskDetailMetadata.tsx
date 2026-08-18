@@ -160,13 +160,19 @@ function DependenciesList({ task }: TaskFieldProps) {
           >
             {/* Titled at the read boundary. A dependency nothing could name gets
                 our words, never its key, which named nothing an operator could
-                act on anyway. */}
-            <Link
-              to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(depId))}
-              className="hover:text-accent hover:underline"
-            >
-              {resolvedName(dependencyTitles, depId, UNTITLED_TASK_NAME)}
-            </Link>
+                act on anyway. It is not linked either: the read omits the ids it
+                could not resolve, so a link here would open a task that is not
+                there. */}
+            {Object.hasOwn(dependencyTitles, depId) ? (
+              <Link
+                to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(depId))}
+                className="hover:text-accent hover:underline"
+              >
+                {resolvedName(dependencyTitles, depId, UNTITLED_TASK_NAME)}
+              </Link>
+            ) : (
+              UNTITLED_TASK_NAME
+            )}
           </li>
         ))}
       </ul>
