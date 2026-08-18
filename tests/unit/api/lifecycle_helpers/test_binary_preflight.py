@@ -294,15 +294,36 @@ class TestProbeVersion:
         with _raising("git", FileNotFoundError("git")):
             assert _probe_version("git") == (None, "spawn_failed")
 
-    def test_undecodable_output_does_not_escape(self) -> None:
+    def test_decoding_is_configured_never_to_raise(self) -> None:
         """``UnicodeDecodeError`` is a ``ValueError``, so it is not caught.
 
-        Decoding is configured never to raise instead, because an escape here
-        crashes boot on the one path whose whole contract is that an
-        unreadable version is survivable.
+        An escape here crashes boot on the one path whose whole contract is
+        that an unreadable version is survivable, so the guard is the
+        ``errors=`` argument itself. Asserted on the call rather than on a
+        decoded result, because a test that supplies ``str`` has already done
+        the decoding the argument governs and would pass with it removed.
         """
-        with _answering("git", "git version 2.48.1 ��\n"):
+        with _resolving("git"), patch(f"{_MODULE}.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="git version 2.48.1"
+            )
             assert _probe_version("git") == ((2, 48, 1), "read")
+
+        assert run.call_args.kwargs["errors"] == "replace"
+
+    def test_a_binary_that_refused_the_question_did_not_answer_it(self) -> None:
+        """A diagnostic carrying a number parses like a version banner.
+
+        So a non-zero exit is read as unreadable rather than as a version: an
+        error line such as ``error 2: bad usage`` would otherwise yield a
+        version low enough to refuse the boot over, quoting a number no
+        binary ever reported as its own.
+        """
+        with _resolving("git"), patch(f"{_MODULE}.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="error 2: unknown option --version"
+            )
+            assert _probe_version("git") == (None, "nonzero_exit")
 
     def test_the_probe_runs_the_resolved_path_not_the_bare_name(self) -> None:
         """The presence check and the probe must not disagree.

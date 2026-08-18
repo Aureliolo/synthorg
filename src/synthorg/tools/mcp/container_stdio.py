@@ -213,40 +213,58 @@ async def _attached_and_started(container: DockerContainer, server_name: str) ->
     """
     stream = container.attach(stdin=True, stdout=True, stderr=True, logs=False)
     try:
-        # Classified like its siblings rather than left raw: the client
-        # retries an MCPConnectionError and treats everything else as
-        # permanent, so an attach that lost a race with the daemon has to
-        # arrive wearing the type that gets another go.
         await stream.__aenter__()
-    except Exception as exc:
+    except BaseException as exc:
+        # BaseException, not Exception: entering opens the connection partway
+        # through, so a cancellation delivered after the socket exists but
+        # before the enter returns leaves one open that the caller was never
+        # handed and cannot close.
+        await _close_unentered(stream, server_name)
         reraise_critical(exc)
-        logger.warning(
-            MCP_CONTAINER_STDIO_TRANSPORT_ERROR,
-            server=server_name,
-            phase="attach",
-            container_id=_short(container),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Server {server_name!r}: its MCP runtime container would not attach"
-        raise MCPConnectionError(msg, context={"server": server_name}) from exc
+        if isinstance(exc, Exception):
+            logger.warning(
+                MCP_CONTAINER_STDIO_TRANSPORT_ERROR,
+                server=server_name,
+                phase="attach",
+                container_id=_short(container),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # Classified like its siblings rather than left raw: the client
+            # retries an MCPConnectionError and treats everything else as
+            # permanent, so an attach that lost a race with the daemon has to
+            # arrive wearing the type that gets another go.
+            msg = f"Server {server_name!r}: its MCP runtime container would not attach"
+            raise MCPConnectionError(msg, context={"server": server_name}) from exc
+        # A cancellation is not a transport failure and must reach the caller
+        # as itself, or the scope that asked for it never unwinds.
+        raise
     try:
         await _start(container, server_name)
     except BaseException:
         # Cancellation included: the socket is open either way, and the
-        # caller cannot close what it was never handed. Shielded because
-        # when the failure IS the cancellation, an unshielded await here is
-        # cancelled at once and the close never runs, which leaves exactly
-        # the socket this handler exists to release.
-        with anyio.CancelScope(shield=True):
-            await _guarded(
-                stream.close(),
-                server_name,
-                step="stream_close",
-                limit_seconds=_CLOSE_TIMEOUT_SECONDS,
-            )
+        # caller cannot close what it was never handed.
+        await _close_unentered(stream, server_name)
         raise
     return stream
+
+
+async def _close_unentered(stream: Stream, server_name: str) -> None:
+    """Release a stream the caller never received.
+
+    Shielded, because both callers run while the failure that brought them
+    here may itself be a cancellation: an unshielded await inside such a
+    handler is cancelled at once, so the close never runs and leaves exactly
+    the socket the handler exists to release. Nothing downstream can clean it
+    up either, since the value was never returned.
+    """
+    with anyio.CancelScope(shield=True):
+        await _guarded(
+            stream.close(),
+            server_name,
+            step="stream_close",
+            limit_seconds=_CLOSE_TIMEOUT_SECONDS,
+        )
 
 
 async def _create(

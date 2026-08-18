@@ -658,6 +658,41 @@ class TestTheContainerIsAlwaysDestroyed:
         assert harness.stream.connected, "the attach has to have happened"
         assert harness.stream.closed
 
+    async def test_a_cancelled_attach_still_closes_what_it_opened(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Entering the stream opens the socket partway through.
+
+        A cancellation delivered after the connection exists but before the
+        enter returns leaves one open that the caller was never handed, so
+        the handler has to catch a BaseException rather than an Exception to
+        see it at all.
+        """
+        harness = _Harness(monkeypatch)
+        reached_attach = anyio.Event()
+        original = harness.stream.__aenter__
+
+        async def _open_then_hang() -> _FakeStream:
+            entered = await original()
+            reached_attach.set()
+            await anyio.sleep_forever()
+            return entered
+
+        monkeypatch.setattr(harness.stream, "__aenter__", _open_then_hang)
+
+        async def _open_until_cancelled() -> None:
+            with suppress(BaseException):
+                async with harness.open():
+                    pass
+
+        async with anyio.create_task_group() as group:
+            _opener = group.start_soon(_open_until_cancelled)
+            await reached_attach.wait()
+            group.cancel_scope.cancel()
+
+        assert harness.stream.connected, "the connection has to have opened"
+        assert harness.stream.closed
+
     async def test_an_attach_failure_is_retryable_like_its_siblings(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

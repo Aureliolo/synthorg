@@ -61,6 +61,9 @@ _VERSION_RE: Final[re.Pattern[str]] = re.compile(r"(?<![\w.])(\d+(?:\.\d+)*)")
 #: cannot answer this fast is treated as unreadable rather than as old.
 _VERSION_PROBE_TIMEOUT_SECONDS: Final[float] = 5.0
 
+#: What a binary that answered the version question exits with.
+_PROBE_SUCCESS_RETURNCODE: Final[int] = 0
+
 #: ``worktree.useRelativePaths`` landed here. Named rather than written twice
 #: because the refusal quotes it in prose as well, and two hand-typed copies
 #: of one fact drift.
@@ -251,6 +254,12 @@ def _probe_version(name: str) -> tuple[tuple[int, ...] | None, str]:
         return None, "timeout"
     except OSError, subprocess.SubprocessError:
         return None, "spawn_failed"
+    if result.returncode != _PROBE_SUCCESS_RETURNCODE:
+        # A binary that refused the question did not answer it. Its output is
+        # a diagnostic, and a diagnostic carrying a number ("error 2: ...")
+        # parses exactly as well as a version banner does, so reading it
+        # would invent a version low enough to refuse the boot over.
+        return None, "nonzero_exit"
     match = _VERSION_RE.search(result.stdout or "")
     if match is None:
         return None, "unparseable_output"

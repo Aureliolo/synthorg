@@ -71,8 +71,12 @@ else:
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg/engine/coordination"
 #: The same package as an import path, for recognising a sibling helper an
-#: absolute import names.
-_SCAN_PACKAGE: Final[str] = "engine.coordination"
+#: absolute import names. Derived from the scan root rather than written a
+#: second time, so the two cannot drift, and fully qualified rather than the
+#: trailing ``engine.coordination``: an unrooted tail matches wherever it
+#: appears, so ``vendor.engine.coordination.parking`` would be credited as a
+#: sibling of a package it has nothing to do with.
+_SCAN_PACKAGE: Final[str] = _SCAN_ROOT_REL.removeprefix("src/").replace("/", ".")
 
 #: ``ImportFrom.level`` for a same-package import. Every level above one
 #: walks further out than the scanned package, whose modules this scan does
@@ -226,21 +230,16 @@ def _called_names(tree: ast.Module) -> frozenset[str]:
 def _in_scan_package(dotted: str) -> bool:
     """Whether *dotted* names a module inside the scanned package.
 
-    Matched on dotted components rather than as a substring: the package
-    name is a prefix of other package names, so a plain ``in`` credits
-    ``engine.coordination_helpers`` to ``engine.coordination`` and puts a
-    module this scan never reads into the sibling set, which is the same
-    fail-open as crediting a parent-package import.
+    Anchored, and on whole components: a substring test credits
+    ``engine.coordination_helpers``, and an unanchored component test
+    credits ``vendor.engine.coordination.parking``. Either puts a module
+    this scan never reads into the sibling set, which is the same fail-open
+    as crediting a parent-package import.
 
     Returns:
-        ``True`` when the scanned package is a component-aligned prefix.
+        ``True`` when *dotted* is the scanned package or lives beneath it.
     """
-    parts = dotted.split(".")
-    target = _SCAN_PACKAGE.split(".")
-    return any(
-        parts[index : index + len(target)] == target
-        for index in range(len(parts) - len(target) + 1)
-    )
+    return dotted == _SCAN_PACKAGE or dotted.startswith(f"{_SCAN_PACKAGE}.")
 
 
 def _imported_siblings(tree: ast.Module) -> frozenset[str]:
@@ -283,13 +282,22 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
             # qualifies on naming the scanned package instead, which is a
             # claim about where the module lives rather than how far up the
             # writer reached.
+            elif node.level == _ABSOLUTE_IMPORT_LEVEL and node.module == _SCAN_PACKAGE:
+                # ``from synthorg.engine.coordination import parking`` names
+                # the PACKAGE, so the sibling is in the alias list and the
+                # module's own last component is the package name. Reading
+                # that component here would credit ``coordination`` and miss
+                # the module actually imported.
+                siblings.update(alias.name for alias in node.names)
             elif node.level == _SIBLING_IMPORT_LEVEL or (
                 node.level == _ABSOLUTE_IMPORT_LEVEL and _in_scan_package(node.module)
             ):
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if _in_scan_package(alias.name):
+                # The bare package names no sibling, so only a module beneath
+                # it contributes one.
+                if _in_scan_package(alias.name) and alias.name != _SCAN_PACKAGE:
                     siblings.add(alias.name.rsplit(".", 1)[-1])
     return frozenset(siblings)
 

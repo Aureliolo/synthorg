@@ -399,6 +399,70 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
+    def test_importing_the_package_itself_credits_the_alias(
+        self, tmp_path: Path
+    ) -> None:
+        """``from synthorg.engine.coordination import parking`` names the package.
+
+        So the sibling is in the alias list, and the module path's own last
+        component is the package name. Reading that component credits
+        ``coordination`` and misses the module actually imported, which reads
+        a gating dispatcher as one that gates nothing.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from synthorg.engine.coordination import parking\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return parking.park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 0
+
+    def test_the_same_tail_under_another_root_is_not_the_package(
+        self, tmp_path: Path
+    ) -> None:
+        """A component match anywhere credits a package that merely ends alike.
+
+        ``vendor.engine.coordination.parking`` shares every component of the
+        scanned package's tail while belonging to a different distribution
+        entirely, so the match has to be anchored at the root rather than
+        found wherever it appears.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from vendor.engine.coordination.parking import park_everything\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
     def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
         """Following imports must not become a way to pass by association.
 
