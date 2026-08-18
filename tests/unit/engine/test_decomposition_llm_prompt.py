@@ -247,6 +247,23 @@ class TestRosterBinding:
         assert "Backend Engineer" not in json.dumps(tool.parameters_schema)
         assert "Backend Engineer" not in message.content
 
+    def test_the_system_prompt_makes_the_workspace_decide_what_exists(self) -> None:
+        """Recall spans every project; only the workspace is about this one.
+
+        A live plan asserted an existing engine, renderer and backend for a
+        project whose workspace had never been provisioned, then scoped all six
+        items as integration of that code and planned nothing that would build
+        it. The grant to look is in ``PlanningToolProvider``; this is the
+        instruction to use it before writing a file claim into ``assumptions``.
+        """
+        message = build_system_message(_ROSTER)
+
+        assert message.content is not None
+        content = message.content.lower()
+        assert "list_directory" in content
+        assert "another project" in content
+        assert "assume" in content
+
     def test_the_system_prompt_lists_every_staffed_role(self) -> None:
         # Stated in prose as well as in the schema: the enum only reaches a
         # provider that enforces schemas.
