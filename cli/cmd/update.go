@@ -254,16 +254,20 @@ func runUpdateCheck(cmd *cobra.Command, state config.State) error {
 	if channel == "" {
 		channel = "stable"
 	}
-	result, err := selfupdate.CheckForChannel(ctx, channel)
+	result, err := checkForChannel(ctx, channel)
 	if err != nil {
 		return fmt.Errorf("checking for updates: %w", err)
 	}
 	if result.UpdateAvail {
-		out.Step(fmt.Sprintf("Update available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
+		// LatestVersion is a remote tag name, and this is the line `update
+		// --check` exists to print: on the terse path it is the ONLY thing an
+		// operator sees before deciding to run the install.
+		out.Step(fmt.Sprintf("Update available: %s (current: %s)",
+			versionLabel(result.LatestVersion), versionLabel(result.CurrentVersion)))
 		out.HintNextStep("Run 'synthorg update' to apply")
 		return NewExitError(ExitUpdateAvail, nil)
 	}
-	out.Success(fmt.Sprintf("Up to date (%s)", result.CurrentVersion))
+	out.Success(fmt.Sprintf("Up to date (%s)", versionLabel(result.CurrentVersion)))
 	out.HintGuidance("Exit code 0 means up to date; exit code 10 means an update is available.")
 	return nil
 }
@@ -324,8 +328,8 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	// UI's own scrubbing, and the target version is a remote tag name: this
 	// is the one string the operator reads before consenting.
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?",
-		ui.SanitizeUntrustedLine(result.CurrentVersion),
-		ui.SanitizeUntrustedLine(result.LatestVersion)), autoAccept)
+		versionLabel(result.CurrentVersion),
+		versionLabel(result.LatestVersion)), autoAccept)
 	if err != nil {
 		return fmt.Errorf("confirming CLI update: %w", err)
 	}
@@ -338,7 +342,7 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 		// --quiet is precisely how an unattended install is invoked, and
 		// this line is the only record that it was unattended.
 		out.StepAlways(fmt.Sprintf("auto_update_cli is set: installing %s without confirmation.",
-			ui.SanitizeUntrustedLine(result.LatestVersion)))
+			versionLabel(result.LatestVersion)))
 	}
 
 	// Surface a permission error in the install directory before the
@@ -441,7 +445,7 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 	}
 
 	if !result.UpdateAvail {
-		out.Success(fmt.Sprintf("CLI is up to date (%s)", result.CurrentVersion))
+		out.Success(fmt.Sprintf("CLI is up to date (%s)", versionLabel(result.CurrentVersion)))
 		return nil
 	}
 

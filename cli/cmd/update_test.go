@@ -770,6 +770,40 @@ func TestIsDevChannelMismatch(t *testing.T) {
 	}
 }
 
+// `update --check` prints one line and exits, so that line is the whole of
+// what an operator sees before deciding to install: the terse path never
+// reaches the changelog walk that scrubs everything else. The target is a
+// remote tag name, so it takes the same scrub the walk's labels do.
+func TestRunUpdateCheck_scrubsSpoofedTargetVersion(t *testing.T) {
+	prev := checkForChannel
+	checkForChannel = func(_ context.Context, _ string) (selfupdate.CheckResult, error) {
+		return selfupdate.CheckResult{
+			UpdateAvail:    true,
+			CurrentVersion: "0.7.4",
+			LatestVersion:  spoofedTargetTag,
+		}, nil
+	}
+	t.Cleanup(func() { checkForChannel = prev })
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Hints: "always"}))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := runUpdateCheck(cmd, config.State{Channel: "stable"})
+
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitUpdateAvail {
+		t.Fatalf("expected ExitUpdateAvail, got %v", err)
+	}
+	got := buf.String()
+	requireContains(t, got, spoofedTargetSaf)
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+	// The installed version is stamped without the "v" by GoReleaser, so the
+	// two halves of this line would otherwise disagree about the prefix.
+	requireContains(t, got, "(current: v0.7.4)")
+}
+
 // TestUpdateCLI_checkFailureAborts verifies that a failed update-check
 // aborts with an ExitRuntime-wrapped ExitError (so Execute does not
 // re-print it) and surfaces the recovery hint on stderr, rather than
