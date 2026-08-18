@@ -304,6 +304,45 @@ def test_a_quote_between_the_root_and_the_path_still_counts(
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"quoted"}
 
 
+@pytest.mark.parametrize(
+    ("prefix", "suffix"),
+    [
+        pytest.param(
+            "$GITHUB_WORKSPACE", "'/scripts/sq.sh'", id="single_quoted_suffix"
+        ),
+        pytest.param(
+            "'${{ github.workspace }}'", "/scripts/sq.sh", id="single_quoted_root"
+        ),
+        pytest.param(
+            "'${{ github.workspace }}", "/scripts/sq.sh'", id="single_quoted_whole"
+        ),
+    ],
+)
+def test_single_quoting_around_the_root_still_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    prefix: str,
+    suffix: str,
+) -> None:
+    """Single quotes are as ordinary as double ones, and land in more places.
+
+    A shell author can quote the literal path (``$GITHUB_WORKSPACE'/x.sh'``),
+    the expression (``'${{ github.workspace }}'/x.sh``) or the whole argument,
+    and each puts a quote somewhere the prefix has to tolerate. Any of them
+    unmatched leaves the path preceded by ``/``, which the scan's leading
+    character test rejects, so the helper is skipped without a word.
+    """
+    _write(
+        tmp_path / "scripts" / "sq.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(tmp_path, "sq.yml", f"- run: bash {prefix}{suffix} checksums.txt")
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"sq"}
+
+
 def test_signing_through_a_chain_of_helpers_counts(
     gate: ModuleType,
     tmp_path: Path,

@@ -54,7 +54,9 @@ AGENT_RUNTIME_STATE_CLAIM_SKIPPED: Final[str] = "agent_runtime_state.claim.skipp
 the same agent already holds it. The row describes one execution and the agent
 is holding two, so the second reads from its recorded frames until the first
 goes idle and releases the row. Kept apart from the idle event because that one
-reports a clear that was declined, and this one a claim that was."""
+reports a clear that was declined, while this one reports a claim that was
+declined: the same guard refusing opposite writes, and reading them under one
+name would leave "which write did not land" unanswerable."""
 
 TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
 """One per-turn observer raised. The others still ran and the run continued:

@@ -214,19 +214,17 @@ class _PerWaveWorkspaces:
                 ``workspace_service`` was provided (programmer error;
                 signals a misconfigured pipeline).
         """
-        workspace_service = self._workspace_service
-        config = self._config
         # Recorded for every wave, including the ones holding nothing, so
         # ``settle`` can pop unconditionally and a wave that cut no worktrees
         # cannot inherit an earlier wave's.
         self._held[wave_idx] = ()
         needs_isolation = (
-            len(group.assignments) > 1 and config.enable_workspace_isolation
+            len(group.assignments) > 1 and self._config.enable_workspace_isolation
         )
-
         if not needs_isolation:
             return group
 
+        workspace_service = self._workspace_service
         if workspace_service is None:
             msg = "workspace_service required when isolation is enabled"
             logger.warning(
@@ -236,20 +234,61 @@ class _PerWaveWorkspaces:
             )
             raise CoordinationError(msg)
 
-        wave_requests = tuple(
+        wave_workspaces = await self._cut_worktrees(
+            wave_idx,
+            group,
+            workspace_service,
+            phases=phases,
+        )
+        if wave_workspaces is None:
+            return None
+        return rebuild_group_with_workspaces(group, wave_workspaces)
+
+    def _wave_requests(
+        self,
+        group: ParallelExecutionGroup,
+    ) -> tuple[WorkspaceRequest, ...]:
+        """Describe one worktree per assignment in *group*.
+
+        Returns:
+            The requests the workspace service cuts this wave's worktrees
+            from, in assignment order.
+        """
+        return tuple(
             WorkspaceRequest(
                 task_id=str(a.task.id),
                 agent_id=a.agent_id,
-                base_branch=config.base_branch,
+                base_branch=self._config.base_branch,
                 project_id=self._project_id,
             )
             for a in group.assignments
         )
+
+    async def _cut_worktrees(
+        self,
+        wave_idx: int,
+        group: ParallelExecutionGroup,
+        workspace_service: WorkspaceIsolationService,
+        *,
+        phases: list[CoordinationPhaseResult],
+    ) -> tuple[Workspace, ...] | None:
+        """Cut this wave's worktrees, recording the attempt either way.
+
+        Takes ownership on success: the workspaces are appended to
+        ``allocated`` and held under *wave_idx* before returning, so a caller
+        that fails afterwards still has them to release.
+
+        Returns:
+            The cut workspaces, or ``None`` when the cut failed and the wave
+            must not run.
+        """
+        wave_requests = self._wave_requests(group)
         logger.info(
             WORKSPACE_SETUP_START,
             wave_index=wave_idx,
             request_count=len(wave_requests),
         )
+        phase = f"workspace_setup_wave_{wave_idx}"
         ws_start = self._clock.monotonic()
         try:
             wave_workspaces = await workspace_service.setup_group(
@@ -258,18 +297,17 @@ class _PerWaveWorkspaces:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort side channel
             reraise_critical(exc)
-            ws_elapsed = self._clock.monotonic() - ws_start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
-                phase=f"workspace_setup_wave_{wave_idx}",
+                phase=phase,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             phases.append(
                 CoordinationPhaseResult(
-                    phase=f"workspace_setup_wave_{wave_idx}",
+                    phase=phase,
                     success=False,
-                    duration_seconds=ws_elapsed,
+                    duration_seconds=self._clock.monotonic() - ws_start,
                     error=safe_error_description(exc),
                 )
             )
@@ -286,13 +324,12 @@ class _PerWaveWorkspaces:
         )
         phases.append(
             CoordinationPhaseResult(
-                phase=f"workspace_setup_wave_{wave_idx}",
+                phase=phase,
                 success=True,
                 duration_seconds=ws_elapsed,
             )
         )
-
-        return rebuild_group_with_workspaces(group, wave_workspaces)
+        return wave_workspaces
 
     async def settle(
         self,
