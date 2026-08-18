@@ -280,6 +280,16 @@ the operator's only remaining route was to hand-author the item list through
 either way, so a reviewer can diff what changed, and `Plan.review` is cleared:
 the panel's findings referenced items that no longer exist.
 
+**Premises travel with the items that rest on them.** `assumptions` and
+`open_questions` belong to the pass that derived them, so a re-plan passes its
+own (`PlanPremises`) and an operator hand-edit does not: the operator revised
+the work, not the premises, and has nothing fresh to supply. Getting this
+backwards is not cosmetic. A live re-plan replaced all ten items with "build
+the engine from scratch" while the plan went on asserting the engine already
+existed, because the rework carried the superseded premises forward. The plan
+contradicted itself, and the false assumption the operator had just refuted was
+the one left standing.
+
 **Approval is not the end of the plan's life.** `APPROVED` dispatches the plan and
 hands it to `EXECUTING`, where its items' tasks are in flight. Every item being
 done opens the tail rather than completing the plan: `INTEGRATING` assembles the
