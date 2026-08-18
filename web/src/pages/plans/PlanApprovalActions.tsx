@@ -23,6 +23,10 @@ const REJECT_REASON_MAX = 2000
 // scoped by ``source`` so the plan's parked approval is found regardless of how
 // many unrelated approvals are outstanding.
 const PENDING_REVIEW_FETCH_LIMIT = 200
+// Mirrors PLAN_APPROVAL_ACTION_TYPE (approval/plan_review.py): the action type
+// the plan-approval gate parks under, which is what separates it from the
+// clarify questions parked beside it on the same plan.
+const PLAN_APPROVE_ACTION = 'plan:approve'
 
 interface PlanApproval {
   approvalId: string | undefined
@@ -47,6 +51,13 @@ interface RejectController {
 // ``source``, walked in full via paginateAll), not the generic approvals page:
 // with many reviews outstanding, this plan's review could otherwise fall
 // outside a single page and the approve controls would vanish.
+//
+// The action type is half the key, not decoration. The gate parks a
+// `clarify:question` per unresolved plan question under the SAME source and
+// the SAME `plan_id`, so matching on the plan alone returns whichever the API
+// happened to order first: a live run approved a parked question while the
+// plan stayed pending, and the audit recorded the operator as having decided a
+// question they were never shown.
 async function findPendingPlanApproval(planId: string): Promise<string | undefined> {
   const reviews = await paginateAll<ApprovalResponse>((cursor) =>
     listApprovals({
@@ -56,7 +67,9 @@ async function findPendingPlanApproval(planId: string): Promise<string | undefin
       cursor,
     }),
   )
-  return reviews.find((a) => a.metadata['plan_id'] === planId)?.id
+  return reviews.find(
+    (a) => a.metadata['plan_id'] === planId && a.action_type === PLAN_APPROVE_ACTION,
+  )?.id
 }
 
 function usePlanApproval(plan: Plan): PlanApproval {
