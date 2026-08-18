@@ -208,10 +208,16 @@ the invariant does.
 Load the browser tools in one `ToolSearch` call, then use `browser_batch` for
 every multi-step sequence.
 
-- **Re-`find` a ref immediately before clicking it.** A ref captured before an
-  intervening re-render is detached, and the click silently does nothing: no
-  error, no network request, no DOM change. This has been mistaken for a dead
-  button more than once.
+- **Click by coordinate, not by ref, on any page that polls.** A ref detaches
+  on the next re-render and the click then silently does nothing: no error, no
+  network request, no DOM change. Re-`find`ing immediately before the click is
+  NOT sufficient, because the poll can land between the find and the click in
+  the same batch. A whole round was lost to reading this as a dead button and
+  then as a product defect. Screenshot, read the coordinates off it, click
+  those, and confirm with `read_network_requests` that the call went out.
+- **Confirm a mutation by its request, not by the page.** `read_network_requests`
+  filtered to the endpoint tells you whether the click did anything at all,
+  which is the difference between a broken control and a detached node.
 - `get_page_text` beats a screenshot for reading state; screenshot for
   presentation defects and for evidence.
 - Screenshot timeouts (`Page.captureScreenshot timed out`) are usually the
@@ -235,6 +241,10 @@ Check these before diagnosing something new.
 | a task at `CREATED` cannot be cancelled | `CREATED` has no `CANCELLED` edge; the only exit is delete. |
 | the plan asserts files that do not exist in a brand-new project | planning recall spans every project the org has run. Check the project workspace before believing an assumption. |
 | a surface goes blank after a mutation | re-navigate before concluding; several panes render only on a fresh mount. |
+| an operator action reports a network error while the backend log shows it working | the endpoint became LLM-bound and the web client still gives it the 30s default. Compare `duration_ms` in the backend log against `web/src/api/client.ts`. |
+| a decision control settles the wrong decision | an approval lookup keyed on the entity alone. The plan-review gate parks a `clarify:question` per open question under the SAME source and `plan_id` as the `plan:approve`, so the action type is half the key. |
+| `[ws] Ticket exchange failed: 502` repeating in the console | the backend is restarting (`make dev-restart`). The SPA retries and recovers; not a defect. |
+| every Bash call starts failing on the PreToolUse hook | a bare `cd` poisoned the shell cwd and the hook resolves its script relative to it. Bash cannot fix itself: use the PowerShell tool's `Set-Location` to restore the root, since both tools share one cwd. |
 
 ## Finishing
 
