@@ -68,6 +68,18 @@ class TestIndexUrls:
 
         assert index == "http://[2001:db8::1]:8080/llms.txt"
 
+    def test_an_explicit_zero_port_is_kept_rather_than_normalised_away(self) -> None:
+        """Port 0 is stated, and this runs before the network validator.
+
+        Dropping it would rewrite a URL the validator refuses (it rejects any
+        port at or below zero) into one it accepts at the scheme default, so
+        the probe would go to a different endpoint than the caller named
+        instead of failing closed.
+        """
+        index, _ = index_urls_for("http://docs.example-provider.test:0/guide")
+
+        assert index == "http://docs.example-provider.test:0/llms.txt"
+
     def test_userinfo_without_a_host_is_rejected(self) -> None:
         """``netloc`` is non-empty here while there is no host to probe."""
         with pytest.raises(ValueError, match="cannot derive an origin"):

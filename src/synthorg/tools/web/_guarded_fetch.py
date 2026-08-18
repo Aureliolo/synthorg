@@ -73,7 +73,13 @@ def authority_of(parsed: ParseResult | SplitResult) -> str:
         return ""
     host = f"[{hostname}]" if ":" in hostname else hostname
     port = _explicit_port(parsed)
-    return f"{host}:{port}" if port else host
+    # ``is not None``, not truthiness: port 0 is stated, and dropping it here
+    # would rewrite a URL the network validator refuses (it rejects any port
+    # at or below zero) into one it accepts at the scheme default. The
+    # consumers that run BEFORE validation would then act on a different
+    # endpoint than the caller named, which is the one outcome worth avoiding
+    # even though nothing reaches them with such a port today.
+    return f"{host}:{port}" if port is not None else host
 
 
 def pin_url(
@@ -101,7 +107,7 @@ def pin_url(
 
     pinned_ip = validation.resolved_ips[0]
     port = _explicit_port(parsed)
-    port_suffix = f":{port}" if port else ""
+    port_suffix = f":{port}" if port is not None else ""
     try:
         addr = ip_address(pinned_ip)
     except ValueError:

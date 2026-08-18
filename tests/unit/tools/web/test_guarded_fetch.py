@@ -73,6 +73,22 @@ class TestHostHeaderCarriesTheAuthority:
 
         assert headers["Host"] == "example.test:8080"
 
+    def test_an_explicit_zero_port_is_not_read_as_absent(self) -> None:
+        """``:0`` is a stated port, and a truthiness test drops it.
+
+        The header is the milder half: the same expression feeds the derived
+        URLs the ``llms.txt`` probe builds BEFORE the network validator runs,
+        where dropping the port turns a URL the validator refuses into one it
+        accepts at the scheme default.
+        """
+        _, headers = pin_url(
+            "http://example.test:0/docs",
+            {},
+            _validation("example.test"),
+        )
+
+        assert headers["Host"] == "example.test:0"
+
     def test_a_portless_url_sends_a_bare_host(self) -> None:
         _, headers = pin_url(
             "http://example.test/docs",
