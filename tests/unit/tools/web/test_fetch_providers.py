@@ -26,7 +26,10 @@ from synthorg.tools.web.errors import (
 from synthorg.tools.web.extract import TRUNCATION_MARKER
 from synthorg.tools.web.fetch_types import FetchBackend, FetchBudget, WebFetchProvider
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
-from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
+from synthorg.tools.web.providers.http_fetch_provider import (
+    _MAX_VENDOR_COOLDOWN_SECONDS,
+    HttpWebFetchProvider,
+)
 from synthorg.tools.web.providers.local_fetch_provider import (
     _MAX_ORIGIN_COOLDOWN_SECONDS,
     LocalFetchProvider,
@@ -507,6 +510,38 @@ class TestProxyRung:
         page = await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
         assert page.truncated is False
         assert TRUNCATION_MARKER.strip() not in page.markdown
+
+    @respx.mock
+    async def test_a_long_vendor_cooldown_is_clamped(self) -> None:
+        """The retry handler honours an override past its own cap by design.
+
+        Unclamped, a CDN edge answering a vendor outage with a day-long
+        ``Retry-After`` stalls one tool call for as long as the outage lasts,
+        across every attempt the ladder has left.
+        """
+        respx.post(_READER).mock(
+            return_value=httpx.Response(503, headers={"Retry-After": "86400"})
+        )
+
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+
+        assert caught.value.retry_after_seconds == _MAX_VENDOR_COOLDOWN_SECONDS
+
+    @respx.mock
+    async def test_an_http_date_cooldown_is_clamped_too(self) -> None:
+        """A date is how an origin asks for a very long wait."""
+        respx.post(_READER).mock(
+            return_value=httpx.Response(
+                503,
+                headers={"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"},
+            )
+        )
+
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _proxy(_FLAT_MARKDOWN).fetch(_TARGET)
+
+        assert caught.value.retry_after_seconds == _MAX_VENDOR_COOLDOWN_SECONDS
 
     @respx.mock
     async def test_retry_after_is_carried_off_a_429(self) -> None:

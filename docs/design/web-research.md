@@ -161,12 +161,18 @@ that would have answered on retry. The set is deliberately not "any `5xx`":
 The classification only matters where the decision is made, and here that is
 the agent: it picks the next call, so the two outcomes read differently in the
 result, one pointing back at the same backend and the other at the rungs left.
-The cooldown the local rung repeats is **clamped**, because the two rungs read
-it from different parties. The proxy rung's comes from a vendor under contract;
-the local rung's comes from whatever site the agent was told to read, and a
-retry handler honours a server-supplied override past its own cap by design, so
-an unclamped `Retry-After: 86400` would be a day-long sleep an arbitrary origin
-chose. Not a setting: raising it is never a thing to want.
+The cooldown a rung repeats is **clamped**, at a ceiling that differs by who
+stated it. A retry handler honours a server-supplied override past its own cap
+by design, which is right when the number is real and is why the cap exists;
+what survives the clamp is therefore the true upper bound on how long one tool
+call can sit still. The local rung reads the header from whatever site the
+agent was told to read, so it caps low. The proxy rung reads it from an
+endpoint the operator configured, so honouring a real window is worth
+something and it caps higher, but it still caps: the value is set by whatever
+HTTP layer answers, and a CDN edge emits long `Retry-After` values on `429` and
+`503` as ordinary behaviour, so the unbounded form stalls a call for as long as
+an outage lasts. Neither ceiling is a setting: raising one is never a thing to
+want.
 
 **A truncated read is cut to fit its notice.** The character budget is what the
 operator agreed to spend on one page, so the notice that says the page was cut

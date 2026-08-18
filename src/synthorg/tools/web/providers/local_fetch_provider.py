@@ -24,9 +24,9 @@ from synthorg.tools.network_validator import (
 )
 from synthorg.tools.web._guarded_fetch import (
     RETRYABLE_STATUSES,
+    clamped_retry_after,
     decode_body,
     pin_url,
-    retry_after_seconds,
     stream_bounded,
 )
 from synthorg.tools.web.errors import (
@@ -197,9 +197,9 @@ class LocalFetchProvider:
                 redirect.
         """
         if status in RETRYABLE_STATUSES:
-            asked = retry_after_seconds(response_headers)
-            retry_after = (
-                min(asked, _MAX_ORIGIN_COOLDOWN_SECONDS) if asked is not None else None
+            retry_after = clamped_retry_after(
+                response_headers,
+                ceiling=_MAX_ORIGIN_COOLDOWN_SECONDS,
             )
             logger.warning(
                 WEB_FETCH_FAILED,

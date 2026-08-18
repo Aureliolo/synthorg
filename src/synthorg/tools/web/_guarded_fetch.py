@@ -254,6 +254,28 @@ def retry_after_seconds(headers: httpx.Headers) -> float | None:
     return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
 
 
+def clamped_retry_after(headers: httpx.Headers, *, ceiling: float) -> float | None:
+    """Parse ``Retry-After`` and cap it at *ceiling*.
+
+    The cap belongs to the caller because how far a stated cooldown may be
+    trusted is a property of who stated it, and every rung reads this header
+    from a different party. It is a cap rather than advice because a retry
+    handler honours a server-supplied override PAST its own configured cap by
+    design, so whatever survives here is the real upper bound on how long one
+    tool call can sit still.
+
+    Returns:
+        The capped delay, or ``None`` when the header is absent or states
+        something that is not a delay. ``min`` is a cap and not a passthrough
+        only because :func:`retry_after_seconds` has already excluded NaN and
+        both infinities: ``min(nan, x)`` answers ``nan``.
+    """
+    asked = retry_after_seconds(headers)
+    if asked is None:
+        return None
+    return min(asked, ceiling)
+
+
 def decode_body(raw: bytes, headers: httpx.Headers) -> str:
     """Decode a response body using the charset the response declared.
 
@@ -280,6 +302,7 @@ def decode_body(raw: bytes, headers: httpx.Headers) -> str:
 __all__ = [
     "RETRYABLE_STATUSES",
     "authority_of",
+    "clamped_retry_after",
     "decode_body",
     "pin_url",
     "retry_after_seconds",

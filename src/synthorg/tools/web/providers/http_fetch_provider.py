@@ -41,7 +41,7 @@ from synthorg.tools.network_validator import (
 )
 from synthorg.tools.web._guarded_fetch import (
     RETRYABLE_STATUSES,
-    retry_after_seconds,
+    clamped_retry_after,
     stream_bounded,
 )
 from synthorg.tools.web.errors import (
@@ -65,6 +65,15 @@ _DEFAULT_RETRY_BASE: Final[float] = 0.5
 _DEFAULT_RETRY_CAP: Final[float] = 8.0
 _HTTP_BAD_REQUEST: Final[int] = 400
 _MAX_LINKS: Final[int] = 50
+
+#: Ceiling on a cooldown this rung will repeat from its reader endpoint.
+#: Higher than the local rung's, because the endpoint is one the operator
+#: configured rather than one an agent was pointed at, so honouring a real
+#: window is worth something here. Bounded all the same: the value is set by
+#: whatever HTTP layer answers, and a CDN edge emits long ``Retry-After``
+#: values on 429 and 503 as ordinary behaviour, so the unbounded form stalls a
+#: tool call for as long as an outage lasts.
+_MAX_VENDOR_COOLDOWN_SECONDS: Final[float] = 120.0
 
 
 def _transient_delay_override(exc: Exception) -> float | None:
@@ -344,7 +353,10 @@ class HttpWebFetchProvider:
             WebFetchResponseError: On a non-retryable status or bad JSON.
         """
         if status in RETRYABLE_STATUSES:
-            retry_after = retry_after_seconds(response_headers)
+            retry_after = clamped_retry_after(
+                response_headers,
+                ceiling=_MAX_VENDOR_COOLDOWN_SECONDS,
+            )
             logger.warning(
                 WEB_FETCH_FAILED,
                 provider=self._preset.id,
