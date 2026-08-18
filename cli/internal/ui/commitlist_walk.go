@@ -39,6 +39,16 @@ type CommitWalkInput struct {
 	Output io.Writer
 }
 
+// RenderCommitWalkStatic renders the same commit list as RunCommitWalk into a
+// plain string: title line plus the full listing, no viewport and no key
+// footer. Nothing here is height-bounded -- the caller prints the block and
+// the terminal's scrollback holds it.
+func RenderCommitWalkStatic(in CommitWalkInput) string {
+	w, _ := initialDimensions(in.Width, in.Height)
+	return commitWalkTitle(in.Installed, in.Target, in.Commits.TotalCommits, in.Options) +
+		"\n" + RenderCommitList(in.Commits, w, in.Options)
+}
+
 // RunCommitWalk runs the dev-channel commit list view in a single bubbletea
 // program and returns the outcome.
 func RunCommitWalk(ctx context.Context, in CommitWalkInput) (CommitWalkOutcome, error) {
@@ -80,13 +90,7 @@ const commitWalkFooterText = "[j/k] scroll  [g/G] top/bottom  [enter] continue  
 // `<prefix><title>  <count>` so the viewportHeight chrome calculation can
 // detect when the title wraps on narrow terminals.
 func (m commitWalkModel) titleVisibleWidth() int {
-	prefix := "── "
-	if m.opts.Plain {
-		prefix = "-- "
-	}
-	title := fmt.Sprintf("dev channel: %s -> %s", m.installed, m.target)
-	count := fmt.Sprintf("%d commits", m.commits.TotalCommits)
-	return lipgloss.Width(prefix) + lipgloss.Width(title) + 2 + lipgloss.Width(count)
+	return lipgloss.Width(commitWalkTitle(m.installed, m.target, m.commits.TotalCommits, m.opts))
 }
 
 // viewportHeight reserves chrome for the dev-channel walk layout: the
@@ -189,6 +193,28 @@ func (m commitWalkModel) View() tea.View {
 func (m commitWalkModel) renderView() string {
 	plain := m.opts.NoColor || m.opts.Plain
 	muted := lipgloss.NewStyle()
+	if !plain {
+		muted = muted.Foreground(colorMuted)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(commitWalkTitle(m.installed, m.target, m.commits.TotalCommits, m.opts))
+	sb.WriteByte('\n')
+	sb.WriteString(m.viewport.View())
+	sb.WriteByte('\n')
+	sb.WriteString(muted.Render(commitWalkFooterText))
+	return sb.String()
+}
+
+// commitWalkTitle renders the "── dev channel: v1 -> v2  N commits" line that
+// heads both the interactive walk and its static render, so the two cannot
+// drift apart.
+//
+// The target label is a remote tag name; see versionHeader for why that
+// needs scrubbing even though git rejects control bytes in a ref.
+func commitWalkTitle(installed, target string, total int, opts Options) string {
+	plain := opts.NoColor || opts.Plain
+	muted := lipgloss.NewStyle()
 	header := lipgloss.NewStyle()
 	if !plain {
 		muted = muted.Foreground(colorMuted)
@@ -196,21 +222,12 @@ func (m commitWalkModel) renderView() string {
 	}
 
 	prefix := "── "
-	if m.opts.Plain {
+	if opts.Plain {
 		prefix = "-- "
 	}
 
-	title := fmt.Sprintf("dev channel: %s -> %s", m.installed, m.target)
-	count := fmt.Sprintf("%d commits", m.commits.TotalCommits)
-
-	var sb strings.Builder
-	sb.WriteString(muted.Render(prefix))
-	sb.WriteString(header.Render(title))
-	sb.WriteString("  ")
-	sb.WriteString(muted.Render(count))
-	sb.WriteByte('\n')
-	sb.WriteString(m.viewport.View())
-	sb.WriteByte('\n')
-	sb.WriteString(muted.Render(commitWalkFooterText))
-	return sb.String()
+	return muted.Render(prefix) +
+		header.Render(fmt.Sprintf("dev channel: %s -> %s",
+			SanitizeUntrustedLine(installed), SanitizeUntrustedLine(target))) +
+		"  " + muted.Render(fmt.Sprintf("%d commits", total))
 }

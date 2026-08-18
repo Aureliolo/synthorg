@@ -227,6 +227,25 @@ func (u *UI) Step(msg string) {
 	_, _ = fmt.Fprintf(u.w, "%s %s\n", u.brand.Render(icon), u.bold.Render(stripControl(msg)))
 }
 
+// StepAlways prints a step that survives --quiet.
+//
+// For the step whose whole value is that it was not a prompt: an install
+// that proceeded because a config key answered for the operator leaves no
+// other trace of having been unattended, and --quiet is exactly the mode
+// such a run is invoked in. Still suppressed in JSON mode, where human text
+// on stdout would corrupt the document.
+func (u *UI) StepAlways(msg string) {
+	if u.jsonMode {
+		return
+	}
+	icon := u.icon(IconInProgress, PlainIconInProgress)
+	if u.plain {
+		_, _ = fmt.Fprintf(u.w, "%s %s\n", icon, stripControl(msg))
+		return
+	}
+	_, _ = fmt.Fprintf(u.w, "%s %s\n", u.brand.Render(icon), u.bold.Render(stripControl(msg)))
+}
+
 // Success prints a success status line (green).
 // Suppressed in quiet mode (--quiet = errors only) and JSON mode.
 func (u *UI) Success(msg string) {

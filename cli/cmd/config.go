@@ -85,7 +85,7 @@ Supported keys:
   auto_pull             Auto-accept container image pulls
   auto_restart          Auto-restart containers after update
   auto_start_after_wipe Auto-start containers after wipe
-  auto_update_cli       Auto-accept CLI self-updates
+  auto_update_cli       Auto-accept CLI self-updates (changelog shown, not paged)
   backend_port          Backend API port
   changelog_view        Default changelog view for 'synthorg update' walk: "highlights" or "commits"
   channel               Update channel
@@ -130,7 +130,8 @@ Supported keys:
   auto_pull              Auto-accept container image pulls: "true" or "false"
   auto_restart           Auto-restart containers after update: "true" or "false"
   auto_start_after_wipe  Auto-start containers after wipe: "true" or "false"
-  auto_update_cli        Auto-accept CLI self-updates: "true" or "false"
+  auto_update_cli        Auto-accept CLI self-updates, printing the changelog
+                         instead of paging it: "true" or "false"
   backend_port           Backend API port: 1-65535
   changelog_view         Default 'synthorg update' walk view: "highlights" or "commits"
   channel                Update channel: "stable" or "dev"

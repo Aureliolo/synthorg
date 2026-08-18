@@ -186,7 +186,38 @@ func TestRenderFallbackNote_plainNoANSI(t *testing.T) {
 	}
 }
 
-func TestStripANSI(t *testing.T) {
+// Trojan-Source code points, written as UTF-8 byte escapes. The literal
+// characters are invisible in a diff, staticcheck rejects them in a string
+// literal (ST1018), and a literal BOM is not legal Go source at all.
+const (
+	rloRune  = "\xe2\x80\xae" // U+202E RIGHT-TO-LEFT OVERRIDE
+	pdfRune  = "\xe2\x80\xac" // U+202C POP DIRECTIONAL FORMATTING
+	lriRune  = "\xe2\x81\xa6" // U+2066 LEFT-TO-RIGHT ISOLATE
+	pdiRune  = "\xe2\x81\xa9" // U+2069 POP DIRECTIONAL ISOLATE
+	zwspRune = "\xe2\x80\x8b" // U+200B ZERO WIDTH SPACE
+	zwjRune  = "\xe2\x80\x8d" // U+200D ZERO WIDTH JOINER
+	bomRune  = "\xef\xbb\xbf" // U+FEFF BYTE ORDER MARK
+	dcsRune  = "\xc2\x90"     // U+0090 DEVICE CONTROL STRING (C1)
+
+	// Invisible format runes outside the bidi and zero-width blocks above.
+	// Each renders as nothing, so each can pad a version label into looking
+	// like a different one.
+	wordJoinerRune  = "\xe2\x81\xa0"     // U+2060 WORD JOINER
+	invisiblePlus   = "\xe2\x81\xa4"     // U+2064 INVISIBLE PLUS
+	softHyphenRune  = "\xc2\xad"         // U+00AD SOFT HYPHEN
+	arabicLetterMar = "\xd8\x9c"         // U+061C ARABIC LETTER MARK
+	mongolianVowel  = "\xe1\xa0\x8e"     // U+180E MONGOLIAN VOWEL SEPARATOR
+	interlinearAnch = "\xef\xbf\xb9"     // U+FFF9 INTERLINEAR ANNOTATION ANCHOR
+	langTagRune     = "\xf3\xa0\x80\x81" // U+E0001 LANGUAGE TAG
+	tagLetterARune  = "\xf3\xa0\x81\x81" // U+E0041 TAG LATIN CAPITAL LETTER A
+
+	// Line breaks to a Unicode-aware reader, inert to a terminal, which is
+	// why they are the one class the two sanitize forms disagree about.
+	lineSepRune = "\xe2\x80\xa8" // U+2028 LINE SEPARATOR
+	paraSepRune = "\xe2\x80\xa9" // U+2029 PARAGRAPH SEPARATOR
+)
+
+func TestSanitizeUntrusted(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
@@ -200,13 +231,77 @@ func TestStripANSI(t *testing.T) {
 		{"strip_osc_hyperlink", "click \x1b]8;;https://evil.com\x07here\x1b]8;;\x07!", "click here!"},
 		{"empty_unchanged", "", ""},
 		{"no_escape_unchanged", "no escapes here \\x1b not literal", "no escapes here \\x1b not literal"},
+		// The CSI/OSC regex passes all of these; only the control-character
+		// sweep behind it catches them, and each one can overwrite or hide
+		// what the operator is reading.
+		{"strip_bare_cr", "real subject\rspoofed subject", "real subjectspoofed subject"},
+		{"strip_backspace", "safe\x08\x08\x08\x08evil", "safeevil"},
+		{"strip_bel", "ring\x07ring", "ringring"},
+		{"strip_vertical_tab_and_formfeed", "a\x0bb\x0cc", "abc"},
+		{"strip_bare_ris_reset", "before\x1bcafter", "beforecafter"},
+		{"strip_c1_control", "a" + dcsRune + "b", "ab"},
+		{"keep_newline_and_tab", "line one\nline\ttwo", "line one\nline\ttwo"},
+		// Trojan-Source shapes: not control characters, so no control
+		// sweep catches them, and git permits them in a ref name.
+		{"strip_bidi_override", "v1.0.0" + rloRune + "gnitset" + pdfRune, "v1.0.0gnitset"},
+		{"strip_bidi_isolate", "v1" + lriRune + ".0" + pdiRune + ".0", "v1.0.0"},
+		{"strip_zero_width", "v1." + zwspRune + "0." + zwjRune + "0" + bomRune, "v1.0.0"},
+		// The rest of the invisible-format class. None is a control
+		// character or a bidi control, so only the spoofing sweep sees them.
+		{"strip_word_joiner", "v1." + wordJoinerRune + "0.0", "v1.0.0"},
+		{"strip_invisible_operator", "v1.0" + invisiblePlus + ".0", "v1.0.0"},
+		{"strip_soft_hyphen", "v1." + softHyphenRune + "0.0", "v1.0.0"},
+		{"strip_arabic_letter_mark", "v1.0" + arabicLetterMar + ".0", "v1.0.0"},
+		{"strip_mongolian_vowel_separator", "v1" + mongolianVowel + ".0.0", "v1.0.0"},
+		{"strip_interlinear_anchor", "v1.0." + interlinearAnch + "0", "v1.0.0"},
+		// The tag block smuggles a whole hidden string one codepoint at a
+		// time, which is why it goes with its opener rather than alone.
+		{"strip_tag_block", "v1.0.0" + langTagRune + tagLetterARune, "v1.0.0"},
+		// Visible text either side of a dropped rune must survive, or the
+		// sweep would be eating the label it exists to keep readable.
+		{"keep_neighbours_of_dropped_rune", "a" + wordJoinerRune + "b", "ab"},
+		// Bytes that are not text at all: they decode to U+FFFD and the
+		// rebuild writes the replacement rather than passing them through.
+		{"replace_invalid_utf8", "v1\xff.0", "v1\xef\xbf\xbd.0"},
+		// Printable multi-byte text survives, including the bullet, which
+		// shares its leading byte with the zero-width block above.
+		{"keep_multibyte_text", "café • release", "café • release"},
+		// The body form keeps the Unicode separators for the same reason it
+		// keeps '\n': it already carries line structure, so one more
+		// boundary changes nothing about what the text can do.
+		{"keep_line_separators_in_body", "a" + lineSepRune + "b" + paraSepRune + "c", "a" + lineSepRune + "b" + paraSepRune + "c"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := stripANSI(tt.in); got != tt.want {
-				t.Errorf("stripANSI(%q) = %q, want %q", tt.in, got, tt.want)
+			if got := sanitizeUntrusted(tt.in); got != tt.want {
+				t.Errorf("sanitizeUntrusted(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// SanitizeUntrustedLine is for values rendered into a single row, so unlike
+// its multi-line sibling it must also drop the newlines and tabs that would
+// let a hostile value break out of that row.
+func TestSanitizeUntrustedLine_dropsLayoutBreakingWhitespace(t *testing.T) {
+	got := SanitizeUntrustedLine("v1.0.0\nfake release line\tpadded")
+	want := "v1.0.0fake release linepadded"
+	if got != want {
+		t.Errorf("SanitizeUntrustedLine = %q, want %q", got, want)
+	}
+	if strings.ContainsAny(got, "\n\t") {
+		t.Errorf("result still carries layout-breaking whitespace: %q", got)
+	}
+}
+
+// The Unicode separators are the case a terminal-only reading misses: neither
+// moves a cursor, so both survive every control sweep, and both are still a
+// line boundary to whatever later parses the captured output.
+func TestSanitizeUntrustedLine_dropsUnicodeLineSeparators(t *testing.T) {
+	got := SanitizeUntrustedLine("v1.0.0" + lineSepRune + "spoofed" + paraSepRune + "row")
+	want := "v1.0.0spoofedrow"
+	if got != want {
+		t.Errorf("SanitizeUntrustedLine = %q, want %q", got, want)
 	}
 }
 

@@ -86,3 +86,25 @@ func BenchmarkRenderCommitsStyled(b *testing.B) {
 		_ = RenderCommits(sampleCommitsBody, opts)
 	}
 }
+
+// BenchmarkSanitizeUntrustedBody isolates the scrub every renderer above
+// runs before it formats anything. It is measured on its own because the
+// renderers' cost is dominated by lipgloss, which hid a sanitizer that had
+// become the larger half of the render: a sweep per removal class decoded
+// every rune of the body once per class, and only the A/B against the
+// merge-base caught it. A dedicated number makes the next such change
+// visible in the benchmark that owns it.
+func BenchmarkSanitizeUntrustedBody(b *testing.B) {
+	for b.Loop() {
+		_ = sanitizeUntrusted(sampleCommitsBody)
+	}
+}
+
+// BenchmarkSanitizeUntrustedLineLabel measures the single-line form on a
+// version label, which the walk calls once per rendered release row rather
+// than once per body.
+func BenchmarkSanitizeUntrustedLineLabel(b *testing.B) {
+	for b.Loop() {
+		_ = SanitizeUntrustedLine("v0.7.3-dev.42")
+	}
+}

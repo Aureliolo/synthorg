@@ -1,8 +1,10 @@
-// Package ui walk.go contains the bubbletea-based per-version Highlights
-// walk used by `synthorg update` to show release context between installed
-// and target versions. One Program runs per batch of <=3 versions; the
-// caller is responsible for orchestrating multiple batches and threading
-// session-level toggle state across them via WalkBatchResult.FinalView.
+// Package ui walk.go contains the per-version Highlights rendering used by
+// `synthorg update` to show release context between installed and target
+// versions, in two presentations over one set of pre-rendered content: an
+// interactive bubbletea Program, one per batch of <=3 versions, with the
+// caller orchestrating the batches and threading session-level toggle state
+// across them via WalkBatchResult.FinalView; and RenderWalkStatic, which
+// returns every version as a plain string for callers that cannot page.
 package ui
 
 import (
@@ -67,9 +69,10 @@ type WalkBatchInput struct {
 	Width, Height int
 	// Options carries colour / plain / quiet flags from GlobalOpts.
 	Options Options
-	// Output is the writer bubbletea drives. The walk gate guarantees the
-	// writer is a TTY before RunWalkBatch is invoked, so this is the same
-	// stream the surrounding command writes summary / fallback lines to.
+	// Output is the writer bubbletea drives. RunWalkBatch is reached only
+	// when the caller selects its interactive presentation, which requires
+	// a TTY writer, so this is the same stream the surrounding command
+	// writes summary / fallback lines to.
 	// Falls back to os.Stdout when nil so existing call sites that haven't
 	// been updated still work.
 	Output io.Writer
@@ -132,7 +135,6 @@ type walkModel struct {
 type changelogContents struct {
 	highlights string // empty if no Highlights block
 	commits    string // never empty (always falls back to commit log)
-	header     string // "── v0.7.3 ────────"
 }
 
 // newWalkModel constructs the bubbletea model for the supplied batch input.
@@ -140,26 +142,8 @@ type changelogContents struct {
 // viewport can swap between them without re-running the renderer on every
 // keypress.
 func newWalkModel(in WalkBatchInput) walkModel {
-	view := in.InitialView
-	if view != viewCommits {
-		view = viewHighlights
-	}
-	contents := make([]changelogContents, len(in.Versions))
-	toggleable := make([]bool, len(in.Versions))
-	for i, r := range in.Versions {
-		hl, ok := selfupdate.ExtractHighlights(r.Body)
-		toggleable[i] = ok
-		var hlRendered string
-		if ok {
-			hlRendered = RenderHighlights(hl, in.Options)
-		}
-		commitsRendered := RenderCommits(selfupdate.ExtractCommits(r.Body), in.Options)
-		contents[i] = changelogContents{
-			highlights: hlRendered,
-			commits:    commitsRendered,
-			header:     versionHeader(r, in.Options),
-		}
-	}
+	view := normalizeChangelogView(in.InitialView)
+	contents, toggleable := buildChangelogContents(in.Versions, in.Options)
 
 	width, height := initialDimensions(in.Width, in.Height)
 	m := walkModel{
@@ -179,6 +163,77 @@ func newWalkModel(in WalkBatchInput) walkModel {
 	m.viewport = vp
 	m.loadCurrentContent()
 	return m
+}
+
+// buildChangelogContents pre-renders both views for every version and reports
+// per-version toggleability (false when the release carries no Highlights
+// block). Shared by the interactive model and RenderWalkStatic so "what does
+// this release render as" has one answer.
+func buildChangelogContents(versions []selfupdate.Release, opts Options) ([]changelogContents, []bool) {
+	contents := make([]changelogContents, len(versions))
+	toggleable := make([]bool, len(versions))
+	for i, r := range versions {
+		hl, ok := selfupdate.ExtractHighlights(r.Body)
+		toggleable[i] = ok
+		var hlRendered string
+		if ok {
+			hlRendered = RenderHighlights(hl, opts)
+		}
+		contents[i] = changelogContents{
+			highlights: hlRendered,
+			commits:    RenderCommits(selfupdate.ExtractCommits(r.Body), opts),
+		}
+	}
+	return contents, toggleable
+}
+
+// normalizeChangelogView resolves an unset or unrecognised view to the
+// highlights default, so a config value this binary does not know cannot
+// leave the walk rendering nothing.
+func normalizeChangelogView(view changelogView) changelogView {
+	if view == viewCommits {
+		return viewCommits
+	}
+	return viewHighlights
+}
+
+// selectContent picks which pre-rendered view a version displays: a release
+// with no Highlights block only ever has a commit log to show, whatever view
+// the caller asked for.
+func selectContent(c changelogContents, toggleable bool, view changelogView) string {
+	if !toggleable || view == viewCommits {
+		return c.commits
+	}
+	return c.highlights
+}
+
+// RenderWalkStatic renders every version in the input as one plain string:
+// header, the fallback note where the release has no Highlights block, then
+// the content. No batching, no viewport and no key footer -- the caller
+// prints the block and the terminal's scrollback holds it.
+func RenderWalkStatic(in WalkBatchInput) string {
+	if len(in.Versions) == 0 {
+		return ""
+	}
+	view := normalizeChangelogView(in.InitialView)
+	width, _ := initialDimensions(in.Width, in.Height)
+	contents, toggleable := buildChangelogContents(in.Versions, in.Options)
+
+	var sb strings.Builder
+	for i, r := range in.Versions {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(renderVersionHeader(r, i, len(in.Versions), width, in.Options))
+		sb.WriteByte('\n')
+		if !toggleable[i] {
+			sb.WriteString(RenderFallbackNote(in.Options))
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(selectContent(contents[i], toggleable[i], view))
+		sb.WriteByte('\n')
+	}
+	return sb.String()
 }
 
 // initialDimensions provides sane fallback values when the caller does not
@@ -251,13 +306,17 @@ func (m walkModel) viewportHeight() int {
 // versionHeader renders the "── v0.7.3 ─────────────── [1/3]" line shown
 // above every version's content. The position indicator is added in
 // walkModel.View() so it can include the live idx.
+//
+// The tag name is remote: git's ref rules keep control bytes out of it, but
+// they permit the bidi overrides that reorder what an operator reads in the
+// one string identifying what is about to be installed.
 func versionHeader(r selfupdate.Release, opts Options) string {
 	plain := opts.NoColor || opts.Plain
 	style := lipgloss.NewStyle()
 	if !plain {
 		style = style.Foreground(colorBrand).Bold(true)
 	}
-	return style.Render(r.TagName)
+	return style.Render(SanitizeUntrustedLine(r.TagName))
 }
 
 // Init implements tea.Model. We request an initial window size so the
@@ -399,17 +458,7 @@ func (m *walkModel) loadCurrentContent() {
 		m.viewport.SetContent("")
 		return
 	}
-	c := m.contents[m.idx]
-	if !m.toggleable[m.idx] {
-		// Force commits view when no highlights exist.
-		m.viewport.SetContent(c.commits)
-		return
-	}
-	if m.view == viewHighlights {
-		m.viewport.SetContent(c.highlights)
-	} else {
-		m.viewport.SetContent(c.commits)
-	}
+	m.viewport.SetContent(selectContent(m.contents[m.idx], m.toggleable[m.idx], m.view))
 }
 
 // onLastInBatch reports whether the current version is the last one in this
@@ -463,20 +512,24 @@ func (m walkModel) renderView() string {
 // renderHeader builds the version-separator line at the top of each version
 // view: "── v0.7.3 ───────────────── [1/3]".
 func (m walkModel) renderHeader() string {
-	c := m.contents[m.idx]
-	pos := fmt.Sprintf("[%d/%d]", m.idx+1, len(m.versions))
+	return renderVersionHeader(m.versions[m.idx], m.idx, len(m.versions), m.width, m.opts)
+}
+
+// renderVersionHeader renders one version's separator line. Shared by the
+// interactive model and RenderWalkStatic.
+func renderVersionHeader(r selfupdate.Release, idx, total, width int, opts Options) string {
+	pos := fmt.Sprintf("[%d/%d]", idx+1, total)
 	prefix := "── "
-	if m.opts.Plain {
+	if opts.Plain {
 		prefix = "-- "
 	}
-	tag := c.header // already styled
-	rule := strings.Repeat(separatorRune(m.opts), separatorWidth(m.width, tagPlainWidth(m.versions[m.idx].TagName), len(pos)))
-	plain := m.opts.NoColor || m.opts.Plain
+	rule := strings.Repeat(separatorRune(opts), separatorWidth(width, tagPlainWidth(r.TagName), len(pos)))
+	plain := opts.NoColor || opts.Plain
 	muted := lipgloss.NewStyle()
 	if !plain {
 		muted = muted.Foreground(colorMuted)
 	}
-	return muted.Render(prefix) + tag + " " + muted.Render(rule+" "+pos)
+	return muted.Render(prefix) + versionHeader(r, opts) + " " + muted.Render(rule+" "+pos)
 }
 
 // separatorRune returns the box-drawing rune used for the version separator,

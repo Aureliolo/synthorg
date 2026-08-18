@@ -3,6 +3,7 @@ package ui
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 )
@@ -69,24 +70,216 @@ var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07\x1b]*
 // H2 sections in the release body (e.g. "## Migration notes") are kept.
 var releaseHeadingRe = regexp.MustCompile(`^##\s+\[[^\]]+\](?:\([^)]+\))?(?:\s+\([^)]+\))?\s*$`)
 
-// stripANSI removes ANSI escape sequences from s. Applied at every renderer
-// boundary so user-controlled release-body content cannot inject styling /
-// cursor-movement / clear-screen escapes into the operator's terminal.
-func stripANSI(s string) string {
+// stripEscapes removes the CSI / OSC sequences ansiEscapeRe matches. It is
+// only ever half the job: see sanitizeUntrusted.
+func stripEscapes(s string) string {
 	if !strings.ContainsRune(s, '\x1b') {
 		return s
 	}
 	return ansiEscapeRe.ReplaceAllString(s, "")
 }
 
+// spoofingRanges is the isSpoofingRune vocabulary as inclusive codepoint
+// spans, ascending and non-overlapping, which is what lets the lookup stop
+// at the first span starting above r rather than reading the whole table.
+var spoofingRanges = [...][2]rune{
+	{0x00AD, 0x00AD},   // SOFT HYPHEN
+	{0x061C, 0x061C},   // ARABIC LETTER MARK
+	{0x180E, 0x180E},   // MONGOLIAN VOWEL SEPARATOR
+	{0x200B, 0x200F},   // ZWSP, ZWNJ, ZWJ, LRM, RLM
+	{0x202A, 0x202E},   // LRE, RLE, PDF, LRO, RLO
+	{0x2060, 0x2064},   // WORD JOINER, invisible operators
+	{0x2066, 0x2069},   // LRI, RLI, FSI, PDI
+	{0xFEFF, 0xFEFF},   // zero-width no-break space / BOM
+	{0xFFF9, 0xFFFB},   // interlinear annotation
+	{0xE0000, 0xE007F}, // tag block
+}
+
+// isSpoofingRune reports whether r can visually reorder or hide neighbouring
+// text without being a control character: the bidirectional overrides, marks
+// and isolates behind Trojan-Source spoofing, the zero-width joiners and the
+// invisible format runes, the interlinear annotation controls, and the tag
+// block, which carries a whole hidden string past a reader one codepoint at
+// a time. Git restricts none of them in a ref name, so they survive into the
+// version string an operator reads immediately before consenting to an
+// install. None of them carries meaning in a version label, a commit subject
+// or a release body, so dropping the class outright costs nothing legible.
+func isSpoofingRune(r rune) bool {
+	// Every span sits above ASCII, so the printable majority of a release
+	// body is answered without reaching the table at all.
+	if r < spoofingRanges[0][0] {
+		return false
+	}
+	for _, span := range spoofingRanges {
+		if r < span[0] {
+			return false
+		}
+		if r <= span[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// isControlRune reports whether r acts on a terminal rather than printing in
+// it. keepLayout spares the tab and newline a multi-line block is laid out
+// with; a value that must occupy a single line keeps neither, so a hostile
+// string cannot break out of the row it is rendered into.
+func isControlRune(r rune, keepLayout bool) bool {
+	if keepLayout && (r == '\t' || r == '\n') {
+		return false
+	}
+	return r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F)
+}
+
+// isLineSeparatorRune reports whether r is one of the two Unicode separators
+// that carry no control-character encoding: U+2028 LINE SEPARATOR and U+2029
+// PARAGRAPH SEPARATOR. No common terminal moves the cursor on either, so the
+// multi-line form leaves them be, but a Unicode-aware consumer of the same
+// output -- a log processor splitting on line boundaries -- does treat them as
+// breaks. Git constrains neither in a ref name, so the single-line form drops
+// them for the reason it drops '\n': its whole promise is that the value
+// cannot leave the row it was rendered into.
+func isLineSeparatorRune(r rune) bool {
+	return r == 0x2028 || r == 0x2029
+}
+
+// scrubDrops is the whole removal predicate: the control characters, the
+// Unicode line separators the single-line form cannot keep, and the spoofing
+// runes, behind an ASCII-printable fast exit because that is what almost
+// every byte of a release body is.
+func scrubDrops(r rune, keepLayout bool) bool {
+	if r >= 0x20 && r < 0x7F {
+		return false
+	}
+	if !keepLayout && isLineSeparatorRune(r) {
+		return true
+	}
+	return isControlRune(r, keepLayout) || isSpoofingRune(r)
+}
+
+// scrubDropsASCII is scrubDrops for a byte already known to be ASCII, which
+// narrows the question to the C0 controls and DEL: no spoofing rune is
+// encoded in one byte, so the table lookup cannot apply. Splitting it out
+// keeps the single-byte case, the one that decides almost every byte of a
+// release body, down to two comparisons.
+func scrubDropsASCII(c byte, keepLayout bool) bool {
+	if c >= 0x20 && c != 0x7F {
+		return false
+	}
+	return !keepLayout || (c != '\t' && c != '\n')
+}
+
+// scrubIndex returns the index of the first rune scrubUntrusted has to drop
+// or replace, or -1 when s is already clean.
+//
+// The scan is byte-oriented and decodes only at or above utf8.RuneSelf. That
+// is the whole performance story here: a release body is almost entirely
+// printable ASCII, the walk scrubs one on every "synthorg update", and
+// decoding every rune to ask a per-class predicate about it measured 2.15ns
+// per byte against the 0.01ns the escape strip costs for the same string.
+// Settling the ASCII majority in two comparisons keeps the sweep off the
+// render path's critical cost.
+func scrubIndex(s string, keepLayout bool) int {
+	for i := 0; i < len(s); {
+		c := s[i]
+		// Printable ASCII first and on its own: it is almost every byte of
+		// a release body, and putting any other test ahead of it puts that
+		// test on every byte too.
+		if c >= 0x20 && c < 0x7F {
+			i++
+			continue
+		}
+		if c < utf8.RuneSelf {
+			if scrubDropsASCII(c, keepLayout) {
+				return i
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		// Deferring to scrubDrops rather than restating its classes is what
+		// keeps this scan and the rebuild below answering the same question:
+		// a class listed in one and not the other would leave the rune in
+		// the output whenever it was the only thing wrong with the string.
+		//
+		// RuneError is the one case that belongs here alone, and it covers
+		// two: a byte that is not valid UTF-8, which must not reach a
+		// terminal as though it were text, and a genuine U+FFFD, which the
+		// rebuild simply writes back.
+		if r == utf8.RuneError || scrubDrops(r, keepLayout) {
+			return i
+		}
+		i += size
+	}
+	return -1
+}
+
+// scrubUntrusted removes every control and spoofing rune in a single pass.
+//
+// One pass rather than one per class: each class costs a rune decode and an
+// indirect call per rune, and layering two of them behind the escape strip
+// measured 76% slower on the release-body render than the escape strip
+// alone. A clean body is returned as itself, so the common case neither
+// copies nor allocates.
+func scrubUntrusted(s string, keepLayout bool) string {
+	cut := scrubIndex(s, keepLayout)
+	if cut < 0 {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	b.WriteString(s[:cut])
+	for _, r := range s[cut:] {
+		if scrubDrops(r, keepLayout) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// sanitizeUntrusted scrubs remote-sourced multi-line text (a release body)
+// of everything that can act on a terminal rather than print in it, keeping
+// the newlines and tabs the layout needs. Escape sequences go first so their
+// printable payload (the "[0;31m" of a CSI) leaves with them instead of
+// surviving as text.
+//
+// The escape regex alone is not enough: it matches CSI and OSC, leaving bare
+// CR, backspace, BEL and the non-CSI introducers (DCS, APC, and the two-byte
+// RIS full-terminal-reset) free to overwrite or hide what the operator is
+// reading. Git constrains none of those in a commit subject or an author
+// name, and the static renderers write their output raw, where it lands in
+// log files and captured CI output that somebody later cats back to a real
+// terminal.
+func sanitizeUntrusted(s string) string {
+	return scrubUntrusted(stripEscapes(s), true)
+}
+
+// SanitizeUntrustedLine is sanitizeUntrusted for a value that must occupy a
+// single line: a tag name, a version label, a commit subject. It drops the
+// newlines and tabs the multi-line form keeps, and the Unicode line
+// separators that are breaks to everything downstream of the terminal, so a
+// hostile value cannot break out of the row it is rendered into.
+//
+// Exported because the same remote values are printed by the surrounding
+// command (the release index above the changelog), not only by the
+// renderers in this package.
+func SanitizeUntrustedLine(s string) string {
+	return scrubUntrusted(stripEscapes(s), false)
+}
+
 // RenderHighlights formats the styled-block content of a release Highlights
 // section. body is expected to be the output of selfupdate.ExtractHighlights,
-// already stripped of markers / "## Highlights" / attribution. The renderer
-// also strips any embedded ANSI escape sequences from the input so a hostile
-// release body cannot inject terminal styling / cursor moves into the walk.
+// already stripped of markers / "## Highlights" / attribution. The body is
+// remote-controlled, so it passes through sanitizeUntrusted first: not only
+// the embedded ANSI escapes, but the bare control characters, the invalid
+// UTF-8 and the spoofing runes a hostile release body can otherwise use to
+// rewrite what the operator reads. See sanitizeUntrusted for the threat
+// model.
 func RenderHighlights(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
+	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {
@@ -118,12 +311,12 @@ func formatHighlightLine(line string, st changelogStyle) string {
 }
 
 // RenderCommits formats the commit-based changelog of a release. body is
-// expected to be the output of selfupdate.ExtractCommits. ANSI escape
-// sequences embedded in the input are stripped before rendering -- see
-// stripANSI for the threat model.
+// expected to be the output of selfupdate.ExtractCommits, and takes the same
+// sanitizeUntrusted sweep as RenderHighlights before it is rendered -- see
+// there for the threat model.
 func RenderCommits(body string, opts Options) string {
 	st := newChangelogStyle(opts)
-	body = stripANSI(strings.ReplaceAll(body, "\r\n", "\n"))
+	body = sanitizeUntrusted(strings.ReplaceAll(body, "\r\n", "\n"))
 	lines := strings.Split(body, "\n")
 	var out strings.Builder
 	for _, line := range lines {
