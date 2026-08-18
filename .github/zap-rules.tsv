@@ -119,10 +119,9 @@
 # The rule cannot distinguish the two.  Plugin 10049 emits several
 # alert names depending on the headers it sees, so the same id also
 # arrives as "Non-Storable Content", which is pure information; one
-# IGNORE covers both.  What still
-# catches a regression here is the unit test pinning that exact
-# directive string, not this scanner rule; a weaker policy fails the
-# suite.
+# IGNORE covers both.  What still catches a regression here is the
+# unit test pinning that exact directive string, not this scanner
+# rule; a weaker policy fails the suite.
 10049	IGNORE	Storable and Cacheable Content (ETag allowlist, revalidated)
 #
 # 10062 reports any run of 12 or more digits that starts with a card
@@ -139,16 +138,16 @@
 # the long run of clean reports before it was not evidence of
 # anything.  The reported evidence was 672331071866, and it stands on
 # its own: 6723 satisfies the 67dd arm, eight digits follow, the Luhn
-# sum is 50, and the string appears nowhere in this repository.  It
-# was flagged on POST /setup/complete, which the scan reaches as the
-# system role; require_ceo refuses that role, so the body it received
-# was the static "Access denied" envelope whose only variable field is
-# that correlation id.  The
-# High confidence reflects only that ZAP's BIN table holds a record
-# for 672331.  The product handles no card, bank account, SSN or
-# national-id data anywhere, so this rule has nothing of its kind to
-# find, and the suppression cannot be scoped to a URL because every
-# entity id in every response has the same shape.
+# sum is 50, and outside this note the string occurs nowhere in the
+# repository, so it was not static content.  It was flagged on POST
+# /setup/complete, which the scan reaches as the system role;
+# require_ceo refuses that role, so the body it received was the
+# static "Access denied" envelope whose only variable field is that
+# correlation id.  The High confidence reflects only that ZAP's BIN
+# table holds a record for 672331.  The product handles no card, bank
+# account, SSN or national-id data anywhere, so this rule has nothing
+# of its kind to find, and the suppression cannot be scoped to a URL
+# because every entity id in every response has the same shape.
 # What this row also covers, and should not be read as denying: an
 # operator-authored string can reach a response body (the chosen
 # embedder model reference in embedder_failure_reason, an agent,
