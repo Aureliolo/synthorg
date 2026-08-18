@@ -182,6 +182,10 @@ async def _build_tool_registry(
         sandbox_backends=sandbox_backends,
         git_log_max_count=git_log_max_count,
         code_runner_output_tail_limit=code_runner_output_tail_limit,
+        # Handed the resolver rather than a resolved number: the command
+        # ceiling is read per command, so an operator raising it applies to
+        # the next command an agent runs rather than to the next rebuild.
+        config_resolver=resolver,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),

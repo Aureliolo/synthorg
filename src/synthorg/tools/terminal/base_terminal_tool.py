@@ -18,6 +18,7 @@ from synthorg.core.normalization import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.terminal import TERMINAL_COMMAND_BLOCKED
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.base import BaseTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.terminal.config import TerminalConfig
@@ -42,6 +43,7 @@ class BaseTerminalTool(BaseTool, ABC):
         action_type: str | None = None,
         sandbox: SandboxBackend | None = None,
         config: TerminalConfig | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         """Initialize a terminal tool with sandbox and config.
 
@@ -52,6 +54,9 @@ class BaseTerminalTool(BaseTool, ABC):
             action_type: Security action type override.
             sandbox: Sandbox backend for isolated command execution.
             config: Terminal tool configuration.
+            config_resolver: Live settings resolver, so the ceilings an
+                operator can change are read per command rather than baked
+                in when the tool was built. ``None`` keeps *config*.
         """
         super().__init__(
             name=name,
@@ -62,11 +67,17 @@ class BaseTerminalTool(BaseTool, ABC):
         )
         self._sandbox = sandbox
         self._config = config or TerminalConfig()
+        self._config_resolver = config_resolver
 
     @property
     def config(self) -> TerminalConfig:
         """The terminal tool configuration."""
         return self._config
+
+    @property
+    def config_resolver(self) -> ConfigResolverProtocol | None:
+        """The live settings resolver, when one is wired."""
+        return self._config_resolver
 
     def _is_command_blocked(self, command: str) -> bool:
         """Check if the command matches any blocklist pattern.

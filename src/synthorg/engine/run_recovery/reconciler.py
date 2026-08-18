@@ -33,7 +33,7 @@ it. The answers are deliberately different in kind:
 """
 
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, NamedTuple, Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,6 +48,7 @@ from synthorg.core.plan_enums import (
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.initiative.tail_stages import is_integration_task
@@ -110,6 +111,23 @@ _UNFILLED_REASON: Final[NotBlankStr] = NotBlankStr(
     "written when the process stopped, and the brief it was written from is "
     "not recoverable. File the initiative again."
 )
+
+
+class _RevivedRows(NamedTuple):
+    """What one plan's rows needed, and what is left to run.
+
+    Attributes:
+        requeued: Rows moved out of an orphaned in-flight status.
+        rejudged: Reviews asked for again.
+        dispatchable: Whether any row still awaits a wave. ``False`` means
+            the plan's answer is whatever the rollup derives from rows that
+            are finished, dead, or parked on somebody, and driving it would
+            gate every wave out and change nothing.
+    """
+
+    requeued: int
+    rejudged: int
+    dispatchable: bool
 
 
 @runtime_checkable
@@ -297,8 +315,14 @@ class RunRecoveryReconciler:
             return _one(skipped=1)
         if plan.status in UNFILLED_STATUSES:
             return _one(failed=int(await self._fail_unfilled(plan)))
-        requeued, rejudged = await self._revive_rows(plan)
-        if plan.status in TAIL_STATUSES:
+        revived = await self._revive_rows(plan)
+        requeued, rejudged = revived.requeued, revived.rejudged
+        # A dispatched plan with nothing left to dispatch is not stranded: its
+        # rows are finished, dead, or parked on somebody, and the answer is
+        # whatever the rollup derives from them. Driving it anyway spends a
+        # whole coordination pass to gate every wave out and change nothing,
+        # every tick, for as long as the plan sits there.
+        if plan.status in TAIL_STATUSES or not revived.dispatchable:
             # The tail stages key their work on an id derived from the plan
             # and read their own state, so one rollup pass re-drives whichever
             # stage the plan sits in without minting a second job.
@@ -309,7 +333,7 @@ class RunRecoveryReconciler:
                 plan_status=plan.status.value,
                 requeued=requeued,
                 rejudged=rejudged,
-                how="tail-recompute",
+                how="tail-recompute" if plan.status in TAIL_STATUSES else "recompute",
             )
             return _one(recomputed=1, requeued=requeued, rejudged=rejudged)
         await self._drive_plan(plan)
@@ -342,7 +366,7 @@ class RunRecoveryReconciler:
                 return found
             offset += TASK_PAGE_SIZE
 
-    async def _revive_rows(self, plan: Plan) -> tuple[int, int]:
+    async def _revive_rows(self, plan: Plan) -> _RevivedRows:
         """Give *plan*'s stranded rows something watching them again.
 
         Two shapes, and they need opposite treatment. A row that was RUNNING
@@ -360,25 +384,37 @@ class RunRecoveryReconciler:
             plan: The plan whose rows to revive.
 
         Returns:
-            ``(requeued, rejudged)``.
+            What was moved, and whether any row is left for a wave to run.
         """
+        tasks = [
+            task
+            for task in await self._plan_tasks(plan)
+            if task.plan_item_id is not None or is_integration_task(task, plan)
+        ]
         if self._defers_to_queue:
             logger.debug(
                 RUN_RECOVERY_PLAN_SKIPPED,
                 plan_id=str(plan.id),
                 reason="work-queue-owns-redelivery",
             )
-            return 0, 0
-        tasks = [
-            task
-            for task in await self._plan_tasks(plan)
-            if task.plan_item_id is not None or is_integration_task(task, plan)
-        ]
+            return _RevivedRows(
+                requeued=0,
+                rejudged=0,
+                dispatchable=_has_work_to_dispatch(tasks),
+            )
         moved = 0
         for task in tasks:
             if task.status in ORPHANED_TASK_STATUSES:
                 moved += int(await self._requeue(task))
-        return moved, await self._rejudge_stranded_reviews(tasks)
+        rejudged = await self._rejudge_stranded_reviews(tasks)
+        # Read from the rows as they were, plus what this pass just moved: a
+        # requeue puts a row back in front of a wave, and a re-judged review
+        # can send its work back, so either means there is something to run.
+        return _RevivedRows(
+            requeued=moved,
+            rejudged=rejudged,
+            dispatchable=_has_work_to_dispatch(tasks) or bool(moved or rejudged),
+        )
 
     async def _rejudge_stranded_reviews(self, tasks: Sequence[Task]) -> int:
         """Ask the gates again for rows in review that nobody is judging.
@@ -511,6 +547,21 @@ class RunRecoveryReconciler:
             reason="decomposition-did-not-survive-restart",
         )
         return True
+
+
+def _has_work_to_dispatch(tasks: Sequence[Task]) -> bool:
+    """Whether driving *tasks*' plan could still dispatch anything.
+
+    Two ways it can. A row that still awaits dispatch is one a wave would
+    run, asked through the coordination gate's own rule rather than a second
+    list here, since both would be answering the same question. And NO rows
+    at all means the dispatch stopped before it wrote the tree: the plan's
+    work is not finished, it was never filed, and the drive is what files it.
+
+    Returns:
+        Whether a drive has something to do.
+    """
+    return not tasks or any(awaits_dispatch(task.status) for task in tasks)
 
 
 def _one(

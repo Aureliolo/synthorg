@@ -12,6 +12,7 @@ must not wait out an interval before anybody asks.
 """
 
 import asyncio
+from collections.abc import Sequence
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
@@ -20,6 +21,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
@@ -93,6 +95,38 @@ async def drive_plan_waves(app_state: AppState, plan: Plan) -> None:
             ledger.release(plan_id)
 
 
+async def _file_missing_children(
+    app_state: AppState,
+    children: Sequence[Task],
+) -> None:
+    """File the plan's child rows that do not exist yet, and only those.
+
+    The dispatch path files the whole tree before the first wave runs, so a
+    process that stopped between approving a plan and finishing that write
+    leaves a plan with no work queryable at all: nothing to dispatch, nothing
+    to derive a status from, and no route back.
+
+    Only the ABSENT rows are written. The ids are derived from the plan items,
+    so re-saving an existing one would be accepted and would reset the status
+    of every subtask that had already finished, which would undo the run this
+    is trying to rescue.
+
+    Args:
+        app_state: Application state carrying the persistence backend.
+        children: The tasks rebuilt from the plan's work items.
+    """
+    tasks = persistence_of(app_state).tasks
+    missing = [child for child in children if await tasks.get(str(child.id)) is None]
+    if not missing:
+        return
+    await tasks.save_many(tuple(missing))
+    logger.info(
+        RUN_RECOVERY_PLAN_RESUMED,
+        note="filed child rows a stopped dispatch never wrote",
+        child_count=len(missing),
+    )
+
+
 async def _start_drive(app_state: AppState, plan: Plan) -> bool:
     """Build the dispatch and spawn it.
 
@@ -123,6 +157,7 @@ async def _start_drive(app_state: AppState, plan: Plan) -> bool:
     # exist and are NOT re-filed: writing them again would reset the status of
     # every subtask that had already finished.
     decomposition = decomposition_from_plan(plan, parent_task=task)
+    await _file_missing_children(app_state, decomposition.created_tasks)
     agents = await agent_registry_of(app_state).list_active()
     background = asyncio.create_task(
         _run_drive(

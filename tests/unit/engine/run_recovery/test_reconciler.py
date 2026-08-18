@@ -202,9 +202,15 @@ class TestEveryPlanStatusHasAnOwner:
 class TestReconcile:
     async def test_a_dispatched_plan_with_no_driver_is_resumed(self) -> None:
         plan = _plan(status=PlanStatus.EXECUTING)
+        pending = _task(
+            "pending",
+            status=TaskStatus.CREATED,
+            plan_id=plan.id,
+            plan_item_id=as_uuid("item-1"),
+        )
         driven: list[str] = []
         report = await _reconciler(
-            persistence=_persistence(plans=[plan]),
+            persistence=_persistence(plans=[plan], tasks=[pending]),
             driven=driven,
         ).reconcile(trigger="boot")
         assert driven == [str(plan.id)]
@@ -278,6 +284,57 @@ class TestReconcile:
             engine=_engine(moved=moved),
         ).reconcile(trigger="boot")
         assert moved == [f"{assembly.id}:{TaskStatus.INTERRUPTED.value}"]
+
+    async def test_a_plan_with_nothing_left_to_dispatch_is_not_driven(self) -> None:
+        # Watched live: the sweep re-drove one plan every tick, each drive
+        # gating every wave out and changing nothing, because its rows were
+        # all finished, dead, or parked on a person. The answer for a plan
+        # like that is whatever the rollup derives, not another wave sweep.
+        plan = _plan(status=PlanStatus.EXECUTING)
+        settled = _task(
+            "settled",
+            status=TaskStatus.FAILED,
+            plan_id=plan.id,
+            plan_item_id=as_uuid("item-1"),
+        )
+        driven: list[str] = []
+        recomputed: list[str] = []
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[settled]),
+            driven=driven,
+            recomputed=recomputed,
+        ).reconcile(trigger="periodic")
+        assert driven == []
+        assert recomputed == [str(plan.id)]
+        assert report.recomputed == 1
+
+    async def test_a_plan_whose_rows_were_never_filed_is_driven(self) -> None:
+        # The other side of the same test: no rows at all means the dispatch
+        # stopped before writing the tree, so the work is not finished, it was
+        # never filed, and only the drive files it.
+        plan = _plan(status=PlanStatus.APPROVED)
+        driven: list[str] = []
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[]),
+            driven=driven,
+        ).reconcile(trigger="boot")
+        assert driven == [str(plan.id)]
+        assert report.resumed == 1
+
+    async def test_a_requeued_row_makes_the_plan_worth_driving(self) -> None:
+        plan = _plan(status=PlanStatus.EXECUTING)
+        stranded = _task(
+            "stranded",
+            status=TaskStatus.IN_PROGRESS,
+            plan_id=plan.id,
+            plan_item_id=as_uuid("item-1"),
+        )
+        driven: list[str] = []
+        await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[stranded]),
+            driven=driven,
+        ).reconcile(trigger="boot")
+        assert driven == [str(plan.id)]
 
     async def test_a_review_nobody_is_judging_is_asked_again(self) -> None:
         # The task produced its work and the session judging it went with its
