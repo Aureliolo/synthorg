@@ -17,7 +17,12 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.completion_oracle.tool_names import (
+    SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
+)
 from synthorg.engine.review_session import as_review_session
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.permissions import ToolPermissionChecker
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -67,6 +72,27 @@ class TestNarrowing:
         assert session.role == holder.role
         assert session.department == holder.department
         assert session.model == holder.model
+
+    def test_the_session_can_file_the_verdict_it_exists_to_file(self) -> None:
+        """Narrowing must not remove the one thing judging is for.
+
+        The verdict tool is ``ToolCategory.OTHER``, which STANDARD does not
+        admit, so the category check alone denies it. A live run handed the
+        reviewer the tool in its registry and refused it at the invoke
+        boundary twice, after which the session went looking for another way
+        to file and never produced a verdict at all.
+        """
+        session = as_review_session(_privileged_holder())
+        permissions = ToolPermissionChecker.from_permissions(session.tools)
+        assert permissions.is_permitted(
+            SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME, ToolCategory.OTHER
+        )
+
+    def test_the_allowance_is_that_one_tool_and_not_the_category(self) -> None:
+        """Allow by name, so no other OTHER-category tool comes with it."""
+        session = as_review_session(_privileged_holder())
+        permissions = ToolPermissionChecker.from_permissions(session.tools)
+        assert not permissions.is_permitted("some_other_tool", ToolCategory.OTHER)
 
     def test_the_roster_identity_is_untouched(self) -> None:
         holder = _privileged_holder()

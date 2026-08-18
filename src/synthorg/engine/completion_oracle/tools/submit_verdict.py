@@ -29,6 +29,9 @@ from synthorg.engine.completion_oracle.runtime_context import (
     CompletionOracleRuntimeContext,
     get_completion_oracle_runtime_context,
 )
+from synthorg.engine.completion_oracle.tool_names import (
+    SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
+)
 from synthorg.engine.completion_oracle.tools._args import (
     SubmitCompletionOracleVerdictArgs,
 )
@@ -43,10 +46,10 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
 
-SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME: Final[str] = (
-    "submit_completion_oracle_verdict"
-)
-"""Canonical tool name. Used by the gate prompt and by tests."""
+__all__ = [
+    "SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME",
+    "SubmitCompletionOracleVerdictTool",
+]
 
 _TOOL_DESCRIPTION: Final[str] = (
     "Submit your independent completion-review verdict for the deliverable "
