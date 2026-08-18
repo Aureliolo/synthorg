@@ -1486,7 +1486,8 @@
       "state_slice_fields": [
         "invocation_tracker",
         "tool_execution",
-        "sandbox_reconciled_at"
+        "sandbox_reconciled_at",
+        "web_research"
       ]
     },
     {
@@ -1548,6 +1549,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-17T12:19:13.460035Z",
+  "generated_at": "2026-08-18T05:23:51.109537Z",
   "schema_version": 1
 }

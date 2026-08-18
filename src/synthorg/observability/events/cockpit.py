@@ -14,6 +14,12 @@ COCKPIT_INTERVENTION_INITIATED: Final[str] = "cockpit.intervention.initiated"
 COCKPIT_INTERVENTION_APPLIED: Final[str] = "cockpit.intervention.applied"
 COCKPIT_INTERVENTION_FAILED: Final[str] = "cockpit.intervention.failed"
 
+COCKPIT_SNAPSHOT_FAILED: Final[str] = "cockpit.snapshot.failed"
+"""A per-task activity row could not be built, so the whole snapshot failed.
+The rows fan out under a ``TaskGroup`` and a task's cost cannot be defaulted
+without under-reporting it, so one unreadable store fails the read rather than
+publishing a snapshot that silently omits or under-counts work."""
+
 STEERING_DIRECTIVE_ISSUED: Final[str] = "steering.directive.issued"
 STEERING_DIRECTIVE_ADOPTED: Final[str] = "steering.directive.adopted"
 STEERING_DIRECTIVE_SEEDED: Final[str] = "steering.directive.seeded"

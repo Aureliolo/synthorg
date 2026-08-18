@@ -14,19 +14,21 @@ task, chosen by whether the work is still moving.
 import asyncio
 from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, NoReturn
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical_unwrapped
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     COCKPIT_RUNAWAY_DETECTED,
+    COCKPIT_SNAPSHOT_FAILED,
     COCKPIT_SNAPSHOT_PUBLISHED,
     COCKPIT_STUCK_DETECTED,
 )
@@ -55,6 +57,42 @@ def _sum_costs(costs: Iterable[float]) -> float:
         Arithmetic sum of ``costs``.
     """
     return sum(costs)  # lint-allow: currency-aggregation -- single budget
+
+
+def _fail_snapshot(
+    group: BaseExceptionGroup[Exception],
+    *,
+    status: TaskStatus,
+) -> NoReturn:
+    """Re-raise a failed activity fan-out as the error the store reported.
+
+    The repositories behind a row already raise typed ``DomainError``
+    subclasses, but a ``TaskGroup`` wraps whatever a child raises, so what
+    would otherwise leave this boundary is a group rather than the typed
+    error. The API's exception handler matches on the domain hierarchy, so an
+    escaping group is served as an unclassified 500 while the store itself
+    reported something it could have named.
+
+    A row is not defaulted on the way past: a task whose spend cannot be read
+    is not a task with no spend, and publishing it as one under-reports work
+    against the budget the runaway check compares to.
+
+    Raises:
+        BaseException: The first leaf of *group*, chained from it. Groups
+            nest when a child is itself a group, so the leftmost spine is
+            walked rather than taking ``exceptions[0]`` and raising another
+            wrapper.
+    """
+    cause: BaseException = group
+    while isinstance(cause, BaseExceptionGroup) and cause.exceptions:
+        cause = cause.exceptions[0]
+    logger.warning(
+        COCKPIT_SNAPSHOT_FAILED,
+        status=status.value,
+        error_type=type(cause).__name__,
+        error=safe_error_description(cause),
+    )
+    raise cause from group
 
 
 class AgentActivity(BaseModel):
@@ -163,14 +201,19 @@ class CockpitService:
             tasks, _ = await self._task_engine.list_tasks(status=status)
             if not tasks:
                 continue
-            async with asyncio.TaskGroup() as tg:
-                handles = [
-                    tg.create_task(
-                        self._build_activity(task, stuck_cutoff, runaway_pct)
-                    )
-                    for task in tasks
-                ]
-            activities.extend(handle.result() for handle in handles)
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    handles = [
+                        tg.create_task(
+                            self._build_activity(task, stuck_cutoff, runaway_pct)
+                        )
+                        for task in tasks
+                    ]
+                activities.extend(handle.result() for handle in handles)
+            except* (MemoryError, RecursionError) as fatal_eg:
+                reraise_critical_unwrapped(fatal_eg)
+            except* Exception as eg:  # noqa: BLE001 -- re-raised by _fail_snapshot
+                _fail_snapshot(eg, status=status)
 
         stuck = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_stuck)
         runaway = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_runaway)

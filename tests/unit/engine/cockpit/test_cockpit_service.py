@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -128,6 +129,24 @@ class _FramesLandingBetweenReads(FakeFlightRecorderFrameRepository):
         return aggregate
 
 
+class _UnreadableFrames(FakeFlightRecorderFrameRepository):
+    """A frame store that fails its read the way a real backend does."""
+
+    @override
+    async def get_aggregate(
+        self,
+        filter_spec: FlightRecorderFrameFilterSpec,
+    ) -> FlightRecorderFrameAggregate:
+        """Refuse the read.
+
+        Raises:
+            QueryError: Always, matching what both shipped backends raise
+                when the aggregate query cannot run.
+        """
+        msg = "Failed to aggregate flight recorder frames"
+        raise QueryError(msg)
+
+
 class TestCockpitService:
     async def test_snapshot_lists_active_work(
         self, sample_task_with_criteria: Task
@@ -185,6 +204,29 @@ class TestCockpitService:
         )
         assert snapshot.agents[0].is_runaway is True
         assert snapshot.runaway_agents == ("carol",)
+
+    async def test_an_unreadable_store_surfaces_its_own_error(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """A store failure must reach the caller as the error the store raised.
+
+        The rows fan out under a ``TaskGroup``, which wraps whatever a child
+        raises. Both backends already raise a typed ``QueryError``, so an
+        escaping group would take a fault the store had named and hand the
+        API's exception handler something outside the domain hierarchy: an
+        unclassified 500 in place of a classified one.
+
+        ``pytest.raises`` is the whole assertion here -- it does not match a
+        group carrying the error, so this fails if the wrapper comes back.
+        """
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=0.0)
+        service = _service((task,), _UnreadableFrames())
+
+        with pytest.raises(QueryError):
+            await service.get_live_snapshot(
+                stuck_idle_minutes=10.0,
+                runaway_cost_percent=150.0,
+            )
 
     async def test_no_active_work_empty_snapshot(self) -> None:
         repo = FakeFlightRecorderFrameRepository()
