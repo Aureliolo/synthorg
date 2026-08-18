@@ -1,7 +1,6 @@
 """Unit tests for the charter interview orchestration service."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 
 import pytest
 
@@ -9,22 +8,17 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
-    BudgetEnvelope,
-    CharterDraft,
     CharterEditArgs,
     InterviewDecision,
     InterviewTurnArgs,
-    ProjectCharter,
 )
 from synthorg.meta.charter.service import CharterInterviewService
-from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import (
     CharterNotEditableError,
     CharterNotFoundError,
     ConversationClosedError,
     ConversationNotFoundError,
 )
-from synthorg.persistence.charter_protocol import CharterFilterSpec
 from tests._shared import FakeClock
 from tests._shared.conversation_fakes import (
     FakeConversationRepo as _FakeConversationRepo,
@@ -32,149 +26,23 @@ from tests._shared.conversation_fakes import (
 from tests._shared.conversation_fakes import (
     FakeTurnRepo as _FakeTurnRepo,
 )
+from tests.unit.meta.charter.fakes import (
+    START as _START,
+)
+from tests.unit.meta.charter.fakes import (
+    FakeCharterRepo as _FakeCharterRepo,
+)
+from tests.unit.meta.charter.fakes import (
+    ScriptedStrategy as _ScriptedStrategy,
+)
+from tests.unit.meta.charter.fakes import (
+    draft as _draft,
+)
+from tests.unit.meta.charter.fakes import (
+    service as _service,
+)
 
 pytestmark = pytest.mark.unit
-
-_START = datetime(2026, 5, 22, 9, 0, 0, tzinfo=UTC)
-
-
-def _draft(**overrides: object) -> CharterDraft:
-    defaults: dict[str, object] = {
-        "title": "Memory layer",
-        "brief": "Build a better memory layer.",
-        "success_criteria": (NotBlankStr("recall +10%"),),
-        "envelope": BudgetEnvelope(amount=5000.0, currency="USD"),
-        "proposed_project_name": "memory-layer",
-    }
-    defaults.update(overrides)
-    return CharterDraft(**defaults)  # type: ignore[arg-type]
-
-
-class _FakeCharterRepo:
-    def __init__(self) -> None:
-        self.items: dict[str, ProjectCharter] = {}
-
-    async def save(self, entity: ProjectCharter) -> None:
-        self.items[entity.id] = entity
-
-    async def get(self, entity_id: str) -> ProjectCharter | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ProjectCharter, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
-
-    async def query(
-        self,
-        filter_spec: CharterFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ProjectCharter, ...]:
-        rows = [
-            c
-            for c in self.items.values()
-            if (filter_spec.status is None or c.status is filter_spec.status)
-            and (
-                filter_spec.conversation_id is None
-                or c.conversation_id == filter_spec.conversation_id
-            )
-            and (
-                filter_spec.project_id is None or c.project_id == filter_spec.project_id
-            )
-            and (
-                filter_spec.created_by is None or c.created_by == filter_spec.created_by
-            )
-        ]
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: CharterFilterSpec) -> int:
-        return len(await self.query(filter_spec, limit=10_000))
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: CharterStatus,
-        to_state: CharterStatus,
-        **updates: object,
-    ) -> bool:
-        current = self.items.get(entity_id)
-        if current is None or current.status is not from_state:
-            return False
-        patch: dict[str, object] = {"status": to_state}
-        for key in (
-            "approved_at",
-            "approved_by",
-            "forecast_id",
-            "correlation_id",
-            "task_id",
-        ):
-            if key in updates:
-                patch[key] = updates[key]
-        self.items[entity_id] = current.model_copy(update=patch)
-        return True
-
-    async def save_edit_if_version(
-        self,
-        entity: ProjectCharter,
-        *,
-        expected_version: int,
-    ) -> bool:
-        current = self.items.get(entity.id)
-        if (
-            current is None
-            or current.version != expected_version
-            or current.status is not CharterStatus.DRAFTED
-        ):
-            return False
-        self.items[entity.id] = entity
-        return True
-
-
-class _ScriptedStrategy:
-    """Returns a queued sequence of interview decisions, one per turn."""
-
-    def __init__(self, decisions: list[InterviewDecision]) -> None:
-        self._decisions = decisions
-        self.calls = 0
-        self.configs: list[CharterConfig] = []
-
-    async def run_turn(
-        self,
-        history: tuple[ConversationTurn, ...],
-        *,
-        project_id: NotBlankStr | None,
-        config: CharterConfig,
-    ) -> InterviewDecision:
-        del history, project_id
-        self.configs.append(config)
-        decision = self._decisions[self.calls]
-        self.calls += 1
-        return decision
-
-
-def _service(
-    decisions: list[InterviewDecision],
-    *,
-    config: CharterConfig | None = None,
-    clock: FakeClock | None = None,
-    config_provider: Callable[[], Awaitable[CharterConfig]] | None = None,
-) -> tuple[CharterInterviewService, _FakeCharterRepo]:
-    charter_repo = _FakeCharterRepo()
-    service = CharterInterviewService(
-        strategy=_ScriptedStrategy(decisions),
-        config=config or CharterConfig(),
-        conversation_repo=_FakeConversationRepo(),
-        turn_repo=_FakeTurnRepo(),
-        charter_repo=charter_repo,
-        clock=clock or FakeClock(start=_START),
-        config_provider=config_provider,
-    )
-    return service, charter_repo
 
 
 class TestRunTurn:

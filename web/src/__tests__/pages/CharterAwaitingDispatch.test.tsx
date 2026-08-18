@@ -23,6 +23,7 @@ function makeCharter(overrides: Partial<ProjectCharter> = {}): ProjectCharter {
     constraints: ['Single player only'],
     success_criteria: ['An automated test suite passes'],
     scope: { in_scope: ['Core game loop'], out_of_scope: ['Multiplayer'] },
+    assumed_facets: [],
     envelope: { amount: 500, currency: 'EUR', deadline: null },
     status: 'drafted',
     task_id: null,

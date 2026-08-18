@@ -13,6 +13,10 @@ from typing import Final
 CHARTER_INTERVIEW_TURN: Final[str] = "charter.interview.turn"
 CHARTER_INTERVIEW_QUESTION: Final[str] = "charter.interview.question"
 CHARTER_INTERVIEW_DRAFTED: Final[str] = "charter.interview.drafted"
+CHARTER_INTERVIEW_ASSUMPTIONS_PRESSED: Final[str] = (
+    "charter.interview.assumptions_pressed"
+)
+"""A draft was held back and its assumed facets put to the human instead."""
 CHARTER_INTERVIEW_CAP_REACHED: Final[str] = "charter.interview.cap_reached"
 CHARTER_INTERVIEW_RESPONSE_INVALID: Final[str] = "charter.interview.response_invalid"
 CHARTER_INTERVIEW_FAILED: Final[str] = "charter.interview.failed"
@@ -65,6 +69,7 @@ __all__ = [
     "CHARTER_DISPATCH_FAILED",
     "CHARTER_DISPATCH_UNSUCCESSFUL",
     "CHARTER_EDITED",
+    "CHARTER_INTERVIEW_ASSUMPTIONS_PRESSED",
     "CHARTER_INTERVIEW_CAP_REACHED",
     "CHARTER_INTERVIEW_DRAFTED",
     "CHARTER_INTERVIEW_FAILED",

@@ -207,6 +207,16 @@ export const CHANNEL_TYPE_VALUES = [
 ] as const
 export type ChannelType = (typeof CHANNEL_TYPE_VALUES)[number]
 
+export const CHARTER_FACET_VALUES = [
+    'goals',
+    'constraints',
+    'success_criteria',
+    'scope',
+    'envelope',
+    'project',
+] as const
+export type CharterFacet = (typeof CHARTER_FACET_VALUES)[number]
+
 export const CHARTER_STATUS_VALUES = [
     'drafted',
     'approved',

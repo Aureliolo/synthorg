@@ -2344,6 +2344,8 @@ CREATE TABLE project_charters (
         envelope_time_horizon IS NULL
         OR CHAR_LENGTH(TRIM(envelope_time_horizon)) > 0
     ),
+    assumed_facets JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(assumed_facets) = 'array'),
     project_id TEXT
     CHECK (project_id IS NULL OR CHAR_LENGTH(TRIM(project_id)) > 0),
     proposed_project_name TEXT

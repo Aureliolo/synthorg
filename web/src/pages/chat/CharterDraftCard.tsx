@@ -3,6 +3,7 @@ import type { CharterEditRequest, ProjectCharter } from '@/api/types/charter'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
+import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { awaitsDispatch } from '@/stores/charter'
 
@@ -35,12 +36,59 @@ function StringList({ items }: { items: readonly string[] }) {
   )
 }
 
-function LabelledList({ label, items }: { label: string; items: readonly string[] }) {
+function AssumedBadge() {
+  return (
+    <ProvenanceBadge
+      className="border border-warning/40 bg-warning/10 text-warning"
+      title="The org supplied this; you did not."
+    >
+      Assumed
+    </ProvenanceBadge>
+  )
+}
+
+function LabelledList({
+  label,
+  items,
+  assumed = false,
+}: {
+  label: string
+  items: readonly string[]
+  assumed?: boolean
+}) {
   return (
     <div>
-      <h4 className="mb-1 text-sm font-medium">{label}</h4>
+      <h4 className="mb-1 flex items-center gap-2 text-sm font-medium">
+        {label}
+        {assumed && <AssumedBadge />}
+      </h4>
       <StringList items={items} />
     </div>
+  )
+}
+
+type CharterFacet = ProjectCharter['assumed_facets'][number]
+
+const FACET_LABELS: Readonly<Record<CharterFacet, string>> = {
+  goals: 'the goals',
+  constraints: 'the constraints',
+  success_criteria: 'what counts as done',
+  scope: 'what is in and out of scope',
+  envelope: 'the budget and timing',
+  project: 'which project this belongs under',
+}
+
+function AssumptionsNotice({ facets }: { facets: readonly CharterFacet[] }) {
+  // The whole tail of an initiative is scored against these criteria, so an
+  // assumption the operator approves without noticing decides the run.
+  const named = facets.map((facet) => FACET_LABELS[facet]).join(', ')
+  return (
+    <ErrorBanner
+      variant="inline"
+      severity="warning"
+      title="Some of this is our proposal, not your answer"
+      description={`You were asked and did not settle ${named}, so the org filled it in. Edit anything that is wrong before approving.`}
+    />
   )
 }
 
@@ -125,14 +173,31 @@ function CharterDraftActions({
 
 /** The charter's declared shape: what it commits to and what it excludes. */
 function CharterScopeLists({ charter }: { charter: ProjectCharter }) {
+  const assumed = new Set<CharterFacet>(charter.assumed_facets)
   return (
     <>
-      <LabelledList label="Goals" items={charter.goals} />
-      <LabelledList label="Constraints" items={charter.constraints} />
-      <LabelledList label="Success criteria" items={charter.success_criteria} />
+      <LabelledList label="Goals" items={charter.goals} assumed={assumed.has('goals')} />
+      <LabelledList
+        label="Constraints"
+        items={charter.constraints}
+        assumed={assumed.has('constraints')}
+      />
+      <LabelledList
+        label="Success criteria"
+        items={charter.success_criteria}
+        assumed={assumed.has('success_criteria')}
+      />
       <div className="grid gap-grid-gap sm:grid-cols-2">
-        <LabelledList label="In scope" items={charter.scope.in_scope} />
-        <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
+        <LabelledList
+          label="In scope"
+          items={charter.scope.in_scope}
+          assumed={assumed.has('scope')}
+        />
+        <LabelledList
+          label="Out of scope"
+          items={charter.scope.out_of_scope}
+          assumed={assumed.has('scope')}
+        />
       </div>
     </>
   )
@@ -192,6 +257,9 @@ function CharterDraftCardInner({
             title="Approved, but the run never started"
             description="The decision is recorded and nothing is running. Start the run to dispatch the work this charter authorises."
           />
+        )}
+        {charter.assumed_facets.length > 0 && (
+          <AssumptionsNotice facets={charter.assumed_facets} />
         )}
         <InputField
           label="Brief"

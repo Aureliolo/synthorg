@@ -25,7 +25,7 @@ from pydantic import (
 
 from synthorg.budget.currency import CurrencyCode
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.charter.enums import CharterStatus
+from synthorg.meta.charter.enums import CharterFacet, CharterStatus
 
 # ── Charter content building blocks ───────────────────────────────
 
@@ -111,6 +111,11 @@ class CharterDraft(BaseModel):
         project_id: Existing project to file the run under (XOR).
         proposed_project_name: Name of a new project to create (XOR).
         proposed_project_description: Description for the new project.
+        assumed_facets: The facets this draft fills from the org's own
+            judgement rather than from what the human said. A charter
+            authorises a body of work and a budget, so a facet the human
+            never spoke to is the org's proposal to them, not their brief
+            back to it, and the difference has to survive to the approval.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -125,6 +130,7 @@ class CharterDraft(BaseModel):
     project_id: NotBlankStr | None = None
     proposed_project_name: NotBlankStr | None = None
     proposed_project_description: str = ""
+    assumed_facets: tuple[CharterFacet, ...] = ()
 
     @model_validator(mode="after")
     def _validate_binding(self) -> Self:
@@ -213,6 +219,9 @@ class ProjectCharter(BaseModel):
             minted it. Only an APPROVED charter may carry one, and an
             APPROVED charter without one is authorised work that has not
             been dispatched.
+        assumed_facets: The facets the interview supplied itself after
+            asking, so the operator approving them knows which lines are
+            their answer and which are the org's proposal.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -230,6 +239,7 @@ class ProjectCharter(BaseModel):
     success_criteria: tuple[NotBlankStr, ...] = ()
     scope: ScopeBoundaries = Field(default_factory=ScopeBoundaries)
     envelope: BudgetEnvelope
+    assumed_facets: tuple[CharterFacet, ...] = ()
 
     project_id: NotBlankStr | None = None
     proposed_project_name: NotBlankStr | None = None

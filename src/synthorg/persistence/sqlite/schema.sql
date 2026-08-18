@@ -2429,6 +2429,8 @@ CREATE TABLE project_charters (
         envelope_time_horizon IS NULL
         OR LENGTH(TRIM(envelope_time_horizon)) > 0
     ),
+    assumed_facets TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(assumed_facets) AND JSON_TYPE(assumed_facets) = 'array'),
     project_id TEXT CHECK (project_id IS NULL OR LENGTH(TRIM(project_id)) > 0),
     proposed_project_name TEXT
     CHECK (

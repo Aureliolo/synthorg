@@ -56,7 +56,7 @@ def _encode_array_jsonb(values: tuple[str, ...]) -> object:
 _UPSERT_SQL = f"""
     INSERT INTO project_charters ({CHARTER_COLUMNS})
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         conversation_id = EXCLUDED.conversation_id,
         created_by = EXCLUDED.created_by,
@@ -73,6 +73,7 @@ _UPSERT_SQL = f"""
         envelope_currency = EXCLUDED.envelope_currency,
         envelope_deadline = EXCLUDED.envelope_deadline,
         envelope_time_horizon = EXCLUDED.envelope_time_horizon,
+        assumed_facets = EXCLUDED.assumed_facets,
         project_id = EXCLUDED.project_id,
         proposed_project_name = EXCLUDED.proposed_project_name,
         proposed_project_description = EXCLUDED.proposed_project_description,
