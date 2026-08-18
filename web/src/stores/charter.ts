@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import * as charterApi from '@/api/endpoints/charter'
 import type { CharterFilters } from '@/api/endpoints/charter'
+import type { PaginatedResult } from '@/api/client'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -41,6 +42,17 @@ interface CharterState {
    * drafted charter and its edit/approve/cancel actions target it.
    */
   hydrateFromTurn: (turn: InterviewTurnResult) => void
+  /**
+   * Adopt the charter still awaiting a run, read from the backend.
+   *
+   * The draft only ever arrived on a turn result, so it lived in this tab and
+   * nowhere else: a reload, a second tab, or a dispatch that failed after the
+   * approval was recorded all left the operator with a charter the backend
+   * holds and the dashboard cannot show. The backend already treats an
+   * APPROVED charter with no run as resumable; this is what lets an operator
+   * reach that.
+   */
+  hydrateOpenCharter: () => Promise<void>
   editDraft: (
     id: string,
     data: CharterEditRequest,
@@ -129,6 +141,46 @@ async function editDraftImpl(
     return null
   } finally {
     if (_draftIsCurrent(get, generation)) set({ mutating: false })
+  }
+}
+
+/** Whether this charter is still waiting for a run to be started for it. */
+export function awaitsDispatch(charter: ProjectCharter): boolean {
+  if (charter.status === 'drafted') return true
+  // The backend's own rule (`require_dispatchable`): an approved charter that
+  // names no run is one whose dispatch did not land, and approving it again
+  // resumes it rather than being refused.
+  return charter.status === 'approved' && charter.task_id === null
+}
+
+async function hydrateOpenCharterImpl(
+  set: CharterSet,
+  get: CharterGet,
+): Promise<void> {
+  // Never over an active draft: a turn in this tab is fresher than anything a
+  // list read can say, and adopting the list's copy would drop edits the
+  // operator has not saved.
+  if (get().draftCharter !== null) return
+  try {
+    const pages: PaginatedResult<ProjectCharter>[] = await Promise.all([
+      charterApi.listCharters({ status: 'drafted' }),
+      charterApi.listCharters({ status: 'approved' }),
+    ])
+    const open = pages
+      .flatMap((page) => page.data)
+      .filter(awaitsDispatch)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    const newest = open[0]
+    if (newest === undefined || get().draftCharter !== null) return
+    set((state) => ({
+      draftCharter: newest,
+      draftGeneration: state.draftGeneration + 1,
+    }))
+  } catch (err) {
+    // Read-only hydration: a failure leaves the panel in its empty state,
+    // which is what it showed before this existed. Logged rather than
+    // toasted, because nothing the operator did failed.
+    log.error('Open charter hydration failed', sanitizeForLog(err))
   }
 }
 
@@ -222,6 +274,8 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
       draftCharter: turn.charter ?? state.draftCharter,
       draftGeneration: state.draftGeneration + 1,
     })),
+
+  hydrateOpenCharter: () => hydrateOpenCharterImpl(set, get),
 
   editDraft: (id, data) => editDraftImpl(set, get, id, data),
   approve: (id) => approveImpl(set, get, id),

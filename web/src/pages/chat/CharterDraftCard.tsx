@@ -1,8 +1,10 @@
 import { memo, useState } from 'react'
 import type { CharterEditRequest, ProjectCharter } from '@/api/types/charter'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
+import { awaitsDispatch } from '@/stores/charter'
 
 const STATUS_LABELS: Readonly<Record<ProjectCharter['status'], string>> = {
   drafted: 'Drafted',
@@ -77,6 +79,8 @@ interface CharterDraftActionsProps {
   busy: boolean
   dirty: boolean
   amountValid: boolean
+  /** False once the decision is recorded and only the run is outstanding. */
+  editable: boolean
   onSave: () => void
   onApprove: () => void
   onCancel: () => void
@@ -86,6 +90,7 @@ function CharterDraftActions({
   busy,
   dirty,
   amountValid,
+  editable,
   onSave,
   onApprove,
   onCancel,
@@ -93,15 +98,17 @@ function CharterDraftActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          onClick={onSave}
-          disabled={busy || !dirty || !amountValid}
-        >
-          Save changes
-        </Button>
+        {editable && (
+          <Button
+            variant="outline"
+            onClick={onSave}
+            disabled={busy || !dirty || !amountValid}
+          >
+            Save changes
+          </Button>
+        )}
         <Button onClick={onApprove} disabled={busy || dirty}>
-          Approve & start run
+          {editable ? 'Approve & start run' : 'Start the run'}
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel charter
@@ -113,6 +120,21 @@ function CharterDraftActions({
         </p>
       )}
     </div>
+  )
+}
+
+/** The charter's declared shape: what it commits to and what it excludes. */
+function CharterScopeLists({ charter }: { charter: ProjectCharter }) {
+  return (
+    <>
+      <LabelledList label="Goals" items={charter.goals} />
+      <LabelledList label="Constraints" items={charter.constraints} />
+      <LabelledList label="Success criteria" items={charter.success_criteria} />
+      <div className="grid gap-grid-gap sm:grid-cols-2">
+        <LabelledList label="In scope" items={charter.scope.in_scope} />
+        <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
+      </div>
+    </>
   )
 }
 
@@ -131,6 +153,10 @@ function CharterDraftCardInner({
   const [brief, setBrief] = useState(charter.brief)
   const [amount, setAmount] = useState(String(charter.envelope.amount))
   const isDraft = charter.status === 'drafted'
+  // Approved with no run: the operator's decision is recorded and the work
+  // they asked for never started, so the charter is still actionable even
+  // though it is no longer editable.
+  const unstarted = awaitsDispatch(charter) && !isDraft
   const editingDisabled = !isDraft || busy
   const parsedAmount = Number(amount)
   const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0
@@ -159,6 +185,14 @@ function CharterDraftCardInner({
       }
     >
       <div className="space-y-4">
+        {unstarted && (
+          <ErrorBanner
+            variant="inline"
+            severity="warning"
+            title="Approved, but the run never started"
+            description="The decision is recorded and nothing is running. Start the run to dispatch the work this charter authorises."
+          />
+        )}
         <InputField
           label="Brief"
           multiline
@@ -167,13 +201,7 @@ function CharterDraftCardInner({
           onValueChange={setBrief}
           disabled={editingDisabled}
         />
-        <LabelledList label="Goals" items={charter.goals} />
-        <LabelledList label="Constraints" items={charter.constraints} />
-        <LabelledList label="Success criteria" items={charter.success_criteria} />
-        <div className="grid gap-grid-gap sm:grid-cols-2">
-          <LabelledList label="In scope" items={charter.scope.in_scope} />
-          <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
-        </div>
+        <CharterScopeLists charter={charter} />
         <CharterBudgetRow
           amount={amount}
           amountValid={amountValid}
@@ -181,11 +209,12 @@ function CharterDraftCardInner({
           currency={charter.envelope.currency}
           onAmountChange={setAmount}
         />
-        {isDraft && (
+        {awaitsDispatch(charter) && (
           <CharterDraftActions
             busy={busy}
             dirty={dirty}
             amountValid={amountValid}
+            editable={isDraft}
             onSave={handleSave}
             onApprove={onApprove}
             onCancel={onCancel}

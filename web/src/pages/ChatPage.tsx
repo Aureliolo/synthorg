@@ -1,11 +1,12 @@
 import { AlertTriangle, History, MessagesSquare, Plus, Square } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { cn } from '@/lib/utils'
+import { useCharterStore } from '@/stores/charter'
 import { useOrgConversationStore } from '@/stores/org-conversation'
 
 import { CharterSidePanel } from './chat/CharterSidePanel'
@@ -163,8 +164,18 @@ export default function ChatPage() {
   const conv = useOrgConversation()
   const questions = useOrgQuestions()
   const activeIntent = useOrgConversationStore((s) => s.activeIntent)
+  const draftCharter = useCharterStore((s) => s.draftCharter)
+  const hydrateOpenCharter = useCharterStore((s) => s.hydrateOpenCharter)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const showCharterPanel = activeIntent === 'charter'
+  // Shown because a charter is open, not because a turn in THIS tab happened
+  // to classify as one. Both halves lived in memory, so a reload, a second
+  // tab, or an approval whose dispatch failed left an operator with a charter
+  // the backend holds and this page would not render.
+  const showCharterPanel = activeIntent === 'charter' || draftCharter !== null
+
+  useEffect(() => {
+    void hydrateOpenCharter()
+  }, [hydrateOpenCharter])
   // Question cards are derived here, never pushed into the conversation store:
   // startNew / hydrate reset that store, which would silently delete a
   // still-open question. They render after the transcript, which is how a chat

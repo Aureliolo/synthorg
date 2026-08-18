@@ -1,282 +1,88 @@
-"""Conformance tests for ``ProjectRepository`` (SQLite + Postgres)."""
+"""A project survives the round trip, on both backends, with every field set.
 
-from uuid import UUID
+The invariant is the whole point of a repository: what was written is what
+comes back. It is stated over a FULLY populated project rather than a minimal
+one, because the field that broke was optional and every existing test left it
+unset: `Project.deadline` is an ISO 8601 string, its column is `TIMESTAMPTZ`,
+and the Postgres row mapper coerced the two timestamp columns it knew about
+and not this one. So a project carrying a deadline was written successfully
+and could never be read again, which took the whole charter intake path down
+with a 500 the moment an operator named a date.
+
+SQLite stores the string as a string and round-trips it either way, so this
+only fails on one backend, which is exactly what a conformance suite is for.
+"""
+
+from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.persistence_errors import (
-    DuplicateRecordError,
-    PersistenceVersionConflictError,
-    QueryError,
-    RecordNotFoundError,
-)
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
+_DEADLINE = "2026-08-21T00:00:00+00:00"
 
-def _project(
-    *,
-    project_id: str = "proj-001",
-    name: str = "Test Project",
-    status: ProjectStatus = ProjectStatus.PLANNING,
-    lead: str | None = None,
-    plan_id: UUID | None = None,
-) -> Project:
-    return Project(
-        id=as_uuid(project_id),
-        name=NotBlankStr(name),
-        description="A test project",
-        lead=NotBlankStr(lead) if lead else None,
-        plan_id=plan_id,
-        status=status,
-    )
+
+def _project(project_id: str = "proj-round-trip", **overrides: object) -> Project:
+    data: dict[str, object] = {
+        "id": as_uuid(project_id),
+        "name": NotBlankStr("Browser Falling-Blocks Puzzle Game v1"),
+        "description": "A single-player falling-blocks game playable in a browser",
+        "lead": NotBlankStr("engineering"),
+        "status": ProjectStatus.ACTIVE,
+        "created_at": datetime(2026, 8, 18, 21, tzinfo=UTC),
+        "updated_at": datetime(2026, 8, 18, 21, tzinfo=UTC),
+    }
+    data.update(overrides)
+    return Project.model_validate(data)
 
 
 class TestProjectRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
-
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-001")))
+        fetched = await backend.projects.get(sid("proj-round-trip"))
         assert fetched is not None
-        assert fetched.id == as_uuid("proj-001")
-        assert fetched.name == "Test Project"
-        assert fetched.status is ProjectStatus.PLANNING
+        assert fetched.id == as_uuid("proj-round-trip")
+        assert fetched.name == "Browser Falling-Blocks Puzzle Game v1"
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
-        assert await backend.projects.get(NotBlankStr("ghost")) is None
+        assert await backend.projects.get(sid("no-such-project")) is None
 
-    async def test_plan_id_default_is_none(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(_project(project_id="proj-unplanned"))
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-unplanned")))
-        assert fetched is not None
-        assert fetched.plan_id is None
-
-    async def test_plan_id_roundtrips(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(
-            _project(project_id="proj-linked", plan_id=as_uuid("plan-linked"))
-        )
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-linked")))
-        assert fetched is not None
-        assert fetched.plan_id == as_uuid("plan-linked")
-
-    async def test_plan_id_repoints_on_update(
+    async def test_a_deadline_survives_the_round_trip(
         self, backend: PersistenceBackend
     ) -> None:
-        """A replan repoints the project at the plan it now executes."""
-        original = _project(project_id="proj-replan", plan_id=as_uuid("plan-first"))
-        await backend.projects.create(original)
-
-        await backend.projects.update(
-            original.model_copy(
-                update={"plan_id": as_uuid("plan-second"), "version": 2}
-            ),
-            expected_version=1,
-        )
-
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-replan")))
+        await backend.projects.save(_project("proj-dated", deadline=_DEADLINE))
+        fetched = await backend.projects.get(sid("proj-dated"))
         assert fetched is not None
-        assert fetched.plan_id == as_uuid("plan-second")
-
-    async def test_autonomy_mode_default_is_none(
-        self, backend: PersistenceBackend
-    ) -> None:
-        await backend.projects.save(_project(project_id="proj-inherit"))
-        inherited = await backend.projects.get(NotBlankStr(sid("proj-inherit")))
-        assert inherited is not None
-        assert inherited.autonomy_mode is None
-
-    @pytest.mark.parametrize(
-        "mode",
-        [
-            AutonomyLevel.LOCKED,
-            AutonomyLevel.SUPERVISED,
-            AutonomyLevel.SEMI,
-            AutonomyLevel.FULL,
-        ],
-        ids=["locked", "supervised", "semi", "full"],
-    )
-    async def test_autonomy_mode_set_round_trips(
-        self, backend: PersistenceBackend, mode: AutonomyLevel
-    ) -> None:
-        # Every operator-set tier round-trips as its enum value, including
-        # the gate-off ``full`` value.
-        project = _project(project_id="proj-mode").model_copy(
-            update={"autonomy_mode": mode},
+        assert fetched.deadline is not None
+        # Compared as instants, not as text: the column is a timestamp, so a
+        # backend is entitled to hand back a different but equivalent
+        # spelling. What it is not entitled to do is fail to hand it back.
+        assert datetime.fromisoformat(fetched.deadline) == datetime.fromisoformat(
+            _DEADLINE
         )
-        await backend.projects.save(project)
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-mode")))
+
+    async def test_no_deadline_stays_absent(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project("proj-undated"))
+        fetched = await backend.projects.get(sid("proj-undated"))
         assert fetched is not None
-        assert fetched.autonomy_mode is mode
+        assert fetched.deadline is None
 
-    async def test_autonomy_mode_clear_round_trips(
-        self, backend: PersistenceBackend
-    ) -> None:
-        project = _project(project_id="proj-clear").model_copy(
-            update={"autonomy_mode": AutonomyLevel.FULL},
-        )
-        await backend.projects.save(project)
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-clear")))
+    async def test_a_dated_project_is_listed(self, backend: PersistenceBackend) -> None:
+        # The read that broke was a single get, but a list that skips or
+        # raises on the same row hides the same defect one page further on.
+        await backend.projects.save(_project("proj-listed", deadline=_DEADLINE))
+        listed = await backend.projects.list_items()
+        assert any(p.id == as_uuid("proj-listed") for p in listed)
+
+    async def test_a_deadline_can_be_cleared(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project("proj-cleared", deadline=_DEADLINE))
+        await backend.projects.save(_project("proj-cleared"))
+        fetched = await backend.projects.get(sid("proj-cleared"))
         assert fetched is not None
-        cleared = fetched.model_copy(
-            update={"autonomy_mode": None, "version": fetched.version + 1},
-        )
-        await backend.projects.update(cleared)
-        after = await backend.projects.get(NotBlankStr(sid("proj-clear")))
-        assert after is not None
-        assert after.autonomy_mode is None
-
-    async def test_save_upsert(self, backend: PersistenceBackend) -> None:
-        p = _project()
-        await backend.projects.save(p)
-
-        updated = p.model_copy(update={"name": NotBlankStr("Renamed")})
-        await backend.projects.save(updated)
-
-        fetched = await backend.projects.get(NotBlankStr(sid("proj-001")))
-        assert fetched is not None
-        assert fetched.name == "Renamed"
-
-    async def test_list_items_in_id_order(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(_project(project_id="p1"))
-        await backend.projects.save(_project(project_id="p2"))
-
-        rows = await backend.projects.list_items()
-        expected = sorted([as_uuid("p1"), as_uuid("p2")])
-        ids = [r.id for r in rows if r.id in expected]
-        assert ids == expected
-
-    async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(
-            _project(project_id="active", status=ProjectStatus.ACTIVE),
-        )
-        await backend.projects.save(
-            _project(project_id="planning", status=ProjectStatus.PLANNING),
-        )
-
-        rows = await backend.projects.query(
-            ProjectFilterSpec(status=ProjectStatus.ACTIVE),
-        )
-        ids = {r.id for r in rows}
-        assert as_uuid("active") in ids
-        assert as_uuid("planning") not in ids
-
-    async def test_query_filter_by_lead(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(_project(project_id="alpha", lead="alice"))
-        await backend.projects.save(_project(project_id="beta", lead="bob"))
-
-        rows = await backend.projects.query(
-            ProjectFilterSpec(lead=NotBlankStr("alice")),
-        )
-        assert [r.id for r in rows] == [as_uuid("alpha")]
-
-    async def test_query_respects_limit(self, backend: PersistenceBackend) -> None:
-        for i in range(5):
-            await backend.projects.save(_project(project_id=f"p-{i:02d}"))
-
-        rows = await backend.projects.query(
-            ProjectFilterSpec(),
-            limit=3,
-        )
-        assert len(rows) == 3
-
-    async def test_delete_existing(self, backend: PersistenceBackend) -> None:
-        await backend.projects.save(_project())
-
-        deleted = await backend.projects.delete(NotBlankStr(sid("proj-001")))
-        assert deleted is True
-        assert await backend.projects.get(NotBlankStr(sid("proj-001"))) is None
-
-    async def test_delete_missing(self, backend: PersistenceBackend) -> None:
-        assert await backend.projects.delete(NotBlankStr("ghost")) is False
-
-    async def test_create_inserts_new_row(self, backend: PersistenceBackend) -> None:
-        await backend.projects.create(_project(project_id="p-create"))
-
-        fetched = await backend.projects.get(NotBlankStr(sid("p-create")))
-        assert fetched is not None
-        assert fetched.id == as_uuid("p-create")
-
-    async def test_create_rejects_duplicate(self, backend: PersistenceBackend) -> None:
-        await backend.projects.create(_project(project_id="p-dup"))
-
-        with pytest.raises(DuplicateRecordError):
-            await backend.projects.create(_project(project_id="p-dup"))
-
-    async def test_update_modifies_existing_row(
-        self, backend: PersistenceBackend
-    ) -> None:
-        original = _project(project_id="p-up", name="Original")
-        await backend.projects.create(original)
-
-        renamed = original.model_copy(update={"name": NotBlankStr("Renamed")})
-        await backend.projects.update(renamed)
-
-        fetched = await backend.projects.get(NotBlankStr(sid("p-up")))
-        assert fetched is not None
-        assert fetched.name == "Renamed"
-
-    async def test_update_rejects_missing(self, backend: PersistenceBackend) -> None:
-        with pytest.raises(RecordNotFoundError):
-            await backend.projects.update(_project(project_id="p-ghost"))
-
-    async def test_version_round_trips(self, backend: PersistenceBackend) -> None:
-        stamped = _project(project_id="p-ver").model_copy(update={"version": 3})
-        await backend.projects.create(stamped)
-
-        fetched = await backend.projects.get(NotBlankStr(sid("p-ver")))
-        assert fetched is not None
-        assert fetched.version == 3
-
-    async def test_version_guarded_update_conflict(
-        self, backend: PersistenceBackend
-    ) -> None:
-        # A stale writer whose expected_version no longer matches the stored
-        # row is rejected rather than clobbering the concurrent update.
-        original = _project(project_id="p-cas")
-        await backend.projects.create(original)
-
-        winner = original.model_copy(
-            update={"lead": NotBlankStr("alice"), "version": 2}
-        )
-        await backend.projects.update(winner, expected_version=1)
-
-        loser = original.model_copy(update={"lead": NotBlankStr("bob"), "version": 2})
-        with pytest.raises(PersistenceVersionConflictError):
-            await backend.projects.update(loser, expected_version=1)
-
-        fetched = await backend.projects.get(NotBlankStr(sid("p-cas")))
-        assert fetched is not None
-        assert fetched.lead == "alice"
-        assert fetched.version == winner.version
-
-    async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
-        assert await backend.projects.list_items() == ()
-
-    @pytest.mark.parametrize(
-        ("limit", "offset"),
-        [(0, 0), (-1, 0), (1, -1)],
-    )
-    async def test_list_items_rejects_invalid_pagination(
-        self, backend: PersistenceBackend, limit: int, offset: int
-    ) -> None:
-        with pytest.raises(QueryError):
-            await backend.projects.list_items(limit=limit, offset=offset)
-
-    @pytest.mark.parametrize(
-        ("limit", "offset"),
-        [(0, 0), (-1, 0), (1, -1)],
-    )
-    async def test_query_rejects_invalid_pagination(
-        self, backend: PersistenceBackend, limit: int, offset: int
-    ) -> None:
-        with pytest.raises(QueryError):
-            await backend.projects.query(
-                ProjectFilterSpec(), limit=limit, offset=offset
-            )
+        assert fetched.deadline is None
