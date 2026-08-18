@@ -74,9 +74,9 @@ _SCAN_ROOT_REL: Final[str] = "src/synthorg/engine/coordination"
 #: absolute import names.
 _SCAN_PACKAGE: Final[str] = "engine.coordination"
 
-#: ``ImportFrom.level`` for a same-package import. Level two and above walk
-#: out to a parent package, whose modules this scan does not read and must
-#: not credit as siblings.
+#: ``ImportFrom.level`` for a same-package import. Every level above one
+#: walks further out than the scanned package, whose modules this scan does
+#: not read and must not credit as siblings.
 _SIBLING_IMPORT_LEVEL: Final[int] = 1
 
 #: Calling this is what makes a module a wave loop: it is the one function
@@ -241,8 +241,8 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
                 # a sibling, and missing it makes a loop that gates through
                 # one read as a loop that does not gate.
                 #
-                # Level ONE exactly. ``from .. import x`` names a module of
-                # the PARENT package, which is not a sibling and whose calls
+                # Level ONE exactly. ``from .. import x`` names a module of a
+                # package further out, which is not a sibling and whose calls
                 # this scan never reads. Accepting it puts an unrelated name
                 # into the sibling set, and if the package happens to hold a
                 # module by that name, its gate calls are credited to a
@@ -251,7 +251,17 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
                 # produce.
                 if node.level == _SIBLING_IMPORT_LEVEL:
                     siblings.update(alias.name for alias in node.names)
-            elif node.level or _SCAN_PACKAGE in node.module:
+            # The same rule, for the spelling that carries a module name.
+            # Depth decides it here too: ``from .parking import x`` is a
+            # sibling, ``from ..parking import x`` is the parent package's
+            # module wearing an identical base name, and reading only
+            # "is it relative" cannot tell them apart. An absolute import
+            # qualifies on naming the scanned package instead, which is a
+            # claim about where the module lives rather than how far up the
+            # writer reached.
+            elif node.level == _SIBLING_IMPORT_LEVEL or (
+                not node.level and _SCAN_PACKAGE in node.module
+            ):
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):
             for alias in node.names:

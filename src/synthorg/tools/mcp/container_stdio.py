@@ -236,15 +236,51 @@ async def _attached_and_started(container: DockerContainer, server_name: str) ->
     unlocked, so each could open its own connection and the loser's would be
     leaked with the winner overwriting the shared queue.
 
+    Either returns an entered stream with the container running, or leaves
+    nothing open. The caller holds the stream in a variable its ``finally``
+    reads, and an assignment only happens once this returns, so a stream
+    entered here and abandoned on the way out would be invisible to that
+    teardown: the attach is a live upgraded socket the daemon keeps alive,
+    and the library closes it on nothing but an explicit call.
+
     Returns:
         The entered stream, with the container running.
 
     Raises:
-        MCPConnectionError: The container could not be started.
+        MCPConnectionError: The stream could not be attached, or the
+            container could not be started.
     """
     stream = container.attach(stdin=True, stdout=True, stderr=True, logs=False)
-    await stream.__aenter__()
-    await _start(container, server_name)
+    try:
+        # Classified like its siblings rather than left raw: the client
+        # retries an MCPConnectionError and treats everything else as
+        # permanent, so an attach that lost a race with the daemon has to
+        # arrive wearing the type that gets another go.
+        await stream.__aenter__()
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            MCP_CONTAINER_STDIO_TRANSPORT_ERROR,
+            server=server_name,
+            phase="attach",
+            container_id=_short(container),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Server {server_name!r}: its MCP runtime container would not attach"
+        raise MCPConnectionError(msg, context={"server": server_name}) from exc
+    try:
+        await _start(container, server_name)
+    except BaseException:
+        # Cancellation included: the socket is open either way, and the
+        # caller cannot close what it was never handed.
+        await _guarded(
+            stream.close(),
+            server_name,
+            step="stream_close",
+            limit_seconds=_CLOSE_TIMEOUT_SECONDS,
+        )
+        raise
     return stream
 
 

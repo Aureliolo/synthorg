@@ -12,7 +12,7 @@ destroys the container whatever else happened.
 
 import json
 from contextlib import AbstractAsyncContextManager
-from typing import Final, cast, override
+from typing import Final, NoReturn, cast, override
 
 import aiodocker
 import anyio
@@ -229,6 +229,15 @@ class _FakeDocker(FakeDockerClient):
     async def close(self) -> None:
         """Record the close."""
         self.closed = True
+
+
+async def _raise_on_attach() -> NoReturn:
+    """Stand in for an attach that loses its race with the daemon.
+
+    Raises:
+        DockerError: Always, as the transport's own attach would.
+    """
+    raise aiodocker.DockerError(500, "connection reset during upgrade")
 
 
 class _Harness:
@@ -580,6 +589,49 @@ class TestTheContainerIsAlwaysDestroyed:
         with pytest.raises(MCPConnectionError, match="would not start"):
             async with harness.open():
                 pass
+        assert harness.container is not None
+        assert harness.container.deleted
+
+    async def test_a_start_failure_closes_the_stream_it_already_attached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The attach runs BEFORE the start, so a refused start leaves it open.
+
+        The caller holds the stream in a variable its teardown reads, and
+        that variable is only assigned once the attach-and-start step
+        returns. So whatever opens a connection and then raises has to close
+        what it opened: nothing downstream can see it, and the daemon keeps
+        an upgraded socket alive until the object is finalised, which is not
+        a schedule anything here controls.
+        """
+        refusal = aiodocker.DockerError(500, "daemon refused the start")
+        harness = _Harness(monkeypatch, start_error=refusal)
+        with pytest.raises(MCPConnectionError, match="would not start"):
+            async with harness.open():
+                pass
+
+        assert harness.stream.connected, "the attach has to have happened"
+        assert harness.stream.closed
+
+    async def test_an_attach_failure_is_retryable_like_its_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The client retries one exception type and treats the rest as final.
+
+        Create and start both classify their daemon failures, so an attach
+        that does not would be the single step whose transient failure reads
+        as permanent and kills the server for the life of the process.
+        """
+        harness = _Harness(monkeypatch)
+        monkeypatch.setattr(
+            harness.stream,
+            "__aenter__",
+            _raise_on_attach,
+        )
+        with pytest.raises(MCPConnectionError, match="would not attach"):
+            async with harness.open():
+                pass
+
         assert harness.container is not None
         assert harness.container.deleted
 

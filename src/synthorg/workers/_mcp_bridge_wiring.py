@@ -7,6 +7,7 @@ to sandbox-on defaults) and connecting the configured/installed MCP servers via
 :class:`MCPToolFactory`, returning their discovered tools for the boot registry.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
@@ -15,6 +16,7 @@ from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.sandbox import SANDBOX_GVISOR_FALLBACK
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig, SandboxNetwork
@@ -28,6 +30,44 @@ logger = get_logger(__name__)
 _TOOLS_NS: str = "tools"
 
 
+def _derived_or_warned(
+    derive: Callable[[], NotBlankStr | None],
+    *,
+    event: str,
+    note: str,
+) -> NotBlankStr | None:
+    """Run one derivation, reporting a failure instead of propagating it.
+
+    One call per fact, never one guard around several: a shared guard orders
+    independent derivations, so the first to raise silently costs every one
+    after it. Each caller says what its own loss means, because the two
+    losses here are not equivalent and an operator has to be told which
+    happened.
+
+    Args:
+        derive: The derivation, called with no arguments.
+        event: The observability event its failure belongs to.
+        note: What the deployment loses when it fails.
+
+    Returns:
+        The derived value, or ``None`` when the derivation failed.
+    """
+    try:
+        return derive()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- each caller degrades to a recoverable
+        # posture; a boot that cannot wire MCP at all is not recoverable
+        reraise_critical(exc)
+        logger.warning(
+            event,
+            service="mcp_bridge",
+            note=note,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
 async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
     """Resolve the MCP sandbox policy from settings, fail-secure to defaults.
 
@@ -38,75 +78,69 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
     Returns:
         The resolved :class:`MCPSandboxConfig` (defaults on any resolve error).
     """
-    deployment_id: NotBlankStr | None = None
-    runtime: NotBlankStr | None = None
-    # Guarded separately from the resolve below, and not folded into it: both
-    # derivations can raise on an app state that is not fully wired, and this
-    # helper is called from OUTSIDE its caller's own handler, so an escape
-    # here poisons boot rather than degrading to no bridge tools. The fallback
-    # return reads these too, which is why a raise cannot be allowed to leave
-    # them unbound.
-    #
-    # ONE BLOCK EACH, deliberately. The two are independent facts, and sharing
+    # ONE CALL EACH, deliberately. The two are independent facts, and sharing
     # a guard orders them: the id is derived first, so anything that raises
     # there skips the runtime read entirely and leaves it ``None``. ``None``
     # is the daemon default, which silently downgrades the isolation on the
     # one path in this product that runs code nobody reviewed, in exchange for
     # an unrelated failure to name the deployment. A blank id is a container
-    # nobody can reclaim; a lost runtime is a container nobody is contained
-    # by, and neither may be paid for with the other.
-    try:
+    # nobody can reclaim; a lost runtime is a container carrying weaker
+    # isolation than the operator asked for, and neither may be paid for with
+    # the other.
+    #
+    # Both are guarded at all because either can raise on an app state that is
+    # not fully wired, and this helper is called from OUTSIDE its caller's own
+    # handler, so an escape here poisons boot rather than degrading to no
+    # bridge tools. The fallback return reads both, which is why neither may
+    # be left unbound.
+    deployment_id = _derived_or_warned(
         # Derived from the same workspace root the agent sandboxes use,
         # because the reconciliation pass asks one question of every
         # container it finds: which deployment created it. An MCP runtime
         # with no answer is never reclaimed.
-        # Checked HERE, where the guard below can still absorb it. The
-        # annotation alone does not check: it only runs inside a Pydantic
-        # model, so a blank derivation travels as ``""`` and first fails
-        # validation in the fallback construction, which sits inside the
-        # handler whose whole job is to guarantee a return. A raise there has
-        # nothing left to catch it and takes boot down, which is the outcome
-        # this helper exists to prevent. Failing here instead leaves the id
-        # unset and the container unattributed, which the handler reports.
-        deployment_id = NotBlankStr(
+        # Checked HERE, where the guard can still absorb it. The annotation
+        # alone does not check: it only runs inside a Pydantic model, so a
+        # blank derivation travels as ``""`` and first fails validation in
+        # the fallback construction, which sits inside the handler whose
+        # whole job is to guarantee a return. A raise there has nothing left
+        # to catch it and takes boot down, which is the outcome this helper
+        # exists to prevent. Failing here instead leaves the id unset and the
+        # container unattributed, which the warning reports.
+        lambda: NotBlankStr(
             require_not_blank(
                 deployment_id_for(agent_workspace_root_of(app_state)),
                 "deployment_id",
             )
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- an unattributed container is recoverable;
-        # a boot that cannot wire MCP at all is not
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="mcp_bridge",
-            note="could not derive MCP sandbox identity; container is unattributed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-    try:
+        ),
+        event=API_APP_STARTUP,
+        note="could not derive MCP sandbox identity; container is unattributed",
+    )
+    runtime = _derived_or_warned(
         # The same runtime the agent sandbox uses. An operator who installed
         # gVisor did it to contain code they do not trust, and this is the
         # path that runs code nobody reviewed at all: taking the daemon
         # default here while honouring their choice for their own agents
         # would give the weaker isolation to the stronger threat, silently,
         # because the two configs read as siblings.
-        runtime = app_state.config.sandboxing.docker.runtime
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- the daemon default still isolates; a boot
-        # that cannot wire MCP at all does not
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="mcp_bridge",
-            note=(
-                "could not read the configured sandbox runtime; MCP containers "
-                "fall back to the daemon default and lose any configured gVisor"
-            ),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        lambda: app_state.config.sandboxing.docker.runtime,
+        # The event the runtime resolver already raises when a configured
+        # runtime goes unavailable, rather than the generic startup one:
+        # losing gVisor is the same fact whichever side of boot notices it,
+        # and an operator alerting on it should not have to know that this
+        # path reports it under a different name.
+        event=SANDBOX_GVISOR_FALLBACK,
+        note=(
+            "could not read the configured sandbox runtime; MCP containers "
+            "fall back to the daemon default and lose any configured gVisor"
+        ),
+    )
+    logger.debug(
+        API_APP_STARTUP,
+        service="mcp_bridge",
+        note="resolved MCP sandbox identity and runtime",
+        attributed=deployment_id is not None,
+        runtime=runtime,
+    )
     try:
         # Resolved inside the guard, not above it: an unwired resolver raises
         # ``ServiceUnavailableError``, which is the ordinary state before

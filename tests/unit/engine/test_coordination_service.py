@@ -173,6 +173,18 @@ def _make_coordinator(  # noqa: PLR0913
     )
 
 
+def _dispatches(coordinator: MultiAgentCoordinator) -> int:
+    """How many execution groups the coordinator actually handed the executor.
+
+    Reaching for the injected double through the coordinator is an
+    implementation-detail read, so it is spelled once here rather than at
+    each assertion: a rename then breaks one line with a name that says what
+    it wanted, instead of several casts that no longer resolve.
+    """
+    executor = cast("AsyncMock", coordinator._parallel_executor)
+    return int(executor.execute_group.await_count)
+
+
 # ── Tests ───────────────────────────────────────────────────────
 
 
@@ -496,8 +508,7 @@ class TestMultiAgentCoordinator:
         # what the coordinator chose to write down and this is what it
         # actually did; a regression that dispatched wave 1 and failed to
         # record it would satisfy the list alone.
-        executor = cast("AsyncMock", coordinator._parallel_executor)
-        assert executor.execute_group.await_count == 1
+        assert _dispatches(coordinator) == 1
         assert len(result.waves) == 1
         assert [w.wave_index for w in result.waves] == [0]
         wave_1_phase = next(p for p in result.phases if p.phase == "execute_wave_1")

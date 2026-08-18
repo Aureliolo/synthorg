@@ -5,8 +5,12 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+import structlog
+from structlog.testing import capture_logs
 
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.sandbox import SANDBOX_GVISOR_FALLBACK
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.sandbox.deployment_identity import deployment_id_for
@@ -162,11 +166,11 @@ async def test_a_blank_deployment_id_degrades_instead_of_poisoning_boot(
     # rather than an exception escaping a helper the caller does not guard.
     assert config.deployment_id is None
     assert config.enabled is True
-    # And the runtime survives it. The two derivations shared one guard, so
-    # the id failing skipped the runtime read and silently downgraded an
-    # operator's gVisor to the daemon default on the one path that runs
-    # unreviewed code. An unattributed container is recoverable; an
-    # uncontained one is the thing the runtime was configured to prevent.
+    # The runtime is derived under its own guard, so a failure to name the
+    # deployment must not reach it. Conflating the two buys an unattributed
+    # container at the price of a weaker one: the daemon default still
+    # isolates, but it is not the isolation the operator chose for the one
+    # path in this product that runs code nobody reviewed.
     assert config.runtime == "runsc"
 
 
@@ -192,6 +196,52 @@ async def test_an_unwired_resolver_falls_back_rather_than_raising(
     assert config.enabled is True
     assert config.runtime == "runsc"
     assert config.deployment_id == deployment_id_for(tmp_path)
+
+
+async def test_each_loss_is_reported_as_its_own_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The warning text IS the artefact, so it is asserted rather than reviewed.
+
+    Both derivations degrade to the same ``None``, so the log is the only
+    place an operator learns which one went and what it cost. A lost runtime
+    additionally reports under the event the runtime resolver already raises
+    for this exact fact, because alerting keyed on losing gVisor should not
+    have to know that boot reports it somewhere else.
+    """
+    structlog.reset_defaults()
+
+    def _blank(_app_state: object) -> str:
+        return "   "
+
+    monkeypatch.setattr(
+        "synthorg.workers._mcp_bridge_wiring.deployment_id_for",
+        _blank,
+    )
+    monkeypatch.setattr(
+        "synthorg.workers._mcp_bridge_wiring.agent_workspace_root_of",
+        lambda _app_state: Path("/workspace"),
+    )
+
+    with capture_logs() as logs:
+        # No ``config`` attribute at all, so the runtime read raises too and
+        # both losses are on the record together.
+        await _resolve_mcp_sandbox_config(cast("AppState", SimpleNamespace()))
+
+    warnings = [record for record in logs if record.get("log_level") == "warning"]
+
+    identity = [r for r in warnings if "unattributed" in str(r.get("note", ""))]
+    assert len(identity) == 1
+    assert identity[0]["event"] == API_APP_STARTUP
+
+    runtime = [r for r in warnings if "gVisor" in str(r.get("note", ""))]
+    assert len(runtime) == 1
+    assert runtime[0]["event"] == SANDBOX_GVISOR_FALLBACK
+    assert "daemon default" in runtime[0]["note"]
+    # Redacted, never the raw exception: these run at boot where the message
+    # can carry whatever the unwired object put in it.
+    assert runtime[0]["error_type"]
+    assert "error" in runtime[0]
 
 
 async def test_the_agent_sandbox_runtime_survives_a_settings_failure(

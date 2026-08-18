@@ -7,6 +7,7 @@ PATH resolution so the missing-binary case is exercised on a machine that
 has the binaries.
 """
 
+import subprocess
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -23,6 +24,7 @@ from synthorg.api.lifecycle_helpers.binary_preflight import (
     BINARY_MANIFEST,
     BinaryRecord,
     RequiredBinaryMissingError,
+    _probe_version,
     required_binaries_for,
     run_binary_preflight,
 )
@@ -48,9 +50,26 @@ def _reporting(version: str | None) -> AbstractContextManager[object]:
     Without this the git floor is checked against whatever git the machine
     happens to have, so the suite would pass or fail on a property of the
     developer's box rather than on the code under test.
+
+    Takes the version already parsed, so it exercises the floor comparison
+    and nothing else. What the parser makes of a real banner is a separate
+    question, asked directly of it in :class:`TestProbeVersion`.
     """
     parsed = None if version is None else tuple(int(p) for p in version.split("."))
-    return patch(f"{_MODULE}.installed_version", return_value=parsed)
+    return patch(f"{_MODULE}._installed_version", return_value=parsed)
+
+
+def _answering(stdout: str) -> AbstractContextManager[object]:
+    """Patch the subprocess so the real parser sees *stdout*."""
+    return patch(
+        f"{_MODULE}.subprocess.run",
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout),
+    )
+
+
+def _raising(exc: BaseException) -> AbstractContextManager[object]:
+    """Patch the subprocess so the probe's own handler is what runs."""
+    return patch(f"{_MODULE}.subprocess.run", side_effect=exc)
 
 
 def _names(records: Iterable[BinaryRecord]) -> set[str]:
@@ -162,8 +181,18 @@ class TestVersionFloor:
             run_binary_preflight(backend_name="sqlite")
 
     def test_a_longer_version_is_compared_on_the_shared_prefix(self) -> None:
-        """``2.55.0.windows.3`` is not below ``2.48``."""
+        """A build carrying more components than the floor is not below it."""
         with _resolving(*_every_name()), _reporting("2.55.0.3"):
+            run_binary_preflight(backend_name="sqlite")
+
+    def test_a_version_too_short_to_compare_does_not_refuse_the_boot(self) -> None:
+        """Tuple ordering would call ``(2,)`` lower than ``(2, 48)``.
+
+        That is the same "we could not read it" case as a parse failure
+        wearing a number, so refusing here would contradict the policy every
+        other unreadable case follows.
+        """
+        with _resolving(*_every_name()), _reporting("2"):
             run_binary_preflight(backend_name="sqlite")
 
     def test_an_unreadable_version_does_not_refuse_the_boot(self) -> None:
@@ -176,6 +205,21 @@ class TestVersionFloor:
         with _resolving(*_every_name()), _reporting(None):
             run_binary_preflight(backend_name="sqlite")
 
+    def test_the_floor_is_checked_against_the_binary_that_is_actually_run(
+        self,
+    ) -> None:
+        """The manifest's own git record has to reach the comparison.
+
+        Boot calls the preflight before the backend resolves, so the whole
+        floor is dead code unless git is in the backend-independent set.
+        """
+        with (
+            _resolving(*_every_name()),
+            _reporting("2.47.9"),
+            pytest.raises(RequiredBinaryMissingError, match="git"),
+        ):
+            run_binary_preflight(backend_name="")
+
     def test_a_floor_without_a_reason_is_refused(self) -> None:
         """The reason is rendered into the refusal, so it cannot be blank."""
         with pytest.raises(ValueError, match="version_reason"):
@@ -185,6 +229,77 @@ class TestVersionFloor:
                 consumers=("workspace provisioning",),
                 min_version=(2, 48),
             )
+
+
+class TestProbeVersion:
+    """The layer every other test in this file mocks away.
+
+    The floor tests patch the probe and hand the comparison a tuple they
+    parsed themselves, so the subprocess call, the regex and both failure
+    arms were reachable only in production. That is also exactly where the
+    fail-open promise lives, so it is asked directly here.
+    """
+
+    @pytest.mark.parametrize(
+        ("stdout", "expected"),
+        [
+            ("git version 2.48.1\n", (2, 48, 1)),
+            # The parser stops at the first non-numeric component, so a
+            # Windows build reports three, not the four its banner suggests.
+            ("git version 2.55.0.windows.3\n", (2, 55, 0)),
+            ("pg_dump (PostgreSQL) 17.2\n", (17, 2)),
+            ("pg_restore (PostgreSQL) 18beta1\n", (18,)),
+        ],
+    )
+    def test_a_real_banner_parses(self, stdout: str, expected: tuple[int, ...]) -> None:
+        with _answering(stdout):
+            assert _probe_version("git") == (expected, "read")
+
+    def test_a_digit_inside_the_program_name_is_not_the_version(self) -> None:
+        """An unanchored search reads the ``3`` out of ``s3cmd``.
+
+        A bogus low number does not stay harmless: it is compared against the
+        floor like any other, so it refuses the boot quoting a version no
+        binary ever reported.
+        """
+        with _answering("s3cmd version 2.4.0\n"):
+            assert _probe_version("s3cmd") == ((2, 4, 0), "read")
+
+    def test_output_with_no_version_is_unreadable(self) -> None:
+        with _answering("command not recognised\n"):
+            assert _probe_version("git") == (None, "unparseable_output")
+
+    def test_a_timeout_is_told_apart_from_a_spawn_failure(self) -> None:
+        """One is a wedged binary, the other is one that vanished.
+
+        Both fail open, so the log is the only place the difference can be
+        recorded, and an operator needs it to know which to chase.
+        """
+        with _raising(subprocess.TimeoutExpired(cmd="git", timeout=5.0)):
+            assert _probe_version("git") == (None, "timeout")
+        with _raising(FileNotFoundError("git")):
+            assert _probe_version("git") == (None, "spawn_failed")
+
+    def test_undecodable_output_does_not_escape(self) -> None:
+        """``UnicodeDecodeError`` is a ``ValueError``, so it is not caught.
+
+        Decoding is configured never to raise instead, because an escape here
+        crashes boot on the one path whose whole contract is that an
+        unreadable version is survivable.
+        """
+        with _answering("git version 2.48.1 ��\n"):
+            assert _probe_version("git") == ((2, 48, 1), "read")
+
+    def test_the_probe_never_runs_a_shell(self) -> None:
+        """A fixed argv list, so nothing in the name reaches a shell."""
+        with patch(f"{_MODULE}.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="git version 2.48.1"
+            )
+            _probe_version("git")
+
+        assert run.call_args.args[0] == ["git", "--version"]
+        assert "shell" not in run.call_args.kwargs
 
 
 class TestItRunsAtBoot:

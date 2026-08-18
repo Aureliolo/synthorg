@@ -312,10 +312,41 @@ class TestForgedTestEvidence:
         assert is_test_run("set +o pipefail && set -o pipefail && pytest -q | tail -5")
 
     def test_the_last_toggle_before_the_pipe_is_the_one_that_counts(self) -> None:
-        """Re-disabling after re-enabling is still a disable."""
+        """Re-disabling after re-enabling is still a disable.
+
+        Ordering is what this asks about, so the enable sits between two
+        disables: a reading that let any enable anywhere on the line win
+        would accept it, and the state at the pipe is the only thing that
+        decides how the pipeline reports.
+        """
         assert not is_test_run(
-            "set -o pipefail && set +o pipefail && pytest -q | tail -5"
+            "set +o pipefail && set -o pipefail && set +o pipefail "
+            "&& pytest -q | tail -5"
         )
+
+    def test_a_bundled_disable_is_still_a_disable(self) -> None:
+        """``set +eo pipefail`` is the same instruction as ``set +o pipefail``.
+
+        A shell bundles short flags, so the option letter arrives inside one
+        token. Matching the token whole answers "says nothing about pipefail"
+        and leaves it believed ON, and the pipeline below then reports its
+        LAST command's status while being read as its first command's. That
+        is a pass recorded for a suite whose result was never consulted,
+        which is the forgery this module exists to refuse.
+        """
+        assert not is_test_run("set +eo pipefail && pytest -q | tail -5")
+
+    def test_a_bundled_enable_is_still_an_enable(self) -> None:
+        """``set -euo pipefail`` is how this line is ordinarily written.
+
+        The other direction of the same reading: refusing it would withhold
+        the evidence a genuinely protected pipeline produced.
+        """
+        assert is_test_run("set -euo pipefail && pytest -q | tail -5")
+
+    def test_a_bundled_enable_restores_a_bundled_disable(self) -> None:
+        """Both spellings have to toggle, or the pair cannot round-trip."""
+        assert is_test_run("set +eo pipefail && set -euo pipefail && pytest -q | tail")
 
     def test_a_combined_set_reads_the_flag_next_to_the_option(self) -> None:
         """``set +o errexit -o pipefail`` enables pipefail, whatever else it does.

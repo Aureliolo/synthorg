@@ -36,6 +36,18 @@ allowed through, because not knowing is not evidence of an old one and
 refusing on a line it could not read would take a working deployment down over
 output the parser did not anticipate.
 
+"Cannot be read" covers four cases, and the warning names which one, because
+they need different things done about them: the probe timed out (a wedged
+binary), it could not be spawned (one that vanished between the PATH lookup
+and the probe), its output carried no version (a gap in the parser), or it
+reported fewer components than the floor declares. The last is the one worth
+stating explicitly, since it arrives wearing a number: tuple ordering would
+call `2` lower than `2.48` and refuse the boot over a minor version nothing
+ever reported, so a version too short to compare is treated as unread rather
+than as old. Decoding is lenient for the same reason, as a strict decode
+raises a `ValueError` that no handler here catches and would crash the boot on
+the one path whose contract is that an unreadable version is survivable.
+
 `git` is required always; `pg_dump` / `pg_restore` only when the
 configured backend is Postgres, which is why the preflight is handed the
 resolved backend name (empty when persistence has not resolved one, so only the

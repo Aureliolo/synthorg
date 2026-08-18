@@ -277,6 +277,68 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 1
 
+    def test_a_dotted_parent_import_is_not_a_sibling_either(
+        self, tmp_path: Path
+    ) -> None:
+        """``from ..parking import x`` is the same mistake, spelled differently.
+
+        This spelling fills ``ImportFrom.module``, so it is read by a
+        different branch, and restricting only the bare form leaves the
+        identical fail-open reachable by adding one word. The module named
+        here lives one package out and its gate calls are never reached by
+        this dispatcher, so crediting them passes an ungated wave loop.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from ..parking import park_everything\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
+    def test_a_dotted_sibling_import_still_counts(self, tmp_path: Path) -> None:
+        """The other direction, so the two tests above cannot pass by refusing all.
+
+        ``from .parking import x`` names a real sibling whose gate calls this
+        dispatcher genuinely reaches, and a rule that stopped crediting it
+        would fail every correctly-gated loop in the tree.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from .parking import park_everything\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 0
+
     def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
         """Following imports must not become a way to pass by association.
 

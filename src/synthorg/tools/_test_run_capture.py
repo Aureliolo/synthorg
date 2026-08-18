@@ -107,12 +107,17 @@ _STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
 #: The pipe, whose conjunctive reading holds only under ``pipefail``.
 _PIPE: Final[str] = "|"
 
-#: The builtin that toggles ``pipefail``, and the two flags that do it.
+#: The builtin that toggles ``pipefail``, and the signs that do it.
 #: ``set -o`` enables, ``set +o`` disables, which is the opposite of the
 #: convention most flags follow.
 _SET_BUILTIN: Final[str] = "set"
-_UNSET_OPTION: Final[str] = "+o"
-_SET_OPTION: Final[str] = "-o"
+_UNSET_SIGN: Final[str] = "+"
+_SET_SIGN: Final[str] = "-"
+#: The letter ``-o`` / ``+o`` ends with. Read as the LAST character of the
+#: token rather than the whole token, because a shell bundles short flags:
+#: ``set -euo pipefail`` is one token ``-euo`` whose trailing ``o`` takes
+#: ``pipefail`` as its argument, exactly as a lone ``-o`` would.
+_OPTION_FLAG: Final[str] = "o"
 _PIPEFAIL_OPTION: Final[str] = "pipefail"
 
 
@@ -125,6 +130,14 @@ def _pipefail_toggle(command: Sequence[str]) -> bool | None:
     withholds the evidence a genuine test run produced, which is the failure
     this module's whole conjunctive reading exists to avoid.
 
+    The flag is matched on its shape rather than against ``-o`` and ``+o``
+    literally, because ``set -euo pipefail`` is the ordinary way to write this
+    line and bundles the option letter into one token. Reading only the exact
+    spellings answers "says nothing" for it, so ``set +eo pipefail`` before a
+    pipe leaves the option believed ON while the shell has turned it OFF, and
+    a pipeline whose exit status is its last command's is then read as
+    evidence its first command passed.
+
     Returns:
         ``True`` when the command enables ``pipefail``, ``False`` when it
         disables it, and ``None`` when it says nothing about it.
@@ -133,12 +146,14 @@ def _pipefail_toggle(command: Sequence[str]) -> bool | None:
         return None
     # A single command can carry both (``set +o errexit -o pipefail``), so the
     # answer is the flag immediately preceding the option name rather than
-    # whichever flag appears anywhere in the line.
-    index = command.index(_PIPEFAIL_OPTION)
-    preceding = command[index - 1] if index else None
-    if preceding == _SET_OPTION:
+    # whichever flag appears anywhere in the line. The index is never zero:
+    # reaching here required the first token to be the builtin.
+    preceding = command[command.index(_PIPEFAIL_OPTION) - 1]
+    if not preceding.endswith(_OPTION_FLAG):
+        return None
+    if preceding.startswith(_SET_SIGN):
         return True
-    if preceding == _UNSET_OPTION:
+    if preceding.startswith(_UNSET_SIGN):
         return False
     return None
 

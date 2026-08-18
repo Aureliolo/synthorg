@@ -47,20 +47,33 @@ logger = get_logger(__name__)
 #: silently checks nothing.
 _POSTGRES_BACKEND: Final[PersistenceBackendKind] = PersistenceBackendKind.POSTGRES
 
-#: The first dotted number in a ``--version`` line. Anchored on nothing else
-#: because the surrounding wording differs per tool ("git version 2.48.1",
-#: "pg_dump (PostgreSQL) 17.2").
-_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"(\d+(?:\.\d+)*)")
+#: The first dotted number in a ``--version`` line. The surrounding wording
+#: differs per tool ("git version 2.48.1", "pg_dump (PostgreSQL) 17.2"), so
+#: nothing else can be anchored on, but the number must start a word: an
+#: unanchored search reads the ``3`` out of a name like ``s3cmd`` and calls
+#: it the version, and a bogus low number is then compared against the floor
+#: and refuses the boot quoting a version nothing reported.
+_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"(?<![\w.])(\d+(?:\.\d+)*)")
 
 #: A version probe runs on the boot path, so it is bounded. A binary that
 #: cannot answer this fast is treated as unreadable rather than as old.
 _VERSION_PROBE_TIMEOUT_SECONDS: Final[float] = 5.0
 
+#: ``worktree.useRelativePaths`` landed here. Named rather than written twice
+#: because the refusal quotes it in prose as well, and two hand-typed copies
+#: of one fact drift.
+_GIT_MIN_VERSION: Final[tuple[int, int]] = (2, 48)
+
 
 class RequiredBinaryMissingError(DomainError):
-    """A binary the backend cannot work without is not on PATH."""
+    """A binary the backend cannot work without is unusable.
 
-    default_message: ClassVar[str] = "A required external binary is missing"
+    Either it is not on PATH at all, or it is present and older than the
+    release carrying the behaviour this product depends on. Both refuse the
+    boot, and each raise names which one it was.
+    """
+
+    default_message: ClassVar[str] = "A required external binary is unusable"
     error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
 
 
@@ -147,10 +160,11 @@ BINARY_MANIFEST: Final[tuple[BinaryRecord, ...]] = (
         # ignores an unknown config key silently: an old binary accepts the
         # option, says nothing, and hands back the broken worktree, so the
         # first report is a failing agent deep inside a sandbox.
-        min_version=(2, 48),
+        min_version=_GIT_MIN_VERSION,
         version_reason=(
-            "agent worktrees need 'worktree.useRelativePaths' (git 2.48), "
-            "without which every git command an agent runs inside one fails"
+            "agent worktrees need 'worktree.useRelativePaths' (git "
+            f"{'.'.join(str(part) for part in _GIT_MIN_VERSION)}), without "
+            "which every git command an agent runs inside one fails"
         ),
     ),
     BinaryRecord(
@@ -194,7 +208,44 @@ def _absent(records: tuple[BinaryRecord, ...]) -> tuple[BinaryRecord, ...]:
     return tuple(record for record in records if shutil.which(record.name) is None)
 
 
-def installed_version(name: str) -> tuple[int, ...] | None:
+def _probe_version(name: str) -> tuple[tuple[int, ...] | None, str]:
+    """Ask a binary its version, and say how the asking went.
+
+    The reason travels with the answer because all three ways of failing
+    produce the same ``None`` and need different things done about them: a
+    timeout is a wedged binary, a spawn failure is a binary that vanished
+    between the PATH lookup and here, and unreadable output is a gap in this
+    parser. Collapsing them into one message leaves an operator reading
+    "could not read binary version" with no way to tell which happened.
+
+    Returns:
+        The leading numeric components, or ``None``, paired with a reason
+        naming why. The reason is ``"read"`` when the version was read.
+    """
+    try:
+        result = subprocess.run(  # noqa: S603 -- fixed argv, no shell
+            [name, "--version"],
+            capture_output=True,
+            text=True,
+            # A version banner is ASCII in every tool this manifest names,
+            # but decoding is strict by default and a UnicodeDecodeError is
+            # a ValueError, so it would slip past the handler below and take
+            # the boot down on the one path that promises never to.
+            errors="replace",
+            timeout=_VERSION_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    except OSError, subprocess.SubprocessError:
+        return None, "spawn_failed"
+    match = _VERSION_RE.search(result.stdout or "")
+    if match is None:
+        return None, "unparseable_output"
+    return tuple(int(part) for part in match.group(1).split(".")), "read"
+
+
+def _installed_version(name: str) -> tuple[int, ...] | None:
     """Read a binary's version by asking it, or ``None`` when it will not say.
 
     ``None`` covers every way the answer can fail to arrive: the call errors,
@@ -207,20 +258,16 @@ def installed_version(name: str) -> tuple[int, ...] | None:
     Returns:
         The leading numeric components, or ``None`` when unreadable.
     """
-    try:
-        result = subprocess.run(  # noqa: S603 -- fixed argv, no shell
-            [name, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=_VERSION_PROBE_TIMEOUT_SECONDS,
-            check=False,
+    found, reason = _probe_version(name)
+    if found is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="binary_preflight",
+            note="version probe did not answer; version floor unverified",
+            binary=name,
+            reason=reason,
         )
-    except OSError, subprocess.SubprocessError:
-        return None
-    match = _VERSION_RE.search(result.stdout or "")
-    if match is None:
-        return None
-    return tuple(int(part) for part in match.group(1).split("."))
+    return found
 
 
 def _too_old(record: BinaryRecord) -> tuple[int, ...] | None:
@@ -232,27 +279,46 @@ def _too_old(record: BinaryRecord) -> tuple[int, ...] | None:
     """
     if record.min_version is None:
         return None
-    found = installed_version(record.name)
-    if found is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="binary_preflight",
-            note="could not read binary version; version floor unverified",
-            binary=record.name,
-            min_version=".".join(str(part) for part in record.min_version),
-        )
-        return None
-    # Compared over the shared prefix, so a floor of (2, 48) is satisfied by
-    # 2.48.1 and by a four-component build such as 2.55.0.windows.3.
+    found = _installed_version(record.name)
+    floor = ".".join(str(part) for part in record.min_version)
     width = len(record.min_version)
-    return found if found[:width] < record.min_version else None
+    # Too few components to compare is unreadable, not old. Tuple ordering
+    # would call ``(2,)`` lower than ``(2, 48)`` and refuse the boot over a
+    # minor version nothing ever reported, which is the inversion of the
+    # policy every other unreadable case here follows.
+    if found is None or len(found) < width:
+        if found is not None:
+            logger.warning(
+                API_APP_STARTUP,
+                service="binary_preflight",
+                note="version too short to compare; version floor unverified",
+                binary=record.name,
+                found=".".join(str(part) for part in found),
+                min_version=floor,
+            )
+        return None
+    if found[:width] < record.min_version:
+        return found
+    # Compared over the shared prefix, so a floor of 2.48 is satisfied by
+    # 2.48.1 and by a build whose extra components the parser stops before
+    # ("git version 2.55.0.windows.3" reads as 2.55.0).
+    logger.debug(
+        API_APP_STARTUP,
+        service="binary_preflight",
+        note="binary version satisfies its floor",
+        binary=record.name,
+        found=".".join(str(part) for part in found),
+        min_version=floor,
+    )
+    return None
 
 
 def _describe_old(record: BinaryRecord, found: tuple[int, ...]) -> str:
     """Render one too-old binary as an actionable sentence.
 
     Returns:
-        A line naming the binary, the versions, and what breaks.
+        A line naming the binary, the versions, what breaks, and the package
+        that supplies it.
     """
     return (
         f"{record.name!r} is version {'.'.join(str(p) for p in found)}, below the "
