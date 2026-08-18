@@ -33,8 +33,8 @@ worktree through a different mount, and every git command it runs fails with a
 "not a git repository" naming a path that exists on one side only. The version
 is read by asking the binary; a version that cannot be read is logged and
 allowed through, because not knowing is not evidence of an old one and
-refusing on an unparsed line would take a working deployment down over output
-the parser did not anticipate.
+refusing on a line it could not read would take a working deployment down over
+output the parser did not anticipate.
 
 `git` is required always; `pg_dump` / `pg_restore` only when the
 configured backend is Postgres, which is why the preflight is handed the
