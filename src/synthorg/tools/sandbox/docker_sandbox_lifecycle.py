@@ -157,9 +157,6 @@ class DockerSandboxLifecycleMixin(ABC):
         event reaches us (an OOM kill, an operator ``docker rm``, a
         daemon restart), and our records would still say it is there.
 
-        Args:
-            handle: The cached handle under consideration for reuse.
-
         A sidecar-backed handle is two containers, and the sandbox joins the
         sidecar's network namespace to have its egress policed. A sandbox
         whose sidecar died is therefore not a sandbox worth reusing: it is

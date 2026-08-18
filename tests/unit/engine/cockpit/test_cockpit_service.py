@@ -1,6 +1,7 @@
 """Unit tests for the cockpit live-activity service."""
 
 from datetime import UTC, datetime, timedelta
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,7 +14,11 @@ from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
-from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
+from synthorg.persistence.flight_recorder_protocol import (
+    FlightRecorderFrame,
+    FlightRecorderFrameAggregate,
+    FlightRecorderFrameFilterSpec,
+)
 from tests._shared import FakeClock, mock_of
 from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
@@ -91,6 +96,36 @@ def _service(
         agent_states=states,
         clock=FakeClock(start=_NOW),
     )
+
+
+class _FramesLandingBetweenReads(FakeFlightRecorderFrameRepository):
+    """A store whose batch lands between the service's two aggregate reads.
+
+    The task-wide total and the execution-scoped deduction are separate
+    round-trips, so frames written in the gap are seen by the second read
+    and not the first.
+    """
+
+    def __init__(self, late: tuple[FlightRecorderFrame, ...]) -> None:
+        super().__init__()
+        self._late = late
+        self._reads = 0
+
+    @override
+    async def get_aggregate(
+        self,
+        filter_spec: FlightRecorderFrameFilterSpec,
+    ) -> FlightRecorderFrameAggregate:
+        """Answer this read, then land the batch behind the first one.
+
+        Returns:
+            The aggregate as of this read.
+        """
+        self._reads += 1
+        aggregate = await super().get_aggregate(filter_spec)
+        if self._reads == 1:
+            await self.append_many(self._late)
+        return aggregate
 
 
 class TestCockpitService:
@@ -246,6 +281,51 @@ class TestARunStillGoingIsReadFromItsLiveState:
         # 0.4 recorded elsewhere + 1.0 in flight, NOT 0.4 + 1.0 + 1.0.
         assert activity.cost == pytest.approx(1.4)
         assert activity.is_runaway is False
+
+    async def test_a_batch_landing_between_the_reads_does_not_invert_the_cost(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """The two frame reads are not one snapshot.
+
+        The task-wide total is read first and the execution-scoped deduction
+        second, so a batch landing in the gap is counted only by what is
+        subtracted. ``AgentActivity.cost`` is ``ge=0`` and the rows are built
+        in a ``TaskGroup``, so an inverted pair takes the whole snapshot down
+        rather than mis-reporting the one agent it concerns.
+        """
+        repo = _FramesLandingBetweenReads(
+            (
+                _frame(
+                    task_id="t1",
+                    turn=4,
+                    cost=1.0,
+                    ts=_NOW - timedelta(seconds=30),
+                    execution_id="live-exec-t1",
+                ),
+            ),
+        )
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=0.0)
+        service = _service(
+            (task,),
+            repo,
+            _live(
+                agent="alice",
+                task_id="t1",
+                turns=4,
+                cost=0.2,
+                last_active=_NOW - timedelta(seconds=30),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        # Total read as 0.0 against a 1.0 deduction: floored, then the live
+        # figure, rather than -0.8 and a snapshot that never returns.
+        assert len(snapshot.agents) == 1
+        assert snapshot.agents[0].cost == pytest.approx(0.2)
 
     async def test_a_state_about_another_task_says_nothing_about_this_one(
         self, sample_task_with_criteria: Task

@@ -177,7 +177,7 @@ class TestPerTaskLiveness:
         strategy = PerTaskStrategy()
         created: list[str] = []
         destroyed: list[str] = []
-        probing = asyncio.Event()
+        both_probing = asyncio.Barrier(2)
 
         async def create_fn() -> ContainerHandle:
             created.append(f"c-{len(created)}")
@@ -187,10 +187,12 @@ class TestPerTaskLiveness:
             destroyed.append(h.container_id)
 
         async def slow_dead_probe(_handle: ContainerHandle) -> bool:
-            # Both acquires sit here together, so both read the same handle
-            # as dead before either reaches the eviction.
-            probing.set()
-            await probing.wait()
+            # A rendezvous, not a flag: the first caller has to still be here
+            # when the second arrives, or the first completes its whole
+            # acquire (nothing on that path yields) and the second probes the
+            # REPLACEMENT, which is a different handle and cannot double-reap
+            # whatever the eviction does.
+            await both_probing.wait()
             return False
 
         await strategy.acquire(

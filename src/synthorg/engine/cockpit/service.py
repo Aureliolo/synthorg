@@ -268,10 +268,18 @@ class CockpitService:
             # EXECUTING keeps its cost beside frames that already hold it, and
             # a doubled figure against a per-task budget reads as a runaway
             # that is not happening.
-            cost = (
-                aggregate.total_cost
-                - await self._recorded_cost_for(task, live.execution_id)
-                + live.accumulated_cost
+            #
+            # The deduction is clamped because the two frame reads are not one
+            # snapshot. A batch landing between them is counted by the second
+            # and not the first, and a retention purge between them drops rows
+            # from the second and not the first, so either can leave the
+            # execution-scoped figure larger than the task-wide total it is
+            # deducted from. ``AgentActivity.cost`` is ``ge=0`` and this builds
+            # inside a ``TaskGroup``, so an inverted pair would not merely
+            # under-report one row, it would abort the whole snapshot.
+            recorded_here = await self._recorded_cost_for(task, live.execution_id)
+            cost = max(0.0, aggregate.total_cost - recorded_here) + (
+                live.accumulated_cost
             )
         else:
             turn_count = aggregate.max_turn_index
