@@ -22,6 +22,8 @@ follow it, so a plan corrected here answers both the human and the reviewers
 that the human is overriding.
 """
 
+from typing import NamedTuple
+
 from synthorg.api.controllers._plan_replan import reject_unroutable_owners
 from synthorg.api.services._plan_revision import require_reworkable
 from synthorg.api.state import AppState
@@ -31,7 +33,7 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     ValidationError,
 )
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanPremises
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
@@ -51,12 +53,27 @@ from synthorg.workers.state import RuntimeStateSlice
 logger = get_logger(__name__)
 
 
+class RePlan(NamedTuple):
+    """What a re-planning pass produced, for the caller to persist together.
+
+    Attributes:
+        items: The revised plan items.
+        premises: The assumptions and open questions those items rest on.
+            Carried beside them because the items are meaningless against the
+            superseded plan's premises: a revision that rebuilds from scratch
+            under an assumption that it already exists contradicts itself.
+    """
+
+    items: tuple[PlanItem, ...]
+    premises: PlanPremises
+
+
 async def replan_for_change_request(
     app_state: AppState,
     existing: Plan,
     *,
     note: str | None,
-) -> tuple[PlanItem, ...]:
+) -> RePlan:
     """Re-plan *existing* against the operator's *note*.
 
     Args:
@@ -65,7 +82,7 @@ async def replan_for_change_request(
         note: The operator's rationale. Leads the brief when present.
 
     Returns:
-        The re-planned items, for the caller to persist.
+        The re-planned items and the premises they rest on.
 
     Raises:
         ConflictError: The plan is terminal, or its objective task is gone so
@@ -120,7 +137,13 @@ async def replan_for_change_request(
         has_note=note is not None and bool(note.strip()),
         addressed_review=existing.review is not None,
     )
-    return items
+    return RePlan(
+        items=items,
+        premises=PlanPremises(
+            assumptions=result.plan.assumptions,
+            open_questions=result.plan.open_questions,
+        ),
+    )
 
 
 def _decomposition(app_state: AppState) -> DecompositionService:

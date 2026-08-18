@@ -457,10 +457,15 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        items = await replan_for_change_request(
+        replanned = await replan_for_change_request(
             state.app_state, existing, note=data.note
         )
-        drafted = await service.request_changes(existing, items=items, note=data.note)
+        drafted = await service.request_changes(
+            existing,
+            items=replanned.items,
+            premises=replanned.premises,
+            note=data.note,
+        )
         publish_ws_event(
             request,
             WsEventType.PLAN_CHANGES_REQUESTED,

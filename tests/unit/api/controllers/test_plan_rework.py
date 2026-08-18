@@ -127,6 +127,8 @@ def _decomposition_result() -> DecompositionResult:
             ),
         ),
         task_structure=TaskStructure.SEQUENTIAL,
+        assumptions=("the workspace starts empty",),
+        open_questions=("which host?",),
     )
     return DecompositionResult(
         plan=plan,
@@ -167,11 +169,11 @@ def planner(async_test_client: LoopAsyncClient) -> SimpleNamespace:
 
 class TestTheNoteReachesThePlanner:
     async def test_a_change_request_re_plans(self, planner: SimpleNamespace) -> None:
-        items = await replan_for_change_request(
+        replanned = await replan_for_change_request(
             planner.app_state, _plan(), note="split movement into drop and rotate"
         )
-        assert len(items) == 1
-        assert items[0].title == "Build the engine"
+        assert len(replanned.items) == 1
+        assert replanned.items[0].title == "Build the engine"
 
     async def test_the_planner_is_briefed_with_the_operators_words(
         self, planner: SimpleNamespace
@@ -210,12 +212,35 @@ class TestTheNoteReachesThePlanner:
         self, planner: SimpleNamespace
     ) -> None:
         """ "Send it back" with findings outstanding is a complete instruction."""
-        items = await replan_for_change_request(
+        replanned = await replan_for_change_request(
             planner.app_state,
             _plan(review=_review("no item builds the engine")),
             note=None,
         )
-        assert len(items) == 1
+        assert len(replanned.items) == 1
+
+
+class TestThePremisesTravelWithTheItems:
+    async def test_the_re_planned_assumptions_come_back(
+        self, planner: SimpleNamespace
+    ) -> None:
+        """A live run replaced every item with "build it from scratch" while
+        the plan went on asserting the thing already existed, because the
+        rework carried the superseded plan's premises forward.
+        """
+        replanned = await replan_for_change_request(
+            planner.app_state, _plan(), note="nothing exists yet"
+        )
+        assert replanned.premises.assumptions == ("the workspace starts empty",)
+
+    async def test_the_re_planned_open_questions_come_back(
+        self, planner: SimpleNamespace
+    ) -> None:
+        """Stale questions outlive the plan that could not answer them."""
+        replanned = await replan_for_change_request(
+            planner.app_state, _plan(), note="nothing exists yet"
+        )
+        assert replanned.premises.open_questions == ("which host?",)
 
 
 class TestItPlansAsTheInitiativesOwner:
@@ -258,12 +283,12 @@ class TestItPlansAsTheInitiativesOwner:
         Refusing an operator's change request over a missing lead would be a
         worse answer than the fallback decomposer.
         """
-        items = await replan_for_change_request(
+        replanned = await replan_for_change_request(
             planner.app_state, _plan(), note="split movement"
         )
         context = planner.decomposition.decompose_task.await_args.args[1]
         assert context.owner_identity is None
-        assert len(items) == 1
+        assert len(replanned.items) == 1
 
 
 class TestItRefusesRatherThanParks:

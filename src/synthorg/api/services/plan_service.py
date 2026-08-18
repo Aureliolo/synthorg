@@ -28,7 +28,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanPremises
 from synthorg.core.plan_enums import (
     PlanStatus,
 )
@@ -164,6 +164,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         task_structure: TaskStructure | None = None,
         coordination_topology: CoordinationTopology | None = None,
         failure_event: str = API_PLAN_UPDATE_FAILED,
+        premises: PlanPremises | None = None,
     ) -> Plan:
         """Apply an operator rework, producing a new revision under review.
 
@@ -179,6 +180,12 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             coordination_topology: Optional override of the topology.
             failure_event: Audit event a write failure logs under, so a change
                 request that fails is not recorded as a failed operator edit.
+            premises: The assumptions and open questions the revision rests
+                on. ``None`` carries the existing plan's forward, which is
+                right for an operator editing items by hand: they revised the
+                work, not the premises. A re-plan must pass its own, because
+                the planner derived fresh ones and keeping the superseded set
+                leaves the plan contradicting itself.
 
         Returns:
             The persisted, reworked plan.
@@ -214,8 +221,14 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
                 # reference the pre-edit items); the plan re-enters review with
                 # no stale verdict shown against the new version.
                 review=None,
-                open_questions=existing.open_questions,
-                assumptions=existing.assumptions,
+                open_questions=(
+                    existing.open_questions
+                    if premises is None
+                    else premises.open_questions
+                ),
+                assumptions=(
+                    existing.assumptions if premises is None else premises.assumptions
+                ),
                 objective_criteria=existing.objective_criteria,
                 version_history=history,
                 version=existing.version + 1,
@@ -250,6 +263,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         existing: Plan,
         *,
         items: tuple[PlanItem, ...],
+        premises: PlanPremises,
         note: str | None = None,
     ) -> Plan:
         """Record an operator change request against the plan it re-planned.
@@ -264,6 +278,9 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         Args:
             existing: The plan being sent back (already fetched by the caller).
             items: The re-planned items replacing the reviewed ones.
+            premises: The assumptions and open questions the re-plan derived,
+                which replace the reviewed plan's: the items rest on these,
+                not on the ones the superseded plan carried.
             note: The operator's rationale for the change request, recorded on
                 the ``API_PLAN_CHANGES_REQUESTED`` audit event.
 
@@ -281,6 +298,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             existing,
             items=items,
             failure_event=API_PLAN_CHANGES_REQUEST_FAILED,
+            premises=premises,
         )
         logger.info(
             API_PLAN_CHANGES_REQUESTED,
