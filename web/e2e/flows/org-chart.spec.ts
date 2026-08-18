@@ -9,8 +9,8 @@ import { makeCompanyConfig, makeDepartment, makeOrgAgent } from '../factories'
  * The unit suite asserts the layout maths; this asserts what actually lands
  * on the canvas once React Flow has applied it. Two properties are checked
  * against the seeded company: departments read left to right in the order the
- * operator arranged them, and a department too wide to sit in the row flows
- * its reports into a column beside its lead instead of a strip beneath it.
+ * operator arranged them, and a department with more reports than fit in a
+ * row wraps them into a block beneath its lead rather than one long strip.
  *
  * Every box is read through ``getBoundingClientRect()``, so all of it is in
  * screen space after React Flow's fit-to-view transform. That transform is a
@@ -128,12 +128,36 @@ test.describe('Org chart layout', () => {
     expect(first.x).toBeLessThan(second.x)
   })
 
-  test('columns a wide department beside its lead', async ({ page }) => {
-    const boxes = await boxesOf(page, ['agent-alice', 'agent-bob', 'agent-heidi'])
-    const [lead, first, last] = [boxes['agent-alice']!, boxes['agent-bob']!, boxes['agent-heidi']!]
-    expect(lead.x).toBeLessThan(first.x)
-    expect(first.x).toBeCloseTo(last.x, 1)
-    expect(first.y).toBeLessThan(last.y)
+  test('wraps a wide department into a block beneath its lead', async ({ page }) => {
+    // Seven reports under alice, so the column rule gives three per row and
+    // fills row-major: bob/carol/dave, then eve/frank/grace, then heidi.
+    const boxes = await boxesOf(page, [
+      'agent-alice',
+      'agent-bob',
+      'agent-carol',
+      'agent-dave',
+      'agent-eve',
+      'agent-heidi',
+    ])
+    const [lead, bob, carol, dave, eve, heidi] = [
+      boxes['agent-alice']!,
+      boxes['agent-bob']!,
+      boxes['agent-carol']!,
+      boxes['agent-dave']!,
+      boxes['agent-eve']!,
+      boxes['agent-heidi']!,
+    ]
+    // The lead sits above the block, not beside it.
+    expect(lead.y).toBeLessThan(bob.y)
+    // First row: three abreast, in the operator's own order.
+    expect(bob.y).toBeCloseTo(carol.y, 1)
+    expect(carol.y).toBeCloseTo(dave.y, 1)
+    expect(bob.x).toBeLessThan(carol.x)
+    expect(carol.x).toBeLessThan(dave.x)
+    // Row two starts under row one's first column, and row three under that.
+    expect(bob.y).toBeLessThan(eve.y)
+    expect(eve.x).toBeCloseTo(bob.x, 1)
+    expect(eve.y).toBeLessThan(heidi.y)
   })
 
   test('keeps a wide department from dominating the row', async ({ page }) => {

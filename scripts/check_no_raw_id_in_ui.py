@@ -33,13 +33,16 @@ expression ends in a reference::
 
     <span>{row.taskId}</span>                         # flagged
     <td>Owner: {plan.owner}</td>                      # flagged
+    <div>ID: {nodeId}</div>                           # flagged
     <span>{agent.name}</span>                         # fine
     <li key={item.id} id={rowId}>                     # fine (React's, the DOM's)
     <Link to={`/tasks/${t.task_id}`}>{t.title}</Link>  # fine (routing)
 
 A container is a text child when the character before it does not make it
-something else: an attribute value, a template substitution, or the inner half
-of a nested literal. Prose beside the expression does not exempt it.
+something else: an attribute value, a template substitution, the inner half of
+a nested literal, or a destructured parameter. Prose beside the expression does
+not exempt it. Comments are blanked before any of this, so a route documented
+as ``PATCH /agents/{id}`` is read as the documentation it is.
 
 **A name-shaped attribute.** ``aria-label`` and ``title`` are prose a screen
 reader reads aloud; ``name`` is what a component renders. Interpolated or
@@ -74,12 +77,13 @@ Only f-strings are considered: a plain ``description="..."`` on a Pydantic
 
 What is deliberately NOT checked, so nobody mistakes silence for coverage:
 
-* A value already destructured out of its object (``const { owner } = plan``
-  and then ``{owner}``). A rendered container is decided on the member-access
-  path, because a lone name inside braces is as likely to BE a destructure or
-  an import specifier as to be a value, and telling those apart needs a parser.
-  A template substitution, a name-shaped attribute and a property's right-hand
-  side can only be values, so a lone name does count in those three positions.
+* Nothing about a lone name any more. A brace holding one name is a
+  destructure, an import specifier, a guarded object literal or a block as
+  readily as it is a value, and reading it as a value everywhere reported
+  documentation and prop-spreading as leaks. It is read where the container is
+  provably an element's child and nothing in front of it makes it one of those
+  others, because the hole cost a real one: a properties drawer read
+  ``ID: {nodeId}``, whose value the editor mints from a UUID.
 * A ternary (``{t.owner ? t.owner : 'Unassigned'}``). The leading path there is
   a CONDITION, not the printed value; the printed values are in the branches.
 * A call taking more than one argument. One argument is read through, because a
@@ -190,9 +194,43 @@ _EXPRESSION_CONTAINER: Final[re.Pattern[str]] = re.compile(r"\{([^{}]+)\}")
 
 #: What the character before a container means it is, when it is one of these:
 #: an attribute value (``key={t.id}``), a template substitution (``${t.id}``),
-#: the inner half of a nested literal (``style={{...}}``), or a statement block
-#: opening after a call or a previous statement (``for (...) { ... }``).
-_NOT_A_TEXT_CHILD: Final[frozenset[str]] = frozenset({"=", "$", "{", ")", ";"})
+#: the inner half of a nested literal (``style={{...}}``), a statement block
+#: opening after a call or a previous statement (``for (...) { ... }``), or a
+#: destructured parameter (``({ id }) =>``, ``f(a, { id })``), or an object
+#: literal guarded by a logical operator (``...(x !== undefined && { x })``).
+_NOT_A_TEXT_CHILD: Final[frozenset[str]] = frozenset(
+    {"=", "$", "{", ")", ";", "(", ",", "&", "|"}
+)
+
+#: The word before a container, when it has one.
+_TRAILING_WORD: Final[re.Pattern[str]] = re.compile(r"[A-Za-z_$][\w$]*$")
+
+#: Words that make the brace after them a binding or a block rather than JSX
+#: children. Together with the character set above these are how a destructure
+#: is told from a rendered value, which is what lets a lone name be judged at
+#: all: every destructure and every bare block is introduced by one or the
+#: other, and a text child is introduced by neither.
+_NOT_A_TEXT_CHILD_WORD: Final[frozenset[str]] = frozenset(
+    {
+        "const",
+        "let",
+        "var",
+        "import",
+        "export",
+        "return",
+        "function",
+        "else",
+        "try",
+        "catch",
+        "finally",
+        "do",
+        "typeof",
+        "in",
+        "of",
+        "yield",
+        "await",
+    }
+)
 
 #: An arrow-function body is code, not prose: ``onClick={() => { f(x) }}``.
 #: Two characters, so it cannot be decided by the single-character set above,
@@ -401,6 +439,97 @@ def _is_text_child(source: str, start: int) -> bool:
     return not before.endswith(_ARROW_BODY)
 
 
+#: The three quote characters a JS/TS literal can open with.
+_QUOTES: Final[str] = "'\"`"
+
+
+def _without_comments(source: str) -> str:
+    """*source* with every comment blanked, character for character.
+
+    A comment is prose about code, not code, so a brace inside one renders
+    nothing: a JSDoc line reading ``PATCH /agents/{id}`` is documentation of a
+    route, and reading it as a JSX child reports a leak that does not exist.
+    Blanking rather than deleting keeps every offset and line number identical,
+    so the marker lookup and the reported line still refer to the real file.
+
+    String literals are tracked, because ``'https://x'`` contains what would
+    otherwise open a line comment and blanking from there would swallow the
+    rest of the line.
+
+    Returns:
+        The source with comment bodies replaced by spaces.
+    """
+    out = list(source)
+    index = 0
+    quote: str | None = None
+    length = len(source)
+    while index < length:
+        char = source[index]
+        if quote is not None:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in _QUOTES:
+            quote = char
+            index += 1
+            continue
+        pair = source[index : index + 2]
+        if pair == "//":
+            while index < length and source[index] != "\n":
+                out[index] = " "
+                index += 1
+            continue
+        if pair == "/*":
+            while index < length and source[index : index + 2] != "*/":
+                if source[index] != "\n":
+                    out[index] = " "
+                index += 1
+            for _ in range(2):
+                if index < length:
+                    out[index] = " "
+                    index += 1
+            continue
+        index += 1
+    return "".join(out)
+
+
+def _in_element_children(source: str, start: int) -> bool:
+    """Whether the container at *start* sits inside an element's children.
+
+    Decided on which angle bracket was seen last: after an opening tag closes,
+    everything up to the next ``<`` is what that element renders.
+
+    Returns:
+        ``True`` when the container is between a ``>`` and the next ``<``.
+    """
+    before = source[:start]
+    return before.rfind(">") > before.rfind("<")
+
+
+def _bare_child_leaf(source: str, start: int, expression: str) -> str | None:
+    """A lone name in a container, when that container is provably rendered.
+
+    A brace holding one name is a destructure, an import specifier or a block
+    as readily as it is a value, and the difference is carried by what precedes
+    it: a declaration keyword or one of the characters that make a container
+    something else. What remains, sitting in an element's children, is printed.
+
+    Returns:
+        The name, or ``None`` when the container is not a rendered value.
+    """
+    bare = _BARE_IDENTIFIER.match(expression)
+    if bare is None:
+        return None
+    word = _TRAILING_WORD.search(source[:start].rstrip())
+    if word is not None and word.group(0) in _NOT_A_TEXT_CHILD_WORD:
+        return None
+    return bare.group(1) if _in_element_children(source, start) else None
+
+
 def _text_child_violations(path: Path, source: str) -> Iterator[Violation]:
     """Every reference this component would render as prose.
 
@@ -408,14 +537,22 @@ def _text_child_violations(path: Path, source: str) -> Iterator[Violation]:
         One violation per rendering site.
     """
     lines = source.splitlines()
-    for match in _EXPRESSION_CONTAINER.finditer(source):
-        if not _is_text_child(source, match.start()):
+    # Scanned with comments blanked and markers read from the original: the
+    # offsets are identical either way, and an opt-out is itself a comment.
+    scanned = _without_comments(source)
+    for match in _EXPRESSION_CONTAINER.finditer(scanned):
+        if not _is_text_child(scanned, match.start()):
             continue
         expression = match.group(1)
         # A template literal and a single-argument call both print what they
-        # wrap, so a text child is read through them; a lone identifier is not,
-        # because in this position it is as likely to be a binding.
-        leaf = _template_leaf(expression) or _call_or_path_leaf(expression)
+        # wrap, so a text child is read through them. A lone name is read too,
+        # but only once its container is established as an element's child:
+        # everywhere else in this position it is as likely to be a binding.
+        leaf = (
+            _template_leaf(expression)
+            or _call_or_path_leaf(expression)
+            or _bare_child_leaf(scanned, match.start(), expression)
+        )
         if leaf is None or not _is_reference(leaf):
             continue
         line = _line_of(source, match.start(1))
@@ -443,7 +580,7 @@ def _label_violations(path: Path, source: str) -> Iterator[Violation]:
         One violation per accessible name.
     """
     lines = source.splitlines()
-    for attribute in _NAME_SHAPED_ATTRIBUTE.finditer(source):
+    for attribute in _NAME_SHAPED_ATTRIBUTE.finditer(_without_comments(source)):
         value = attribute.group("value")
         leaf = _value_leaf(value)
         if leaf is None or not _is_reference(leaf):
@@ -476,7 +613,7 @@ def check_web_mapping(path: Path, source: str | None = None) -> list[Violation]:
     text = path.read_text(encoding="utf-8") if source is None else source
     lines = text.splitlines()
     violations: list[Violation] = []
-    for match in _OBJECT_PROPERTY.finditer(text):
+    for match in _OBJECT_PROPERTY.finditer(_without_comments(text)):
         key = match.group("key")
         if not any(key.lower().endswith(s) for s in _NAME_SHAPED_SUFFIXES):
             continue

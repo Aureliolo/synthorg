@@ -356,6 +356,16 @@ _ALTER_ADDED_REFERENCE = (
     "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
     "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
 )
+_BOTH_ACTIONS = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE ON UPDATE SET NULL;"
+)
+_INVENTED_ACTION = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE FROBNICATE;"
+)
 
 
 class TestTheRebuildDimensions:
@@ -427,3 +437,25 @@ class TestTheRebuildDimensions:
         assert foreign_key.ref_table == "p"
         assert foreign_key.on_delete == "CASCADE"
         assert foreign_key.on_update == _MODULE.NO_ACTION
+
+    def test_both_actions_on_one_reference_are_read(self) -> None:
+        """The repetition has to consume each clause exactly one way.
+
+        A class admitting the separator would let one repetition's tail and
+        the next one's leading whitespace both claim the same space, so a
+        clause with several actions has exponentially many parses.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_BOTH_ACTIONS), _BOTH_ACTIONS
+        )
+        (foreign_key,) = patched["t"].foreign_keys
+        assert foreign_key.on_delete == "CASCADE"
+        assert foreign_key.on_update == "SET NULL"
+
+    def test_an_unknown_action_is_not_read_as_one(self) -> None:
+        """Only the five the standard defines.
+
+        Asserted against the pattern rather than through a parse, because
+        sqlglot refuses the DDL outright and the ALTER overlay never runs.
+        """
+        assert _MODULE._ALTER_TABLE_ADD_FK_PATTERN.search(_INVENTED_ACTION) is None

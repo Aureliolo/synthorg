@@ -154,13 +154,21 @@ def _is_boolean_idiom(expr: exp.Expression, boolean_columns: frozenset[str]) -> 
     return isinstance(target, exp.Column) and target.name in boolean_columns
 
 
+#: The five referential actions the standard defines, as one alternation.
+#: Declared apart from the pattern below because the ALTER parser needs the
+#: same vocabulary, and a second spelling of it is a second thing to keep
+#: right. It is also what keeps that parser's repetition unambiguous: a
+#: character class admitting spaces would let one repetition's tail and the
+#: next one's separator both match the same space, which is the shape that
+#: backtracks exponentially.
+FK_ACTIONS: Final[str] = r"(?:CASCADE|RESTRICT|SET\s+NULL|SET\s+DEFAULT|NO\s+ACTION)"
+
 #: ``ON DELETE CASCADE`` and its siblings, wherever they are written down.
 #: sqlglot keeps them as raw option strings on the reference rather than as
 #: parsed nodes, and pg_dump writes them into an ALTER, so one pattern reads
 #: both and neither caller invents its own spelling of the same clause.
 FK_ACTION_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"ON\s+(DELETE|UPDATE)\s+"
-    r"(CASCADE|RESTRICT|SET\s+NULL|SET\s+DEFAULT|NO\s+ACTION)",
+    rf"ON\s+(DELETE|UPDATE)\s+({FK_ACTIONS})",
     re.IGNORECASE,
 )
 

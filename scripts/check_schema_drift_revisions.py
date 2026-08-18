@@ -52,6 +52,7 @@ from typing import Final, Literal
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _schema_drift_constraints import (  # type: ignore[import-not-found]
+        FK_ACTIONS,
         NO_ACTION,
         referential_actions,
     )
@@ -63,7 +64,11 @@ if __package__ in {None, ""}:
     )
     from _schema_drift_parser import parse_schema  # type: ignore[import-not-found]
 else:
-    from scripts._schema_drift_constraints import NO_ACTION, referential_actions
+    from scripts._schema_drift_constraints import (
+        FK_ACTIONS,
+        NO_ACTION,
+        referential_actions,
+    )
     from scripts._schema_drift_models import (
         NormalizedForeignKey,
         NormalizedIndex,
@@ -226,7 +231,13 @@ _ALTER_TABLE_ADD_FK_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
     r"ADD\s+CONSTRAINT\s+\w+\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s*"
     r"REFERENCES\s+(?:\w+\.)?(\w+)\s*(?:\(([^)]*)\))?"
-    r"(?P<actions>(?:\s+ON\s+(?:DELETE|UPDATE)\s+[A-Z ]+?)*)\s*;",
+    # The action is one of five literals, never a run of letters and spaces.
+    # A class admitting the separator lets one repetition's tail and the next
+    # one's leading ``\s+`` both claim the same space, so a clause with several
+    # actions has exponentially many parses and a non-matching tail walks them
+    # all. Naming the alternation is what makes each repetition consume exactly
+    # one way.
+    rf"(?P<actions>(?:\s+ON\s+(?:DELETE|UPDATE)\s+{FK_ACTIONS})*)\s*;",
     re.IGNORECASE,
 )
 _ALTER_TABLE_ADD_UNIQUE_PATTERN: Final[re.Pattern[str]] = re.compile(

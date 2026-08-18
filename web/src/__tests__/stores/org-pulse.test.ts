@@ -50,6 +50,19 @@ function emptyTasks() {
   )
 }
 
+/**
+ * A 200 whose payload is shaped nothing like the contract.
+ *
+ * Not hypothetical: an older backend without the route, or a proxy answering
+ * in its own words, resolves the promise and hands `undefined` where the
+ * panel's derivation iterates a list.
+ */
+function misshapedSubsystems() {
+  return http.get('/api/v1/subsystems', () =>
+    HttpResponse.json({ data: [], error: null, error_detail: null, success: true }),
+  )
+}
+
 describe('useOrgPulseStore', () => {
   it('records both reads when both succeed', async () => {
     server.use(subsystemsHandler('blocked'), emptyTasks())
@@ -71,6 +84,20 @@ describe('useOrgPulseStore', () => {
     const state = useOrgPulseStore.getState()
     // The half that answered is trusted; the half that did not is marked, so
     // the panel cannot claim an all-clear built out of an error.
+    expect(state.subsystemsError).not.toBeNull()
+    expect(state.blockedTasksError).toBeNull()
+  })
+
+  it('treats a 200 carrying no list as a failed read, not as an all-clear', async () => {
+    server.use(misshapedSubsystems(), emptyTasks())
+
+    await useOrgPulseStore.getState().fetchOrgPulse()
+
+    const state = useOrgPulseStore.getState()
+    // The list stays a list. Handing `undefined` to the panel's derivation
+    // throws in the hook, above the panel's own error boundary, which takes
+    // the whole dashboard page down rather than this one half.
+    expect(state.subsystems).toEqual([])
     expect(state.subsystemsError).not.toBeNull()
     expect(state.blockedTasksError).toBeNull()
   })

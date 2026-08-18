@@ -145,12 +145,51 @@ class TestLegitimateUses:
         assert _hits("<span>{t.owner ? t.owner : 'Unassigned'}</span>") == []
 
     def test_a_destructure_is_not_a_render(self) -> None:
-        # A lone name in braces is as likely to be a binding as a value, which
-        # is why the rendered-text check reads member-access paths only.
+        # A lone name in braces is as likely to be a binding as a value, so the
+        # declaration keyword in front of it is what settles which.
         assert _hits("const { agentId } = useParams()") == []
 
     def test_an_import_specifier_is_not_a_render(self) -> None:
         assert _hits("import { useId } from 'react'") == []
+
+    def test_a_destructured_parameter_is_not_a_render(self) -> None:
+        # No keyword in front of this one: the open paren is what marks it.
+        assert _hits("useMemo(({ nodeId }) => nodeId, [])") == []
+
+    def test_a_guarded_object_shorthand_is_not_a_render(self) -> None:
+        # ``...(x !== undefined && { taskId })`` builds props conditionally; the
+        # logical operator in front of the brace is what marks it as a literal.
+        assert _hits("const p = { ...(taskId !== undefined && { taskId }) }") == []
+
+    def test_a_lone_name_rendered_as_a_child_is_flagged(self) -> None:
+        # The hole this closes: the drawer read `ID: {nodeId}`, whose value the
+        # editor mints from a UUID, and every check above it looks past a name
+        # standing on its own.
+        assert _hits("<div>ID: {nodeId}</div>") == ["nodeId"]
+
+    def test_a_lone_resolved_name_rendered_as_a_child_is_fine(self) -> None:
+        assert _hits("<div>{agentName}</div>") == []
+
+
+class TestComments:
+    """Prose about code renders nothing, so a brace inside it leaks nothing."""
+
+    def test_a_route_documented_in_a_docstring_is_not_a_render(self) -> None:
+        # ``PATCH /agents/{id}`` in a JSDoc block documents a route. Read as
+        # JSX it reported a leak on a file that renders no such thing.
+        doc = "/**\n * Runs ``PATCH /agents/{id}``.\n */\nexport const x = 1"
+        assert _hits(doc) == []
+
+    def test_a_line_comment_is_not_a_render(self) -> None:
+        assert _hits("// falls back to {task_id} when nothing names it\n") == []
+
+    def test_a_url_in_a_string_does_not_swallow_the_line(self) -> None:
+        # The ``//`` inside the literal is not a comment opener, so the render
+        # after it on the same line is still read.
+        assert _hits("<a href='https://x'>{row.task_id}</a>") == ["row.task_id"]
+
+    def test_a_commented_out_render_is_not_a_render(self) -> None:
+        assert _hits("{/* was <span>{row.task_id}</span> */}") == []
 
 
 class TestAccessibleNames:

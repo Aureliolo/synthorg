@@ -62,11 +62,30 @@ runs:
         # bounds the ladder in wall-clock so a mirror that accepts the
         # connection then stalls is killed and reported here, instead of
         # hanging until the job timeout reaps it as an opaque cancellation.
+        #
+        # Each attempt drops the mirror's own cached indices first. A mirror
+        # caught mid-sync serves a Release naming one Packages size and a
+        # Packages of another, which apt reports as "File has unexpected size
+        # (A != B). Mirror sync in progress?". List-Cleanup=0 keeps that pair
+        # on disk, so every retry re-reads the same inconsistent metadata and
+        # reproduces the identical byte mismatch: the ladder was inert against
+        # the one failure mode it hit in practice, five attempts over four
+        # minutes reporting the same two numbers. Removing only the
+        # apt.postgresql.org lists re-fetches Release and Packages together
+        # while leaving the base archive indices the image provisioned, which
+        # is why List-Cleanup=0 has to stay: the refresh is scoped to
+        # pgdg.list, so apt's own cleanup would read every other index as
+        # obsolete and delete it.
         RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
-          sudo apt-get update \
-          -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
-          -o Dir::Etc::sourceparts="-" \
-          -o APT::Get::List-Cleanup="0"
+          bash -c '
+            set -euo pipefail
+            sudo rm -rf /var/lib/apt/lists/apt.postgresql.org_* \
+                        /var/lib/apt/lists/partial/apt.postgresql.org_*
+            sudo apt-get update \
+              -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
+              -o Dir::Etc::sourceparts="-" \
+              -o APT::Get::List-Cleanup="0"
+          '
         RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
           sudo apt-get install -y postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"

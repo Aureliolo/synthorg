@@ -317,6 +317,14 @@ writes down why it is a word; the handful carrying no suffix (`owner`, `lead`,
 `assigned_to` and their kin) are declared. Prose sitting beside the expression
 does not exempt it.
 
+A lone name is read too (`<div>ID: {nodeId}</div>`), but only once its container
+is established as an element's child and nothing in front of it makes it a
+destructure, an import specifier, a guarded object literal or a block. That
+distinction needs the surrounding text rather than the expression, which is why
+it was left out at first, and the omission cost a real leak: a properties drawer
+printed a node id the editor mints from a UUID. Comments are blanked before any
+of this, so a route documented as `PATCH /agents/{id}` is read as documentation.
+
 A genuine exception takes a marker on the line above, written in the comment
 syntax of the boundary it sits at:
 

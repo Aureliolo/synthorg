@@ -101,7 +101,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_os_environ_outside_bootstrap.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_pre_commit_install_in_docs.py` | commit+push | setup docs | full | no | none | keep |
 | `check_no_provider_auto_pick.py` | push | `src/synthorg/` | full | no | none | add |
-| `check_no_raw_id_in_ui.py` | push | `web/src/**/*.tsx` + `web/src/api/**/*.ts` + `src/synthorg/` | full | no | none | add |
+| `check_no_raw_id_in_ui.py` | push | `web/src/**/*.{tsx,ts}` + `src/synthorg/` | full | no | none | add |
 | `check_no_raw_playwright_imports.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_silent_embedder_fallback.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_redundant_timeout.py` | commit+push | `tests/` | staged | yes | none | harden |

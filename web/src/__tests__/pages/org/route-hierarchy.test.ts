@@ -166,9 +166,14 @@ describe('routing a real chart', () => {
   ]
 
   /** Absolute boxes, so a child's own frame does not skew the comparison. */
-  function absolute(nodes: readonly Node[]): Map<string, { left: number; right: number; top: number }> {
+  function absolute(
+    nodes: readonly Node[],
+  ): Map<string, { left: number; right: number; top: number; bottom: number }> {
     const byId = new Map(nodes.map((n) => [n.id, n]))
-    const out = new Map<string, { left: number; right: number; top: number }>()
+    const out = new Map<
+      string,
+      { left: number; right: number; top: number; bottom: number }
+    >()
     for (const node of nodes) {
       let x = node.position.x
       let y = node.position.y
@@ -180,7 +185,13 @@ describe('routing a real chart', () => {
         y += ancestor.position.y
         parent = ancestor.parentId
       }
-      out.set(node.id, { left: x, right: x + getNodeDim(node).w, top: y })
+      const dim = getNodeDim(node)
+      out.set(node.id, {
+        left: x,
+        right: x + dim.w,
+        top: y,
+        bottom: y + dim.h,
+      })
     }
     return out
   }
@@ -205,6 +216,33 @@ describe('routing a real chart', () => {
       for (const dept of departments) {
         const at = boxes.get(dept.id)!
         expect(riserX > at.left && riserX < at.right).toBe(false)
+      }
+    }
+  })
+
+  it('never routes a trunk or a bus through a department card', () => {
+    // The riser is the corridor most likely to cross something, and asserting
+    // only it left the other two spans resting on "they sit in a gutter by
+    // construction". A horizontal corridor clears a card when its y is outside
+    // the card's own band, and that is checkable directly.
+    const nodes = layoutOf(orgConfig(ORG))
+    const departments = nodes.filter((n) => n.type === 'department')
+    const boxes = absolute(nodes)
+    const routed = routeHierarchyEdges(
+      nodes,
+      departments
+        .filter((d) => d.id !== 'dept-executive')
+        .map((d) => hierarchyEdge('dept-executive', d.id)),
+    )
+    const corridors = routed.flatMap((edge) => {
+      const plan = edge.data as HierarchyRouting | undefined
+      return plan === undefined ? [] : [plan.trunkY, plan.busY]
+    })
+    expect(corridors.length).toBeGreaterThan(0)
+    for (const y of corridors) {
+      for (const dept of departments) {
+        const at = boxes.get(dept.id)!
+        expect(y > at.top && y < at.bottom).toBe(false)
       }
     }
   })

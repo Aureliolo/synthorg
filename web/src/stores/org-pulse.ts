@@ -3,7 +3,8 @@ import { create } from 'zustand'
 
 import { getSubsystems } from '@/api/endpoints/subsystems'
 import { listTasks } from '@/api/endpoints/tasks'
-import type { SubsystemReport } from '@/api/types/subsystems'
+import type { PaginatedResult } from '@/api/client'
+import type { SubsystemReport, SubsystemsResponse } from '@/api/types/subsystems'
 import type { Task } from '@/api/types/tasks'
 import { getErrorMessage } from '@/utils/errors'
 
@@ -46,6 +47,46 @@ type PulseGet = StoreApi<OrgPulseState>['getState']
  */
 const BLOCKED_TASK_SAMPLE = 100
 
+/**
+ * What a read that resolved but did not carry a list is reported as.
+ *
+ * A rejected promise is not the only way a read fails. An envelope shaped
+ * differently from the contract resolves perfectly well and hands `undefined`
+ * to a field the panel's derivation iterates, and that derivation runs in the
+ * hook, ABOVE the panel's own error boundary, so the whole dashboard page goes
+ * down rather than the one half that could not be read.
+ */
+const NOT_A_LIST = 'the response did not carry the expected list'
+
+/** One read's outcome: its list, or the reason there is none. */
+interface PulseRead<T> {
+  readonly items: readonly T[] | null
+  readonly error: string | null
+}
+
+/**
+ * Settle one read into a list or a reason, never into a silent empty list.
+ *
+ * The list is checked for at runtime rather than trusted from the declared
+ * type: that type is a claim about the backend, not about the bytes that
+ * arrived, which is why `pick` answers `unknown`.
+ *
+ * Returns:
+ *   The list when the read both resolved and carried one, else the reason.
+ */
+function settle<T>(
+  result: PromiseSettledResult<unknown>,
+  pick: (value: never) => unknown,
+): PulseRead<T> {
+  if (result.status !== 'fulfilled') {
+    return { items: null, error: getErrorMessage(result.reason) }
+  }
+  const picked = pick(result.value as never)
+  return Array.isArray(picked)
+    ? { items: picked as readonly T[], error: null }
+    : { items: null, error: NOT_A_LIST }
+}
+
 async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
   // Only the first read is a loading state. This is also the 30s poll, and a
   // panel that flashes "reading the org's state" every 30s reads as churn.
@@ -58,24 +99,19 @@ async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
       getSubsystems(),
       listTasks({ status: 'blocked', limit: BLOCKED_TASK_SAMPLE }),
     ])
+    const reports = settle<SubsystemReport>(
+      subsystemsResult,
+      (value: SubsystemsResponse) => value.subsystems,
+    )
+    const parked = settle<Task>(tasksResult, (value: PaginatedResult<Task>) => value.data)
     set((state) => ({
-      // A rejected poll keeps the last good answer rather than blanking it:
-      // one transient 500 must not erase the blockers an operator is reading.
-      // The error beside it is what marks the data stale.
-      subsystems:
-        subsystemsResult.status === 'fulfilled'
-          ? subsystemsResult.value.subsystems
-          : state.subsystems,
-      subsystemsError:
-        subsystemsResult.status === 'fulfilled'
-          ? null
-          : getErrorMessage(subsystemsResult.reason),
-      blockedTasks:
-        tasksResult.status === 'fulfilled' ? tasksResult.value.data : state.blockedTasks,
-      blockedTasksError:
-        tasksResult.status === 'fulfilled'
-          ? null
-          : getErrorMessage(tasksResult.reason),
+      // A failed poll keeps the last good answer rather than blanking it: one
+      // transient 500 must not erase the blockers an operator is reading. The
+      // error beside it is what marks the data stale.
+      subsystems: reports.items ?? state.subsystems,
+      subsystemsError: reports.error,
+      blockedTasks: parked.items ?? state.blockedTasks,
+      blockedTasksError: parked.error,
       loading: false,
     }))
   } catch (err) {
