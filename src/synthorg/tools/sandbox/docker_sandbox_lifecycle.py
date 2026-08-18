@@ -160,21 +160,43 @@ class DockerSandboxLifecycleMixin(ABC):
         Args:
             handle: The cached handle under consideration for reuse.
 
+        A sidecar-backed handle is two containers, and the sandbox joins the
+        sidecar's network namespace to have its egress policed. A sandbox
+        whose sidecar died is therefore not a sandbox worth reusing: it is
+        one running without the enforcement it was created with, which is
+        the one failure mode reuse must not paper over. Both are probed, and
+        either one not running reads dead.
+
+        Args:
+            handle: The cached handle under consideration for reuse.
+
         Returns:
-            ``True`` only when the daemon reports the container running.
-            A missing container, a non-running state, or an inspect the
-            daemon refuses all read ``False``: the caller pays one fresh
-            container for a wrong answer, against every remaining tool
-            call for a wrong reuse.
+            ``True`` only when the daemon reports every container behind the
+            handle running. A missing container, a non-running state, or an
+            inspect the daemon refuses all read ``False``: the caller pays
+            one fresh container for a wrong answer, against every remaining
+            tool call for a wrong reuse.
+        """
+        if not await self._container_is_running(handle.container_id):
+            return False
+        if handle.sidecar_id is None:
+            return True
+        return await self._container_is_running(handle.sidecar_id)
+
+    async def _container_is_running(self, container_id: str) -> bool:
+        """Ask the daemon whether one container is running.
+
+        Returns:
+            ``True`` only when the daemon reports it running.
         """
         try:
             docker = await self._ensure_docker()
-            info = await docker.containers.container(handle.container_id).show()  # pyright: ignore[reportAttributeAccessIssue]
+            info = await docker.containers.container(container_id).show()  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.info(
                 DOCKER_CONTAINER_PROBE_FAILED,
-                container_id=handle.container_id[:12],
+                container_id=container_id[:12],
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

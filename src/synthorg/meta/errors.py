@@ -337,7 +337,7 @@ class CharterInterviewResponseInvalidError(CharterError):
         "required structure, twice. Nothing was lost: send your last message "
         "again to retry. If it keeps happening, the model bound to "
         "charter.interview_model is not reliably producing structured output; "
-        "bind a stronger one in Settings > Providers."
+        "bind a stronger one in Providers."
     )
     error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     error_code: ClassVar[ErrorCode] = ErrorCode.CHARTER_INTERVIEW_RESPONSE_INVALID

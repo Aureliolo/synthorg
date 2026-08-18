@@ -160,6 +160,12 @@ def compose_turn_observers(
     therefore guarded on its own. ``CancelledError`` is NOT caught: the run
     is being torn down, and every observer should stop.
 
+    A lone observer is wrapped too. Handing it back unwrapped would be the
+    cheaper composition of nothing, but the guard is not about the other
+    observers: it is the promise that watching a run cannot fail it, and
+    returning the bare callable breaks that promise in exactly the
+    single-listener case that is the common one.
+
     Returns:
         A single observer calling each of *observers*, or ``None`` when none
         was supplied.
@@ -167,8 +173,6 @@ def compose_turn_observers(
     wired = tuple(observer for observer in observers if observer is not None)
     if not wired:
         return None
-    if len(wired) == 1:
-        return wired[0]
 
     async def _observe(progress: TurnProgress) -> None:
         for observer in wired:
@@ -211,7 +215,10 @@ async def mark_agent_idle(
     running: the operator would see an actively working agent go idle, and
     its stuck and runaway detection would go blind, until its next turn wrote
     the row again. A whole turn is one LLM call. So the clear only lands when
-    the row still belongs to the run doing the clearing.
+    the row still belongs to the run doing the clearing, and that comparison
+    is made by the write statement itself: reading the row first and saving
+    after leaves the sibling a gap to claim the agent in, which is the very
+    overwrite the check exists to prevent, just narrowed to a smaller window.
 
     Args:
         repository_provider: Returns the current repository, or ``None``.
@@ -225,48 +232,33 @@ async def mark_agent_idle(
     repository = repository_provider()
     if repository is None:
         return
-    current = await _current_state(repository, agent_id)
-    if current is not None and current.execution_id not in (None, execution_id):
-        logger.debug(
-            AGENT_RUNTIME_STATE_IDLE_SKIPPED,
-            agent_id=agent_id,
-            execution_id=execution_id,
-            holding_execution_id=current.execution_id,
-        )
-        return
-    await _save(
-        repository,
-        AgentRuntimeState.idle(
-            NotBlankStr(agent_id),
-            currency=currency,
-            clock=clock,
-        ),
+    idle = AgentRuntimeState.idle(
+        NotBlankStr(agent_id),
+        currency=currency,
+        clock=clock,
     )
-
-
-async def _current_state(
-    repository: AgentStateRepository, agent_id: str
-) -> AgentRuntimeState | None:
-    """Read the stored row, treating a read failure as nothing stored.
-
-    Returns:
-        The stored state, or ``None`` when there is none or it cannot be read.
-    """
     try:
-        return await repository.get(NotBlankStr(agent_id))
+        written = await repository.save_if_execution(
+            idle, expected_execution_id=execution_id
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- a read fault must not stop the agent being
-        # marked idle, which is the more important of the two writes: a row
-        # stuck at EXECUTING makes a finished agent busy for ever.
+        # lint-allow: swallow-ok -- recording liveness is observation, and a
+        # dispatch that finished must not be failed by the row describing it.
         reraise_critical(exc)
         logger.warning(
             AGENT_RUNTIME_STATE_WRITE_FAILED,
             agent_id=agent_id,
-            operation="read_before_idle",
+            operation="mark_idle",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        return
+    if not written:
+        logger.debug(
+            AGENT_RUNTIME_STATE_IDLE_SKIPPED,
+            agent_id=agent_id,
+            execution_id=execution_id,
+        )
 
 
 __all__ = [

@@ -533,10 +533,17 @@ _r.register(
         key="mcp_sandbox_cpus",
         type=SettingType.STRING,
         default="1.0",
-        description="Docker --cpus quota (in cores) for an MCP server container.",
+        description=(
+            "Docker --cpus quota (in cores) for an MCP server container."
+            " Must be greater than zero: the daemon reads a quota of zero as"
+            " 'no limit', so it uncaps the container rather than clamping it."
+        ),
         group="MCP",
         level=SettingLevel.ADVANCED,
-        validator_pattern=r"^\d+(\.\d+)?$",
+        # Rejects every spelling of zero ("0", "0.0", "00"), which the plain
+        # digit pattern admitted and the daemon turns into an unlimited
+        # container rather than a refusal.
+        validator_pattern=r"^(?!0+(\.0+)?$)\d+(\.\d+)?$",
     )
 )
 

@@ -725,6 +725,15 @@ class _FakeAgentStateRepository:
     async def save(self, state: AgentRuntimeState) -> None:
         pass
 
+    async def save_if_execution(
+        self,
+        state: AgentRuntimeState,
+        *,
+        expected_execution_id: str,
+    ) -> bool:
+        del state, expected_execution_id
+        return True
+
     async def get(self, agent_id: str) -> AgentRuntimeState | None:
         return None
 

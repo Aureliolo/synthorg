@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+import aiodocker
 import pytest
 import structlog.contextvars
 from typeguard import suppress_type_checks
@@ -1172,11 +1173,55 @@ class TestHandleIsAlive:
 
         assert await sandbox._handle_is_alive(handle) is False
 
+    async def test_a_sandbox_whose_sidecar_died_reads_dead(
+        self, tmp_path: Path
+    ) -> None:
+        """Reuse must not hand back a sandbox that lost its egress enforcement.
+
+        The sandbox joins the sidecar's network namespace to have its egress
+        policed, so probing only the sandbox container passes a handle whose
+        enforcement is gone: the container runs, unpoliced, for every
+        remaining tool call.
+        """
+        mock_docker = _make_mock_docker()
+        running = {"State": {"Running": True}}
+        stopped = {"State": {"Running": False, "ExitCode": 137}}
+
+        def _by_id(container_id: str) -> MagicMock:
+            container = MagicMock()
+            container.show = AsyncMock(
+                return_value=running if container_id == "sandbox-abc" else stopped
+            )
+            return container
+
+        mock_docker.containers.container = MagicMock(side_effect=_by_id)
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="sandbox-abc", sidecar_id="sidecar-dead")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_a_sandbox_with_a_running_sidecar_reads_alive(
+        self, tmp_path: Path
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="sandbox-abc", sidecar_id="sidecar-live")
+
+        assert await sandbox._handle_is_alive(handle) is True
+
     async def test_missing_container_reads_dead(self, tmp_path: Path) -> None:
-        """A container the daemon cannot find is not a container to reuse."""
+        """A container the daemon cannot find is not a container to reuse.
+
+        Raised as the daemon actually raises it: a stand-in exception would
+        keep passing if the probe stopped handling ``DockerError``.
+        """
         mock_docker = _make_mock_docker()
         mock_docker.containers.container.return_value.show = AsyncMock(
-            side_effect=RuntimeError("no such container"),
+            side_effect=aiodocker.DockerError(404, "no such container"),
         )
         sandbox = DockerSandbox(workspace=tmp_path)
         sandbox._docker = mock_docker

@@ -4,11 +4,13 @@ from collections.abc import Iterator
 
 import pytest
 import structlog
+from pydantic import ValidationError
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.sandbox._image_resolution import (
-    get_resolved_sandbox_image,
+    _FALLBACK_SANDBOX_IMAGE,
     set_resolved_sandbox_image,
 )
 
@@ -74,7 +76,51 @@ class TestTheRuntimeImageIsTheSandboxImage:
         assert MCPSandboxConfig().image == verified
 
     def test_unresolved_falls_back_to_the_release_pinned_image(self) -> None:
-        assert MCPSandboxConfig().image == get_resolved_sandbox_image()
+        """Named directly, because both sides calling the resolver proves nothing.
+
+        Comparing the config against ``get_resolved_sandbox_image()`` holds
+        whatever that function returns, including a value the release pin no
+        longer agrees with.
+        """
+        assert MCPSandboxConfig().image == _FALLBACK_SANDBOX_IMAGE
+
+
+class TestLimitsAreRejectedWhereTheyAreConfigured:
+    """A limit that cannot be applied has to fail at the setting, not at connect.
+
+    Both limits travel as free-form strings and were only converted when a
+    container was created, so a bad one failed on every reconnect, far from
+    the setting that caused it.
+    """
+
+    def test_a_zero_cpu_quota_is_refused(self) -> None:
+        """``NanoCpus`` of zero means "no limit" to the daemon.
+
+        So ``"0"`` does not clamp the container to nothing, it uncaps the one
+        container in this product that runs code nobody reviewed.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("0"))
+
+    def test_a_negative_cpu_quota_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("-1"))
+
+    def test_a_non_numeric_cpu_quota_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("plenty"))
+
+    def test_a_malformed_memory_limit_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(memory_limit=NotBlankStr("512 megabytes"))
+
+    def test_a_usable_pair_is_accepted(self) -> None:
+        config = MCPSandboxConfig(
+            cpus=NotBlankStr("0.5"), memory_limit=NotBlankStr("256m")
+        )
+
+        assert config.cpus == "0.5"
+        assert config.memory_limit == "256m"
 
 
 class TestDeploymentAttribution:

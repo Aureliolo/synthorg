@@ -92,7 +92,7 @@ Protocol: `CoordinationMiddleware` (`engine/middleware/coordination_protocol.py`
 | `after_rollup` | After Phase 6 | Progress ledger, replan hook |
 | `before_update_parent` | Before Phase 7 | Authority deference scan |
 
-Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `progress_ledger`, `coordination_replan`, `authority_deference_coordination`.
+Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `authority_deference_coordination`.
 
 ### S1 Constraint Hooks
 

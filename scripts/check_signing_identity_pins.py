@@ -117,9 +117,13 @@ _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
 # directory named after the variable and fails the scan on a file that is
 # plainly there, while `${{ github.workspace }}/` fails the lookbehind and is
 # skipped in silence, which is the worse half -- a signing helper reached
-# that way would never be read at all.
+# that way would never be read at all. Case-insensitive because GitHub resolves
+# a context expression regardless of case, so `${{ GITHUB.WORKSPACE }}` is the
+# same root; the flag can only ever strip MORE spellings, and for a gate whose
+# failure mode is skipping a helper, reading one more file is the safe direction.
 _WORKSPACE_ROOT_PREFIX: Final[re.Pattern[str]] = re.compile(
     r"(?:\$\{?GITHUB_WORKSPACE\}?|\$\{\{\s*github\.workspace\s*\}\})/",
+    re.IGNORECASE,
 )
 
 # ``uses`` forms that resolve to a composite action inside this repo. GitHub

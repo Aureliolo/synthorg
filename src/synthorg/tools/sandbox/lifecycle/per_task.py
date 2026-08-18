@@ -78,14 +78,22 @@ class PerTaskStrategy:
             # Identity-checked: a concurrent acquire may already have
             # replaced the entry, and evicting that one would destroy a
             # container somebody else is about to use.
-            if self._containers.get(owner_id) is handle:
+            evicted = self._containers.get(owner_id) is handle
+            if evicted:
                 self._containers.pop(owner_id, None)
-        await reap(
-            handle,
-            strategy="per-task",
-            owner_id=owner_id,
-            destroy_fn=destroy_fn,
-        )
+        # Teardown follows the eviction, not the observation. Two acquires can
+        # read the same dead handle and both reach here, and a concurrent
+        # `release` can take the entry from under both; reaping on the
+        # observation would then destroy one container two or three times.
+        # Exactly one caller wins the identity check, so exactly one tears it
+        # down and the rest simply report the cache miss.
+        if evicted:
+            await reap(
+                handle,
+                strategy="per-task",
+                owner_id=owner_id,
+                destroy_fn=destroy_fn,
+            )
         return None
 
     async def acquire(

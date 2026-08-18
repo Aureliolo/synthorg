@@ -166,6 +166,56 @@ class TestPerTaskLiveness:
         assert second.container_id == "c-1"
         assert destroyed == ["c-0"]
 
+    async def test_one_dead_handle_is_torn_down_once(self) -> None:
+        """Two acquires can observe the same dead handle; one owns the reap.
+
+        Reaping on the observation rather than on the eviction destroys the
+        same container once per observer, so a container id is handed to
+        ``destroy_fn`` twice and the second call acts on something already
+        gone.
+        """
+        strategy = PerTaskStrategy()
+        created: list[str] = []
+        destroyed: list[str] = []
+        probing = asyncio.Event()
+
+        async def create_fn() -> ContainerHandle:
+            created.append(f"c-{len(created)}")
+            return _make_handle(created[-1])
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        async def slow_dead_probe(_handle: ContainerHandle) -> bool:
+            # Both acquires sit here together, so both read the same handle
+            # as dead before either reaches the eviction.
+            probing.set()
+            await probing.wait()
+            return False
+
+        await strategy.acquire(
+            owner_id="t1",
+            create_fn=create_fn,
+            destroy_fn=destroy_fn,
+            alive_fn=_alive,
+        )
+
+        async with asyncio.TaskGroup() as group:
+            probes = [
+                group.create_task(
+                    strategy.acquire(
+                        owner_id="t1",
+                        create_fn=create_fn,
+                        destroy_fn=destroy_fn,
+                        alive_fn=slow_dead_probe,
+                    )
+                )
+                for _ in range(2)
+            ]
+
+        assert all(probe.result() is not None for probe in probes)
+        assert destroyed.count("c-0") == 1
+
     async def test_probe_failure_is_treated_as_dead(self) -> None:
         """An unanswerable probe replaces rather than gambles."""
         strategy = PerTaskStrategy()

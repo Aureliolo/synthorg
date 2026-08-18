@@ -39,10 +39,11 @@ def _frame(
     turn: int,
     cost: float,
     ts: datetime,
+    execution_id: str | None = None,
 ) -> FlightRecorderFrame:
     return FlightRecorderFrame(
         id=NotBlankStr(f"{task_id}-{turn}"),
-        execution_id=NotBlankStr(f"exec-{task_id}"),
+        execution_id=NotBlankStr(execution_id or f"exec-{task_id}"),
         task_id=NotBlankStr(task_id),
         agent_id=NotBlankStr("agent"),
         turn_index=turn,
@@ -198,6 +199,53 @@ class TestARunStillGoingIsReadFromItsLiveState:
         assert activity.cost == pytest.approx(1.25)
         assert activity.execution_id == "live-exec-t1"
         assert activity.is_stuck is False
+
+    async def test_the_live_execution_is_not_counted_twice(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """An attempt's frames land before its live row is cleared.
+
+        Between those two writes the aggregate and the live row describe the
+        same spend, and a crash in the gap leaves the row EXECUTING for good,
+        so the doubling is durable rather than momentary. Against a per-task
+        budget that reads as a runaway that is not happening.
+        """
+        repo = FakeFlightRecorderFrameRepository()
+        # An earlier attempt, plus the live one already written to frames.
+        await repo.append(
+            _frame(task_id="t1", turn=2, cost=0.4, ts=_NOW - timedelta(minutes=9)),
+        )
+        await repo.append(
+            _frame(
+                task_id="t1",
+                turn=3,
+                cost=1.0,
+                ts=_NOW - timedelta(minutes=1),
+                execution_id="live-exec-t1",
+            ),
+        )
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=1.0)
+        service = _service(
+            (task,),
+            repo,
+            _live(
+                agent="alice",
+                task_id="t1",
+                turns=3,
+                cost=1.0,
+                last_active=_NOW - timedelta(minutes=1),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+        activity = snapshot.agents[0]
+
+        # 0.4 recorded elsewhere + 1.0 in flight, NOT 0.4 + 1.0 + 1.0.
+        assert activity.cost == pytest.approx(1.4)
+        assert activity.is_runaway is False
 
     async def test_a_state_about_another_task_says_nothing_about_this_one(
         self, sample_task_with_criteria: Task

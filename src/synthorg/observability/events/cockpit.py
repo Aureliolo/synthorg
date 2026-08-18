@@ -33,9 +33,17 @@ FLIGHT_RECORDER_SEEK: Final[str] = "flight_recorder.seek"
 FLIGHT_RECORDER_PURGE: Final[str] = "flight_recorder.purge"
 
 AGENT_RUNTIME_STATE_WRITE_FAILED: Final[str] = "agent_runtime_state.write.failed"
-AGENT_RUNTIME_STATE_IDLE_SKIPPED: Final[str] = "agent_runtime_state.idle.skipped"
-TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
 """The live per-agent runtime state could not be persisted. Recording it is
 observation, so the failure is logged rather than raised into the run: the
 consequence is that the live view falls back to the recorded frames for that
 agent, which is what it did for every agent before anything wrote this row."""
+
+AGENT_RUNTIME_STATE_IDLE_SKIPPED: Final[str] = "agent_runtime_state.idle.skipped"
+"""A dispatch finished while the live row named a sibling dispatch on the same
+agent, so the idle clear was skipped rather than blanking the sibling's row and
+reporting a working agent as idle."""
+
+TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
+"""One per-turn observer raised. The others still ran and the run continued:
+watching a run must never fail it, and one watcher's fault must not blind the
+rest."""

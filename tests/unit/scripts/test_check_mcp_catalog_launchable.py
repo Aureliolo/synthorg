@@ -114,7 +114,14 @@ def _tree(
     catalog = (
         entries
         if entries is not None
-        else [{"id": "brave-search-mcp", "transport": "stdio"}]
+        else [
+            {
+                "id": "brave-search-mcp",
+                "transport": "stdio",
+                "npm_package": "@example/search-mcp-server",
+                "npm_version": "2.1.0",
+            }
+        ]
     )
     _write(tmp_path, _PROVISION_REL, _provision(declared))
     _write(tmp_path, _APKO_REL, apko)
@@ -158,6 +165,27 @@ class TestEveryEntryMustNameADeclaredProgram:
             entries=[{"id": "hosted-thing", "transport": "streamable_http"}],
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
+
+    @pytest.mark.parametrize("absent", ["npm_package", "npm_version"])
+    def test_a_stdio_entry_missing_an_npm_field_is_a_configuration_error(
+        self, tmp_path: Path, absent: str
+    ) -> None:
+        """The transport alone does not say an entry can launch.
+
+        ``installation_to_server_config`` refuses a stdio entry missing either
+        field, so reading the launcher off the transport would let the gate
+        certify an entry the installer rejects at install time.
+        """
+        entry: dict[str, object] = {
+            "id": "brave-search-mcp",
+            "transport": "stdio",
+            "npm_package": "@example/search-mcp-server",
+            "npm_version": "2.1.0",
+        }
+        del entry[absent]
+        root = _tree(tmp_path, entries=[entry])
+
+        assert _MODULE.main(["--repo-root", str(root)]) == 2
 
 
 class TestFailClosed:

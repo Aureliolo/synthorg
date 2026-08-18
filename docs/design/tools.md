@@ -150,10 +150,11 @@ rather than a workspace that was never there.
 ### MCP stdio server sandboxing
 
 `ToolCategory.MCP` is **not** routed through `resolve_sandbox_for_category`.
-A stdio MCP server is launched as a subprocess (`npx -y <package>@<version>`),
-so its isolation is a bespoke launch-rewrite (`tools/mcp/sandbox.py`,
-`wrap_stdio_in_sandbox`) that runs the server via `docker run -i`, letting the
-MCP protocol flow over the container's stdio while the server runs under
+A stdio MCP server runs a third-party command (`npx -y <package>@<version>`),
+so its isolation is a bespoke transport: the policy lives in
+`tools/mcp/sandbox.py` and `tools/mcp/container_stdio.py` creates the container
+over the Docker API, attaching stdin+stdout before the start so the
+MCP protocol flows over the container's stdio while the server runs under
 `--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only rootfs,
 `NPM_CONFIG_IGNORE_SCRIPTS`, and cpu/memory/pid limits. This mechanism is
 parallel to, not part of, the per-category `SandboxBackend` selection above,

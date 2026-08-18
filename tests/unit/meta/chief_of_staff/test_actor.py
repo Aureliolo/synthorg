@@ -202,8 +202,12 @@ class TestActStream:
 
         async def _run(*, turn_observer: object, **_kwargs: object) -> ChatActionResult:
             # ``turn_observer`` is the TurnObserver the actor threaded in.
-            await turn_observer(TurnProgress(1, ("query_metrics",), ctx))  # type: ignore[operator]
-            await turn_observer(TurnProgress(2, (), ctx))  # type: ignore[operator]
+            await turn_observer(  # type: ignore[operator]
+                TurnProgress(turn_number=1, tool_names=("query_metrics",), context=ctx)
+            )
+            await turn_observer(  # type: ignore[operator]
+                TurnProgress(turn_number=2, tool_names=(), context=ctx)
+            )
             return _completed_result()
 
         actor = self._streaming_actor(side_effect=_run)

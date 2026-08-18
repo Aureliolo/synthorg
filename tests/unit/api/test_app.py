@@ -541,7 +541,8 @@ class TestAppLifecycle:
         from unittest.mock import AsyncMock, MagicMock
 
         from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.lifecycle import _safe_shutdown
+        from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
+        from synthorg.api.lifecycle_runner_support import _LifecycleTasks
         from synthorg.communication.meeting.scheduler import (
             MeetingScheduler,
         )
@@ -557,19 +558,24 @@ class TestAppLifecycle:
             approval_store=ApprovalStore(),
             persistence=persistence,
         )
+        # Wired AFTER the state the shutdown runner was handed, which is the
+        # whole point: the runner has to reach the slice when it runs, not
+        # carry a value read when it was set up. Resolving the scheduler here
+        # and passing it in would assert only that ``_safe_shutdown`` stops
+        # what it is given, and would pass unchanged against the
+        # construction-time capture this test exists to rule out.
         app_state.wire(CommunicationStateSlice, meeting_scheduler=mock_sched)
 
-        await _safe_shutdown(
+        await _run_shutdown(
+            _LifecycleTasks(),
+            app_state,
+            persistence=None,
+            message_bus=None,
+            bridge=None,
+            settings_dispatcher=None,
             task_engine=None,
-            meeting_scheduler=app_state.slice(
-                CommunicationStateSlice
-            ).meeting_scheduler,
             backup_service=None,
             approval_timeout_scheduler=None,
-            settings_dispatcher=None,
-            bridge=None,
-            message_bus=None,
-            persistence=None,
         )
         mock_sched.stop.assert_awaited_once()
 

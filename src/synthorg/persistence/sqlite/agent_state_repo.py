@@ -84,6 +84,65 @@ INSERT OR REPLACE INTO agent_states (
                 )
                 raise QueryError(msg) from exc
 
+    async def save_if_execution(
+        self,
+        state: AgentRuntimeState,
+        *,
+        expected_execution_id: str,
+    ) -> bool:
+        """Upsert only while the stored row still names *expected_execution_id*.
+
+        The guard rides in the same statement as the write, so no sibling can
+        claim the agent between the two.
+
+        Returns:
+            ``True`` when the row was written, ``False`` when another
+            execution holds it.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        async with self._write_context():
+            try:
+                data = state.model_dump(mode="json")
+                data["expected_execution_id"] = expected_execution_id
+                async with self._db.execute(
+                    """\
+INSERT INTO agent_states (
+    agent_id, execution_id, task_id, status, turn_count,
+    accumulated_cost, currency, last_activity_at, started_at
+) VALUES (
+    :agent_id, :execution_id, :task_id, :status, :turn_count,
+    :accumulated_cost, :currency, :last_activity_at, :started_at
+)
+ON CONFLICT (agent_id) DO UPDATE SET
+    execution_id = excluded.execution_id,
+    task_id = excluded.task_id,
+    status = excluded.status,
+    turn_count = excluded.turn_count,
+    accumulated_cost = excluded.accumulated_cost,
+    currency = excluded.currency,
+    last_activity_at = excluded.last_activity_at,
+    started_at = excluded.started_at
+WHERE agent_states.execution_id IS NULL
+   OR agent_states.execution_id = :expected_execution_id""",
+                    data,
+                ) as cursor:
+                    written = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = f"Failed to save agent state for {state.agent_id!r}"
+                logger.warning(
+                    PERSISTENCE_AGENT_STATE_SAVE_FAILED,
+                    agent_id=state.agent_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return written
+
     async def get(self, agent_id: NotBlankStr) -> AgentRuntimeState | None:
         """Retrieve an agent runtime state by agent ID.
 

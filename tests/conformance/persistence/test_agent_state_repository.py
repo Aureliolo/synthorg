@@ -23,13 +23,14 @@ _T2 = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 def _executing(
     *,
     agent_id: str = "agent-001",
+    execution_id: str = "exec-001",
     turn_count: int = 3,
     accumulated_cost: float = 0.05,
     last_activity_at: datetime = _T0,
 ) -> AgentRuntimeState:
     return AgentRuntimeState(
         agent_id=NotBlankStr(agent_id),
-        execution_id=NotBlankStr("exec-001"),
+        execution_id=NotBlankStr(execution_id),
         task_id=NotBlankStr("task-001"),
         status=ExecutionStatus.EXECUTING,
         turn_count=turn_count,
@@ -81,6 +82,67 @@ class TestAgentStateRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.agent_states.get(NotBlankStr("ghost")) is None
+
+    async def test_a_guarded_write_lands_when_the_execution_still_holds_the_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.agent_states.save(_executing(agent_id="cas-mine"))
+
+        written = await backend.agent_states.save_if_execution(
+            _idle(agent_id="cas-mine"), expected_execution_id="exec-001"
+        )
+
+        assert written is True
+        stored = await backend.agent_states.get(NotBlankStr("cas-mine"))
+        assert stored is not None
+        assert stored.status is ExecutionStatus.IDLE
+
+    async def test_a_guarded_write_is_declined_when_a_sibling_holds_the_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The overwrite a read-then-save cannot prevent.
+
+        One agent can hold two dispatches and the row is keyed by agent alone,
+        so a check made before the write leaves the sibling a gap to claim the
+        agent in. Evaluating it in the write statement closes that gap, and
+        the backend has to be the thing that proves it.
+        """
+        await backend.agent_states.save(
+            _executing(agent_id="cas-sibling", execution_id="exec-sibling")
+        )
+
+        written = await backend.agent_states.save_if_execution(
+            _idle(agent_id="cas-sibling"), expected_execution_id="exec-mine"
+        )
+
+        assert written is False
+        stored = await backend.agent_states.get(NotBlankStr("cas-sibling"))
+        assert stored is not None
+        assert stored.status is ExecutionStatus.EXECUTING
+        assert stored.execution_id == "exec-sibling"
+
+    async def test_a_guarded_write_creates_a_row_that_is_not_there(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """An absent row owns nothing, so there is nothing to protect."""
+        written = await backend.agent_states.save_if_execution(
+            _idle(agent_id="cas-absent"), expected_execution_id="exec-mine"
+        )
+
+        assert written is True
+        assert await backend.agent_states.get(NotBlankStr("cas-absent")) is not None
+
+    async def test_a_guarded_write_lands_on_a_row_naming_no_execution(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """An idle row names no execution, so no run loses anything."""
+        await backend.agent_states.save(_idle(agent_id="cas-unowned"))
+
+        written = await backend.agent_states.save_if_execution(
+            _idle(agent_id="cas-unowned"), expected_execution_id="exec-mine"
+        )
+
+        assert written is True
 
     async def test_get_active_filters_idle(self, backend: PersistenceBackend) -> None:
         await backend.agent_states.save(_executing(agent_id="active-1"))

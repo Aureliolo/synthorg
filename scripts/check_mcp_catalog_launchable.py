@@ -186,7 +186,23 @@ def _entry_launchers(repo_root: Path) -> dict[str, str]:
             raise GateSourceError(msg)
         if entry.get("transport", "stdio") != "stdio":
             continue
-        launchers[str(entry.get("id", "<unnamed>"))] = npm_launcher
+        entry_id = str(entry.get("id", "<unnamed>"))
+        # The launcher follows from the launch SHAPE, not from the transport
+        # alone: `installation_to_server_config` refuses a stdio entry missing
+        # either npm field, so mapping one to the npm launcher regardless would
+        # certify an entry the installer rejects at install time -- the gate
+        # passing exactly where the product fails.
+        missing = [
+            field for field in ("npm_package", "npm_version") if not entry.get(field)
+        ]
+        if missing:
+            msg = (
+                f"{_CATALOG_REL}: stdio entry {entry_id!r} declares no "
+                f"{' or '.join(missing)}, so it names no launchable command; "
+                "the installer refuses it and this gate cannot vouch for it"
+            )
+            raise GateSourceError(msg)
+        launchers[entry_id] = npm_launcher
     return launchers
 
 

@@ -280,6 +280,29 @@ async def test_the_review_judges_the_attempt_not_the_recorded_copy(
     assert seen == ["shipped the module"]
 
 
+def _recording_state_repository(
+    saved: list[AgentRuntimeState],
+) -> AgentStateRepository:
+    """A state repository that records both of the engine's write paths.
+
+    The running write is unconditional and the idle one is a compare-and-set,
+    so a fake wired to ``save`` alone sees only half the lifecycle.
+
+    Returns:
+        The recording repository.
+    """
+
+    async def _guarded(state: AgentRuntimeState, **_: object) -> bool:
+        saved.append(state)
+        return True
+
+    repository: AgentStateRepository = mock_of[AgentStateRepository](
+        save=AsyncMock(side_effect=saved.append),
+        save_if_execution=AsyncMock(side_effect=_guarded),
+    )
+    return repository
+
+
 async def test_the_engine_records_the_agents_live_state(
     sample_agent_with_personality: AgentIdentity,
     sample_task_with_criteria: Task,
@@ -293,10 +316,7 @@ async def test_the_engine_records_the_agents_live_state(
     the cockpit blind again with every one of those tests still green.
     """
     saved: list[AgentRuntimeState] = []
-    repository = mock_of[AgentStateRepository](
-        save=AsyncMock(side_effect=saved.append),
-        get=AsyncMock(return_value=None),
-    )
+    repository = _recording_state_repository(saved)
     ctx = AgentContext.from_identity(
         sample_agent_with_personality,
         task=sample_task_with_criteria,
@@ -312,7 +332,7 @@ async def test_the_engine_records_the_agents_live_state(
             ),
             get_loop_type=MagicMock(return_value="react"),
         ),
-        agent_state_repository=lambda: repository,
+        agent_state_repository_provider=lambda: repository,
     )
 
     await engine.run(
@@ -338,17 +358,14 @@ async def test_a_run_that_died_still_stops_reading_as_busy(
     on, so the failure would present as an agent that never stops working.
     """
     saved: list[AgentRuntimeState] = []
-    repository = mock_of[AgentStateRepository](
-        save=AsyncMock(side_effect=saved.append),
-        get=AsyncMock(return_value=None),
-    )
+    repository = _recording_state_repository(saved)
     engine = AgentEngine(
         provider=mock_provider_factory([]),
         execution_loop=mock_of[ExecutionLoop](
             execute=AsyncMock(side_effect=_LoopDiedError),
             get_loop_type=MagicMock(return_value="react"),
         ),
-        agent_state_repository=lambda: repository,
+        agent_state_repository_provider=lambda: repository,
     )
 
     await engine.run(

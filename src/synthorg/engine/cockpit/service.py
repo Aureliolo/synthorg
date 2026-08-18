@@ -194,6 +194,28 @@ class CockpitService:
             logger.warning(COCKPIT_RUNAWAY_DETECTED, agent_id=agent_id)
         return snapshot
 
+    async def _recorded_cost_for(self, task: Task, execution_id: str | None) -> float:
+        """Return what the frame store already holds for one execution.
+
+        Scoped to the task as well as the execution because the aggregate it
+        is subtracted from is task-scoped, and an execution id that somehow
+        reached another task's frames must not deduct spend this task never
+        had.
+
+        Returns:
+            The recorded cost for *execution_id*, or ``0.0`` when the live
+            row names no execution and there is nothing to deduct.
+        """
+        if execution_id is None:
+            return 0.0
+        recorded = await self._frames.get_aggregate(
+            FlightRecorderFrameFilterSpec(
+                task_id=NotBlankStr(task.id),
+                execution_id=NotBlankStr(execution_id),
+            ),
+        )
+        return recorded.total_cost
+
     async def _build_activity(
         self,
         task: Task,
@@ -237,7 +259,20 @@ class CockpitService:
             # the whole of its next attempt, then flip the moment that
             # attempt ended. The recorded executions plus the one in flight
             # is the task's actual spend.
-            cost = aggregate.total_cost + live.accumulated_cost
+            #
+            # The OTHER executions, though: an attempt's frames are recorded
+            # before its live row is cleared, so between those two writes the
+            # aggregate and the live row describe the same spend and adding
+            # them counts it twice. That is a short window while a run ends
+            # cleanly and an unbounded one when it does not, since a row left
+            # EXECUTING keeps its cost beside frames that already hold it, and
+            # a doubled figure against a per-task budget reads as a runaway
+            # that is not happening.
+            cost = (
+                aggregate.total_cost
+                - await self._recorded_cost_for(task, live.execution_id)
+                + live.accumulated_cost
+            )
         else:
             turn_count = aggregate.max_turn_index
             last_active = aggregate.latest_timestamp

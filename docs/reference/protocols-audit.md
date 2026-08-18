@@ -145,7 +145,6 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | engine/identity/store/protocol.py | 18 | `IdentityVersionStore` | 1 | 0 | 4 | KEEP | Plug-in `Store`. |
 | engine/intake/protocol.py | 14 | `IntakeStrategy` | 1 | 0 | 3 | KEEP | Plug-in `Strategy`. |
 | engine/loop_protocol.py | 274 | `ExecutionLoop` | 1 | 0 | 9 | KEEP | Public extension surface. |
-| engine/middleware/coordination_constraints.py | 203 | `CoordinationReplanHook` | 1 | 0 | 1 | KEEP | Plug-in `Hook`. |
 | engine/middleware/coordination_protocol.py | 124 | `CoordinationMiddleware` | 1 | 0 | 9 | KEEP | Public middleware surface. |
 | engine/middleware/orchestrator_strategy.py | 23 | `OrchestratorStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |
 | engine/middleware/protocol.py | 50 | `AgentMiddleware` | 1 | 0 | 11 | KEEP | Public middleware surface. |

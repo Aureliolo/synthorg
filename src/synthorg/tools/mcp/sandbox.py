@@ -11,11 +11,12 @@ transport that applies it over the Docker API is
 
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.tools.sandbox._container_limits import nano_cpus, parse_memory_limit
 from synthorg.tools.sandbox._image_resolution import get_resolved_sandbox_image
 
 logger = get_logger(__name__)
@@ -67,6 +68,46 @@ class MCPSandboxConfig(BaseModel):
     network: SandboxNetwork = "bridge"
     deployment_id: NotBlankStr | None = None
     runtime: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _reject_unusable_limits(self) -> Self:
+        """Parse both resource limits where they are configured.
+
+        Both travel as free-form strings and are only converted at connect
+        time, so a malformed one fails on every reconnect rather than once,
+        far from the setting that caused it. The cpu quota is worse than
+        malformed-late: the daemon reads a ``NanoCpus`` of zero as "no
+        limit", so ``"0"`` does not clamp the container, it uncaps it, and an
+        MCP server is the one thing in this product running code nobody
+        reviewed.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If either limit cannot be applied as written.
+        """
+        parse_memory_limit(self.memory_limit)
+        nano_cpus(float(self.cpus))
+        return self
+
+    @field_validator("cpus")
+    @classmethod
+    def _cpus_is_a_number(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject a cpu quota that is not a number at all.
+
+        Returns:
+            The quota unchanged.
+
+        Raises:
+            ValueError: If the quota does not parse as a float.
+        """
+        try:
+            float(value)
+        except ValueError as exc:
+            msg = f"Cpu quota must be a number of cores, got: {value!r}"
+            raise ValueError(msg) from exc
+        return value
 
     @model_validator(mode="after")
     def _warn_on_host_network(self) -> Self:

@@ -258,8 +258,52 @@ async def _run_one_wave(
             prepared, wave_idx=wave_idx, start=start, run=run
         )
     finally:
-        await run.resources.settle(wave_idx, verdict=verdict, phases=run.phases)
+        await _settle_wave(wave_idx, verdict=verdict, run=run)
     return stop
+
+
+async def _settle_wave(
+    wave_idx: int,
+    *,
+    verdict: WaveVerdict,
+    run: _WaveRun,
+) -> None:
+    """Release the wave's resources, reporting a failure as its own phase.
+
+    Settlement is not dispatch, and letting it raise past here conflates the
+    two: the dispatch has already appended this wave's ``CoordinationWave``
+    and ``CoordinationPhaseResult``, so the caller's handler would record a
+    SECOND, failed result for the same ``wave_index`` and then park rows for
+    work that actually ran. The wave keeps the outcome it earned; the
+    settlement failure gets a phase of its own, which is what a reader needs
+    to tell "the work failed" from "the work succeeded and its worktrees
+    leaked".
+    """
+    if run.resources is None:
+        return
+    settle_start = run.clock.monotonic()
+    try:
+        await run.resources.settle(wave_idx, verdict=verdict, phases=run.phases)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- releasing a wave's resources is cleanup;
+        # failing the wave over it would rewrite an outcome already recorded.
+        reraise_critical(exc)
+        phase = f"settle_wave_{wave_idx}"
+        logger.warning(
+            COORDINATION_PHASE_FAILED,
+            phase=phase,
+            wave_index=wave_idx,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        run.phases.append(
+            CoordinationPhaseResult(
+                phase=phase,
+                success=False,
+                duration_seconds=run.clock.monotonic() - settle_start,
+                error=safe_error_description(exc),
+            )
+        )
 
 
 async def _dispatch_gated_wave(

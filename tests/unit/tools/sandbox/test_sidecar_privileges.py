@@ -18,6 +18,12 @@ from typing import cast
 
 import pytest
 
+from synthorg.tools.sandbox.deployment_identity import (
+    DEPLOYMENT_LABEL,
+    MANAGED_LABEL,
+    MANAGED_LABEL_VALUE,
+    deployment_id_for,
+)
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from tests._shared import FakeDockerClient, JsonDict
@@ -37,14 +43,14 @@ class _RecordingDocker(FakeDockerClient):
         return SimpleNamespace(id="sidecar-container-id")
 
 
-async def _sidecar_host_config(workspace: Path) -> JsonDict:
-    """Create a sidecar and return the HostConfig it asked Docker for.
+async def _sidecar_config(workspace: Path) -> JsonDict:
+    """Create a sidecar and return the whole payload it asked Docker for.
 
     Args:
         workspace: Directory the sandbox binds as its workspace.
 
     Returns:
-        The recorded ``HostConfig`` mapping.
+        The recorded container-creation mapping.
     """
     docker = _RecordingDocker()
     sandbox = DockerSandbox(
@@ -55,7 +61,19 @@ async def _sidecar_host_config(workspace: Path) -> JsonDict:
         workspace=workspace,
     )
     await sandbox._create_sidecar(docker)
-    return cast("JsonDict", docker.created[-1]["HostConfig"])
+    return docker.created[-1]
+
+
+async def _sidecar_host_config(workspace: Path) -> JsonDict:
+    """Create a sidecar and return the HostConfig it asked Docker for.
+
+    Args:
+        workspace: Directory the sandbox binds as its workspace.
+
+    Returns:
+        The recorded ``HostConfig`` mapping.
+    """
+    return cast("JsonDict", (await _sidecar_config(workspace))["HostConfig"])
 
 
 class TestCapabilityGrant:
@@ -98,3 +116,21 @@ class TestRemainingConfinement:
     async def test_the_container_is_never_privileged(self, tmp_path: Path) -> None:
         host_config = await _sidecar_host_config(tmp_path)
         assert not host_config.get("Privileged")
+
+
+class TestReclaimability:
+    """A sidecar a hard kill left behind has to be identifiable as ours.
+
+    The boot reconciliation pass separates "a container this deployment
+    created" from "another installation's live work" by these two labels
+    alone. Unlabelled, an orphaned sidecar is never reclaimed and goes on
+    policing egress for a sandbox that no longer exists.
+    """
+
+    async def test_the_sidecar_carries_both_deployment_labels(
+        self, tmp_path: Path
+    ) -> None:
+        labels = cast("dict[str, str]", (await _sidecar_config(tmp_path))["Labels"])
+
+        assert labels[MANAGED_LABEL] == MANAGED_LABEL_VALUE
+        assert labels[DEPLOYMENT_LABEL] == deployment_id_for(tmp_path)

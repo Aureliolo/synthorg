@@ -143,7 +143,15 @@ class AssignmentWriter:
                 group_id=group.group_id,
                 unmet_dependencies=list(unmet),
             )
-            await self._park_on_dependency(engine, assignment, unmet)
+            if not await self._park_on_dependency(engine, assignment, unmet):
+                # Dropping it now would leave a row at CREATED that nothing
+                # watches and nothing can move, so its plan never derives a
+                # terminal status and its project can never be deleted. Kept
+                # in the wave instead: dispatching against dead inputs wastes
+                # a turn budget and fails, which is a bad outcome, but it is
+                # an outcome, and the row reaches a terminal the rollup can
+                # conclude on.
+                runnable.append(assignment)
         return group.model_copy(update={"assignments": tuple(runnable)})
 
     async def abandon_remaining(
@@ -274,13 +282,16 @@ class AssignmentWriter:
                 error=safe_error_description(exc),
             )
             return False
-        await self._park_abandoned(
+        # The write's own verdict, not the decision to attempt it: a refused
+        # mutation leaves the row exactly where it was, and counting it as
+        # parked reports a tail that was cleaned up when rows are still
+        # sitting at CREATED with nothing watching them.
+        return await self._park_abandoned(
             engine,
             assignment,
             stopped_at=stopped_at,
             depends_on_stopped=depends_on_stopped,
         )
-        return True
 
     async def _park_abandoned(
         self,
@@ -289,7 +300,7 @@ class AssignmentWriter:
         *,
         stopped_at: int,
         depends_on_stopped: bool,
-    ) -> None:
+    ) -> bool:
         """Park one subtask of a wave that was never reached.
 
         Args:
@@ -299,6 +310,9 @@ class AssignmentWriter:
             depends_on_stopped: Whether this subtask sits at a level BELOW the
                 one that stopped, and so may have lost a declared input. False
                 for a sibling of the stopped wave, which is merely unstarted.
+
+        Returns:
+            Whether the park actually persisted.
         """
         task_id = str(assignment.task.id)
         reason = (
@@ -334,7 +348,7 @@ class AssignmentWriter:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return
+            return False
         if not result.success:
             logger.warning(
                 COORDINATION_WAVE_DEPENDENCY_UNMET,
@@ -343,6 +357,8 @@ class AssignmentWriter:
                 error_type="TaskMutationRejected",
                 error=result.error or "park rejected with no error detail",
             )
+            return False
+        return True
 
     @staticmethod
     async def _dependency_status(
@@ -361,13 +377,18 @@ class AssignmentWriter:
         engine: TaskEngine,
         assignment: AgentAssignment,
         unmet: tuple[str, ...],
-    ) -> None:
+    ) -> bool:
         """Park one subtask whose inputs did not arrive.
 
         Args:
             engine: The engine that owns task status.
             assignment: The subtask that will not be dispatched.
             unmet: The dependency ids that did not deliver.
+
+        Returns:
+            Whether the park actually persisted. The caller drops the subtask
+            from the wave on the strength of this, so reporting a refused
+            write as done is what strands the row.
         """
         task_id = str(assignment.task.id)
         try:
@@ -393,7 +414,7 @@ class AssignmentWriter:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return
+            return False
         if not result.success:
             # The engine refuses by returning, not by raising, so an
             # unchecked result reads as a park that happened.
@@ -404,6 +425,8 @@ class AssignmentWriter:
                 error_type="TaskMutationRejected",
                 error=result.error or "park rejected with no error detail",
             )
+            return False
+        return True
 
     async def persist(self, group: ParallelExecutionGroup) -> ParallelExecutionGroup:
         """Assign every subtask in *group*, returning it rebuilt from the engine.

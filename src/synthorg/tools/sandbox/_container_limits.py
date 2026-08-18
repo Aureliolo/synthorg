@@ -13,7 +13,10 @@ from typing import Final
 
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.sandbox import SANDBOX_MEMORY_LIMIT_INVALID
+from synthorg.observability.events.sandbox import (
+    SANDBOX_CPU_LIMIT_INVALID,
+    SANDBOX_MEMORY_LIMIT_INVALID,
+)
 
 logger = get_logger(__name__)
 
@@ -75,13 +78,39 @@ def parse_memory_limit(limit: str) -> int:
 def nano_cpus(cores: float) -> int:
     """Convert a cpu quota in cores to the daemon's nano-cpu unit.
 
+    Refuses a non-positive quota, which is the same contract
+    :func:`parse_memory_limit` already enforces for sizes and matters more
+    here: the daemon reads ``NanoCpus`` of ``0`` as "no limit", so a quota of
+    ``"0"`` does not clamp the container to nothing, it removes the ceiling
+    entirely. A rounding-to-zero fraction does the same silently.
+
     Args:
         cores: The quota an operator wrote, in cores (Docker's ``--cpus``).
 
     Returns:
         The same quota in billionths of a core.
+
+    Raises:
+        ValueError: If the quota is not positive, or is too small to express.
     """
-    return int(cores * _NANO_CPUS_PER_CORE)
+    if cores <= 0:
+        msg = f"Cpu quota must be positive, got: {cores!r}"
+        logger.warning(
+            SANDBOX_CPU_LIMIT_INVALID,
+            reason="non_positive",
+            error_type=ValueError.__name__,
+        )
+        raise ValueError(msg)
+    quota = int(cores * _NANO_CPUS_PER_CORE)
+    if quota <= 0:
+        msg = f"Cpu quota is too small to express in nano-cpus: {cores!r}"
+        logger.warning(
+            SANDBOX_CPU_LIMIT_INVALID,
+            reason="rounds_to_unlimited",
+            error_type=ValueError.__name__,
+        )
+        raise ValueError(msg)
+    return quota
 
 
 __all__ = ["nano_cpus", "parse_memory_limit"]

@@ -322,6 +322,49 @@ class TestGateOnDependencies:
     async def test_a_refused_park_does_not_take_the_wave_down(self) -> None:
         """The healthy siblings still run when a park is rejected."""
         blocked_task = _task("task-b")
+        healthy_task = _task("task-c")
+        engine = _engine(
+            {
+                str(as_uuid("task-a")): _task("task-a", status=TaskStatus.FAILED),
+                str(as_uuid("task-b")): blocked_task,
+                str(as_uuid("task-c")): healthy_task,
+            }
+        )
+        engine.submit = AsyncMock(
+            return_value=TaskMutationResult(
+                request_id="r",
+                success=False,
+                error="refused",
+                error_code="validation",
+            )
+        )
+        writer = AssignmentWriter(engine)
+
+        gated = await writer.gate_on_dependencies(
+            _group(
+                AgentAssignment(identity=_identity("agent-a"), task=blocked_task),
+                AgentAssignment(identity=_identity("agent-c"), task=healthy_task),
+            ),
+            {str(blocked_task.id): (str(as_uuid("task-a")),)},
+        )
+
+        assert [str(a.task.id) for a in gated.assignments] == [
+            str(blocked_task.id),
+            str(healthy_task.id),
+        ]
+
+    async def test_a_row_whose_park_was_refused_is_not_dropped(self) -> None:
+        """Dropping it is what strands it.
+
+        The gate removes a subtask from the wave because it has been parked
+        BLOCKED, which is a status a replan can pick back up. When the park is
+        refused the row is still at CREATED, and a CREATED row nothing
+        dispatches has no exit and nothing watching it: its plan never derives
+        a terminal status and its project can never be deleted. Keeping it in
+        the wave costs a turn budget against dead inputs and ends FAILED,
+        which is an outcome the rollup can conclude on.
+        """
+        blocked_task = _task("task-b")
         engine = _engine(
             {
                 str(as_uuid("task-a")): _task("task-a", status=TaskStatus.FAILED),
@@ -335,6 +378,24 @@ class TestGateOnDependencies:
                 error="refused",
                 error_code="validation",
             )
+        )
+        writer = AssignmentWriter(engine)
+
+        gated = await writer.gate_on_dependencies(
+            _group(AgentAssignment(identity=_identity("agent-a"), task=blocked_task)),
+            {str(blocked_task.id): (str(as_uuid("task-a")),)},
+        )
+
+        assert [str(a.task.id) for a in gated.assignments] == [str(blocked_task.id)]
+
+    async def test_a_row_whose_park_persisted_is_dropped(self) -> None:
+        """The ordinary path: parked BLOCKED, so the wave does not run it."""
+        blocked_task = _task("task-b")
+        engine = _engine(
+            {
+                str(as_uuid("task-a")): _task("task-a", status=TaskStatus.FAILED),
+                str(as_uuid("task-b")): blocked_task,
+            }
         )
         writer = AssignmentWriter(engine)
 

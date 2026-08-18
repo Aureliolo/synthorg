@@ -289,13 +289,15 @@ class AgentEngine(
         capability: CapabilityPolicy | None = None,
         agent_registry: AgentRegistryProtocol | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
-        agent_state_repository: AgentStateRepositoryProvider | None = None,
+        agent_state_repository_provider: AgentStateRepositoryProvider | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
         self._flight_recorder_sink = flight_recorder_sink
-        self._agent_state_repository = agent_state_repository or _no_agent_state
+        self._agent_state_repository_provider = (
+            agent_state_repository_provider or _no_agent_state
+        )
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
@@ -813,7 +815,7 @@ class AgentEngine(
             # single-turn dispatch would otherwise never write a row, and a
             # longer one would have none until its first turn ended.
             await mark_agent_running(
-                repository_provider=self._agent_state_repository,
+                repository_provider=self._agent_state_repository_provider,
                 context=request.ctx,
                 currency=resolve_tracker_currency(self._cost_tracker),
                 clock=self._clock,
@@ -827,7 +829,7 @@ class AgentEngine(
             # clear from blanking a sibling dispatch's live row: the row is
             # keyed by agent, and one agent can hold two.
             await mark_agent_idle(
-                repository_provider=self._agent_state_repository,
+                repository_provider=self._agent_state_repository_provider,
                 agent_id=agent_id,
                 execution_id=request.ctx.execution_id,
                 currency=resolve_tracker_currency(self._cost_tracker),
@@ -894,7 +896,7 @@ class AgentEngine(
                 if hub is not None
                 else None,
                 make_runtime_state_observer(
-                    repository_provider=self._agent_state_repository,
+                    repository_provider=self._agent_state_repository_provider,
                     currency=resolve_tracker_currency(self._cost_tracker),
                     clock=self._clock,
                 ),

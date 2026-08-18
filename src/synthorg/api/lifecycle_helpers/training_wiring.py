@@ -69,8 +69,12 @@ async def wire_training_service(
         msg = "no memory backend; a new hire learns nothing that is not stored"
         raise SubsystemDeclinedError(msg)
 
-    # Training is an enhancement to hiring, so a registry-less boot still gets
-    # the service with deterministic curation rather than nothing at all.
+    # Two different registries meet here and only one is optional. The AGENT
+    # registry is structural: the source selectors read `list_active` and
+    # `list_by_department` off it, so with no roster there is nobody to learn
+    # from, which is why the spec `requires` it and this resolves it hard. The
+    # PROVIDER registry below is the optional one: unset degrades `llm_curated`
+    # to deterministic scoring rather than withholding the service.
     provider_registry = app_state.slice(ProvidersStateSlice).registry
     service = build_training_service(
         config=effective_config.training,

@@ -167,9 +167,13 @@ class TestTheLiveStateFollowsTheRun:
 class TestTheAgentStopsReadingAsBusy:
     async def test_idle_is_recorded_when_the_dispatch_ends(self) -> None:
         saved: list[AgentRuntimeState] = []
+
+        async def _write(state: AgentRuntimeState, **_: object) -> bool:
+            saved.append(state)
+            return True
+
         repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=saved.append),
-            get=AsyncMock(return_value=None),
+            save_if_execution=AsyncMock(side_effect=_write),
         )
 
         await mark_agent_idle(
@@ -190,8 +194,7 @@ class TestTheAgentStopsReadingAsBusy:
         """The idle write runs in a finally; raising there would mask the run's
         own outcome."""
         repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=RuntimeError("state store down")),
-            get=AsyncMock(return_value=None),
+            save_if_execution=AsyncMock(side_effect=RuntimeError("store down")),
         )
 
         await mark_agent_idle(
@@ -201,79 +204,51 @@ class TestTheAgentStopsReadingAsBusy:
             currency=_EUR,
         )
 
-    async def test_a_siblings_live_row_is_not_cleared(
+    async def test_the_clear_names_the_execution_it_believes_holds_the_row(
         self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
     ) -> None:
-        """One agent can hold two dispatches, and the row is keyed by agent.
+        """The guard is the repository's to apply, so the run must hand it over.
 
-        The assignment concurrency cap is opt-in, and a wave dispatches its
-        subtasks together, so a small roster can put two on one agent. An
-        unconditional clear would blank the sibling's live row the moment
-        this run finished; the read side treats an idle row as nothing
-        running, so an actively working agent would show idle and its stuck
-        and runaway detection would go blind until its next turn, which is
-        one whole LLM call away.
+        Deciding here and writing unconditionally is what left a gap for a
+        sibling to claim the agent in; the run's job is now to say which
+        execution it thinks owns the row, and the write refuses if that has
+        stopped being true. Passing the wrong id, or none, would re-open the
+        window silently, since the write would still succeed.
         """
-        saved: list[AgentRuntimeState] = []
-        sibling = AgentRuntimeState.from_context(
-            _context(
-                sample_agent_with_personality,
-                sample_task_with_criteria,
-                turn=3,
-                cost=1.0,
-                execution_id="exec-sibling",
-            ),
-            ExecutionStatus.EXECUTING,
-            currency=_EUR,
-        )
         repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=saved.append),
-            get=AsyncMock(return_value=sibling),
+            save_if_execution=AsyncMock(return_value=True),
         )
 
         await mark_agent_idle(
             repository_provider=lambda: repository,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id="agent-1",
             execution_id="exec-mine",
             currency=_EUR,
         )
 
-        assert saved == []
-
-    async def test_the_runs_own_row_is_cleared(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """The guard protects a sibling, never the run doing the clearing."""
-        saved: list[AgentRuntimeState] = []
-        mine = AgentRuntimeState.from_context(
-            _context(
-                sample_agent_with_personality,
-                sample_task_with_criteria,
-                turn=3,
-                cost=1.0,
-                execution_id="exec-mine",
-            ),
-            ExecutionStatus.EXECUTING,
-            currency=_EUR,
+        assert repository.save_if_execution.await_args is not None
+        assert (
+            repository.save_if_execution.await_args.kwargs["expected_execution_id"]
+            == "exec-mine"
         )
+
+    async def test_a_declined_write_is_not_an_error(self) -> None:
+        """A sibling holding the row is the guard working, not a fault.
+
+        The repository answers ``False`` and the dispatch that just finished
+        carries on unwound: the sibling is still running, so the row it owns
+        is the correct one to leave in place.
+        """
         repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=saved.append),
-            get=AsyncMock(return_value=mine),
+            save_if_execution=AsyncMock(return_value=False),
         )
 
         await mark_agent_idle(
             repository_provider=lambda: repository,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id="agent-1",
             execution_id="exec-mine",
             currency=_EUR,
         )
-
-        assert len(saved) == 1
-        assert saved[0].status is ExecutionStatus.IDLE
 
 
 class TestARunIsVisibleBeforeItsFirstTurnEnds:
@@ -360,11 +335,32 @@ class TestOneReportReachesEveryListener:
         """``None`` is what disables the hook, so composing nothing returns it."""
         assert compose_turn_observers(None, None) is None
 
-    def test_one_observer_is_passed_through_unwrapped(self) -> None:
-        async def _only(_progress: TurnProgress) -> None:
-            return
+    async def test_a_lone_failing_observer_is_guarded_too(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The guard is a promise about the run, not about the other watchers.
 
-        assert compose_turn_observers(None, _only) is _only
+        Handing a single observer back unwrapped is the cheaper composition of
+        nothing, and it silently exempts the common case from the one
+        guarantee this function makes: that watching a run cannot fail it.
+        """
+
+        async def _only(_report: TurnProgress) -> None:
+            raise _PublishFailedError
+
+        composed = compose_turn_observers(None, _only)
+        assert composed is not None
+
+        await composed(
+            _progress(
+                sample_agent_with_personality,
+                sample_task_with_criteria,
+                turn=4,
+                cost=0.0,
+            )
+        )
 
     async def test_one_failing_listener_does_not_silence_the_others(
         self,
@@ -380,7 +376,7 @@ class TestOneReportReachesEveryListener:
         """
         seen: list[str] = []
 
-        async def _broken(_progress: TurnProgress) -> None:
+        async def _broken(_report: TurnProgress) -> None:
             raise _PublishFailedError
 
         async def _healthy(progress: TurnProgress) -> None:
@@ -407,7 +403,7 @@ class TestOneReportReachesEveryListener:
         """The run is being torn down, so continuing to watch it is wrong."""
         seen: list[str] = []
 
-        async def _cancelled(_progress: TurnProgress) -> None:
+        async def _cancelled(_report: TurnProgress) -> None:
             raise asyncio.CancelledError
 
         async def _later(progress: TurnProgress) -> None:

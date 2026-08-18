@@ -1754,6 +1754,23 @@ class FakeAgentStateRepository:
     async def save(self, entity: AgentRuntimeState) -> None:
         self._states[entity.agent_id] = entity
 
+    async def save_if_execution(
+        self,
+        entity: AgentRuntimeState,
+        *,
+        expected_execution_id: str,
+    ) -> bool:
+        # Mirrors the SQL guard: a row nobody holds, or one this execution
+        # holds, is writable; a sibling's is not.
+        current = self._states.get(entity.agent_id)
+        if current is not None and current.execution_id not in (
+            None,
+            expected_execution_id,
+        ):
+            return False
+        self._states[entity.agent_id] = entity
+        return True
+
     async def get(self, entity_id: NotBlankStr) -> AgentRuntimeState | None:
         return self._states.get(entity_id)
 

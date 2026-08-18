@@ -14,6 +14,7 @@ matching ``test_check_no_synthetic_cost_owner.py``.
 """
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from typing import Final, Protocol, cast
@@ -143,6 +144,30 @@ def _schema_root(tmp_path: Path, sqlite_sql: str, postgres_sql: str = "") -> Pat
 
 def _enum_root(tmp_path: Path, name: str, source: str) -> Path:
     """Write a fake repo whose scanned tree holds one Python module.
+
+    Initialised as a git repository with the module tracked, because
+    ``_collect_enums`` reaches the tree through ``_git_tracked_python_files``:
+    a plain directory fails ``git ls-files``, warns, and falls back to
+    ``rglob``, so every test here would cover the fallback and leave the
+    branch that actually runs in CI untested.
+
+    Returns:
+        The project root the gate should be pointed at.
+    """
+    target = tmp_path / "src" / "synthorg"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / name).write_text(source, encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # noqa: S607
+    subprocess.run(  # noqa: S603
+        ["git", "add", "--", f"src/synthorg/{name}"],  # noqa: S607
+        cwd=tmp_path,
+        check=True,
+    )
+    return tmp_path
+
+
+def _untracked_enum_root(tmp_path: Path, name: str, source: str) -> Path:
+    """Write the same tree with no git repository around it.
 
     Returns:
         The project root the gate should be pointed at.
@@ -290,6 +315,27 @@ class TestWhichEnumsAreCollected:
             ),
         )
         assert [e for e in _MODULE._collect_enums(root) if e.name == "Numbered"] == []
+
+    def test_a_tree_outside_git_still_scans(self, tmp_path: Path) -> None:
+        """The fallback the other tests no longer exercise.
+
+        ``git ls-files`` is the path CI takes, so the fixtures track their
+        module; this keeps the widening ``rglob`` fallback covered, since a
+        tree the command cannot answer for must still be scanned rather than
+        read as holding no enums at all.
+        """
+        root = _untracked_enum_root(
+            tmp_path,
+            "loose.py",
+            (
+                "from enum import StrEnum\n"
+                "class Loose(StrEnum):\n"
+                '    FIRST = "first"\n'
+                '    SECOND = "second"\n'
+            ),
+        )
+        collected = {e.name: e.values for e in _MODULE._collect_enums(root)}
+        assert collected["Loose"] == frozenset({"first", "second"})
 
 
 class TestWhichEnumACheckIsHeldTo:

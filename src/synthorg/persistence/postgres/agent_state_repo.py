@@ -37,6 +37,73 @@ class PostgresAgentStateRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    async def save_if_execution(
+        self,
+        state: AgentRuntimeState,
+        *,
+        expected_execution_id: str,
+    ) -> bool:
+        """Upsert only while the stored row still names *expected_execution_id*.
+
+        The guard rides in the same statement as the write, so no sibling can
+        claim the agent between the two.
+
+        Returns:
+            ``True`` when the row was written, ``False`` when another
+            execution holds it.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            data = state.model_dump(mode="json")
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """\
+INSERT INTO agent_states (
+    agent_id, execution_id, task_id, status, turn_count,
+    accumulated_cost, currency, last_activity_at, started_at
+) VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (agent_id) DO UPDATE SET
+    execution_id = EXCLUDED.execution_id,
+    task_id = EXCLUDED.task_id,
+    status = EXCLUDED.status,
+    turn_count = EXCLUDED.turn_count,
+    accumulated_cost = EXCLUDED.accumulated_cost,
+    currency = EXCLUDED.currency,
+    last_activity_at = EXCLUDED.last_activity_at,
+    started_at = EXCLUDED.started_at
+WHERE agent_states.execution_id IS NULL
+   OR agent_states.execution_id = %s
+""",
+                    (
+                        data["agent_id"],
+                        data["execution_id"],
+                        data["task_id"],
+                        data["status"],
+                        data["turn_count"],
+                        data["accumulated_cost"],
+                        data["currency"],
+                        data["last_activity_at"],
+                        data["started_at"],
+                        expected_execution_id,
+                    ),
+                )
+                written = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to save agent state for {state.agent_id!r}"
+            logger.warning(
+                PERSISTENCE_AGENT_STATE_SAVE_FAILED,
+                agent_id=state.agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return written
+
     async def save(self, state: AgentRuntimeState) -> None:
         """Persist an agent runtime state (upsert by agent_id).
 

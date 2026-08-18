@@ -210,10 +210,14 @@ class KanbanBoardService:
         """
         if target_column is not KanbanColumn.IN_PROGRESS:
             return
-        sprint_service = self._resolve_sprint_service()
-        if sprint_service is None:
-            return
         try:
+            # Resolution is part of the check, so it fails open with the rest
+            # of it. Left outside, a resolver that raised (a settings-store
+            # outage, a half-built slice) blocked the move outright, which is
+            # the one outcome an advisory gate must never produce.
+            sprint_service = self._resolve_sprint_service()
+            if sprint_service is None:
+                return
             workable = await sprint_service.is_task_workable(str(task.id), task.project)
         except Exception as exc:  # noqa: BLE001 -- advisory gate: fail open
             # lint-allow: swallow-ok -- advisory gate: fail-open by design

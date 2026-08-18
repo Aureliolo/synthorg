@@ -628,7 +628,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         # A provider, not the repository: a run can start before persistence
         # is connected, and a captured ``None`` would leave that agent absent
         # from the live view for the life of the process.
-        agent_state_repository=_agent_state_repository_provider(app_state),
+        agent_state_repository_provider=_agent_state_repository_provider(app_state),
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
         step_classifier=step_classifier,

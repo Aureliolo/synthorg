@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -259,6 +260,77 @@ func TestNetworkRemovalFailureDoesNotStopTheStart(t *testing.T) {
 	if !strings.Contains(reported, composeNetworkName) {
 		t.Errorf("the failure was reported as %q, which does not name the network", reported)
 	}
+	// The success line names the network too, so the check above passes on
+	// either branch. This is what distinguishes the failure path from it.
+	if !strings.Contains(reported, "could not remove") {
+		t.Errorf("the failure was reported as %q, which does not read as a failure", reported)
+	}
+}
+
+// TestMigrationVolumesMatchTheComposeDeclaration is the volume twin of the
+// network test above. legacyVolumeSuffixes and the template's volume keys are
+// two copies of one fact, and a rename on either side produces volumes Compose
+// does not own: it warns on every start, and the labels cannot be added
+// afterwards because volume labels are immutable.
+func TestMigrationVolumesMatchTheComposeDeclaration(t *testing.T) {
+	t.Parallel()
+
+	declared := composeTemplateVolumeKeys(t)
+	slices.Sort(declared)
+
+	migrated := slices.Clone(legacyVolumeSuffixes)
+	slices.Sort(migrated)
+
+	if !slices.Equal(declared, migrated) {
+		t.Errorf(
+			"the compose template declares volumes %v but the migration moves %v",
+			declared, migrated,
+		)
+	}
+}
+
+// composeTemplateVolumeKeys reads the keys under the template's top-level
+// "volumes:" block.
+func composeTemplateVolumeKeys(t *testing.T) []string {
+	t.Helper()
+
+	tmpl, err := os.ReadFile(filepath.Join("..", "internal", "compose", "compose.yml.tmpl"))
+	if err != nil {
+		t.Fatalf("reading the compose template: %v", err)
+	}
+
+	var keys []string
+	inVolumes := false
+	for line := range strings.SplitSeq(string(tmpl), "\n") {
+		if strings.HasPrefix(line, "volumes:") {
+			inVolumes = true
+			continue
+		}
+		if !inVolumes {
+			continue
+		}
+		// Two of the three keys sit behind template conditionals, whose
+		// directives start at column 0. Skipping them rather than reading
+		// them as the next top-level block is what keeps the optional
+		// volumes in scope: stopping at the first one would compare against
+		// the sqlite-only subset and pass while the other two drifted.
+		if strings.HasPrefix(strings.TrimSpace(line), "{{") {
+			continue
+		}
+		// Any other unindented content is the next top-level block.
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		trimmed := strings.TrimSpace(line)
+		if key, ok := strings.CutSuffix(trimmed, ":"); ok && key != "" &&
+			!strings.HasPrefix(key, "#") {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		t.Fatal("found no volume keys in the compose template")
+	}
+	return keys
 }
 
 // TestMigrationNetworkMatchesTheComposeDeclaration ties the constant to the
