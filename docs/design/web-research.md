@@ -150,12 +150,23 @@ against it and the new host goes through the check. Extracting the body of that
 empty read.
 
 **An outage is not an unreadable page.** A `429` or an ordinary `5xx` says
-"ask again"; a `404` says the page is not there. Both rungs classify them the
-same way, from one shared set, so a rate limit reaches the caller as a
+"ask again"; a `404` says the page is not there. The `local` and `proxy` rungs
+classify them the same way, from one shared set, so a rate limit reaches the
+caller as a
 transient failure carrying the origin's own `Retry-After` rather than as a
 response error that sends the agent up the ladder to pay a vendor for a page
 that would have answered on retry. The set is deliberately not "any `5xx`":
 `501`, `505` and `507` name a condition retrying cannot change.
+
+The classification only matters where the decision is made, and here that is
+the agent: it picks the next call, so the two outcomes read differently in the
+result, one pointing back at the same backend and the other at the rungs left.
+The cooldown the local rung repeats is **clamped**, because the two rungs read
+it from different parties. The proxy rung's comes from a vendor under contract;
+the local rung's comes from whatever site the agent was told to read, and a
+retry handler honours a server-supplied override past its own cap by design, so
+an unclamped `Retry-After: 86400` would be a day-long sleep an arbitrary origin
+chose. Not a setting: raising it is never a thing to want.
 
 **A truncated read is cut to fit its notice.** The character budget is what the
 operator agreed to spend on one page, so the notice that says the page was cut
@@ -246,7 +257,23 @@ it, which often replaces several page fetches. The origin probed is the one
 that actually served the markdown, not the one that was asked for: a rung that
 follows redirects can land on a different host entirely, and probing the
 requested URL would ask a host that answered nothing whether it indexes a page
-it does not serve. It only ever *reports*: it never
+it does not serve. In practice that is the `render` rung alone, since `local`
+refuses redirects and `proxy` reports the requested URL, so on that rung the
+probed origin can be one a redirect chose rather than one the agent named. It
+still clears the same egress check as any other read, and the backend can
+already be pointed at any origin by the `local` rung, which is always built, so
+no confinement is spent that existed; what changes is that the origin is
+derived rather than typed, which is why the probe is separately disable-able.
+
+The derived URLs are built from the **credential-free authority**, not the raw
+one. A page URL may carry userinfo, and these URLs are not internal: one is
+requested and one is handed to the agent in the notice, so copying the
+authority wholesale would mint a derived string carrying that credential and
+put it somewhere the operator never fetched it from. The same authority is the
+cache key, which also makes a credentialed and a bare read of one site share
+one entry instead of occupying two that cannot answer for each other.
+
+It only ever *reports*: it never
 redirects the fetch that was asked for, because answering from a different URL
 than the one requested makes the transcript a record of something that did not
 happen. The probe runs after the caller's fetch already succeeded, so a probe

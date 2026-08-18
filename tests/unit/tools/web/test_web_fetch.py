@@ -11,6 +11,10 @@ from pydantic import ValidationError
 
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web import web_fetch
+from synthorg.tools.web.errors import (
+    WebFetchResponseError,
+    WebFetchTransientError,
+)
 from synthorg.tools.web.fetch_types import (
     FetchBackend,
     FetchedPage,
@@ -55,9 +59,12 @@ class _StubRung:
         self.calls.append(url)
         if self._error is not None:
             raise self._error
+        # Passed through EMPTY rather than defaulted to *url*, so a rung that
+        # reports no landing exercises the tool's own fallback instead of
+        # having the stub perform it.
         return FetchedPage(
             url=url,
-            final_url=self._final_url or url,
+            final_url=self._final_url,
             title="Title",
             markdown=self._markdown,
             backend=self._backend,
@@ -241,6 +248,54 @@ class TestResultShape:
             arguments={"url": _URL, "via": "proxy"}
         )
         assert result.metadata["backend"] == "proxy"
+
+
+class TestTransientFailuresSayAskAgain:
+    """The classification only matters if it reaches the thing that decides.
+
+    The agent picks the next move, so a transient failure and an unreadable
+    page have to read differently. Given the same sentence for both, it
+    escalates a rate limit onto a rung that costs money for a page the origin
+    would have served on retry.
+    """
+
+    async def test_a_transient_failure_points_back_at_the_same_backend(self) -> None:
+        rung = _StubRung(
+            FetchBackend.LOCAL,
+            error=WebFetchTransientError("upstream 503"),
+        )
+
+        result = await _tool(rung, _StubRung(FetchBackend.RENDER)).execute(
+            arguments={"url": _URL}
+        )
+
+        assert result.is_error is True
+        assert "temporary upstream failure" in result.content
+        assert "re-calling this same backend" in result.content
+
+    async def test_the_clamped_cooldown_reaches_the_agent(self) -> None:
+        rung = _StubRung(
+            FetchBackend.LOCAL,
+            error=WebFetchTransientError("upstream 429", retry_after_seconds=42.0),
+        )
+
+        result = await _tool(rung).execute(arguments={"url": _URL})
+
+        assert "42s before a retry" in result.content
+
+    async def test_a_permanent_failure_still_points_at_the_other_rungs(self) -> None:
+        rung = _StubRung(
+            FetchBackend.LOCAL,
+            error=WebFetchResponseError("404"),
+        )
+
+        result = await _tool(rung, _StubRung(FetchBackend.RENDER)).execute(
+            arguments={"url": _URL}
+        )
+
+        assert result.is_error is True
+        assert "temporary upstream failure" not in result.content
+        assert "Backends not tried: render" in result.content
 
 
 class TestDocumentationIndexProbe:

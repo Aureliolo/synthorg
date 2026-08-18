@@ -10,6 +10,7 @@ handed a parser of ours.
 """
 
 import re
+import threading
 from typing import Final
 
 from lxml.html import HtmlElement, HTMLParser
@@ -141,9 +142,9 @@ def parse_html_safely(raw: str) -> HtmlElement:
 
     # Use the lxml.html fromstring so the returned element supports
     # ``text_content()`` / ``drop_tree()`` which the sanitiser relies
-    # on. Pass the shared safe parser explicitly so our no-network +
+    # on. Pass this thread's safe parser explicitly so our no-network +
     # huge_tree guards apply.
-    return lxml_html.fromstring(raw, parser=_SAFE_PARSER)
+    return lxml_html.fromstring(raw, parser=_SAFE_PARSERS.parser)
 
 
 def _build_safe_parser() -> HTMLParser:
@@ -177,12 +178,29 @@ def _build_safe_parser() -> HTMLParser:
     )
 
 
-_SAFE_PARSER: Final[HTMLParser] = _build_safe_parser()
-"""Module-scope HTML parser with XXE / entity-expansion defences.
+class _ThreadParser(threading.local):
+    """One HTML parser per thread, built the first time that thread parses.
 
-Reused across calls to avoid re-building lxml state on every
-``sanitize()`` invocation.
-"""
+    Reused across calls on one thread to avoid re-building lxml state on every
+    invocation, but never SHARED between threads: lxml serialises access to a
+    parser instance, and extraction runs on worker threads
+    (:func:`synthorg.tools.web.extract.extract_markdown` dispatches through
+    ``asyncio.to_thread``), so a single instance would make two agents reading
+    two pages take turns inside the parser. The object is cheap; the
+    contention is not.
+
+    Subclassing :class:`threading.local` rather than holding a bare one is
+    what makes the per-thread build automatic: ``__init__`` runs once per
+    thread on first access, so there is no lazily-initialised slot for a
+    caller to read before it is filled.
+    """
+
+    def __init__(self) -> None:
+        """Build this thread's parser."""
+        self.parser: HTMLParser = _build_safe_parser()
+
+
+_SAFE_PARSERS = _ThreadParser()
 
 
 __all__ = [

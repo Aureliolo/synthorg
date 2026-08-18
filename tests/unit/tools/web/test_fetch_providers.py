@@ -27,7 +27,10 @@ from synthorg.tools.web.extract import TRUNCATION_MARKER
 from synthorg.tools.web.fetch_types import FetchBackend, FetchBudget, WebFetchProvider
 from synthorg.tools.web.providers.fetch_presets import FetchProviderPreset
 from synthorg.tools.web.providers.http_fetch_provider import HttpWebFetchProvider
-from synthorg.tools.web.providers.local_fetch_provider import LocalFetchProvider
+from synthorg.tools.web.providers.local_fetch_provider import (
+    _MAX_ORIGIN_COOLDOWN_SECONDS,
+    LocalFetchProvider,
+)
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -203,6 +206,23 @@ class TestLocalRung:
 
         with pytest.raises(WebFetchResponseError):
             await _local().fetch(_TARGET)
+
+    @respx.mock
+    async def test_a_hostile_cooldown_is_clamped(self) -> None:
+        """This rung's Retry-After comes from the site, not from a vendor.
+
+        A handler that honours an override honours it past its own cap by
+        design, so an unclamped day-long value would be a day-long sleep an
+        arbitrary origin chose.
+        """
+        respx.get(_TARGET).mock(
+            return_value=httpx.Response(503, headers={"Retry-After": "86400"}),
+        )
+
+        with pytest.raises(WebFetchTransientError) as caught:
+            await _local().fetch(_TARGET)
+
+        assert caught.value.retry_after_seconds == _MAX_ORIGIN_COOLDOWN_SECONDS
 
     async def test_a_private_target_is_blocked(self) -> None:
         provider = _local(network_policy=NetworkPolicy(block_private_ips=True))

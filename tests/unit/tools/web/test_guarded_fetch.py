@@ -6,8 +6,14 @@ Doing that means the connection no longer carries the hostname, so the ``Host``
 header becomes the only thing telling the origin which site was asked for.
 """
 
+from collections.abc import Iterable
+from typing import override
+from unittest.mock import Mock
+
+import httpcore
 import pytest
 
+from synthorg.tools._dns_pinning import SOCKET_OPTION, PinnedDnsBackend
 from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
@@ -24,6 +30,31 @@ def _validation(
     is_https: bool = False,
 ) -> DnsValidationOk:
     return DnsValidationOk(hostname=hostname, resolved_ips=ips, is_https=is_https)
+
+
+class _RecordingBackend(httpcore.AsyncNetworkBackend):
+    """Records what address the pinned backend actually dialled."""
+
+    def __init__(self, dialled: list[tuple[str, int]]) -> None:
+        self._dialled = dialled
+
+    @override
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[SOCKET_OPTION] | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        """Record the target instead of opening a socket.
+
+        Returns:
+            A stand-in stream; nothing here reads from it.
+        """
+        del timeout, local_address, socket_options
+        self._dialled.append((host, port))
+        return Mock(spec=httpcore.AsyncNetworkStream)
 
 
 @pytest.mark.unit
@@ -139,6 +170,37 @@ class TestHttpsPinsTheTransportInstead:
         transport = _pinned_transport(_validation("example.test", is_https=True))
 
         assert transport is not None
+
+    async def test_the_pinned_backend_dials_the_validated_address(self) -> None:
+        """Construction proves nothing; the connect target is the control.
+
+        A transport that was built and then dialled the hostname anyway would
+        pass every assertion above it while leaving the rebinding window
+        exactly as open as it was.
+        """
+        dialled: list[tuple[str, int]] = []
+        backend = PinnedDnsBackend(
+            _RecordingBackend(dialled),
+            hostname="Example.TEST",
+            ip="93.184.216.34",
+        )
+
+        await backend.connect_tcp("example.test", 443)
+
+        assert dialled == [("93.184.216.34", 443)]
+
+    async def test_another_host_on_the_same_transport_is_left_alone(self) -> None:
+        """The pin is one name to one address, not a blanket redirect."""
+        dialled: list[tuple[str, int]] = []
+        backend = PinnedDnsBackend(
+            _RecordingBackend(dialled),
+            hostname="example.test",
+            ip="93.184.216.34",
+        )
+
+        await backend.connect_tcp("other.test", 443)
+
+        assert dialled == [("other.test", 443)]
 
     def test_plain_http_needs_none(self) -> None:
         # The URL was already rewritten to the address, so there is no name

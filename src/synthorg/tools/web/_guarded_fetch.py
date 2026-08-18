@@ -12,7 +12,7 @@ import asyncio
 from http import HTTPStatus
 from ipaddress import IPv6Address, ip_address
 from typing import Final
-from urllib.parse import ParseResult, urlparse, urlunparse
+from urllib.parse import ParseResult, SplitResult, urlparse, urlunparse
 
 import httpx
 
@@ -37,7 +37,7 @@ _TOTAL_DEADLINE_MULTIPLIER: Final[int] = 6
 RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
 
-def _explicit_port(parsed: ParseResult) -> int | None:
+def _explicit_port(parsed: ParseResult | SplitResult) -> int | None:
     """The URL's explicit port, or ``None``.
 
     Returns:
@@ -51,17 +51,22 @@ def _explicit_port(parsed: ParseResult) -> int | None:
         return None
 
 
-def _host_header(parsed: ParseResult) -> str:
-    """Build the RFC 7230 ``Host`` value for *parsed*.
+def authority_of(parsed: ParseResult | SplitResult) -> str:
+    """Build the credential-free authority for *parsed*.
 
-    The authority minus any userinfo, which means the port travels with the
-    hostname whenever the URL states one: a target virtual-hosting on a
-    non-default port routes on this header, and dropping the port sends it to
-    whatever answers on the bare name instead.
+    Two things this is not: it is not ``netloc``, which carries any userinfo
+    the URL states, and it is not the bare hostname. Userinfo is dropped
+    because every consumer here either sends this value somewhere (an RFC 7230
+    ``Host``) or shows it to somebody (a derived URL in a tool result, a cache
+    key), and a password belongs in none of those. The port is kept because a
+    target virtual-hosting on a non-default port routes on it, and dropping it
+    sends the request to whatever answers on the bare name instead.
 
     Returns:
         ``host``, ``host:port``, or ``[v6]:port`` for an IPv6 literal, which
         needs the brackets to keep its own colons apart from the port's.
+        Empty when the URL states no host, which is a URL nothing here can
+        act on.
     """
     hostname = parsed.hostname or ""
     if not hostname:
@@ -89,7 +94,7 @@ def pin_url(
     """
     parsed = urlparse(url)
     normalized_headers = {k: v for k, v in headers.items() if not compare_ci(k, "host")}
-    normalized_headers["Host"] = _host_header(parsed)
+    normalized_headers["Host"] = authority_of(parsed)
 
     if not validation.resolved_ips or validation.is_https:
         return url, normalized_headers
@@ -274,6 +279,7 @@ def decode_body(raw: bytes, headers: httpx.Headers) -> str:
 
 __all__ = [
     "RETRYABLE_STATUSES",
+    "authority_of",
     "decode_body",
     "pin_url",
     "retry_after_seconds",

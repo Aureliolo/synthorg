@@ -24,7 +24,6 @@ from synthorg.observability.events.tool import (
 from synthorg.tools.html_parse_safety import (
     XXEDetectedError,
     parse_html_safely,
-    reject_xxe_constructs,
 )
 
 logger = get_logger(__name__)
@@ -271,7 +270,6 @@ class HTMLParseGuard:
             XXEDetectedError: If the payload carries an external DOCTYPE or an
                 entity declaration.
         """
-        reject_xxe_constructs(raw)
         doc = parse_html_safely(raw)
         result = self._strip_and_measure(doc)
         return tostring(doc, encoding="unicode", method="html"), result

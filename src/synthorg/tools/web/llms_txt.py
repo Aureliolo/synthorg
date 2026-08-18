@@ -30,7 +30,7 @@ from synthorg.tools.network_validator import (
     is_allowed_http_scheme,
     validate_url_host,
 )
-from synthorg.tools.web._guarded_fetch import pin_url, stream_bounded
+from synthorg.tools.web._guarded_fetch import authority_of, pin_url, stream_bounded
 
 logger = get_logger(__name__)
 
@@ -92,19 +92,33 @@ class IndexProbeCache:
 
 
 def origin_of(url: str) -> tuple[str, str] | None:
-    """Split *url* into the ``(scheme, netloc)`` pair a probe answers for.
+    """Split *url* into the ``(scheme, authority)`` pair a probe answers for.
+
+    Keyed on the CREDENTIAL-FREE authority. An index is a property of the
+    origin, not of who asked for it, so keying on the raw ``netloc`` would put
+    a credentialed and an uncredentialed read of the same site in separate
+    entries, neither able to answer for the other, and would leave a password
+    sitting in a cache key for the lifetime of the entry.
 
     Returns:
         The origin, or ``None`` when *url* carries no scheme or host.
     """
     parts = urlsplit(url)
-    if not parts.scheme or not parts.netloc:
+    authority = authority_of(parts)
+    if not parts.scheme or not authority:
         return None
-    return (parts.scheme.lower(), parts.netloc.lower())
+    return (parts.scheme.lower(), authority.lower())
 
 
 def index_urls_for(url: str) -> tuple[str, str]:
     """Return the ``llms.txt`` and ``llms-full.txt`` URLs for *url*'s origin.
+
+    Built from the credential-free authority rather than the raw ``netloc``.
+    These URLs are not internal: one is requested, and one is handed to the
+    agent inside :func:`discovery_notice`, so a URL of the form
+    ``https://user:token@docs.example/page`` would otherwise mint a derived
+    string carrying that token and put it somewhere the operator never
+    fetched it from.
 
     Returns:
         The index URL and the full-content URL, both on the same origin.
@@ -113,12 +127,13 @@ def index_urls_for(url: str) -> tuple[str, str]:
         ValueError: If *url* carries no scheme or host to build an origin from.
     """
     parts = urlsplit(url)
-    if not parts.scheme or not parts.netloc:
+    authority = authority_of(parts)
+    if not parts.scheme or not authority:
         msg = f"cannot derive an origin from {url!r}"
         raise ValueError(msg)
     return (
-        urlunsplit((parts.scheme, parts.netloc, LLMS_TXT_PATH, "", "")),
-        urlunsplit((parts.scheme, parts.netloc, LLMS_FULL_TXT_PATH, "", "")),
+        urlunsplit((parts.scheme, authority, LLMS_TXT_PATH, "", "")),
+        urlunsplit((parts.scheme, authority, LLMS_FULL_TXT_PATH, "", "")),
     )
 
 

@@ -46,6 +46,7 @@ from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web._args import WebFetchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
+from synthorg.tools.web.errors import WebFetchTransientError
 from synthorg.tools.web.fetch_types import (
     FetchBackend,
     FetchedPage,
@@ -61,6 +62,19 @@ from synthorg.tools.web.llms_txt import (
 logger = get_logger(__name__)
 
 _DEFAULT_PROBE_TIMEOUT: Final[float] = 5.0
+
+
+def _cooldown_hint(retry_after_seconds: float | None) -> str:
+    """Render the origin's own cooldown for the agent, when it stated one.
+
+    Returns:
+        A sentence naming the wait, or an empty string. The value is already
+        clamped by the rung that read it, because the origin choosing the
+        number is the same party that just failed to serve the page.
+    """
+    if retry_after_seconds is None:
+        return ""
+    return f" The origin asked for {retry_after_seconds:.0f}s before a retry."
 
 
 class WebFetchTool(BaseWebTool):
@@ -202,7 +216,13 @@ class WebFetchTool(BaseWebTool):
         requested: FetchBackend,
         exc: Exception,
     ) -> ToolExecutionResult:
-        """Answer a rung that raised, naming the rungs still untried.
+        """Answer a rung that raised, saying whether it is worth asking again.
+
+        A transient failure and an unreadable page want opposite next moves,
+        and the agent is the only thing here that decides which one happens.
+        Told the same sentence for both, it escalates a rate limit onto a rung
+        that costs money for a page the origin would have served on retry,
+        which is the outcome classifying the status was for.
 
         Returns:
             The error result.
@@ -214,6 +234,17 @@ class WebFetchTool(BaseWebTool):
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        if isinstance(exc, WebFetchTransientError):
+            return ToolExecutionResult(
+                content=(
+                    f"Fetch via {requested.value} hit a temporary upstream"
+                    f" failure.{_cooldown_hint(exc.retry_after_seconds)} The page"
+                    " itself may be readable, so re-calling this same backend is"
+                    " usually better than escalating."
+                    f" {self._remaining_hint(requested)}"
+                ),
+                is_error=True,
+            )
         return ToolExecutionResult(
             content=(
                 f"Fetch failed via {requested.value}. {self._remaining_hint(requested)}"

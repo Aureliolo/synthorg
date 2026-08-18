@@ -41,6 +41,13 @@ logger = get_logger(__name__)
 
 _HTTP_BAD_REQUEST: Final[int] = 400
 _HTTP_MULTIPLE_CHOICES: Final[int] = 300
+
+#: Ceiling on a cooldown this rung will repeat from an origin. Deliberately
+#: not a setting: raising it is never something an operator wants, because the
+#: number is chosen by whatever site the agent was pointed at. Generous enough
+#: to carry a real rate-limit window, short enough that the worst a hostile
+#: origin buys is one minute of one tool call.
+_MAX_ORIGIN_COOLDOWN_SECONDS: Final[float] = 60.0
 _ACCEPT_HEADER: Final[str] = (
     "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8"
 )
@@ -176,16 +183,24 @@ class LocalFetchProvider:
 
         Raises:
             WebFetchTransientError: On 429 or 5xx, which say "ask again", not
-                "this page is unreadable". Reported as transient so the caller
-                can honour a cooldown the origin asked for; classifying an
-                ordinary upstream outage as a response error puts the agent on
-                the next rung instead, which pays a vendor for a page that
-                would have answered on retry.
+                "this page is unreadable". Classifying an ordinary upstream
+                outage as a response error puts the agent on the next rung
+                instead, which pays a vendor for a page that would have
+                answered on retry. The origin's own cooldown rides along,
+                CLAMPED: this rung's ``Retry-After`` comes from whatever site
+                the agent was told to read, not from a vendor under contract
+                like the proxy rung's, and a handler that honours an override
+                honours it past its own cap by design, so an unclamped
+                ``Retry-After: 86400`` would be a day-long sleep an arbitrary
+                origin chose.
             WebFetchResponseError: On any other error status, and on a
                 redirect.
         """
         if status in RETRYABLE_STATUSES:
-            retry_after = retry_after_seconds(response_headers)
+            asked = retry_after_seconds(response_headers)
+            retry_after = (
+                min(asked, _MAX_ORIGIN_COOLDOWN_SECONDS) if asked is not None else None
+            )
             logger.warning(
                 WEB_FETCH_FAILED,
                 backend=FetchBackend.LOCAL.value,

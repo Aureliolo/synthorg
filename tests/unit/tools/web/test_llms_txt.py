@@ -17,6 +17,7 @@ from synthorg.tools.web.llms_txt import (
     discover_llms_txt,
     discovery_notice,
     index_urls_for,
+    origin_of,
 )
 from tests._shared import FakeClock
 
@@ -41,6 +42,55 @@ class TestIndexUrls:
     def test_a_url_with_no_host_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="cannot derive an origin"):
             index_urls_for("not-a-url")
+
+    def test_userinfo_is_absent_from_the_derived_urls(self) -> None:
+        """These URLs are requested AND shown to the agent.
+
+        Copying the authority wholesale mints a derived string carrying a
+        credential the operator only ever put in one place, and puts it
+        somewhere they never fetched it from.
+        """
+        index, full = index_urls_for(
+            "https://reader:s3cr3t-token@docs.example-provider.test/guide/install"
+        )
+
+        assert index == _INDEX
+        assert full == "https://docs.example-provider.test/llms-full.txt"
+
+    def test_a_non_default_port_survives_the_credential_strip(self) -> None:
+        """The port routes the request; the userinfo does not."""
+        index, _ = index_urls_for("https://u:p@docs.example-provider.test:8443/guide")
+
+        assert index == "https://docs.example-provider.test:8443/llms.txt"
+
+    def test_an_ipv6_authority_keeps_its_brackets(self) -> None:
+        index, _ = index_urls_for("http://[2001:db8::1]:8080/guide")
+
+        assert index == "http://[2001:db8::1]:8080/llms.txt"
+
+    def test_userinfo_without_a_host_is_rejected(self) -> None:
+        """``netloc`` is non-empty here while there is no host to probe."""
+        with pytest.raises(ValueError, match="cannot derive an origin"):
+            index_urls_for("https://user:pw@/guide")
+
+
+class TestOriginKey:
+    """The index belongs to the origin, not to whoever asked for it."""
+
+    def test_a_credentialed_and_a_bare_read_share_one_entry(self) -> None:
+        """Keyed on the raw authority they would occupy separate entries.
+
+        Neither could then answer for the other, and the credential would sit
+        in a cache key for the lifetime of the entry.
+        """
+        credentialed = origin_of("https://u:p@docs.example-provider.test/a")
+        bare = origin_of("https://docs.example-provider.test/b")
+
+        assert credentialed == bare
+        assert credentialed == ("https", "docs.example-provider.test")
+
+    def test_a_url_with_no_host_has_no_origin(self) -> None:
+        assert origin_of("https://user:pw@/guide") is None
 
 
 class TestDiscovery:

@@ -700,7 +700,7 @@ async def _dispatch_page(
             storage_result = await _STORAGE_HANDLERS[operation](page, payload)
         if operation == "content":
             limit = payload.get("content_max_characters")
-            if limit is None or limit <= 0:
+            if type(limit) is not int or limit <= 0:
                 raise ValueError("content_max_characters must be a positive integer")
             html = await page.content()
             content_html, content_truncated = _bounded_content(html, limit)
