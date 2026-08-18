@@ -8,6 +8,7 @@ Postgres deployment backing up a SQLite file that does not exist, and every
 factory-level test keeps passing.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -94,6 +95,22 @@ def _config(tmp_path: Path) -> RootConfig:
 @pytest.mark.unit
 class TestBackupBackendReachesTheFactory:
     """The boot call site is what binds the backup handler to reality."""
+
+    @pytest.fixture(autouse=True)
+    def _preflight_is_not_under_test(self) -> Iterator[None]:
+        """Keep the host's own toolchain out of these tests.
+
+        ``build_construction_services`` runs the binary preflight, which asks
+        git its version and refuses the boot below the floor. Left alone,
+        tests asserting about backup wiring fail on a machine whose git is too
+        old, for a reason with nothing to do with what they cover. The
+        preflight has its own suite; here it is noise.
+        """
+        with patch(
+            "synthorg.api.construction_phase.run_binary_preflight",
+            return_value=None,
+        ):
+            yield
 
     def test_construction_binds_the_postgres_handler(self, tmp_path: Path) -> None:
         config = _config(tmp_path)

@@ -107,21 +107,61 @@ _STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
 #: The pipe, whose conjunctive reading holds only under ``pipefail``.
 _PIPE: Final[str] = "|"
 
-#: The builtin that can turn ``pipefail`` off, and the flag that does it.
+#: The builtin that toggles ``pipefail``, and the signs that do it.
+#: ``set -o`` enables, ``set +o`` disables, which is the opposite of the
+#: convention most flags follow.
 _SET_BUILTIN: Final[str] = "set"
-_UNSET_OPTION: Final[str] = "+o"
+_UNSET_SIGN: Final[str] = "+"
+_SET_SIGN: Final[str] = "-"
+#: The letter ``-o`` / ``+o`` ends with. Read as the LAST character of the
+#: token rather than the whole token, because a shell bundles short flags:
+#: ``set -euo pipefail`` is one token ``-euo`` whose trailing ``o`` takes
+#: ``pipefail`` as its argument, exactly as a lone ``-o`` would.
+_OPTION_FLAG: Final[str] = "o"
 _PIPEFAIL_OPTION: Final[str] = "pipefail"
 
 
-def _disables_pipefail(command: Sequence[str]) -> bool:
-    """Whether *command* turns ``pipefail`` off for the rest of the line.
+def _pipefail_toggle(command: Sequence[str]) -> bool | None:
+    """Read a ``set`` builtin's effect on ``pipefail``.
+
+    Both directions, not just the disable. Tracking only ``set +o`` makes the
+    option a one-way latch: a line that turns it off and back on before its
+    pipeline is refused, and refusing a line whose pipeline IS protected
+    withholds the evidence a genuine test run produced, which is the failure
+    this module's whole conjunctive reading exists to avoid.
+
+    The flag is matched on its shape rather than against ``-o`` and ``+o``
+    literally, because ``set -euo pipefail`` is the ordinary way to write this
+    line and bundles the option letter into one token. Reading only the exact
+    spellings answers "says nothing" for it, so ``set +eo pipefail`` before a
+    pipe leaves the option believed ON while the shell has turned it OFF, and
+    a pipeline whose exit status is its last command's is then read as
+    evidence its first command passed.
 
     Returns:
-        ``True`` for a ``set`` builtin unsetting ``pipefail``.
+        ``True`` when the command enables ``pipefail``, ``False`` when it
+        disables it, and ``None`` when it says nothing about it.
     """
     if not command or command[0] != _SET_BUILTIN:
-        return False
-    return _UNSET_OPTION in command and _PIPEFAIL_OPTION in command
+        return None
+    # A single command can carry both (``set +o errexit -o pipefail``), so the
+    # answer is the flag immediately preceding each option name rather than
+    # whichever flag appears anywhere in the line. It can also name the option
+    # twice (``set -o pipefail +o pipefail``), and the shell applies them in
+    # order, so the LAST one is the state the command leaves behind: reading
+    # the first inverts the answer on exactly that line.
+    state: bool | None = None
+    for index, token in enumerate(command):
+        if index == 0 or token != _PIPEFAIL_OPTION:
+            continue
+        preceding = command[index - 1]
+        if not preceding.endswith(_OPTION_FLAG):
+            continue
+        if preceding.startswith(_SET_SIGN):
+            state = True
+        elif preceding.startswith(_UNSET_SIGN):
+            state = False
+    return state
 
 
 #: Prefixes that run another program without changing what is being run.
@@ -279,6 +319,7 @@ def _conjunctive_commands(
 
     segments: list[tuple[str, ...]] = []
     current: list[str] = []
+    preceding_separator: str | None = None
     skip_target = False
     for token in tokens:
         if skip_target:
@@ -304,11 +345,22 @@ def _conjunctive_commands(
                 # rests on: after ``set +o pipefail`` a pipeline reports its
                 # LAST command's status again, so ``pytest | tail`` exits 0
                 # whatever the suite did. Read per segment rather than once
-                # up front, because the disable and the pipeline are separate
-                # commands and only a pipe AFTER the disable is affected.
-                if _disables_pipefail(current):
-                    pipefail = False
+                # up front, because the toggle and the pipeline are separate
+                # commands and only a pipe AFTER the toggle is affected.
+                #
+                # A toggle only reaches the shell running the LINE when it
+                # ran there itself. Every component of a pipeline runs in a
+                # subshell, so ``set +o pipefail | cat`` changes that
+                # subshell and exits, leaving the line's own option untouched
+                # and a later pipeline still protected. Persisting it would
+                # refuse the evidence that later pipeline legitimately
+                # produced.
+                in_pipeline = _PIPE in (token, preceding_separator)
+                toggled = None if in_pipeline else _pipefail_toggle(current)
+                if toggled is not None:
+                    pipefail = toggled
                 segments.append(tuple(current))
+            preceding_separator = token
             current = []
             continue
         current.append(token)

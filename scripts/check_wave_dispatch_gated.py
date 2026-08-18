@@ -71,8 +71,21 @@ else:
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg/engine/coordination"
 #: The same package as an import path, for recognising a sibling helper an
-#: absolute import names.
-_SCAN_PACKAGE: Final[str] = "engine.coordination"
+#: absolute import names. Derived from the scan root rather than written a
+#: second time, so the two cannot drift, and fully qualified rather than the
+#: trailing ``engine.coordination``: an unrooted tail matches wherever it
+#: appears, so ``vendor.engine.coordination.parking`` would be credited as a
+#: sibling of a package it has nothing to do with.
+_SCAN_PACKAGE: Final[str] = _SCAN_ROOT_REL.removeprefix("src/").replace("/", ".")
+
+#: ``ImportFrom.level`` for a same-package import. Every level above one
+#: walks further out than the scanned package, whose modules this scan does
+#: not read and must not credit as siblings.
+_SIBLING_IMPORT_LEVEL: Final[int] = 1
+
+#: ``ImportFrom.level`` for an absolute import, which qualifies on naming the
+#: scanned package rather than on depth.
+_ABSOLUTE_IMPORT_LEVEL: Final[int] = 0
 
 #: Calling this is what makes a module a wave loop: it is the one function
 #: that turns a decomposition plus a routing into dependency-ordered waves.
@@ -214,6 +227,21 @@ def _called_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(called)
 
 
+def _in_scan_package(dotted: str) -> bool:
+    """Whether *dotted* names a module inside the scanned package.
+
+    Anchored, and on whole components: a substring test credits
+    ``engine.coordination_helpers``, and an unanchored component test
+    credits ``vendor.engine.coordination.parking``. Either puts a module
+    this scan never reads into the sibling set, which is the same fail-open
+    as crediting a parent-package import.
+
+    Returns:
+        ``True`` when *dotted* is the scanned package or lives beneath it.
+    """
+    return dotted == _SCAN_PACKAGE or dotted.startswith(f"{_SCAN_PACKAGE}.")
+
+
 def _imported_siblings(tree: ast.Module) -> frozenset[str]:
     """Return the coordination modules this one imports from.
 
@@ -235,13 +263,41 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
                 # alone sees no import at all. It is an ordinary way to reach
                 # a sibling, and missing it makes a loop that gates through
                 # one read as a loop that does not gate.
-                if node.level:
+                #
+                # Level ONE exactly. ``from .. import x`` names a module of a
+                # package further out, which is not a sibling and whose calls
+                # this scan never reads. Accepting it puts an unrelated name
+                # into the sibling set, and if the package happens to hold a
+                # module by that name, its gate calls are credited to a
+                # dispatcher that never reaches them: the gate then passes an
+                # ungated wave loop, which is the one verdict it must never
+                # produce.
+                if node.level == _SIBLING_IMPORT_LEVEL:
                     siblings.update(alias.name for alias in node.names)
-            elif node.level or _SCAN_PACKAGE in node.module:
+            # The same rule, for the spelling that carries a module name.
+            # Depth decides it here too: ``from .parking import x`` is a
+            # sibling, ``from ..parking import x`` is the parent package's
+            # module wearing an identical base name, and reading only
+            # "is it relative" cannot tell them apart. An absolute import
+            # qualifies on naming the scanned package instead, which is a
+            # claim about where the module lives rather than how far up the
+            # writer reached.
+            elif node.level == _ABSOLUTE_IMPORT_LEVEL and node.module == _SCAN_PACKAGE:
+                # ``from synthorg.engine.coordination import parking`` names
+                # the PACKAGE, so the sibling is in the alias list and the
+                # module's own last component is the package name. Reading
+                # that component here would credit ``coordination`` and miss
+                # the module actually imported.
+                siblings.update(alias.name for alias in node.names)
+            elif node.level == _SIBLING_IMPORT_LEVEL or (
+                node.level == _ABSOLUTE_IMPORT_LEVEL and _in_scan_package(node.module)
+            ):
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if _SCAN_PACKAGE in alias.name:
+                # The bare package names no sibling, so only a module beneath
+                # it contributes one.
+                if _in_scan_package(alias.name) and alias.name != _SCAN_PACKAGE:
                     siblings.add(alias.name.rsplit(".", 1)[-1])
     return frozenset(siblings)
 

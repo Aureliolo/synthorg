@@ -107,6 +107,20 @@ the one path in the product that runs code nobody reviewed, so honouring the
 setting for our own agents while ignoring it here would give the weaker
 isolation to the stronger threat.
 
+The runtime is read on its own, under its own guard, and that separation is
+load-bearing rather than incidental. Boot derives two independent facts here,
+the runtime and the deployment identity the reconciliation pass reclaims
+containers by, and a guard shared between them orders them: whichever is
+derived first can cost the other. A lost identity leaves a container nobody
+reclaims, which the next boot pass can still be taught to find; a lost runtime
+leaves one carrying weaker isolation than the operator asked for, and nothing
+downstream can tell it apart from a deployment that never configured any. So
+neither is paid for with the other, and an unresolvable runtime degrades to the
+daemon's default with sandboxing otherwise unchanged, reported under
+`sandbox.gvisor.fallback`: the same event the runtime resolver raises when a
+configured runtime goes unavailable at dispatch, because losing gVisor is one
+fact whichever side of boot notices it.
+
 ### What the container can still reach (residual)
 
 Egress is not restricted. `tools.mcp_sandbox_network` offers `bridge`, `none`

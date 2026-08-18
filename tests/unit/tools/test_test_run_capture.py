@@ -301,6 +301,85 @@ class TestForgedTestEvidence:
         """The rule targets the disable, not the builtin."""
         assert is_test_run("set -o pipefail && pytest -q | tail -5")
 
+    def test_turning_pipefail_off_then_on_again_protects_the_pipe(self) -> None:
+        """The option is a toggle, not a one-way latch.
+
+        Reading only the disable makes the first ``set +o pipefail`` on a line
+        permanent, so a line that restores the option before its pipeline is
+        refused. That withholds the evidence a genuine test run produced,
+        which is the same cost as refusing ``&&`` and ``|`` outright.
+        """
+        assert is_test_run("set +o pipefail && set -o pipefail && pytest -q | tail -5")
+
+    def test_the_last_toggle_before_the_pipe_is_the_one_that_counts(self) -> None:
+        """Re-disabling after re-enabling is still a disable.
+
+        Ordering is what this asks about, so the enable sits between two
+        disables: a reading that let any enable anywhere on the line win
+        would accept it, and the state at the pipe is the only thing that
+        decides how the pipeline reports.
+        """
+        assert not is_test_run(
+            "set +o pipefail && set -o pipefail && set +o pipefail "
+            "&& pytest -q | tail -5"
+        )
+
+    def test_a_bundled_disable_is_still_a_disable(self) -> None:
+        """``set +eo pipefail`` is the same instruction as ``set +o pipefail``.
+
+        A shell bundles short flags, so the option letter arrives inside one
+        token. Matching the token whole answers "says nothing about pipefail"
+        and leaves it believed ON, and the pipeline below then reports its
+        LAST command's status while being read as its first command's. That
+        is a pass recorded for a suite whose result was never consulted,
+        which is the forgery this module exists to refuse.
+        """
+        assert not is_test_run("set +eo pipefail && pytest -q | tail -5")
+
+    def test_a_bundled_enable_is_still_an_enable(self) -> None:
+        """``set -euo pipefail`` is how this line is ordinarily written.
+
+        The other direction of the same reading: refusing it would withhold
+        the evidence a genuinely protected pipeline produced.
+        """
+        assert is_test_run("set -euo pipefail && pytest -q | tail -5")
+
+    def test_a_bundled_enable_restores_a_bundled_disable(self) -> None:
+        """Both spellings have to toggle, or the pair cannot round-trip."""
+        assert is_test_run("set +eo pipefail && set -euo pipefail && pytest -q | tail")
+
+    def test_the_last_option_in_one_set_command_is_the_one_that_lands(self) -> None:
+        """``set -o pipefail +o pipefail`` leaves the option OFF.
+
+        The shell applies the options of a single ``set`` left to right, so
+        the state it leaves behind is the last one named. Reading the first
+        inverts the answer on exactly this line, which then reads a pipeline
+        that masks its exit status as evidence the suite passed.
+        """
+        assert not is_test_run("set -o pipefail +o pipefail && pytest -q | tail -5")
+
+    def test_the_last_option_wins_in_the_other_order_too(self) -> None:
+        """The mirror image, so the rule cannot be "a disable anywhere"."""
+        assert is_test_run("set +o pipefail -o pipefail && pytest -q | tail -5")
+
+    def test_a_toggle_inside_a_pipeline_does_not_reach_the_line(self) -> None:
+        """Every component of a pipeline runs in a subshell.
+
+        So ``set +o pipefail | cat`` turns the option off in that subshell
+        and exits, leaving the line's own option untouched. Persisting it
+        would refuse a later pipeline that really is protected, discarding
+        the evidence a genuine test run produced.
+        """
+        assert is_test_run("set +o pipefail | cat && pytest -q | tail -5")
+
+    def test_a_combined_set_reads_the_flag_next_to_the_option(self) -> None:
+        """``set +o errexit -o pipefail`` enables pipefail, whatever else it does.
+
+        One command can carry both flags, so the answer is the flag directly
+        before ``pipefail``, not whichever flag appears somewhere in the line.
+        """
+        assert is_test_run("set +o errexit -o pipefail && pytest -q | tail -5")
+
     def test_unsetting_another_option_leaves_the_pipe_alone(self) -> None:
         """Only ``pipefail`` decides how a pipeline reports its status."""
         assert is_test_run("set +o errexit && pytest -q | tail -5")

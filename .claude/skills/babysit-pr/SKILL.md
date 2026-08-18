@@ -197,8 +197,44 @@ Convergence holds when ALL true:
 - **Every in-scope scanner actually ran.** A scanner Phase 1 recorded as `scan_failed` blocks convergence until a later tick scans successfully. Zero alerts from a scan that did not execute is not evidence of zero alerts, and this is the one place where treating the two alike would ship an unscanned PR as clean. A scanner marked genuinely unavailable is different and does not block, because "this repository does not serve that endpoint" is a fact about the repository rather than a gap in this round's evidence.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4). **Evaluate this over EVERY review with `id > last_review_id`, not the highest-id review or `reviewDecision` alone:** CodeRabbit posts a `COMMENTED` review (outside-diff findings) immediately followed by an empty `APPROVED` review on the same head, so a max-id-only or `reviewDecision == APPROVED` check reads as "converged" while actionable findings sit unread in the lower-id `COMMENTED` review (see the Phase 6 caution). Open each review body before declaring convergence.
 
-If converged:
-- Append history `{round, action: "converged", checks_passed: N}`.
+### Phase 3a: pre-merge freshness gate (MANDATORY immediately before EVERY merge call)
+
+**NEVER merge while a review is in progress, and never merge on convergence evidence that was gathered earlier in the tick.**
+
+Every bullet above is computed from the Phase 1 snapshot. The merge call can fire minutes or hours after that snapshot: a tick may wait on CI, run a fix cycle, or block on a monitor before reaching this point. A reviewer writing a review during that gap is the ordinary case, not the exotic one -- a review takes minutes to produce and lands whenever it lands. So convergence is a *precondition*, never a *permission slip*: it says the PR looked ready when it was measured, and only this gate says it is still ready now.
+
+This is the merge-side twin of Phase 9b. Phase 9b exists because a push must not ship a stale view; this exists for the same reason and higher stakes, because a push is corrected by the next push and a merge is not. Applying the sweep to pushes and skipping it before the merge protects every reversible action and leaves the single irreversible one unguarded, which is exactly backwards. **A real merge on PR #2786 landed 78 seconds after a `CHANGES_REQUESTED` review carrying 7 findings -- 4 of them regressions introduced by that very round, including a security one that silently dropped a configured gVisor runtime -- because the tick verified CI immediately before merging and did not re-read the review streams.**
+
+Run this immediately before the merge call, and re-run it if ANYTHING intervenes between the gate and the call:
+
+1. **Re-fetch, with the same queries as Phase 1** (full bodies, no author allowlist): reviews, inline comments, issue comments, PR metadata including `state` / `headRefOid` / `statusCheckRollup`, and all three security scanners.
+
+2. **Refuse the merge if ANY of these holds.** Each is a stop, not a warning:
+
+   | Condition | Why it blocks |
+   |---|---|
+   | Any review with `id > last_review_id` from an author other than self / `synthorg-repo-bot[bot]` | Unread reviewer output. This is the one that was missed. |
+   | Any inline or issue comment past its cursor (excluding self and own `@coderabbitai review` pings) | Same, on the other two streams. |
+   | The reviewer's own status check is non-terminal (`CodeRabbit` context in `PENDING` / `EXPECTED` / `IN_PROGRESS` / `QUEUED`) | **A review is being written right now.** Merging here guarantees the verdict lands on a closed PR. |
+   | The rolling summary carries an in-progress marker (`currently processing`, `Review in progress`, or any Phase 4 marker) | Same, reported through the summary rather than the check. |
+   | `headRefOid` differs from the value convergence was computed on | Something pushed; the evidence describes a different tree. |
+   | `state != "OPEN"` | Already merged or closed. |
+   | Any rollup entry failing or non-terminal | CI regressed or restarted after the snapshot. |
+   | Any in-scope security alert open, or any scanner recorded `scan_failed` | Phase 6b's exits are FIX or DISMISS; neither is "merge anyway". |
+
+3. **On refusal:** record `{round, action: "merge_blocked_by_freshness", head_sha: headRefOid, trigger: <which row fired>, detail: <ids / check name>}` and do NOT call merge. What happens next depends on the state the re-fetch just observed, because two of the rows above are not "come back with fixes":
+
+   - **`state` is `MERGED` or `CLOSED`:** the PR reached a terminal state while this round was working. There is nothing to fix and nowhere to push it. Append the Phase 2 terminal entry, print the terminal verdict with the PR URL, and exit the loop. Routing a closed PR into Phase 6 would collect feedback for a branch that can no longer land it.
+   - **`state` is `OPEN`:** fold whatever arrived into the working set via Phase 6 (collect) so it is triaged and fixed this round. A review that arrives during the gap is ordinary new feedback and gets the ordinary treatment; the only thing the gate changes is that it is seen before the PR closes rather than after.
+
+4. **Adjacency, and let the server enforce it too.** The gate's fetch and the merge call must be adjacent, with no waiting operation between them. If more than ~60 seconds elapse, or any monitor / sleep / fix cycle runs in between, the evidence is stale again and the gate re-runs from step 1. Verifying CI and then merging is not sufficient on its own: CI and the reviewer are independent clocks, and reading only the faster one is what produced the #2786 miss.
+
+   Adjacency is a discipline, not a guarantee: however short the gap, the head can still move inside it, and every check above was computed before the call. So the merge itself carries the head it was authorised for, `gh pr merge N --squash --match-head-commit "$headRefOid"`, which makes the server refuse the merge if the branch moved after the gate read it. That turns "we looked recently" into an atomic check-and-merge, and it is the half a re-read cannot supply from outside. A refusal on that flag is not a transport error: classify it as `merge_blocked_by_freshness` with `trigger: "head moved between gate and merge"` and take step 3's `OPEN` branch, because a new head means new work to fold in.
+
+5. **An operator instruction never removes this gate.** A standing instruction such as "merge once CI is green" removes the requirement for a reviewer *verdict* (the convergence bullet above), because the operator has decided they do not need the reviewer's approval to ship. It does not license merging over reviewer output that already exists and has never been read -- the operator asked to stop waiting for an opinion, not to discard one already given. When such an instruction is in force, this gate still runs in full; only the "CodeRabbit no-findings signal" convergence bullet is waived, and the waiver is recorded on the merge history entry.
+
+If converged AND Phase 3a passes:
+- Append history `{round, action: "converged", head_sha: headRefOid, checks_passed: N, freshness_gate: "passed", evidence_fetched_at: <ISO>}`. Every Phase 3 append carries `head_sha` (see the naming convention below), and this one carries it for a second reason: it is the record binding the freshness evidence to the head it was gathered on, which is meaningless without naming that head.
 - **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Compare the current `headRefOid` against `state.last_merge_attempt_headRefOid` to decide which sub-flow to enter. (Phase 11 owns clearing `state.last_merge_attempt_headRefOid` when a new commit lands; Phase 3 only reads the guard.)
 
   **Naming convention.** Throughout Phase 3, `headRefOid` is the in-memory variable from the Phase 1 fetch and `head_sha` is the canonical history-entry field name. They carry the same value; the two names exist only to distinguish "live PR state, just fetched" from "persisted state we wrote earlier." Every history append below MUST include `head_sha: headRefOid` so the reverse-walk lookup in sub-flow A can match entries by a single, consistent identifier. Do NOT omit `head_sha` from any append, even when the action is `merged` (the success-path entry must still carry it so a future round can confirm which head merged).
@@ -219,10 +255,13 @@ If converged:
   1. Record `state.last_merge_attempt_headRefOid = headRefOid` (the value from the Phase 1 fetch) and write state BEFORE running the merge, so a crash mid-call still leaves the guard set (which sub-flow A then handles correctly on the next tick).
   2. Run the merge **synchronously, without `--auto`**. The auto-merge flag is unreliable in this repo's branch-protection setup and routinely fails to fire even when all required checks pass. Issue the merge directly so the call either lands the merge immediately or surfaces the rejection inline; that's the only signal the loop can act on.
 
+     `AUTHORISED_HEAD` pins the SHA this attempt was authorised for, captured BEFORE the call and never reassigned afterwards. Step 3's head-moved branch re-fetches `headRefOid`, which overwrites the live variable with the head that displaced this one, so a history entry reading `headRefOid` after that point names the commit the loop never attempted and loses the one it did.
+
      `MERGE_REASON` normalises the captured stderr into a single line of plain text (ANSI escape sequences stripped, all whitespace collapsed) so the history entry and terminal output are both legible regardless of what the underlying tool printed:
 
      ```bash
-     MERGE_STDERR="$(gh pr merge N --squash 2>&1 >/dev/null)"
+     AUTHORISED_HEAD="$headRefOid"
+     MERGE_STDERR="$(gh pr merge N --squash --match-head-commit "$AUTHORISED_HEAD" 2>&1 >/dev/null)"
      MERGE_EXIT=$?
      # Strip ANSI escape sequences (CSI, OSC, single-character SS3 etc.)
      # and collapse all whitespace runs (including embedded newlines)
@@ -235,8 +274,9 @@ If converged:
 
   3. Re-fetch live state with `gh pr view N --json state,mergedAt`, then enter exactly one of these branches using the captured `MERGE_REASON` / `MERGE_EXIT` plus the freshly-fetched `state`:
 
-     - **`state == "MERGED"` (immediate success):** append history `{round, action: "merged", method: "squash", head_sha: headRefOid}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup -- Phase 2's terminal exit covers any future re-entry).
-     - **Otherwise (`MERGE_EXIT != 0` or `state` is `OPEN` / `CLOSED` / anything else):** the merge was rejected by branch protection / CODEOWNERS / required-review policy / etc., or convergence was satisfied but the synchronous merge couldn't fire. Append history `{round, action: "merge_blocked", head_sha: headRefOid, reason: "$MERGE_REASON"}`. Write state. Print the `CONVERGED, merge blocked: $MERGE_REASON` single-line variant. Exit (no ScheduleWakeup -- the user must unblock manually). A future push that lands a new commit will clear the guard via Phase 11 and allow a fresh attempt.
+     - **`state == "MERGED"` (immediate success):** append history `{round, action: "merged", method: "squash", head_sha: AUTHORISED_HEAD}`. Write state. Print the `CONVERGED + SQUASH-MERGED` line. Exit (no ScheduleWakeup -- Phase 2's terminal exit covers any future re-entry).
+     - **The head moved (`MERGE_EXIT != 0` and the refusal names the expected-head mismatch):** `--match-head-commit` did its job. Establish it from the fact rather than the wording, since the message is not a stable interface: re-fetch `state` and `headRefOid`, and treat it as a mismatch when `headRefOid` no longer equals `AUTHORISED_HEAD`. This is NOT `merge_blocked`: nothing is wrong with the PR and no human needs to unblock anything, so exiting the loop here would strand a branch that simply moved. Append `{round, action: "merge_blocked_by_freshness", head_sha: AUTHORISED_HEAD, trigger: "head moved between gate and merge", detail: <the newly observed headRefOid>}`, keeping the two SHAs in separate fields: `head_sha` answers "which head did this loop authorise a merge for", which is what every other entry's `head_sha` means and what the reverse-walk lookup in sub-flow A matches on, while the observed head is the displacing commit and belongs beside it rather than on top of it. Then take Phase 3a step 3's branch for the freshly observed state: `OPEN` folds the new head's feedback in through Phase 6 and continues the round, `MERGED` / `CLOSED` takes the terminal exit.
+     - **Otherwise (`MERGE_EXIT != 0` with the head unchanged, or `state` is `OPEN` / `CLOSED` / anything else):** the merge was rejected by branch protection / CODEOWNERS / required-review policy / etc., or convergence was satisfied but the synchronous merge couldn't fire. Append history `{round, action: "merge_blocked", head_sha: AUTHORISED_HEAD, reason: "$MERGE_REASON"}`. Write state. Print the `CONVERGED, merge blocked: $MERGE_REASON` single-line variant. Exit (no ScheduleWakeup -- the user must unblock manually). A future push that lands a new commit will clear the guard via Phase 11 and allow a fresh attempt.
 
 ## Phase 4: CodeRabbit rate-limit dance
 

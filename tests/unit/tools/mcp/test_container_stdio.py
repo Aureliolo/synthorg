@@ -11,8 +11,8 @@ destroys the container whatever else happened.
 """
 
 import json
-from contextlib import AbstractAsyncContextManager
-from typing import Final, cast, override
+from contextlib import AbstractAsyncContextManager, suppress
+from typing import Final, NoReturn, cast, override
 
 import aiodocker
 import anyio
@@ -20,6 +20,7 @@ import pytest
 import structlog
 from aiodocker.containers import DockerContainer
 from aiodocker.stream import Message, Stream
+from anyio.lowlevel import checkpoint
 from mcp import types
 from mcp.client._transport import TransportStreams
 from mcp.shared.message import SessionMessage
@@ -122,6 +123,11 @@ class _FakeStream(Stream):
 
     @override
     async def close(self) -> None:
+        # A real close talks to the daemon, so it yields before it finishes.
+        # Without a checkpoint here a cancelled caller would complete the
+        # close anyway, and a cleanup path that forgot to shield itself
+        # would look correct in every test.
+        await checkpoint()
         self.closed = True
         self._eof.set()
 
@@ -229,6 +235,15 @@ class _FakeDocker(FakeDockerClient):
     async def close(self) -> None:
         """Record the close."""
         self.closed = True
+
+
+async def _raise_on_attach() -> NoReturn:
+    """Stand in for an attach that loses its race with the daemon.
+
+    Raises:
+        DockerError: Always, as the transport's own attach would.
+    """
+    raise aiodocker.DockerError(500, "connection reset during upgrade")
 
 
 class _Harness:
@@ -580,6 +595,126 @@ class TestTheContainerIsAlwaysDestroyed:
         with pytest.raises(MCPConnectionError, match="would not start"):
             async with harness.open():
                 pass
+        assert harness.container is not None
+        assert harness.container.deleted
+
+    async def test_a_start_failure_closes_the_stream_it_already_attached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The attach runs BEFORE the start, so a refused start leaves it open.
+
+        The caller holds the stream in a variable its teardown reads, and
+        that variable is only assigned once the attach-and-start step
+        returns. So whatever opens a connection and then raises has to close
+        what it opened: nothing downstream can see it, and the daemon keeps
+        an upgraded socket alive until the object is finalised, which is not
+        a schedule anything here controls.
+        """
+        refusal = aiodocker.DockerError(500, "daemon refused the start")
+        harness = _Harness(monkeypatch, start_error=refusal)
+        with pytest.raises(MCPConnectionError, match="would not start"):
+            async with harness.open():
+                pass
+
+        assert harness.stream.connected, "the attach has to have happened"
+        assert harness.stream.closed
+
+    async def test_a_cancelled_start_still_closes_the_attached_stream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cancellation is the case the cleanup most has to survive.
+
+        An unshielded await inside a handler that is running BECAUSE of a
+        cancellation is cancelled at once, so the close never happens and
+        the socket the handler exists to release stays open. The caller
+        never received the stream, so nothing downstream can close it
+        either.
+        """
+        harness = _Harness(monkeypatch)
+        reached_start = anyio.Event()
+
+        async def _hang(_container: object, _server_name: str) -> None:
+            # Cancelled while genuinely suspended, which is the state that
+            # makes the next await cancel too. Raising the cancellation
+            # directly would not: the task is not cancel-pending, so the
+            # cleanup runs to completion and the test proves nothing.
+            reached_start.set()
+            await anyio.sleep_forever()
+
+        monkeypatch.setattr("synthorg.tools.mcp.container_stdio._start", _hang)
+
+        async def _open_until_cancelled() -> None:
+            # The cancellation is what drives this test, so it is swallowed
+            # here rather than failing the run it is meant to exercise. Only
+            # the cancellation: a wider net would swallow the
+            # ``MCPConnectionError`` the attach path raises, and the two
+            # assertions below hold for a close that ran on either route.
+            with suppress(anyio.get_cancelled_exc_class()):
+                async with harness.open():
+                    pass
+
+        async with anyio.create_task_group() as group:
+            _opener = group.start_soon(_open_until_cancelled)
+            await reached_start.wait()
+            group.cancel_scope.cancel()
+
+        assert harness.stream.connected, "the attach has to have happened"
+        assert harness.stream.closed
+
+    async def test_a_cancelled_attach_still_closes_what_it_opened(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Entering the stream opens the socket partway through.
+
+        A cancellation delivered after the connection exists but before the
+        enter returns leaves one open that the caller was never handed, so
+        the handler has to catch a BaseException rather than an Exception to
+        see it at all.
+        """
+        harness = _Harness(monkeypatch)
+        reached_attach = anyio.Event()
+        original = harness.stream.__aenter__
+
+        async def _open_then_hang() -> _FakeStream:
+            entered = await original()
+            reached_attach.set()
+            await anyio.sleep_forever()
+            return entered
+
+        monkeypatch.setattr(harness.stream, "__aenter__", _open_then_hang)
+
+        async def _open_until_cancelled() -> None:
+            with suppress(anyio.get_cancelled_exc_class()):
+                async with harness.open():
+                    pass
+
+        async with anyio.create_task_group() as group:
+            _opener = group.start_soon(_open_until_cancelled)
+            await reached_attach.wait()
+            group.cancel_scope.cancel()
+
+        assert harness.stream.connected, "the connection has to have opened"
+        assert harness.stream.closed
+
+    async def test_an_attach_failure_is_retryable_like_its_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The client retries one exception type and treats the rest as final.
+
+        Create and start both classify their daemon failures, so an attach
+        that does not would be the single step whose transient failure reads
+        as permanent and kills the server for the life of the process.
+        """
+        harness = _Harness(monkeypatch)
+        monkeypatch.setattr(
+            harness.stream,
+            "__aenter__",
+            _raise_on_attach,
+        )
+        with pytest.raises(MCPConnectionError, match="would not attach"):
+            async with harness.open():
+                pass
+
         assert harness.container is not None
         assert harness.container.deleted
 

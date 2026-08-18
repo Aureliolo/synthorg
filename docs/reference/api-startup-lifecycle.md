@@ -22,7 +22,42 @@ programs the backend needs and **cannot obtain for itself**. A missing one
 raises `RequiredBinaryMissingError` and aborts the boot, naming the binary, the
 apko package that provides it, and the subsystems it breaks. Refusing to start
 is the honest outcome: the alternative is a backend that accepts work it can
-never dispatch. `git` is required always; `pg_dump` / `pg_restore` only when the
+never dispatch.
+
+A record may also declare a `min_version`, because being on PATH is not the
+same as being able to do the job. `git` declares 2.48, the release that added
+`worktree.useRelativePaths`: git IGNORES a config key it does not know rather
+than refusing it, so an older binary accepts the option, reports nothing, and
+returns a worktree recording the backend's absolute path. The agent opens that
+worktree through a different mount, and every git command it runs fails with a
+"not a git repository" naming a path that exists on one side only. The version
+is read by asking the binary; a version that cannot be read is logged and
+allowed through, because not knowing is not evidence of an old one and
+refusing on a line it could not read would take a working deployment down over
+output the parser did not anticipate.
+
+The probe is bounded at five seconds, so a binary that will not answer cannot
+hang the boot; it is treated exactly as one whose answer could not be read. It
+runs
+the path the presence check already resolved rather than the bare name, so the
+binary that answers is the one that was found: Windows searches the working
+directory ahead of PATH for a bare name, which would otherwise let the two
+halves disagree. The comparison runs over the shared prefix, so a longer
+version string still satisfies a shorter floor.
+
+"Cannot be read" covers four cases, and the warning names which one, because
+they need different things done about them: the probe timed out (a wedged
+binary), it could not be spawned (one that vanished between the PATH lookup
+and the probe), its output carried no version (a gap in the parser), or it
+reported fewer components than the floor declares. The last is the one worth
+stating explicitly, since it arrives wearing a number: tuple ordering would
+call `2` lower than `2.48` and refuse the boot over a minor version nothing
+ever reported, so a version too short to compare is treated as unread rather
+than as old. Decoding is lenient for the same reason, as a strict decode
+raises a `ValueError` that no handler here catches and would crash the boot on
+the one path whose contract is that an unreadable version is survivable.
+
+`git` is required always; `pg_dump` / `pg_restore` only when the
 configured backend is Postgres, which is why the preflight is handed the
 resolved backend name (empty when persistence has not resolved one, so only the
 backend-independent binaries are demanded).

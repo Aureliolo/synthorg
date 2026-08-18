@@ -852,6 +852,17 @@ could never return `VERIFIED`.
 Nothing is granted to *other*: the group is the mechanism, so a world bit would
 widen reach without serving it.
 
+Permission is not the only way a shared workspace fails across a mount
+boundary. A worktree records the path it was created at, and the backend and
+the agent reach the same tree through different ones, so an absolute record
+sends every git command the agent runs to a path that exists on one side only.
+`worktree.useRelativePaths` is what stops that, and git accepts an unknown
+configuration key silently rather than refusing it, so an older binary takes
+the option, reports nothing, and hands back the broken worktree. That is why
+the boot preflight asserts a version floor for git rather than only its
+presence; see
+[api-startup-lifecycle.md](../reference/api-startup-lifecycle.md#binary-preflight).
+
 Two consequences are easy to miss. A container's mount mode is fixed when it is
 created while the category deciding it arrives per command, so the lifecycle
 owner key carries the mode (`<project>:<owner>[:img-<hash>]:<rw|ro>`) exactly as
