@@ -28,8 +28,14 @@
 --    ``created`` has no exit; only the ones actually below the stop are a
 --    dependency failure, and the rest say they merely never started.
 
+-- ``IF NOT EXISTS`` keeps the add re-runnable. yoyo keys applied revisions on
+-- the migration id rather than on content, so a database that already carries
+-- the column reads as not having run this one and gets the whole file again;
+-- without the guard it fails on the first statement, and the constraint swap
+-- below, which is the half that decides whether the loop can park a task at
+-- all, never runs. The widening is the same either way.
 ALTER TABLE tasks
-ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 ALTER TABLE tasks
 ALTER COLUMN created_at DROP DEFAULT;
