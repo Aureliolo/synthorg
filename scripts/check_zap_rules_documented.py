@@ -257,13 +257,13 @@ def check(repo_root: Path) -> list[Finding]:
     """
     rules_text, rules_read_findings = _read(repo_root, _RULES_RELATIVE)
     docs_text, docs_read_findings = _read(repo_root, _DOCS_RELATIVE)
-    findings = [*rules_read_findings, *docs_read_findings]
+    findings = rules_read_findings + docs_read_findings
     if rules_text is None or docs_text is None:
         return findings
 
     rules, rule_findings = _parse_rules(rules_text)
     documented, doc_findings = _parse_docs(docs_text)
-    findings += [*rule_findings, *doc_findings]
+    findings += rule_findings + doc_findings
 
     if not documented:
         findings.append(

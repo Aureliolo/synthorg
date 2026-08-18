@@ -1,8 +1,6 @@
 """Tests for correlation ID management."""
 
-import re
 import uuid
-from typing import Final
 from unittest.mock import patch
 
 import pytest
@@ -16,10 +14,7 @@ from synthorg.observability.correlation import (
     unbind_correlation_id,
     with_correlation,
 )
-
-_UUID_RE: Final[re.Pattern[str]] = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-)
+from tests._shared import UUID_RE
 
 
 @pytest.mark.unit
@@ -36,19 +31,19 @@ class TestCurrentCorrelationId:
     def test_falls_back_to_uuid_when_no_context(self) -> None:
         structlog.contextvars.unbind_contextvars("request_id")
 
-        assert _UUID_RE.match(current_correlation_id())
+        assert UUID_RE.match(current_correlation_id())
 
     def test_falls_back_for_non_string_request_id(self) -> None:
         structlog.contextvars.bind_contextvars(request_id=12345)
         try:
-            assert _UUID_RE.match(current_correlation_id())
+            assert UUID_RE.match(current_correlation_id())
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
     def test_falls_back_for_empty_string_request_id(self) -> None:
         structlog.contextvars.bind_contextvars(request_id="")
         try:
-            assert _UUID_RE.match(current_correlation_id())
+            assert UUID_RE.match(current_correlation_id())
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
@@ -58,7 +53,7 @@ class TestCurrentCorrelationId:
             "structlog.contextvars.get_contextvars",
             side_effect=RuntimeError("broken"),
         ):
-            assert _UUID_RE.match(current_correlation_id())
+            assert UUID_RE.match(current_correlation_id())
 
 
 @pytest.mark.unit
