@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -289,6 +290,17 @@ func versionLabel(v string) string {
 	return ui.SanitizeUntrustedLine(normalizeVersionRef(v))
 }
 
+// versionURLRef is the link form of the same ref, and it deliberately is not
+// versionLabel. The scrub DELETES runes git permits in a tag name, so a label
+// pasted into a URL addresses a tag that does not exist, and the one hostile
+// character the scrub does pass through, "#", truncates the link at a
+// fragment. Percent-encoding answers both at once, and answers what the scrub
+// was for as well: every byte it emits is printable ASCII, so nothing that
+// acts on a terminal survives into a line the operator reads.
+func versionURLRef(v string) string {
+	return url.PathEscape(normalizeVersionRef(v))
+}
+
 // effectiveBaseRef chooses which ref to pass to the GitHub compare API for
 // the "installed" side of the dev-channel commit walk. Prefers the embedded
 // build commit SHA (permanent on the remote) over the installed tag (which
@@ -502,5 +514,5 @@ func printOfflineNotice(out *ui.UI, result selfupdate.CheckResult) {
 	latest := versionLabel(result.LatestVersion)
 	out.Step(fmt.Sprintf("New version available: %s (current: %s)", latest, current))
 	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/%s",
-		version.RepoURL, latest))
+		version.RepoURL, versionURLRef(result.LatestVersion)))
 }

@@ -376,10 +376,9 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	if err := selfupdate.Replace(binary); err != nil {
 		return fmt.Errorf("replacing binary: %w", err)
 	}
-	installed := ui.SanitizeUntrustedLine(result.LatestVersion)
-	out.Success(fmt.Sprintf("CLI updated to %s", installed))
-	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
-		version.RepoURL, strings.TrimPrefix(installed, "v")))
+	out.Success(fmt.Sprintf("CLI updated to %s", versionLabel(result.LatestVersion)))
+	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/%s",
+		version.RepoURL, versionURLRef(result.LatestVersion)))
 	if !autoAccept {
 		out.HintTip("Run 'synthorg config set auto_update_cli true' to auto-accept CLI updates.")
 	}

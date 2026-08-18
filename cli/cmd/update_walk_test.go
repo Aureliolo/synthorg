@@ -177,6 +177,55 @@ func TestPrintOfflineNotice(t *testing.T) {
 	}
 }
 
+// The label and the link are different answers to the same ref, and the
+// notice prints both on adjacent lines. The label is scrubbed, so it must not
+// carry the spoofing runes; the link is escaped, so it must still address the
+// tag that actually exists, which the scrubbed form no longer names.
+func TestPrintOfflineNotice_linkAddressesTheRealTag(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Hints: "always"}))
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: spoofedTargetTag}
+	printOfflineNotice(changelogUI(cmd, walkModeStatic), result)
+	got := buf.String()
+
+	requireContains(t, got, spoofedTargetSaf,
+		"/releases/tag/v0.7.5%E2%80%AE%E2%80%8Bevil%E2%81%A0")
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+}
+
+// versionURLRef exists because versionLabel is wrong in a URL twice over: it
+// deletes runes git allows in a tag, and it passes "#" through to start a
+// fragment. Both are exercised here because both silently produce a link to
+// the wrong place rather than an error anybody would notice.
+func TestVersionURLRef(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain tag unchanged", "v0.7.5", "v0.7.5"},
+		{"missing prefix normalised", "0.7.5", "v0.7.5"},
+		{"dev tag unchanged", "v0.7.5-dev.11", "v0.7.5-dev.11"},
+		// The scrub deletes this rune outright, so the label names a tag the
+		// remote does not have; percent-encoding keeps the ref addressable.
+		{"line separator encoded", "v1.2.3" + lineSepRune + "build", "v1.2.3%E2%80%A8build"},
+		// The one hostile character the scrub passes through: unescaped it
+		// truncates the URL at a fragment, so the link opens the releases
+		// index rather than the tag.
+		{"hash encoded", "v1.2.3#build", "v1.2.3%23build"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := versionURLRef(tt.in); got != tt.want {
+				t.Errorf("versionURLRef(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestWalkModeFor covers the whole gate: only --json loses the changelog,
 // everything else that cannot (or must not) run a pager downgrades to the
 // static render rather than dropping the content.
@@ -318,6 +367,7 @@ const (
 	rloRune        = "\xe2\x80\xae" // U+202E RIGHT-TO-LEFT OVERRIDE
 	zwspRune       = "\xe2\x80\x8b" // U+200B ZERO WIDTH SPACE
 	wordJoinerRune = "\xe2\x81\xa0" // U+2060 WORD JOINER
+	lineSepRune    = "\xe2\x80\xa8" // U+2028 LINE SEPARATOR
 
 	spoofedTargetTag = "v0.7.5" + rloRune + zwspRune + "evil" + wordJoinerRune
 	spoofedTargetSaf = "v0.7.5evil"
