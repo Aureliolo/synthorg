@@ -61,7 +61,7 @@ describe('itemFlags', () => {
   })
 
   it('flags an owner no agent holds, rather than reading it as assigned', () => {
-    // The dogfood shape: "Backend Engineer" for an org staffing "Backend
+    // The shape a live run produced: "Backend Engineer" for an org staffing "Backend
     // Developer". The item has nobody behind it, but it is not unowned, so
     // the unassigned check alone reported the plan as fully assigned.
     const item = makePlanItem('a', {

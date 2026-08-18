@@ -231,13 +231,14 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Persistence Migrations](persistence-migrations.md)
 
--   :material-clipboard-check:{ .lg .middle } **Dogfooding the Loop**
+-   :material-clipboard-check:{ .lg .middle } **End-to-End Run**
 
     ---
 
-    Run a real objective end to end and read the result back from the database.
+    Run a real objective through the whole loop and read the result back from
+    the dashboard.
 
-    [:octicons-arrow-right-24: Dogfooding the Loop](dogfood-the-loop.md)
+    [:octicons-arrow-right-24: End-to-End Run](end-to-end-run.md)
 
 -   :material-api:{ .lg .middle } **REST API Examples**
 

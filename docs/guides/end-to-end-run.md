@@ -1,7 +1,7 @@
-# Dogfooding the loop
+# The end-to-end run
 
 Run a real objective through the whole loop, as an operator, and read back what
-happened from the database rather than from the log. This is the procedure that
+happened from the surfaces an operator actually has. This is the procedure that
 settles whether the completion oracle actually blocks and actually completes:
 see [the evidence contract](../design/initiative-tail.md#what-proves-the-tail-ran)
 for the rows each claim needs.

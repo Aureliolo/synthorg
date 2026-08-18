@@ -328,8 +328,8 @@ query rather than an inference. That is load-bearing for the second table: a
 reached the status by a path this design forbids, and the row is the only place
 that shows it.
 
-[Dogfooding the loop](../guides/dogfood-the-loop.md) walks a run end to end and
-reads each row back.
+[The end-to-end run](../guides/end-to-end-run.md) walks a run through the
+dashboard and reads each row back.
 
 ## Enforcement
 
