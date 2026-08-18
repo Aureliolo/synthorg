@@ -5,9 +5,11 @@ and the template department extraction helpers.
 """
 
 import json
+import re
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Final, cast
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from hypothesis import given
@@ -26,6 +28,13 @@ from synthorg.settings.state import settings_service_of
 from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
+
+# The shortest run a payment-card matcher will consider (a Maestro
+# number starts at 12 digits). See .github/zap-rules.tsv, rule 10062:
+# a DAST scan reported this endpoint's ``instance`` correlation id as a
+# card number, and the suppression rests on nothing else in these
+# bodies being able to hold such a run.
+_CARD_SHAPED_DIGIT_RUN_RE: Final[re.Pattern[str]] = re.compile(r"\d{12,}")
 
 
 @pytest.mark.unit
@@ -742,6 +751,101 @@ class TestSetupComplete:
             resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code >= 500
             assert ("api", "setup_complete") not in repo._store
+        finally:
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
+
+
+@pytest.mark.unit
+class TestSetupCompleteResponseShape:
+    """What this endpoint can put on the wire.
+
+    A DAST scan reported a payment card on ``POST /setup/complete``. The
+    evidence was a 12-digit run, and the only field in the body able to
+    hold one was ``instance``, the per-request UUID4 correlation id,
+    whose 12-character tail is occasionally all digits and occasionally
+    Luhn-valid. These tests hold that premise in place for the two
+    bodies the scanner could reach: a numeric field added to either has
+    to fail here rather than pass quietly behind the suppression in
+    .github/zap-rules.tsv.
+    """
+
+    async def test_denied_body_carries_no_card_shaped_run(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """The exact body the scan received: a guard refusal.
+
+        The scan authenticates as a role ``require_ceo`` does not
+        admit, so every request it made was refused here, and the
+        refusal body is static apart from ``instance``.
+        """
+        saved_headers = dict(async_test_client.headers)
+        async_test_client.headers.update(make_auth_headers("observer"))
+        try:
+            resp = await async_test_client.post("/api/v1/setup/complete")
+        finally:
+            async_test_client.headers.update(saved_headers)
+
+        assert resp.status_code == 403
+        instance = resp.json()["error_detail"]["instance"]
+        UUID(instance)
+        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+
+    async def test_missing_company_body_carries_no_card_shaped_run(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """Same for the prerequisite refusal, whose detail is fixed prose."""
+        repo = cast(
+            FakePersistenceBackend,
+            persistence_of(async_test_client.app.state.app_state),
+        )._settings_repo
+        key = ("company", "company_name")
+        original = repo._store.get(key)
+        repo._store.pop(key, None)
+        try:
+            resp = await async_test_client.post("/api/v1/setup/complete")
+        finally:
+            if original is not None:
+                repo._store[key] = original
+
+        assert resp.status_code == 422
+        instance = resp.json()["error_detail"]["instance"]
+        UUID(instance)
+        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+
+    async def test_success_body_field_set_is_pinned(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """The success payload is two booleans and a nullable reason.
+
+        Pinned as an exact key set: the suppression's rationale cites
+        this shape as its tripwire, so a field carrying a timestamp, a
+        counter or an identifier has to break the suite.
+        """
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
+        )
+        try:
+            resp = await async_test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert set(resp.json()["data"]) == {
+                "setup_complete",
+                "embedder_selected",
+                "embedder_failure_reason",
+            }
+            assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text) is None
         finally:
             app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)

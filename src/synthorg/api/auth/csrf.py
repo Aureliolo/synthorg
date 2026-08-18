@@ -11,7 +11,6 @@ requests (no cookie) skip CSRF entirely.
 """
 
 import hmac as _hmac
-import json
 from collections.abc import Iterable
 from http.cookies import SimpleCookie
 from typing import Final
@@ -26,10 +25,17 @@ from litestar.types import (
 )
 
 from synthorg.api._asgi_scope import is_http_scope
+from synthorg.api.dto import ApiResponse, ErrorDetail
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.error_taxonomy import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
 from synthorg.core.normalization import normalize_path
-from synthorg.observability import get_logger
+from synthorg.observability import current_correlation_id, get_logger
 from synthorg.observability.events.api import (
     API_CSRF_SKIPPED,
 )
@@ -39,11 +45,7 @@ from synthorg.observability.events.security import (
 
 logger = get_logger(__name__)
 
-# Domain error code for a CSRF rejection. Named because this raw-ASGI
-# path bypasses Litestar's exception pipeline (where ErrorCode would
-# normally apply), so the literal must stay greppable and in lockstep
-# with the documented client-facing error codes.
-_CSRF_ERROR_CODE: Final[int] = 1004
+_CSRF_REJECTION_DETAIL: Final[str] = "CSRF token missing or invalid"
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -151,18 +153,33 @@ async def _send_403(send: Send) -> None:
     the Litestar exception handling pipeline has not yet wrapped
     the request.  Instead, send the error response directly.
 
+    The body is the same ``ApiResponse`` envelope every handled error
+    returns, built here rather than borrowed: a client that reads
+    ``error_detail`` must not get ``None`` on the one response a
+    security control produces, and ``instance`` is what ties this
+    rejection to the ``SECURITY_CSRF_REJECTED`` line already logged for
+    it.
+
     Args:
         send: ASGI send callable.
     """
-    body = json.dumps(
-        {
-            "success": False,
-            "data": None,
-            "error": "CSRF token missing or invalid",
-            "error_code": _CSRF_ERROR_CODE,
-            "error_category": "auth",
-        }
-    ).encode("utf-8")
+    body = (
+        ApiResponse[None](
+            error=_CSRF_REJECTION_DETAIL,
+            error_detail=ErrorDetail(
+                detail=_CSRF_REJECTION_DETAIL,
+                error_code=ErrorCode.CSRF_REJECTED,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+                retry_after=None,
+                instance=current_correlation_id(),
+                title=category_title(ErrorCategory.AUTH),
+                type=category_type_uri(ErrorCategory.AUTH),
+            ),
+        )
+        .model_dump_json()
+        .encode("utf-8")
+    )
     start: HTTPResponseStartEvent = {
         "type": "http.response.start",
         "status": 403,

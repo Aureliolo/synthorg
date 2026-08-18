@@ -24,6 +24,7 @@ from synthorg.observability.config import (
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,
+    current_correlation_id,
     generate_correlation_id,
     unbind_correlation_id,
     with_correlation,
@@ -61,6 +62,7 @@ __all__ = [
     "bind_correlation_id",
     "clear_correlation_ids",
     "configure_logging",
+    "current_correlation_id",
     "describe_without_input",
     "generate_correlation_id",
     "get_logger",

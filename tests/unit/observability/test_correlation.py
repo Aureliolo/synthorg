@@ -1,6 +1,9 @@
 """Tests for correlation ID management."""
 
+import re
 import uuid
+from typing import Final
+from unittest.mock import patch
 
 import pytest
 import structlog
@@ -8,10 +11,54 @@ import structlog
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,
+    current_correlation_id,
     generate_correlation_id,
     unbind_correlation_id,
     with_correlation,
 )
+
+_UUID_RE: Final[re.Pattern[str]] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+)
+
+
+@pytest.mark.unit
+class TestCurrentCorrelationId:
+    """The id every error body carries as its RFC 9457 ``instance``."""
+
+    def test_returns_request_id_from_context(self) -> None:
+        structlog.contextvars.bind_contextvars(request_id="req-known-123")
+        try:
+            assert current_correlation_id() == "req-known-123"
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+    def test_falls_back_to_uuid_when_no_context(self) -> None:
+        structlog.contextvars.unbind_contextvars("request_id")
+
+        assert _UUID_RE.match(current_correlation_id())
+
+    def test_falls_back_for_non_string_request_id(self) -> None:
+        structlog.contextvars.bind_contextvars(request_id=12345)
+        try:
+            assert _UUID_RE.match(current_correlation_id())
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+    def test_falls_back_for_empty_string_request_id(self) -> None:
+        structlog.contextvars.bind_contextvars(request_id="")
+        try:
+            assert _UUID_RE.match(current_correlation_id())
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+    def test_falls_back_when_get_contextvars_raises(self) -> None:
+        """A response path must never raise while building a body."""
+        with patch(
+            "structlog.contextvars.get_contextvars",
+            side_effect=RuntimeError("broken"),
+        ):
+            assert _UUID_RE.match(current_correlation_id())
 
 
 @pytest.mark.unit

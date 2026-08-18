@@ -97,6 +97,7 @@ CDNs
 CEOs
 CPython
 CVEs
+Cacheable
 Callsite
 Cemri
 Cerebras
@@ -134,6 +135,7 @@ Dogfooding
 ECharts
 EPBench
 ETag
+ETags
 Ec
 Embedder
 Entra
@@ -144,6 +146,7 @@ Fernet
 Flowise
 Fluentd
 Forgejo
+Fuzzer
 GPUs
 Gitea
 Gitleaks
@@ -178,6 +181,7 @@ Letta
 Liveness
 Logfire
 Logstash
+Luhn
 Lucide
 MCPConfig
 MVPs
@@ -243,6 +247,7 @@ Sigstore
 Smolagents
 Sparkline
 Steganography
+Storable
 Streamable
 Subcommand
 Subcommands
@@ -740,6 +745,7 @@ retag
 retagging
 retention_days
 retryable
+revalidated
 review_gate
 reworkable
 rgba

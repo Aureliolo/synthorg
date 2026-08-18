@@ -1,11 +1,24 @@
 """Tests for CSRF middleware."""
 
+import re
+from typing import Final
+
 import pytest
 from litestar import Litestar, get, post
 
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.core.auth.config import AuthConfig
+from synthorg.core.error_taxonomy import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
 from tests._shared import LoopAsyncClient
+
+_UUID_RE: Final[re.Pattern[str]] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+)
 
 
 def _build_csrf_app(
@@ -113,6 +126,53 @@ class TestCsrfWithSessionCookie:
                 },
             )
             assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestCsrfRejectionEnvelope:
+    """A rejection answers in the same envelope every other error uses.
+
+    The middleware writes its response over raw ASGI, before Litestar's
+    exception pipeline exists, so nothing forces the shape on it. A
+    divergent body leaves a client parsing ``error_detail`` with
+    ``None`` on exactly the responses a security control produces, and
+    leaves the rejection with no correlation id to tie it back to the
+    ``security.csrf.rejected`` log line it already writes.
+    """
+
+    async def test_rejection_body_is_the_standard_error_envelope(self) -> None:
+        app = _build_csrf_app()
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
+                "/mutate",
+                headers={"Cookie": "session=some.jwt.token"},
+            )
+
+        assert resp.status_code == 403
+        body = resp.json()
+        assert set(body) == {"data", "error", "error_detail", "success"}
+        assert body["data"] is None
+        assert body["success"] is False
+
+        detail = body["error_detail"]
+        assert detail["detail"] == body["error"]
+        assert detail["error_code"] == ErrorCode.CSRF_REJECTED
+        assert detail["error_category"] == ErrorCategory.AUTH
+        assert detail["retryable"] is False
+        assert detail["retry_after"] is None
+        assert detail["title"] == category_title(ErrorCategory.AUTH)
+        assert detail["type"] == category_type_uri(ErrorCategory.AUTH)
+
+    async def test_rejection_carries_a_correlation_id(self) -> None:
+        app = _build_csrf_app()
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
+                "/mutate",
+                headers={"Cookie": "session=some.jwt.token"},
+            )
+
+        instance = resp.json()["error_detail"]["instance"]
+        assert _UUID_RE.match(instance) is not None
 
 
 @pytest.mark.unit

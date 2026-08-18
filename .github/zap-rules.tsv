@@ -22,17 +22,16 @@
 100000	IGNORE	A Client Error response code was returned by the server
 10094	IGNORE	Base64 Disclosure
 90005	IGNORE	Sec-Fetch-* Header is Missing
-10049	IGNORE	Storable and Cacheable Content
 10104	IGNORE	User Agent Fuzzer
 #
 # 90022 / 10023 fire on the substring "Internal Server Error" appearing
 # anywhere in a response body.  SynthOrg's RFC 9457 envelope (see
-# src/synthorg/api/errors.py CATEGORY_TITLES) sets that exact title for
-# every ``ErrorCategory.INTERNAL`` response (5xx + 503), so the rule
-# matches every legitimate structured 5xx without distinguishing it
-# from a real debug-page leak.  Real Python tracebacks / framework
-# debug pages would surface as 500 with framework-specific markers,
-# not the curated structured envelope.  Ignore both rules; if a
+# src/synthorg/core/error_taxonomy.py CATEGORY_TITLES) sets that exact
+# title for every ``ErrorCategory.INTERNAL`` response (5xx + 503), so
+# the rule matches every legitimate structured 5xx without
+# distinguishing it from a real debug-page leak.  Real Python or
+# framework debug pages would surface as 500 with framework-specific
+# markers, not the curated structured envelope.  Ignore both rules; if a
 # regression ever leaks an unstructured stack trace, the underlying
 # fact will still surface via test coverage on the exception
 # handlers, not via this scanner rule.
@@ -59,4 +58,68 @@
 # domain/runtime resource identifier (workflow session), NOT an HTTP
 # auth token -- auth lives in HttpOnly cookies.  Putting domain IDs
 # in query strings is normal REST and does not leak credentials.
+# Two URL-borne values this row must not be read as denying, because
+# both are deliberate and neither is what the rule reported: the
+# WebSocket upgrade accepts a one-time auth ticket as ?ticket= (see
+# src/synthorg/api/controllers/ws.py), which is single-use, short-TTL
+# and consumed before the socket is accepted, and which the shipped
+# dashboard does not use at all (it sends the ticket in the first
+# frame instead); and /oauth/callback receives code + state, which is
+# the OAuth2 protocol itself.
 10024	IGNORE	Sensitive Information in URL (session_id is domain ID)
+#
+# 10049 reports a response a cache may store.  Nearly every API
+# response here is ``no-store``, pinned by the security-headers
+# before_send hook, but the conditional-GET allowlist in
+# src/synthorg/api/etag.py deliberately replaces that header on the
+# reads it serves ETags for, including authenticated ones
+# (/api/v1/settings, /api/v1/security/audit, /api/v1/tasks,
+# /api/v1/activities).  Those answer ``private, max-age=0,
+# must-revalidate``: a shared cache may not store them at all, and a
+# browser must revalidate before every reuse, so what the rule reports
+# is a 304 exchange rather than a stored body served without a check.
+# The rule cannot distinguish the two, and the sibling alert on the
+# same id is "Non-Storable Content", pure information.  What still
+# catches a regression here is the unit test pinning that exact
+# directive string, not this scanner rule; a weaker policy fails the
+# suite.
+10049	IGNORE	Storable and Cacheable Content (ETag allowlist, revalidated)
+#
+# 10062 reports any run of 12 or more digits that starts with a card
+# BIN prefix and passes a Luhn check.  Every SynthOrg error response
+# carries an RFC 9457 ``instance`` field holding the per-request
+# correlation id, a UUID4 minted for each request in
+# src/synthorg/api/middleware.py.  A dashed UUID ends in exactly 12 hex
+# characters bounded by "-" and a quote, which is the word-boundary
+# pair the rule's Maestro arm (5[0678]dd, 6304, 6390 or 67dd followed
+# by 8 or more digits) anchors on, so whenever those 12 characters
+# happen to be all decimal digits and pass Luhn, the rule reports a
+# request id as a card number.  Measured rate: 1.1e-5 per UUID4, about
+# one id in 90,000, which is why this surfaced once across eight
+# scans.  Run 31998269194 flagged evidence 672331071866 on POST
+# /setup/complete.  The scan authenticates as the system role, which
+# require_ceo refuses, so the body it received was the static "Access
+# denied" envelope whose only variable field is that correlation id,
+# and the evidence string appears nowhere in this repository.  The
+# High confidence reflects only that ZAP's BIN table holds a record
+# for 672331.  The product handles no card, bank account, SSN or
+# national-id data anywhere, so this rule has nothing of its kind to
+# find, and the suppression cannot be scoped to a URL because every
+# entity id in every response has the same shape.
+# What this row also covers, and should not be read as denying: an
+# operator-authored string can reach a response body (the chosen
+# embedder model reference in embedder_failure_reason, an agent,
+# provider or model name in the persisted-agent validation message),
+# so a name containing a long digit run can be echoed back.  That is
+# the operator's own configuration, not stored personal data.
+# What still catches a regression: unit tests pin the response shape
+# of that endpoint and the field set of the shared error envelope, so
+# a numeric field added to either fails the suite instead of passing
+# quietly behind this row; and card or SSN patterns in agent tool
+# arguments and tool output are matched by the product's own
+# fail-closed detector (PII_PATTERNS in
+# src/synthorg/security/rules/data_leak_detector.py, plus
+# src/synthorg/security/output_scanner.py), a control we own rather
+# than a scanner rule.  Introducing any payment or national-id surface
+# invalidates this rationale and must revisit it.
+10062	IGNORE	PII Disclosure (UUID4 request-id tail matching a card BIN + Luhn)

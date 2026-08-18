@@ -647,12 +647,14 @@ suppresses validated false positives and informational findings:
 | Client Error Responses | 100000 | Ignore | ZAP sends literal path params, expected 4xx |
 | Base64 Disclosure | 10094 | Ignore | OpenAPI schema contains UUID/JWT-format refs, not secrets |
 | Sec-Fetch-* Missing | 90005 | Ignore | CSRF is mitigated via the double-submit cookie pattern; Sec-Fetch-* headers are defence-in-depth but not required, and enforcing them would break non-browser API clients |
-| Non-Storable Content | 10049 | Warn | API endpoints correctly use `no-store`; dashboard HTML uses `no-cache`; hashed assets use `immutable`; docs use `public, max-age=300` |
+| User Agent Fuzzer | 10104 | Ignore | An active-scan fuzzing technique that varies the `User-Agent` header; unrelated to server behaviour and not a finding. |
 | Application Error Disclosure | 90022 | Ignore | SynthOrg's RFC 9457 / ProblemDetail envelopes set `ErrorCategory.INTERNAL` with the title `"Internal Server Error"` (see `category_title` in `src/synthorg/core/error_taxonomy.py`), so the rule's substring match will trigger for our legitimate structured 5xx responses. Regression coverage for actual debug-page leaks lives in the exception-handler unit tests. |
 | Debug Error Messages | 10023 | Ignore | Same trigger and rationale as 90022. |
 | Cookie No HttpOnly Flag | 10010 | Ignore | The `csrf_token` cookie is intentionally configured non-HttpOnly (`httponly=False` in `src/synthorg/api/auth/cookies.py`) as part of the double-submit CSRF pattern: the frontend reads the cookie and echoes its value back in the `X-CSRF-Token` header. Suppressing the rule prevents recurring noise on this intentional configuration. The auth/session cookie itself is HttpOnly. |
 | Authentication Request Identified | 10111 | Ignore | Under the current ZAP ruleset, this rule labels endpoints carrying a `password` field for the scanner's own auth-flow inference; not a security finding. |
-| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behaviour, this rule fires when a URL contains substrings such as `session`. In SynthOrg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Behaviour can vary across ZAP versions, so revisit on upgrade. |
+| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behaviour, this rule fires when a URL contains substrings such as `session`. In SynthOrg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Two URL-borne values this row does not deny, since both are deliberate and neither is what the rule reported: the WebSocket upgrade accepts a one-time auth ticket as `?ticket=` (single-use, short-TTL, consumed before the socket is accepted, and unused by the shipped dashboard, which sends it in the first frame), and `/oauth/callback` receives `code` and `state`, which is the OAuth2 protocol itself. Behaviour can vary across ZAP versions, so revisit on upgrade. |
+| Storable and Cacheable Content | 10049 | Ignore | Nearly every API response is `no-store`, pinned by the security-headers `before_send` hook. The conditional-GET allowlist in `src/synthorg/api/etag.py` deliberately replaces that header on the reads it serves ETags for, including authenticated ones (`/api/v1/settings`, `/api/v1/security/audit`, `/api/v1/tasks`, `/api/v1/activities`), which answer `private, max-age=0, must-revalidate`: no shared cache may store them, and a browser must revalidate before every reuse. The rule cannot tell that revalidated exchange apart from a stored body served without a check, and the sibling alert on the same ID (Non-Storable Content) is pure information. A unit test pins the directive string, so a weaker policy fails the suite. |
+| PII Disclosure | 10062 | Ignore | The rule reports any run of 12 or more digits that starts with a card BIN prefix and passes a Luhn check. Every error response carries an RFC 9457 `instance` field holding the per-request correlation ID, a UUID4; a dashed UUID ends in exactly 12 hex characters bounded by `-` and a quote, which is the word boundary pair the Maestro arm of the rule anchors on, so a tail that happens to be all decimal digits and Luhn-valid is reported as a card number. Measured rate: 1.1e-5 per UUID4. No card, bank account, SSN or national-ID data exists anywhere in the product, and the suppression cannot be scoped to a URL because every entity ID in every response has that shape. Unit tests pin the field set of the shared error envelope and of the endpoint that was flagged; card and SSN patterns in agent tool traffic are matched by the fail-closed detector in `src/synthorg/security/rules/data_leak_detector.py`. Full triage in `.github/zap-rules.tsv`. |
 
 The rules file is reviewed when ZAP or the API surface changes.
 **When upgrading the ZAP action, the bundled ZAP version, or the
@@ -667,7 +669,11 @@ sensitive data caching, the web dashboard entry point (`index.html`) uses
 content-hashed dashboard assets (`/assets/*`) use `public, max-age=31536000,
 immutable` for long-lived caching, and documentation endpoints (`/docs/*`)
 allow brief client and proxy caching since they serve public, non-user-specific
-content.
+content. The one deliberate exception is the conditional-GET allowlist in
+`src/synthorg/api/etag.py`, which replaces `no-store` on the reads it serves
+ETags for: `private, max-age=0, must-revalidate` for user-scoped data, keeping
+it out of shared caches and forcing revalidation before every reuse, and
+`public, max-age=0, must-revalidate` for deployment-wide reference data.
 
 ### Branch and tag protection
 

@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Final
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,7 +21,6 @@ from synthorg.api.exception_handlers import (
     _build_error_response,
     _build_response,
     _category_for_status,
-    _get_instance_id,
     handle_http_exception,
     handle_unexpected,
 )
@@ -63,6 +62,10 @@ pytestmark = pytest.mark.unit
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
 )
+
+# The shortest run a payment-card matcher will consider (a Maestro
+# number starts at 12 digits). See .github/zap-rules.tsv, rule 10062.
+_CARD_SHAPED_DIGIT_RUN_RE: Final[re.Pattern[str]] = re.compile(r"\d{12,}")
 
 
 def _assert_error_detail(
@@ -1313,6 +1316,53 @@ class TestStructuredErrorMetadata:
             assert ed["title"] == category_title(ErrorCategory.NOT_FOUND)
             assert ed["type"] == category_type_uri(ErrorCategory.NOT_FOUND)
 
+    async def test_envelope_fields_carry_no_card_shaped_digit_run(self) -> None:
+        """Only ``instance`` can hold a run a card matcher would consider.
+
+        ``instance`` is a UUID4, whose 12-character tail is occasionally
+        all digits and occasionally passes a Luhn check, which is what a
+        DAST run reported as a "credit card" on ``/setup/complete``. The
+        suppression in .github/zap-rules.tsv rests on nothing ELSE in
+        the envelope being able to hold such a run, so a numeric field
+        added to ``ErrorDetail`` (an epoch stamp, a counter) has to fail
+        here rather than pass quietly behind that row. ``detail`` is
+        held to fixed prose by the handler under test; it carries
+        handler text in general, which the row's rationale says.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "no such record"
+            raise NotFoundError(msg)
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+
+        instance = resp.json()["error_detail"]["instance"]
+        assert _UUID_RE.match(instance) is not None
+        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+
+    def test_problem_detail_fields_carry_no_card_shaped_digit_run(self) -> None:
+        """Same claim for the bare RFC 9457 body a client can negotiate."""
+        request = MagicMock(spec=Request)
+        request.accept.best_match.return_value = "application/problem+json"
+
+        resp = _build_response(
+            request,
+            detail="Resource not found",
+            error_code=ErrorCode.RECORD_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
+            status_code=404,
+        )
+
+        assert isinstance(resp.content, ProblemDetail)
+        serialized = resp.content.model_dump_json()
+        instance = resp.content.instance
+        assert _UUID_RE.match(instance) is not None
+        assert (
+            _CARD_SHAPED_DIGIT_RUN_RE.search(serialized.replace(instance, "")) is None
+        )
+
     async def test_retry_after_is_none_for_non_rate_limit(self) -> None:
         """retry_after should be None for non-rate-limit errors."""
 
@@ -1342,40 +1392,6 @@ class TestStructuredErrorMetadata:
             assert "upstream rejected" in body["error"]
             # ...but a credential token in the message is still redacted.
             assert "sk-secret-leak-me" not in body["error"]
-
-
-class TestGetInstanceId:
-    """Direct unit tests for _get_instance_id helper."""
-
-    def test_returns_request_id_from_context(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id="req-known-123")
-        try:
-            result = _get_instance_id()
-            assert result == "req-known-123"
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
-
-    def test_falls_back_to_uuid_when_no_context(self) -> None:
-        structlog.contextvars.unbind_contextvars("request_id")
-
-        result = _get_instance_id()
-        assert _UUID_RE.match(result)
-
-    def test_falls_back_for_non_string_request_id(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id=12345)
-        try:
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
-
-    def test_falls_back_for_empty_string_request_id(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id="")
-        try:
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
 
 
 class TestCategoryForStatus:
@@ -1444,18 +1460,6 @@ class TestDomainErrorInstantiation:
         exc = NotFoundError("Custom not found")
         assert str(exc) == "Custom not found"
         assert exc.status_code == 404
-
-
-class TestGetInstanceIdExceptionFallback:
-    """Test that _get_instance_id falls back when get_contextvars raises."""
-
-    def test_falls_back_when_get_contextvars_raises(self) -> None:
-        with patch(
-            "structlog.contextvars.get_contextvars",
-            side_effect=RuntimeError("broken"),
-        ):
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
 
 
 class TestBuildErrorResponseRetryAfter:

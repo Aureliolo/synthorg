@@ -32,7 +32,6 @@ from http import HTTPStatus
 from types import MappingProxyType
 from typing import Final
 
-import structlog
 from litestar import Request, Response
 from litestar.datastructures import State
 from litestar.exceptions import (
@@ -87,11 +86,10 @@ from synthorg.observability import (
     safe_error_description,
     scrub_secret_tokens,
 )
-from synthorg.observability.correlation import generate_correlation_id
+from synthorg.observability.correlation import current_correlation_id
 from synthorg.observability.events.api import (
     API_ACCEPT_PARSE_FAILED,
     API_CONTENT_NEGOTIATED,
-    API_CORRELATION_FALLBACK,
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
@@ -159,34 +157,6 @@ def _header_value_ci(headers: Mapping[str, str], name: str) -> str | None:
     return None
 
 
-def _get_instance_id() -> str:
-    """Get request correlation ID from structlog context, or generate one.
-
-    Wrapped defensively because this runs inside exception handlers,
-    which are the last line of defense and must never crash.
-    ``MemoryError`` and ``RecursionError`` are re-raised so process-level
-    failures still surface; every other ``Exception`` falls back to a
-    fresh correlation ID with a warning so operators can correlate the
-    fallback to its triggering request.
-
-    Returns:
-        Resulting string.
-    """
-    try:
-        ctx = structlog.contextvars.get_contextvars()
-        request_id = ctx.get("request_id")
-        if isinstance(request_id, str) and request_id:
-            return request_id
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_CORRELATION_FALLBACK,
-            error_type=type(exc).__qualname__,
-            error=safe_error_description(exc),
-        )
-    return generate_correlation_id()
-
-
 def _wants_problem_json(request: Request[object, object, State]) -> bool:
     """Check whether the client prefers ``application/problem+json``.
 
@@ -244,7 +214,7 @@ def _build_error_response(
             error_category=error_category,
             retryable=retryable,
             retry_after=retry_after,
-            instance=_get_instance_id(),
+            instance=current_correlation_id(),
             title=category_title(error_category),
             type=category_type_uri(error_category),
         ),
@@ -272,7 +242,7 @@ def _build_problem_detail_response(
             title=category_title(error_category),
             status=status_code,
             detail=detail,
-            instance=_get_instance_id(),
+            instance=current_correlation_id(),
             error_code=error_code,
             error_category=error_category,
             retryable=retryable,
@@ -376,7 +346,7 @@ def _build_response_fallback(
     except Exception as exc:  # noqa: BLE001 -- defensive  # pragma: no cover
         reraise_critical(exc)
         use_problem_json = False
-    instance = _get_instance_id()
+    instance = current_correlation_id()
     fallback_title = category_title(ErrorCategory.INTERNAL)
     fallback_type = category_type_uri(ErrorCategory.INTERNAL)
     if use_problem_json:
@@ -878,7 +848,7 @@ def build_error_detail(exc: Exception) -> ErrorDetail:
         error_category=error_category,
         retryable=retryable,
         retry_after=retry_after if retryable else None,
-        instance=_get_instance_id(),
+        instance=current_correlation_id(),
         title=category_title(error_category),
         type=category_type_uri(error_category),
     )
