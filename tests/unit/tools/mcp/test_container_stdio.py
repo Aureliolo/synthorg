@@ -645,8 +645,11 @@ class TestTheContainerIsAlwaysDestroyed:
 
         async def _open_until_cancelled() -> None:
             # The cancellation is what drives this test, so it is swallowed
-            # here rather than failing the run it is meant to exercise.
-            with suppress(BaseException):
+            # here rather than failing the run it is meant to exercise. Only
+            # the cancellation: a wider net would swallow the
+            # ``MCPConnectionError`` the attach path raises, and the two
+            # assertions below hold for a close that ran on either route.
+            with suppress(anyio.get_cancelled_exc_class()):
                 async with harness.open():
                     pass
 
@@ -681,7 +684,7 @@ class TestTheContainerIsAlwaysDestroyed:
         monkeypatch.setattr(harness.stream, "__aenter__", _open_then_hang)
 
         async def _open_until_cancelled() -> None:
-            with suppress(BaseException):
+            with suppress(anyio.get_cancelled_exc_class()):
                 async with harness.open():
                     pass
 
