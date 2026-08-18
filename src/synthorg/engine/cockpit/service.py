@@ -14,7 +14,7 @@ task, chosen by whether the work is still moving.
 import asyncio
 from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Final, NoReturn
+from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -59,12 +59,12 @@ def _sum_costs(costs: Iterable[float]) -> float:
     return sum(costs)  # lint-allow: currency-aggregation -- single budget
 
 
-def _fail_snapshot(
+def _snapshot_cause(
     group: BaseExceptionGroup[Exception],
     *,
     status: TaskStatus,
-) -> NoReturn:
-    """Re-raise a failed activity fan-out as the error the store reported.
+) -> BaseException:
+    """Log a failed activity fan-out and return the error the store reported.
 
     The repositories behind a row already raise typed ``DomainError``
     subclasses, but a ``TaskGroup`` wraps whatever a child raises, so what
@@ -77,11 +77,16 @@ def _fail_snapshot(
     is not a task with no spend, and publishing it as one under-reports work
     against the budget the runaway check compares to.
 
-    Raises:
-        BaseException: The first leaf of *group*, chained from it. Groups
-            nest when a child is itself a group, so the leftmost spine is
-            walked rather than taking ``exceptions[0]`` and raising another
-            wrapper.
+    The caller raises what this returns rather than the helper raising it,
+    so the ``raise`` stays lexically inside the handler: both ruff's
+    broad-except rule and ``check_no_engine_worker_swallow`` decide from the
+    handler body alone, and neither follows a call, so a helper that raises
+    reads to them as a handler that swallows.
+
+    Returns:
+        The first leaf of *group*. Groups nest when a child is itself a
+        group, so the leftmost spine is walked rather than taking
+        ``exceptions[0]`` and handing back another wrapper.
     """
     cause: BaseException = group
     while isinstance(cause, BaseExceptionGroup) and cause.exceptions:
@@ -92,7 +97,7 @@ def _fail_snapshot(
         error_type=type(cause).__name__,
         error=safe_error_description(cause),
     )
-    raise cause from group
+    return cause
 
 
 class AgentActivity(BaseModel):
@@ -212,8 +217,9 @@ class CockpitService:
                 activities.extend(handle.result() for handle in handles)
             except* (MemoryError, RecursionError) as fatal_eg:
                 reraise_critical_unwrapped(fatal_eg)
-            except* Exception as eg:  # noqa: BLE001 -- re-raised by _fail_snapshot
-                _fail_snapshot(eg, status=status)
+            except* Exception as eg:
+                cause = _snapshot_cause(eg, status=status)
+                raise cause from eg
 
         stuck = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_stuck)
         runaway = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_runaway)
