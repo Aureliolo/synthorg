@@ -343,15 +343,26 @@ class _PerWaveWorkspaces:
         A wave whose only non-successes are parks has not failed, and the
         workspace of a parked agent is kept: its run resumes there once the
         human decides, so tearing it down would leave the pending approval
-        with nothing to resume into.
+        with nothing to resume into. That workspace is therefore neither
+        merged (its work is mid-flight and unverified) nor torn down, which
+        is what excluding the parked ids from ``settled`` buys.
+
+        Only a genuine failure is reported as one. A wave that passed with
+        every workspace parked also skips the merge, and calling that a
+        failure would report one on the exact path a park is supposed to
+        take.
+
+        A real failure is recorded as a phase as well as logged, because the
+        log does not survive the restart the question outlives and a rollup
+        reads the phase list rather than the log: a level that emits no phase
+        at all reads as still working rather than as failed. Its duration is
+        zero because no merge was attempted -- the wave failed before this
+        stage could start.
         """
         held = self._held.pop(wave_idx, ())
         workspace_service = self._workspace_service
         if not held or workspace_service is None:
             return
-        # A parked run resumes into its own workspace, so that workspace is
-        # neither merged (its work is mid-flight and unverified) nor torn
-        # down (the resume needs it).
         settled = tuple(w for w in held if w.task_id not in verdict.parked_task_ids)
         if verdict.parked_task_ids:
             logger.info(
@@ -372,16 +383,7 @@ class _PerWaveWorkspaces:
             if merge_result is not None:
                 self.merges.append(merge_result)
         elif verdict.failed:
-            # Only a failure is reported as one. A wave that passed with every
-            # workspace parked also skips the merge, and saying "wave failed"
-            # there would report a false failure on the exact path a park is
-            # supposed to take; the retained-workspace line above already
-            # says why.
-            #
-            # The phase is recorded as well as logged, because the log does
-            # not survive the restart the question outlives and a rollup reads
-            # the phase list, not the log: a level that emits no phase at all
-            # reads as still working rather than as failed.
+            # Recorded as a phase as well as logged; the docstring says why.
             merge_error = verdict.error or "Skipped merge: wave failed"
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -392,8 +394,6 @@ class _PerWaveWorkspaces:
                 CoordinationPhaseResult(
                     phase=f"merge_wave_{wave_idx}",
                     success=False,
-                    # No merge was attempted, so there is no duration to
-                    # report: the wave failed before this stage could start.
                     duration_seconds=0.0,
                     error=merge_error,
                 )
