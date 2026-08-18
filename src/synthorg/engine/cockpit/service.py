@@ -237,6 +237,38 @@ class CockpitService:
         flight has no frames yet, so every live row read ``turn_count=0``,
         ``cost=0``, ``last_active=None``.
 
+        Cost while a run is live is the recorded executions plus the one in
+        flight. The live row counts only THIS execution's spend while the
+        runaway check compares against a per-task budget, so a retry starting
+        from zero would let a task that already burned most of its budget read
+        healthy for the whole of its next attempt and flip the moment that
+        attempt ended. The live execution is deducted from the recorded side
+        because an attempt's frames are written before its live row is
+        cleared, and between those two writes both describe the same spend:
+        a brief window when a run ends cleanly, an unbounded one when it does
+        not, since a row left EXECUTING keeps its cost beside frames that
+        already hold it and the doubled figure reads as a runaway that is not
+        happening.
+
+        That deduction is floored because the two frame reads are not one
+        snapshot. A batch landing between them is counted only by the second,
+        and a retention purge between them drops rows only from the second, so
+        either can leave the execution-scoped figure larger than the task-wide
+        total it comes off. ``AgentActivity.cost`` is ``ge=0`` and these rows
+        build inside a ``TaskGroup``, so an inverted pair would abort the whole
+        snapshot rather than under-report the one row it concerns.
+
+        No activity at all is the STRONGEST evidence of stuck rather than an
+        exemption from the check, so the task's own filing time is the
+        fallback baseline: an in-flight task nothing has driven since a
+        restart has no last-active timestamp, and requiring one reads every
+        one of them as healthy. Filing time measures the QUEUE, though, which
+        would read a task that waited behind earlier waves as stuck the moment
+        it started. What keeps that honest is the row written at dispatch
+        (``mark_agent_running``): a running task has a live timestamp from the
+        moment it is picked up, so filing time is only ever consulted for a
+        task no run has claimed, which is the case it describes.
+
         Returns:
             An :class:`AgentActivity` carrying the agent id, execution
             id, turn count, last-active timestamp, cumulative cost,
@@ -252,31 +284,8 @@ class CockpitService:
             turn_count = live.turn_count
             last_active: datetime | None = live.last_activity_at
             execution_id: str | None = live.execution_id
-            # The live row counts THIS execution's spend, while the runaway
-            # check compares against a per-task budget. A retry starts a new
-            # execution from zero, so reading the live figure alone would let
-            # a task that already burned most of its budget read healthy for
-            # the whole of its next attempt, then flip the moment that
-            # attempt ended. The recorded executions plus the one in flight
-            # is the task's actual spend.
-            #
-            # The OTHER executions, though: an attempt's frames are recorded
-            # before its live row is cleared, so between those two writes the
-            # aggregate and the live row describe the same spend and adding
-            # them counts it twice. That is a short window while a run ends
-            # cleanly and an unbounded one when it does not, since a row left
-            # EXECUTING keeps its cost beside frames that already hold it, and
-            # a doubled figure against a per-task budget reads as a runaway
-            # that is not happening.
-            #
-            # The deduction is clamped because the two frame reads are not one
-            # snapshot. A batch landing between them is counted by the second
-            # and not the first, and a retention purge between them drops rows
-            # from the second and not the first, so either can leave the
-            # execution-scoped figure larger than the task-wide total it is
-            # deducted from. ``AgentActivity.cost`` is ``ge=0`` and this builds
-            # inside a ``TaskGroup``, so an inverted pair would not merely
-            # under-report one row, it would abort the whole snapshot.
+            # Floored because the two frame reads are not one snapshot, and a
+            # negative cost takes down the snapshot rather than just this row.
             recorded_here = await self._recorded_cost_for(task, live.execution_id)
             cost = max(0.0, aggregate.total_cost - recorded_here) + (
                 live.accumulated_cost
@@ -286,18 +295,7 @@ class CockpitService:
             last_active = aggregate.latest_timestamp
             execution_id = aggregate.latest_execution_id
             cost = aggregate.total_cost
-        # No activity at all is the STRONGEST evidence of stuck, not an
-        # exemption from the check: an in-flight task nothing has driven since
-        # a restart has no last-active timestamp, and requiring one read every
-        # one of them as healthy. The task's own filing time is the fallback
-        # baseline, which is why it is on the row.
-        #
-        # It measures time in the QUEUE, though, so it would read a task that
-        # waited behind earlier waves as stuck the moment it started. What
-        # keeps that honest is the row written at dispatch
-        # (``mark_agent_running``): a running task has a live timestamp from
-        # the moment it is picked up, so filing time is only ever consulted
-        # for a task no run has claimed, which is the case it describes.
+        # No activity at all is evidence of stuck, not an exemption from it.
         is_stuck = (last_active or task.created_at) < stuck_cutoff
         is_runaway = task.budget_limit > 0 and cost > task.budget_limit * (
             runaway_pct / _PERCENT_DIVISOR
