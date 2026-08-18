@@ -36,6 +36,15 @@ allowed through, because not knowing is not evidence of an old one and
 refusing on a line it could not read would take a working deployment down over
 output the parser did not anticipate.
 
+The probe is bounded at five seconds, so a binary that will not answer cannot
+hang the boot; it is treated exactly as one whose answer could not be read. It
+runs
+the path the presence check already resolved rather than the bare name, so the
+binary that answers is the one that was found: Windows searches the working
+directory ahead of PATH for a bare name, which would otherwise let the two
+halves disagree. The comparison runs over the shared prefix, so a longer
+version string still satisfies a shorter floor.
+
 "Cannot be read" covers four cases, and the warning names which one, because
 they need different things done about them: the probe timed out (a wedged
 binary), it could not be spawned (one that vanished between the PATH lookup

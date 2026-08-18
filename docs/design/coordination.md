@@ -291,6 +291,13 @@ The task planner decomposes work to minimise file overlap across agents. Each
 agent operates in its own git worktree (shared `.git` object database,
 independent working tree). On completion, branches are merged sequentially.
 
+The backend creates that worktree and the agent opens it through a different
+mount, so the worktree has to record its location relatively. That needs a git
+new enough to know `worktree.useRelativePaths`, and an older one accepts the
+key silently rather than refusing it, so the boot preflight asserts a version
+floor rather than only presence; see
+[api-startup-lifecycle.md](../reference/api-startup-lifecycle.md#binary-preflight).
+
 This is the dominant industry pattern (used by major coding agent products
 and IDE background agents).
 

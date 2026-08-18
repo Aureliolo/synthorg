@@ -79,6 +79,10 @@ _SCAN_PACKAGE: Final[str] = "engine.coordination"
 #: not read and must not credit as siblings.
 _SIBLING_IMPORT_LEVEL: Final[int] = 1
 
+#: ``ImportFrom.level`` for an absolute import, which qualifies on naming the
+#: scanned package rather than on depth.
+_ABSOLUTE_IMPORT_LEVEL: Final[int] = 0
+
 #: Calling this is what makes a module a wave loop: it is the one function
 #: that turns a decomposition plus a routing into dependency-ordered waves.
 _WAVE_BUILDER: Final[str] = "build_execution_waves"
@@ -260,7 +264,7 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
             # claim about where the module lives rather than how far up the
             # writer reached.
             elif node.level == _SIBLING_IMPORT_LEVEL or (
-                not node.level and _SCAN_PACKAGE in node.module
+                node.level == _ABSOLUTE_IMPORT_LEVEL and _SCAN_PACKAGE in node.module
             ):
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):

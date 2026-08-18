@@ -1,5 +1,7 @@
 # module-kind: code
-"""Startup assertion that the binaries the backend cannot supply are present.
+"""Startup assertion that the binaries the backend cannot supply will serve.
+
+Present, and new enough wherever a record declares a minimum version.
 
 The backend spawns a handful of external programs, and a shipped image
 that omits one fails only at the moment the feature is used: workspace
@@ -222,9 +224,19 @@ def _probe_version(name: str) -> tuple[tuple[int, ...] | None, str]:
         The leading numeric components, or ``None``, paired with a reason
         naming why. The reason is ``"read"`` when the version was read.
     """
+    # Run the path PATH resolved, not the bare name. Presence was already
+    # established by resolving it, so spawning the name again asks the
+    # question twice and can get a different answer: Windows searches the
+    # working directory ahead of PATH for a bare name, so the binary that
+    # answers here need not be the one that was found. Handing the resolved
+    # path to both halves makes the check and the probe agree by
+    # construction rather than by coincidence.
+    resolved = shutil.which(name)
+    if resolved is None:
+        return None, "not_on_path"
     try:
-        result = subprocess.run(  # noqa: S603 -- fixed argv, no shell
-            [name, "--version"],
+        result = subprocess.run(  # noqa: S603 -- resolved path, fixed argv, no shell
+            [resolved, "--version"],
             capture_output=True,
             text=True,
             # A version banner is ASCII in every tool this manifest names,
@@ -282,20 +294,22 @@ def _too_old(record: BinaryRecord) -> tuple[int, ...] | None:
     found = _installed_version(record.name)
     floor = ".".join(str(part) for part in record.min_version)
     width = len(record.min_version)
+    if found is None:
+        # Already reported by the probe, which knows which way it failed.
+        return None
     # Too few components to compare is unreadable, not old. Tuple ordering
     # would call ``(2,)`` lower than ``(2, 48)`` and refuse the boot over a
     # minor version nothing ever reported, which is the inversion of the
     # policy every other unreadable case here follows.
-    if found is None or len(found) < width:
-        if found is not None:
-            logger.warning(
-                API_APP_STARTUP,
-                service="binary_preflight",
-                note="version too short to compare; version floor unverified",
-                binary=record.name,
-                found=".".join(str(part) for part in found),
-                min_version=floor,
-            )
+    if len(found) < width:
+        logger.warning(
+            API_APP_STARTUP,
+            service="binary_preflight",
+            note="version too short to compare; version floor unverified",
+            binary=record.name,
+            found=".".join(str(part) for part in found),
+            min_version=floor,
+        )
         return None
     if found[:width] < record.min_version:
         return found

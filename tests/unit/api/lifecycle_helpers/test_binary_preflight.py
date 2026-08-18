@@ -9,7 +9,7 @@ has the binaries.
 
 import subprocess
 from collections.abc import Iterable, Iterator
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -59,17 +59,31 @@ def _reporting(version: str | None) -> AbstractContextManager[object]:
     return patch(f"{_MODULE}._installed_version", return_value=parsed)
 
 
-def _answering(stdout: str) -> AbstractContextManager[object]:
-    """Patch the subprocess so the real parser sees *stdout*."""
-    return patch(
-        f"{_MODULE}.subprocess.run",
-        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout),
-    )
+@contextmanager
+def _answering(name: str, stdout: str) -> Iterator[None]:
+    """Resolve *name* and let the real parser see *stdout*.
+
+    Both halves are patched together because the probe now spawns the path
+    the presence check resolved, so a test that patched only the subprocess
+    would fall through to whatever the host has on PATH.
+    """
+    with (
+        _resolving(name),
+        patch(
+            f"{_MODULE}.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=stdout
+            ),
+        ),
+    ):
+        yield
 
 
-def _raising(exc: BaseException) -> AbstractContextManager[object]:
-    """Patch the subprocess so the probe's own handler is what runs."""
-    return patch(f"{_MODULE}.subprocess.run", side_effect=exc)
+@contextmanager
+def _raising(name: str, exc: BaseException) -> Iterator[None]:
+    """Resolve *name*, then fail the spawn so the probe's handler runs."""
+    with _resolving(name), patch(f"{_MODULE}.subprocess.run", side_effect=exc):
+        yield
 
 
 def _names(records: Iterable[BinaryRecord]) -> set[str]:
@@ -252,7 +266,7 @@ class TestProbeVersion:
         ],
     )
     def test_a_real_banner_parses(self, stdout: str, expected: tuple[int, ...]) -> None:
-        with _answering(stdout):
+        with _answering("git", stdout):
             assert _probe_version("git") == (expected, "read")
 
     def test_a_digit_inside_the_program_name_is_not_the_version(self) -> None:
@@ -262,11 +276,11 @@ class TestProbeVersion:
         floor like any other, so it refuses the boot quoting a version no
         binary ever reported.
         """
-        with _answering("s3cmd version 2.4.0\n"):
+        with _answering("s3cmd", "s3cmd version 2.4.0\n"):
             assert _probe_version("s3cmd") == ((2, 4, 0), "read")
 
     def test_output_with_no_version_is_unreadable(self) -> None:
-        with _answering("command not recognised\n"):
+        with _answering("git", "command not recognised\n"):
             assert _probe_version("git") == (None, "unparseable_output")
 
     def test_a_timeout_is_told_apart_from_a_spawn_failure(self) -> None:
@@ -275,9 +289,9 @@ class TestProbeVersion:
         Both fail open, so the log is the only place the difference can be
         recorded, and an operator needs it to know which to chase.
         """
-        with _raising(subprocess.TimeoutExpired(cmd="git", timeout=5.0)):
+        with _raising("git", subprocess.TimeoutExpired(cmd="git", timeout=5.0)):
             assert _probe_version("git") == (None, "timeout")
-        with _raising(FileNotFoundError("git")):
+        with _raising("git", FileNotFoundError("git")):
             assert _probe_version("git") == (None, "spawn_failed")
 
     def test_undecodable_output_does_not_escape(self) -> None:
@@ -287,19 +301,33 @@ class TestProbeVersion:
         crashes boot on the one path whose whole contract is that an
         unreadable version is survivable.
         """
-        with _answering("git version 2.48.1 ��\n"):
+        with _answering("git", "git version 2.48.1 ��\n"):
             assert _probe_version("git") == ((2, 48, 1), "read")
 
-    def test_the_probe_never_runs_a_shell(self) -> None:
-        """A fixed argv list, so nothing in the name reaches a shell."""
-        with patch(f"{_MODULE}.subprocess.run") as run:
+    def test_the_probe_runs_the_resolved_path_not_the_bare_name(self) -> None:
+        """The presence check and the probe must not disagree.
+
+        Windows searches the working directory before PATH for a bare name,
+        so spawning the name again can run a different binary than the one
+        `shutil.which` found. Handing both halves the resolved path is what
+        makes them agree by construction.
+        """
+        with _resolving("git"), patch(f"{_MODULE}.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="git version 2.48.1"
             )
             _probe_version("git")
 
-        assert run.call_args.args[0] == ["git", "--version"]
+        assert run.call_args.args[0] == ["/usr/bin/git", "--version"]
+        # A fixed argv list, so nothing in the name reaches a shell.
         assert "shell" not in run.call_args.kwargs
+
+    def test_a_binary_that_stopped_resolving_is_not_spawned(self) -> None:
+        """It can vanish between the presence check and here."""
+        with _resolving(), patch(f"{_MODULE}.subprocess.run") as run:
+            assert _probe_version("git") == (None, "not_on_path")
+
+        assert not run.called
 
 
 class TestItRunsAtBoot:
