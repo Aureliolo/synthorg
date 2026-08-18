@@ -101,7 +101,8 @@ def origin_of(url: str) -> tuple[str, str] | None:
     sitting in a cache key for the lifetime of the entry.
 
     Returns:
-        The origin, or ``None`` when *url* carries no scheme or host.
+        The origin, or ``None`` when *url* carries nothing to build one from:
+        no scheme, no host, or a port that is not a port.
     """
     parts = urlsplit(url)
     authority = authority_of(parts)
@@ -124,7 +125,11 @@ def index_urls_for(url: str) -> tuple[str, str]:
         The index URL and the full-content URL, both on the same origin.
 
     Raises:
-        ValueError: If *url* carries no scheme or host to build an origin from.
+        ValueError: If *url* carries nothing to build an origin from: no
+            scheme, no host, or a port that is not a port. The last is refused
+            rather than dropped because this runs before the network validator,
+            so a derived URL missing the port would probe the scheme default,
+            an endpoint the caller never named and one that answers.
     """
     parts = urlsplit(url)
     authority = authority_of(parts)

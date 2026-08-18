@@ -80,6 +80,30 @@ class TestIndexUrls:
 
         assert index == "http://docs.example-provider.test:0/llms.txt"
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://docs.example-provider.test:65536/guide",
+            "http://docs.example-provider.test:abc/guide",
+            "http://docs.example-provider.test:-1/guide",
+        ],
+    )
+    def test_a_port_that_is_not_a_port_is_refused_rather_than_dropped(
+        self,
+        url: str,
+    ) -> None:
+        """This is the consumer the conflation actually reaches.
+
+        The host parses; only reading the port raises. Swallowing that read
+        makes ``:65536`` indistinguishable from a portless URL, so the derived
+        index URL lands on port 80: an endpoint nobody named, which unlike the
+        stated one is reachable, and which this probe would then fetch. The
+        network validator refuses the original URL, but it never sees it here,
+        because the derived URL is what gets validated.
+        """
+        with pytest.raises(ValueError, match="cannot derive an origin"):
+            index_urls_for(url)
+
     def test_userinfo_without_a_host_is_rejected(self) -> None:
         """``netloc`` is non-empty here while there is no host to probe."""
         with pytest.raises(ValueError, match="cannot derive an origin"):
@@ -103,6 +127,11 @@ class TestOriginKey:
 
     def test_a_url_with_no_host_has_no_origin(self) -> None:
         assert origin_of("https://user:pw@/guide") is None
+
+    def test_a_malformed_port_has_no_origin_either(self) -> None:
+        # Keying it as the bare host would let a stated-but-invalid port share
+        # a cache entry with the scheme default.
+        assert origin_of("https://docs.example-provider.test:65536/a") is None
 
 
 class TestDiscovery:

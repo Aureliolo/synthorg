@@ -37,18 +37,44 @@ _TOTAL_DEADLINE_MULTIPLIER: Final[int] = 6
 RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
 
-def _explicit_port(parsed: ParseResult | SplitResult) -> int | None:
-    """The URL's explicit port, or ``None``.
+def _host_and_port(parsed: ParseResult | SplitResult) -> tuple[str, int | None] | None:
+    """Split *parsed* into its host and the port it explicitly states.
+
+    One answer for both, because the two are decided together: a URL states a
+    port or it does not, and a URL stating something that is not a port has no
+    authority anything here can act on. Reporting that last case as "no port
+    stated" is the trap. It is the same shape as reading ``:0`` as absent, and
+    it fails the same way: the consumers that run BEFORE the network validator
+    derive a URL on the scheme default, which names a different endpoint from
+    the one the caller gave and, unlike that one, resolves.
 
     Returns:
-        The port, or ``None`` when the URL states none or states one that is
-        not a number. A malformed port is the target's problem to reject, not
-        a reason for the guarded fetch to raise before it is ever sent.
+        The host and the stated port, or ``None`` when the URL states no host
+        or states a port that is not one (out of range, or not a number). The
+        host is bracketed for an IPv6 literal so its own colons stay apart
+        from the port separator.
     """
+    hostname = parsed.hostname or ""
+    if not hostname:
+        return None
     try:
-        return parsed.port
+        port = parsed.port
     except ValueError:
         return None
+    return (f"[{hostname}]" if ":" in hostname else hostname), port
+
+
+def _render_authority(host: str, port: int | None) -> str:
+    """Join *host* and *port* into an authority.
+
+    ``is not None``, not truthiness: port 0 is stated, and dropping it would
+    rewrite a URL the network validator refuses (it rejects any port at or
+    below zero) into one it accepts at the scheme default.
+
+    Returns:
+        ``host`` when no port is stated, ``host:port`` otherwise.
+    """
+    return f"{host}:{port}" if port is not None else host
 
 
 def authority_of(parsed: ParseResult | SplitResult) -> str:
@@ -64,22 +90,15 @@ def authority_of(parsed: ParseResult | SplitResult) -> str:
 
     Returns:
         ``host``, ``host:port``, or ``[v6]:port`` for an IPv6 literal, which
-        needs the brackets to keep its own colons apart from the port's.
-        Empty when the URL states no host, which is a URL nothing here can
-        act on.
+        needs the brackets to keep its own colons apart from the port's. Empty
+        when there is no authority to build: the URL states no host, or states
+        a port that is not one. Both are URLs nothing here can act on, and
+        every consumer already fails closed on the empty answer.
     """
-    hostname = parsed.hostname or ""
-    if not hostname:
+    resolved = _host_and_port(parsed)
+    if resolved is None:
         return ""
-    host = f"[{hostname}]" if ":" in hostname else hostname
-    port = _explicit_port(parsed)
-    # ``is not None``, not truthiness: port 0 is stated, and dropping it here
-    # would rewrite a URL the network validator refuses (it rejects any port
-    # at or below zero) into one it accepts at the scheme default. The
-    # consumers that run BEFORE validation would then act on a different
-    # endpoint than the caller named, which is the one outcome worth avoiding
-    # even though nothing reaches them with such a port today.
-    return f"{host}:{port}" if port is not None else host
+    return _render_authority(*resolved)
 
 
 def pin_url(
@@ -97,25 +116,38 @@ def pin_url(
     Returns:
         The request URL and a copied header mapping with ``Host`` normalised;
         the caller's mapping is never mutated.
+
+    Raises:
+        ValueError: If *url* has no authority to pin to. Unreachable through a
+            validated call, since ``validate_url_host`` refuses both a hostless
+            URL and a malformed port before any caller arrives here, so this is
+            a broken invariant rather than an input case. It raises because
+            both ways of carrying on lie about where the request goes: an empty
+            ``Host`` names no site, and a dropped port names a different one.
+            The URL stays out of the message for the reason the validator gives
+            at its own hostless branch: redaction rebuilds around a parsed
+            hostname and returns its input untouched when there is none, so
+            echoing it back would copy out whatever sat in the authority.
     """
     parsed = urlparse(url)
+    resolved = _host_and_port(parsed)
+    if resolved is None:
+        msg = "cannot pin a URL with no usable authority"
+        raise ValueError(msg)
+    host, port = resolved
     normalized_headers = {k: v for k, v in headers.items() if not compare_ci(k, "host")}
-    normalized_headers["Host"] = authority_of(parsed)
+    normalized_headers["Host"] = _render_authority(host, port)
 
     if not validation.resolved_ips or validation.is_https:
         return url, normalized_headers
 
     pinned_ip = validation.resolved_ips[0]
-    port = _explicit_port(parsed)
-    port_suffix = f":{port}" if port is not None else ""
     try:
         addr = ip_address(pinned_ip)
     except ValueError:
         return url, normalized_headers
-    if isinstance(addr, IPv6Address):
-        pinned_netloc = f"[{pinned_ip}]{port_suffix}"
-    else:
-        pinned_netloc = f"{pinned_ip}{port_suffix}"
+    pinned_host = f"[{pinned_ip}]" if isinstance(addr, IPv6Address) else pinned_ip
+    pinned_netloc = _render_authority(pinned_host, port)
     return urlunparse(parsed._replace(netloc=pinned_netloc)), normalized_headers
 
 

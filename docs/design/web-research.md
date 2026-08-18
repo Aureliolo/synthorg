@@ -279,6 +279,16 @@ put it somewhere the operator never fetched it from. The same authority is the
 cache key, which also makes a credentialed and a bare read of one site share
 one entry instead of occupying two that cannot answer for each other.
 
+That authority is empty for a URL stating no host **and** for one stating a
+port that is not a port, and every consumer fails closed on the empty answer:
+the probe reports nothing rather than deriving a URL, and the pinning step
+refuses rather than sending one. The two belong together because a URL parses
+its host happily while only the port read raises, so dropping the port on that
+read is indistinguishable from "no port stated" and lands the derived URL on
+the scheme default: an endpoint nobody named, and unlike the stated one, one
+that answers. The network validator refuses such a URL, but this runs before
+it and hands it the derived URL rather than the original.
+
 It only ever *reports*: it never
 redirects the fetch that was asked for, because answering from a different URL
 than the one requested makes the transcript a record of something that did not

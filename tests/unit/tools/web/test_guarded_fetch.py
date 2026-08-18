@@ -89,6 +89,45 @@ class TestHostHeaderCarriesTheAuthority:
 
         assert headers["Host"] == "example.test:0"
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://example.test:65536/docs",
+            "http://example.test:abc/docs",
+            "http://example.test:-1/docs",
+        ],
+    )
+    def test_a_port_that_is_not_a_port_is_refused_rather_than_dropped(
+        self,
+        url: str,
+    ) -> None:
+        """Answering with the bare host would name a different endpoint.
+
+        ``urlsplit`` parses the hostname happily and only raises when the port
+        is read, so swallowing that read turns ``:65536`` into "no port
+        stated". The request would then go to the scheme default, which is not
+        where the caller pointed it, and which answers.
+        """
+        with pytest.raises(ValueError, match="no usable authority"):
+            pin_url(url, {}, _validation("example.test"))
+
+    def test_a_url_with_no_host_is_refused_too(self) -> None:
+        # The alternative is a request carrying ``Host: ""``, which names no
+        # site at all.
+        with pytest.raises(ValueError, match="no usable authority"):
+            pin_url("http://user:pw@/docs", {}, _validation("example.test"))
+
+    def test_the_refusal_does_not_echo_the_url(self) -> None:
+        """A rejected authority is exactly where credentials sit unparsed.
+
+        ``redact_url`` cannot help: it rebuilds around a parsed hostname and
+        returns its input untouched when there is none, which is this branch.
+        """
+        with pytest.raises(ValueError, match="no usable authority") as excinfo:
+            pin_url("http://user:hunter2@/docs", {}, _validation("example.test"))
+
+        assert "hunter2" not in str(excinfo.value)
+
     def test_a_portless_url_sends_a_bare_host(self) -> None:
         _, headers = pin_url(
             "http://example.test/docs",
