@@ -25,17 +25,12 @@ from litestar.types import (
 )
 
 from synthorg.api._asgi_scope import is_http_scope
-from synthorg.api.dto import ApiResponse, ErrorDetail
+from synthorg.api.exception_handlers import build_error_response
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.error_taxonomy import (
-    ErrorCategory,
-    ErrorCode,
-    category_title,
-    category_type_uri,
-)
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import normalize_path
-from synthorg.observability import current_correlation_id, get_logger
+from synthorg.observability import generate_correlation_id, get_logger
 from synthorg.observability.events.api import (
     API_CSRF_SKIPPED,
 )
@@ -123,30 +118,39 @@ class CsrfMiddleware:
         csrf_cookie = cookies.get(self._csrf_cookie_name)
         csrf_header = _get_header(scope.get("headers", []), self._csrf_header_name)
 
+        # This middleware sits OUTSIDE RequestLoggingMiddleware, and a
+        # rejection returns without ever calling the inner app, so nothing
+        # has bound a correlation id and nothing will. Mint one here and
+        # give it to both the log line and the response body, or the
+        # ``instance`` the client is handed would identify no log entry.
         if not csrf_cookie or not csrf_header:
+            correlation_id = generate_correlation_id()
             logger.warning(
                 SECURITY_CSRF_REJECTED,
                 reason="missing_csrf_token",
                 path=path,
                 has_cookie=bool(csrf_cookie),
                 has_header=bool(csrf_header),
+                request_id=correlation_id,
             )
-            await _send_403(send)
+            await _send_403(send, correlation_id)
             return
 
         if not _hmac.compare_digest(csrf_header, csrf_cookie):
+            correlation_id = generate_correlation_id()
             logger.warning(
                 SECURITY_CSRF_REJECTED,
                 reason="csrf_token_mismatch",
                 path=path,
+                request_id=correlation_id,
             )
-            await _send_403(send)
+            await _send_403(send, correlation_id)
             return
 
         await self.app(scope, receive, send)
 
 
-async def _send_403(send: Send) -> None:
+async def _send_403(send: Send, correlation_id: str) -> None:
     """Send a 403 CSRF rejection response via raw ASGI.
 
     Raw ASGI middleware cannot raise Litestar exceptions because
@@ -154,28 +158,21 @@ async def _send_403(send: Send) -> None:
     the request.  Instead, send the error response directly.
 
     The body is the same ``ApiResponse`` envelope every handled error
-    returns, built here rather than borrowed: a client that reads
-    ``error_detail`` must not get ``None`` on the one response a
-    security control produces, and ``instance`` is what ties this
-    rejection to the ``SECURITY_CSRF_REJECTED`` line already logged for
-    it.
+    returns, from the same builder, so a client reading ``error_detail``
+    does not get ``None`` on the one response a security control
+    produces. *correlation_id* is the id the caller logged the rejection
+    under, carried into ``instance`` so the two can be joined.
 
     Args:
         send: ASGI send callable.
+        correlation_id: The id this rejection was logged under.
     """
     body = (
-        ApiResponse[None](
-            error=_CSRF_REJECTION_DETAIL,
-            error_detail=ErrorDetail(
-                detail=_CSRF_REJECTION_DETAIL,
-                error_code=ErrorCode.CSRF_REJECTED,
-                error_category=ErrorCategory.AUTH,
-                retryable=False,
-                retry_after=None,
-                instance=current_correlation_id(),
-                title=category_title(ErrorCategory.AUTH),
-                type=category_type_uri(ErrorCategory.AUTH),
-            ),
+        build_error_response(
+            detail=_CSRF_REJECTION_DETAIL,
+            error_code=ErrorCode.CSRF_REJECTED,
+            error_category=ErrorCategory.AUTH,
+            instance=correlation_id,
         )
         .model_dump_json()
         .encode("utf-8")

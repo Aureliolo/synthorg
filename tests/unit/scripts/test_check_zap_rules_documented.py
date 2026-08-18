@@ -149,6 +149,39 @@ def test_duplicate_rule_id_fails(tmp_path: Path) -> None:
     assert _run(repo) == 1
 
 
+def test_duplicate_docs_row_fails(tmp_path: Path) -> None:
+    """Two table rows for one rule leave a reader two rationales."""
+    repo = _build_repo(
+        tmp_path,
+        rules="10062\tIGNORE\tPII Disclosure\n",
+        docs_rows=(
+            "| PII Disclosure | 10062 | Ignore | A UUID tail. |\n"
+            "| PII Disclosure | 10062 | Ignore | Something else entirely. |\n"
+        ),
+    )
+    assert _run(repo) == 1
+
+
+def test_unparseable_docs_table_fails_even_with_nothing_suppressed(
+    tmp_path: Path,
+) -> None:
+    """The gate must not pass by reading nothing.
+
+    Rows are matched by shape, so a renamed or reformatted table matches
+    nothing at all. The reconciliation loops cannot notice on their own:
+    the docs-side loop is vacuous over an empty table, and the
+    rules-side loop is vacuous whenever no rule is currently suppressed.
+    Both conditions are individually routine, and together they would
+    certify agreement the gate never checked.
+    """
+    repo = _build_repo(
+        tmp_path,
+        rules="40018\tFAIL\tSQL Injection\n",
+        docs_rows="",
+    )
+    assert _run(repo) == 1
+
+
 def test_documented_rule_absent_from_file_fails(tmp_path: Path) -> None:
     """A table row for a rule nothing suppresses documents a fiction."""
     repo = _build_repo(

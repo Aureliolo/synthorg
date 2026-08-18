@@ -9,7 +9,7 @@ gate nothing compared them: the table recorded 10049 as ``Warn`` while
 the file suppressed it outright, and carried no row at all for 10104.
 A reviewer reading either file alone was told something false.
 
-The gate holds three things:
+The gate holds four things:
 
 * every ``IGNORE`` row has a documented rationale, so a suppression
   cannot be added as a bare line nobody has to justify;
@@ -19,7 +19,14 @@ The gate holds three things:
 * every row is the shape the ZAP action parses, three tab-separated
   fields with an action from its vocabulary, since a malformed row is
   silently skipped at scan time and the rule it meant to pin reverts to
-  its default.
+  its default;
+* the docs table yields at least one row. Without that floor the gate
+  fails open: rows are matched by shape, a table that is renamed,
+  reformatted or deleted simply matches nothing, and the only check
+  that would then notice is the rules-side loop, which is itself empty
+  whenever no rule is currently suppressed. Two edits that are each
+  reasonable alone would leave this gate certifying agreement between a
+  file it read and a table it never found.
 
 ``FAIL`` and other non-suppressing actions need no docs row: they hide
 nothing, and the file's own header explains them.
@@ -66,20 +73,40 @@ class Finding(NamedTuple):
     message: str
 
 
-class RuleRow(NamedTuple):
-    """A parsed row of the rules file."""
+class DeclaredRule(NamedTuple):
+    """A rule as ``.github/zap-rules.tsv`` declares it.
+
+    ``action`` is validated against :data:`_VALID_ACTIONS` before this
+    is constructed, so it is always one of the ZAP vocabulary.
+    """
 
     action: str
     line_number: int
 
 
-def _parse_rules(text: str, findings: list[Finding]) -> dict[str, RuleRow]:
-    """Parse the rules file, appending a finding per malformed row.
+class DocumentedRule(NamedTuple):
+    """A rule as the ``docs/security.md`` table documents it.
+
+    Deliberately a separate type from :class:`DeclaredRule` despite the
+    identical shape: ``action`` here is whatever prose the table holds,
+    upper-cased but never checked against the vocabulary (an unknown one
+    surfaces as a mismatch against the declaration instead), and
+    ``line_number`` indexes a different file. Sharing one type invites a
+    report that cites a docs line against the rules path.
+    """
+
+    action: str
+    line_number: int
+
+
+def _parse_rules(text: str) -> tuple[dict[str, DeclaredRule], list[Finding]]:
+    """Parse the rules file.
 
     Returns:
-        Rule id to its action and source line.
+        The declared rules by id, and a finding per malformed row.
     """
-    rules: dict[str, RuleRow] = {}
+    rules: dict[str, DeclaredRule] = {}
+    findings: list[Finding] = []
     for line_number, raw in enumerate(text.splitlines(), start=1):
         line = raw.rstrip("\n")
         if not line.strip() or line.lstrip().startswith("#"):
@@ -118,20 +145,23 @@ def _parse_rules(text: str, findings: list[Finding]) -> dict[str, RuleRow]:
             )
             continue
 
-        rules[rule_id] = RuleRow(action, line_number)
-    return rules
+        rules[rule_id] = DeclaredRule(action, line_number)
+    return rules, findings
 
 
-def _parse_docs(text: str, findings: list[Finding]) -> dict[str, RuleRow]:
-    """Parse the DAST Tuning table, appending a finding per duplicate row.
+def _parse_docs(text: str) -> tuple[dict[str, DocumentedRule], list[Finding]]:
+    """Parse the DAST Tuning table.
 
     Rows are matched by shape rather than by locating the table, so a
-    heading rename cannot quietly empty the comparison.
+    heading rename cannot quietly empty the comparison. :func:`check`
+    holds the floor that makes an empty result loud.
 
     Returns:
-        Rule id to its documented action and source line.
+        The documented rules by id, and a finding per duplicate or
+        unjustified row.
     """
-    documented: dict[str, RuleRow] = {}
+    documented: dict[str, DocumentedRule] = {}
+    findings: list[Finding] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         match = _DOCS_ROW_RE.match(line.strip())
         if match is None:
@@ -159,31 +189,35 @@ def _parse_docs(text: str, findings: list[Finding]) -> dict[str, RuleRow]:
                 )
             )
 
-        documented[rule_id] = RuleRow(action, line_number)
-    return documented
+        documented[rule_id] = DocumentedRule(action, line_number)
+    return documented, findings
 
 
 def _reconcile(
-    rules: dict[str, RuleRow],
-    documented: dict[str, RuleRow],
-    findings: list[Finding],
-) -> None:
-    """Compare the two parsed views in both directions."""
-    for rule_id, row in sorted(rules.items()):
-        if row.action not in _SUPPRESSING_ACTIONS:
+    rules: dict[str, DeclaredRule],
+    documented: dict[str, DocumentedRule],
+) -> list[Finding]:
+    """Compare the two parsed views in both directions.
+
+    Returns:
+        A finding per rule the two files disagree about.
+    """
+    findings: list[Finding] = []
+    for rule_id, declared in sorted(rules.items()):
+        if declared.action not in _SUPPRESSING_ACTIONS:
             continue
         if rule_id not in documented:
             findings.append(
                 Finding(
-                    f"{_RULES_RELATIVE}:{row.line_number}",
+                    f"{_RULES_RELATIVE}:{declared.line_number}",
                     f"rule {rule_id} is suppressed but has no row in the "
                     f"DAST Tuning table in {_DOCS_RELATIVE}",
                 )
             )
 
     for rule_id, row in sorted(documented.items()):
-        declared = rules.get(rule_id)
-        if declared is None:
+        counterpart = rules.get(rule_id)
+        if counterpart is None:
             findings.append(
                 Finding(
                     f"{_DOCS_RELATIVE}:{row.line_number}",
@@ -191,27 +225,28 @@ def _reconcile(
                     f"does not declare it",
                 )
             )
-        elif declared.action != row.action:
+        elif counterpart.action != row.action:
             findings.append(
                 Finding(
                     f"{_DOCS_RELATIVE}:{row.line_number}",
                     f"rule {rule_id} is documented as {row.action} but "
-                    f"declared as {declared.action}",
+                    f"declared as {counterpart.action}",
                 )
             )
+    return findings
 
 
-def _read(path: Path, findings: list[Finding]) -> str | None:
-    """Read *path*, appending a finding when it cannot be read.
+def _read(repo_root: Path, relative: Path) -> tuple[str | None, list[Finding]]:
+    """Read one input file.
 
     Returns:
-        The file text, or ``None`` when it is missing or unreadable.
+        Its text (``None`` when missing or unreadable), and a finding
+        when it could not be read.
     """
     try:
-        return path.read_text(encoding="utf-8")
+        return (repo_root / relative).read_text(encoding="utf-8"), []
     except OSError as exc:
-        findings.append(Finding(str(path), f"cannot read: {type(exc).__name__}"))
-        return None
+        return None, [Finding(str(relative), f"cannot read: {type(exc).__name__}")]
 
 
 def check(repo_root: Path) -> list[Finding]:
@@ -220,16 +255,27 @@ def check(repo_root: Path) -> list[Finding]:
     Returns:
         Findings, empty when the two files agree.
     """
-    findings: list[Finding] = []
-    rules_text = _read(repo_root / _RULES_RELATIVE, findings)
-    docs_text = _read(repo_root / _DOCS_RELATIVE, findings)
+    rules_text, rules_read_findings = _read(repo_root, _RULES_RELATIVE)
+    docs_text, docs_read_findings = _read(repo_root, _DOCS_RELATIVE)
+    findings = [*rules_read_findings, *docs_read_findings]
     if rules_text is None or docs_text is None:
         return findings
 
-    rules = _parse_rules(rules_text, findings)
-    documented = _parse_docs(docs_text, findings)
-    _reconcile(rules, documented, findings)
-    return findings
+    rules, rule_findings = _parse_rules(rules_text)
+    documented, doc_findings = _parse_docs(docs_text)
+    findings += [*rule_findings, *doc_findings]
+
+    if not documented:
+        findings.append(
+            Finding(
+                str(_DOCS_RELATIVE),
+                "parsed no rows from the DAST Tuning table; it has been "
+                "renamed, reformatted or removed, so nothing here was "
+                "actually compared",
+            )
+        )
+
+    return findings + _reconcile(rules, documented)
 
 
 def main(argv: list[str] | None = None) -> int:

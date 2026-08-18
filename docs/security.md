@@ -285,7 +285,7 @@ All API responses include:
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 | `Cross-Origin-Resource-Policy` | `same-origin` |
 | `Cross-Origin-Opener-Policy` | `same-origin` (API); `same-origin-allow-popups` (docs) |
-| `Cache-Control` | `no-store` (API); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
+| `Cache-Control` | `no-store` (API, except the conditional-GET allowlist below); `private, max-age=0, must-revalidate` (allowlisted user-scoped reads); `public, max-age=0, must-revalidate` (allowlisted reference data); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
 | `Content-Security-Policy` | Strict default; dashboard uses CSP Level 3 directive splitting: `style-src-elem 'self' 'nonce-...'` locks `<style>` elements to the per-request nonce, `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI. `script-src 'self'` with no `'unsafe-inline'`. See [CSP Nonce Infrastructure](#csp-nonce-infrastructure). Docs UI location has its own relaxed CSP (inline syntax-highlighting requirement of the Material theme). |
 
 ### Unauthenticated Probe Disclosure
@@ -645,7 +645,7 @@ suppresses validated false positives and informational findings:
 |------|----|--------|-----------|
 | Unexpected Content-Type | 100001 | Ignore | `/docs` intentionally serves Scalar UI HTML |
 | Client Error Responses | 100000 | Ignore | ZAP sends literal path params, expected 4xx |
-| Base64 Disclosure | 10094 | Ignore | OpenAPI schema contains UUID/JWT-format refs, not secrets |
+| Base64 Disclosure | 10094 | Ignore | Every base64-decodable value this API returns is opaque by construction and goes only to the requester who already holds the data: HMAC-signed pagination cursors (a tampered one raises rather than decoding), the `csrf_token` cookie, which is a random token the double-submit pattern requires JavaScript to read, and the one-time reveal of an API key or WebSocket ticket to the caller that just minted it. Session and refresh JWTs never appear in a response body; they travel in HttpOnly cookies. |
 | Sec-Fetch-* Missing | 90005 | Ignore | CSRF is mitigated via the double-submit cookie pattern; Sec-Fetch-* headers are defence-in-depth but not required, and enforcing them would break non-browser API clients |
 | User Agent Fuzzer | 10104 | Ignore | An active-scan fuzzing technique that varies the `User-Agent` header; unrelated to server behaviour and not a finding. |
 | Application Error Disclosure | 90022 | Ignore | SynthOrg's RFC 9457 / ProblemDetail envelopes set `ErrorCategory.INTERNAL` with the title `"Internal Server Error"` (see `category_title` in `src/synthorg/core/error_taxonomy.py`), so the rule's substring match will trigger for our legitimate structured 5xx responses. Regression coverage for actual debug-page leaks lives in the exception-handler unit tests. |

@@ -18,10 +18,48 @@
 90024	FAIL	Generic Remote Code Execution
 #
 # --- Triaged false positives / informational noise ---
+#
+# 100001 fires because /docs serves the Scalar UI as HTML and a handful
+# of endpoints answer in something other than application/json by
+# design: text/event-stream for the SSE streams, the Prometheus text
+# format for metrics, text/yaml for a workflow export, and
+# application/octet-stream for an artifact download.  That last one is
+# the only one with a sniffing dimension and it is already handled:
+# the download restricts the type to an allowlist and forces
+# Content-Disposition: attachment.  No endpoint anywhere answers
+# text/html, so there is no content-sniffing XSS vector for this rule
+# to have found.
 100001	IGNORE	Unexpected Content-Type was returned
+#
+# 100000 reports 4xx as a class.  A scanner driving every endpoint from
+# the OpenAPI schema with literal path parameters and no valid state
+# gets validation, auth and not-found refusals by design; that is the
+# API working.  A 4xx that IS a defect surfaces as the specific rule
+# for it, not as this one.
 100000	IGNORE	A Client Error response code was returned by the server
+#
+# 10094 reports strings that decode as base64.  Every such value this
+# API returns is opaque by construction and goes only to the requester
+# who already holds the data: HMAC-signed pagination cursors (a
+# tampered one raises rather than decoding), the csrf_token cookie,
+# which is a random token the double-submit pattern requires
+# JavaScript to read, and the one-time reveal of an API key or a
+# WebSocket ticket to the caller that just minted it.  Session and
+# refresh JWTs never appear in a response body at all; they travel in
+# HttpOnly cookies.
 10094	IGNORE	Base64 Disclosure
+#
+# 90005 reports the absence of Sec-Fetch-* on the REQUEST.  Those are
+# headers a browser sets and a scanner does not, so this says something
+# about ZAP's own client rather than about the server.  There is no
+# server-side behaviour to correct: CSRF is defended by the
+# double-submit pattern, and requiring these headers would break every
+# non-browser API client.
 90005	IGNORE	Sec-Fetch-* Header is Missing
+#
+# 10104 is an active-scan technique, not a finding: it varies the
+# User-Agent header to see whether responses change.  Nothing in this
+# product branches on User-Agent.
 10104	IGNORE	User Agent Fuzzer
 #
 # 90022 / 10023 fire on the substring "Internal Server Error" appearing
@@ -78,8 +116,10 @@
 # must-revalidate``: a shared cache may not store them at all, and a
 # browser must revalidate before every reuse, so what the rule reports
 # is a 304 exchange rather than a stored body served without a check.
-# The rule cannot distinguish the two, and the sibling alert on the
-# same id is "Non-Storable Content", pure information.  What still
+# The rule cannot distinguish the two.  Plugin 10049 emits several
+# alert names depending on the headers it sees, so the same id also
+# arrives as "Non-Storable Content", which is pure information; one
+# IGNORE covers both.  What still
 # catches a regression here is the unit test pinning that exact
 # directive string, not this scanner rule; a weaker policy fails the
 # suite.
@@ -95,12 +135,15 @@
 # by 8 or more digits) anchors on, so whenever those 12 characters
 # happen to be all decimal digits and pass Luhn, the rule reports a
 # request id as a card number.  Measured rate: 1.1e-5 per UUID4, about
-# one id in 90,000, which is why this surfaced once across eight
-# scans.  Run 31998269194 flagged evidence 672331071866 on POST
-# /setup/complete.  The scan authenticates as the system role, which
-# require_ceo refuses, so the body it received was the static "Access
-# denied" envelope whose only variable field is that correlation id,
-# and the evidence string appears nowhere in this repository.  The
+# one id in 90,000, so a scan of this size trips it roughly once and
+# the long run of clean reports before it was not evidence of
+# anything.  The reported evidence was 672331071866, and it stands on
+# its own: 6723 satisfies the 67dd arm, eight digits follow, the Luhn
+# sum is 50, and the string appears nowhere in this repository.  It
+# was flagged on POST /setup/complete, which the scan reaches as the
+# system role; require_ceo refuses that role, so the body it received
+# was the static "Access denied" envelope whose only variable field is
+# that correlation id.  The
 # High confidence reflects only that ZAP's BIN table holds a record
 # for 672331.  The product handles no card, bank account, SSN or
 # national-id data anywhere, so this rule has nothing of its kind to

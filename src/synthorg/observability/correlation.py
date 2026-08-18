@@ -91,7 +91,7 @@ def current_correlation_id() -> str:
         reraise_critical(exc)
         logger.warning(
             API_CORRELATION_FALLBACK,
-            error_type=type(exc).__qualname__,
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
     return generate_correlation_id()

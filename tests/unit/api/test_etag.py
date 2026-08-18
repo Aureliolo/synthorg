@@ -228,6 +228,12 @@ class TestETagMiddleware:
         assert headers[b"cache-control"] == b"private, max-age=0, must-revalidate"
 
     async def test_cache_control_default_public_for_reference_data(self) -> None:
+        """Deployment-wide reference data is shareable but still revalidated.
+
+        Asserted exactly for the same reason as the private branch: the
+        heuristic-freshness gap this policy closes applies to both, and
+        a substring check would not notice ``max-age=0`` going away.
+        """
         mw = ETagMiddleware(_ok_app_factory(b"[]"))
         recorder = _Recorder()
         await mw(
@@ -236,8 +242,7 @@ class TestETagMiddleware:
             recorder,
         )
         headers = dict(recorder.messages[0]["headers"])
-        assert b"cache-control" in headers
-        assert b"public" in headers[b"cache-control"]
+        assert headers[b"cache-control"] == b"public, max-age=0, must-revalidate"
 
     async def test_non_200_response_passes_through(self) -> None:
         """4xx/5xx responses are not ETag'd."""

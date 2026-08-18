@@ -1,8 +1,7 @@
 """Tests for exception handlers with RFC 9457 structured error responses."""
 
-import re
 from collections.abc import Callable
-from typing import Annotated, Final
+from typing import Annotated
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,9 +17,9 @@ from litestar.params import PathParameter
 
 from synthorg.api.dto import ApiResponse, ProblemDetail
 from synthorg.api.exception_handlers import (
-    _build_error_response,
     _build_response,
     _category_for_status,
+    build_error_response,
     handle_http_exception,
     handle_unexpected,
 )
@@ -54,18 +53,15 @@ from synthorg.core.persistence_errors import (
     PersistenceError,
     RecordNotFoundError,
 )
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import (
+    UUID_RE,
+    JsonDict,
+    LoopAsyncClient,
+    assert_no_card_shaped_run,
+)
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
-
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-)
-
-# The shortest run a payment-card matcher will consider (a Maestro
-# number starts at 12 digits). See .github/zap-rules.tsv, rule 10062.
-_CARD_SHAPED_DIGIT_RUN_RE: Final[re.Pattern[str]] = re.compile(r"\d{12,}")
 
 
 def _assert_error_detail(
@@ -1286,7 +1282,7 @@ class TestStructuredErrorMetadata:
 
         resp = handle_unexpected(request, exc)
         instance = resp.content.error_detail.instance  # type: ignore[union-attr]
-        assert _UUID_RE.match(instance), f"Expected UUID, got {instance!r}"
+        assert UUID_RE.match(instance), f"Expected UUID, got {instance!r}"
 
     async def test_error_detail_detail_matches_error_field(self) -> None:
         """error_detail.detail must match the top-level error field."""
@@ -1339,8 +1335,8 @@ class TestStructuredErrorMetadata:
             resp = await client.get("/test")
 
         instance = resp.json()["error_detail"]["instance"]
-        assert _UUID_RE.match(instance) is not None
-        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+        assert UUID_RE.match(instance) is not None
+        assert_no_card_shaped_run(resp.text, instance=instance)
 
     def test_problem_detail_fields_carry_no_card_shaped_digit_run(self) -> None:
         """Same claim for the bare RFC 9457 body a client can negotiate."""
@@ -1356,12 +1352,9 @@ class TestStructuredErrorMetadata:
         )
 
         assert isinstance(resp.content, ProblemDetail)
-        serialized = resp.content.model_dump_json()
         instance = resp.content.instance
-        assert _UUID_RE.match(instance) is not None
-        assert (
-            _CARD_SHAPED_DIGIT_RUN_RE.search(serialized.replace(instance, "")) is None
-        )
+        assert UUID_RE.match(instance) is not None
+        assert_no_card_shaped_run(resp.content.model_dump_json(), instance=instance)
 
     async def test_retry_after_is_none_for_non_rate_limit(self) -> None:
         """retry_after should be None for non-rate-limit errors."""
@@ -1463,10 +1456,10 @@ class TestDomainErrorInstantiation:
 
 
 class TestBuildErrorResponseRetryAfter:
-    """Test _build_error_response with non-None retry_after."""
+    """Test build_error_response with non-None retry_after."""
 
     def test_retry_after_propagated(self) -> None:
-        resp = _build_error_response(
+        resp = build_error_response(
             detail="Slow down",
             error_code=ErrorCode.RATE_LIMITED,
             error_category=ErrorCategory.RATE_LIMIT,
@@ -1499,7 +1492,7 @@ class TestBuildResponseFallback:
         request.accept.best_match.return_value = "application/json"
 
         with patch(
-            "synthorg.api.exception_handlers._build_error_response",
+            "synthorg.api.exception_handlers.build_error_response",
             side_effect=RuntimeError("construction failed"),
         ):
             resp = _build_response(

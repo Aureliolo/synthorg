@@ -23,6 +23,7 @@ Only applies to GET requests on path prefixes in the allowlist:
 ``/api/v1/settings``, ``/api/v1/agents``, ``/api/v1/template-packs``,
 ``/api/v1/providers``, ``/api/v1/ontology``, ``/api/v1/departments``,
 ``/api/v1/company``, ``/api/v1/meta/analytics``,
+``/api/v1/security/audit``, ``/api/v1/tasks``, ``/api/v1/activities``,
 ``/api/v1/healthz``, ``/api/v1/readyz``. Prefix matching requires
 either an exact match or a ``/`` boundary so siblings like
 ``/api/v1/providers-extra`` do not get accidental cache treatment.

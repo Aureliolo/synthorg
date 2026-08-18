@@ -44,6 +44,11 @@ from tests._shared.model_binding import (
 from tests._shared.offsetless_tz import OFFSETLESS_TZ, OffsetlessTz
 from tests._shared.process_doubles import FakeCommandResult, FakeProcess
 from tests._shared.recall import recall_request
+from tests._shared.response_shapes import (
+    CARD_SHAPED_DIGIT_RUN_RE,
+    UUID_RE,
+    assert_no_card_shaped_run,
+)
 from tests._shared.settings_fake import FakeSettingsService
 from tests._shared.staffing import (
     role_holder,
@@ -57,10 +62,12 @@ from tests._shared.work_pipeline import (
 )
 
 __all__ = [
+    "CARD_SHAPED_DIGIT_RUN_RE",
     "FIXTURE_SOURCE",
     "OFFSETLESS_TZ",
     "TEST_MODEL_ID",
     "TEST_PROVIDER",
+    "UUID_RE",
     "AsgiDict",
     "CapturingErrorLogger",
     "FakeCapabilityBenchmarkScoreProvider",
@@ -78,6 +85,7 @@ __all__ = [
     "StubWorkPipeline",
     "as_pk",
     "as_uuid",
+    "assert_no_card_shaped_run",
     "bound_model",
     "bound_ref",
     "build_test_app",

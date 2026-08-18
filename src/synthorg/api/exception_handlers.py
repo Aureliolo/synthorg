@@ -189,19 +189,26 @@ def _wants_problem_json(request: Request[object, object, State]) -> bool:
     return match == _PROBLEM_JSON
 
 
-def _build_error_response(
+def build_error_response(
     *,
     detail: str,
     error_code: ErrorCode,
     error_category: ErrorCategory,
     retryable: bool = False,
     retry_after: int | None = None,
+    instance: str | None = None,
 ) -> ApiResponse[None]:
     """Build an ``ApiResponse`` with structured ``ErrorDetail``.
 
-    The ``instance`` field is auto-populated from the current structlog
-    request context (falling back to a newly generated correlation ID
-    if unavailable).
+    Public for the same reason :func:`build_error_detail` is: a caller
+    that cannot reach this pipeline still owes the client the identical
+    envelope. The CSRF middleware is one, running over raw ASGI before
+    Litestar has wrapped the request; duplicating the construction there
+    would put the redaction and RFC 9457 field set in two places.
+
+    ``instance`` defaults to the current request's correlation id. A
+    caller supplies it only when it already minted one to log with, so
+    the response and that log line carry the same value.
 
     Returns:
         ``ApiResponse[None]`` instance.
@@ -214,7 +221,7 @@ def _build_error_response(
             error_category=error_category,
             retryable=retryable,
             retry_after=retry_after,
-            instance=current_correlation_id(),
+            instance=instance or current_correlation_id(),
             title=category_title(error_category),
             type=category_type_uri(error_category),
         ),
@@ -300,7 +307,7 @@ def _build_response(
                 headers=headers,
             )
         return Response(
-            content=_build_error_response(
+            content=build_error_response(
                 detail=detail,
                 error_code=error_code,
                 error_category=error_category,

@@ -5,9 +5,8 @@ and the template department extraction helpers.
 """
 
 import json
-import re
 from datetime import UTC, datetime
-from typing import Any, Final, cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
@@ -25,16 +24,14 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
-from tests._shared import JsonDict, LoopAsyncClient, mock_of
+from tests._shared import (
+    JsonDict,
+    LoopAsyncClient,
+    assert_no_card_shaped_run,
+    mock_of,
+)
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
-
-# The shortest run a payment-card matcher will consider (a Maestro
-# number starts at 12 digits). See .github/zap-rules.tsv, rule 10062:
-# a DAST scan reported this endpoint's ``instance`` correlation id as a
-# card number, and the suppression rests on nothing else in these
-# bodies being able to hold such a run.
-_CARD_SHAPED_DIGIT_RUN_RE: Final[re.Pattern[str]] = re.compile(r"\d{12,}")
 
 
 @pytest.mark.unit
@@ -792,7 +789,7 @@ class TestSetupCompleteResponseShape:
         assert resp.status_code == 403
         instance = resp.json()["error_detail"]["instance"]
         UUID(instance)
-        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+        assert_no_card_shaped_run(resp.text, instance=instance)
 
     async def test_missing_company_body_carries_no_card_shaped_run(
         self,
@@ -815,7 +812,7 @@ class TestSetupCompleteResponseShape:
         assert resp.status_code == 422
         instance = resp.json()["error_detail"]["instance"]
         UUID(instance)
-        assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text.replace(instance, "")) is None
+        assert_no_card_shaped_run(resp.text, instance=instance)
 
     async def test_success_body_field_set_is_pinned(
         self,
@@ -845,7 +842,7 @@ class TestSetupCompleteResponseShape:
                 "embedder_selected",
                 "embedder_failure_reason",
             }
-            assert _CARD_SHAPED_DIGIT_RUN_RE.search(resp.text) is None
+            assert_no_card_shaped_run(resp.text)
         finally:
             app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
