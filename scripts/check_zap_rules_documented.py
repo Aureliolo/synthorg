@@ -21,12 +21,20 @@ The gate holds four things:
   silently skipped at scan time and the rule it meant to pin reverts to
   its default;
 * the docs table yields at least one row. Without that floor the gate
-  fails open: rows are matched by shape, a table that is renamed,
-  reformatted or deleted simply matches nothing, and the only check
-  that would then notice is the rules-side loop, which is itself empty
-  whenever no rule is currently suppressed. Two edits that are each
-  reasonable alone would leave this gate certifying agreement between a
-  file it read and a table it never found.
+  fails open: a table that is renamed, reformatted or deleted simply
+  matches nothing, and the only check that would then notice is the
+  rules-side loop, which is itself empty whenever no rule is currently
+  suppressed. Two edits that are each reasonable alone would leave this
+  gate certifying agreement between a file it read and a table it never
+  found.
+
+Rows are read from the ``DAST Tuning`` section alone, not from
+anywhere the row shape happens to match. The shape is four pipe-
+delimited cells whose second is all digits, which is not unique to this
+table: any future table in the same page keyed by a number would let a
+deleted suppression row keep passing, which defeats the control
+entirely, since the whole point is that a rule cannot be suppressed
+without its reasoning being written down.
 
 ``FAIL`` and other non-suppressing actions need no docs row: they hide
 nothing, and the file's own header explains them.
@@ -57,6 +65,15 @@ _TSV_FIELD_COUNT: Final[int] = 3
 _DOCS_ROW_RE: Final[re.Pattern[str]] = re.compile(
     r"^\|([^|]*)\|\s*(\d+)\s*\|([^|]*)\|(.*)\|\s*$"
 )
+
+# The one section rows are read from, and the two constructs that decide
+# where it starts and ends. Fences are tracked because a ``#`` line
+# inside a code block is not a heading, and a fenced sample that quoted
+# the section heading would otherwise open the section early and admit
+# an unrelated table's rows.
+_DOCS_SECTION_HEADING: Final[str] = "DAST Tuning"
+_HEADING_RE: Final[re.Pattern[str]] = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^(?:```|~~~)")
 
 _REMEDIATION: Final[str] = (
     "Every IGNORE row in .github/zap-rules.tsv needs a row in the DAST "
@@ -152,9 +169,10 @@ def _parse_rules(text: str) -> tuple[dict[str, DeclaredRule], list[Finding]]:
 def _parse_docs(text: str) -> tuple[dict[str, DocumentedRule], list[Finding]]:
     """Parse the DAST Tuning table.
 
-    Rows are matched by shape rather than by locating the table, so a
-    heading rename cannot quietly empty the comparison. :func:`check`
-    holds the floor that makes an empty result loud.
+    The section ends at the next heading of its own level or higher, so
+    a subsection of it still counts. Scoping this way means a renamed
+    heading yields nothing rather than the wrong thing, which is why
+    :func:`check` holds a floor that makes an empty result loud.
 
     Returns:
         The documented rules by id, and a finding per duplicate or
@@ -162,8 +180,30 @@ def _parse_docs(text: str) -> tuple[dict[str, DocumentedRule], list[Finding]]:
     """
     documented: dict[str, DocumentedRule] = {}
     findings: list[Finding] = []
+    in_fence = False
+    section_level: int | None = None
     for line_number, line in enumerate(text.splitlines(), start=1):
-        match = _DOCS_ROW_RE.match(line.strip())
+        stripped = line.strip()
+
+        if _FENCE_RE.match(stripped):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        heading = _HEADING_RE.match(stripped)
+        if heading is not None:
+            level = len(heading.group(1))
+            if heading.group(2) == _DOCS_SECTION_HEADING:
+                section_level = level
+            elif section_level is not None and level <= section_level:
+                section_level = None
+            continue
+
+        if section_level is None:
+            continue
+
+        match = _DOCS_ROW_RE.match(stripped)
         if match is None:
             continue
 
@@ -239,13 +279,19 @@ def _reconcile(
 def _read(repo_root: Path, relative: Path) -> tuple[str | None, list[Finding]]:
     """Read one input file.
 
+    ``UnicodeError`` is caught beside ``OSError`` because a file that
+    exists but does not decode is unreadable for this gate's purpose,
+    and it is not an ``OSError``: letting it escape would end the run in
+    a traceback rather than the exit-1-with-a-finding this gate promises,
+    which reads as a crashed gate rather than a failed one.
+
     Returns:
         Its text (``None`` when missing or unreadable), and a finding
         when it could not be read.
     """
     try:
         return (repo_root / relative).read_text(encoding="utf-8"), []
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         return None, [Finding(str(relative), f"cannot read: {type(exc).__name__}")]
 
 
