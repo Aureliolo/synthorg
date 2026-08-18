@@ -38,6 +38,7 @@ function blockedTask(reason: Task['blocked_reason'], id: string): Task {
     priority: 'medium',
     project: 'p',
     created_by: 'c',
+    created_at: '2026-08-17T10:00:00Z',
     status: 'blocked',
     blocked_reason: reason,
     assigned_to: null,

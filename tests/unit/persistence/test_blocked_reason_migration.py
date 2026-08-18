@@ -1,12 +1,18 @@
 """The `tasks` rebuild, run over data rather than an empty database.
 
 SQLite cannot alter a CHECK, so widening `tasks.blocked_reason` means
-rebuilding the table: create, copy, drop, rename. The copy names all 31
-columns twice, once in the INSERT list and once in the SELECT, both by hand.
+rebuilding the table: create, copy, drop, rename. The copy names every carried
+column twice, once in the INSERT list and once in the SELECT, both by hand.
 The schema-drift gate builds from empty and compares two schemas, so it proves
 the shape and can say nothing about the rows: a pair of columns transposed
 between the two lists produces an identical schema and silently writes each
 task's description into its title.
+
+`_REVISION` names the newest `tasks` rebuild, which is the one whose column
+lists were written by hand most recently and so the one carrying the risk.
+Every earlier rebuild is applied underneath it by the fixture, so a revision
+that stops being the newest keeps its shape covered by the drift gate and
+hands the data-level check to its successor.
 
 These tests seed a task carrying a distinct value in every column that could
 be confused with a neighbour, apply the revision, and assert every value came
@@ -25,7 +31,7 @@ from synthorg.persistence import migrations
 
 pytestmark = pytest.mark.unit
 
-_REVISION = "20260818000000_blocked_reason_no_capable_agent.sql"
+_REVISION = "20260818120000_tasks_created_at_and_blocked_reasons.sql"
 
 _STAMP = "2026-08-01T09:00:00+00:00"
 

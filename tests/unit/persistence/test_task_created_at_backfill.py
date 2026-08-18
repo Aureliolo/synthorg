@@ -26,7 +26,7 @@ from synthorg.persistence import migrations
 
 pytestmark = pytest.mark.unit
 
-_REVISION = "20260817140000_tasks_created_at_and_blocked_reasons.sql"
+_REVISION = "20260818120000_tasks_created_at_and_blocked_reasons.sql"
 
 _INSERT_TASK = (
     "INSERT INTO tasks (id, title, description, type, project, created_by) "
