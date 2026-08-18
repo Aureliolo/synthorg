@@ -13,6 +13,10 @@ from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_REPO_FAILED
 from synthorg.persistence._shared import coerce_row_timestamp
+from synthorg.persistence._shared.computed_fields import (
+    dump_stored_json,
+    load_stored_json,
+)
 
 logger = get_logger(__name__)
 
@@ -24,7 +28,7 @@ def item_save_params(item: ApprovalItem) -> tuple[object, ...]:
         The 17-column parameter tuple for ``APPROVALS_UPSERT_SQL``.
     """
     evidence_json = (
-        Jsonb(item.evidence_package.model_dump(mode="json"))
+        Jsonb(dump_stored_json(item.evidence_package))
         if item.evidence_package is not None
         else None
     )
@@ -71,7 +75,7 @@ def row_to_item(row: DictRow) -> ApprovalItem:
         raw_metadata = row["metadata"]
         metadata_raw = {} if raw_metadata is None else raw_metadata
         evidence_package = (
-            EvidencePackage.model_validate(row["evidence_package"])
+            load_stored_json(EvidencePackage, row["evidence_package"])
             if row["evidence_package"] is not None
             else None
         )

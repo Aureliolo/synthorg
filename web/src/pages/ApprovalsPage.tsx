@@ -281,7 +281,12 @@ export default function ApprovalsPage() {
         onToggle={ctrl.handleRiskToggle}
       />
 
-      {ctrl.emptyStateProps && <EmptyState {...ctrl.emptyStateProps} />}
+      {/* Not while the load failed: "no approvals" is a claim about the org,
+          and a read that never returned cannot make it. Saying it under the
+          error banner reads as the reassuring half of a contradiction. */}
+      {ctrl.emptyStateProps && data.error === null && (
+        <EmptyState {...ctrl.emptyStateProps} />
+      )}
 
       <ApprovalGroups ctrl={ctrl} />
       <ApprovalDrawerHost ctrl={ctrl} />
