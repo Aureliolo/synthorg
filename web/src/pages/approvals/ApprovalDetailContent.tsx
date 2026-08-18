@@ -28,6 +28,7 @@ import {
   formatUrgency,
   isFailedApproval,
 } from '@/utils/approvals'
+import { ApprovalMetadataSection } from './ApprovalMetadataSection'
 import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatDateTime, formatFileSize } from '@/utils/format'
 import { planDetailPath } from '@/utils/plans'
@@ -358,15 +359,6 @@ function ProposedToolSection({ approval }: { approval: ApprovalResponse }) {
   )
 }
 
-function metadataValue(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'object' && value !== null) return JSON.stringify(value)
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value)
-  }
-  return ''
-}
-
 function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
   return (
     <>
@@ -391,21 +383,7 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
           </Link>
         </div>
       )}
-      {Object.keys(approval.metadata).length > 0 && (
-        <div>
-          <span className="text-compact font-semibold uppercase tracking-wider text-muted-foreground">
-            Metadata
-          </span>
-          <dl className="mt-1 space-y-1">
-            {Object.entries(approval.metadata).map(([key, value]) => (
-              <div key={key} className="flex items-center gap-2 text-xs">
-                <dt className="font-mono text-muted-foreground">{key}:</dt>
-                <dd className="text-text-secondary">{metadataValue(value)}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
+      <ApprovalMetadataSection approval={approval} />
     </>
   )
 }

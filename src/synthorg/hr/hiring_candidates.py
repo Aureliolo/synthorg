@@ -97,12 +97,63 @@ def select_candidate(request: HiringRequest) -> CandidateCard:
     return candidate
 
 
+def hire_decision_brief(
+    request: HiringRequest,
+    candidate: CandidateCard,
+    *,
+    bound_model: ModelConfig | None,
+) -> str:
+    """Say what approving this hire actually commits the organisation to.
+
+    An operator asked to approve one of these could previously read a job
+    title, a sentence saying the role was unstaffed, and two raw UUIDs. Every
+    fact the decision turns on was held somewhere else: which team the agent
+    joins, what it claims to be able to do, what it is expected to cost, and
+    above all what model it would run on, which is not decided here at all but
+    read from ``hr.new_hire_model`` when the approval is instantiated.
+
+    That last one is why this is not cosmetic. With the setting unset the hire
+    is REFUSED after approval, so the operator is asked for a decision the
+    system cannot carry out and nothing on the card says so.
+
+    Args:
+        request: The hiring request.
+        candidate: The candidate being proposed.
+        bound_model: The pair a new hire would be bound to, or ``None`` when
+            ``hr.new_hire_model`` is unset.
+
+    Returns:
+        The description an operator decides on.
+    """
+    lines = [
+        request.reason,
+        "",
+        f"Team: {candidate.department}",
+    ]
+    if candidate.skills:
+        lines.append(f"Claims: {', '.join(skill.name for skill in candidate.skills)}")
+    lines.append(f"Estimated cost: {candidate.estimated_monthly_cost:g} per month")
+    if bound_model is None:
+        lines.append(
+            "Model: NOT BOUND. hr.new_hire_model is unset, so approving this "
+            "refuses the hire rather than registering an agent that would "
+            "fail every dispatch. Bind it first."
+        )
+    else:
+        lines.append(
+            f"Model: {bound_model.model_id} via {bound_model.provider} "
+            "(from hr.new_hire_model, read again when the hire is made)"
+        )
+    return "\n".join(lines)
+
+
 def build_hire_approval_item(
     request: HiringRequest,
     candidate: CandidateCard,
     *,
     candidate_id: str,
     approval_id: str,
+    bound_model: ModelConfig | None = None,
 ) -> ApprovalItem:
     """Build the approval item a human decides a hire on.
 
@@ -112,6 +163,9 @@ def build_hire_approval_item(
         candidate_id: ID of the candidate, carried in the metadata so the
             decision handler can find its way back to the request.
         approval_id: Pre-minted item ID, stamped onto the request too.
+        bound_model: The pair a new hire would run on, or ``None`` when
+            ``hr.new_hire_model`` is unset. Shown either way, because
+            approving with nothing bound is refused.
 
     Returns:
         The approval item to store.
@@ -120,7 +174,9 @@ def build_hire_approval_item(
         id=UUID(approval_id),
         action_type=NotBlankStr(ActionType.ORG_HIRE),
         title=NotBlankStr(f"Hire {candidate.name} as {candidate.role}"),
-        description=NotBlankStr(request.reason),
+        description=NotBlankStr(
+            hire_decision_brief(request, candidate, bound_model=bound_model)
+        ),
         requested_by=request.requested_by,
         # Classified rather than indexed: the map is the taxonomy, but the
         # classifier is what applies an operator's overrides on top of it and

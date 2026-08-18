@@ -20,6 +20,7 @@ from synthorg.engine.coordination._wave_outcome import (
 from synthorg.engine.coordination._wave_parking import (
     abandon_after,
     abandon_stranded,
+    abandon_unreachable,
     gate_wave,
 )
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
@@ -170,6 +171,14 @@ async def execute_waves(
         phases=phases,
         total_groups=len(groups),
         resources=resources,
+    )
+
+    # Before the first wave, because a row no wave carries is unreachable
+    # whatever this run goes on to do, and because the plan's own subtask ids
+    # are exactly the keys of the dependency map: derived from what was built
+    # rather than reported by the builder, so no second list can disagree.
+    await abandon_unreachable(
+        groups, subtask_ids=dependencies.keys(), writer=assignment_writer
     )
 
     for wave_idx, group in enumerate(groups):

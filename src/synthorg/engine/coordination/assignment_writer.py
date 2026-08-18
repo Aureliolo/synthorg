@@ -21,7 +21,7 @@ refused and this writer fails its wave rather than quietly rewriting
 
 import asyncio
 import contextlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
@@ -32,6 +32,7 @@ from synthorg.engine.coordination._dependency_gate import (
     awaits_dispatch,
     block_reason,
     unmet_dependencies,
+    unreachable_reason,
     unstarted_reason,
 )
 from synthorg.engine.errors import CoordinationError
@@ -253,13 +254,23 @@ class AssignmentWriter:
         parked = 0
         for group in groups[stopped_at + 1 :]:
             depends_on_stopped = group.dag_level > stopped_level
+            reason = (
+                abandon_reason(stopped_at)
+                if depends_on_stopped
+                else unstarted_reason(stopped_at)
+            )
+            blocked_reason = (
+                BlockedReason.DEPENDENCY_FAILED
+                if depends_on_stopped
+                else BlockedReason.RUN_STOPPED
+            )
             for assignment in group.assignments:
                 parked += int(
                     await self._park_if_awaiting_dispatch(
                         engine,
-                        assignment,
-                        stopped_at=stopped_at,
-                        depends_on_stopped=depends_on_stopped,
+                        str(assignment.task.id),
+                        reason=reason,
+                        blocked_reason=blocked_reason,
                     )
                 )
         return parked
@@ -295,9 +306,43 @@ class AssignmentWriter:
             parked += int(
                 await self._park_if_awaiting_dispatch(
                     engine,
-                    assignment,
-                    stopped_at=stopped_at,
-                    depends_on_stopped=False,
+                    str(assignment.task.id),
+                    reason=unstarted_reason(stopped_at),
+                    blocked_reason=BlockedReason.RUN_STOPPED,
+                )
+            )
+        return parked
+
+    async def abandon_unreachable(self, subtask_ids: Iterable[str]) -> int:
+        """Park every subtask no wave was built for.
+
+        The gate's fourth face, and the one that is invisible from inside the
+        loop: the other three cover waves that exist. A subtask whose
+        prerequisite could not be placed with any agent is dropped by the wave
+        BUILDER, along with everything transitively standing on it, and the
+        drop is a local decision that produces no wave, so no gate sees it and
+        no park follows. Those rows sit at CREATED for ever: no dispatcher
+        runs them, no rollup concludes on them, and the plan stays executing
+        with a recovery sweep re-driving it every cadence and changing
+        nothing.
+
+        Args:
+            subtask_ids: The ids no built wave contains.
+
+        Returns:
+            How many subtasks were parked.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return 0
+        parked = 0
+        for task_id in subtask_ids:
+            parked += int(
+                await self._park_if_awaiting_dispatch(
+                    engine,
+                    task_id,
+                    reason=unreachable_reason(),
+                    blocked_reason=BlockedReason.DEPENDENCY_FAILED,
                 )
             )
         return parked
@@ -305,10 +350,10 @@ class AssignmentWriter:
     async def _park_if_awaiting_dispatch(
         self,
         engine: TaskEngine,
-        assignment: AgentAssignment,
+        task_id: str,
         *,
-        stopped_at: int,
-        depends_on_stopped: bool,
+        reason: str,
+        blocked_reason: BlockedReason,
     ) -> bool:
         """Park one row when it is still waiting to be dispatched.
 
@@ -323,7 +368,7 @@ class AssignmentWriter:
             Whether the row was parked.
         """
         try:
-            live = await engine.get_task(str(assignment.task.id))
+            live = await engine.get_task(task_id)
             # Only a row still waiting to be dispatched: anything that ran
             # owns its own outcome, and a row already parked by the gate
             # keeps the reason that names its actual dependency.
@@ -335,7 +380,7 @@ class AssignmentWriter:
             reraise_critical(exc)
             logger.warning(
                 COORDINATION_WAVE_DEPENDENCY_UNMET,
-                subtask_id=str(assignment.task.id),
+                subtask_id=task_id,
                 note="could not read a subtask while abandoning; left unparked",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -345,45 +390,32 @@ class AssignmentWriter:
         # mutation leaves the row exactly where it was, and counting it as
         # parked reports a tail that was cleaned up when rows are still
         # sitting at CREATED with nothing watching them.
-        return await self._park_abandoned(
+        return await self._park_row(
             engine,
-            assignment,
-            stopped_at=stopped_at,
-            depends_on_stopped=depends_on_stopped,
+            task_id,
+            reason=reason,
+            blocked_reason=blocked_reason,
         )
 
-    async def _park_abandoned(
+    async def _park_row(
         self,
         engine: TaskEngine,
-        assignment: AgentAssignment,
+        task_id: str,
         *,
-        stopped_at: int,
-        depends_on_stopped: bool,
+        reason: str,
+        blocked_reason: BlockedReason,
     ) -> bool:
-        """Park one subtask of a wave that was never reached.
+        """Move one row to BLOCKED, reporting whether the write landed.
 
         Args:
             engine: The engine that owns task status.
-            assignment: The subtask that will not be dispatched.
-            stopped_at: The wave the run stopped at, for the reason.
-            depends_on_stopped: Whether this subtask sits at a level BELOW the
-                one that stopped, and so may have lost a declared input. False
-                for a sibling of the stopped wave, which is merely unstarted.
+            task_id: The subtask that will not be dispatched.
+            reason: What the row says about why it is not running.
+            blocked_reason: The condition a replan and the sweeps read.
 
         Returns:
             Whether the park actually persisted.
         """
-        task_id = str(assignment.task.id)
-        reason = (
-            abandon_reason(stopped_at)
-            if depends_on_stopped
-            else unstarted_reason(stopped_at)
-        )
-        blocked_reason = (
-            BlockedReason.DEPENDENCY_FAILED
-            if depends_on_stopped
-            else BlockedReason.RUN_STOPPED
-        )
         try:
             result = await engine.submit(
                 TransitionTaskMutation(

@@ -168,6 +168,24 @@ def unstarted_reason(wave_idx: int) -> str:
     )
 
 
+def unreachable_reason() -> str:
+    """Phrase the park for work no wave was ever built for.
+
+    Distinct from every other park because nothing about this subtask failed
+    and no run stopped short of it: the wave builder could not place a
+    prerequisite with any agent, so it dropped that prerequisite and then
+    everything standing on it. Naming a wave index would be a fiction, since
+    there is no wave to name.
+
+    Returns:
+        The reason string recorded on each subtask no wave can reach.
+    """
+    return (
+        "Not dispatched: no wave could be built for this work, because the "
+        "work it depends on could not be placed with any agent"
+    )
+
+
 __all__ = [
     "AWAITS_DISPATCH_STATUSES",
     "NON_DELIVERING_STATUSES",
@@ -176,5 +194,6 @@ __all__ = [
     "block_reason",
     "dependency_map",
     "unmet_dependencies",
+    "unreachable_reason",
     "unstarted_reason",
 ]

@@ -282,6 +282,38 @@ export function isNarrowedStatus(
   return status != null && status !== DEFAULT_APPROVAL_STATUS
 }
 
+/**
+ * Reference-shaped metadata keys, by the shape of the name rather than a list.
+ * A key added by the backend next year is hidden until somebody writes down
+ * why it is a word a person reads, which is the opposite default from an
+ * allowlist. Mirrors the suffix rule `check_no_raw_id_in_ui.py` applies.
+ */
+const ID_SUFFIXES = ['_id', 'Id'] as const
+
+/** References that ARE the word a person reads, so they stay visible. */
+const ID_EXEMPT_SUFFIXES = ['model_id', 'modelId', 'correlation_id', 'correlationId'] as const
+
+function isReferenceKey(key: string): boolean {
+  if (ID_EXEMPT_SUFFIXES.some((suffix) => key.endsWith(suffix))) return false
+  return ID_SUFFIXES.some((suffix) => key.endsWith(suffix))
+}
+
+/**
+ * The approval metadata an operator surface may print.
+ *
+ * The map is backend-controlled and open-ended, so rendering it whole prints
+ * whatever keys the producing feature happened to stamp: a hire approval
+ * carries `request_id` and `candidate_id`, and both reached the drawer as raw
+ * UUIDs under a "Metadata" heading. The ids still travel with the approval and
+ * still drive the deep links; they are just not the thing a person is asked to
+ * read.
+ */
+export function visibleMetadataEntries(
+  metadata: Readonly<Record<string, unknown>>,
+): [string, unknown][] {
+  return Object.entries(metadata).filter(([key]) => !isReferenceKey(key))
+}
+
 export function filterApprovals(
   approvals: readonly ApprovalResponse[],
   filters: ApprovalPageFilters,

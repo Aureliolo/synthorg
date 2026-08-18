@@ -11,8 +11,9 @@ from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.concurrency import RefcountedLockMap
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
@@ -444,6 +445,22 @@ class HiringService:
         )
         return updated
 
+    async def _new_hire_model_or_none(self) -> ModelConfig | None:
+        """Read the pair a hire would run on, for the approval to show.
+
+        Unset is an answer here rather than a refusal: the refusal belongs at
+        instantiation, and an approval that cannot say "nothing is bound" is
+        exactly the card an operator cannot decide.
+
+        Returns:
+            The bound pair, or ``None`` when ``hr.new_hire_model`` is unset
+            or could not be read.
+        """
+        try:
+            return await resolve_new_hire_model(self._config_resolver)
+        except DomainError:
+            return None
+
     async def _submit_approval_item(
         self,
         request: HiringRequest,
@@ -468,6 +485,7 @@ class HiringService:
                 candidate,
                 candidate_id=candidate_id,
                 approval_id=approval_id,
+                bound_model=await self._new_hire_model_or_none(),
             )
         )
         return request.model_copy(

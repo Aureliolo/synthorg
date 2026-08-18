@@ -2,19 +2,20 @@
 
 The plan's DAG decides WHEN a subtask runs; this module owns the separate
 question of whether it SHOULD, given that the work it declared as input may
-have died. It owns all three faces of that question together, because a
+have died. It owns all four faces of that question together, because a
 subtask left at CREATED has no exit and keeps its plan unfinished, so every
 route out of a dispatch has to reach one of them: the wave being dispatched
 (:func:`gate_wave`), the waves a stop never reached (:func:`abandon_after`),
-and the wave that raised before dispatching its own rows
-(:func:`abandon_stranded`). Cover two and the third leaks rows.
+the wave that raised before dispatching its own rows
+(:func:`abandon_stranded`), and the work no wave was ever built for
+(:func:`abandon_unreachable`). Cover three and the fourth leaks rows.
 
 Kept apart from the loop that calls them so the loop reads as a statement
 about dispatch order, and so the rule has one home rather than being spelled
 out again wherever a wave is run.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from synthorg.core.clock import Clock
@@ -179,4 +180,55 @@ async def abandon_stranded(
         )
 
 
-__all__ = ["GatedWave", "abandon_after", "abandon_stranded", "gate_wave"]
+async def abandon_unreachable(
+    groups: tuple[ParallelExecutionGroup, ...],
+    *,
+    subtask_ids: Iterable[str],
+    writer: AssignmentWriter,
+) -> None:
+    """Park every subtask of the plan that no wave was built for.
+
+    The fourth face, and the only one the loop cannot see for itself: the
+    other three reason about waves that exist. The wave BUILDER drops a
+    subtask it cannot place with an agent, and then drops everything
+    transitively standing on it, into a set local to the build. No group
+    carries those rows, so no gate narrows them, no stop abandons them and no
+    raise strands them. They stay at CREATED: nothing dispatches them, the
+    rollup reads no CREATED row, and the plan stays executing while a recovery
+    sweep re-drives it every cadence and changes nothing.
+
+    Derived rather than reported, so the builder keeps its signature and no
+    second list can disagree with what was actually built: the ids the plan
+    declares, minus the ids the groups carry.
+
+    Args:
+        groups: Every wave the builder produced.
+        subtask_ids: Every subtask id the plan declares.
+        writer: Applies the park.
+    """
+    scheduled = {
+        str(assignment.task.id) for group in groups for assignment in group.assignments
+    }
+    unreachable = [task_id for task_id in subtask_ids if task_id not in scheduled]
+    if not unreachable:
+        return
+    parked = await writer.abandon_unreachable(unreachable)
+    if parked:
+        # No wave index and no remaining count: there is no wave to name.
+        logger.info(
+            COORDINATION_WAVES_ABANDONED,
+            parked_subtasks=parked,
+            note=(
+                "no wave was built for these subtasks; their prerequisites "
+                "could not be placed with any agent"
+            ),
+        )
+
+
+__all__ = [
+    "GatedWave",
+    "abandon_after",
+    "abandon_stranded",
+    "abandon_unreachable",
+    "gate_wave",
+]

@@ -788,6 +788,26 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    not one level of the DAG, so the groups after a stop include siblings of
    it whose inputs are untouched. Those park under `run_stopped`; only work
    genuinely below the stop is a `dependency_failed`.
+
+   The fourth shape is the one no wave can see. `build_execution_waves` DROPS
+   a subtask routing could not place with any agent, and then everything
+   transitively standing on it, into a set local to the build: those rows
+   appear in no group, so none of the three shapes above ever meets them.
+   `abandon_unreachable` parks them under `dependency_failed`, deriving the
+   set as the plan's own subtask ids minus the ids the built groups carry, so
+   nothing new is reported out of the builder and no second list can disagree
+   with what was actually built. Without it a live run left two rows at
+   `created` while the recovery reconciler re-drove the plan every cadence and
+   changed nothing, for ever: the plan could not conclude, and its project
+   could not be deleted.
+
+   Parking is level-triggered, not edge-triggered, and that matters because
+   routing re-runs over every subtask on every pass. A row that already
+   carries an outcome is left alone by all four shapes: the state machine has
+   no `blocked -> blocked` hop, so re-asserting a park is refused, and the row
+   already carries a reason naming its actual dependency, which is more
+   specific than any of these. A refused park is reported, because the engine
+   answers a refusal with an unsuccessful result rather than an exception.
 6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
 7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 
