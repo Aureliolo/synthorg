@@ -89,6 +89,9 @@ def _task_params(task: Task) -> dict[str, object]:
         if task.middleware_override is not None
         else None,
         "metadata": Jsonb(dumped["metadata"]),
+        # TIMESTAMPTZ takes the aware datetime directly; the JSON dump would
+        # hand psycopg a string for a timestamp column.
+        "created_at": task.created_at,
     }
 
 
@@ -113,7 +116,7 @@ class PostgresTaskRepository:
                         artifacts_expected, acceptance_criteria, delegation_chain,
                         hard_ceiling, hard_token_ceiling, blocked_reason,
                         forecast_id, source,
-                        middleware_override, metadata
+                        middleware_override, metadata, created_at
                     ) VALUES (
                         %(id)s, %(title)s, %(description)s, %(type)s, %(priority)s,
                         %(project)s, %(plan_id)s, %(plan_item_id)s,
@@ -127,7 +130,7 @@ class PostgresTaskRepository:
                         %(hard_ceiling)s, %(hard_token_ceiling)s,
                         %(blocked_reason)s,
                         %(forecast_id)s, %(source)s,
-                        %(middleware_override)s, %(metadata)s
+                        %(middleware_override)s, %(metadata)s, %(created_at)s
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title=EXCLUDED.title,
@@ -160,6 +163,11 @@ class PostgresTaskRepository:
                         source=EXCLUDED.source,
                         middleware_override=EXCLUDED.middleware_override,
                         metadata=EXCLUDED.metadata
+                        -- created_at is deliberately absent: an upsert over an
+                        -- existing row must not re-date when that task was
+                        -- filed, and every later write carries a freshly-
+                        -- defaulted value whenever the caller built the Task
+                        -- rather than loading it.
                     """
 
     async def save(self, task: Task) -> None:
@@ -215,7 +223,7 @@ class PostgresTaskRepository:
         "max_retries, parent_task_id, task_structure, coordination_topology, "
         "reviewers, dependencies, artifacts_expected, acceptance_criteria, "
         "delegation_chain, hard_ceiling, hard_token_ceiling, blocked_reason, "
-        "forecast_id, source, middleware_override, metadata"
+        "forecast_id, source, middleware_override, metadata, created_at"
     )
 
     def _row_to_task(self, row: DictRow) -> Task:

@@ -308,10 +308,14 @@ class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
             )
             # Carry the faithful finish reason on the terminal event so a
             # consumer reassembling the stream recovers it, matching the
-            # real driver.
+            # real driver. The dropped-call flag rides the same event for
+            # the same reason, and it has to survive the round trip or a
+            # scripted turn cannot reproduce the shape at all: no chunk is
+            # emitted for a call that never assembled.
             yield StreamChunk(
                 event_type=StreamEventType.DONE,
                 finish_reason=response.finish_reason,
+                dropped_tool_calls=response.dropped_tool_calls,
             )
 
         return _chunks()

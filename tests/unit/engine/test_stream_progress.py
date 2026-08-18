@@ -7,12 +7,14 @@ import pytest
 
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
+from synthorg.core.agent import AgentIdentity
 from synthorg.engine._stream_progress import (
     make_turn_observer,
     publish_run_started,
     publish_run_terminated,
 )
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import TerminationReason, TurnProgress
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -72,10 +74,18 @@ async def test_run_terminated_is_noop_for_non_terminal_reasons(
     publish.assert_not_awaited()
 
 
-async def test_turn_observer_projects_tool_call_with_turn_and_tools() -> None:
+async def test_turn_observer_projects_tool_call_with_turn_and_tools(
+    sample_agent_with_personality: AgentIdentity,
+) -> None:
     publish = AsyncMock()
     observer = make_turn_observer(_hub(publish), task_id="task-1", agent_id="agent-x")
-    await observer(3, ("search", "read_file"))
+    await observer(
+        TurnProgress(
+            3,
+            ("search", "read_file"),
+            AgentContext.from_identity(sample_agent_with_personality),
+        )
+    )
     assert publish.await_args is not None
     kwargs = publish.await_args.kwargs
     assert kwargs["event_type"] is AgUiEventType.TOOL_CALL_START

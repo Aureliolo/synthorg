@@ -109,18 +109,21 @@ class TestCodeRunnerLanguageMapping:
     """Each language maps to the correct command."""
 
     @pytest.mark.parametrize(
-        ("language", "expected_cmd", "expected_flag"),
+        ("language", "expected_cmd", "expected_args"),
         [
-            ("python", "python3", "-c"),
-            ("javascript", "node", "-e"),
-            ("bash", "bash", "-c"),
+            ("python", "python3", ("-c", "print('hi')")),
+            ("javascript", "node", ("-e", "print('hi')")),
+            # A bash snippet is a command line, so it goes through the same
+            # ``pipefail`` invocation the shell tool uses: the classifier
+            # reads its exit status as test evidence either way.
+            ("bash", "bash", ("-o", "pipefail", "-c", "print('hi')")),
         ],
     )
     async def test_language_command_mapping(
         self,
         language: str,
         expected_cmd: str,
-        expected_flag: str,
+        expected_args: tuple[str, ...],
     ) -> None:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
@@ -132,7 +135,7 @@ class TestCodeRunnerLanguageMapping:
         sandbox.execute.assert_awaited_once()
         call_kwargs = sandbox.execute.call_args.kwargs
         assert call_kwargs["command"] == expected_cmd
-        assert call_kwargs["args"] == (expected_flag, "print('hi')")
+        assert call_kwargs["args"] == expected_args
 
 
 # ── Success execution ───────────────────────────────────────────

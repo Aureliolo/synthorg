@@ -27,6 +27,23 @@ from typing import Final
 DEPLOYMENT_LABEL: Final[str] = "synthorg.deployment"
 """Docker label carrying :func:`deployment_id_for` on every sandbox."""
 
+MANAGED_LABEL: Final[str] = "synthorg.managed"
+"""Docker label set on every container SynthOrg creates.
+
+The reconciliation pass filters by this label, so it identifies an orphan
+(label present, no DB row) without misreading an unrelated container on a
+shared daemon. It lives here beside the deployment label because the two are
+one contract: what we created, and which installation created it. Every path
+that creates a container sets both, or its containers cannot be reclaimed.
+"""
+
+MANAGED_LABEL_VALUE: Final[str] = "true"
+"""Value carried in the ``synthorg.managed`` label.
+
+A literal string because Docker labels are strings; the Python bool is
+convenient at the call site but does not round-trip.
+"""
+
 _DIGEST_CHARS: Final[int] = 16
 """Prefix length of the hex digest used as the label value.
 

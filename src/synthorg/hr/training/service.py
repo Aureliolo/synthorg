@@ -2,7 +2,6 @@
 """Training service orchestrator."""
 
 import asyncio
-import copy
 from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -103,10 +102,17 @@ class TrainingService:
         config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._selector = selector
-        # Deep copy + freeze so external mutation of the caller-owned
-        # mapping cannot alter pipeline behavior mid-flight.
+        # Copy the MAPPING and freeze the copy, so external mutation of the
+        # caller-owned one cannot alter pipeline behaviour mid-flight. The
+        # values are deliberately shared rather than copied: an extractor is a
+        # live collaborator built from the memory backend and the
+        # tool-invocation tracker, so cloning one yields a second memory
+        # backend rather than a safer first. A deep copy cannot even be taken:
+        # those collaborators hold running asyncio tasks, which are
+        # unpicklable, so it raises and takes the whole training wiring with
+        # it.
         self._extractors: Mapping[ContentType, ContentExtractor] = MappingProxyType(
-            copy.deepcopy(dict(extractors)),
+            dict(extractors),
         )
         self._curation = curation
         self._guards = guards

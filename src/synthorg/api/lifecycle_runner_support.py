@@ -288,7 +288,7 @@ def _wire_task_activity_observer(
         # Re-source the run outcome for the live feed the same way the approvals
         # queue does, so a code task whose tests failed / never ran shows FAILED
         # on both surfaces rather than only in the queue.
-        evaluation = await _build_test_oracle.evaluate(
+        evaluation = await _build_test_oracle.verdict_for(
             task, records=persistence.code_execution_records
         )
         return evaluation.blocks_completion

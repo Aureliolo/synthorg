@@ -176,7 +176,6 @@ class TestOrgMemoryWiringOrder:
             bridge=None,
             settings_dispatcher=None,
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=None,
             should_auto_wire_settings=False,

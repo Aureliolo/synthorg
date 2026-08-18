@@ -230,6 +230,119 @@ def test_signing_through_repo_script_counts(
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"delegates"}
 
 
+@pytest.mark.parametrize(
+    "root",
+    [
+        pytest.param("$GITHUB_WORKSPACE", id="bare_variable"),
+        pytest.param("${GITHUB_WORKSPACE}", id="braced_variable"),
+        pytest.param("${{ github.workspace }}", id="expression"),
+    ],
+)
+def test_signing_through_a_workspace_rooted_helper_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    root: str,
+) -> None:
+    """A step that changed directory names its helper from the checkout root.
+
+    Every spelling of that root IS the checkout, so the helper is one the
+    repository ships and has to be read. Left unstripped the two forms fail
+    apart and both wrongly: the variable reads as a directory named after
+    itself and fails the scan on a file that is present, and the expression
+    fails the leading-character test and is skipped without a word.
+    """
+    _write(
+        tmp_path / ".github" / "scripts" / "some_wrapper.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(
+        tmp_path,
+        "rooted.yml",
+        f'- run: bash "{root}/.github/scripts/some_wrapper.sh" checksums.txt',
+    )
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"rooted"}
+
+
+@pytest.mark.parametrize(
+    "root",
+    [
+        pytest.param("$GITHUB_WORKSPACE", id="bare_variable"),
+        pytest.param("${GITHUB_WORKSPACE}", id="braced_variable"),
+        pytest.param("${{ github.workspace }}", id="expression"),
+    ],
+)
+def test_a_quote_between_the_root_and_the_path_still_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    root: str,
+) -> None:
+    """``"$GITHUB_WORKSPACE"/scripts/sign.sh`` is ordinary shell.
+
+    Quoting only the part that can contain spaces and leaving the literal
+    path outside the quotes is a normal way to write this, and it puts a
+    quote between the root and the slash. Unmatched, the prefix does not
+    strip, so the path reference is then preceded by ``/`` and the scan's
+    leading-character test rejects it: the helper is skipped in silence and
+    the workflow drops out of this gate's view having changed nothing but
+    its quoting.
+    """
+    _write(
+        tmp_path / "scripts" / "quoted_root.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(
+        tmp_path,
+        "quoted.yml",
+        f'- run: bash "{root}"/scripts/quoted_root.sh checksums.txt',
+    )
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"quoted"}
+
+
+@pytest.mark.parametrize(
+    ("prefix", "suffix"),
+    [
+        pytest.param(
+            "$GITHUB_WORKSPACE", "'/scripts/sq.sh'", id="single_quoted_suffix"
+        ),
+        pytest.param(
+            "'${{ github.workspace }}'", "/scripts/sq.sh", id="single_quoted_root"
+        ),
+        pytest.param(
+            "'${{ github.workspace }}", "/scripts/sq.sh'", id="single_quoted_whole"
+        ),
+    ],
+)
+def test_single_quoting_around_the_root_still_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    prefix: str,
+    suffix: str,
+) -> None:
+    """Single quotes are as ordinary as double ones, and land in more places.
+
+    A shell author can quote the literal path (``$GITHUB_WORKSPACE'/x.sh'``),
+    the expression (``'${{ github.workspace }}'/x.sh``) or the whole argument,
+    and each puts a quote somewhere the prefix has to tolerate. Any of them
+    unmatched leaves the path preceded by ``/``, which the scan's leading
+    character test rejects, so the helper is skipped without a word.
+    """
+    _write(
+        tmp_path / "scripts" / "sq.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(tmp_path, "sq.yml", f"- run: bash {prefix}{suffix} checksums.txt")
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"sq"}
+
+
 def test_signing_through_a_chain_of_helpers_counts(
     gate: ModuleType,
     tmp_path: Path,

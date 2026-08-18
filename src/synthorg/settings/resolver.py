@@ -23,7 +23,7 @@ import json
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel
 
@@ -804,18 +804,6 @@ class ConfigResolver:
                     self.get_bool("coordination", "enable_workspace_isolation")
                 )
                 t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
-                t_stall = tg.create_task(
-                    self.get_int("coordination", "max_stall_count")
-                )
-                t_reset = tg.create_task(
-                    self.get_int("coordination", "max_reset_count")
-                )
-                t_replan = tg.create_task(
-                    self.get_str("coordination", "replan_strategy")
-                )
-                t_orch = tg.create_task(
-                    self.get_str("coordination", "orchestrator_strategy")
-                )
                 t_deleg = tg.create_task(
                     self.get_int("coordination", "max_delegation_rounds")
                 )
@@ -860,12 +848,6 @@ class ConfigResolver:
             fail_fast=(fail_fast if fail_fast is not None else resolved_fail_fast),
             enable_workspace_isolation=t_iso.result(),
             base_branch=t_branch.result(),
-            max_stall_count=t_stall.result(),
-            max_reset_count=t_reset.result(),
-            replan_strategy=cast("Literal['noop', 'magentic']", t_replan.result()),
-            orchestrator_strategy=cast(
-                "Literal['naive', 'magentic_dynamic']", t_orch.result()
-            ),
             max_delegation_rounds=t_deleg.result(),
         )
 

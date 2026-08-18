@@ -20,12 +20,15 @@ from pydantic import ValidationError
 
 from synthorg.core.boundary import parse_typed
 from synthorg.tools.sandbox._mount_paths import CONTAINER_WORKSPACE
-from synthorg.tools.sandbox.deployment_identity import DEPLOYMENT_LABEL
+from synthorg.tools.sandbox.deployment_identity import (
+    DEPLOYMENT_LABEL,
+    MANAGED_LABEL,
+    MANAGED_LABEL_VALUE,
+)
 from synthorg.tools.sandbox.docker_reconcile_client import (
     AiodockerReconcileClient,
     _DaemonContainer,
 )
-from synthorg.tools.sandbox.reconciliation import MANAGED_LABEL, MANAGED_LABEL_VALUE
 from tests._shared import FakeDockerClient
 
 pytestmark = pytest.mark.unit

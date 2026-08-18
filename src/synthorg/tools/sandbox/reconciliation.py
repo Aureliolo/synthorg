@@ -46,22 +46,6 @@ from synthorg.tools.sandbox.deployment_identity import path_is_within
 logger = get_logger(__name__)
 
 
-MANAGED_LABEL: str = "synthorg.managed"
-"""Docker label set on every sandbox container created by SynthOrg.
-
-The reconciliation pass filters by this label so it can identify
-orphan containers (label present, no DB row) without misidentifying
-unrelated containers on a shared daemon.
-"""
-
-MANAGED_LABEL_VALUE: str = "true"
-"""Value carried in the ``synthorg.managed`` label.
-
-Stored as a literal string because Docker labels are strings; the
-Python bool is convenient at the call site but does not round-trip.
-"""
-
-
 @dataclass(frozen=True)
 class ManagedContainer:
     """A container on the daemon carrying the ``synthorg.managed`` label.

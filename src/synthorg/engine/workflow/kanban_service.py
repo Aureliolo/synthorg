@@ -9,6 +9,7 @@ runtime change applies to the next board operation with no restart.
 """
 
 import asyncio
+from collections.abc import Callable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
@@ -49,6 +50,20 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
+#: How the board reaches the advisory sprint gate, asked per move rather than
+#: held from construction.
+type SprintGateResolver = Callable[[], SprintService | None]
+
+
+def _no_sprint_gate() -> None:
+    """Stand in for a deployment with no sprint gate at all.
+
+    A default resolver rather than an optional service, so the call site has
+    one shape to read.
+    """
+    return
+
+
 _SETTINGS_NS = "engine"
 _LIMIT_KEYS: dict[KanbanColumn, str] = {
     KanbanColumn.IN_PROGRESS: "kanban_wip_in_progress",
@@ -68,7 +83,7 @@ class KanbanBoardService:
     __slots__ = (
         "_config_resolver",
         "_move_lock",
-        "_sprint_service",
+        "_resolve_sprint_service",
         "_task_engine",
         "_tasks",
     )
@@ -79,15 +94,17 @@ class KanbanBoardService:
         task_repository: TaskRepository,
         task_engine: TaskEngine,
         config_resolver: ConfigResolverProtocol,
-        sprint_service: SprintService | None = None,
+        resolve_sprint_service: SprintGateResolver = _no_sprint_gate,
     ) -> None:
         self._tasks = task_repository
         self._task_engine = task_engine
         self._config_resolver = config_resolver
-        # Advisory sprint gate: when wired, a move into In-Progress is
-        # rejected for a task outside the active sprint backlog. Optional so
-        # non-agile boards and pre-sprint-wiring boots keep working.
-        self._sprint_service = sprint_service
+        # Read per move, not held from construction. The gate is advisory, so
+        # the board must not wait for it: a deployment whose sprint service
+        # declined lost the whole board endpoint to a 503, and a board built
+        # before the service arrived would otherwise hold ``None`` for the
+        # life of the process with nothing to rebuild it.
+        self._resolve_sprint_service = resolve_sprint_service
         # Serialises the read-check-move critical section in ``move_task`` so
         # two concurrent moves cannot both pass a stale WIP check before either
         # transition lands (a TOCTOU that would let a column exceed its limit).
@@ -180,7 +197,7 @@ class KanbanBoardService:
     ) -> None:
         """Reject a move into flow for a task outside the active sprint.
 
-        Advisory: a no-op unless a ``SprintService`` is wired and the move
+        Advisory: a no-op unless a ``SprintService`` is live and the move
         targets the In-Progress column. The service short-circuits to
         "workable" when sprints are disabled, the workflow is not
         ``agile_kanban``, or the project has no open sprint. If the check
@@ -191,15 +208,17 @@ class KanbanBoardService:
             SprintTaskNotInBacklogError: When the gate is active and the
                 task is not in the open sprint backlog.
         """
-        if (
-            self._sprint_service is None
-            or target_column is not KanbanColumn.IN_PROGRESS
-        ):
+        if target_column is not KanbanColumn.IN_PROGRESS:
             return
         try:
-            workable = await self._sprint_service.is_task_workable(
-                str(task.id), task.project
-            )
+            # Resolution is part of the check, so it fails open with the rest
+            # of it. Left outside, a resolver that raised (a settings-store
+            # outage, a half-built slice) blocked the move outright, which is
+            # the one outcome an advisory gate must never produce.
+            sprint_service = self._resolve_sprint_service()
+            if sprint_service is None:
+                return
+            workable = await sprint_service.is_task_workable(str(task.id), task.project)
         except Exception as exc:  # noqa: BLE001 -- advisory gate: fail open
             # lint-allow: swallow-ok -- advisory gate: fail-open by design
             reraise_critical(exc)

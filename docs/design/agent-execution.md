@@ -42,9 +42,25 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`,
     optional `ShutdownChecker`, optional `CompletionConfig`, optional
     `TaskCancellationChecker` (operator cancellation and supersession),
-    optional `TurnObserver` (per-step progress for the AG-UI stream), and
+    optional `TurnObserver` (per-step progress), and
     `streaming_enabled` (streams each turn and makes it interruptible
     mid-flight for cancellation and steering REDIRECT).
+
+    The loop reports a turn once; how many things listen is the engine's
+    business, so `compose_turn_observers` fans it out. Two listen today: the
+    AG-UI stream, and `make_runtime_state_observer`, which upserts the
+    agent's `AgentRuntimeState` so the cockpit can answer for a run while it
+    is still in flight (see [Agents](agents.md#runtime-state)). The report
+    carries the live `AgentContext`, which holds the whole conversation:
+    fenced where it is stored, so an observer putting any of it into a
+    prompt owes it a `wrap_untrusted` at that boundary. Both shipped
+    observers read scalars only.
+
+    The hook fires only on a turn that CONTINUES: a turn that finishes the
+    run returns the result instead of reporting. So the engine also writes
+    a row at dispatch (`mark_agent_running`), or a single-turn run would
+    never appear as running at all, and marks the agent idle in a `finally`,
+    naming its own execution so a sibling dispatch's row is left alone.
 
 **Supporting models:**
 

@@ -29,6 +29,23 @@ is threaded through so cost-recording attribution carries the real
 meeting identifier per turn instead of a synthetic placeholder.
 """
 
+
+@runtime_checkable
+class RefusingAgentCaller(Protocol):
+    """An :data:`AgentCaller` that cannot dispatch, naming what is absent.
+
+    Declared here, beside the alias it narrows, so the orchestrator can ask
+    whether its own caller would reach an LLM without importing the module
+    that composes real dispatch (which pulls the provider registry and the
+    persona renderer into the meeting package's import graph).
+
+    Attributes:
+        missing_dependencies: The collaborators absent when it was built.
+    """
+
+    missing_dependencies: tuple[str, ...]
+
+
 TaskCreator = Callable[[str, str | None, Priority], None]
 """Callback to create a task from a meeting action item.
 

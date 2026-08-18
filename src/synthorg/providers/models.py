@@ -474,6 +474,15 @@ class CompletionResponse(BaseModel):
             output: a turn spent entirely on reasoning is a turn that
             happened, and treating it as empty failed the whole task.
         tool_calls: Tool calls the model wants to execute.
+        dropped_tool_calls: The provider sent one or more tool calls the
+            driver could not parse, so they are absent from ``tool_calls``.
+            It says nothing about what survived: calls are dropped one at a
+            time, so a turn asking for two tools can deliver one and drop the
+            other. What it distinguishes is a turn that asked for a tool and
+            delivered none of them from a turn where the provider sent no
+            call at all, which the loop corrects with different words: a
+            correction describing the wrong shape asks the model to fix
+            something it never sent.
         finish_reason: Why the model stopped generating.
         usage: Token usage and cost breakdown.
         model: Model identifier that served the request.
@@ -492,6 +501,10 @@ class CompletionResponse(BaseModel):
     tool_calls: tuple[ToolCall, ...] = Field(
         default=(),
         description="Requested tool calls",
+    )
+    dropped_tool_calls: bool = Field(
+        default=False,
+        description="The provider sent tool calls the driver could not parse",
     )
     finish_reason: FinishReason = Field(description="Reason generation stopped")
     usage: TokenUsage = Field(description="Token usage breakdown")
@@ -514,6 +527,13 @@ class CompletionResponse(BaseModel):
 
         Responses with ``content_filter`` or ``error`` finish reasons
         may legitimately have no output.
+
+        ``tool_use`` is deliberately NOT among them, even though a dropped
+        malformed call leaves exactly that shape: every driver runs
+        ``normalize_empty_finish`` first, which rewrites an all-channels-empty
+        turn to ``error`` precisely so this rejection is unreachable. Admitting
+        ``tool_use`` here would make that normalisation moot and let a turn
+        carrying nothing at all claim it asked for a tool.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
@@ -568,6 +588,13 @@ class StreamChunk(BaseModel):
             :class:`CompletionResponse` recovers the faithful finish reason
             (streaming content chunks carry none). Optional and only ever set
             on ``done``.
+        dropped_tool_calls: The stream carried tool-call fragments the driver
+            could not assemble into a call, so no ``tool_call_delta`` event
+            was emitted for them. Carried on ``done`` for the same reason the
+            finish reason is: a call that never assembled produces no chunk
+            of its own, so the absence is only visible to the driver that
+            gave up on it, and a reassembling consumer would otherwise read
+            the turn as one that asked for no tool at all.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -590,6 +617,10 @@ class StreamChunk(BaseModel):
         default=None,
         description="Finish reason, carried on the terminal done event",
     )
+    dropped_tool_calls: bool = Field(
+        default=False,
+        description="The driver dropped tool-call fragments it could not assemble",
+    )
 
     @model_validator(mode="after")
     def _validate_event_fields(self) -> Self:
@@ -609,5 +640,6 @@ class StreamChunk(BaseModel):
             usage=self.usage,
             error_message=self.error_message,
             finish_reason=self.finish_reason,
+            dropped_tool_calls=self.dropped_tool_calls,
         )
         return self

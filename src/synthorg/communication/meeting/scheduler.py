@@ -70,6 +70,15 @@ if TYPE_CHECKING:
     # cycle. Kept guarded.
     from synthorg.communication.config import MeetingsConfig
 
+MeetingEventPublisher = Callable[[str, dict[str, object]], None]
+"""Sync callback delivering a meeting event to the WebSocket channel.
+
+Named because the composition root builds it from the Litestar channels
+plugin and the scheduler is built later, by the subsystem that owns it, so
+the callback travels between them on the state slice rather than being
+poked into the scheduler's private field after construction.
+"""
+
 # Map meeting status values to WS event name strings.
 # Mirrors WsEventType.MEETING_* values without importing the API layer.
 _STATUS_TO_WS_EVENT: dict[str, str] = {
@@ -153,7 +162,7 @@ class MeetingScheduler:
         config: MeetingsConfig,
         orchestrator: MeetingOrchestrator,
         participant_resolver: ParticipantResolver,
-        event_publisher: Callable[[str, dict[str, object]], None] | None = None,
+        event_publisher: MeetingEventPublisher | None = None,
         clock: Callable[[], float] | None = None,
         cooldown_repo: MeetingCooldownRepository | None = None,
         budget_scaler: Callable[[int], int] | None = None,

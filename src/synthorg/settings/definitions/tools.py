@@ -473,6 +473,9 @@ _r.register(
 # execution-capable surface runs in a container. Enabled by default:
 # disabling re-exposes host execution and should only happen where Docker
 # is unavailable. Applies on the next MCP bridge rebuild (no restart).
+# The image is not one of these knobs: the MCP runtime is the resolved
+# ``tools.sandbox_image``, so the image an operator hardened and the image
+# untrusted MCP code runs in cannot become two different answers.
 
 _r.register(
     SettingDefinition(
@@ -488,25 +491,6 @@ _r.register(
         ),
         group="MCP",
         level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.TOOLS,
-        key="mcp_sandbox_image",
-        type=SettingType.STRING,
-        default="node:22-alpine",
-        description=(
-            "Container image used to run stdio MCP servers. Must provide"
-            " Node/npx so ``npx -y <package>`` can launch the server."
-        ),
-        group="MCP",
-        level=SettingLevel.ADVANCED,
-        # The image is appended as a positional ``docker run`` argument, so a
-        # leading '-' would be parsed as a flag and defeat the hardening flags
-        # set earlier in the argv; pin to an OCI image-reference shape.
-        validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
     )
 )
 
@@ -549,10 +533,17 @@ _r.register(
         key="mcp_sandbox_cpus",
         type=SettingType.STRING,
         default="1.0",
-        description="Docker --cpus quota (in cores) for an MCP server container.",
+        description=(
+            "Docker --cpus quota (in cores) for an MCP server container."
+            " Must be greater than zero: the daemon reads a quota of zero as"
+            " 'no limit', so it uncaps the container rather than clamping it."
+        ),
         group="MCP",
         level=SettingLevel.ADVANCED,
-        validator_pattern=r"^\d+(\.\d+)?$",
+        # Rejects every spelling of zero ("0", "0.0", "00"), which the plain
+        # digit pattern admitted and the daemon turns into an unlimited
+        # container rather than a refusal.
+        validator_pattern=r"^(?!0+(\.0+)?$)\d+(\.\d+)?$",
     )
 )
 

@@ -470,9 +470,10 @@ rather than silently producing an unauthenticated server.
 
 A stdio MCP server is arbitrary third-party code (`npx -y <package>@<version>`).
 D16 requires the high-risk execution categories to run inside Docker, and an
-MCP server executes untrusted code, so it sits in that set. This is a bespoke
-launch-rewrite (`tools/mcp/sandbox.py`, `wrap_stdio_in_sandbox`) that runs the
-server via `docker run -i` under `--cap-drop=ALL`,
+MCP server executes untrusted code, so it sits in that set. The policy lives in
+`tools/mcp/sandbox.py` and the transport that applies it is
+`tools/mcp/container_stdio.py`, which creates the container over the Docker API
+and attaches stdin+stdout before starting it, under `--cap-drop=ALL`,
 `--security-opt=no-new-privileges`, a read-only rootfs, `NPM_CONFIG_IGNORE_SCRIPTS`,
 and cpu/memory/pid limits, controlled by the `tools.mcp_sandbox_*` settings
 (sandboxing is on by default, and fails secure to on if the settings cannot be

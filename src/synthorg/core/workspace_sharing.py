@@ -47,6 +47,41 @@ WORKSPACE_DIR_MODE: Final[int] = 0o2770
 #: Distance between the owner triad and the group triad in a POSIX mode.
 _OWNER_TO_GROUP_SHIFT: Final[int] = 3
 
+#: Withholds nothing from the group and everything from *other*, so a file
+#: created by a program we spawned rather than by this code still lands
+#: shareable. All three *other* bits, not write alone: the sharing contract
+#: names the group, so read and execute are as much of a grant as write is,
+#: and the explicit modes above already deny the whole triad.
+SHARED_UMASK: Final[int] = 0o007
+
+
+def apply_shared_umask() -> int:
+    """Set the process umask so spawned programs create shareable files.
+
+    Every mode above is applied explicitly after creation, so this changes
+    nothing about the files this code writes. It exists for the files it
+    does NOT write: a subprocess creating something inside the shared tree
+    is reached by no rule here, and the ambient umask is the only lever
+    over it.
+
+    Git is the case that proved it. ``core.sharedRepository=group`` covers
+    the files git itself manages, and ``COMMIT_EDITMSG`` is not one of
+    them: git writes it raw, under the umask. So whichever identity
+    committed first left it at ``0644``, and the other's ``git commit``
+    failed with ``could not open '.git/COMMIT_EDITMSG': Permission
+    denied`` for the life of the workspace. A live run lost a task to it,
+    the agent having already run its suite green.
+
+    Process-wide because a umask is process-wide; scoping it around a
+    spawn would race every other thread in the same interpreter. Nothing
+    is granted to *other*, so the reach is exactly the group that already
+    shares the tree.
+
+    Returns:
+        The umask that was in effect before this call.
+    """
+    return os.umask(SHARED_UMASK)
+
 
 def workspace_share_gid() -> int | None:
     """Return the gid the sandbox must join to reach the workspace.

@@ -35,11 +35,20 @@ class CoordinationContext(BaseModel):
         available_agents: Pool of agents available for assignment.
         decomposition_context: Constraints for decomposition.
         config: Coordination configuration.
+        plan_id: The plan that provisioned this run, when one did.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task: Task = Field(description="Parent task to coordinate")
+    plan_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Plan that provisioned this run; set by the caller that has one. "
+            "Names the owner of the parent task's status, which is the "
+            "initiative rollup rather than this run's own walk."
+        ),
+    )
     available_agents: tuple[AgentIdentity, ...] = Field(
         description="Agents available for assignment",
     )

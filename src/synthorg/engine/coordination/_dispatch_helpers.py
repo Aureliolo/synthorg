@@ -1,8 +1,8 @@
-"""Shared helpers for topology dispatchers.
+"""Shared workspace helpers for topology dispatchers.
 
-Private module holding workspace setup / merge / teardown,
-wave execution, and validation primitives used by the four
-concrete dispatchers.
+Private module holding workspace setup / merge / teardown and the
+routing validation the four concrete dispatchers share. Running the
+waves themselves lives in ``_wave_execution``.
 """
 
 from pathlib import Path
@@ -11,19 +11,15 @@ from uuid import uuid4
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination._wave_outcome import classify_wave
-from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
-    CoordinationWave,
 )
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import (
     ParallelExecutionGroup,
 )
-from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
     MergeResult,
@@ -40,14 +36,9 @@ from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
     COORDINATION_PHASE_STARTED,
-    COORDINATION_WAVE_AWAITING_HUMAN,
-    COORDINATION_WAVE_COMPLETED,
-    COORDINATION_WAVE_STARTED,
 )
-from synthorg.observability.tracing.instrumentation import get_tracer
 
 logger = get_logger(__name__)
-_tracer = get_tracer(__name__)
 
 
 def build_workspace_requests(
@@ -296,135 +287,6 @@ async def teardown_workspaces(
             COORDINATION_CLEANUP_COMPLETED,
             workspace_count=len(workspaces),
         )
-
-
-async def execute_waves(
-    groups: tuple[ParallelExecutionGroup, ...],
-    parallel_executor: ParallelExecutorProtocol,
-    *,
-    clock: Clock,
-    fail_fast: bool,
-    assignment_writer: AssignmentWriter,
-    waves: list[CoordinationWave],
-) -> list[CoordinationPhaseResult]:
-    """Execute wave groups sequentially, recording waves and phases.
-
-    Each wave's assignments are persisted through *assignment_writer*
-    immediately before that wave runs, so the central engine holds the
-    assignment before any agent acts on it, and a wave whose assignment
-    was refused fails visibly instead of running unsynced.
-
-    Args:
-        groups: The dependency-ordered wave groups.
-        parallel_executor: Runs one wave's assignments.
-        clock: Injectable time source.
-        fail_fast: Whether a failed wave stops the run.
-        assignment_writer: Persists each wave's assignments before it runs.
-        waves: Filled with every executed :class:`CoordinationWave`
-            (including failed ones with no ``execution_result``) as each
-            completes, so a caller unwinding on a cancellation can still
-            see which waves ran and who parked in them.
-
-    Returns:
-        The matching :class:`CoordinationPhaseResult` for each wave.
-    """
-    phases: list[CoordinationPhaseResult] = []
-
-    for wave_idx, group in enumerate(groups):
-        start = clock.monotonic()
-        phase_name = f"execute_wave_{wave_idx}"
-        subtask_ids = tuple(str(a.task.id) for a in group.assignments)
-
-        logger.info(
-            COORDINATION_WAVE_STARTED,
-            wave_index=wave_idx,
-            subtask_count=len(subtask_ids),
-        )
-
-        try:
-            with _tracer.start_as_current_span(
-                "coordination.wave",
-                attributes={
-                    "coordination.wave_index": wave_idx,
-                    "coordination.subtask_count": len(subtask_ids),
-                },
-                record_exception=False,
-                set_status_on_exception=False,
-            ):
-                assigned = await assignment_writer.persist(group)
-                exec_result = await parallel_executor.execute_group(assigned)
-            elapsed = clock.monotonic() - start
-
-            wave = CoordinationWave(
-                wave_index=wave_idx,
-                subtask_ids=subtask_ids,
-                execution_result=exec_result,
-            )
-            waves.append(wave)
-
-            verdict = classify_wave(wave_idx, exec_result)
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=verdict.success,
-                    duration_seconds=elapsed,
-                    error=verdict.error,
-                )
-            )
-
-            log = logger.info if verdict.success else logger.warning
-            log(
-                COORDINATION_WAVE_COMPLETED,
-                wave_index=wave_idx,
-                succeeded=exec_result.agents_succeeded,
-                failed=exec_result.agents_failed,
-                awaiting_human=exec_result.agents_awaiting_human,
-                duration_seconds=elapsed,
-            )
-
-            if verdict.failed and fail_fast:
-                break
-            # Not subject to fail_fast: a park is not a failure to push
-            # through, it is a prerequisite that has not finished. The waves
-            # after this one were scheduled on the promise that it had.
-            if verdict.parked_task_ids:
-                logger.info(
-                    COORDINATION_WAVE_AWAITING_HUMAN,
-                    wave_index=wave_idx,
-                    parked_tasks=len(verdict.parked_task_ids),
-                    remaining_waves=len(groups) - wave_idx - 1,
-                )
-                break
-
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            elapsed = clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                wave_index=wave_idx,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            wave = CoordinationWave(
-                wave_index=wave_idx,
-                subtask_ids=subtask_ids,
-            )
-            waves.append(wave)
-            phases.append(
-                CoordinationPhaseResult(
-                    phase=phase_name,
-                    success=False,
-                    duration_seconds=elapsed,
-                    # Same scrub-at-source rationale.
-                    error=safe_error_description(exc),
-                )
-            )
-            if fail_fast:
-                break
-
-    return phases
 
 
 def rebuild_group_with_workspaces(

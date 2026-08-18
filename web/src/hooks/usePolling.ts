@@ -68,7 +68,25 @@ function _shouldSkipIfFresh(
   }
 }
 
-/** Cheap pre-flight: same run generation + tab visible + freshness gate not set. */
+/**
+ * The first run of a generation: same generation + freshness gate not set.
+ *
+ * Visibility is deliberately NOT consulted here. Skipping repeat ticks in a
+ * background tab bounds what an already-populated page costs while nobody is
+ * looking at it; skipping the FIRST fetch instead produces a page with no data
+ * at all, which is what a detail route mounted in a background tab does
+ * (middle-clicking a row in a list is the ordinary way to reach one).
+ */
+function _shouldRunFirstPoll(
+  refs: PollRefs,
+  runId: number,
+  handlers: PollHandlers,
+): boolean {
+  if (!refs.activeRef.current || runId !== refs.runIdRef.current) return false
+  return !_shouldSkipIfFresh(refs, handlers.setError)
+}
+
+/** A scheduled tick: the first-run gate plus the background-tab discipline. */
 function _shouldRunPoll(
   refs: PollRefs,
   runId: number,
@@ -76,8 +94,7 @@ function _shouldRunPoll(
 ): boolean {
   if (!refs.activeRef.current || runId !== refs.runIdRef.current) return false
   if (typeof document !== 'undefined' && document.hidden) return false
-  if (_shouldSkipIfFresh(refs, handlers.setError)) return false
-  return true
+  return !_shouldSkipIfFresh(refs, handlers.setError)
 }
 
 /**
@@ -235,7 +252,7 @@ export function usePolling(
     setError(null)
     const runId = ++runIdRef.current
     void (async () => {
-      if (_shouldRunPoll(refs, runId, handlers)) await _invokePoll(refs, handlers)
+      if (_shouldRunFirstPoll(refs, runId, handlers)) await _invokePoll(refs, handlers)
       scheduleTick(runId)
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refs / handlers are useMemo([])-stabilised bundles of useRef handles; their identities never change, so listing them would add no dep semantics

@@ -170,8 +170,6 @@ DEFAULT_COORDINATION_CHAIN: tuple[str, ...] = (
     "clarification_gate",
     "task_ledger",
     "plan_review_gate",
-    "progress_ledger",
-    "coordination_replan",
     "authority_deference_coordination",
 )
 

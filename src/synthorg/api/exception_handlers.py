@@ -104,6 +104,17 @@ logger = get_logger(__name__)
 
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
 
+#: Statuses that answer "there is no such thing" and are logged at INFO.
+#: An absence is a legitimate answer, not a failure of ours: one agent page
+#: asks four times whether an override or a training plan exists, and the
+#: ordinary answer to all four is no, so a live run produced eight WARNING
+#: lines carrying an exception class per page view. What that costs is not the
+#: lines, it is that WARNING on this event stopped separating a real failure
+#: from a question answered correctly. Everything else in 4xx stays at
+#: WARNING: an unauthenticated call, a conflict, a rejected payload and a
+#: throttled client are all worth an operator's attention.
+_ABSENCE_STATUSES: Final[frozenset[int]] = frozenset({404, 410})
+
 _PROBLEM_JSON: Final[str] = "application/problem+json"
 
 _MAX_DETAIL_LEN: Final[int] = 512
@@ -528,25 +539,37 @@ def _log_error(
 ) -> None:
     """Log an API error with request context.
 
-    Uses ERROR level for 5xx server errors and WARNING for 4xx client
-    errors. ``error_type`` + ``error=safe_error_description(exc)``
-    supplies operator-visible diagnostic context without attaching the
-    traceback (whose frame-locals would carry connection strings,
-    tokens, etc. straight to the sink). Domain-error structured
-    attributes (e.g. ``definition_id``, ``expected`` revision) are
-    surfaced via ``_safe_log_attrs`` so log queries by domain identifier
-    keep working after controllers stop building per-error log calls.
+    One owner for how loudly a failed request logs, and it is the status
+    class: ERROR for 5xx (we failed), INFO for an absence
+    (:data:`_ABSENCE_STATUSES`, where the server answered correctly), and
+    WARNING for the rest of 4xx (the caller did something an operator may
+    want to see). The event and its fields are identical at every level, so
+    a query by ``api.request.error`` keeps matching.
+
+    ``error_type`` + ``error=safe_error_description(exc)`` supplies
+    operator-visible diagnostic context without attaching the traceback
+    (whose frame-locals would carry connection strings, tokens, etc.
+    straight to the sink). Domain-error structured attributes (e.g.
+    ``definition_id``, ``expected`` revision) are surfaced via
+    ``_safe_log_attrs`` so log queries by domain identifier keep working
+    after controllers stop building per-error log calls.
     """
-    log = logger.error if status >= _SERVER_ERROR_THRESHOLD else logger.warning
-    log(
-        API_REQUEST_ERROR,
-        method=request.method,
-        path=str(request.url.path),
-        status_code=status,
-        error_type=type(exc).__qualname__,
-        error=safe_error_description(exc),
+    fields: dict[str, object] = {
+        "method": request.method,
+        "path": str(request.url.path),
+        "status_code": status,
+        "error_type": type(exc).__qualname__,
+        "error": safe_error_description(exc),
         **_safe_log_attrs(exc),
-    )
+    }
+    # The branch IS the owner of the level, and it is the only one: the fields
+    # are built once above, so the three calls cannot drift apart.
+    if status >= _SERVER_ERROR_THRESHOLD:
+        logger.error(API_REQUEST_ERROR, **fields)
+    elif status in _ABSENCE_STATUSES:
+        logger.info(API_REQUEST_ERROR, **fields)
+    else:
+        logger.warning(API_REQUEST_ERROR, **fields)
 
 
 def handle_record_not_found(

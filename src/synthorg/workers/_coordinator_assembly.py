@@ -28,7 +28,6 @@ from synthorg.engine.decomposition.planning_tool_provider import PlanningToolPro
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
 from synthorg.engine.middleware.factory import build_coordination_middleware_chain
-from synthorg.engine.middleware.replan_factory import create_replan_hook
 from synthorg.engine.pipeline.factory import (
     build_solo_assignment_service,
     build_work_pipeline,
@@ -288,7 +287,6 @@ async def _resolve_coordinator_dependencies(
 
 
 def _build_coordination_chain(
-    app_state: AppState,
     *,
     enabled: bool,
 ) -> CoordinationMiddlewareChain | None:
@@ -296,16 +294,10 @@ def _build_coordination_chain(
 
     Gated on *enabled* (resolved by the caller from the
     ``coordination.enable_coordination_middleware`` setting, on by
-    default). When enabled, registers the default middleware factories,
-    builds the configured replan hook via the ``replan_strategy``
-    discriminator (``noop`` is the safe default), and composes the
-    default coordination chain. The shared :class:`BudgetEnforcer` on the
-    budget slice (``None`` on a persistence-less boot) gates an affordable
-    magentic replan.
+    default). When enabled, registers the default middleware factories
+    and composes the default coordination chain.
 
     Args:
-        app_state: The application state (carries the coordination config
-            and the budget slice).
         enabled: Whether the middleware pipeline is enabled (resolved from
             the setting, DB > env > default).
 
@@ -315,24 +307,10 @@ def _build_coordination_chain(
     """
     if not enabled:
         return None
-    coord_section = app_state.config.coordination
     register_coordination_defaults()
-    replan_hook = create_replan_hook(
-        coord_section.replan_strategy,
-        max_stall_count=coord_section.max_stall_count,
-        max_reset_count=coord_section.max_reset_count,
-        budget_enforcer=app_state.slice(BudgetStateSlice).budget_enforcer,
-    )
     return build_coordination_middleware_chain(
         CoordinationMiddlewareConfig(),
-        deps={
-            "replan_hook": replan_hook,
-            # The progress ledger's escalation threshold is the same
-            # "consecutive stalls before escalation" knob the replan hook
-            # already reads, so both share the operator-tuned
-            # ``coordination.max_stall_count`` rather than a second default.
-            "escalation_threshold": coord_section.max_stall_count,
-        },
+        deps={},
     )
 
 
@@ -478,7 +456,6 @@ async def _build_runtime_coordinator(
         ),
         coordination_metrics_collector=coordination_metrics_collector,
         coordination_chain=_build_coordination_chain(
-            app_state,
             enabled=middleware_enabled,
         ),
         shutdown_manager=app_state.shutdown_manager,

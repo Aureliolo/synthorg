@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+import aiodocker
 import pytest
 import structlog.contextvars
 from typeguard import suppress_type_checks
@@ -17,6 +18,7 @@ from synthorg import __version__
 from synthorg.core.workspace_sharing import workspace_share_gid
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
+from synthorg.tools.sandbox._container_limits import nano_cpus
 from synthorg.tools.sandbox._image_resolution import set_resolved_sandbox_image
 from synthorg.tools.sandbox._mount_mode import MountMode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
@@ -151,6 +153,12 @@ def _make_mock_docker() -> MagicMock:
     mock_container_obj.log = AsyncMock(return_value=["output line\n"])
     mock_container_obj.stop = AsyncMock()
     mock_container_obj.delete = AsyncMock()
+    # The liveness probe a reuse strategy runs before handing a warm
+    # handle back: the default mock daemon reports a running container,
+    # so reuse behaves as it does against a healthy stack.
+    mock_container_obj.show = AsyncMock(
+        return_value={"State": {"Running": True}},
+    )
     _install_exec(mock_container_obj)
 
     mock_containers.container = MagicMock(
@@ -852,6 +860,34 @@ class TestMemoryLimitParsing:
             DockerSandbox._parse_memory_limit(invalid_limit)
 
 
+class TestCpuQuotaConversion:
+    """``nano_cpus`` refuses what the daemon would misread."""
+
+    @pytest.mark.parametrize(
+        ("cores", "expected"),
+        [(1.0, 1_000_000_000), (0.5, 500_000_000), (2.0, 2_000_000_000)],
+        ids=["one-core", "half-core", "two-cores"],
+    )
+    def test_a_finite_quota_converts(self, cores: float, expected: int) -> None:
+        assert nano_cpus(cores) == expected
+
+    @pytest.mark.parametrize(
+        "cores",
+        [float("nan"), float("inf"), float("-inf")],
+        ids=["nan", "inf", "-inf"],
+    )
+    def test_a_non_finite_quota_is_refused_as_a_value_error(self, cores: float) -> None:
+        """The sign test alone lets both through, and neither fails usefully.
+
+        Every comparison against NaN is False and infinity is positive, so
+        both reach the arithmetic: NaN raises a bare ValueError carrying none
+        of this function's contract, and infinity raises OverflowError, which
+        is not what callers are told to catch.
+        """
+        with pytest.raises(ValueError, match="finite"):
+            nano_cpus(cores)
+
+
 # ── Container hardening ────────────────────────────────────────
 
 
@@ -988,6 +1024,31 @@ class TestDockerSandboxWorkspaceSharing:
         assert SANDBOX_HOME in config["HostConfig"]["Tmpfs"]
         assert f"HOME={SANDBOX_HOME}" in config["Env"]
 
+    def test_the_workspace_is_exempt_from_the_ownership_check(
+        self, tmp_path: Path
+    ) -> None:
+        """The uid split is the design; git reads it as someone else's repo.
+
+        A live run watched an agent hit ``detected dubious ownership``,
+        spend a turn writing a global git config to work around it, and hit
+        it again in the next container.
+        """
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = _container_config(
+            sandbox,
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+
+        env = dict(entry.split("=", 1) for entry in cast("list[str]", config["Env"]))
+        exemptions = {
+            env[f"GIT_CONFIG_KEY_{index}"]: env[f"GIT_CONFIG_VALUE_{index}"]
+            for index in range(int(env["GIT_CONFIG_COUNT"]))
+        }
+        assert exemptions["safe.directory"] == CONTAINER_WORKSPACE
+
 
 # ── Stop/remove exception handling ─────────────────────────────
 
@@ -1109,6 +1170,107 @@ class TestDestroyHandleTrackingSafety:
         await sandbox._destroy_handle(handle)
 
         assert sandbox._tracked_containers == {}
+
+
+class TestHandleIsAlive:
+    """``_handle_is_alive`` answers from the daemon, and fails closed.
+
+    A live run had agent containers exit 137 mid-task while the reuse
+    strategy went on handing their handles back, so every remaining tool
+    call for those agents ran against a container that no longer existed.
+    The probe is what turns that into one replacement container.
+    """
+
+    async def test_running_container_reads_alive(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is True
+
+    async def test_exited_container_reads_dead(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            return_value={"State": {"Running": False, "ExitCode": 137}},
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_a_sandbox_whose_sidecar_died_reads_dead(
+        self, tmp_path: Path
+    ) -> None:
+        """Reuse must not hand back a sandbox that lost its egress enforcement.
+
+        The sandbox joins the sidecar's network namespace to have its egress
+        policed, so probing only the sandbox container passes a handle whose
+        enforcement is gone: the container runs, unpoliced, for every
+        remaining tool call.
+        """
+        mock_docker = _make_mock_docker()
+        running = {"State": {"Running": True}}
+        stopped = {"State": {"Running": False, "ExitCode": 137}}
+
+        def _by_id(container_id: str) -> MagicMock:
+            container = MagicMock()
+            container.show = AsyncMock(
+                return_value=running if container_id == "sandbox-abc" else stopped
+            )
+            return container
+
+        mock_docker.containers.container = MagicMock(side_effect=_by_id)
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="sandbox-abc", sidecar_id="sidecar-dead")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_a_sandbox_with_a_running_sidecar_reads_alive(
+        self, tmp_path: Path
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="sandbox-abc", sidecar_id="sidecar-live")
+
+        assert await sandbox._handle_is_alive(handle) is True
+
+    async def test_missing_container_reads_dead(self, tmp_path: Path) -> None:
+        """A container the daemon cannot find is not a container to reuse.
+
+        Raised as the daemon actually raises it: a stand-in exception would
+        keep passing if the probe stopped handling ``DockerError``.
+        """
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            side_effect=aiodocker.DockerError(404, "no such container"),
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        assert await sandbox._handle_is_alive(handle) is False
+
+    async def test_reraises_memory_error(self, tmp_path: Path) -> None:
+        mock_docker = _make_mock_docker()
+        mock_docker.containers.container.return_value.show = AsyncMock(
+            side_effect=MemoryError,
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        sandbox._docker = mock_docker
+
+        handle = ContainerHandle(container_id="abc123def456")
+
+        with pytest.raises(MemoryError):
+            await sandbox._handle_is_alive(handle)
 
 
 class TestExecReturncode:

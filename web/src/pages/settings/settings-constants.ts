@@ -164,7 +164,6 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
     'tools/web_fetch_docs_index_discovery_enabled',
   ],
   'tools/mcp_sandbox_enabled': [
-    'tools/mcp_sandbox_image',
     'tools/mcp_sandbox_memory_limit',
     'tools/mcp_sandbox_pids_limit',
     'tools/mcp_sandbox_cpus',

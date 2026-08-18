@@ -44,7 +44,6 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _resolve_event_stream_janitor_settings,
     _ticket_cleanup_loop,
 )
-from synthorg.api.lifecycle_helpers.training_wiring import try_wire_training_service
 from synthorg.api.lifecycle_runner_support import (
     _drain_resume_intents,
     _LifecycleTasks,
@@ -59,7 +58,6 @@ from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -288,7 +286,6 @@ async def _run_startup(  # noqa: PLR0913
     bridge: MessageBusBridge | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     should_auto_wire_settings: bool,
@@ -308,7 +305,6 @@ async def _run_startup(  # noqa: PLR0913
         bridge: Message bus bridge to WebSocket channels.
         settings_dispatcher: Settings change dispatcher.
         task_engine: Centralized task state engine.
-        meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval timeout checker.
         should_auto_wire_settings: When ``True``, create ``SettingsService`` +
@@ -358,7 +354,11 @@ async def _run_startup(  # noqa: PLR0913
         log_exception_redacted(logger, API_APP_STARTUP, exc, detail=detail)
         await _safe_shutdown(
             task_engine=task_engine,
-            meeting_scheduler=meeting_scheduler,
+            # Read live: the scheduler is built by its subsystem, on a pass
+            # that may already have run by the time a boot gives up here.
+            meeting_scheduler=app_state.slice(
+                CommunicationStateSlice
+            ).meeting_scheduler,
             backup_service=backup_service,
             approval_timeout_scheduler=approval_timeout_scheduler,
             # The constructor-supplied dispatcher is None on the auto-wire
@@ -385,7 +385,6 @@ async def _run_startup(  # noqa: PLR0913
         bridge=bridge,
         settings_dispatcher=settings_dispatcher,
         task_engine=task_engine,
-        meeting_scheduler=meeting_scheduler,
         backup_service=backup_service,
         approval_timeout_scheduler=approval_timeout_scheduler,
         app_state=app_state,
@@ -597,8 +596,6 @@ async def _run_startup(  # noqa: PLR0913
         )
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
-
-    await try_wire_training_service(app_state, effective_config)
 
     await _maybe_bootstrap_agents(app_state)
     await _maybe_promote_first_owner(app_state)

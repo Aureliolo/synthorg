@@ -20,7 +20,8 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import TerminationReason, TurnProgress
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.actor import (
     ActProgress,
@@ -197,10 +198,16 @@ class TestActStream:
         )
 
     async def test_emits_progress_per_turn_then_result(self) -> None:
+        ctx = AgentContext.from_identity(_identity())
+
         async def _run(*, turn_observer: object, **_kwargs: object) -> ChatActionResult:
             # ``turn_observer`` is the TurnObserver the actor threaded in.
-            await turn_observer(1, ("query_metrics",))  # type: ignore[operator]
-            await turn_observer(2, ())  # type: ignore[operator]
+            await turn_observer(  # type: ignore[operator]
+                TurnProgress(turn_number=1, tool_names=("query_metrics",), context=ctx)
+            )
+            await turn_observer(  # type: ignore[operator]
+                TurnProgress(turn_number=2, tool_names=(), context=ctx)
+            )
             return _completed_result()
 
         actor = self._streaming_actor(side_effect=_run)

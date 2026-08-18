@@ -43,6 +43,7 @@ from synthorg.communication.meeting.protocol import (
     ConflictEscalationHook,
     MeetingProtocol,
     MeetingProtocolFactory,
+    RefusingAgentCaller,
     TaskCreator,
 )
 from synthorg.core.critical_errors import reraise_critical
@@ -142,6 +143,32 @@ class MeetingOrchestrator:
         # the dict serves point lookups so controller endpoints don't
         # need to scan every record on every fetch.
         self._records_by_id: dict[str, MeetingRecord] = {}
+
+    @property
+    def has_agent_dispatch(self) -> bool:
+        """Whether a meeting turn would reach a real LLM call.
+
+        Read from the caller itself rather than from a flag somebody set,
+        so an orchestrator built before the provider registry existed
+        cannot report dispatch it does not have.
+        """
+        return not isinstance(self._agent_caller, RefusingAgentCaller)
+
+    def set_agent_caller(self, agent_caller: AgentCaller) -> None:
+        """Install the caller meeting turns dispatch through.
+
+        The real caller is composed from the agent and provider
+        registries, and the provider registry does not exist until
+        persistence is up, which is long after this object is built. So
+        the orchestrator is constructed with a refusing caller and the
+        subsystem that owns dispatch installs the real one on the pass
+        where both registries are present, exactly as
+        :meth:`set_protocol_registry` installs the factories.
+
+        Args:
+            agent_caller: The caller to dispatch turns through.
+        """
+        self._agent_caller = agent_caller
 
     @property
     def has_protocol_registry(self) -> bool:

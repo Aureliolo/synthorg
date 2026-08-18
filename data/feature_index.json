@@ -339,6 +339,7 @@
         "message_service",
         "meeting_orchestrator",
         "meeting_scheduler",
+        "meeting_event_publisher",
         "meeting_service",
         "event_stream_hub",
         "interrupt_store",
@@ -1548,6 +1549,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-17T22:53:29.631684Z",
+  "generated_at": "2026-08-18T07:07:02.515894Z",
   "schema_version": 1
 }

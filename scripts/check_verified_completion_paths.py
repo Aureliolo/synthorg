@@ -52,10 +52,18 @@ SUPPRESSION_MARKER: Final[str] = "lint-allow: verified-completion"
 
 #: What bounds a scope for the call walk: a body that runs only when
 #: something invokes it, rather than where it is written.
+#:
+#: A generator expression belongs here for the same reason a lambda does: its
+#: body runs when something consumes it, which can be after the review it is
+#: supposed to precede, so reading the call at the line the generator is
+#: WRITTEN reports an ordering the run does not have. The eager comprehensions
+#: (list, set, dict) are deliberately absent: they run where they are written,
+#: so their calls belong to this scope.
 _NESTED_SCOPES: Final[tuple[type[ast.AST], ...]] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
     ast.Lambda,
+    ast.GeneratorExp,
 )
 
 _SUPPRESSION_RE: Final[re.Pattern[str]] = re.compile(
@@ -85,6 +93,14 @@ _ARTIFACT_VALIDATOR_CALL: Final[str] = "validate_expected_artifacts"
 _POST_EXECUTION_TRANSITIONS: Final[str] = "src/synthorg/engine/task_sync.py"
 _POST_EXECUTION_ENTRY: Final[str] = "apply_post_execution_transitions"
 _ARTIFACT_PROBE_CALL: Final[str] = "_absent_artifacts"
+
+#: The pipeline that drives an attempt's review, and the two calls whose
+#: ORDER decides what the review is judging.
+_POST_EXECUTION_PIPELINE_REL: Final[str] = (
+    "src/synthorg/engine/agent_engine_post_exec.py"
+)
+_POST_EXECUTION_PIPELINE_ENTRY: Final[str] = "_post_execution_pipeline"
+_FRAME_RECORDING_CALL: Final[str] = "record_run_frames"
 _UNFINISHED_REASON_TABLE: Final[str] = "_UNFINISHED_REASONS"
 
 #: Test evidence is what the build/test oracle judges, so where it comes from
@@ -450,6 +466,14 @@ def _calls_in(node: ast.AST) -> set[tuple[str, str]]:
             elif isinstance(sub, ast.Lambda):
                 if id(sub) not in deferred:
                     pending.append(sub)
+            elif isinstance(sub, ast.GeneratorExp):
+                # A generator bounds a scope for ORDERING, because its body
+                # runs when something consumes it rather than where it is
+                # written. Reachability is the other question: the consumer is
+                # right there, so the calls inside it do run and this walk has
+                # to see them. Re-queued unconditionally because a generator,
+                # unlike a lambda, cannot be bound to a name and left uncalled.
+                pending.append(sub)
             elif isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load):
                 # Load only: the target of ``_helper = lambda: ...`` is a Name
                 # too, and counting it would make every binding its own
@@ -786,6 +810,104 @@ def _stamps_test_purpose(tree: ast.AST) -> bool:
     )
 
 
+def _check_frames_precede_review(root: Path) -> list[str]:
+    """Check an attempt's frames are recorded before its review reads them.
+
+    The review resolves what a task delivered from the flight-recorder frame
+    store. Recording ran once, after the whole rework loop, while the review
+    fires inside that loop per round, so the store answered for the PREVIOUS
+    dispatch: every item failed with "could not retrieve a deliverable to
+    inspect", four times on one live run, and the initiative tail was never
+    reached at all.
+
+    Ordering is the whole fix, and two statements in one function is all it
+    is. Checked as a position comparison inside the pipeline body rather than
+    by name, because both calls being present is exactly what the defect
+    looked like.
+
+    Returns:
+        One message per broken ordering.
+    """
+    rel = _POST_EXECUTION_PIPELINE_REL
+    parsed = _read(root, rel)
+    if parsed is None:
+        return [f"{rel}: unreadable; the frame-recording order is unchecked"]
+    _source, tree = parsed
+    functions = _functions_by_name(tree)
+    pipeline = functions.get(_POST_EXECUTION_PIPELINE_ENTRY)
+    if pipeline is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} is gone, so nothing "
+                "orders frame recording against the review it feeds."
+            )
+        ]
+    recorded_at = _call_line(pipeline, _FRAME_RECORDING_CALL)
+    reviewed_at = _call_line(pipeline, _POST_EXECUTION_ENTRY)
+    if recorded_at is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} no longer calls "
+                f"{_FRAME_RECORDING_CALL}, so the review asks the frame store "
+                "what this attempt delivered and is answered for a previous "
+                "one, or not at all."
+            )
+        ]
+    if reviewed_at is None:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_PIPELINE_ENTRY} no longer calls "
+                f"{_POST_EXECUTION_ENTRY}, so no post-execution review runs "
+                "at all. An absent review orders correctly against everything, "
+                "which is why its absence has to be its own failure."
+            )
+        ]
+    if recorded_at < reviewed_at:
+        return []
+    return [
+        (
+            f"{rel}: {_FRAME_RECORDING_CALL} runs AFTER "
+            f"{_POST_EXECUTION_ENTRY} (lines {recorded_at} and {reviewed_at}), "
+            "so the review that decides this attempt reads a store written "
+            "after it had already ruled. Both calls being present is what the "
+            "defect looked like; the order is the guard."
+        )
+    ]
+
+
+def _call_line(node: ast.AST, name: str) -> int | None:
+    """Find the line of the first call to *name* in *node*'s own scope.
+
+    Own scope, not everything underneath: this line is read as a position in
+    the run, and a call written inside a nested ``def``, a lambda or a
+    generator expression executes when something invokes or consumes that
+    body, which can be after the review it is supposed to precede. Reading it
+    where it is WRITTEN would report an ordering the run does not have.
+
+    Returns:
+        The line number, or ``None`` when the call is absent.
+    """
+    lines = [
+        child.lineno
+        for child in _own_scope(node)
+        if isinstance(child, ast.Call) and _called_name(child) == name
+    ]
+    return min(lines) if lines else None
+
+
+def _called_name(call: ast.Call) -> str | None:
+    """Name the function a call invokes, through an attribute or a bare name.
+
+    Returns:
+        The called name, or ``None`` when it is neither shape.
+    """
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
 def _check_post_execution_guards(root: Path) -> list[str]:
     """Check the post-execution transition still guards both failure shapes.
 
@@ -885,6 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
         *_check_plan_completion_writers(root),
         *_check_artifact_invariant(root),
         *_check_post_execution_guards(root),
+        *_check_frames_precede_review(root),
         *_check_test_evidence_provenance(root),
     ]
     if messages:

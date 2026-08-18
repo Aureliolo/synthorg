@@ -5,6 +5,7 @@ Translates decomposition results and routing decisions into
 """
 
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.coordination._dependency_gate import dependency_map
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -123,7 +124,7 @@ def build_execution_waves(
     routing_lookup = _build_routing_lookup(routing_result)
     workspace_lookup = _build_workspace_lookup(workspaces)
     task_lookup = {str(t.id): t for t in decomposition_result.created_tasks}
-    dep_map = {s.id: s.dependencies for s in plan.subtasks}
+    dep_map = dependency_map(plan.subtasks)
 
     groups: list[ParallelExecutionGroup] = []
     blocked_ids: set[str] = set()
@@ -237,6 +238,7 @@ def build_execution_waves(
                     assignments=tuple(round_assignments),
                     max_concurrency=config.max_concurrency_per_wave,
                     fail_fast=config.fail_fast,
+                    dag_level=wave_idx,
                 )
             )
 

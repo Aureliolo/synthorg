@@ -89,10 +89,10 @@ Protocol: `CoordinationMiddleware` (`engine/middleware/coordination_protocol.py`
 | `before_decompose` | Before Phase 1 | Clarification gate |
 | `after_decompose` | After Phase 1 | Post-decomposition analysis |
 | `before_dispatch` | Before Phase 3-5 | Plan review gate, task ledger |
-| `after_rollup` | After Phase 6 | Progress ledger, replan hook |
+| `after_rollup` | After Phase 6 | Extension point; no default occupant |
 | `before_update_parent` | Before Phase 7 | Authority deference scan |
 
-Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `progress_ledger`, `coordination_replan`, `authority_deference_coordination`.
+Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `authority_deference_coordination`.
 
 ### S1 Constraint Hooks
 
@@ -340,6 +340,21 @@ Reviewing only the closing prose meant an APPROVE said the agent wrote a
 convincing summary, not that the deliverable builds. This is the single most
 load-bearing gate in the chain (fail-closed, on by default,
 `min_stakes=low`), so it reads the thing it is approving.
+
+The closing message comes from the **run being judged**, passed in by the
+caller that is holding it (`attempt_deliverable`, bound onto the builder for
+that one review). Asking the flight recorder instead gives the question two
+owners, and the second is an observability store: a recorder that stored
+nothing makes delivered work indistinguishable from an agent that produced
+nothing, which sends it to rework as empty, and a checkpoint-resumed attempt
+is answered for by the pre-recovery FAILED attempt, whose turns are the
+highest ones recorded. The recorder remains the fallback for a review with no
+run in hand (a later, detached read), and there it is a real dependency:
+with `cockpit.flight_recorder_enabled` off, or
+`cockpit.flight_recorder_sink_strategy` set to `noop`, no frame exists, the
+builder returns `None` and the gate applies its `on_missing_deliverable`
+posture instead of reviewing content. That path logs at WARNING, because it
+is a fact about the system rather than about the task.
 
 Size is bounded by two live settings, so an operator can tune what the
 reviewer receives without a restart: `engine.review_artifact_max_chars_per_file`

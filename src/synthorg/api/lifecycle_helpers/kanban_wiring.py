@@ -56,10 +56,13 @@ async def wire_kanban_board(app_state: AppState) -> None:
             task_repository=persistence.tasks,
             task_engine=task_engine,
             config_resolver=config_resolver,
-            # Advisory sprint gate: present once the sprint service is wired
-            # (sprint wiring runs first), None on an early boot. Re-wiring the
-            # board after the sprint service comes online picks it up.
-            sprint_service=app_state.slice(EngineStateSlice).sprint_service,
+            # Read live, per move. The gate is advisory, so the board does not
+            # wait for it and does not need rebuilding when it arrives: a
+            # constructor snapshot would be ``None`` for the life of a process
+            # that came up before the sprint service did.
+            resolve_sprint_service=lambda: (
+                app_state.slice(EngineStateSlice).sprint_service
+            ),
         )
         app_state.wire(EngineStateSlice, kanban_board_service=service)
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue

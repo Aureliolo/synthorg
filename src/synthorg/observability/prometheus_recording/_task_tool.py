@@ -24,31 +24,28 @@ class _TaskToolRecordingMixin(_RecordingMetricsBase):
         self,
         *,
         outcome: str,
-        duration_sec: float | None,
+        duration_sec: float,
     ) -> None:
         """Record a task's final outcome and runtime.
 
         Args:
             outcome: One of ``"succeeded"``, ``"failed"``,
                 ``"cancelled"``, ``"rejected"``.
-            duration_sec: Wall-clock duration in seconds, or
-                ``None`` if the engine has no recorded creation
-                timestamp (e.g. a task created before the current
-                process restart). The outcome counter increments
-                in either case; the duration histogram observation
-                is skipped when ``duration_sec is None`` so an
-                untimed task does not skew the distribution with a
-                spurious 0-duration sample.
+            duration_sec: Wall-clock duration in seconds, measured from
+                the task row's own creation time. Always available: it is
+                a persisted column, so a restart cannot lose it.
 
         Raises:
             ValueError: If *outcome* is not a valid value or
                 ``duration_sec`` is negative.
         """
+        # Both validations run before either metric moves, so a rejected call
+        # leaves the pair consistent: incrementing first would record an
+        # outcome whose duration observation then never lands.
         require_label("task outcome", outcome, VALID_TASK_OUTCOMES)
+        require_non_negative("record_task_run: duration_sec", duration_sec)
         self._task_runs.labels(outcome=outcome).inc()
-        if duration_sec is not None:
-            require_non_negative("record_task_run: duration_sec", duration_sec)
-            self._task_duration.labels(outcome=outcome).observe(duration_sec)
+        self._task_duration.labels(outcome=outcome).observe(duration_sec)
 
     def record_task_transition(
         self,

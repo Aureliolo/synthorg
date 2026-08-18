@@ -25,6 +25,7 @@ stays absent and its consumers honestly 503.
 from datetime import timedelta
 from typing import Final
 
+from synthorg._core.features import require_service
 from synthorg.api.lifecycle_helpers._model_pin_wiring import (
     build_pin_validation_registry,
 )
@@ -229,17 +230,17 @@ async def wire_eval_loop(
             an IDENTIFY/PROPOSE step is configured for ``llm`` mode.
 
     Raises:
-        SubsystemDeclinedError: No performance tracker or no training
-            service, the two the loop scores and remediates through.
+        SubsystemDeclinedError: No performance tracker, the records the loop
+            scores from. The training service it remediates through is a
+            declared ``requires`` instead, so a wait on it is reported as an
+            unmet capability naming the subsystem that owes it, rather than
+            as a decline here that names only the symptom.
     """
     hr = app_state.slice(HrStateSlice)
     if hr.eval_loop_coordinator is not None:
         return
     if hr.performance_tracker is None:
         msg = "no performance tracker; the loop scores from its records"
-        raise SubsystemDeclinedError(msg)
-    if hr.training_service is None:
-        msg = "no training service; remediation is delivered through it"
         raise SubsystemDeclinedError(msg)
 
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
@@ -271,7 +272,11 @@ async def wire_eval_loop(
             config_resolver=config_resolver,
         ),
         trajectory_scorer=TrajectoryScorer(),
-        training_service=hr.training_service,
+        # Present because TRAINING_SERVICE is a declared `requires`: the
+        # reconciler does not activate this subsystem until the capability
+        # reads live, so the narrowing is the graph's guarantee rather than
+        # an assumption made here.
+        training_service=require_service(hr.training_service, "Training Service"),
         dataset_builder=DogfoodingDatasetBuilder(
             performance_tracker=hr.performance_tracker,
         ),
@@ -337,6 +342,34 @@ async def wire_eval_loop(
     logger.info(API_APP_STARTUP, service="eval_loop", note="wired")
 
 
+async def unwire_eval_loop(app_state: AppState) -> None:
+    """Stop the cycle driver and drop the coordinator so a pass rebuilds them.
+
+    The coordinator bakes in the training service it routes remediation
+    through, so a replaced training service leaves this one proposing fixes
+    into the instance that was just disconnected.
+
+    The scheduler is stopped BEFORE either field is cleared, and a stop that
+    fails propagates with both still wired: a dropped-but-running scheduler
+    keeps ticking against a coordinator nothing can reach, and a subsystem
+    that reads down while its driver is still running is the worse of the two
+    lies available here.
+
+    Args:
+        app_state: Application state carrying the HR slice.
+    """
+    hr = app_state.slice(HrStateSlice)
+    scheduler = hr.eval_loop_cycle_scheduler
+    if scheduler is not None:
+        await scheduler.stop()
+    app_state.wire(
+        HrStateSlice,
+        eval_loop_coordinator=None,
+        eval_loop_cycle_scheduler=None,
+    )
+    logger.info(API_APP_STARTUP, service="eval_loop", note="unwired")
+
+
 async def reload_eval_loop_pattern_strategies(
     app_state: AppState,
     *,
@@ -388,4 +421,8 @@ async def reload_eval_loop_pattern_strategies(
     )
 
 
-__all__ = ["reload_eval_loop_pattern_strategies", "wire_eval_loop"]
+__all__ = [
+    "reload_eval_loop_pattern_strategies",
+    "unwire_eval_loop",
+    "wire_eval_loop",
+]

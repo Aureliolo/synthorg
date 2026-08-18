@@ -55,6 +55,10 @@ _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {
     # an outage it has no way to influence.
     FailureCategory.PROVIDER_REFUSED: "coordination_overhead",
     FailureCategory.PROVIDER_UNAVAILABLE: "coordination_overhead",
+    # A model that cannot emit a well-formed tool call after being corrected is
+    # the same shape as an outage from the agent's side: it is the bound pair
+    # misbehaving, not the agent's judgement, and the agent cannot influence it.
+    FailureCategory.MODEL_OUTPUT_UNUSABLE: "coordination_overhead",
     FailureCategory.UNKNOWN: "direct",
 }
 
@@ -296,6 +300,17 @@ def _score_outcome(
             typed = category_for_error_type(getattr(exec_result, "error_type", None))
             if typed is not None:
                 failure_attr = _CATEGORY_TO_ATTRIBUTION.get(typed, failure_attr)
+            else:
+                # Some categories are only ever derived from the message:
+                # a model that cannot emit a well-formed call carries no
+                # typed provider error, so reading the type alone leaves it
+                # "direct" and charges the agent for the bound pair. Only an
+                # inference that actually classified something may override,
+                # because UNKNOWN maps to "direct" and would otherwise undo
+                # whatever the termination reason had already established.
+                inferred = infer_failure_category(error_text)
+                if inferred is not FailureCategory.UNKNOWN:
+                    failure_attr = _CATEGORY_TO_ATTRIBUTION.get(inferred, failure_attr)
 
         return AgentContribution(
             agent_id=NotBlankStr(agent_id),

@@ -1,14 +1,15 @@
 """Sidecar container mixin for ``DockerSandbox``.
 
 Owns ``_create_sidecar`` and ``_wait_sidecar_healthy``.  Relies on
-``_config`` and ``_parse_memory_limit`` declared on the concrete
-sandbox.
+``_config``, ``_workspace`` and ``_parse_memory_limit`` declared on the
+concrete sandbox.
 """
 
 import asyncio
 import secrets
 from abc import ABC, abstractmethod
-from typing import Final, cast
+from pathlib import Path
+from typing import cast
 
 import aiodocker
 from aiodocker.types import JSONObject
@@ -26,17 +27,22 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_SIDECAR_HEALTH_FAILED,
     SANDBOX_SIDECAR_HEALTHY,
 )
+from synthorg.tools.sandbox._container_limits import nano_cpus
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP
 from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_sidecar_limits,
 )
 from synthorg.tools.sandbox.container_log_shipper import build_correlation_env
+from synthorg.tools.sandbox.deployment_identity import (
+    DEPLOYMENT_LABEL,
+    MANAGED_LABEL,
+    MANAGED_LABEL_VALUE,
+    deployment_id_for,
+)
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
 
 logger = get_logger(__name__)
-
-_NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 
 
 class DockerSandboxSidecarMixin(ABC):
@@ -48,6 +54,7 @@ class DockerSandboxSidecarMixin(ABC):
     """
 
     _config: DockerSandboxConfig
+    _workspace: Path
 
     @staticmethod
     @abstractmethod
@@ -98,7 +105,7 @@ class DockerSandboxSidecarMixin(ABC):
         # concurrent hot update cannot mix old/new values within this launch.
         limits = get_resolved_sidecar_limits()
         memory_bytes = self._parse_memory_limit(limits.docker_sidecar_memory_limit)
-        nano_cpus = int(limits.docker_sidecar_cpu_limit * _NANO_CPUS_MULTIPLIER)
+        cpu_quota = nano_cpus(limits.docker_sidecar_cpu_limit)
         tmpfs_spec = f"size={self._config.sidecar_tmpfs_size},noexec,nosuid"
 
         # The sandbox container joins this container's network namespace and
@@ -124,7 +131,7 @@ class DockerSandboxSidecarMixin(ABC):
                 "/run": "size=1m,nosuid",
             },
             "Memory": memory_bytes,
-            "NanoCpus": nano_cpus,
+            "NanoCpus": cpu_quota,
             "PidsLimit": limits.docker_sidecar_max_pids,
             "AutoRemove": False,
             "SecurityOpt": ["no-new-privileges"],
@@ -132,9 +139,19 @@ class DockerSandboxSidecarMixin(ABC):
         if self._config.extra_hosts:
             host_config["ExtraHosts"] = list(self._config.extra_hosts)
 
+        # A sidecar is a container this deployment created, so it carries the
+        # same two labels every other creation path sets. Without them the
+        # boot reconciliation pass cannot tell a sidecar a hard kill left
+        # running from an unrelated container on a shared daemon, and its
+        # whole job is that distinction: unlabelled, the orphan is never
+        # reclaimed and keeps enforcing egress for a sandbox that is gone.
         config: dict[str, object] = {
             "Image": self._config.sidecar_image,
             "Env": env_list,
+            "Labels": {
+                MANAGED_LABEL: MANAGED_LABEL_VALUE,
+                DEPLOYMENT_LABEL: deployment_id_for(self._workspace),
+            },
             "HostConfig": host_config,
         }
 

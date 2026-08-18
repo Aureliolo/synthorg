@@ -174,6 +174,7 @@ const TASK_REQUIRED_STRING_FIELDS = [
   'type',
   'project',
   'created_by',
+  'created_at',
 ] as const
 
 function isTaskRequiredStringFields(c: Record<string, unknown>): boolean {
@@ -233,7 +234,6 @@ function isTaskOptionalScalars(c: Record<string, unknown>): boolean {
     || typeof c['source'] === 'string'
   return (
     isTaskNullableStringFields(c)
-    && isOptionalString(c['created_at'])
     && isOptionalString(c['updated_at'])
     && isTaskNumericFields(c)
     && sourceOk
@@ -359,10 +359,10 @@ function sanitizeNullableReferences(c: DashboardTask) {
   }
 }
 
-function sanitizeNullableTimestamps(c: DashboardTask) {
+function sanitizeTimestamps(c: DashboardTask) {
   return {
     deadline: sanitizeNullable(c.deadline ?? null, 64),
-    created_at: sanitizeOptional(c.created_at, 64),
+    created_at: sanitizeWsString(c.created_at, 64) ?? '',
     updated_at: sanitizeOptional(c.updated_at, 64),
   }
 }
@@ -371,7 +371,7 @@ function sanitizeTaskCoreScalars(c: DashboardTask) {
   return {
     ...sanitizeRequiredStrings(c),
     ...sanitizeNullableReferences(c),
-    ...sanitizeNullableTimestamps(c),
+    ...sanitizeTimestamps(c),
   }
 }
 

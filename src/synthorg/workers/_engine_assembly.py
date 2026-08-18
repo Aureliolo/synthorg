@@ -20,6 +20,7 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_state_recording import AgentStateRepositoryProvider
 from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
@@ -38,6 +39,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
+from synthorg.persistence.agent_state_protocol import AgentStateRepository
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.state import (
@@ -407,6 +409,25 @@ def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
     return None if persistence is None else persistence.org_facts
 
 
+def _agent_state_repository_provider(
+    app_state: AppState,
+) -> AgentStateRepositoryProvider:
+    """Return a provider reading the live agent-state repository.
+
+    Returns:
+        A zero-arg callable returning the current repository, or ``None``
+        while persistence is unconnected.
+    """
+
+    def _provider() -> AgentStateRepository | None:
+        persistence = app_state.slice(PersistenceStateSlice).backend
+        if persistence is None or not persistence.is_connected:
+            return None
+        return persistence.agent_states
+
+    return _provider
+
+
 def _parked_context_repo_or_none(app_state: AppState) -> ParkedContextRepository | None:
     """Resolve the parked-context store, or ``None`` before persistence connects.
 
@@ -604,6 +625,10 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
             boot_structure_map_tool_factory_provider(app_state)
         ),
         flight_recorder_sink=flight_recorder_sink,
+        # A provider, not the repository: a run can start before persistence
+        # is connected, and a captured ``None`` would leave that agent absent
+        # from the live view for the life of the process.
+        agent_state_repository_provider=_agent_state_repository_provider(app_state),
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
         step_classifier=step_classifier,

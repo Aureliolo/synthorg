@@ -7,7 +7,10 @@ at startup so installed catalog entries become active servers
 without touching the user-owned YAML config file.
 """
 
+from typing import Final
+
 from synthorg.integrations.connections.models import CatalogEntry
+from synthorg.integrations.errors import MCPInstallError, MCPServerUnlaunchableError
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
 )
@@ -17,8 +20,14 @@ from synthorg.observability.events.integrations import (
 )
 from synthorg.observability.events.mcp import MCP_INSTALL_SKIPPED_EXISTING
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.runtime_provision import image_provides, provided_programs
 
 logger = get_logger(__name__)
+
+#: The program an npm-packaged entry is launched through. Declared because the
+#: launchability check reads it: a hardcoded string in the config below would
+#: be checked against itself.
+_NPM_LAUNCHER: Final[str] = "npx"
 
 
 def _npx_package_arg(entry: CatalogEntry) -> str:
@@ -32,6 +41,31 @@ def _npx_package_arg(entry: CatalogEntry) -> str:
         ``<package>@<version>``.
     """
     return f"{entry.npm_package}@{entry.npm_version}"
+
+
+def _require_launchable(command: str, entry_id: str) -> None:
+    """Refuse an entry whose launch program the runtime image lacks.
+
+    Raises:
+        MCPServerUnlaunchableError: The image provides no such program.
+    """
+    if image_provides(command):
+        return
+    msg = (
+        f"Catalog entry '{entry_id}' launches {command!r}, which the MCP "
+        f"runtime image does not provide. Servers run in the sandbox image "
+        f"(tools.sandbox_image), which provides: {provided_programs()}. Add "
+        f"the package to docker/sandbox/apko.yaml and declare the program in "
+        f"tools/mcp/runtime_provision.py, or install an entry whose transport "
+        f"is streamable_http, which needs no local runtime."
+    )
+    logger.warning(
+        MCP_SERVER_INSTALL_VALIDATION_FAILED,
+        entry_id=entry_id,
+        command=command,
+        reason=msg,
+    )
+    raise MCPServerUnlaunchableError(msg)
 
 
 def installation_to_server_config(
@@ -56,8 +90,10 @@ def installation_to_server_config(
         A fully-formed ``MCPServerConfig``.
 
     Raises:
-        ValueError: If the catalog entry lacks the fields required for
+        MCPInstallError: If the catalog entry lacks the fields required for
             its transport (a pinned ``npm_package``/``npm_version`` for stdio).
+        MCPServerUnlaunchableError: If no shipped image provides the runtime
+            the launch names.
     """
     if entry.transport == "stdio":
         if not entry.npm_package:
@@ -70,7 +106,7 @@ def installation_to_server_config(
                 entry_id=entry.id,
                 reason=msg,
             )
-            raise ValueError(msg)
+            raise MCPInstallError(msg)
         if not entry.npm_version:
             # An unpinned stdio spec would let npx resolve 'latest' on every
             # reconnect, defeating the supply-chain pin; reject rather than
@@ -84,11 +120,12 @@ def installation_to_server_config(
                 entry_id=entry.id,
                 reason=msg,
             )
-            raise ValueError(msg)
+            raise MCPInstallError(msg)
+        _require_launchable(_NPM_LAUNCHER, entry.id)
         return MCPServerConfig(
             name=entry.id,
             transport="stdio",
-            command="npx",
+            command=_NPM_LAUNCHER,
             args=("-y", _npx_package_arg(entry)),
             connection_name=connection_name,
             credential_env_map=dict(entry.credential_env_map),
@@ -103,7 +140,7 @@ def installation_to_server_config(
         entry_id=entry.id,
         reason=msg,
     )
-    raise ValueError(msg)
+    raise MCPInstallError(msg)
 
 
 def merge_installed_servers(
@@ -152,7 +189,10 @@ def merge_installed_servers(
                 entry,
                 install.connection_name,
             )
-        except ValueError:
+        except MCPInstallError:
+            # Already logged with the entry and the reason. A row that cannot
+            # be materialised is skipped rather than fatal: the operator's
+            # other installed servers are not this row's hostage.
             continue
         additions.append(server_cfg)
 

@@ -22,16 +22,20 @@ def validate_stream_chunk_fields(
     usage: object,
     error_message: object,
     finish_reason: object,
+    dropped_tool_calls: object,
 ) -> None:
     """Enforce the per-event-type payload contract for a stream chunk.
 
     Each event type requires specific fields and rejects extraneous
     payload fields to maintain strict discriminated-union semantics.
-    ``finish_reason`` is carried only on the terminal ``DONE`` event.
+    ``finish_reason`` and ``dropped_tool_calls`` are carried only on the
+    terminal ``DONE`` event: both are statements about the turn as a whole,
+    which no single delta is in a position to make.
 
     Raises:
-        ValueError: If required fields are missing, ``finish_reason`` is
-            set on a non-terminal event, or extraneous fields are set.
+        ValueError: If required fields are missing, ``finish_reason`` or
+            ``dropped_tool_calls`` is set on a non-terminal event, or
+            extraneous fields are set.
     """
     payload: dict[str, object] = {
         "content": content,
@@ -65,6 +69,12 @@ def validate_stream_chunk_fields(
 
     if finish_reason is not None and event_type is not StreamEventType.DONE:
         msg = f"{event_type.value} event must not include finish_reason"
+        raise ValueError(msg)
+
+    # Truthiness, not presence: this one defaults to False rather than None,
+    # so every chunk carries a value and only an asserted one is a claim.
+    if dropped_tool_calls and event_type is not StreamEventType.DONE:
+        msg = f"{event_type.value} event must not include dropped_tool_calls"
         raise ValueError(msg)
 
     extraneous = sorted(

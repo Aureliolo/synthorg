@@ -17,8 +17,44 @@ class AgentStateRepository(
     Composes :class:`IdKeyedRepository` (ADR-0001). Bespoke per D7:
     :meth:`get_active` filters non-idle agents and orders by
     ``last_activity_at`` DESC, which the generic ``list_items`` cannot
-    express and which dashboard live views poll on the hot path.
+    express and which dashboard live views poll on the hot path; and
+    :meth:`save_if_execution`, whose guard has to be evaluated by the same
+    statement that writes or it is not a guard at all.
     """
+
+    async def save_if_execution(
+        self,
+        entity: AgentRuntimeState,
+        /,
+        *,
+        expected_execution_id: str,
+    ) -> bool:
+        """Upsert *entity* only while the row still belongs to an execution.
+
+        The row is keyed by agent while an agent can hold more than one
+        dispatch, so clearing it unconditionally blanks a sibling's live row.
+        Reading the row and then saving cannot express that: the sibling can
+        claim the agent in the gap, and the write that follows destroys a
+        state the read said was safe to overwrite. The comparison therefore
+        belongs in the write statement, where the row is already locked.
+
+        A row that names no execution is writable: nothing owns it. An absent
+        row is writable too, because there is nothing to overwrite.
+
+        Args:
+            entity: The agent runtime state to persist.
+            expected_execution_id: The execution the caller believes holds the
+                row. The write lands only when the stored ``execution_id``
+                equals this or is ``NULL``.
+
+        Returns:
+            ``True`` when the row was written, ``False`` when a different
+            execution holds it and the write was declined.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
 
     @override
     async def save(self, entity: AgentRuntimeState, /) -> None:

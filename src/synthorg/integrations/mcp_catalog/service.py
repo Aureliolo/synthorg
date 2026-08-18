@@ -26,6 +26,7 @@ from synthorg.integrations.mcp_catalog._install_validation import (
     require_mapped_credentials,
     resolve_matching_connection,
 )
+from synthorg.integrations.mcp_catalog.install import installation_to_server_config
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
     McpInstallationRepository,
@@ -290,6 +291,10 @@ class CatalogService:
                 connection named, no catalog to resolve one, or a
                 connection of the wrong type, wrong dialect, or missing
                 a mapped credential field.
+            MCPInstallError: If the entry cannot be turned into a runnable
+                server config at all.
+            MCPServerUnlaunchableError: If no shipped image provides the
+                runtime its launch names.
             SecretRetrievalError: If the bound connection's secrets
                 cannot be resolved from the secret backend.
         """
@@ -320,6 +325,10 @@ class CatalogService:
                 ),
             )
 
+        # The install is the last moment an operator is present to be told the
+        # entry cannot run here. Materialising it now asks exactly what a boot
+        # would ask, so nothing is accepted that every later boot refuses.
+        installation_to_server_config(entry, resolved_connection_name)
         installation = McpInstallation(
             catalog_entry_id=NotBlankStr(entry.id),
             connection_name=(

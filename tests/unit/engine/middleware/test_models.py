@@ -15,7 +15,6 @@ from synthorg.engine.middleware.models import (
     AssumptionViolationEvent,
     AssumptionViolationType,
     ModelCallResult,
-    ProgressLedger,
     TaskLedger,
     ToolCallResult,
 )
@@ -198,62 +197,6 @@ class TestTaskLedger:
         )
         with pytest.raises(ValidationError):
             ledger.plan_version = 2  # type: ignore[misc]
-
-
-# ── ProgressLedger ────────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestProgressLedger:
-    """ProgressLedger frozen model with stall consistency."""
-
-    def test_valid_with_progress(self) -> None:
-        ledger = ProgressLedger(
-            round_number=1,
-            progress_made=True,
-            next_action="continue",
-        )
-        assert ledger.stall_count == 0
-        assert ledger.next_action == "continue"
-
-    def test_valid_stalled(self) -> None:
-        ledger = ProgressLedger(
-            round_number=3,
-            progress_made=False,
-            stall_count=2,
-            blocking_issues=("subtask-2 failed",),
-            next_action="replan",
-        )
-        assert ledger.stall_count == 2
-
-    def test_rejects_progress_with_stall(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="stall_count must be 0",
-        ):
-            ProgressLedger(
-                round_number=1,
-                progress_made=True,
-                stall_count=1,
-                next_action="continue",
-            )
-
-    def test_rejects_zero_round(self) -> None:
-        with pytest.raises(ValidationError):
-            ProgressLedger(
-                round_number=0,
-                progress_made=True,
-                next_action="continue",
-            )
-
-    def test_frozen(self) -> None:
-        ledger = ProgressLedger(
-            round_number=1,
-            progress_made=True,
-            next_action="continue",
-        )
-        with pytest.raises(ValidationError):
-            ledger.round_number = 2  # type: ignore[misc]
 
 
 # ── Error hierarchy ───────────────────────────────────────────────

@@ -80,6 +80,24 @@ class BlockedReason(StrEnum):
     #: a sweep. Distinct from WAVE_RELEASED, which is a subtask that WAS routed
     #: and lost its wave.
     NO_CAPABLE_AGENT = "no_capable_agent"
+    #: The work this subtask declared it needs did not arrive: an upstream
+    #: subtask failed, was cancelled, or is itself parked. Distinct from
+    #: WAVE_RELEASED (its own wave could not be assigned, so nothing is wrong
+    #: with its inputs) because the two wait on different things: a released
+    #: subtask waits on a scheduler, and this one waits on its dependency
+    #: being redone, which only a replan can order.
+    DEPENDENCY_FAILED = "dependency_failed"
+    #: The run stopped before this subtask was ever dispatched, and nothing
+    #: is known to be wrong with it or with its inputs. Kept apart from
+    #: DEPENDENCY_FAILED because an execution group is one round of AGENTS,
+    #: not one level of the DAG: a small org staffing one developer splits a
+    #: single level across as many groups as that agent needs, so the groups
+    #: after the one that stopped include SIBLINGS of it, whose declared
+    #: inputs are untouched. Parking those as a dependency failure states
+    #: something untrue about work that is merely unstarted, and it is a
+    #: replan's input, so the lie propagates. Both park (a row left at
+    #: CREATED has no exit), and each says which of the two happened.
+    RUN_STOPPED = "run_stopped"
 
 
 #: Parks that wait on staffing rather than on a person's answer. The

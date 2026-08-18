@@ -194,18 +194,116 @@ class TestForgedTestEvidence:
         [
             "pytest || true",
             "pytest ; echo done",
+            "pytest -q &",
+            "(pytest -q)",
+            "echo `pytest`",
+            "echo $(pytest)",
+        ],
+    )
+    def test_a_status_masking_command_is_refused(self, command: str) -> None:
+        """The recorded ``passed`` would describe the tail, not the suite.
+
+        Each of these can exit 0 whatever pytest did, or runs a program the
+        parse never sees, so accepting one records a green suite for a red
+        one.
+        """
+        assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
             "pytest -q && echo ok",
             "pytest -q | tee out.txt",
             "pytest -q > out.txt",
+            "cd /workspace && npm test 2>&1 | tail -12",
+            'cd /workspace && npm test 2>&1 | tee /tmp/run.txt | grep -E "pass|fail"',
+            "cd /workspace && go test ./... 2>/dev/null",
+            "cd /workspace && npm test",
         ],
     )
-    def test_a_compound_command_is_refused(self, command: str) -> None:
-        """The recorded ``passed`` would describe the tail, not the suite.
+    def test_a_conjunctive_command_is_a_test_run(self, command: str) -> None:
+        """The shape agents actually type, and its status is trustworthy.
 
-        Each of these exits 0 whatever pytest did, so accepting one records
-        a green suite for a red one.
+        A line built only of ``&&`` and ``|`` exits zero only when every
+        command in it exited zero: ``&&`` short-circuits, and ``|`` is
+        conjunctive under the ``pipefail`` every agent line runs with.
+        Refusing these produced 181 shell commands, several green suites and
+        zero evidence on a live run, and the oracle blocked all of them.
+        """
+        assert is_test_run(command)
+
+    def test_a_quoted_pipe_does_not_split_the_line(self) -> None:
+        """Only an operator separates commands, never a character in a word."""
+        assert not is_test_run('echo "pytest | grep"')
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "pytest -q\necho ok",
+            "npm test\ngit commit -m x",
+            "pytest -q\recho ok",
+            "pytest -q\r\necho ok",
+        ],
+    )
+    def test_a_second_statement_is_refused(self, command: str) -> None:
+        """The line's status is the LAST statement's, so this proves nothing.
+
+        Checked against the raw line rather than the tokens: ``shlex`` lists
+        newline in ``whitespace``, so it consumes the separator and hands
+        back ``['pytest', '-q', 'echo', 'ok']``. A per-token guard therefore
+        never fires, and the segment reads as one command headed ``pytest``
+        whose recorded status is ``echo``'s zero.
         """
         assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            'bash -c "npm test 2>&1 | tail -5"',
+            'sh -c "pytest -q | tee out.txt"',
+        ],
+    )
+    def test_a_pipeline_inside_a_nested_shell_is_refused(self, command: str) -> None:
+        """``pipefail`` is a shell option, and a fresh shell does not inherit it.
+
+        The conjunctive reading of ``|`` rests on the wrapper setting
+        ``-o pipefail`` on the shell it starts. The payload here runs in a
+        shell that invocation started, without the option, so the pipeline
+        reports ``tail``'s zero while the suite failed.
+        """
+        assert not is_test_run(command)
+
+    def test_a_nested_shell_without_a_pipeline_is_still_a_test_run(self) -> None:
+        """The nested-shell rule targets the pipeline, not the nesting."""
+        assert is_test_run('bash -c "pytest -q"')
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "set +o pipefail && pytest -q | tail -5",
+            "set +o pipefail && npm test 2>&1 | tail",
+        ],
+    )
+    def test_a_line_that_turns_pipefail_off_before_a_pipe_is_refused(
+        self, command: str
+    ) -> None:
+        """The line can revoke the option the pipe's trust rests on.
+
+        ``|`` is read as conjunctive only because the wrapper runs the line
+        under ``pipefail``. A line whose first command unsets it puts the
+        pipeline back to reporting ``tail``'s status, so the suite can fail
+        and the line still exit zero, which is the forged pass this module
+        exists to refuse.
+        """
+        assert not is_test_run(command)
+
+    def test_turning_pipefail_on_is_not_a_refusal(self) -> None:
+        """The rule targets the disable, not the builtin."""
+        assert is_test_run("set -o pipefail && pytest -q | tail -5")
+
+    def test_unsetting_another_option_leaves_the_pipe_alone(self) -> None:
+        """Only ``pipefail`` decides how a pipeline reports its status."""
+        assert is_test_run("set +o errexit && pytest -q | tail -5")
 
 
 class TestRecordIfTestRun:

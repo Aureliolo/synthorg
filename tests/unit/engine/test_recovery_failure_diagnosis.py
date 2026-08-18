@@ -4,13 +4,20 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
+from synthorg.engine.coordination.attribution import build_agent_contributions
+from synthorg.engine.coordination.models import CoordinationWave
 from synthorg.engine.failure_classification import (
+    UNUSABLE_OUTPUT_MARKER,
     FailureCategory,
     infer_failure_category,
     infer_failure_category_without_evidence,
 )
+from synthorg.engine.loop_unusable_turn import unusable_turn_error
+from synthorg.engine.parallel_models import AgentOutcome, ParallelExecutionResult
 from synthorg.engine.recovery import RecoveryResult
+from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
 
 
@@ -254,6 +261,61 @@ class TestRecoveryResultDiagnosisFields:
 
 
 @pytest.mark.unit
+class TestAModelsOwnBadOutputIsItsOwnCategory:
+    """Two of one wave's three tasks died here and both read ``unknown``.
+
+    A model that spends every correction claiming a tool call and sending
+    none is neither the provider failing nor a tool failing. It is precisely
+    identifiable and it recurs, so it is not the honest default's business.
+    """
+
+    def test_the_loops_own_message_classifies(self) -> None:
+        """The message and its classification cannot drift apart.
+
+        The exact string the loop reports, taken from the builder the loop
+        calls rather than rebuilt here: a reword that dropped the marker would
+        send the category back to ``unknown`` while a hand-written copy of the
+        old wording went on passing.
+        """
+        message = unusable_turn_error(6)
+
+        assert UNUSABLE_OUTPUT_MARKER in message
+        assert infer_failure_category(message) is FailureCategory.MODEL_OUTPUT_UNUSABLE
+
+    def test_the_agent_is_not_charged_for_its_models_bad_output(self) -> None:
+        """The agent cannot influence it, so it is not attributed to them.
+
+        Asserted through the builder the coordinator calls rather than off the
+        lookup table: reading the table checks that the table says what the
+        table says, and would keep passing if ``_score_outcome`` stopped
+        consulting it.
+        """
+        outcome = AgentOutcome(
+            task_id=NotBlankStr("subtask-1"),
+            agent_id=NotBlankStr("agent-1"),
+            error=unusable_turn_error(6),
+        )
+        waves = (
+            CoordinationWave(
+                wave_index=0,
+                subtask_ids=(NotBlankStr("subtask-1"),),
+                execution_result=ParallelExecutionResult(
+                    group_id=NotBlankStr("group-1"),
+                    outcomes=(outcome,),
+                    total_duration_seconds=1.0,
+                ),
+            ),
+        )
+
+        contributions = build_agent_contributions(
+            RoutingResult(parent_task_id=NotBlankStr("parent-1")), waves
+        )
+
+        assert [c.failure_attribution for c in contributions] == [
+            "coordination_overhead"
+        ]
+
+
 class TestInferFailureCategory:
     """Tests for the infer_failure_category helper."""
 

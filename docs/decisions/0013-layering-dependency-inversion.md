@@ -93,12 +93,13 @@ and persistence types stay behind the boundary:
 
 ### 4. Live coordination caps + configuration-precedence reaffirmation
 
-`max_stall_count` and `max_reset_count` are registered settings
-(`settings/definitions/coordination.py`), resolved in
-`get_coordination_config()`, and forwarded through `section_config`, so they
-fall under DB > env > code default and the no-hardcoded-values gate. (Building
-the `MagenticReplanHook` from these caps is part of the pluggable-seam wiring
-deferred to the follow-up issue; the caps themselves are now live config.)
+The coordination caps are registered settings
+(`settings/definitions/coordination.py`), resolved into a
+`CoordinationConfig` and forwarded through `section_config`, so they fall
+under DB > env > code default and the no-hardcoded-values gate. Whether a run
+is stuck is not among them: the execution loop's stagnation detector and the
+initiative rollup's `stall_reason` both hold the evidence to decide it, and
+coordination middleware holds none.
 
 Config env reads are confined to the bootstrap edge. The worker NATS default
 now resolves through `resolve_init_value` (closing the split-brain with the

@@ -1,79 +1,80 @@
 # module-kind: code
-"""On-startup auto-wire for the training service.
+"""Subsystem activation for the training service.
 
-Deferred to startup rather than construction because it needs the durable
-memory backend, which is only wired once persistence is connected. Every
-other dependency (agent registry, tool-invocation tracker, performance
-tracker) is already present from the construction phase.
+Declared rather than auto-wired at startup. As a one-shot startup hook it
+ran once, before the durable memory backend was guaranteed to exist, and any
+failure inside it was swallowed into a ``severity=non_fatal`` warning; the
+only visible consequence was ``eval_loop`` declining with "no training
+service" for the life of the process, which names the symptom and not the
+cause. A live boot did exactly that, on a ``TypeError`` from a defensive
+deep copy, and the log line that held the real reason went unread.
 
-Best-effort like the rest of the startup auto-wires: a failure leaves the
-service unwired with a warning rather than aborting boot, because training
-is an enhancement to hiring, not a precondition for the org running.
+As a subsystem it has its own name in ``GET /subsystems``, its own decline
+reason, and the reconciler retries it on the pass where its dependencies
+appear rather than never.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.memory.state import MemoryStateSlice
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 
 logger = get_logger(__name__)
 
 
-def _should_wire(app_state: AppState, effective_config: RootConfig | None) -> bool:
-    """Whether every precondition for building the service is met.
-
-    Returns:
-        ``True`` when training is enabled and nothing has wired the service
-        yet, with both construction-phase dependencies present.
-    """
-    return (
-        app_state.slice(HrStateSlice).training_service is None
-        and effective_config is not None
-        and effective_config.training.enabled
-        and app_state.slice(HrStateSlice).agent_registry is not None
-        and app_state.slice(ToolsStateSlice).invocation_tracker is not None
-    )
-
-
-async def try_wire_training_service(
+async def wire_training_service(
     app_state: AppState,
     effective_config: RootConfig | None,
 ) -> None:
-    """Wire the training service once its startup-phase deps exist."""
-    if not _should_wire(app_state, effective_config) or effective_config is None:
-        return
-    try:
-        await _wire(app_state, effective_config)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort startup auto-wire
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            phase="training_service_auto_wire",
-            severity="non_fatal",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+    """Build and install the training service, or decline saying why.
 
+    Args:
+        app_state: Application state carrying every collaborator.
+        effective_config: Root configuration; ``None`` on a boot that never
+            resolved one.
 
-async def _wire(app_state: AppState, effective_config: RootConfig) -> None:
-    """Build and install the training service."""
+    Raises:
+        SubsystemDeclinedError: When a precondition this activation can name
+            is absent. Every other failure propagates: a training service
+            that could not be built for a reason nobody anticipated is a
+            defect, and swallowing it is what hid the last one.
+    """
     from synthorg._core.features import require_service  # noqa: PLC0415
     from synthorg.hr.training.factory import build_training_service  # noqa: PLC0415
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    tracker = app_state.slice(HrStateSlice).performance_tracker
-    memory_backend = app_state.slice(MemoryStateSlice).backend
-    if tracker is None or memory_backend is None:
+    if app_state.slice(HrStateSlice).training_service is not None:
         return
-    # Training is an enhancement to hiring, so a registry-less boot still gets
-    # the service with deterministic curation rather than nothing at all.
+    if effective_config is None:
+        msg = "no resolved configuration; training reads its policy from it"
+        raise SubsystemDeclinedError(msg)
+    if not effective_config.training.enabled:
+        msg = "training is switched off (training.enabled)"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(ToolsStateSlice).invocation_tracker is None:
+        msg = "no tool-invocation tracker; extraction reads what agents did"
+        raise SubsystemDeclinedError(msg)
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is None:
+        msg = "no performance tracker; source selection ranks from its records"
+        raise SubsystemDeclinedError(msg)
+    memory_backend = app_state.slice(MemoryStateSlice).backend
+    if memory_backend is None:
+        msg = "no memory backend; a new hire learns nothing that is not stored"
+        raise SubsystemDeclinedError(msg)
+
+    # Two different registries meet here and only one is optional. The AGENT
+    # registry is structural: the source selectors read `list_active` and
+    # `list_by_department` off it, so with no roster there is nobody to learn
+    # from, which is why the spec `requires` it and this resolves it hard. The
+    # PROVIDER registry below is the optional one: unset degrades `llm_curated`
+    # to deterministic scoring rather than withholding the service.
     provider_registry = app_state.slice(ProvidersStateSlice).registry
     service = build_training_service(
         config=effective_config.training,
@@ -95,4 +96,18 @@ async def _wire(app_state: AppState, effective_config: RootConfig) -> None:
     app_state.wire(HrStateSlice, training_service=service)
 
 
-__all__ = ["try_wire_training_service"]
+async def unwire_training_service(app_state: AppState) -> None:
+    """Drop the training service so the next pass rebuilds it.
+
+    The extractors are built FROM the memory backend, so a replaced backend
+    leaves this service reading through the instance the memory subsystem just
+    disconnected, while still reporting itself up.
+
+    Args:
+        app_state: Application state carrying the HR slice.
+    """
+    app_state.wire(HrStateSlice, training_service=None)
+    logger.info(API_APP_STARTUP, service="training_service", note="unwired")
+
+
+__all__ = ["unwire_training_service", "wire_training_service"]

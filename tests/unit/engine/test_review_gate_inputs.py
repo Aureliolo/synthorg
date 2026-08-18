@@ -9,23 +9,33 @@ posture) when no reviewable deliverable exists at all.
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.deliverable_content import DeliverableReader
-from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.review_gate_inputs import (
+    AttemptDeliverable,
+    DeliverableReviewInputBuilder,
+    attempt_deliverable,
+)
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameAggregate,
     FlightRecorderFrameRepository,
 )
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
 from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
@@ -344,3 +354,136 @@ async def test_build_returns_none_without_acceptance_criteria() -> None:
     )
 
     assert await builder.build(_task(criteria=())) is None
+
+
+class TestTheReviewJudgesTheAttemptInHand:
+    """Who answers "what did this attempt deliver": the run, or a store.
+
+    Two owners is the defect. The recorder is an observability sink, so
+    when the gate reads it instead of the run, a recorder fault is
+    indistinguishable from an agent that delivered nothing, and a
+    checkpoint-resumed attempt is answered for by the pre-recovery FAILED
+    attempt, whose turns are the highest ones recorded.
+    """
+
+    def _attempt(self) -> AttemptDeliverable:
+        return AttemptDeliverable(
+            execution_id=NotBlankStr("exec-live"),
+            closing_message=NotBlankStr("Deliverable: the resumed run's work."),
+        )
+
+    async def test_the_attempt_is_preferred_over_the_recorded_copy(self) -> None:
+        """A stale or wrong recorded frame must not decide the verdict."""
+        repo = _frame_repo(
+            latest_execution_id="exec-stale",
+            frames=(_frame("the PREVIOUS attempt, which failed"),),
+        )
+        builder = DeliverableReviewInputBuilder(
+            frame_repository=repo,
+            autonomy_provider=_supervised,
+        ).bound_to(self._attempt())
+
+        result = await builder.build(_task())
+
+        assert result is not None
+        assert result.execution_id == "exec-live"
+        assert "the resumed run's work" in result.deliverable_content
+        assert "PREVIOUS attempt" not in result.deliverable_content
+
+    async def test_a_recorder_that_stored_nothing_no_longer_decides(self) -> None:
+        """The exact shape that failed 4 items on a live run.
+
+        With the recorder empty, the review found no deliverable, ruled the
+        work unreviewable and sent it to rework, which is byte for byte what
+        an agent producing nothing looks like. Holding the run, the gate has
+        no reason to ask.
+        """
+        repo = _frame_repo(latest_execution_id=None)
+        builder = DeliverableReviewInputBuilder(
+            frame_repository=repo,
+            autonomy_provider=_supervised,
+        ).bound_to(self._attempt())
+
+        result = await builder.build(_task())
+
+        assert result is not None
+        assert result.execution_id == "exec-live"
+
+    async def test_binding_does_not_mutate_the_shared_builder(self) -> None:
+        """The builder is a shared service; one review must not see another's."""
+        repo = _frame_repo(
+            latest_execution_id="exec-9",
+            frames=(_frame("the recorded one"),),
+        )
+        shared = DeliverableReviewInputBuilder(
+            frame_repository=repo,
+            autonomy_provider=_supervised,
+        )
+
+        bound = shared.bound_to(self._attempt())
+        unbound_result = await shared.build(_task())
+
+        assert bound is not shared
+        assert unbound_result is not None
+        assert unbound_result.execution_id == "exec-9"
+
+    async def test_no_attempt_leaves_the_detached_path_alone(self) -> None:
+        """A later read holds no run, so the store is still the answer."""
+        repo = _frame_repo(
+            latest_execution_id="exec-9",
+            frames=(_frame("the recorded one"),),
+        )
+        shared = DeliverableReviewInputBuilder(
+            frame_repository=repo,
+            autonomy_provider=_supervised,
+        )
+
+        assert shared.bound_to(None) is shared
+
+
+class TestReadingTheAttemptsClosingMessage:
+    def _result(self, *contents: str) -> ExecutionResult:
+        return ExecutionResult(
+            context=AgentContext(
+                execution_id="exec-live",
+                identity=AgentIdentity(
+                    id=as_uuid("agent-backend"),
+                    name="Agent",
+                    role="Developer",
+                    department="Engineering",
+                    model=ModelConfig(
+                        provider="test-provider", model_id="test-basic-001"
+                    ),
+                    hiring_date=date(2026, 1, 1),
+                ),
+                started_at=datetime(2026, 8, 17, 12, 0, tzinfo=UTC),
+                conversation=tuple(
+                    ChatMessage(role=MessageRole.ASSISTANT, content=content)
+                    for content in contents
+                ),
+            ),
+            termination_reason=TerminationReason.COMPLETED,
+        )
+
+    def test_the_last_assistant_message_is_the_deliverable(self) -> None:
+        """Same value the terminal frame records, so the two cannot drift."""
+        attempt = attempt_deliverable(self._result("first pass", "final answer"))
+
+        assert attempt is not None
+        assert attempt.closing_message == "final answer"
+        assert attempt.execution_id == "exec-live"
+
+    def test_a_run_that_authored_nothing_has_no_deliverable(self) -> None:
+        """Falls back to the store rather than inventing an empty one."""
+        assert attempt_deliverable(self._result()) is None
+
+    def test_a_blank_final_message_is_not_a_deliverable(self) -> None:
+        """Whitespace is not delivery, and the model would reject it anyway."""
+        # A blank final message falls back to the last message that carried
+        # something, so the assertion names which one was selected: returning
+        # the blank one is also non-None and would satisfy a bare existence
+        # check.
+        skipped_blank = attempt_deliverable(self._result("real work", "   "))
+        assert skipped_blank is not None
+        assert skipped_blank.closing_message == "real work"
+        assert attempt_deliverable(self._result("   ")) is None

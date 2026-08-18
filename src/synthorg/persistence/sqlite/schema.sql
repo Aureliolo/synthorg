@@ -113,9 +113,15 @@ CREATE TABLE tasks (
             'wave_released',
             'reviewer_unstaffed',
             'red_team_unstaffed',
-            'no_capable_agent'
+            'no_capable_agent',
+            'dependency_failed',
+            'run_stopped'
         )
-    )
+    ),
+    -- When the task was filed. No DB default: the application is the single
+    -- owner of the value, so a row cannot acquire a timestamp from the
+    -- database clock that disagrees with the one the model carries.
+    created_at TEXT NOT NULL
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);
@@ -2095,6 +2101,9 @@ ON drift_reports (entity_name, created_at DESC);
 CREATE TABLE idempotency_keys (
     scope TEXT NOT NULL CHECK (LENGTH(TRIM(scope)) > 0 AND LENGTH(scope) <= 64),
     key TEXT NOT NULL CHECK (LENGTH(TRIM(key)) > 0 AND LENGTH(key) <= 255),
+    -- lint-allow: enum-check-parity -- IdempotencyOutcome.FRESH is the verdict
+    -- of a claim attempt ("no record existed"), not a state a row can be in;
+    -- the three stored states are the whole vocabulary of this column.
     status TEXT NOT NULL CHECK (status IN ('in_flight', 'completed', 'failed')),
     -- Opaque per-lease ownership token (UUIDv4 hex). Rotated every
     -- time a row is reclaimed (FRESH on an expired/failed prior
@@ -2985,6 +2994,9 @@ CREATE TABLE plan_item_comments (
     body TEXT NOT NULL CHECK (LENGTH(TRIM(body)) > 0),
     created_at TEXT NOT NULL,
     author_kind TEXT NOT NULL DEFAULT 'human'
+    -- lint-allow: enum-check-parity -- typed CommentAuthorKind, not ActorKind;
+    -- sharing two spellings with it is coincidence, and nothing writes a
+    -- system-authored plan comment.
     CHECK (author_kind IN ('human', 'agent')),
     author_agent_id TEXT
     CHECK (

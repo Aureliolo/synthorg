@@ -19,6 +19,7 @@ from synthorg.engine.coordination.dispatcher_types import (
 )
 from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
+from synthorg.engine.parallel_models import ParallelExecutionGroup
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.engine.workspace.models import (
@@ -656,6 +657,77 @@ class TestContextDependentDispatcher:
         ws_service.setup_group.assert_called_once()
         # Per-wave merge
         ws_service.merge_group.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_a_failure_after_the_cut_still_releases_the_worktrees(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Releasing pairs with STARTING to prepare, not with succeeding.
+
+        A preparation that raises after ``setup_group`` returned has already
+        taken worktrees, and nothing but the release step gives them back: the
+        wave never dispatches, so a release tied to a successful preparation
+        leaves them on disk with no reference left pointing at them.
+        """
+        decomp = make_decomposition((make_subtask("sub-a"), make_subtask("sub-b")))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+        cut = tuple(
+            Workspace(
+                workspace_id=f"ws-{label}",
+                task_id=f"sub-{label}",
+                agent_id=agent,
+                branch_name=f"workspace/sub-{label}",
+                worktree_path=f"fake/ws-{label}",
+                base_branch="main",
+                created_at=datetime.now(UTC),
+            )
+            for label, agent in (("a", agent_a), ("b", agent_b))
+        )
+        ws_service = _mock_workspace_service(workspaces=cut)
+
+        def _explode(*_args: object, **_kwargs: object) -> ParallelExecutionGroup:
+            msg = "cannot thread the worktrees into the assignments"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.engine.coordination.context_dependent_dispatcher"
+            ".rebuild_group_with_workspaces",
+            _explode,
+        )
+
+        executor = _mock_executor()
+        dispatcher = ContextDependentDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(),
+        )
+
+        # The preparation raised, so the wave never dispatched. Pinned rather
+        # than assumed: releasing the worktrees is only correct BECAUSE no
+        # agent is running in them, and a dispatch that went ahead anyway
+        # would make this teardown the bug instead of the fix.
+        executor.execute_group.assert_not_awaited()
+        ws_service.setup_group.assert_called_once()
+        ws_service.teardown_group.assert_awaited_once()
+        assert ws_service.teardown_group.await_args is not None
+        released = (
+            ws_service.teardown_group.await_args.kwargs.get("workspaces")
+            or ws_service.teardown_group.await_args.args[0]
+        )
+        assert {w.workspace_id for w in released} == {"ws-a", "ws-b"}
+        # Nothing was merged and the wave is recorded as failed: the raise is
+        # the wave loop's to report, and it does, rather than escaping into
+        # the caller and taking the phase list with it.
+        ws_service.merge_group.assert_not_called()
+        assert any(
+            phase.phase == "execute_wave_0" and not phase.success
+            for phase in result.phases
+        )
 
 
 class TestCentralizedWorkspaceFailure:

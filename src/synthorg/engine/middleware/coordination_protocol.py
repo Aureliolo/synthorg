@@ -23,10 +23,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskStatusRollup,
 )
-from synthorg.engine.middleware.models import (
-    ProgressLedger,
-    TaskLedger,
-)
+from synthorg.engine.middleware.models import TaskLedger
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import (
@@ -54,7 +51,6 @@ class CoordinationMiddlewareContext(BaseModel):
         status_rollup: Aggregated subtask status rollup (set after rollup).
         phases: Pipeline-step results accumulated so far.
         task_ledger: TaskLedger populated by TaskLedgerMiddleware.
-        progress_ledger: ProgressLedger populated by ProgressLedgerMiddleware.
         metadata: Middleware-to-middleware data pass-through.
     """
 
@@ -86,10 +82,6 @@ class CoordinationMiddlewareContext(BaseModel):
     task_ledger: TaskLedger | None = Field(
         default=None,
         description="TaskLedger from TaskLedgerMiddleware",
-    )
-    progress_ledger: ProgressLedger | None = Field(
-        default=None,
-        description="ProgressLedger from ProgressLedgerMiddleware",
     )
     metadata: dict[str, object] = Field(
         default_factory=dict,

@@ -56,6 +56,159 @@ always visible, the surface works with no per-agent setup.
 `identity.tools.mcp_capabilities`; if it regressed to a single global
 grant, every ELEVATED agent would again see everything.
 
+## Where a stdio MCP server actually runs
+
+A stdio MCP server is arbitrary third-party code, so it runs in a container,
+never as a child of the backend. Getting that wrong is not theoretical: it is
+what made the shipped catalog unlaunchable on every shipped stack.
+
+The backend image is hardened and ships no shell, no node and no `npx`, so a
+direct spawn raises `FileNotFoundError`. The wrapper that existed to solve
+that rewrote the launch to `docker run -i ...`, and the image ships no
+`docker` binary either, so it raised the same error from one line further
+along. A live boot logged `mcp.client.credentials_injected` (the operator's
+install was correct), then `connection_failed error='FileNotFoundError'`,
+then `mcp.factory.complete tool_count=0`, and moved on. Install-time
+validation checked credentials thoroughly and never asked whether this
+process could launch the thing at all.
+
+### The transport
+
+`tools/mcp/container_stdio.py` reaches the daemon the way the rest of the
+product does, over the API. It creates the container, attaches to its
+`stdin` and `stdout` **before** starting it (so no output frame is lost and
+the session's first request has somewhere to go), and yields the same
+`(read, write)` memory-stream pair the SDK's `stdio_client` yields:
+line-delimited JSON-RPC in both directions, a parse failure delivered as a
+value rather than an exception, and `stderr` logged and never parsed.
+
+Attaching before the start is a step, not a call. The client's `attach` builds
+a stream object and performs no I/O; the connection opens inside the first
+read or write. Left to happen on its own that first call comes from a pump,
+after the start, so a server that greets on startup or dies immediately has
+that output dropped by the daemon with nothing attached, and `logs=False`
+means there is no replay to recover it from. The transport therefore enters
+the stream itself before starting the container. The same step decides which
+task performs that lazy setup: both pumps would otherwise reach it together,
+its guard is unlocked, and each would open a connection, one of which would be
+leaked while the other overwrote the shared queue.
+
+Isolation is the same policy the CLI wrapper asked for, expressed as
+`HostConfig`: every capability dropped, no new privileges, a read-only root
+with one writable tmpfs, and the operator's memory / pids / `cpu` / network
+limits (`tools.mcp_sandbox_*`, converted to daemon units by
+`tools/sandbox/_container_limits.py`). The container keeps the image's own
+`uid`, as the agent sandbox does, because naming a user here would bind the
+transport to one image's accounts. It also carries the operator's configured
+container runtime, so a deployment hardened with gVisor gets gVisor here. That
+is not symmetry for its own sake: with every capability dropped and no host
+path writable, a kernel or runtime bug is the only escape left, and this is
+the one path in the product that runs code nobody reviewed, so honouring the
+setting for our own agents while ignoring it here would give the weaker
+isolation to the stronger threat.
+
+### What the container can still reach (residual)
+
+Egress is not restricted. `tools.mcp_sandbox_network` offers `bridge`, `none`
+and `host`, and a server exists to call an upstream API, so `none` is not a
+setting an operator can use. A bound connection's credential is injected into
+the container's environment, which means the package's own runtime code holds
+a live secret and can open a connection to any host the network allows,
+including the host gateway and, on a cloud host, the instance metadata
+endpoint. Version pinning and `NPM_CONFIG_IGNORE_SCRIPTS` do not touch this:
+both constrain what happens at INSTALL, and this is the code doing exactly
+what it was installed to do.
+
+Closing it properly means a per-server egress allowlist on the sidecar the
+agent sandbox already uses. The obstacle is that a catalog entry declares its
+package and its credential mapping but not the host it talks to, so the
+allowlist has no source to derive from today and would have to be operator-set
+per server. Until then this is a stated gap rather than an implied assurance:
+an operator installing a credentialed catalog server is trusting that
+package's runtime behaviour with that credential.
+
+Three narrower residuals belong with it, none of them closed here:
+
+- **The pin is a version, not a hash.** The package is fetched at every
+  connect. `_validate_npm_pin` stops a dist-tag re-resolving to something
+  un-reviewed, but nothing checks that the tarball for a given version is the
+  one that was reviewed. The image's signature is verified, and that check
+  stops at the image boundary: the package is fetched into it afterwards.
+- **An orphan keeps its credential until the next boot of the same
+  deployment.** `AutoRemove` is deliberately off so the reconciliation pass
+  can find a container a hard kill left behind, and `AutoRemove` would only
+  fire on exit anyway. The consequence is that a third-party process keeps its
+  network access and its environment (readable via `docker inspect`) for as
+  long as the host stays up. The old CLI wrapper died with its parent.
+- **Server `stderr` is logged verbatim** (400 characters, DEBUG). Many
+  command-line tools dump their resolved configuration on failure. `scrub_event_fields` masks the
+  known credential shapes on every record, so this is defence in depth, but
+  the redaction is pattern-based: a token in a bespoke format would pass.
+
+### Why these containers carry no tracking row
+
+Every other managed container class has a `TrackedContainerRepository` row,
+and the boot reconciliation pass uses it to tell a live peer's container from
+an orphan: a container with a row is **kept** (adopted back into the in-memory
+tracking dict), and only one that is ours, predates this boot, and has no row
+is removed.
+
+An MCP container cannot be adopted. Its whole value is an attached stdio
+stream, which belongs to the process that opened it, so a container whose
+backend is gone has nothing that can talk to it again: it is a credentialed
+process holding a socket nobody owns. Giving it a row would move it from the
+removed set into the kept set, which is precisely the wrong answer, so the
+absence is deliberate and the labels alone carry it.
+
+The cost is real and worth naming: in the one arrangement
+`deployment_identity.py` explicitly blesses, two backends sharing a workspace
+root and a daemon, the second one's boot sweep will destroy the first one's
+live MCP servers, because from the daemon they are indistinguishable from
+orphans. That is the same window the reconciliation module already documents
+for its row-race, one step wider. Closing it needs an ownership signal that
+survives the process without implying adoption (a liveness lease rather than a
+row), which is a change to the reconciler rather than to this transport.
+
+Three properties beyond the isolation are load-bearing:
+
+- **Trusted controls win by construction.** `HOME`, `NPM_CONFIG_CACHE` and
+  `NPM_CONFIG_IGNORE_SCRIPTS` are merged last, so a configured environment
+  cannot re-enable install scripts (the npm RCE vector) or redirect writes
+  off the one writable mount. A collision is logged, not silently dropped.
+- **The container is attributable.** It carries the managed label and this
+  deployment's label (both owned by `tools/sandbox/deployment_identity.py`,
+  derived from the agent workspace root). Without them the boot
+  reconciliation pass leaves an orphan alone for ever, and a hard kill of the
+  backend leaves a credentialed server running with nothing attached to it.
+- **A failure keeps its type.** A task group re-raises what escapes its body
+  as an `ExceptionGroup`. The client's reconnect handler retries an
+  `MCPConnectionError` and nothing else, so the transport carries a
+  session-time failure out of the group and re-raises it unchanged.
+
+### One image runs untrusted code
+
+The runtime image is the resolved `tools.sandbox_image`: it carries Node, npm
+and Python, and the CLI verifies its signature. `tools.mcp_sandbox_image` is
+deleted. A second knob naming a second image is a second answer to a question
+the operator already answered by hardening and verifying one image, and its
+default named a third-party image the deployment had never pulled.
+
+### Refusing what cannot be launched
+
+`installation_to_server_config` is the single owner of "can this entry become
+a runnable server". `CatalogService.install` calls it before persisting a row,
+so an install refuses exactly what a boot would refuse, at the one moment an
+operator is present to be told; a boot skips a row it refuses rather than
+failing, so one bad row does not cost an operator every other server.
+
+`RUNTIME_PROGRAMS` in `tools/mcp/runtime_provision.py` declares each
+launchable program together with the apko package that installs it.
+`check_mcp_catalog_launchable.py` holds that declaration to
+`docker/sandbox/apko.yaml` in both directions: a declared program no package
+provides fails the build, and so does a bundled entry naming an undeclared
+program. It fails closed on an empty declaration, because a gate looking at
+nothing must not report success.
+
 ## Supply-chain hardening: npm version pinning
 
 The MCP catalog installer pins every npm package to `@<version>`, but a

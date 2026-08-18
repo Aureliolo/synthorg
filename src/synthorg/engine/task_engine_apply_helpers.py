@@ -6,6 +6,7 @@ so the ``apply_*`` functions stay focused on the mutation flow.
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 from types import MappingProxyType
 
 from pydantic import ValidationError as PydanticValidationError
@@ -13,11 +14,9 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.core.clock import Clock
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.task_engine_models import TaskMutationResult
-from synthorg.engine.task_engine_version import TaskTimingTracker
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_FAILED,
-    TASK_ENGINE_TIMING_FALLBACK,
 )
 
 logger = get_logger(__name__)
@@ -48,54 +47,33 @@ RECORDED_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
         TaskStatus.REJECTED: "rejected",
     },
 )
-# Statuses where the creation-timestamp entry can be safely dropped
-# from ``TaskTimingTracker``. ``FAILED`` is excluded because the
-# engine may retry a failed task; the retry's duration metric should
-# still be measured from the original creation, not from "now -
-# nothing" (which would degrade to the missing-timestamp WARN
-# fallback every retry).
+# Statuses that mean the task is done forever, as opposed to the
+# recorded-outcome map above. ``FAILED`` is excluded because the engine may
+# retry a failed task.
 TRULY_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.REJECTED},
 )
 
 
 def compute_task_duration_sec(
-    timings: TaskTimingTracker,
-    task_id: str,
-    mutation_type: str,
+    created_at: datetime,
     *,
     clock: Clock,
-) -> float | None:
-    """Look up *task_id*'s creation time and return ``now - created_at``.
+) -> float:
+    """Return ``now - created_at`` in seconds, clamped at zero.
 
-    Returns ``None`` when the timing tracker has no record (typically
-    a task created before the current process restart). Callers must
-    skip the duration-histogram observation in that case so the
-    histogram is not skewed by spurious 0-duration samples; the
-    outcome counter still ticks so a tracked-since-restart vs.
-    inherited-from-prior-process task can be told apart in dashboards
-    via ``rate(task_runs_total) - rate(task_duration_count)``. A WARN
-    with ``reason="creation_timestamp_missing"`` makes the missing-
-    timestamp event searchable.
+    The baseline is the task row's own creation time, so this always has an
+    answer: a restart cannot lose it and a retry still measures from the
+    original creation rather than from the point it was retried. Both
+    properties are why the value is a persisted column and not something the
+    process holds: the duration of a task is asked about precisely when a
+    process did not see it start.
 
     Returns:
-        Elapsed seconds since the task's tracked creation timestamp,
-        clamped at ``0.0``; ``None`` when no timestamp is recorded.
+        Elapsed seconds since the task was filed, clamped at ``0.0`` so a
+        clock adjustment cannot produce a negative observation.
     """
-    created_at = timings.get_creation(task_id)
-    if created_at is not None:
-        return max(0.0, (clock.now() - created_at).total_seconds())
-    logger.warning(
-        TASK_ENGINE_TIMING_FALLBACK,
-        mutation_type=mutation_type,
-        task_id=task_id,
-        reason="creation_timestamp_missing",
-        note=(
-            "duration-histogram observation skipped; "
-            "task likely created before process restart"
-        ),
-    )
-    return None
+    return max(0.0, (clock.now() - created_at).total_seconds())
 
 
 def format_validation_error(

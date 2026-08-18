@@ -20,7 +20,9 @@ from synthorg.integrations.errors import (
     CatalogEntryNotFoundError,
     ConnectionNotFoundError,
     InvalidConnectionAuthError,
+    MCPServerUnlaunchableError,
 )
+from synthorg.integrations.mcp_catalog import install as install_module
 from synthorg.integrations.mcp_catalog.in_memory_installations import (
     InMemoryMcpInstallationRepository,
 )
@@ -615,3 +617,73 @@ class TestInstallMerge:
         )
         merged = merge_installed_servers(base, (install,), {})
         assert merged.servers == ()
+
+
+@pytest.mark.unit
+class TestAnEntryTheImageCannotLaunchIsRefused:
+    """An install the operator completed that could never work.
+
+    The shipped stack could not run its own catalog: the launch spawned an
+    ``npx`` no shipped image provided, so every boot logged one
+    ``FileNotFoundError`` and reported zero tools while the dashboard showed
+    the server installed. The install is the last moment somebody is present
+    to be told.
+    """
+
+    @staticmethod
+    def _no_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Make the runtime image provide nothing."""
+        monkeypatch.setattr(install_module, "image_provides", lambda _command: False)
+
+    async def test_materialising_refuses_and_names_the_runtime(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._no_runtime(monkeypatch)
+        entry = await CatalogService().get_entry("brave-search-mcp")
+        with pytest.raises(MCPServerUnlaunchableError, match="npx"):
+            installation_to_server_config(entry, "primary-search")
+
+    async def test_install_refuses_before_persisting_a_row(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A row that cannot launch is worse than no row: it reads as done."""
+        self._no_runtime(monkeypatch)
+        service = _connectionless_catalog(tmp_path)
+        repo = InMemoryMcpInstallationRepository()
+
+        with pytest.raises(MCPServerUnlaunchableError):
+            await service.install(
+                "test-local-mcp",
+                None,
+                connection_catalog=None,
+                installations_repo=repo,
+            )
+
+        assert await repo.get(NotBlankStr("test-local-mcp")) is None
+
+    async def test_a_boot_skips_an_unlaunchable_row_without_losing_the_rest(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """One bad row must not cost an operator every other server."""
+        service = _connectionless_catalog(tmp_path)
+        entries_by_id = {e.id: e for e in await service.browse()}
+        self._no_runtime(monkeypatch)
+        install = McpInstallation(
+            catalog_entry_id=NotBlankStr("test-local-mcp"),
+            connection_name=None,
+            installed_at=datetime.now(UTC),
+        )
+        base = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="hand-written",
+                    transport="stdio",
+                    command="npx",
+                    args=("-y", "@example/server@1.0.0"),
+                ),
+            )
+        )
+
+        merged = merge_installed_servers(base, (install,), entries_by_id)
+
+        assert [server.name for server in merged.servers] == ["hand-written"]

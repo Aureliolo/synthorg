@@ -109,6 +109,12 @@ class ParallelExecutionGroup(BaseModel):
         assignments: Agent-task pairings (non-empty).
         max_concurrency: Max simultaneous runs (None = unlimited).
         fail_fast: Cancel remaining assignments on first failure.
+        dag_level: Which dependency level of the plan these assignments came
+            from. A group is one round of AGENTS, and a level whose subtasks
+            share an agent is split across several groups, so the group's
+            position in the sequence does NOT give its level back. Anything
+            reasoning about dependencies has to read it here: comparing
+            positions instead treats a sibling as an upstream.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -127,6 +133,11 @@ class ParallelExecutionGroup(BaseModel):
     fail_fast: bool = Field(
         default=False,
         description="Cancel remaining on first failure",
+    )
+    dag_level: int = Field(
+        default=0,
+        ge=0,
+        description="Dependency level these assignments came from",
     )
 
     @model_validator(mode="after")

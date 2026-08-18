@@ -26,7 +26,6 @@ from synthorg.backup.models import BackupTrigger
 from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.integrations.state import (
@@ -288,14 +287,13 @@ def _reset_if_tasks_dead(
             return
 
 
-async def _safe_startup(  # noqa: PLR0913
+async def _safe_startup(
     *,
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     app_state: AppState,
@@ -318,7 +316,6 @@ async def _safe_startup(  # noqa: PLR0913
     started_task_engine = False
     started_distributed_task_queue = False
     started_distributed_backend_services = False
-    started_meeting_scheduler = False
     started_backup_service = False
     started_approval_timeout_scheduler = False
     runtime_slice = app_state.slice(RuntimeStateSlice)
@@ -469,21 +466,6 @@ async def _safe_startup(  # noqa: PLR0913
                 )
                 raise
             started_task_engine = True
-        if meeting_scheduler is not None:
-            _reset_if_tasks_dead(meeting_scheduler, "_running", "_tasks")
-        _ms_running = getattr(meeting_scheduler, "running", None)
-        if meeting_scheduler is not None and _ms_running is not True:
-            try:
-                await meeting_scheduler.start()
-            except Exception as exc:
-                logger.warning(
-                    API_APP_STARTUP,
-                    note="Failed to start meeting scheduler",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise
-            started_meeting_scheduler = True
         if backup_service is None:
             # ``build_backup_service`` attempts construction on every boot
             # regardless of ``backup.enabled``, so a ``None`` here means it
@@ -584,8 +566,6 @@ async def _safe_startup(  # noqa: PLR0913
             started_distributed_task_queue=started_distributed_task_queue,
             distributed_backend_services=distributed_backend_services,
             started_distributed_backend_services=started_distributed_backend_services,
-            meeting_scheduler=meeting_scheduler,
-            started_meeting_scheduler=started_meeting_scheduler,
             backup_service=backup_service,
             started_backup_service=started_backup_service,
             approval_timeout_scheduler=approval_timeout_scheduler,

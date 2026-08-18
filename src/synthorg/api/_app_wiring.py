@@ -270,6 +270,7 @@ def _wire_cockpit_services(app_state: AppState) -> None:
         cockpit_service=CockpitService(
             task_engine_of(app_state),
             frames,
+            agent_states=persistence_of(app_state).agent_states,
             clock=app_state.clock,
         ),
         flight_recorder_service=FlightRecorderService(

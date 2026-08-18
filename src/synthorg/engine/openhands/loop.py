@@ -25,6 +25,7 @@ from synthorg.engine.loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
+    TurnProgress,
 )
 from synthorg.engine.loop_unresolved_tools import unresolved_tools_result
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
@@ -158,7 +159,12 @@ class OpenHandsLoop:
         """
         # OpenHands runs its own LLM (via the gateway) and tools (native + MCP).
         del provider, tool_invoker, streaming_enabled
-        state = _RunState(ctx=context)
+        # Continued from the context, not restarted: a resumed run arrives with
+        # turns already on its conversation, and numbering the next one 1 gives
+        # the recorder a second turn 1 for the same execution. The frames are
+        # keyed on that index, so the pairing a replay depends on comes apart
+        # exactly on the runs that were interrupted.
+        state = _RunState(ctx=context, turn_index=context.turn_count)
         spec = self._build_spec(context, completion_config)
 
         async def sink(event: OpenHandsEvent) -> bool:
@@ -381,7 +387,7 @@ class OpenHandsLoop:
             return
         labels = (event.tool_name,) if event.tool_name else ()
         try:
-            await turn_observer(state.turn_index, labels)
+            await turn_observer(TurnProgress(state.turn_index, labels, state.ctx))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             # lint-allow: swallow-ok -- progress observer is a best-effort side channel
             reraise_critical(exc)
@@ -390,6 +396,7 @@ class OpenHandsLoop:
                 loop_type=_LOOP_TYPE,
                 note="turn observer raised",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _finalize(self, state: _RunState, outcome: OpenHandsOutcome) -> ExecutionResult:

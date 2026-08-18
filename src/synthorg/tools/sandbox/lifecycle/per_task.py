@@ -16,6 +16,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
 )
+from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
@@ -34,14 +35,76 @@ class PerTaskStrategy:
         """``True`` -- one container per task, destroyed on release."""
         return True
 
+    async def _reusable_handle(
+        self,
+        owner_id: str,
+        *,
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+    ) -> ContainerHandle | None:
+        """Return the cached container for *owner_id* if it still runs.
+
+        Returns:
+            The warm handle, or ``None`` when there is none or the one
+            there is has died (in which case it has been evicted and the
+            caller should create a fresh one).
+        """
+        async with self._lock:
+            handle = self._containers.get(owner_id)
+        if handle is None:
+            return None
+
+        # Probed outside the lock: it is a round-trip to the container
+        # backend, and holding the lock across it would serialise every
+        # acquire in the process behind one inspect.
+        alive = await probe_alive(
+            handle,
+            strategy="per-task",
+            owner_id=owner_id,
+            alive_fn=alive_fn,
+        )
+        if alive:
+            logger.info(
+                SANDBOX_LIFECYCLE_ACQUIRE,
+                strategy="per-task",
+                owner_id=owner_id,
+                reused=True,
+                container_id=handle.container_id,
+            )
+            return handle
+
+        log_stale(handle, strategy="per-task", owner_id=owner_id)
+        async with self._lock:
+            # Identity-checked: a concurrent acquire may already have
+            # replaced the entry, and evicting that one would destroy a
+            # container somebody else is about to use.
+            evicted = self._containers.get(owner_id) is handle
+            if evicted:
+                self._containers.pop(owner_id, None)
+        # Teardown follows the eviction, not the observation. Two acquires can
+        # read the same dead handle and both reach here, and a concurrent
+        # `release` can take the entry from under both; reaping on the
+        # observation would then destroy one container two or three times.
+        # Exactly one caller wins the identity check, so exactly one tears it
+        # down and the rest simply report the cache miss.
+        if evicted:
+            await reap(
+                handle,
+                strategy="per-task",
+                owner_id=owner_id,
+                destroy_fn=destroy_fn,
+            )
+        return None
+
     async def acquire(
         self,
         *,
         owner_id: str,
         create_fn: Callable[[], Awaitable[ContainerHandle]],
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        alive_fn: Callable[[ContainerHandle], Awaitable[bool]],
     ) -> ContainerHandle:
-        """Return an existing container or create a new one.
+        """Return an existing LIVE container or create a new one.
 
         Args:
             owner_id: Opaque identifier for the lifecycle owner.
@@ -49,20 +112,20 @@ class PerTaskStrategy:
             destroy_fn: Async callback to stop and remove the freshly
                 created handle when a concurrent acquire won the race
                 for the same owner, so the losing container is not
-                leaked.
+                leaked.  Also reaps a cached handle found dead.
+            alive_fn: Probe deciding whether the cached handle is still
+                usable.  Consulted on every cache hit.
 
         Returns:
             Result of type ``ContainerHandle``.
         """
-        async with self._lock:
-            if owner_id in self._containers:
-                logger.info(
-                    SANDBOX_LIFECYCLE_ACQUIRE,
-                    strategy="per-task",
-                    owner_id=owner_id,
-                    reused=True,
-                )
-                return self._containers[owner_id]
+        reusable = await self._reusable_handle(
+            owner_id,
+            alive_fn=alive_fn,
+            destroy_fn=destroy_fn,
+        )
+        if reusable is not None:
+            return reusable
 
         handle = await create_fn()
 

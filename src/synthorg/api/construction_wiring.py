@@ -33,6 +33,7 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.communication.meeting.scheduler import MeetingEventPublisher
 from synthorg.config.schema import RootConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
@@ -82,6 +83,7 @@ class ConstructionDeps:
     event_stream_hub: EventStreamHub
     interrupt_store: InterruptStore
     cursor_secret: CursorSecret
+    meeting_event_publisher: MeetingEventPublisher | None = None
     persistence: PersistenceBackend | None = None
     persistence_expected: bool = False
     settings_service: SettingsService | None = None

@@ -97,9 +97,10 @@ class StreamChunkFactory(ModelFactory[StreamChunk]):
     tool_call_delta = None
     usage = None
     error_message = None
-    # Pinned to None: the default CONTENT_DELTA event rejects a finish_reason
-    # (only the terminal DONE event may carry one).
+    # Pinned: the default CONTENT_DELTA event rejects both of these, which
+    # only the terminal DONE event may carry.
     finish_reason = None
+    dropped_tool_calls = False
 
 
 class ModelCapabilitiesFactory(ModelFactory[ModelCapabilities]):

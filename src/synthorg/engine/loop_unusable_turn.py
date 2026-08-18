@@ -1,10 +1,13 @@
 """One corrective turn for a model that asked for a tool and delivered none.
 
-A streamed tool call arrives as argument fragments the driver concatenates and
-parses. When the model emits a malformed blob the accumulator refuses to guess
-and drops the call, which leaves a completion that says ``tool_use`` and
-carries nothing, or one that is empty on every channel and was normalised to
-``error`` on the way out of the driver.
+Two shapes reach here and the correction names which one it saw, because a
+model told the wrong thing repeats the same mistake. A streamed tool call
+arrives as argument fragments the driver concatenates and parses; when the
+model emits a malformed blob the accumulator refuses to guess and drops the
+call. The other shape is a turn that ends as ``tool_use`` carrying no call at
+all: nothing was dropped, the model simply sent none. Either leaves a
+completion that says ``tool_use`` and carries nothing, or one that is empty on
+every channel and was normalised to ``error`` on the way out of the driver.
 
 Neither is the agent finishing and neither is the provider failing: it is the
 model's own bad output, one turn of it. Ending the run there throws away every
@@ -23,6 +26,7 @@ from typing import Final
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import UNUSABLE_OUTPUT_MARKER
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_LOOP_UNUSABLE_TURN
 from synthorg.providers.enums import MessageRole
@@ -30,11 +34,30 @@ from synthorg.providers.models import ChatMessage, CompletionResponse
 
 logger = get_logger(__name__)
 
-UNUSABLE_TURN_NUDGE: Final[str] = (
-    "Your last turn asked to call a tool but the call did not arrive: its "
-    "arguments were not valid JSON. Re-issue it as one well-formed call with "
-    "complete arguments, or state your result in the reply itself."
+#: A call arrives and is dropped for three different reasons: it carried no
+#: function at all, it named no tool or no id, or its arguments were not a
+#: well-formed JSON object. Naming only the last would tell a model that sent
+#: perfectly good arguments to go and fix them, which is the same unactionable
+#: instruction the no-call wording below exists to avoid.
+DROPPED_CALL_NUDGE: Final[str] = (
+    "Your last turn asked to call a tool but the call did not arrive in a "
+    "usable form: it was missing the name or id that identifies it, or its "
+    "arguments were not a well-formed JSON object. Re-issue it as one "
+    "well-formed call with complete arguments, or state your result in the "
+    "reply itself."
 )
+
+#: The other way a turn claims a tool and delivers none: the provider sent no
+#: call at all. Kept apart from the dropped-call wording, which would tell the
+#: model to fix arguments it never sent and so describes nothing it can act on.
+NO_CALL_NUDGE: Final[str] = (
+    "Your last turn ended as a tool call but carried no call at all, so "
+    "nothing ran. Send exactly one tool call now, or answer in the reply "
+    "itself if you have what you need."
+)
+
+#: Both corrections, so the consecutive-count walk recognises either.
+_NUDGES: Final[frozenset[str]] = frozenset({DROPPED_CALL_NUDGE, NO_CALL_NUDGE})
 
 # A model that stumbles can recover, and one turn of grace was not enough to
 # let it: correcting only once in a row still lost most of the runs the
@@ -42,6 +65,28 @@ UNUSABLE_TURN_NUDGE: Final[str] = (
 # and small, so a provider returning nothing usable at all still ends the run
 # well inside the turn budget rather than spending the whole thing.
 MAX_CONSECUTIVE_CORRECTIONS: Final[int] = 3
+
+
+def unusable_turn_error(turn_number: int) -> str:
+    """Build the run-ending error for a turn the corrections could not fix.
+
+    Named rather than written inline at the one call site, because the phrase
+    is also what classifies the failure: the rule matching
+    ``UNUSABLE_OUTPUT_MARKER`` is the only thing keeping this out of
+    ``UNKNOWN``, and a reword at the call site would move the category without
+    touching the rule. One builder means the classifier can be asked about the
+    exact string the loop produces.
+
+    Args:
+        turn_number: The turn that ended the run.
+
+    Returns:
+        The error message the loop reports.
+    """
+    return (
+        f"Model returned {UNUSABLE_OUTPUT_MARKER} on turn "
+        f"{turn_number} and the correction did not take"
+    )
 
 
 def is_unusable_turn(response: CompletionResponse) -> bool:
@@ -91,11 +136,12 @@ def continue_unusable_turn(
         return None
     consecutive = _consecutive_corrections(ctx)
     # Reported whether or not it is corrected: a run that dies on an unusable
-    # turn must say so, which is the whole reason this case read as a provider
-    # failure for as long as it did.
+    # turn must say so by name, or the failure is attributed to the provider
+    # rather than to the model's own output.
     corrected = (
         turn_number < ctx.max_turns and consecutive < MAX_CONSECUTIVE_CORRECTIONS
     )
+    nudge = DROPPED_CALL_NUDGE if response.dropped_tool_calls else NO_CALL_NUDGE
     logger.warning(
         EXECUTION_LOOP_UNUSABLE_TURN,
         execution_id=ctx.execution_id,
@@ -104,12 +150,13 @@ def continue_unusable_turn(
         turns_remaining=ctx.max_turns - turn_number,
         consecutive_corrections=consecutive,
         corrected=corrected,
+        # Which of the two shapes it was, so a run that spent its corrections
+        # can be read back without guessing which one the model was told.
+        cause="dropped_call" if response.dropped_tool_calls else "no_call",
     )
     if not corrected:
         return None
-    return ctx.with_message(
-        ChatMessage(role=MessageRole.USER, content=UNUSABLE_TURN_NUDGE)
-    )
+    return ctx.with_message(ChatMessage(role=MessageRole.USER, content=nudge))
 
 
 def _consecutive_corrections(ctx: AgentContext) -> int:
@@ -129,7 +176,7 @@ def _consecutive_corrections(ctx: AgentContext) -> int:
     consecutive = 0
     for message in reversed(ctx.conversation):
         if message.role is MessageRole.USER:
-            if message.content != UNUSABLE_TURN_NUDGE:
+            if message.content not in _NUDGES:
                 break
             consecutive += 1
             continue

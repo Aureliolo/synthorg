@@ -46,7 +46,6 @@ from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
@@ -77,7 +76,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     bridge: MessageBusBridge | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     should_auto_wire_settings: bool,
@@ -97,7 +95,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         bridge: Message-bus bridge to the websocket channels.
         settings_dispatcher: Settings change dispatcher.
         task_engine: Centralised task state engine.
-        meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval-timeout checker.
         should_auto_wire_settings: When ``True``, the on-startup auto-wiring
@@ -118,7 +115,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         bridge=bridge,
         settings_dispatcher=settings_dispatcher,
         task_engine=task_engine,
-        meeting_scheduler=meeting_scheduler,
         backup_service=backup_service,
         approval_timeout_scheduler=approval_timeout_scheduler,
         app_state=app_state,
@@ -162,14 +158,19 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         await migrate_embedded_provider_keys(app_state)
 
     async def _wire_agent_workspace_root() -> None:
-        # Wired BEFORE the first reconcile pass, not only inside
-        # `install_runtime_services`. `agent_workspace_root_of` falls back to a
-        # temp directory when the slice is unset, and `agent_tool_execution`
-        # requires no capability, so it activates on that first pass and would
-        # probe the fallback: on the shipped stack /tmp is a compose `tmpfs:`,
-        # which never appears in the container's own `Mounts`, so a perfectly
-        # healthy deployment would announce that its workspace is unmappable
-        # and name a path that is not the workspace.
+        # Runs before EVERY other startup hook (see the list below), because
+        # "before the first reconcile pass" is not something a position in the
+        # middle of the list can promise: the core hooks reconcile once
+        # persistence connects, so a wire placed after them lost the race and
+        # the invariant this hook exists for held only in its own comment.
+        #
+        # `agent_workspace_root_of` falls back to a temp directory when the
+        # slice is unset, and `agent_tool_execution` requires no capability, so
+        # it activates on that first pass and probed the fallback: on the
+        # shipped stack /tmp is a compose `tmpfs:`, which never appears in the
+        # container's own `Mounts`, so a perfectly healthy deployment announced
+        # that its workspace was unmappable, escalated a blocked-health
+        # notification, and activated the same subsystem five seconds later.
         from synthorg.engine.workspace.state import WorkspaceStateSlice  # noqa: PLC0415
 
         app_state.wire(
@@ -226,17 +227,20 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     # ``_compose_feature_slices`` runs FIRST so every feature's empty state
     # slice exists before any wiring hook (including the persistence-phase
     # ``_safe_startup`` hooks) composes/swaps a populated slice.
+    #
+    # ``_wire_agent_workspace_root`` runs SECOND, ahead of the core hooks,
+    # because those reconcile subsystems the moment persistence connects and
+    # the workspace root has to be real by then. It is pure env resolution
+    # over an already-composed slice, so nothing else has to precede it.
     startup = [
         _compose_feature_slices,
+        _wire_agent_workspace_root,
         *startup,
         # After persistence connects (core hooks above) and before runtime
         # services parse providers: migrate any embedded api_key into the
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
         _reload_provider_registry,
-        # Pure env resolution, so it can precede everything that reads it and
-        # costs nothing to do early.
-        _wire_agent_workspace_root,
         # Memory, org memory and the evolution-outcome store must exist
         # BEFORE runtime services: the engine reads their slices eagerly at
         # construction, so anything wired later never reaches an agent.

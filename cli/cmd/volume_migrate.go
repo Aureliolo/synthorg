@@ -32,6 +32,21 @@ import (
 // composeProjectName is the name declared in the compose file.
 const composeProjectName = "synthorg"
 
+// composeNetworkName is the network name the compose file declares.
+//
+// It is explicit rather than project-namespaced, so unlike the volumes the
+// rename does not give it a new name: the very same network survives, still
+// carrying the label of the project that created it.
+const composeNetworkName = "synthorg-net"
+
+// The labels Compose stamps on what it owns, and matches on when it meets
+// something it is told to use but did not create.
+const (
+	composeProjectLabel    = "com.docker.compose.project"
+	composeWorkingDirLabel = "com.docker.compose.project.working_dir"
+	composeVolumeLabel     = "com.docker.compose.volume"
+)
+
 // migrationImage copies bytes between two volume mounts. Mirrors the pin in
 // compose.yml.tmpl; this file is disposable, so the duplication dies with it.
 const migrationImage = "busybox:1.38-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37"
@@ -87,9 +102,14 @@ func migrateLegacyProjectVolumes(ctx context.Context, info docker.Info, composeD
 	if err := stopLegacyProjectStack(ctx, info, oldProject, composeDir, out); err != nil {
 		return err
 	}
+	// After the containers are gone, so nothing is still attached to it, and
+	// before the `up` that recreates it.
+	migrateLegacyNetwork(ctx, info, oldProject, out)
 	return migrateVolumesWith(oldProject, out, volumeOps{
 		exists: func(name string) bool { return volumeExists(ctx, info, name) },
-		move:   func(from, to string) error { return copyVolume(ctx, info, from, to) },
+		move: func(from, to, suffix string) error {
+			return copyVolume(ctx, info, from, to, suffix)
+		},
 	})
 }
 
@@ -124,8 +144,8 @@ func legacyProjectHasContainers(ctx context.Context, info docker.Info, composeDi
 // and that is the discriminating fact.
 func legacyStackLabels(oldProject, composeDir string) map[string]string {
 	return map[string]string{
-		"com.docker.compose.project":             oldProject,
-		"com.docker.compose.project.working_dir": filepath.Clean(composeDir),
+		composeProjectLabel:    oldProject,
+		composeWorkingDirLabel: filepath.Clean(composeDir),
 	}
 }
 
@@ -194,13 +214,89 @@ func stopLegacyProjectStack(
 	})
 }
 
+// networkOps is the daemon surface the network half of the migration decides
+// over, injected for the same reason volumeOps is: whether a network gets
+// removed is the decision worth testing, and it is one a network we do not own
+// must survive.
+type networkOps struct {
+	// projectLabel returns the network's Compose project label, and whether
+	// there is a network of that name carrying one at all.
+	projectLabel func(name string) (string, bool)
+	remove       func(name string) error
+}
+
+// migrateLegacyNetworkWith drops the network the old project created, so the
+// `up` that follows makes it again under the declared one.
+//
+// Removed rather than relabelled-in-place, and rather than recreated here the
+// way the volumes are: a network holds no state, so Compose can simply build
+// its own, with its own labels and its own driver options. Creating it
+// ourselves would mean writing down a second copy of what Compose puts on a
+// network, which is one Compose release away from disagreeing.
+//
+// A network of that name carrying no project label at all is left alone. It
+// was not created by Compose, so it is not ours to delete, and Compose says as
+// much in a different warning.
+func migrateLegacyNetworkWith(oldProject string, out *ui.UI, ops networkOps) {
+	if oldProject == "" || oldProject == composeProjectName {
+		return
+	}
+	label, ok := ops.projectLabel(composeNetworkName)
+	if !ok || label != oldProject {
+		return
+	}
+	if err := ops.remove(composeNetworkName); err != nil {
+		// Reported, not returned. Unlike a volume the network carries nothing,
+		// so the stack comes up either way; refusing to start over a label
+		// would turn a cosmetic warning into an install that cannot run.
+		out.Warn(fmt.Sprintf(
+			"could not remove the '%s' network left by the '%s' project (%v); "+
+				"every start will warn that it belongs to another project until it is removed by hand",
+			composeNetworkName, oldProject, err,
+		))
+		return
+	}
+	out.Success(fmt.Sprintf(
+		"removed the '%s' network from the '%s' project; it is recreated under '%s'",
+		composeNetworkName, oldProject, composeProjectName,
+	))
+}
+
+// migrateLegacyNetwork removes this installation's network if it still belongs
+// to the directory-derived project.
+func migrateLegacyNetwork(ctx context.Context, info docker.Info, oldProject string, out *ui.UI) {
+	migrateLegacyNetworkWith(oldProject, out, networkOps{
+		projectLabel: func(name string) (string, bool) {
+			label, err := docker.RunCmd(ctx, info.DockerPath,
+				"network", "inspect", name,
+				"--format", "{{index .Labels \""+composeProjectLabel+"\"}}",
+			)
+			if err != nil {
+				return "", false
+			}
+			// A network with no such label formats as the empty string, which
+			// is indistinguishable from one carrying an empty label and means
+			// the same thing here: not a project we can claim.
+			trimmed := strings.TrimSpace(label)
+			return trimmed, trimmed != ""
+		},
+		remove: func(name string) error {
+			_, err := docker.RunCmd(ctx, info.DockerPath, "network", "rm", name)
+			return err
+		},
+	})
+}
+
 // volumeOps is the daemon surface the migration decides over. Injected so
 // the decisions below (what is skipped, what aborts, what is reported) are
 // testable without a Docker daemon: they are the ones that decide whether an
 // install keeps its data.
 type volumeOps struct {
 	exists func(name string) bool
-	move   func(from, to string) error
+	// suffix is the compose volume key, which the destination must carry as
+	// a label; passing it here keeps the label derived from the same value
+	// the destination name is built from.
+	move func(from, to, suffix string) error
 }
 
 // migrateVolumesWith is the migration's decision logic.
@@ -221,7 +317,7 @@ func migrateVolumesWith(oldProject string, out *ui.UI, ops volumeOps) error {
 		if !ops.exists(from) || ops.exists(to) {
 			continue
 		}
-		if err := ops.move(from, to); err != nil {
+		if err := ops.move(from, to, suffix); err != nil {
 			// Returned, not merely reported. Continuing would bring the
 			// stack up against a volume that is empty or half-copied,
 			// which is indistinguishable from the data being gone. It also
@@ -241,14 +337,34 @@ func migrateVolumesWith(oldProject string, out *ui.UI, ops volumeOps) error {
 	return nil
 }
 
+// migratedVolumeLabels are the labels Compose stamps on a volume it creates
+// itself, in the form it would have written them for this project.
+//
+// They are applied at creation because volume labels are immutable: there is
+// no `docker volume update` outside Swarm, so a volume created bare stays
+// bare. Compose then finds a volume it is told to use but did not label,
+// warns on every single start, and an operator has no way to silence it short
+// of recreating the volume by hand, which is the data move they just did.
+//
+// Derived from composeProjectName and the volume's own suffix rather than
+// hardcoded, so a project rename cannot leave the label naming the old one.
+func migratedVolumeLabels(suffix string) []string {
+	return []string{
+		"--label", composeProjectLabel + "=" + composeProjectName,
+		"--label", composeVolumeLabel + "=" + suffix,
+	}
+}
+
 // copyVolume copies a volume's contents into a newly created one.
 //
 // A failed copy takes the destination with it. The destination existing is
 // what marks the move as done, so leaving a half-filled one behind would
 // make every later start skip it as already migrated: the failure would
 // become permanent, and silent.
-func copyVolume(ctx context.Context, info docker.Info, from, to string) error {
-	if _, err := docker.RunCmd(ctx, info.DockerPath, "volume", "create", to); err != nil {
+func copyVolume(ctx context.Context, info docker.Info, from, to, suffix string) error {
+	create := append([]string{"volume", "create"}, migratedVolumeLabels(suffix)...)
+	create = append(create, to)
+	if _, err := docker.RunCmd(ctx, info.DockerPath, create...); err != nil {
 		return fmt.Errorf("create volume %s: %w", to, err)
 	}
 	// Dot-suffixed source so hidden entries come along; a bare /from/* would

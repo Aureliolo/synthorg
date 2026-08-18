@@ -12,13 +12,14 @@ from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._dependency_gate import dependency_map
 from synthorg.engine.coordination._dispatch_helpers import (
-    execute_waves,
     merge_workspaces,
     setup_workspaces,
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination._wave_execution import execute_waves
 from synthorg.engine.coordination._wave_outcome import parked_tasks
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -30,8 +31,6 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
-from synthorg.engine.middleware.orchestrator_strategy import OrchestratorStrategy
-from synthorg.engine.parallel_models import ParallelExecutionGroup
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
@@ -60,11 +59,6 @@ class WaveDispatcher:
             waves run unisolated when it is unavailable or setup fails.
         topology_label: Topology name carried for the precondition
             message and the ``COORDINATION_PHASE_FAILED`` phase tag.
-        orchestrator_strategy: Optional subtask-selection strategy. When
-            supplied, each built wave's assignments are reordered via
-            ``select_subtasks`` before execution (so a max-concurrency
-            cap dispatches the prioritised subtasks first). ``None`` and
-            the ``naive`` strategy both preserve the original order.
         assignment_writer: Persists each wave's assignments through the
             central engine before that wave runs. ``None`` builds an
             engine-less writer, which passes the wave through unchanged.
@@ -76,13 +70,11 @@ class WaveDispatcher:
         clock: Clock | None = None,
         isolation_required: bool,
         topology_label: str,
-        orchestrator_strategy: OrchestratorStrategy | None = None,
         assignment_writer: AssignmentWriter | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._isolation_required = isolation_required
         self._topology_label = topology_label
-        self._orchestrator_strategy = orchestrator_strategy
         self._assignment_writer = (
             assignment_writer
             if assignment_writer is not None
@@ -159,7 +151,6 @@ class WaveDispatcher:
                 config=config,
                 workspaces=workspaces,
             )
-            groups = await self._apply_orchestrator_strategy(groups)
 
             with _tracer.start_as_current_span(
                 "coordination.dispatch",
@@ -177,6 +168,7 @@ class WaveDispatcher:
                     fail_fast=config.fail_fast,
                     assignment_writer=self._assignment_writer,
                     waves=waves,
+                    dependencies=dependency_map(decomposition_result.plan.subtasks),
                 )
             all_phases.extend(exec_phases)
 
@@ -258,36 +250,3 @@ class WaveDispatcher:
             topology=self._topology_label,
             detail=detail,
         )
-
-    async def _apply_orchestrator_strategy(
-        self,
-        groups: tuple[ParallelExecutionGroup, ...],
-    ) -> tuple[ParallelExecutionGroup, ...]:
-        """Reorder each wave's assignments via the orchestrator strategy.
-
-        A no-op when no strategy is wired. Single-pass dispatch has no
-        progress ledger, so ``select_subtasks`` is invoked with
-        ``progress=None``; both shipped strategies then preserve the
-        original order, leaving behaviour unchanged until a progress-
-        bearing replan loop drives the selection.
-
-        Returns:
-            The groups with each one's assignments reordered to match the
-            strategy's subtask ordering.
-        """
-        strategy = self._orchestrator_strategy
-        if strategy is None:
-            return groups
-        reordered: list[ParallelExecutionGroup] = []
-        for group in groups:
-            by_id = {str(a.task.id): a for a in group.assignments}
-            ordered_ids = await strategy.select_subtasks(tuple(by_id), None)
-            ordered = tuple(by_id[i] for i in ordered_ids if i in by_id)
-            ordered_set = set(ordered_ids)
-            missing = tuple(
-                a for a in group.assignments if str(a.task.id) not in ordered_set
-            )
-            reordered.append(
-                group.model_copy(update={"assignments": ordered + missing})
-            )
-        return tuple(reordered)

@@ -168,6 +168,38 @@ different dependencies:
 The cockpit slice is partial-wired (not swapped) so the construction-phase
 steering notifier and the later steering service coexist on the same slice.
 
+## What the cockpit reads, and when
+
+Steering is only useful against a live picture, and `CockpitService` builds
+that picture from two stores because neither answers the whole question.
+
+While an agent still holds a task, the answer is its **live**
+`AgentRuntimeState` row: its own turn count, spend, and when it last did
+anything. Once the run has finished, the answer is the **recorded**
+flight-recorder frames, which are built from a completed run. Reading the
+frames alone (the shape this replaced) meant every in-flight row reported
+`turn 0` and zero spend, because the store that answers for a finished run
+has nothing to say about one still going. Neither the stuck nor the runaway
+marker could fire on the work they exist to catch.
+
+The row is keyed by agent, so the read discards one naming a different task,
+and treats an IDLE row as nothing running. Spend is the recorded executions
+**plus** the one in flight: a retry starts a new execution at zero while
+`budget_limit` is per task, so reading the live figure alone would let a task
+that already burned its budget read healthy for the whole of its next
+attempt.
+
+Two derived markers, both from operator settings:
+
+- **stuck**: nothing has driven the task since `cockpit.stuck_idle_threshold_minutes`.
+  No activity at all is the strongest evidence, not an exemption, so a row
+  with no timestamp falls back to the task's filing time. That measures time
+  in the QUEUE, which is why a row is written at dispatch: a running task
+  carries a live timestamp from pickup, leaving filing time to describe only
+  a task no run has claimed.
+- **runaway**: spend has passed `cockpit.runaway_cost_percent` of the task's
+  `budget_limit`.
+
 ## Settings
 
 | Setting | Default | Effect |

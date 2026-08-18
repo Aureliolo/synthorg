@@ -21,7 +21,7 @@ lands on its terminal status once the review gate has ruled on each child.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock
@@ -30,6 +30,12 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
+from synthorg.engine.coordination._parent_phase_results import (
+    ParentUpdateOutcome,
+    fail_update_parent_phase,
+    record_update_parent_outcome,
+    skip_update_parent_phase,
+)
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
@@ -39,7 +45,11 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.task_engine_models import TransitionTaskMutation
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
@@ -65,24 +75,6 @@ COORDINATOR_ACTOR: Final[str] = "coordinator"
 #: they are different objects with no shared owner, and the interleave they
 #: would otherwise produce is invisible to the engine's per-hop validation.
 _PARENT_WALK_LOCKS: Final[RefcountedLockMap[str]] = RefcountedLockMap()
-
-
-class ParentUpdateOutcome(NamedTuple):
-    """Result of walking the parent task to its rollup-derived status.
-
-    Attributes:
-        success: ``False`` when no valid lifecycle path exists or a hop
-            was rejected mid-walk.
-        error: Operator-readable note when ``success`` is ``False``; on a
-            mid-walk rejection it includes the parent's actual live
-            status so concurrent external finalisation is diagnosable.
-        hops_completed: Number of transitions that landed (``0`` for an
-            already-at-target no-op, which is still ``success=True``).
-    """
-
-    success: bool
-    error: str | None
-    hops_completed: int
 
 
 def _hop_overrides(hop: TaskStatus) -> dict[str, object]:
@@ -127,9 +119,13 @@ async def _hop_failure_note(
         A short operator-readable note describing the failed hop and,
         when a re-read succeeds, the parent's live status.
     """
+    # Scrubbed here rather than at each consumer: the note is both logged
+    # and persisted onto the phase result, so masking at one of them would
+    # leave whatever the task engine put in the message readable from the
+    # other.
     base = (
         f"Parent hop to {target_hop.value!r} rejected: "
-        f"{submit_error or 'unknown error'}"
+        f"{scrub_secret_tokens(submit_error) if submit_error else 'unknown error'}"
     )
     try:
         live = await task_engine.get_task(task_id)
@@ -401,78 +397,27 @@ async def compute_status_rollup(
     return rollup
 
 
-def _fail_update_parent_phase(
-    phases: list[CoordinationPhaseResult],
-    *,
-    clock: Clock,
-    error: str,
-    start: float | None,
-    error_type: str | None = None,
-) -> None:
-    """Log and append an ``update_parent`` phase failure to the result list.
+def _initiative_owns_parent(context: CoordinationContext) -> bool:
+    """Report whether a plan, not this run, owns the parent's status.
 
-    Args:
-        phases: Phase result accumulator (mutated in-place).
-        clock: Clock for duration measurement.
-        error: Operator-readable failure note.
-        start: Monotonic clock reading when the phase started, or ``None``
-            if the failure occurred before phase timing began (e.g. when
-            the rollup computation failed). When ``None``, duration is
-            recorded as ``0.0``.
-        error_type: Optional exception type name; included in the log if
-            provided to distinguish the failure source.
+    The run's own context names the plan that provisioned it, which is what
+    the plan-review dispatcher knows and the task row does not: an objective
+    task carries no ``plan_id``, because the link lives on the plan
+    (``Plan.parent_task_id``), so reading the column alone let the walk go
+    ahead on exactly the parents it was meant to leave alone.
+
+    The column is deliberately NOT consulted as a second piece of evidence.
+    ``plan_mapping`` stamps ``plan_id`` on every child task a plan creates,
+    while the initiative rollup walks ``Plan.parent_task_id`` and nothing
+    else, so a plan-item task that is itself a coordination parent would
+    match the column, be skipped here, and be written by nobody: it would
+    sit IN_PROGRESS for ever and its plan could never conclude. Deferring
+    on the context alone leaves exactly one writer in both directions.
+
+    Returns:
+        ``True`` when the initiative rollup is the parent's writer.
     """
-    elapsed = 0.0 if start is None else clock.monotonic() - start
-    if error_type is None:
-        logger.warning(COORDINATION_PHASE_FAILED, phase="update_parent", error=error)
-    else:
-        logger.warning(
-            COORDINATION_PHASE_FAILED,
-            phase="update_parent",
-            error_type=error_type,
-            error=error,
-        )
-    phases.append(
-        CoordinationPhaseResult(
-            phase="update_parent",
-            success=False,
-            duration_seconds=elapsed,
-            error=error,
-        )
-    )
-
-
-def _record_update_parent_outcome(
-    phases: list[CoordinationPhaseResult],
-    *,
-    clock: Clock,
-    outcome: ParentUpdateOutcome,
-    start: float,
-) -> None:
-    """Log + append the result of the parent lifecycle walk."""
-    elapsed = clock.monotonic() - start
-    if outcome.success:
-        logger.info(
-            COORDINATION_PHASE_COMPLETED,
-            phase="update_parent",
-            duration_seconds=elapsed,
-            hops=outcome.hops_completed,
-        )
-    else:
-        logger.warning(
-            COORDINATION_PHASE_FAILED,
-            phase="update_parent",
-            error=outcome.error,
-            hops_completed=outcome.hops_completed,
-        )
-    phases.append(
-        CoordinationPhaseResult(
-            phase="update_parent",
-            success=outcome.success,
-            duration_seconds=elapsed,
-            error=outcome.error,
-        )
-    )
+    return context.plan_id is not None
 
 
 async def run_update_parent_phase(
@@ -491,6 +436,12 @@ async def run_update_parent_phase(
     recorded as failed ``CoordinationPhaseResult`` entries so the
     coordination pipeline completes even when parent update is unavailable.
 
+    Ownership of a parent's status is a ladder with one resolver: a
+    plan-driven parent belongs to the initiative rollup, which re-derives it
+    on every task event, and everything else belongs to this walk, which is
+    then the only writer there is. See :func:`skip_update_parent_phase` for
+    what the two owners did to one objective when both ran.
+
     No-op when ``task_engine`` is ``None`` (empty company). Fails the phase
     (not propagating) when the rollup is missing, the parent is gone, or a
     lifecycle hop is rejected (usually concurrent external finalisation).
@@ -498,7 +449,7 @@ async def run_update_parent_phase(
     if task_engine is None:
         return
     if rollup is None:
-        _fail_update_parent_phase(
+        fail_update_parent_phase(
             phases,
             clock=clock,
             error="Skipped -- rollup is None (rollup phase failed)",
@@ -509,9 +460,16 @@ async def run_update_parent_phase(
     start = clock.monotonic()
     logger.info(COORDINATION_PHASE_STARTED, phase="update_parent")
     try:
+        # Ownership first, because it is decided by the context alone. Reading
+        # the parent ahead of it lets a read failure, or a parent this walk was
+        # never going to write, record a FAILED phase for work that belongs to
+        # the initiative rollup, where the correct answer is a skip.
+        if _initiative_owns_parent(context):
+            skip_update_parent_phase(phases, clock=clock, start=start)
+            return
         live_task = await task_engine.get_task(str(context.task.id))
         if live_task is None:
-            _fail_update_parent_phase(
+            fail_update_parent_phase(
                 phases,
                 clock=clock,
                 error=f"Parent task {str(context.task.id)!r} not found",
@@ -524,11 +482,11 @@ async def run_update_parent_phase(
             current_status=live_task.status,
             rollup=rollup,
         )
-        _record_update_parent_outcome(phases, clock=clock, outcome=outcome, start=start)
+        record_update_parent_outcome(phases, clock=clock, outcome=outcome, start=start)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- records parent-update phase failure into phases list
         reraise_critical(exc)
-        _fail_update_parent_phase(
+        fail_update_parent_phase(
             phases,
             clock=clock,
             error=safe_error_description(exc),

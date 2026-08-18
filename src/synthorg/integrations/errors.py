@@ -632,4 +632,28 @@ class CatalogEntryNotFoundError(IntegrationError, NotFoundError):
 
 
 class MCPInstallError(IntegrationError):
-    """An MCP server installation failed."""
+    """A catalog entry cannot become a runnable MCP server.
+
+    Raised by the one place that turns an entry into a server config, so an
+    install refuses whatever a boot would have refused rather than the subset
+    the install path happens to re-check.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "This MCP catalog entry cannot be launched"
+
+
+class MCPServerUnlaunchableError(MCPInstallError):
+    """No shipped image provides the runtime a catalog entry's launch names.
+
+    The install is the last point at which an operator is present to be
+    told. Accepting it instead persists a row that fails at every boot from
+    then on, in a log line nobody reads, while the dashboard reports the
+    server installed and the agents that would have used its tools see none.
+    """
+
+    default_message: ClassVar[str] = (
+        "The runtime this MCP server needs is not in the image it would run in"
+    )

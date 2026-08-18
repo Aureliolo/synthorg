@@ -342,5 +342,4 @@ class TestCoordinationMiddlewareContext:
         assert ctx.dispatch_result is None
         assert ctx.status_rollup is None
         assert ctx.task_ledger is None
-        assert ctx.progress_ledger is None
         assert ctx.phases == ()

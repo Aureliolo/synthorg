@@ -281,9 +281,16 @@ describe('usePolling', () => {
     })
   })
 
-  it('skips ticks while document.hidden is true', async () => {
+  it('still runs the first poll while document.hidden is true', async () => {
+    // A detail route mounted in a background tab (middle-click from a list)
+    // has nothing to show until this fetch lands, so gating it does not save
+    // an API call, it produces a permanently blank page.
     const fn = vi.fn().mockResolvedValue(undefined)
-    const hiddenDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')
+    // The OWN descriptor, because the override below defines an own property
+    // on `document`. Reading the prototype's is always defined, so the restore
+    // put a shadowing own property back where there was none and the delete
+    // branch never ran, leaving `document.hidden` pinned for later tests.
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
     Object.defineProperty(document, 'hidden', {
       configurable: true,
       get: () => true,
@@ -294,13 +301,46 @@ describe('usePolling', () => {
         result.current.start()
         await vi.advanceTimersByTimeAsync(0)
       })
-      // Hidden tab: the immediate run is also gated; no calls.
-      expect(fn).toHaveBeenCalledTimes(0)
+      expect(fn).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        result.current.stop()
+      })
+    } finally {
+      if (hiddenDescriptor) {
+        Object.defineProperty(document, 'hidden', hiddenDescriptor)
+      } else {
+        Reflect.deleteProperty(document, 'hidden')
+      }
+    }
+  })
+
+  it('skips scheduled ticks while document.hidden is true', async () => {
+    // The battery discipline itself: once the page holds data, a tab nobody
+    // is looking at stops charging the API for refreshes.
+    const fn = vi.fn().mockResolvedValue(undefined)
+    // The OWN descriptor, because the override below defines an own property
+    // on `document`. Reading the prototype's is always defined, so the restore
+    // put a shadowing own property back where there was none and the delete
+    // branch never ran, leaving `document.hidden` pinned for later tests.
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => true,
+    })
+    try {
+      const { result } = renderHook(() => usePolling(fn, 1000))
+      await act(async () => {
+        result.current.start()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(fn).toHaveBeenCalledTimes(1)
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5000)
       })
-      expect(fn).toHaveBeenCalledTimes(0)
+      // Five intervals elapsed and not one of them fetched again.
+      expect(fn).toHaveBeenCalledTimes(1)
 
       act(() => {
         result.current.stop()

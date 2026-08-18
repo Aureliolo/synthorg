@@ -24,7 +24,7 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
-from synthorg.engine.loop_protocol import TurnObserver
+from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -205,8 +205,10 @@ class ConversationalActor:
         effective_autonomy = self._resolve_autonomy(identity)
         queue: asyncio.Queue[ActProgress | _ActStreamDone] = asyncio.Queue()
 
-        async def _observe(turn_number: int, tool_names: tuple[str, ...]) -> None:
-            await queue.put(ActProgress(turn=turn_number, tools=tool_names))
+        async def _observe(progress: TurnProgress) -> None:
+            await queue.put(
+                ActProgress(turn=progress.turn_number, tools=progress.tool_names)
+            )
 
         observer: TurnObserver = _observe
 

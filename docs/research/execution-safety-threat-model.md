@@ -182,8 +182,10 @@ agents, compounding into widespread service failures.
   (see [s1-multi-agent-decision.md](s1-multi-agent-decision.md) section 3)
 - Circuit breakers via `BudgetEnforcer` with per-task and daily limits
 - `StagnationDetector` with configurable thresholds
-- `CoordinationReplanHook` with `max_stall_count` / `max_reset_count`
-  hard caps preventing infinite replan loops
+- The initiative rollup's `stall_reason`, which decides whether a run is
+  stuck from the plan's own items rather than from a middleware counter
+- Dependency-gated waves, which park work whose declared inputs died
+  instead of dispatching against outputs nobody wrote
 - Team-size bounds (3-4 per coordination group, 8 hard cap per meeting)
 - `AssumptionViolationSignal` propagated as escalation events
 

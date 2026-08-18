@@ -202,6 +202,11 @@ mandatory_rules:
     header: MCP Server NPM Pin
     gate: scripts/check_mcp_server_config_pinned.py
 
+  - id: claude-md::mcp-runtime-launchable
+    file: CLAUDE.md
+    header: MCP Runtime Launchable
+    gate: scripts/check_mcp_catalog_launchable.py
+
   - id: claude-md::catalog-credential-binding
     file: CLAUDE.md
     header: Catalog Credential Binding
@@ -246,6 +251,16 @@ mandatory_rules:
     file: CLAUDE.md
     header: No Synthetic Cost Owner
     gate: scripts/check_no_synthetic_cost_owner.py
+
+  - id: claude-md::persisted-enum-vocabulary
+    file: CLAUDE.md
+    header: Persisted Enum Vocabulary
+    gate: scripts/check_enum_check_constraint_parity.py
+
+  - id: claude-md::dependency-gated-waves
+    file: CLAUDE.md
+    header: Dependency-Gated Waves
+    gate: scripts/check_wave_dispatch_gated.py
 
   - id: claude-md::roster-held-gate-roles
     file: CLAUDE.md

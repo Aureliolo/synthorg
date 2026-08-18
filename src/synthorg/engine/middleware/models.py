@@ -273,7 +273,7 @@ class AssumptionViolationEvent(BaseModel):
     )
 
 
-# ── TaskLedger and ProgressLedger ────────────────────────────────
+# ── TaskLedger ───────────────────────────────────────────────────
 
 
 class TaskLedger(BaseModel):
@@ -334,77 +334,6 @@ class TaskLedger(BaseModel):
                 plan_version=self.plan_version,
                 created_at=str(self.created_at),
                 superseded_at=str(self.superseded_at),
-            )
-            raise ValueError(msg)
-        return self
-
-
-class ProgressLedger(BaseModel):
-    """Per-round coordination progress snapshot.
-
-    Emitted by the ``after_rollup`` coordination middleware to
-    track stall detection and replan decisions.
-
-    Attributes:
-        round_number: 1-indexed coordination round.
-        progress_made: Whether any subtask advanced since last round.
-        completed_count: Snapshot of completed subtask count this round
-            (used for monotonic progress comparison across rounds).
-        stall_count: Consecutive rounds with no progress.
-        reset_count: Number of replan cycles executed.
-        blocking_issues: Descriptions of blocking failures.
-        next_action: Recommended action (continue, replan, escalate).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    round_number: int = Field(
-        ge=1,
-        description="1-indexed coordination round",
-    )
-    progress_made: bool = Field(
-        description="Whether any subtask advanced",
-    )
-    completed_count: int = Field(
-        default=0,
-        ge=0,
-        description="Snapshot of completed subtask count this round",
-    )
-    stall_count: int = Field(
-        default=0,
-        ge=0,
-        description="Consecutive rounds with no progress",
-    )
-    reset_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of replan cycles executed",
-    )
-    blocking_issues: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Descriptions of blocking failures",
-    )
-    next_action: NotBlankStr = Field(
-        description="Recommended action: continue, replan, or escalate",
-    )
-
-    @model_validator(mode="after")
-    def _validate_stall_progress_consistency(self) -> Self:
-        """Stall count must be zero when progress was made.
-
-        Returns:
-            ``self`` unchanged when stall / progress are consistent.
-
-        Raises:
-            ValueError: When ``progress_made`` is ``True`` and
-                ``stall_count > 0``.
-        """
-        if self.progress_made and self.stall_count > 0:
-            msg = "stall_count must be 0 when progress_made is True"
-            logger.warning(
-                msg,
-                round_number=self.round_number,
-                stall_count=self.stall_count,
             )
             raise ValueError(msg)
         return self

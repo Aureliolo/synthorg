@@ -20,11 +20,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.middleware.coordination_constraints import (
-    MagenticReplanHook,
-    NoOpReplanHook,
     PlanReviewGateMiddleware,
-    ProgressLedgerMiddleware,
-    ReplanMiddleware,
     TaskLedgerMiddleware,
 )
 from synthorg.engine.middleware.coordination_protocol import (
@@ -32,10 +28,7 @@ from synthorg.engine.middleware.coordination_protocol import (
     CoordinationMiddlewareContext,
 )
 from synthorg.engine.middleware.errors import PlanReviewGatedError
-from synthorg.engine.middleware.models import (
-    ProgressLedger,
-    TaskLedger,
-)
+from synthorg.engine.middleware.models import TaskLedger
 from tests._shared import as_uuid
 from tests.unit.engine.conftest import make_decomposition, make_subtask
 
@@ -110,7 +103,6 @@ def _mw_context(
     status_rollup: SubtaskStatusRollup | None = None,
     phases: tuple[CoordinationPhaseResult, ...] = (),
     task_ledger: TaskLedger | None = None,
-    progress_ledger: ProgressLedger | None = None,
 ) -> CoordinationMiddlewareContext:
     return CoordinationMiddlewareContext(
         coordination_context=_coord_context(),
@@ -118,7 +110,6 @@ def _mw_context(
         status_rollup=status_rollup,
         phases=phases,
         task_ledger=task_ledger,
-        progress_ledger=progress_ledger,
     )
 
 
@@ -166,214 +157,31 @@ class TestTaskLedgerMiddleware:
         assert result.task_ledger.plan_version == 3
 
 
-# ── ProgressLedgerMiddleware ──────────────────────────────────────
+# ── Stall authority ───────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestProgressLedgerMiddleware:
-    """ProgressLedgerMiddleware emits ProgressLedger after rollup."""
+class TestNoStallAuthorityHere:
+    """No coordination middleware decides whether a run is stuck.
 
-    def test_satisfies_protocol(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        assert isinstance(mw, CoordinationMiddleware)
+    The context is rebuilt per ``coordinate()`` call, so nothing here can
+    accumulate across rounds, and a ledger counting rounds off it could
+    never pass one. Two levels already answer the question with the
+    evidence to answer it: the execution loop's stagnation detector and
+    the initiative rollup's ``stall_reason``.
+    """
 
-    def test_name(self) -> None:
-        assert ProgressLedgerMiddleware().name == "progress_ledger"
+    def test_context_carries_no_progress_ledger(self) -> None:
+        ctx = _mw_context(status_rollup=_rollup())
+        assert not hasattr(ctx, "progress_ledger")
 
-    async def test_first_round_with_progress(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        ctx = _mw_context(status_rollup=_rollup(completed=2, total=3))
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.round_number == 1
-        assert result.progress_ledger.progress_made is True
-        assert result.progress_ledger.stall_count == 0
-        assert result.progress_ledger.next_action == "continue"
-
-    async def test_first_round_no_completed_count_no_progress(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        ctx = _mw_context(status_rollup=_rollup(completed=0, total=3))
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.round_number == 1
-        assert result.progress_ledger.progress_made is False
-        assert result.progress_ledger.stall_count == 1
-
-    async def test_stall_increments(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        existing = ProgressLedger(
-            round_number=2,
-            progress_made=False,
-            stall_count=1,
-            next_action="replan",
-        )
-        ctx = _mw_context(
-            status_rollup=None,
-            progress_ledger=existing,
-        )
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.round_number == 3
-        assert result.progress_ledger.stall_count == 2
-
-    async def test_escalation_after_three_stalls(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        existing = ProgressLedger(
-            round_number=3,
-            progress_made=False,
-            stall_count=2,
-            next_action="replan",
-        )
-        ctx = _mw_context(
-            status_rollup=None,
-            progress_ledger=existing,
-        )
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.next_action == "escalate"
-
-    async def test_blocking_issues_from_failed_phases(self) -> None:
-        mw = ProgressLedgerMiddleware()
-        phases = (
-            CoordinationPhaseResult(
-                phase="dispatch",
-                success=False,
-                duration_seconds=1.0,
-                error="dispatch failed",
-            ),
-        )
-        ctx = _mw_context(
-            status_rollup=_rollup(completed=0, total=2),
-            phases=phases,
-        )
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert len(result.progress_ledger.blocking_issues) == 1
-
-
-# ── NoOpReplanHook ────────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestNoOpReplanHook:
-    """NoOpReplanHook never replans."""
-
-    async def test_should_replan_false(self) -> None:
-        hook = NoOpReplanHook()
-        ctx = _mw_context()
-        assert await hook.should_replan(ctx) is False
-
-    async def test_replan_returns_context(self) -> None:
-        hook = NoOpReplanHook()
-        ctx = _mw_context()
-        result = await hook.replan(ctx)
-        assert result is ctx
-
-
-# ── MagenticReplanHook ────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestMagenticReplanHook:
-    """MagenticReplanHook with stall detection and caps."""
-
-    async def test_no_progress_ledger_no_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
-        ctx = _mw_context(progress_ledger=None)
-        assert await hook.should_replan(ctx) is False
-
-    async def test_no_stall_no_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
-        progress = ProgressLedger(
-            round_number=1,
-            progress_made=True,
-            next_action="continue",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        assert await hook.should_replan(ctx) is False
-
-    async def test_stall_triggers_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
-        progress = ProgressLedger(
-            round_number=2,
-            progress_made=False,
-            stall_count=1,
-            next_action="replan",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        assert await hook.should_replan(ctx) is True
-
-    async def test_stall_cap_blocks_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=2, max_reset_count=2)
-        progress = ProgressLedger(
-            round_number=3,
-            progress_made=False,
-            stall_count=2,
-            next_action="escalate",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        assert await hook.should_replan(ctx) is False
-
-    async def test_reset_cap_blocks_replan(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=1)
-        progress = ProgressLedger(
-            round_number=2,
-            progress_made=False,
-            stall_count=1,
-            reset_count=1,
-            next_action="replan",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        assert await hook.should_replan(ctx) is False
-
-    async def test_replan_increments_reset(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=3, max_reset_count=2)
-        progress = ProgressLedger(
-            round_number=2,
-            progress_made=False,
-            stall_count=1,
-            reset_count=0,
-            next_action="replan",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        result = await hook.replan(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.reset_count == 1
-
-
-# ── ReplanMiddleware ──────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestReplanMiddleware:
-    """ReplanMiddleware wraps CoordinationReplanHook."""
-
-    def test_satisfies_protocol(self) -> None:
-        mw = ReplanMiddleware()
-        assert isinstance(mw, CoordinationMiddleware)
-
-    def test_name(self) -> None:
-        assert ReplanMiddleware().name == "coordination_replan"
-
-    async def test_default_noop(self) -> None:
-        mw = ReplanMiddleware()
-        ctx = _mw_context()
-        result = await mw.after_rollup(ctx)
-        assert result is ctx
-
-    async def test_with_replan_hook(self) -> None:
-        hook = MagenticReplanHook(max_stall_count=5, max_reset_count=2)
-        mw = ReplanMiddleware(replan_hook=hook)
-        progress = ProgressLedger(
-            round_number=2,
-            progress_made=False,
-            stall_count=1,
-            next_action="replan",
-        )
-        ctx = _mw_context(progress_ledger=progress)
-        result = await mw.after_rollup(ctx)
-        assert result.progress_ledger is not None
-        assert result.progress_ledger.reset_count == 1
+    def test_context_refuses_a_progress_ledger(self) -> None:
+        """``extra="forbid"`` is what stops the field growing back."""
+        with pytest.raises(ValueError, match="progress_ledger"):
+            CoordinationMiddlewareContext(
+                coordination_context=_coord_context(),
+                progress_ledger={"stall_count": 1},  # type: ignore[call-arg]
+            )
 
 
 # ── PlanReviewGateMiddleware ──────────────────────────────────────

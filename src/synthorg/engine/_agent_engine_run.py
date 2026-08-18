@@ -3,9 +3,8 @@
 
 The phases a run passes through either side of the loop: settling what it is
 bound to (which provider serves it, which identity it carries, how it samples),
-rebuilding the context a prior execution left behind, and recording
-flight-recorder frames once the loop is done. All sit off the per-turn hot path
-and are mixed into the engine.
+rebuilding the context a prior execution left behind, and resolving the run's
+turn cap. All sit off the per-turn hot path and are mixed into the engine.
 """
 
 from typing import TYPE_CHECKING, Final, NamedTuple
@@ -16,10 +15,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
-from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 from synthorg.observability.events.session import SESSION_REPLAY_LOW_COMPLETENESS
 from synthorg.observability.events.task_assignment import (
@@ -31,7 +28,6 @@ from synthorg.providers.protocol import CompletionProvider
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.core.clock import Clock
-    from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
     from synthorg.engine.session import EventReader
     from synthorg.providers.registry import ProviderRegistry
@@ -64,7 +60,7 @@ class RunBinding(NamedTuple):
 
 
 class AgentEngineRunMixin:
-    """Binding, session replay and flight-frame recording for a run."""
+    """Binding, session replay and turn-cap resolution for a run."""
 
     # Populated on the concrete ``AgentEngine`` in ``__init__``; declared
     # here so the type checker sees them when the mixin reads them. The
@@ -72,7 +68,6 @@ class AgentEngineRunMixin:
     _capability: CapabilityPolicy | None
     _budget_enforcer: BudgetEnforcer | None
     _provider_registry: ProviderRegistry | None
-    _flight_recorder_sink: FlightRecorderSink | None
     _event_reader: EventReader | None
     _clock: Clock
     _config_resolver: ConfigResolver | None
@@ -410,50 +405,6 @@ class AgentEngineRunMixin:
             max_tokens=identity.model.max_tokens,
         )
         return base.model_copy(update={"prompt_caching": True})
-
-    async def _record_flight_frames(
-        self,
-        execution_result: ExecutionResult,
-        *,
-        agent_id: str,
-        task_id: str,
-    ) -> None:
-        """Record flight-recorder frames for a finished run (best-effort).
-
-        Runs after the loop has completed, so it is off the per-turn hot
-        path. Both frame construction and recording are guarded here so
-        a fault in ``build_frames`` (e.g. malformed conversation history,
-        Pydantic validation regression) cannot turn a successful run
-        into a failed one any more than a sink fault can. System errors
-        still escape so the operator sees them; storage / construction
-        faults log and return.
-        """
-        if self._flight_recorder_sink is None:
-            return
-        from synthorg.engine.flight_recording import build_frames  # noqa: PLC0415
-
-        try:
-            frames = build_frames(
-                execution_result,
-                execution_id=execution_result.context.execution_id,
-                agent_id=agent_id,
-                task_id=task_id,
-                summary_max_chars=self._flight_recorder_sink.summary_max_chars,
-                clock=self._clock,
-            )
-            if frames:
-                await self._flight_recorder_sink.record_frames(frames)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort side channel
-            reraise_critical(exc)
-            logger.warning(
-                FLIGHT_RECORDER_RECORD_FAILED,
-                execution_id=execution_result.context.execution_id,
-                agent_id=agent_id,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
 
     async def _resolve_max_turns(self, *, agent_id: str, task_id: str) -> int:
         """Resolve the per-run turn cap from settings, falling back to default.

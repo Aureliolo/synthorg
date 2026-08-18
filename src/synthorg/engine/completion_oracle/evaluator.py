@@ -63,7 +63,12 @@ class BuildTestOracle:
         *,
         records: CodeExecutionRecordRepository | None,
     ) -> OracleEvaluation:
-        """Compute the build/test verdict for ``task``.
+        """Compute the build/test verdict for ``task`` and record it.
+
+        The act of a gate deciding a task's fate, so it logs. A surface
+        that merely wants the verdict to render calls :meth:`verdict_for`
+        instead: the computation is the same, and a listing is not an
+        event.
 
         Args:
             task: The completing task.
@@ -75,6 +80,49 @@ class BuildTestOracle:
             The :class:`OracleEvaluation`; its ``blocks_completion``
             property is the single signal the gate and the run-outcome
             re-source both read.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the record query is
+                cancelled, so the awaiting parent observes the cancel.
+        """
+        evaluation = await self.verdict_for(task, records=records)
+        # Neutral evaluation event carrying a ``blocked`` field. The
+        # enforcing BUILD_TEST_GATE_BLOCKED event is emitted only by the
+        # adapter (apply_build_test_gate) when it actually reroutes the
+        # task, so an enforced block is not counted twice.
+        logger.info(
+            BUILD_TEST_GATE_EVALUATED,
+            task_id=str(task.id),
+            verdict=evaluation.verdict.value,
+            requirement=evaluation.requirement.value,
+            tests_seen=evaluation.tests_seen,
+            tests_failed=evaluation.tests_failed,
+            blocked=evaluation.blocks_completion,
+        )
+        return evaluation
+
+    async def verdict_for(
+        self,
+        task: Task,
+        *,
+        records: CodeExecutionRecordRepository | None,
+    ) -> OracleEvaluation:
+        """Compute the build/test verdict for ``task`` without recording it.
+
+        A read surface asks this. The dashboard polls the approvals list,
+        which resolves an oracle-block flag per finished task to render a
+        badge, so the logging half ran on a cadence: three tasks written
+        off hours earlier produced an INFO line each every thirty seconds,
+        for ever, and the record of a gate actually deciding something sat
+        in the same stream, indistinguishable.
+
+        Args:
+            task: The task whose run is being qualified.
+            records: The append-only code-execution record store, or
+                ``None`` on a persistence-less boot.
+
+        Returns:
+            The :class:`OracleEvaluation`.
 
         Raises:
             asyncio.CancelledError: Propagated when the record query is
@@ -100,23 +148,7 @@ class BuildTestOracle:
         if page is None:
             return self._checker_fault_result(requirement)
 
-        evaluation = self._verdict_from_records(requirement, page)
-        # Neutral evaluation event carrying a ``blocked`` field. The enforcing
-        # BUILD_TEST_GATE_BLOCKED event is emitted only by the adapter
-        # (apply_build_test_gate) when it actually reroutes the task, so a
-        # read-surface evaluation (the live feed / approvals re-source) never
-        # emits a block that produced no transition, and an enforced block is
-        # not counted twice.
-        logger.info(
-            BUILD_TEST_GATE_EVALUATED,
-            task_id=str(task.id),
-            verdict=evaluation.verdict.value,
-            requirement=requirement.value,
-            tests_seen=evaluation.tests_seen,
-            tests_failed=evaluation.tests_failed,
-            blocked=evaluation.blocks_completion,
-        )
-        return evaluation
+        return self._verdict_from_records(requirement, page)
 
     async def _query_records(
         self,

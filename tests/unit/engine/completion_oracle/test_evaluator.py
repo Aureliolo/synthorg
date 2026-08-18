@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+import structlog.testing
 
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
@@ -13,6 +14,7 @@ from synthorg.engine.completion_oracle.build_test_models import (
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.observability.events.completion_oracle import BUILD_TEST_GATE_EVALUATED
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionPurpose,
@@ -190,3 +192,41 @@ class TestBuildTestOracle:
         )
         assert result.verdict is OracleVerdict.NOT_APPLICABLE
         assert not result.blocks_completion
+
+
+class TestReadingIsNotDeciding:
+    """A listing computes a badge; a gate decides a fate. Only one is an event.
+
+    The dashboard polls the approvals list, which resolves an oracle-block
+    flag per finished task. That drove the logging half on a thirty-second
+    cadence, so three tasks written off hours earlier kept producing an INFO
+    line each, for ever, in the same stream as the gate records that meant
+    something.
+    """
+
+    async def test_the_verdicts_agree(self) -> None:
+        task = _task(ArtifactType.CODE)
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = BuildTestOracle()
+
+        decided = await oracle.evaluate(task, records=records)
+        read = await oracle.verdict_for(task, records=records)
+
+        assert read == decided
+
+    async def test_only_the_deciding_call_records_one(self) -> None:
+        task = _task(ArtifactType.CODE)
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = BuildTestOracle()
+
+        with structlog.testing.capture_logs() as captured:
+            await oracle.verdict_for(task, records=records)
+            read_events = [e.get("event") for e in captured]
+        with structlog.testing.capture_logs() as captured:
+            await oracle.evaluate(task, records=records)
+            decided_events = [e.get("event") for e in captured]
+
+        assert BUILD_TEST_GATE_EVALUATED not in read_events
+        # Exactly one, not merely present: the name says the deciding call
+        # records ONE, and a membership check passes for any number above zero.
+        assert decided_events.count(BUILD_TEST_GATE_EVALUATED) == 1

@@ -19,6 +19,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CLEANUP,
+    DOCKER_CONTAINER_PROBE_FAILED,
     DOCKER_CONTAINER_REMOVE_FAILED,
     DOCKER_CONTAINER_REMOVED,
     DOCKER_CONTAINER_STOP_FAILED,
@@ -146,6 +147,59 @@ class DockerSandboxLifecycleMixin(ABC):
     async def _destroy_handle(self, handle: ContainerHandle) -> None:
         """Destroy the container behind *handle*."""
         ...
+
+    async def _handle_is_alive(self, handle: ContainerHandle) -> bool:
+        """Report whether the container behind *handle* is still running.
+
+        The liveness probe a reuse strategy consults before handing a
+        warm handle back.  Answers from the daemon rather than from our
+        own bookkeeping: a container can exit for reasons no lifecycle
+        event reaches us (an OOM kill, an operator ``docker rm``, a
+        daemon restart), and our records would still say it is there.
+
+        A sidecar-backed handle is two containers, and the sandbox joins the
+        sidecar's network namespace to have its egress policed. A sandbox
+        whose sidecar died is therefore not a sandbox worth reusing: it is
+        one running without the enforcement it was created with, which is
+        the one failure mode reuse must not paper over. Both are probed, and
+        either one not running reads dead.
+
+        Args:
+            handle: The cached handle under consideration for reuse.
+
+        Returns:
+            ``True`` only when the daemon reports every container behind the
+            handle running. A missing container, a non-running state, or an
+            inspect the daemon refuses all read ``False``: the caller pays
+            one fresh container for a wrong answer, against every remaining
+            tool call for a wrong reuse.
+        """
+        if not await self._container_is_running(handle.container_id):
+            return False
+        if handle.sidecar_id is None:
+            return True
+        return await self._container_is_running(handle.sidecar_id)
+
+    async def _container_is_running(self, container_id: str) -> bool:
+        """Ask the daemon whether one container is running.
+
+        Returns:
+            ``True`` only when the daemon reports it running.
+        """
+        try:
+            docker = await self._ensure_docker()
+            info = await docker.containers.container(container_id).show()  # pyright: ignore[reportAttributeAccessIssue]
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.info(
+                DOCKER_CONTAINER_PROBE_FAILED,
+                container_id=container_id[:12],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        state = info.get("State", {}) if isinstance(info, dict) else {}
+        return bool(state.get("Running", False))
 
     async def _safe_collect_logs(
         self,

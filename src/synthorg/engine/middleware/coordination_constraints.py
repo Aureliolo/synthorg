@@ -3,45 +3,38 @@
 Concrete middleware for the coordination pipeline:
 
 1. TaskLedgerMiddleware -- populates TaskLedger from decomposition
-2. ProgressLedgerMiddleware -- analyzes rollup for stall detection
-3. ReplanMiddleware -- wraps CoordinationReplanHook protocol
-4. PlanReviewGateMiddleware -- gates dispatch on autonomy level
-5. AuthorityDeferenceCoordinationMiddleware -- in s1_constraints.py
+2. PlanReviewGateMiddleware -- gates dispatch on autonomy level
+3. AuthorityDeferenceCoordinationMiddleware -- in s1_constraints.py
+
+There is deliberately no stall detection here. Whether a run is stuck is
+asked at two levels that can answer it: the execution loop's stagnation
+detector, which sees the turns, and the initiative rollup's
+``stall_reason``, which derives it exactly from persisted item status and
+routes it to a replan. A wave-level third opinion has strictly less
+information than either and no authority to act on it.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
+from typing import override
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.middleware.coordination_protocol import (
     BaseCoordinationMiddleware,
     CoordinationMiddlewareContext,
 )
 from synthorg.engine.middleware.errors import PlanReviewGatedError
-from synthorg.engine.middleware.models import (
-    ProgressLedger,
-    TaskLedger,
-)
+from synthorg.engine.middleware.models import TaskLedger
 from synthorg.engine.prompt_safety import TAG_TASK_FACT, wrap_untrusted
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_EMPTY_PLAN_TEXT,
 )
 from synthorg.observability.events.middleware import (
-    COORDINATION_REPLAN,
-    COORDINATION_REPLAN_BUDGET_BLOCKED,
-    COORDINATION_REPLAN_CAP_REACHED,
     MIDDLEWARE_PLAN_REVIEW_GATED,
-    MIDDLEWARE_PROGRESS_LEDGER_EMITTED,
     MIDDLEWARE_TASK_LEDGER_CREATED,
 )
 
-if TYPE_CHECKING:
-    from synthorg.budget.affordability import BudgetAffordabilityChecker
-
 logger = get_logger(__name__)
-_DEFAULT_ESCALATION_THRESHOLD: Final[int] = 3
 
 
 # ── TaskLedgerMiddleware ──────────────────────────────────────────
@@ -117,311 +110,6 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         )
 
         return ctx.model_copy(update={"task_ledger": ledger})
-
-
-# ── ProgressLedgerMiddleware ──────────────────────────────────────
-
-
-class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
-    """Emits a ProgressLedger after rollup analysis.
-
-    Analyzes the ``SubtaskStatusRollup`` to determine whether
-    progress was made, increments stall counters, and recommends
-    the next action.
-
-    Args:
-        escalation_threshold: Stall count triggering escalation.
-    """
-
-    def __init__(
-        self,
-        *,
-        escalation_threshold: int = _DEFAULT_ESCALATION_THRESHOLD,
-        **_kwargs: object,
-    ) -> None:
-        super().__init__(name="progress_ledger")
-        self._escalation_threshold = escalation_threshold
-
-    @override
-    async def after_rollup(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> CoordinationMiddlewareContext:
-        """Analyse rollup and emit ProgressLedger.
-
-        Returns:
-            The context with the new :class:`ProgressLedger` stored,
-            carrying stall counters, blocking issues, and the
-            recommended next action (``continue`` / ``replan`` /
-            ``escalate``).
-        """
-        rollup = ctx.status_rollup
-        existing = ctx.progress_ledger
-
-        # Determine round number
-        round_number = (existing.round_number + 1) if existing else 1
-
-        # Analyse progress via monotonic comparison of completed-count.
-        # ``SubtaskStatusRollup.completed`` is the canonical name on
-        # the rollup; ``ProgressLedger.completed_count`` is the
-        # snapshot we persist for round-over-round comparison.
-        completed = rollup.completed if rollup is not None else 0
-        prev_completed = existing.completed_count if existing else 0
-        progress_made = completed > prev_completed
-
-        # Stall detection
-        prev_stall = existing.stall_count if existing else 0
-        prev_reset = existing.reset_count if existing else 0
-
-        stall_count = 0 if progress_made else prev_stall + 1
-
-        # Blocking issues from phases
-        blocking = [
-            f"Phase {phase.phase}: {phase.error}"
-            for phase in ctx.phases
-            if not phase.success and phase.error
-        ]
-
-        # Decide next action
-        if stall_count >= self._escalation_threshold:
-            next_action = "escalate"
-        elif stall_count >= 1:
-            next_action = "replan"
-        else:
-            next_action = "continue"
-
-        ledger = ProgressLedger(
-            round_number=round_number,
-            progress_made=progress_made,
-            completed_count=completed,
-            stall_count=stall_count,
-            reset_count=prev_reset,
-            blocking_issues=tuple(blocking),
-            next_action=next_action,
-        )
-
-        task = ctx.coordination_context.task
-        logger.info(
-            MIDDLEWARE_PROGRESS_LEDGER_EMITTED,
-            task_id=str(task.id),
-            round_number=round_number,
-            progress_made=progress_made,
-            stall_count=stall_count,
-            next_action=next_action,
-        )
-
-        return ctx.model_copy(update={"progress_ledger": ledger})
-
-
-# ── CoordinationReplanHook protocol ──────────────────────────────
-
-
-@runtime_checkable
-class CoordinationReplanHook(Protocol):
-    """Protocol for coordination replan decisions.
-
-    Sits between ``after_rollup`` and ``before_update_parent``.
-    """
-
-    async def should_replan(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> bool:
-        """Decide whether to trigger a replan cycle."""
-        ...
-
-    async def replan(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> CoordinationMiddlewareContext:
-        """Execute a replan cycle and return updated context."""
-        ...
-
-
-class NoOpReplanHook:
-    """Default replan hook: never replans."""
-
-    async def should_replan(
-        self,
-        ctx: CoordinationMiddlewareContext,  # noqa: ARG002
-    ) -> bool:
-        """Always returns False.
-
-        Returns:
-            ``False`` unconditionally; this hook never triggers a
-            replan.
-        """
-        return False
-
-    async def replan(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> CoordinationMiddlewareContext:
-        """No-op: returns context unchanged.
-
-        Returns:
-            The same ``ctx`` instance passed in.
-        """
-        return ctx
-
-
-class MagenticReplanHook:
-    """Magentic-style replan hook with stall detection.
-
-    Monitors ``ProgressLedger.stall_count`` and triggers replans
-    when stalls are detected, up to hard caps.
-
-    Args:
-        max_stall_count: Maximum consecutive stalls before escalation.
-        max_reset_count: Maximum replan cycles before escalation.
-        budget_enforcer: Optional affordability checker gating an
-            affordable replan.
-    """
-
-    def __init__(
-        self,
-        *,
-        max_stall_count: int,
-        max_reset_count: int,
-        budget_enforcer: BudgetAffordabilityChecker | None = None,
-    ) -> None:
-        self._max_stall_count = max_stall_count
-        self._max_reset_count = max_reset_count
-        self._budget_enforcer = budget_enforcer
-
-    async def should_replan(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> bool:
-        """Check stall count against caps.
-
-        Returns:
-            ``True`` when the progress ledger reports a stall, both
-            stall and reset caps are below their maxima, and the
-            budget enforcer allows the replan call; ``False`` in any
-            other case (no progress ledger, no stall, cap reached, or
-            budget block).
-        """
-        progress = ctx.progress_ledger
-        if progress is None:
-            return False
-
-        if progress.stall_count == 0:
-            return False
-
-        task = ctx.coordination_context.task
-        if progress.stall_count >= self._max_stall_count:
-            logger.warning(
-                COORDINATION_REPLAN_CAP_REACHED,
-                task_id=str(task.id),
-                stall_count=progress.stall_count,
-                cap="max_stall_count",
-            )
-            return False
-
-        if progress.reset_count >= self._max_reset_count:
-            logger.warning(
-                COORDINATION_REPLAN_CAP_REACHED,
-                task_id=str(task.id),
-                reset_count=progress.reset_count,
-                cap="max_reset_count",
-            )
-            return False
-
-        # Budget affordability check
-        if self._budget_enforcer is not None:
-            try:
-                await self._budget_enforcer.check_can_execute(
-                    agent_id="coordination-replan",
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort side channel
-                reraise_critical(exc)
-                logger.warning(
-                    COORDINATION_REPLAN_BUDGET_BLOCKED,
-                    task_id=str(task.id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                return False
-
-        return True
-
-    async def replan(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> CoordinationMiddlewareContext:
-        """Execute replan by incrementing reset count.
-
-        The actual re-decomposition is handled by the coordination
-        pipeline's outer loop.  This hook signals the intent and
-        updates the progress ledger.
-
-        Returns:
-            The context with the progress ledger's ``reset_count``
-            incremented and ``next_action`` set to ``"replan"``; the
-            input ``ctx`` is returned unchanged when no progress
-            ledger is attached.
-        """
-        progress = ctx.progress_ledger
-        task = ctx.coordination_context.task
-
-        logger.info(
-            COORDINATION_REPLAN,
-            task_id=str(task.id),
-            stall_count=progress.stall_count if progress else 0,
-            reset_count=(progress.reset_count if progress else 0) + 1,
-        )
-
-        if progress is not None:
-            updated_progress = ProgressLedger(
-                round_number=progress.round_number,
-                progress_made=progress.progress_made,
-                stall_count=progress.stall_count,
-                reset_count=progress.reset_count + 1,
-                blocking_issues=progress.blocking_issues,
-                next_action="replan",
-            )
-            ctx = ctx.model_copy(
-                update={"progress_ledger": updated_progress},
-            )
-
-        return ctx
-
-
-class ReplanMiddleware(BaseCoordinationMiddleware):
-    """Wraps a ``CoordinationReplanHook`` as coordination middleware.
-
-    Runs between ``after_rollup`` and ``before_update_parent``.
-
-    Args:
-        replan_hook: The replan strategy to apply.
-    """
-
-    def __init__(
-        self,
-        *,
-        replan_hook: CoordinationReplanHook | None = None,
-        **_kwargs: object,
-    ) -> None:
-        super().__init__(name="coordination_replan")
-        self._hook = replan_hook or NoOpReplanHook()
-
-    @override
-    async def after_rollup(
-        self,
-        ctx: CoordinationMiddlewareContext,
-    ) -> CoordinationMiddlewareContext:
-        """Check for replan after rollup.
-
-        Returns:
-            The context after invoking the configured replan hook; the
-            input ``ctx`` is returned unchanged when the hook says no
-            replan is needed.
-        """
-        if await self._hook.should_replan(ctx):
-            ctx = await self._hook.replan(ctx)
-        return ctx
 
 
 # ── PlanReviewGateMiddleware ──────────────────────────────────────

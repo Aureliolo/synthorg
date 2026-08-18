@@ -4,8 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
 // TestComposeDefaultProjectName pins the name Compose derives from a
@@ -56,7 +59,7 @@ func TestMigrationIsSkippedWhenAlreadyNamed(t *testing.T) {
 			t.Error("existence was probed for a project that needs no migration")
 			return false
 		},
-		move: func(from, to string) error {
+		move: func(from, to, _ string) error {
 			t.Errorf("moved %s to %s for a project that needs no migration", from, to)
 			return nil
 		},
@@ -79,7 +82,7 @@ func TestMigrationSkipsAnAlreadyMovedVolume(t *testing.T) {
 	moved := 0
 	ops := volumeOps{
 		exists: func(name string) bool { return present[name] },
-		move: func(string, string) error {
+		move: func(string, string, string) error {
 			moved++
 			return nil
 		},
@@ -105,7 +108,7 @@ func TestMigrationAbortsOnFailureAndStopsThere(t *testing.T) {
 			// Every source present, no destination yet: all three are due.
 			return strings.HasPrefix(name, "data_")
 		},
-		move: func(_, to string) error {
+		move: func(_, to, _ string) error {
 			if strings.HasSuffix(to, "-data") {
 				return errTestCopyFailed
 			}
@@ -121,6 +124,283 @@ func TestMigrationAbortsOnFailureAndStopsThere(t *testing.T) {
 	if !errors.Is(err, errTestCopyFailed) {
 		t.Errorf("migrateVolumesWith returned %v, want it to wrap the underlying failure", err)
 	}
+}
+
+// TestMigratedVolumeCarriesComposeLabels is the every-start-warns guard.
+//
+// Volume labels are immutable, so a destination created bare stays bare:
+// Compose then finds a volume it is told to use but did not label and warns on
+// every start, with no way to silence it short of redoing the move by hand.
+func TestMigratedVolumeCarriesComposeLabels(t *testing.T) {
+	t.Parallel()
+
+	for _, suffix := range legacyVolumeSuffixes {
+		t.Run(suffix, func(t *testing.T) {
+			t.Parallel()
+			want := map[string]string{
+				"com.docker.compose.project": composeProjectName,
+				"com.docker.compose.volume":  suffix,
+			}
+			got := labelPairs(t, migratedVolumeLabels(suffix))
+			if len(got) != len(want) {
+				t.Fatalf("migratedVolumeLabels(%q) = %v, want %v", suffix, got, want)
+			}
+			for key, value := range want {
+				if got[key] != value {
+					t.Errorf("label %s = %q, want %q", key, got[key], value)
+				}
+			}
+		})
+	}
+}
+
+// TestMigrationPassesEachVolumeItsOwnSuffix pins the join between the
+// destination's name and its label: a shared suffix would label every volume
+// as one of them, which Compose reads as a volume it does not own.
+func TestMigrationPassesEachVolumeItsOwnSuffix(t *testing.T) {
+	t.Parallel()
+
+	seen := map[string]string{}
+	ops := volumeOps{
+		exists: func(name string) bool { return strings.HasPrefix(name, "data_") },
+		move: func(_, to, suffix string) error {
+			seen[to] = suffix
+			return nil
+		},
+	}
+
+	if err := migrateVolumesWith("data", discardUI(), ops); err != nil {
+		t.Fatalf("migrateVolumesWith returned %v, want nil", err)
+	}
+	for _, suffix := range legacyVolumeSuffixes {
+		to := composeProjectName + "_" + suffix
+		if seen[to] != suffix {
+			t.Errorf("%s was moved with suffix %q, want %q", to, seen[to], suffix)
+		}
+	}
+}
+
+// TestLegacyNetworkIsRemovedSoComposeCanRemakeIt is the other half of the
+// every-start-warns guard.
+//
+// The compose file names the network explicitly, so the rename does not give
+// it a new one: the network created under the old project survives with the
+// old project's label, and Compose warns about it on every start.
+func TestLegacyNetworkIsRemovedSoComposeCanRemakeIt(t *testing.T) {
+	t.Parallel()
+
+	var removed []string
+	ops := networkOps{
+		projectLabel: func(name string) (string, bool) {
+			if name != composeNetworkName {
+				t.Errorf("inspected %q, want the declared network %q", name, composeNetworkName)
+			}
+			return "data", true
+		},
+		remove: func(name string) error { removed = append(removed, name); return nil },
+	}
+
+	migrateLegacyNetworkWith("data", discardUI(), ops)
+	if len(removed) != 1 || removed[0] != composeNetworkName {
+		t.Errorf("removed %v, want only %q", removed, composeNetworkName)
+	}
+}
+
+// TestNetworkMigrationLeavesWhatItDoesNotOwn is the do-not-delete-a-
+// stranger's-network guard. A network carrying no Compose project label was
+// not created by Compose, and one already carrying the declared project's
+// label has nothing to migrate.
+func TestNetworkMigrationLeavesWhatItDoesNotOwn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		oldProject string
+		label      string
+		labelled   bool
+	}{
+		{"absent, or created by something other than compose", "data", "", false},
+		{"already carrying the declared project", "data", composeProjectName, true},
+		{"created by an unrelated compose project", "data", "somebody-else", true},
+		{"nothing to migrate from", "", "data", true},
+		{"the project is already the declared one", composeProjectName, "data", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ops := networkOps{
+				projectLabel: func(string) (string, bool) { return tt.label, tt.labelled },
+				remove: func(name string) error {
+					t.Errorf("removed network %s, which this migration does not own", name)
+					return nil
+				},
+			}
+			migrateLegacyNetworkWith(tt.oldProject, discardUI(), ops)
+		})
+	}
+}
+
+// TestNetworkRemovalFailureDoesNotStopTheStart pins the asymmetry with the
+// volumes: a network carries no state, so a removal that fails costs a warning
+// on every start and nothing else. Refusing to start over it would turn a
+// cosmetic defect into an install that cannot run.
+func TestNetworkRemovalFailureDoesNotStopTheStart(t *testing.T) {
+	t.Parallel()
+
+	var out strings.Builder
+	ops := networkOps{
+		projectLabel: func(string) (string, bool) { return "data", true },
+		remove:       func(string) error { return errTestCopyFailed },
+	}
+
+	migrateLegacyNetworkWith("data", ui.NewUIWithOptions(&out, ui.Options{Plain: true}), ops)
+
+	reported := out.String()
+	if !strings.Contains(reported, composeNetworkName) {
+		t.Errorf("the failure was reported as %q, which does not name the network", reported)
+	}
+	// The success line names the network too, so the check above passes on
+	// either branch. This is what distinguishes the failure path from it.
+	if !strings.Contains(reported, "could not remove") {
+		t.Errorf("the failure was reported as %q, which does not read as a failure", reported)
+	}
+}
+
+// TestMigrationVolumesMatchTheComposeDeclaration is the volume twin of the
+// network test above. legacyVolumeSuffixes and the template's volume keys are
+// two copies of one fact, and a rename on either side produces volumes Compose
+// does not own: it warns on every start, and the labels cannot be added
+// afterwards because volume labels are immutable.
+func TestMigrationVolumesMatchTheComposeDeclaration(t *testing.T) {
+	t.Parallel()
+
+	declared := composeTemplateVolumeKeys(t)
+	slices.Sort(declared)
+
+	migrated := slices.Clone(legacyVolumeSuffixes)
+	slices.Sort(migrated)
+
+	if !slices.Equal(declared, migrated) {
+		t.Errorf(
+			"the compose template declares volumes %v but the migration moves %v",
+			declared, migrated,
+		)
+	}
+}
+
+// composeTemplateVolumeKeys reads the keys under the template's top-level
+// "volumes:" block.
+func composeTemplateVolumeKeys(t *testing.T) []string {
+	t.Helper()
+
+	tmpl, err := os.ReadFile(filepath.Join("..", "internal", "compose", "compose.yml.tmpl"))
+	if err != nil {
+		t.Fatalf("reading the compose template: %v", err)
+	}
+
+	var keys []string
+	inVolumes := false
+	for line := range strings.SplitSeq(string(tmpl), "\n") {
+		if strings.HasPrefix(line, "volumes:") {
+			inVolumes = true
+			continue
+		}
+		if !inVolumes {
+			continue
+		}
+		// Two of the three keys sit behind template conditionals, whose
+		// directives start at column 0. Skipping them rather than reading
+		// them as the next top-level block is what keeps the optional
+		// volumes in scope: stopping at the first one would compare against
+		// the sqlite-only subset and pass while the other two drifted.
+		if strings.HasPrefix(strings.TrimSpace(line), "{{") {
+			continue
+		}
+		// Any other unindented content is the next top-level block.
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		trimmed := strings.TrimSpace(line)
+		if key, ok := strings.CutSuffix(trimmed, ":"); ok && key != "" &&
+			!strings.HasPrefix(key, "#") {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		t.Fatal("found no volume keys in the compose template")
+	}
+	return keys
+}
+
+// TestMigrationNetworkMatchesTheComposeDeclaration ties the constant to the
+// name the compose template declares. They are two copies of one fact, and the
+// migration removing a network nobody uses would be silently useless.
+func TestMigrationNetworkMatchesTheComposeDeclaration(t *testing.T) {
+	t.Parallel()
+
+	tmpl, err := os.ReadFile(filepath.Join("..", "internal", "compose", "compose.yml.tmpl"))
+	if err != nil {
+		t.Fatalf("reading the compose template: %v", err)
+	}
+	if declared := declaredNetworkName(t, string(tmpl)); declared != composeNetworkName {
+		t.Errorf(
+			"composeNetworkName is %q but compose.yml.tmpl declares %q",
+			composeNetworkName, declared,
+		)
+	}
+}
+
+// declaredNetworkName returns the name the top-level networks block declares.
+//
+// Read from that block rather than searched for across the whole template:
+// "name:" is an ordinary compose key and appears under other top-level blocks,
+// so a substring match keeps this test green on a match that has nothing to do
+// with the network. That is the one failure it exists to catch, since the
+// migration removing a network nobody uses is silently useless.
+func declaredNetworkName(t *testing.T, tmpl string) string {
+	t.Helper()
+
+	inNetworks := false
+	for line := range strings.SplitSeq(tmpl, "\n") {
+		if strings.HasPrefix(line, "networks:") {
+			inNetworks = true
+			continue
+		}
+		if !inNetworks {
+			continue
+		}
+		// Template directives start at column 0 and are not the next block.
+		if strings.HasPrefix(strings.TrimSpace(line), "{{") {
+			continue
+		}
+		// Any other unindented content is the next top-level block.
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "name:"); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	t.Fatal("found no network name in the compose template")
+	return ""
+}
+
+// labelPairs turns the "--label k=v" argument list into a map.
+func labelPairs(t *testing.T, args []string) map[string]string {
+	t.Helper()
+	pairs := map[string]string{}
+	for i := 0; i < len(args); i += 2 {
+		if args[i] != "--label" {
+			t.Fatalf("argument %d is %q, want --label", i, args[i])
+		}
+		key, value, found := strings.Cut(args[i+1], "=")
+		if !found {
+			t.Fatalf("label %q is not a key=value pair", args[i+1])
+		}
+		pairs[key] = value
+	}
+	return pairs
 }
 
 var errTestCopyFailed = errors.New("copy failed")

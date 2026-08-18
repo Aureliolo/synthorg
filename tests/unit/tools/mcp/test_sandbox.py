@@ -1,35 +1,43 @@
-"""Tests for Docker sandboxing of stdio MCP servers."""
+"""Tests for the container-isolation policy of stdio MCP servers."""
+
+from collections.abc import Iterator
 
 import pytest
 import structlog
+from pydantic import ValidationError
 
-from synthorg.observability.events.mcp import (
-    MCP_SANDBOX_NETWORK_UNSAFE,
-    MCP_SANDBOX_RESERVED_ENV_DROPPED,
+from synthorg.core.types import NotBlankStr
+from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
+from synthorg.tools.sandbox._image_resolution import (
+    _FALLBACK_SANDBOX_IMAGE,
+    set_resolved_sandbox_image,
 )
-from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
 
 pytestmark = pytest.mark.unit
 
-# ``wrap_stdio_in_sandbox`` is vendor-agnostic infrastructure; a fictitious
-# package + env var keep the test off any real provider's names.
-_EXAMPLE_PACKAGE = "@example-org/example-mcp-server"
-_EXAMPLE_ENV_VAR = "EXAMPLE_API_KEY"
 
+@pytest.fixture(autouse=True)
+def _isolate_resolved_sandbox_image() -> Iterator[None]:
+    """Clear the process-global resolved image on both sides of every test.
 
-def _wrap(env: dict[str, str]) -> tuple[str, list[str], dict[str, str]]:
-    return wrap_stdio_in_sandbox(
-        command="npx",
-        args=["-y", _EXAMPLE_PACKAGE],
-        env=env,
-        sandbox=MCPSandboxConfig(),
-    )
+    ``MCPSandboxConfig.image`` reads a process singleton the lifecycle wiring
+    populates, so a test here that pokes it would otherwise leak into later
+    tests on the same xdist worker, and a test that only cleared it afterwards
+    would inherit whatever ran before. Clearing on entry as well is what makes
+    each test's starting point its own, matching the sibling fixture in
+    ``tests/unit/tools/sandbox/conftest.py``.
+    """
+    set_resolved_sandbox_image(None)
+    try:
+        yield
+    finally:
+        set_resolved_sandbox_image(None)
 
 
 class TestSandboxConfig:
     def test_sandbox_on_by_default(self) -> None:
         assert MCPSandboxConfig().enabled is True
-        assert MCPSandboxConfig().image == "node:22-alpine"
 
     def test_network_rejects_unknown_mode(self) -> None:
         with pytest.raises(ValueError, match="network"):
@@ -53,73 +61,99 @@ class TestSandboxConfig:
         assert not [e for e in cap if e.get("event") == MCP_SANDBOX_NETWORK_UNSAFE]
 
 
-class TestWrap:
-    def test_runs_via_docker(self) -> None:
-        command, args, _ = _wrap({})
-        assert command == "docker"
-        assert args[0] == "run"
-        assert "--rm" in args
-        assert "-i" in args
+class TestTheRuntimeImageIsTheSandboxImage:
+    """There is one image that runs untrusted code, so there is one answer.
 
-    def test_hardening_flags_present(self) -> None:
-        _, args, _ = _wrap({})
-        assert "--cap-drop=ALL" in args
-        assert "--security-opt=no-new-privileges" in args
-        assert "--user=node" in args
-        assert "--read-only" in args
-        assert any(a.startswith("--pids-limit=") for a in args)
-        assert any(a.startswith("--memory=") for a in args)
-        assert any(a.startswith("--network=") for a in args)
-        assert "--env=NPM_CONFIG_IGNORE_SCRIPTS=true" in args
+    A separate MCP image setting is a second answer to a question an operator
+    already answered by hardening and verifying the sandbox image, and the
+    knob shipped defaulting to a third-party image the deployment had never
+    pulled, let alone verified.
+    """
 
-    def test_npx_runtime_flags_present(self) -> None:
-        """--workdir/HOME/npm-cache point at the tmpfs so npx works read-only."""
-        _, args, _ = _wrap({})
-        assert "--workdir=/tmp" in args
-        assert "--env=HOME=/tmp" in args
-        assert "--env=NPM_CONFIG_CACHE=/tmp/.npm" in args
-        assert any(a.startswith("--tmpfs=/tmp") for a in args)
+    def test_image_follows_the_resolved_sandbox_image(self) -> None:
+        verified = "registry.example/verified-sandbox@sha256:abc"
+        set_resolved_sandbox_image(verified)
+        assert MCPSandboxConfig().image == verified
 
-    def test_image_command_and_args_at_tail(self) -> None:
-        _, args, _ = _wrap({})
-        assert args[-4:] == [
-            "node:22-alpine",
-            "npx",
-            "-y",
-            _EXAMPLE_PACKAGE,
-        ]
+    def test_unresolved_falls_back_to_the_release_pinned_image(self) -> None:
+        """Named directly, because both sides calling the resolver proves nothing.
 
-    def test_reserved_env_key_not_forwarded(self) -> None:
-        """A supplied key colliding with a sandbox control must not override it.
-
-        Forwarding ``NPM_CONFIG_IGNORE_SCRIPTS`` by name after the trusted
-        ``--env=NPM_CONFIG_IGNORE_SCRIPTS=true`` flag would let Docker's
-        last-wins re-enable install scripts. The reserved key is dropped.
+        Comparing the config against ``get_resolved_sandbox_image()`` holds
+        whatever that function returns, including a value the release pin no
+        longer agrees with.
         """
-        with structlog.testing.capture_logs() as cap:
-            _, args, _ = _wrap({"NPM_CONFIG_IGNORE_SCRIPTS": "false"})
-        # The trusted control flag is present exactly once, unshadowed.
-        assert "--env=NPM_CONFIG_IGNORE_SCRIPTS=true" in args
-        # The supplied key is never forwarded by name.
-        assert "NPM_CONFIG_IGNORE_SCRIPTS" not in args
-        events = [e for e in cap if e.get("event") == MCP_SANDBOX_RESERVED_ENV_DROPPED]
-        assert events
-        assert events[0].get("log_level") == "warning"
+        assert MCPSandboxConfig().image == _FALLBACK_SANDBOX_IMAGE
 
-    def test_non_reserved_env_still_forwarded(self) -> None:
-        _, args, _ = _wrap({"HOME": "/evil", _EXAMPLE_ENV_VAR: "x"})
-        # HOME is reserved -> dropped; the trusted HOME stands.
-        assert "--env=HOME=/tmp" in args
-        assert "HOME" not in args
-        # A non-reserved key still forwards by name.
-        assert _EXAMPLE_ENV_VAR in args
 
-    def test_secret_forwarded_by_name_never_in_argv(self) -> None:
-        _, args, env = _wrap({_EXAMPLE_ENV_VAR: "super-secret-value"})
-        # Forwarded by name: '--env' immediately followed by the key.
-        assert _EXAMPLE_ENV_VAR in args
-        assert args[args.index(_EXAMPLE_ENV_VAR) - 1] == "--env"
-        # The secret VALUE must never appear on the command line.
-        assert all("super-secret-value" not in a for a in args)
-        # It travels in the docker process env instead (Docker forwards by name).
-        assert env[_EXAMPLE_ENV_VAR] == "super-secret-value"
+class TestLimitsAreRejectedWhereTheyAreConfigured:
+    """A limit that cannot be applied has to fail at the setting, not at connect.
+
+    Both limits travel as free-form strings and were only converted when a
+    container was created, so a bad one failed on every reconnect, far from
+    the setting that caused it.
+    """
+
+    def test_a_zero_cpu_quota_is_refused(self) -> None:
+        """``NanoCpus`` of zero means "no limit" to the daemon.
+
+        So ``"0"`` does not clamp the container to nothing, it uncaps the one
+        container in this product that runs code nobody reviewed.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("0"))
+
+    def test_a_negative_cpu_quota_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("-1"))
+
+    def test_a_non_numeric_cpu_quota_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr("plenty"))
+
+    @pytest.mark.parametrize("quota", ["inf", "-inf", "nan", "Infinity"])
+    def test_a_non_finite_cpu_quota_is_refused(self, quota: str) -> None:
+        """``float()`` accepts these; nothing downstream survives them.
+
+        ``nan`` answers False to every comparison, so it walks through the
+        positive check and dies in ``int()``; an infinity dies there too, and
+        with an ``OverflowError`` that is not a validation error at all. The
+        operator would see an unhandled failure at connect time rather than a
+        refusal at the setting they wrote.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr(quota))
+
+    def test_a_malformed_memory_limit_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(memory_limit=NotBlankStr("512 megabytes"))
+
+    def test_a_usable_pair_is_accepted(self) -> None:
+        config = MCPSandboxConfig(
+            cpus=NotBlankStr("0.5"), memory_limit=NotBlankStr("256m")
+        )
+
+        assert config.cpus == "0.5"
+        assert config.memory_limit == "256m"
+
+
+class TestDeploymentAttribution:
+    def test_unset_by_default_so_nothing_claims_a_foreign_container(self) -> None:
+        assert MCPSandboxConfig().deployment_id is None
+
+    def test_carries_the_id_it_is_given(self) -> None:
+        assert MCPSandboxConfig(deployment_id="abc123").deployment_id == "abc123"
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t"])
+    def test_a_blank_id_is_refused_rather_than_labelled(self, blank: str) -> None:
+        """Unset and blank are different, and only one of them is honest.
+
+        The id becomes a container label the boot reconciliation pass matches
+        on to reclaim what a hard kill left running. ``None`` says "no
+        deployment claims this", which the sweep can act on; a blank string
+        would be a label that matches nothing while looking like attribution,
+        so a container would be neither claimed nor reclaimable. The field's
+        type refuses it, and this pins that rather than leaving it to the
+        next person to rediscover.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(deployment_id=blank)

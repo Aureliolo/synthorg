@@ -26,7 +26,6 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
         EngineStateSlice.model_construct(
             task_engine=deps.phase1.task_engine,
             work_pipeline=deps.work_pipeline,
-            ceremony_scheduler=deps.meeting_wire.ceremony_scheduler,
             intake_entry_adapter=deps.intake_entry_adapter,
             task_board_entry_adapter=deps.task_board_entry_adapter,
             error_taxonomy_store=InMemoryErrorTaxonomyStore(),

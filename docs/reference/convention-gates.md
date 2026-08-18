@@ -35,6 +35,8 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
 | `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_enum_check_constraint_parity.py` | push | `src/synthorg/` + both `schema.sql` | full | no | none | add |
+| `check_wave_dispatch_gated.py` | push | `engine/coordination/` | full | no | none | add |
 | `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
@@ -44,6 +46,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
+| `check_mcp_catalog_launchable.py` | push | `tools/mcp/runtime_provision.py`, `mcp_catalog/bundled.json`, `mcp_catalog/install.py`, `docker/sandbox/apko.yaml` | full | no | none | add |
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |

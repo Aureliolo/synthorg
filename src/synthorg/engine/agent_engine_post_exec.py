@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.models import CheckpointConfig
     from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.evolution.service import EvolutionService
+    from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
     from synthorg.engine.task_engine import TaskEngine
@@ -97,6 +98,7 @@ class AgentEnginePostExecMixin:
     _task_engine: TaskEngine | None
     _approval_store: ApprovalStoreProtocol | None
     _approval_gate: ApprovalGate | None
+    _flight_recorder_sink: FlightRecorderSink | None
     _review_gate: ReviewGateService | None
     _review_pipeline: ReviewPipeline | None
     _artifact_probe: ExpectedArtifactProbe | None
@@ -173,6 +175,24 @@ class AgentEnginePostExecMixin:
             task_id=task_id,
             approval_store=self._approval_store,
             approval_gate=self._approval_gate,
+        )
+        # Local: the ``flight_recording`` hub pulls its replay service, which
+        # reaches the red-team package and back into this engine, so importing
+        # it at module scope closes a cold-import cycle.
+        from synthorg.engine.flight_recording import (  # noqa: PLC0415
+            record_run_frames,
+        )
+
+        # Before the transitions, because they drive the review, and the
+        # review asks the frame store what this attempt delivered. Recorded
+        # after the ceiling park so a parked attempt's terminal frame carries
+        # the status it actually ended on.
+        await record_run_frames(
+            execution_result,
+            sink=self._flight_recorder_sink,
+            agent_id=agent_id,
+            task_id=task_id,
+            clock=self._clock,
         )
         try:
             execution_result = await apply_post_execution_transitions(

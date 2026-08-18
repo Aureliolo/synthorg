@@ -154,6 +154,33 @@ async def _activate_meeting_protocol_registry(app_state: AppState) -> None:
     await wire_meeting_protocol_registry(app_state)
 
 
+async def _activate_meeting_agent_dispatch(app_state: AppState) -> None:
+    """Install real LLM dispatch on the meeting orchestrator."""
+    from synthorg.api.lifecycle_helpers.meeting_dispatch_wiring import (  # noqa: PLC0415
+        wire_meeting_agent_dispatch,
+    )
+
+    await wire_meeting_agent_dispatch(app_state)
+
+
+async def _activate_ceremony_scheduler(app_state: AppState) -> None:
+    """Build and start the meeting + ceremony schedulers."""
+    from synthorg.api.lifecycle_helpers.ceremony_wiring import (  # noqa: PLC0415
+        wire_ceremony_scheduler,
+    )
+
+    await wire_ceremony_scheduler(app_state)
+
+
+async def _activate_webhook_event_bridge(app_state: AppState) -> None:
+    """Build and start the webhook-to-ceremony event bridge."""
+    from synthorg.api.lifecycle_helpers.webhook_bridge_wiring import (  # noqa: PLC0415
+        wire_webhook_event_bridge,
+    )
+
+    await wire_webhook_event_bridge(app_state)
+
+
 async def _deactivate_meeting_protocol_registry(app_state: AppState) -> None:
     """Uninstall the meeting protocol factories."""
     from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
@@ -872,6 +899,24 @@ async def _activate_analytics_collector(app_state: AppState) -> None:
     await wire_analytics_collector(si_config=await _si_config(app_state))
 
 
+async def _activate_training_service(app_state: AppState) -> None:
+    """Wire the training service that delivers what a new hire learns."""
+    from synthorg.api.lifecycle_helpers.training_wiring import (  # noqa: PLC0415
+        wire_training_service,
+    )
+
+    await wire_training_service(app_state, app_state.config)
+
+
+async def _deactivate_training_service(app_state: AppState) -> None:
+    """Take the training service down."""
+    from synthorg.api.lifecycle_helpers.training_wiring import (  # noqa: PLC0415
+        unwire_training_service,
+    )
+
+    await unwire_training_service(app_state)
+
+
 async def _activate_eval_loop(app_state: AppState) -> None:
     """Wire the HR evaluation loop."""
     from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
@@ -879,6 +924,15 @@ async def _activate_eval_loop(app_state: AppState) -> None:
     )
 
     await wire_eval_loop(app_state, provider_registry=_registry(app_state))
+
+
+async def _deactivate_eval_loop(app_state: AppState) -> None:
+    """Take the HR evaluation loop down."""
+    from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
+        unwire_eval_loop,
+    )
+
+    await unwire_eval_loop(app_state)
 
 
 async def _activate_pruning(app_state: AppState) -> None:
@@ -1055,6 +1109,43 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             "strategy.premortem_participants",
         ),
         rebuild_on_change=True,
+    ),
+    SubsystemSpec(
+        name="meeting_agent_dispatch",
+        provides=CapabilityId.MEETING_AGENT_DISPATCH,
+        # The caller is composed from both registries, so naming them is
+        # what turns "meetings never dispatched" into a reported wait.
+        requires=(
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.MEETING_ORCHESTRATOR,
+        ),
+        activate=_activate_meeting_agent_dispatch,
+    ),
+    SubsystemSpec(
+        name="ceremony_scheduler",
+        provides=CapabilityId.CEREMONY_SCHEDULER,
+        # Dispatch is required rather than merely hoped for: a scheduler
+        # running ceremonies through a caller that refuses every turn
+        # produces background noise and no meeting.
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.MEETING_ORCHESTRATOR,
+            CapabilityId.MEETING_AGENT_DISPATCH,
+        ),
+        activate=_activate_ceremony_scheduler,
+    ),
+    SubsystemSpec(
+        name="webhook_event_bridge",
+        provides=CapabilityId.WEBHOOK_EVENT_BRIDGE,
+        # Forwards verified deliveries into the active sprint's strategy,
+        # which the ceremony scheduler holds.
+        requires=(
+            CapabilityId.MESSAGE_BUS,
+            CapabilityId.CEREMONY_SCHEDULER,
+        ),
+        activate=_activate_webhook_event_bridge,
     ),
     SubsystemSpec(
         name="evolution_outcomes",
@@ -1331,7 +1422,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="sprint_service",
         provides=CapabilityId.SPRINT_SERVICE,
-        requires=(CapabilityId.PERSISTENCE,),
+        # The ceremony scheduler is what advances a sprint's ceremonies, so
+        # it is declared rather than discovered: an undeclared wait shows as
+        # prose in a decline reason nobody can act on, while a declared one
+        # is the unmet capability ``GET /subsystems`` names.
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.CEREMONY_SCHEDULER,
+        ),
         activate=_activate_sprint_service,
     ),
     SubsystemSpec(
@@ -1498,13 +1598,14 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="kanban_board",
         provides=CapabilityId.KANBAN_BOARD,
-        # The sprint service is an advisory gate the board reads at
-        # construction, so it is ordered before rather than merely hoped for.
+        # The sprint gate is NOT required. It is advisory and the board reads
+        # it live per move, so requiring it would tie the whole Task Board
+        # endpoint to a subsystem the board works without: a sprint service
+        # that declines would take the board down with it.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.TASK_ENGINE,
             CapabilityId.SETTINGS_RESOLVER,
-            CapabilityId.SPRINT_SERVICE,
         ),
         activate=_activate_kanban_board,
     ),
@@ -1576,6 +1677,23 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         ),
         rebuild_on_change=True,
     ),
+    # The extractors are built FROM the memory backend, so a replaced backend
+    # has to reach this service too; and giving it a teardown makes what it
+    # provides tearable in turn, which is why the eval loop below carries the
+    # same pair.
+    SubsystemSpec(
+        name="training_service",
+        provides=CapabilityId.TRAINING_SERVICE,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.APPROVAL_STORE,
+            CapabilityId.MEMORY_BACKEND,
+        ),
+        activate=_activate_training_service,
+        deactivate=_deactivate_training_service,
+        rebuild_on_change=True,
+    ),
     SubsystemSpec(
         name="eval_loop",
         provides=CapabilityId.EVAL_LOOP,
@@ -1583,8 +1701,16 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.PERSISTENCE,
             CapabilityId.AGENT_REGISTRY,
             CapabilityId.PROVIDER_REGISTRY,
+            # Declared rather than checked inside the activation: the loop
+            # delivers remediation THROUGH training, so waiting on it is a
+            # real dependency and belongs in the reconciler's `unmet` list
+            # where an operator reads it, not in a prose decline naming a
+            # symptom of somebody else's failure.
+            CapabilityId.TRAINING_SERVICE,
         ),
         activate=_activate_eval_loop,
+        deactivate=_deactivate_eval_loop,
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="pruning_service",

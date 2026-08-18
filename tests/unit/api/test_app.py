@@ -72,7 +72,6 @@ def _build_startup_with_failing_settings_autowire(
         bridge=None,
         settings_dispatcher=None,
         task_engine=None,
-        meeting_scheduler=None,
         backup_service=None,
         approval_timeout_scheduler=None,
         app_state=app_state,
@@ -338,7 +337,6 @@ class TestAppLifecycle:
                 bridge=None,
                 settings_dispatcher=None,
                 task_engine=None,
-                meeting_scheduler=None,
                 backup_service=None,
                 approval_timeout_scheduler=None,
                 app_state=app_state,
@@ -400,7 +398,6 @@ class TestAppLifecycle:
             bridge=None,
             settings_dispatcher=None,
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=None,
             app_state=app_state,
@@ -454,7 +451,6 @@ class TestAppLifecycle:
                 bridge=None,
                 settings_dispatcher=None,
                 task_engine=mock_te,
-                meeting_scheduler=None,
                 backup_service=None,
                 approval_timeout_scheduler=None,
                 app_state=app_state,
@@ -499,7 +495,6 @@ class TestAppLifecycle:
                 bridge=None,
                 settings_dispatcher=mock_dispatcher,
                 task_engine=None,
-                meeting_scheduler=None,
                 backup_service=None,
                 approval_timeout_scheduler=None,
                 app_state=app_state,
@@ -532,27 +527,30 @@ class TestAppLifecycle:
             persistence=None,
         )
 
-    async def test_meeting_scheduler_lifecycle(
+    async def test_shutdown_stops_the_scheduler_its_subsystem_started(
         self,
         root_config: RootConfig,
     ) -> None:
-        """Meeting scheduler start/stop are called during lifecycle."""
+        """Teardown reads the live slice, not what construction held.
+
+        The scheduler is built and started by the ``ceremony_scheduler``
+        subsystem, on a pass that runs after the startup runner. A
+        shutdown reading the construction-time value would find ``None``
+        and leave the poll loop running past the lifespan.
+        """
         from unittest.mock import AsyncMock, MagicMock
 
         from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
+        from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
+        from synthorg.api.lifecycle_runner_support import _LifecycleTasks
         from synthorg.communication.meeting.scheduler import (
             MeetingScheduler,
         )
-        from tests.unit.api.conftest import (
-            FakeMessageBus,
-            FakePersistenceBackend,
-        )
+        from synthorg.communication.state import CommunicationStateSlice
+        from tests.unit.api.conftest import FakePersistenceBackend
 
         persistence = FakePersistenceBackend()
-        bus = FakeMessageBus()
         mock_sched = MagicMock(spec=MeetingScheduler)
-        mock_sched.start = AsyncMock(spec=MeetingScheduler.start)
         mock_sched.stop = AsyncMock(spec=MeetingScheduler.stop)
 
         app_state = make_app_state(
@@ -560,29 +558,24 @@ class TestAppLifecycle:
             approval_store=ApprovalStore(),
             persistence=persistence,
         )
+        # Wired AFTER the state the shutdown runner was handed, which is the
+        # whole point: the runner has to reach the slice when it runs, not
+        # carry a value read when it was set up. Resolving the scheduler here
+        # and passing it in would assert only that ``_safe_shutdown`` stops
+        # what it is given, and would pass unchanged against the
+        # construction-time capture this test exists to rule out.
+        app_state.wire(CommunicationStateSlice, meeting_scheduler=mock_sched)
 
-        await _safe_startup(
-            persistence=persistence,
-            message_bus=bus,
-            bridge=None,
-            settings_dispatcher=None,
-            task_engine=None,
-            meeting_scheduler=mock_sched,
-            backup_service=None,
-            approval_timeout_scheduler=None,
-            app_state=app_state,
-        )
-        mock_sched.start.assert_awaited_once()
-
-        await _safe_shutdown(
-            task_engine=None,
-            meeting_scheduler=mock_sched,
-            backup_service=None,
-            approval_timeout_scheduler=None,
-            settings_dispatcher=None,
-            bridge=None,
-            message_bus=None,
+        await _run_shutdown(
+            _LifecycleTasks(),
+            app_state,
             persistence=None,
+            message_bus=None,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
         )
         mock_sched.stop.assert_awaited_once()
 
@@ -621,7 +614,6 @@ class TestAppLifecycle:
             bridge=None,
             settings_dispatcher=None,
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=mock_sched,
             app_state=app_state,

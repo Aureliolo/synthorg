@@ -678,6 +678,27 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    and `BLOCKED -> ASSIGNED` is how a replan wave picks it up. Only rows this
    writer moved are released; a subtask another wave already owns was returned
    untouched, and rewriting it would block a run that is executing.
+
+   The DAG decides **when** a subtask runs; whether it **should**, given that
+   its declared inputs may have died, is a separate decision with one owner
+   (`_dependency_gate.py`, reached through `gate_wave`). Every wave is
+   narrowed to the subtasks whose dependencies actually delivered, and each
+   one dropped parks `BLOCKED` under `dependency_failed`, naming what it
+   waited on. A wave left with nothing records a FAILED phase rather than
+   vanishing: a phase list that omits the level lets the rollup read the run
+   as still working. Without this, a plan whose first real wave died end to
+   end still marched through every later wave, paying for each one, with
+   every task failing on its own against inputs nobody wrote.
+
+   Stopping has the same owner, in two shapes. `abandon_after` parks the
+   waves the run never reached, because a row left at `created` has no exit
+   and nothing watching it, and `abandon_stranded` parks the rows of a wave
+   that *failed* before dispatching them, which `abandon_after` skips (a wave
+   that ran owns its outcome; one that raised does not). What each park SAYS
+   depends on where the work sat: an execution group is one round of agents,
+   not one level of the DAG, so the groups after a stop include siblings of
+   it whose inputs are untouched. Those park under `run_stopped`; only work
+   genuinely below the stop is a `dependency_failed`.
 6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
 7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 

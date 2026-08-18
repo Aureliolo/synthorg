@@ -35,10 +35,13 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_START,
     MCP_INVOKE_SUCCESS,
     MCP_INVOKE_TIMEOUT,
-    MCP_SANDBOX_WRAPPED,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.container_stdio import (
+    TEARDOWN_BUDGET_SECONDS,
+    container_stdio_client,
+)
 from synthorg.tools.mcp.errors import (
     MCPClientUnrestartableError,
     MCPConnectionError,
@@ -47,7 +50,7 @@ from synthorg.tools.mcp.errors import (
     MCPTimeoutError,
 )
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
-from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.mcp.stdio_credentials import (
     MCPCredentialResolver,
     resolve_stdio_launch,
@@ -61,7 +64,19 @@ logger = get_logger(__name__)
 # stay comfortably above the MCP SDK's own SIGTERM->SIGKILL teardown budget
 # (~4s) so this outer bound never cancels the SDK mid-escalation and orphans
 # the child; per-server ``connect_timeout_seconds`` is separately capped low.
-_DISCONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
+_SDK_TEARDOWN_BOUND_SECONDS: Final[float] = 10.0
+
+# DERIVED, never a second number: the container transport bounds every step of
+# its own teardown, and a disconnect ceiling below that sum abandons one that
+# was merely slow. Timing out here latches the client permanently
+# unrestartable, so the cost of guessing low is a server that never comes back
+# over a container the daemon was in fact removing. The headroom covers the
+# session close that runs before the transport's own exit begins.
+_DISCONNECT_HEADROOM_SECONDS: Final[float] = 5.0
+_DISCONNECT_TIMEOUT_SECONDS: Final[float] = max(
+    _SDK_TEARDOWN_BOUND_SECONDS,
+    TEARDOWN_BUDGET_SECONDS + _DISCONNECT_HEADROOM_SECONDS,
+)
 
 # Bounded self-heal backoff for reconnect: a transient blip retries with
 # short exponential backoff, held to a few attempts so the session lock is
@@ -85,9 +100,10 @@ class MCPClient:
             leaves a connection-bound server without credentials (it will
             likely fail to authenticate, logged loudly at connect).
         sandbox: Container-isolation policy for stdio servers. When enabled,
-            the server runs inside ``docker run -i`` under cap-drop /
-            no-new-privileges / read-only rootfs / resource limits. ``None``
-            (or disabled) spawns on the host.
+            the server runs in its own container under cap-drop /
+            no-new-privileges / read-only rootfs / resource limits, reached
+            over the daemon API. ``None`` (or disabled) spawns it as a child
+            of this process, which the hardened image cannot do.
     """
 
     def __init__(
@@ -308,11 +324,12 @@ class MCPClient:
         metric_transport = (
             "mcp_stdio" if self._config.transport == "stdio" else "mcp_http"
         )
+        timeout = self._disconnect_timeout()
         if self._exit_stack is not None:
             try:
                 await asyncio.wait_for(
                     self._exit_stack.aclose(),
-                    timeout=_DISCONNECT_TIMEOUT_SECONDS,
+                    timeout=timeout,
                 )
             except TimeoutError:
                 # The transport close did not confirm within the bound, so the
@@ -323,8 +340,7 @@ class MCPClient:
                 logger.warning(
                     MCP_CLIENT_DISCONNECT_FAILED,
                     server=self._config.name,
-                    error=f"disconnect timed out after "
-                    f"{_DISCONNECT_TIMEOUT_SECONDS}s; child may be hung",
+                    error=f"disconnect timed out after {timeout}s; child may be hung",
                 )
                 record_client_disconnect(
                     transport=metric_transport,
@@ -574,6 +590,27 @@ class MCPClient:
 
     # ── Private helpers ──────────────────────────────────────────
 
+    def _disconnect_timeout(self) -> float:
+        """Return the close bound for the transport actually in use.
+
+        The container bound is DERIVED from the container transport's own
+        teardown budget, so it means nothing to a transport that has no
+        container to tear down: an HTTP session or a directly-spawned stdio
+        child answers to the SDK's escalation alone, and waiting the longer
+        bound only delays latching the client unrestartable.
+
+        Returns:
+            Seconds to allow the transport close.
+        """
+        containerised = (
+            self._config.transport == "stdio"
+            and self._sandbox is not None
+            and self._sandbox.enabled
+        )
+        if containerised:
+            return _DISCONNECT_TIMEOUT_SECONDS
+        return _SDK_TEARDOWN_BOUND_SECONDS
+
     def _require_session(self) -> ClientSession:
         """Return the active session or raise.
 
@@ -628,33 +665,27 @@ class MCPClient:
         )
         command = self._config.command
         if self._sandbox is not None and self._sandbox.enabled:
-            command, args, sandbox_env = wrap_stdio_in_sandbox(
+            # The server runs in its own container, reached over the daemon
+            # API. Spawning it as a child of this process is the alternative,
+            # and this image ships neither a shell nor a node runtime to spawn.
+            read_stream, write_stream = await stack.enter_async_context(
+                container_stdio_client(
+                    command=command,
+                    args=args,
+                    env=env or {},
+                    sandbox=self._sandbox,
+                    server_name=self._config.name,
+                ),
+            )
+        else:
+            params = StdioServerParameters(
                 command=command,
                 args=args,
-                env=env or {},
-                sandbox=self._sandbox,
+                env=env,
             )
-            # Pass a dict (even empty) so the SDK merges it over
-            # get_default_environment(): the docker process keeps PATH and gains
-            # the forwarded secrets that ``--env KEY`` references by name.
-            env = sandbox_env
-            # A security-relevant launch rewrite: trace it (no secrets) so an
-            # operator can confirm a stdio server was containerised.
-            logger.debug(
-                MCP_SANDBOX_WRAPPED,
-                server=self._config.name,
-                image=self._sandbox.image,
-                memory_limit=self._sandbox.memory_limit,
-                network=self._sandbox.network,
+            read_stream, write_stream = await stack.enter_async_context(
+                stdio_client(params),
             )
-        params = StdioServerParameters(
-            command=command,
-            args=args,
-            env=env,
-        )
-        read_stream, write_stream = await stack.enter_async_context(
-            stdio_client(params),
-        )
         return await stack.enter_async_context(
             ClientSession(read_stream, write_stream),
         )

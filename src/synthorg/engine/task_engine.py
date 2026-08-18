@@ -48,7 +48,6 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.engine.task_engine_version import (
     TaskSpanTracker,
-    TaskTimingTracker,
     VersionTracker,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -116,7 +115,6 @@ class TaskEngine(TaskEngineLoopsMixin):
         # fmt: on
         self._max_queue_size = self._config.max_queue_size
         self._versions = VersionTracker()
-        self._timings = TaskTimingTracker()
         self._spans = TaskSpanTracker()
         self._processing_task: asyncio.Task[None] | None = None
         self._in_flight: _MutationEnvelope | None = None

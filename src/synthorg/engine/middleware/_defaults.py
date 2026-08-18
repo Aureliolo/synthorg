@@ -22,8 +22,6 @@ from synthorg.engine.middleware.builtin import (
 )
 from synthorg.engine.middleware.coordination_constraints import (
     PlanReviewGateMiddleware,
-    ProgressLedgerMiddleware,
-    ReplanMiddleware,
     TaskLedgerMiddleware,
 )
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
@@ -77,8 +75,6 @@ _COORDINATION_DEFAULTS: tuple[tuple[str, CoordinationMiddlewareFactory], ...] = 
     ("clarification_gate", ClarificationGateMiddleware),
     ("task_ledger", TaskLedgerMiddleware),
     ("plan_review_gate", PlanReviewGateMiddleware),
-    ("progress_ledger", ProgressLedgerMiddleware),
-    ("coordination_replan", ReplanMiddleware),
     (
         "authority_deference_coordination",
         AuthorityDeferenceCoordinationMiddleware,

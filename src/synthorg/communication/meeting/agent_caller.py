@@ -271,6 +271,78 @@ class MeetingAgentCallerNotConfiguredError(DomainError):
         self.missing_dependencies: tuple[str, ...] = missing_dependencies
 
 
+class UnconfiguredAgentCaller:
+    """An :data:`AgentCaller` that refuses every turn, naming what is absent.
+
+    A named type rather than a closure because the orchestrator holding one
+    is an observable fact about the deployment: it can serve meeting reads
+    and cannot run a meeting. ``MeetingOrchestrator.has_agent_dispatch``
+    answers that from the caller itself, so a probe cannot claim dispatch a
+    boot never installed.
+
+    Attributes:
+        missing_dependencies: The collaborators absent when it was built.
+    """
+
+    __slots__ = ("missing_dependencies",)
+
+    def __init__(self, *, missing_dependencies: tuple[str, ...]) -> None:
+        """Bind the dependency names the refusal reports.
+
+        Checked here rather than in the factory alone, because this is the
+        one place every construction passes through. An instance built with
+        nothing missing refuses every turn while naming no reason, and the
+        refusal it raises validates the same tuple, so the only report an
+        operator gets arrives at first meeting instead of at wire time and
+        names the caller rather than the absent collaborator.
+
+        Args:
+            missing_dependencies: Names of the dependencies missing at wire
+                time. Must be non-empty.
+
+        Raises:
+            ValueError: If *missing_dependencies* is empty.
+        """
+        if not missing_dependencies:
+            msg = (
+                "UnconfiguredAgentCaller requires at least one entry in "
+                "missing_dependencies"
+            )
+            raise ValueError(msg)
+        self.missing_dependencies: tuple[str, ...] = missing_dependencies
+
+    async def __call__(
+        self,
+        agent_id: str,
+        _prompt: str,
+        _max_tokens: int,
+        meeting_id: str,
+    ) -> AgentResponse:
+        """Reject the turn.
+
+        Args:
+            agent_id: The agent whose turn it would have been.
+            _prompt: Unused; nothing is dispatched.
+            _max_tokens: Unused; nothing is dispatched.
+            meeting_id: The meeting the turn belongs to.
+
+        Raises:
+            MeetingAgentCallerNotConfiguredError: Always; the required
+                dependencies are missing.
+        """
+        logger.warning(
+            MEETING_AGENT_CALL_FAILED,
+            agent_id=agent_id,
+            meeting_id=meeting_id,
+            error_type="MeetingAgentCallerNotConfiguredError",
+            missing_dependencies=self.missing_dependencies,
+        )
+        raise MeetingAgentCallerNotConfiguredError(
+            agent_id=NotBlankStr(agent_id),
+            missing_dependencies=self.missing_dependencies,
+        )
+
+
 def build_unconfigured_meeting_agent_caller(
     *,
     missing_dependencies: tuple[str, ...],
@@ -295,35 +367,12 @@ def build_unconfigured_meeting_agent_caller(
         )
         raise ValueError(msg)
 
-    async def _caller(
-        agent_id: str,
-        _prompt: str,
-        _max_tokens: int,
-        meeting_id: str,
-    ) -> AgentResponse:
-        """Reject every call: the meeting caller is unconfigured.
-
-        Raises:
-            MeetingAgentCallerNotConfiguredError: Always; the required
-                dependencies are missing.
-        """
-        logger.warning(
-            MEETING_AGENT_CALL_FAILED,
-            agent_id=agent_id,
-            meeting_id=meeting_id,
-            error_type="MeetingAgentCallerNotConfiguredError",
-            missing_dependencies=missing_dependencies,
-        )
-        raise MeetingAgentCallerNotConfiguredError(
-            agent_id=NotBlankStr(agent_id),
-            missing_dependencies=missing_dependencies,
-        )
-
-    return _caller
+    return UnconfiguredAgentCaller(missing_dependencies=missing_dependencies)
 
 
 __all__ = [
     "MeetingAgentCallerNotConfiguredError",
+    "UnconfiguredAgentCaller",
     "UnknownMeetingAgentError",
     "build_meeting_agent_caller",
     "build_unconfigured_meeting_agent_caller",

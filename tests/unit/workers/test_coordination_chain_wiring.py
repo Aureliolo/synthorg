@@ -1,59 +1,31 @@
 """_build_coordination_chain gates and composes the coordination pipeline."""
 
-from types import SimpleNamespace
-from typing import cast
-
 import pytest
 
-from synthorg.api.state import AppState
 from synthorg.core.middleware_config import DEFAULT_COORDINATION_CHAIN
-from synthorg.engine.coordination.section_config import CoordinationSectionConfig
-from synthorg.engine.middleware.coordination_constraints import (
-    MagenticReplanHook,
-    NoOpReplanHook,
-    ReplanMiddleware,
-)
 from synthorg.workers._coordinator_assembly import _build_coordination_chain
 
 pytestmark = pytest.mark.unit
 
 
-def _app_state(section: CoordinationSectionConfig) -> AppState:
-    fake = SimpleNamespace(
-        config=SimpleNamespace(coordination=section),
-        slice=lambda _slice_type: SimpleNamespace(budget_enforcer=None),
-    )
-    return cast("AppState", fake)
-
-
-def _replan_hook(chain: object) -> object:
-    middleware = next(
-        mw
-        for mw in chain.middleware  # type: ignore[attr-defined]
-        if isinstance(mw, ReplanMiddleware)
-    )
-    return middleware._hook
-
-
 class TestBuildCoordinationChain:
     def test_disabled_returns_none(self) -> None:
-        section = CoordinationSectionConfig()
-        assert _build_coordination_chain(_app_state(section), enabled=False) is None
+        assert _build_coordination_chain(enabled=False) is None
 
     def test_enabled_builds_full_default_chain(self) -> None:
-        section = CoordinationSectionConfig()
-        chain = _build_coordination_chain(_app_state(section), enabled=True)
+        chain = _build_coordination_chain(enabled=True)
         assert chain is not None
         assert chain.names == DEFAULT_COORDINATION_CHAIN
 
-    def test_noop_replan_is_safe_default(self) -> None:
-        section = CoordinationSectionConfig()
-        chain = _build_coordination_chain(_app_state(section), enabled=True)
-        assert chain is not None
-        assert isinstance(_replan_hook(chain), NoOpReplanHook)
+    def test_chain_carries_no_stall_authority(self) -> None:
+        """No middleware here decides whether a run is stuck.
 
-    def test_magentic_replan_opt_in(self) -> None:
-        section = CoordinationSectionConfig(replan_strategy="magentic")
-        chain = _build_coordination_chain(_app_state(section), enabled=True)
+        That question has two owners with the evidence to answer it: the
+        execution loop's stagnation detector, which sees the turns, and
+        the initiative rollup's ``stall_reason``, which derives it from
+        persisted item status. A wave-level third opinion announced a
+        verdict nobody could act on.
+        """
+        chain = _build_coordination_chain(enabled=True)
         assert chain is not None
-        assert isinstance(_replan_hook(chain), MagenticReplanHook)
+        assert not any("replan" in name or "progress" in name for name in chain.names)

@@ -14,6 +14,12 @@ COCKPIT_INTERVENTION_INITIATED: Final[str] = "cockpit.intervention.initiated"
 COCKPIT_INTERVENTION_APPLIED: Final[str] = "cockpit.intervention.applied"
 COCKPIT_INTERVENTION_FAILED: Final[str] = "cockpit.intervention.failed"
 
+COCKPIT_SNAPSHOT_FAILED: Final[str] = "cockpit.snapshot.failed"
+"""A per-task activity row could not be built, so the whole snapshot failed.
+The rows fan out under a ``TaskGroup`` and a task's cost cannot be defaulted
+without under-reporting it, so one unreadable store fails the read rather than
+publishing a snapshot that silently omits or under-counts work."""
+
 STEERING_DIRECTIVE_ISSUED: Final[str] = "steering.directive.issued"
 STEERING_DIRECTIVE_ADOPTED: Final[str] = "steering.directive.adopted"
 STEERING_DIRECTIVE_SEEDED: Final[str] = "steering.directive.seeded"
@@ -31,3 +37,28 @@ FLIGHT_RECORDER_RECORD_FAILED: Final[str] = "flight_recorder.record.failed"
 FLIGHT_RECORDER_QUEUE_OVERFLOW: Final[str] = "flight_recorder.queue.overflow"
 FLIGHT_RECORDER_SEEK: Final[str] = "flight_recorder.seek"
 FLIGHT_RECORDER_PURGE: Final[str] = "flight_recorder.purge"
+
+AGENT_RUNTIME_STATE_WRITE_FAILED: Final[str] = "agent_runtime_state.write.failed"
+"""The live per-agent runtime state could not be persisted. Recording it is
+observation, so the failure is logged rather than raised into the run: the
+consequence is that the live view falls back to the recorded frames for that
+agent, which is what it did for every agent before anything wrote this row."""
+
+AGENT_RUNTIME_STATE_IDLE_SKIPPED: Final[str] = "agent_runtime_state.idle.skipped"
+"""A dispatch finished while the live row named a sibling dispatch on the same
+agent, so the idle clear was skipped rather than blanking the sibling's row and
+reporting a working agent as idle."""
+
+AGENT_RUNTIME_STATE_CLAIM_SKIPPED: Final[str] = "agent_runtime_state.claim.skipped"
+"""A running dispatch could not claim the live row because a sibling dispatch on
+the same agent already holds it. The row describes one execution and the agent
+is holding two, so the second reads from its recorded frames until the first
+goes idle and releases the row. Kept apart from the idle event because that one
+reports a clear that was declined, while this one reports a claim that was
+declined: the same guard refusing opposite writes, and reading them under one
+name would leave "which write did not land" unanswerable."""
+
+TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
+"""One per-turn observer raised. The others still ran and the run continued:
+watching a run must never fail it, and one watcher's fault must not blind the
+rest."""

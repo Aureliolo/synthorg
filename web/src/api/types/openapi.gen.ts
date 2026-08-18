@@ -9085,7 +9085,7 @@ export type components = {
          *     any member here, and no rule may treat it as one.
          * @enum {string}
          */
-        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent";
+        readonly BlockedReason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped";
         /** BlockerPayload */
         readonly BlockerPayload: {
             /**
@@ -10540,8 +10540,6 @@ export type components = {
              *       "clarification_gate",
              *       "task_ledger",
              *       "plan_review_gate",
-             *       "progress_ledger",
-             *       "coordination_replan",
              *       "authority_deference_coordination"
              *     ]
              */
@@ -16320,7 +16318,7 @@ export type components = {
              * @description Why the implementing task is blocked, when it is
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /** @description Option recorded for a decision item */
             readonly chosen_option_id: string | null;
             /**
@@ -19001,13 +18999,18 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
              */
             readonly budget_limit: number;
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Agent name of the task creator */
             readonly created_by: string;
             /** @description Optional deadline (ISO 8601 string) */
@@ -19162,13 +19165,18 @@ export type components = {
              * @description Why the task is parked at BLOCKED, when the writer named it. BLOCKED is reached for unrelated reasons, so a rule written for one of them reads this rather than the status.
              * @enum {string|null}
              */
-            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | null;
+            readonly blocked_reason: "oracle_escalated" | "wave_released" | "reviewer_unstaffed" | "red_team_unstaffed" | "no_capable_agent" | "dependency_failed" | "run_stopped" | null;
             /**
              * @description Maximum spend for this task in the configured currency
              * @default 0
              */
             readonly budget_limit: number;
             readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Agent name of the task creator */
             readonly created_by: string;
             /** @description Optional deadline (ISO 8601 string) */

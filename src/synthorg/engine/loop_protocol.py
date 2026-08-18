@@ -10,7 +10,7 @@ re-exported here for callers.
 import copy
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Protocol, Self, runtime_checkable
+from typing import NamedTuple, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -146,10 +146,38 @@ running an obsolete task to completion. The task's terminal DB status is the
 durable cross-process signal (the operator cancels in the API process; the agent
 runs in the worker process)."""
 
-TurnObserver = Callable[[int, tuple[str, ...]], Awaitable[None]]
-"""Async progress callback invoked with ``(index, labels)``: a 1-based turn
-index and a tuple of short labels for that turn. Two calling conventions share
-this shape:
+
+class TurnProgress(NamedTuple):
+    """What a loop reports about one turn while the run is still going.
+
+    The ``context`` is carried because everything an operator wants to know
+    about a run in flight (how many turns, how much spend, when it last did
+    anything) lives on it and nowhere else until the run finishes, so a
+    report without it can say only that a turn happened.
+
+    The context carries the run's whole conversation, which is
+    agent-authored and holds tool results from outside the system. It is
+    fenced where it is STORED, not here, so an observer that puts any of it
+    into a prompt (a narration call, a summary, an LLM-scored dashboard)
+    owes it a ``wrap_untrusted`` at that boundary, exactly as the review
+    gate's own inputs do. The observers shipped today read scalars only
+    (turn count, spend, timestamps, tool names), so none of them needs one.
+
+    Attributes:
+        turn_number: 1-based index of the turn just observed.
+        tool_names: Short labels for what that turn did.
+        context: The run's context as it stands after the turn. Untrusted
+            content: see above before putting any of it in a prompt.
+    """
+
+    turn_number: int
+    tool_names: tuple[str, ...]
+    context: AgentContext
+
+
+TurnObserver = Callable[[TurnProgress], Awaitable[None]]
+"""Async progress callback invoked with a :class:`TurnProgress`. Two calling
+conventions share this shape:
 
 - ReAct loop: fires *after* each continuing turn with the tool names that turn
   requested; the terminal turn (which ends the loop) returns before the hook,
@@ -160,7 +188,8 @@ this shape:
 
 Purely observational: it never affects control flow, and an observer raising
 must not corrupt the run. Used to surface incremental progress on a streamed
-chat action; ``None`` disables it."""
+chat action and to keep the live-activity state current; ``None`` disables
+it."""
 
 
 @runtime_checkable
@@ -201,10 +230,9 @@ class ExecutionLoop(Protocol):
                 ``True`` when the running task was cancelled or superseded
                 externally, so the loop halts at the next safe boundary.
             turn_observer: Optional per-run progress callback; used to
-                project live execution progress onto the AG-UI stream. Fired
-                with ``(index, labels)`` per the ``TurnObserver`` contract
-                (the labels are tool names; see its type doc for the two
-                calling conventions).
+                project live execution progress onto the AG-UI stream and to
+                keep the live-activity state current. Awaited once per turn
+                with a single :class:`TurnProgress`.
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.

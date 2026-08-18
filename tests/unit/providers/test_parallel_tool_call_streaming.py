@@ -22,6 +22,7 @@ from synthorg.api.gateway.translation import stream_chunk_to_openai
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
     accumulate_tool_call_deltas,
+    emit_pending_tool_calls,
 )
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import StreamChunk, ToolCall
@@ -115,6 +116,60 @@ class TestClientReassembly:
             {"path": "README.md"},
             {"command": "python -m pytest -q"},
         ]
+
+
+class TestADroppedCallIsReported:
+    """A call that fails to assemble emits nothing, so it must be announced.
+
+    The emitter is the last place that knows: downstream sees only the chunks,
+    and a call that never built produced none, so a dropped call and a call
+    the model never made are the same stream. The loop corrects them with
+    opposite words, and telling a model to fix arguments it never sent (or to
+    send a call it already sent malformed) describes nothing it can act on.
+    """
+
+    def test_an_unparsable_call_is_dropped_and_said_to_be(self) -> None:
+        deltas = [
+            SimpleNamespace(
+                index=0,
+                id="call_a",
+                function=SimpleNamespace(name="read_file", arguments='{"path": '),
+            ),
+        ]
+        pending: dict[int, _ToolCallAccumulator] = {}
+        accumulate_tool_call_deltas(list(deltas), pending)
+
+        emitted = emit_pending_tool_calls(pending)
+
+        assert emitted.chunks == []
+        assert emitted.dropped is True
+
+    def test_a_surviving_call_reports_nothing_dropped(self) -> None:
+        pending: dict[int, _ToolCallAccumulator] = {}
+        accumulate_tool_call_deltas([_as_delta(p) for p in _wire([_READ])], pending)
+
+        emitted = emit_pending_tool_calls(pending)
+
+        assert [c.tool_call_delta for c in emitted.chunks] == [_READ]
+        assert emitted.dropped is False
+
+    def test_one_bad_call_does_not_take_its_good_sibling_with_it(self) -> None:
+        """Both facts at once: what survived is emitted, and the loss is named."""
+        deltas = [
+            *[_as_delta(p) for p in _wire([_READ])],
+            SimpleNamespace(
+                index=1,
+                id="call_b",
+                function=SimpleNamespace(name="shell_command", arguments="{oops"),
+            ),
+        ]
+        pending: dict[int, _ToolCallAccumulator] = {}
+        accumulate_tool_call_deltas(list(deltas), pending)
+
+        emitted = emit_pending_tool_calls(pending)
+
+        assert [c.tool_call_delta for c in emitted.chunks] == [_READ]
+        assert emitted.dropped is True
 
 
 class TestUnindexedUpstream:

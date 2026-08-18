@@ -16,6 +16,8 @@ COORDINATION_CLEANUP_STARTED: Final[str] = "coordination.cleanup.started"
 COORDINATION_CLEANUP_COMPLETED: Final[str] = "coordination.cleanup.completed"
 COORDINATION_CLEANUP_FAILED: Final[str] = "coordination.cleanup.failed"
 COORDINATION_WAVE_BUILT: Final[str] = "coordination.wave.built"
+COORDINATION_WAVE_DEPENDENCY_UNMET: Final[str] = "coordination.wave.dependency_unmet"
+COORDINATION_WAVES_ABANDONED: Final[str] = "coordination.waves.abandoned"
 COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED: Final[str] = (
     "coordination.wave.assignment_release_failed"
 )

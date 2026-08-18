@@ -47,6 +47,8 @@ const BLOCKED_REASON_TEXT: Record<BlockedReason, string> = {
   reviewer_unstaffed: 'waiting for a Completion Reviewer to be staffed',
   red_team_unstaffed: 'waiting for a Red Team reviewer to be staffed',
   no_capable_agent: 'no agent capable enough to take it on',
+  dependency_failed: 'waiting for a replan: the work it depends on never arrived',
+  run_stopped: 'never dispatched: the run stopped before it was reached',
 }
 
 /** The sentinel for a park whose writer named no reason. */

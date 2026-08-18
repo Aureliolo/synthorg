@@ -12,11 +12,12 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import TerminationReason, TurnProgress
 from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
 from synthorg.engine.loop_unusable_turn import (
+    DROPPED_CALL_NUDGE,
     MAX_CONSECUTIVE_CORRECTIONS,
-    UNUSABLE_TURN_NUDGE,
+    NO_CALL_NUDGE,
 )
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
@@ -84,6 +85,7 @@ def _dropped_tool_call_response() -> CompletionResponse:
     """
     return CompletionResponse(
         content="Let me read the file first.",
+        dropped_tool_calls=True,
         finish_reason=FinishReason.TOOL_USE,
         usage=_usage(),
         model="test-model-001",
@@ -280,6 +282,50 @@ class TestReactLoopToolCalls:
         assert result.turns[0].tool_calls_made == ("echo",)
         assert result.turns[0].finish_reason == FinishReason.TOOL_USE
         assert result.turns[1].finish_reason == FinishReason.STOP
+
+    async def test_each_turn_report_carries_that_turns_own_context(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The loop builds the report; everything watching a run reads it.
+
+        The report carries the live context because turn count and spend live
+        there and nowhere else until the run finishes. Handing over a stale
+        snapshot (the context as it stood before the turn, or turn one's
+        repeated) would make the live view advance a turn behind, which is
+        indistinguishable from an agent that has stopped making progress.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+                _tool_use_response("echo", "tc-2"),
+                _stop_response("Done."),
+            ]
+        )
+        seen: list[tuple[int, int, tuple[str, ...]]] = []
+
+        async def _observer(progress: TurnProgress) -> None:
+            seen.append(
+                (
+                    progress.turn_number,
+                    progress.context.turn_count,
+                    progress.tool_names,
+                )
+            )
+
+        await ReactLoop().execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+            turn_observer=_observer,
+        )
+
+        # Only continuing turns report: the turn that ends the run returns
+        # the result instead, which is why the engine writes a row at
+        # dispatch rather than relying on this hook alone.
+        assert seen == [(1, 1, ("echo",)), (2, 2, ("echo",))]
 
     async def test_multi_turn_tool_calls(
         self,
@@ -802,12 +848,49 @@ class TestReactLoopMaxTokensFinishReason:
 class TestReactLoopToolUseEmptyToolCalls:
     """TOOL_USE finish reason with no actual tool calls."""
 
+    async def test_the_correction_names_the_shape_it_saw(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A model told the wrong thing repeats the same mistake.
+
+        The dropped-call wording asks it to fix arguments; a turn that carried
+        no call at all has none to fix, and a live run spent all three of its
+        corrections telling a model its JSON was invalid when the provider had
+        sent nothing, getting the identical reply each time.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        dropped = CompletionResponse(
+            content="I want to use tools",
+            tool_calls=(),
+            dropped_tool_calls=True,
+            finish_reason=FinishReason.TOOL_USE,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        provider = mock_provider_factory([dropped, _stop_response("Done.")])
+
+        result = await ReactLoop().execute(context=ctx, provider=provider)
+
+        corrections = [
+            m.content
+            for m in result.context.conversation
+            if m.role == MessageRole.USER
+            and m.content
+            in {
+                DROPPED_CALL_NUDGE,
+                NO_CALL_NUDGE,
+            }
+        ]
+        assert corrections == [DROPPED_CALL_NUDGE]
+
     async def test_tool_use_empty_calls_costs_its_turn_not_the_run(
         self,
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """The model asked for a tool and the call did not survive parsing.
+        """The model asked for a tool and sent none.
 
         One turn of the model's own bad output, so the run gets its next turn
         with a correction rather than ending on it.
@@ -829,7 +912,7 @@ class TestReactLoopToolUseEmptyToolCalls:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == NO_CALL_NUDGE
         ]
         assert len(corrections) == 1
 
@@ -1611,7 +1694,7 @@ class TestReactLoopNoOpFailLoud:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == DROPPED_CALL_NUDGE
         ]
         assert len(corrections) == 1
 
@@ -1776,7 +1859,7 @@ class TestReactLoopNoOpFailLoud:
         corrections = [
             m
             for m in result.context.conversation
-            if m.role == MessageRole.USER and m.content == UNUSABLE_TURN_NUDGE
+            if m.role == MessageRole.USER and m.content == DROPPED_CALL_NUDGE
         ]
         assert len(corrections) == MAX_CONSECUTIVE_CORRECTIONS
 

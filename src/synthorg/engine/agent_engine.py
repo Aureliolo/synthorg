@@ -46,6 +46,13 @@ from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
+from synthorg.engine.agent_state_recording import (
+    AgentStateRepositoryProvider,
+    compose_turn_observers,
+    make_runtime_state_observer,
+    mark_agent_idle,
+    mark_agent_running,
+)
 from synthorg.engine.artifacts.baseline_scope import (
     artifact_baseline_scope,
     capture_run_baseline,
@@ -54,6 +61,7 @@ from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactPr
 from synthorg.engine.autonomy_seam import AutonomyResolution
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
+from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.errors import (
     ExecutionStateError,
     ProjectNotFoundError,
@@ -171,6 +179,14 @@ _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
 
 
+def _no_agent_state() -> None:
+    """Answer "no live-state store" for an engine built without one.
+
+    Answering ``None`` is what the wired provider does while persistence is
+    unconnected, so the recording path has one shape either way.
+    """
+
+
 class PersonalityTrimPayload(TypedDict):
     """Structured payload forwarded to :data:`PersonalityTrimNotifier` callbacks."""
 
@@ -273,11 +289,15 @@ class AgentEngine(
         capability: CapabilityPolicy | None = None,
         agent_registry: AgentRegistryProtocol | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
+        agent_state_repository_provider: AgentStateRepositoryProvider | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
         self._event_reader = event_reader
         self._flight_recorder_sink = flight_recorder_sink
+        self._agent_state_repository_provider = (
+            agent_state_repository_provider or _no_agent_state
+        )
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
@@ -788,6 +808,40 @@ class AgentEngine(
             recovery decision (when one fired), and post-execution
             telemetry for the orchestrator.
         """
+        agent_id = request.agent_id
+        try:
+            # Before the loop, not from its first turn report: a turn that
+            # finishes the run returns the result instead of reporting, so a
+            # single-turn dispatch would otherwise never write a row, and a
+            # longer one would have none until its first turn ended.
+            await mark_agent_running(
+                repository_provider=self._agent_state_repository_provider,
+                context=request.ctx,
+                currency=resolve_tracker_currency(self._cost_tracker),
+                clock=self._clock,
+            )
+            return await self._execute_span(request)
+        finally:
+            # In a finally because a run that died still has to stop reading
+            # as busy: ``get_active`` is the query the live view is built on,
+            # and a row left EXECUTING makes a finished agent look occupied
+            # for the life of the process. Naming the execution keeps the
+            # clear from blanking a sibling dispatch's live row: the row is
+            # keyed by agent, and one agent can hold two.
+            await mark_agent_idle(
+                repository_provider=self._agent_state_repository_provider,
+                agent_id=agent_id,
+                execution_id=request.ctx.execution_id,
+                currency=resolve_tracker_currency(self._cost_tracker),
+                clock=self._clock,
+            )
+
+    async def _execute_span(self, request: AgentExecuteRequest) -> AgentRunResult:
+        """Run the dispatch inside its own ``agent.execution`` span.
+
+        Returns:
+            The finished :class:`AgentRunResult`.
+        """
         identity = request.identity
         task = request.task
         agent_id = request.agent_id
@@ -833,10 +887,19 @@ class AgentEngine(
             # instead of a silent gap between propose and review. All
             # best-effort: a missing hub disables projection entirely.
             hub = self._event_stream_hub
-            turn_observer = (
+            # Two consumers of one per-turn report: the AG-UI projection the
+            # dashboard renders, and the live runtime-state row the cockpit
+            # reads for a run still in flight. The loop reports once; how many
+            # things listen is decided here.
+            turn_observer = compose_turn_observers(
                 make_turn_observer(hub, task_id=task_id, agent_id=agent_id)
                 if hub is not None
-                else None
+                else None,
+                make_runtime_state_observer(
+                    repository_provider=self._agent_state_repository_provider,
+                    currency=resolve_tracker_currency(self._cost_tracker),
+                    clock=self._clock,
+                ),
             )
             if hub is not None:
                 await publish_run_started(hub, task_id=task_id, agent_id=agent_id)
@@ -995,12 +1058,6 @@ class AgentEngine(
                 await self._finalise_run(
                     scored._replace(result=execution_result), agent_id, task_id
                 )
-
-            await self._record_flight_frames(
-                execution_result,
-                agent_id=agent_id,
-                task_id=task_id,
-            )
 
             # Read from the post-execution context: ``ctx`` is the
             # pre-loop snapshot and copy-on-write contexts inside the

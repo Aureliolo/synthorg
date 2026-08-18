@@ -46,6 +46,7 @@ from synthorg.providers.protocol import CompletionProvider
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker_protocol import CostTrackerProtocol
+    from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
         MakeLoopWithCallback,
@@ -54,6 +55,7 @@ if TYPE_CHECKING:
         ResolveMemoryStrategy,
         ValidateProject,
     )
+    from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.checkpoint_protocol import (
@@ -110,6 +112,8 @@ class AgentEngineCheckpointResumeMixin:
     _approval_store: ApprovalStoreProtocol | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
+    _flight_recorder_sink: FlightRecorderSink | None
+    _clock: Clock
 
     def _validate_checkpoint_json(
         self,
@@ -266,6 +270,23 @@ class AgentEngineCheckpointResumeMixin:
             task_id,
             tracker=self._cost_tracker,
             project_id=project_id,
+        )
+        # Local: the ``flight_recording`` hub pulls its replay service, which
+        # reaches the red-team package and back into this engine, so importing
+        # it at module scope closes a cold-import cycle.
+        from synthorg.engine.flight_recording import (  # noqa: PLC0415
+            record_run_frames,
+        )
+
+        # The recovered turns are part of this execution and share its id, so
+        # without this the run's own history stops at the turn it died on and
+        # a replay shows a failure that was recovered from.
+        await record_run_frames(
+            result,
+            sink=self._flight_recorder_sink,
+            agent_id=agent_id,
+            task_id=task_id,
+            clock=self._clock,
         )
         try:
             result = await apply_post_execution_transitions(

@@ -84,8 +84,8 @@ stateDiagram-v2
       the review it came from. Deliberately not a direct edge to `COMPLETED`:
       that keeps the completion oracle on its single chokepoint. Which route
       applies is read from `Task.blocked_reason`, never from the status,
-      because five different conditions park a task here and they are answered
-      by different people (`core/task_enums.py::BlockedReason`):
+      because several different conditions park a task here and they are
+      answered by different people (`core/task_enums.py::BlockedReason`):
 
         | `blocked_reason` | Parked by | Released by |
         | --- | --- | --- |
@@ -94,6 +94,8 @@ stateDiagram-v2
         | `reviewer_unstaffed` | the completion gate, with nobody holding `Completion Reviewer` | the review-staffing reconciler, once the role is held |
         | `red_team_unstaffed` | the adversarial gate, with nobody holding `Red Team` | the same reconciler, watching the other role |
         | `no_capable_agent` | routing, with no agent at any rung scoring above the floor | an operator: hire, re-bind a model, or revise the plan item |
+        | `dependency_failed` | the dependency gate, when work this subtask declared it needs did not deliver | a replan, which is the only thing that can order the dependency redone |
+        | `run_stopped` | the same gate, for work the run never reached and that has nothing wrong with it | a replan, or the next dispatch of the plan |
 
         Absent (`None`) means the writer did not say, and is a synonym for
         none of them.
@@ -184,8 +186,14 @@ task:
   deadline: null
   max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"
+  blocked_reason: null            # why a BLOCKED task is parked (see the status table above); null means the writer did not say
+  created_at: "2026-08-17T09:14:22.481000+00:00"  # when the task was filed; persisted, so "how long has this been running" survives a restart
   parent_task_id: null           # parent task ID when created via delegation
   delegation_chain: []           # ordered agent IDs of delegators (root first)
+  hard_ceiling: null              # absolute spend ceiling for this task, independent of budget_limit
+  hard_token_ceiling: null        # absolute token ceiling for this task
+  forecast_id: null               # the cost forecast this task's ceiling was synced from
+  source: null                    # what filed the task (intake route), when one recorded it
   middleware_override: null       # per-task middleware chain override (null = company default)
   metadata: {}                    # arbitrary key-value metadata (pipeline tracking, labels)
 ```
@@ -620,10 +628,13 @@ span represents this run, so a retry opens a fresh one). The
 not auto-nest under ``task.run``; parenting it would require propagating
 the span context through the work queue (W3C ``traceparent``), so
 ``task.run`` stands as a self-contained task-lifetime span keyed by
-``task.id``. Like the version / timing trackers, the span tracker is
-volatile single-writer state owned by the processing loop and resets on
-restart. All wall-clock reads in the apply path flow through an injected
-``Clock`` so duration metrics are deterministic under ``FakeClock``.
+``task.id``. Like the version tracker, the span tracker is volatile
+single-writer state owned by the processing loop and resets on restart.
+Task duration is deliberately not: it is measured from the persisted
+``Task.created_at`` column, because the question "how long has this been
+running" is asked exactly when the process did not see the task start.
+All wall-clock reads in the apply path flow through an injected ``Clock``
+so duration metrics are deterministic under ``FakeClock``.
 
 ### AgentEngine <-> TaskEngine Incremental Sync
 

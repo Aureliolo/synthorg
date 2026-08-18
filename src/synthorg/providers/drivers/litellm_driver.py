@@ -605,7 +605,8 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                     )
                     raise handle_exc(exc, model) from exc
 
-                for sc in emit_pending_tool_calls(pending):
+                emitted = emit_pending_tool_calls(pending)
+                for sc in emitted.chunks:
                     yield sc
                 logger.debug(
                     PROVIDER_STREAM_DONE,
@@ -618,7 +619,13 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 finish = (
                     map_finish_reason(raw_finish) if raw_finish is not None else None
                 )
-                yield StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
+                yield StreamChunk(
+                    event_type=StreamEventType.DONE,
+                    finish_reason=finish,
+                    # A call that failed to assemble yielded no chunk above, so
+                    # this is the only place the consumer can learn it existed.
+                    dropped_tool_calls=emitted.dropped,
+                )
             finally:
                 await aclose_quietly(raw_stream, model=model)
 

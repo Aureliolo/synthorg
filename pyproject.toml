@@ -17,6 +17,10 @@ dependencies = [
     "aiohttp==3.14.3",
     "aiosqlite==0.22.1",
     "annotated-types==0.8.0",
+    # Direct: the container MCP transport builds the memory object streams the
+    # SDK's transport contract is defined in terms of, so this is our own API
+    # surface rather than something we inherit through mcp.
+    "anyio==4.14.2",
     "argon2-cffi==25.1.0",
     "cryptography==50.0.0",
     "faker==40.36.0",

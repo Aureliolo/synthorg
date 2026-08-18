@@ -1,75 +1,132 @@
 # module-kind: adapter
-"""Docker sandboxing for stdio MCP servers.
+"""Container-isolation policy for stdio MCP servers.
 
 An MCP stdio server is arbitrary third-party code (``npx -y <pkg>``) with full
 host access if spawned directly. D16 requires the high-risk execution
 categories to run inside Docker; an MCP server executes untrusted code, so it
-sits in that set. Rather than build a bespoke container-stdio transport, this
-wraps the launch in ``docker run -i`` so the MCP stdio protocol flows over the
-container's stdin/stdout while the server runs under cap-drop, no-new-privileges,
-a read-only rootfs, and cpu/memory/pid limits.
-
-Credentials are forwarded by NAME (``-e KEY``), never by value on the command
-line: the resolved secret travels in the ``docker`` process environment (which
-the MCP SDK seeds via ``get_default_environment()`` plus the returned env) and
-Docker passes it into the container, so no secret ever appears in host ``argv``.
+sits in that set. This module owns the policy an operator configures; the
+transport that applies it over the Docker API is
+:mod:`synthorg.tools.mcp.container_stdio`.
 """
 
-from typing import Final, Literal, Self
+import math
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import (
-    MCP_SANDBOX_NETWORK_UNSAFE,
-    MCP_SANDBOX_RESERVED_ENV_DROPPED,
-)
+from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.tools.sandbox._container_limits import nano_cpus, parse_memory_limit
+from synthorg.tools.sandbox._image_resolution import get_resolved_sandbox_image
 
 logger = get_logger(__name__)
 
 SandboxNetwork = Literal["bridge", "none", "host"]
-
-# Env keys the sandbox sets as trusted controls. A supplied env key that
-# collides with one of these, forwarded after the fixed ``--env=KEY=value``
-# flag, would let Docker's last-wins semantics override the control (e.g.
-# ``NPM_CONFIG_IGNORE_SCRIPTS=false`` re-enabling install scripts, the primary
-# npm RCE vector, or ``HOME`` redirecting writes off the tmpfs). They are never
-# forwarded; the trusted values stand.
-_RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
-    {"HOME", "NPM_CONFIG_CACHE", "NPM_CONFIG_IGNORE_SCRIPTS"}
-)
 
 
 class MCPSandboxConfig(BaseModel):
     """Container-isolation policy for stdio MCP servers.
 
     Attributes:
-        enabled: Whether stdio servers run inside a container. Off is only for
-            environments without Docker; it re-exposes host execution.
-        image: Container image providing ``npx`` (Node) for the server.
-        memory_limit: Docker ``--memory`` value (e.g. ``512m``).
+        enabled: Whether stdio servers run inside a container. Off spawns the
+            server as a child of the backend, which the hardened image cannot
+            do at all and any other host should not.
+        image: Container image providing the runtime the server's command
+            needs. There is one image in this product that runs untrusted
+            code, so this is the resolved ``tools.sandbox_image``: it carries
+            Node, npm and Python, the CLI verifies its signature, and a second
+            knob naming a different image would be a second answer to which
+            image an operator hardened.
+        memory_limit: Memory ceiling as a Docker size string (e.g. ``512m``).
         pids_limit: Maximum processes inside the container.
-        cpus: Docker ``--cpus`` quota.
-        network: Docker ``--network`` mode. MCP servers reach external APIs, so
-            this is ``bridge`` by default rather than ``none``.
+        cpus: Cpu quota in cores.
+        network: Network mode. MCP servers reach external APIs, so this is
+            ``bridge`` by default rather than ``none``.
+        deployment_id: Which deployment created the container, from
+            ``deployment_id_for``. Carried as a label so a container a hard
+            kill left behind is reclaimed by the boot reconciliation pass like
+            any other managed container. Unset leaves it unattributable, and
+            the pass then leaves it alone: "probably ours" and "another
+            installation's live work" look identical from the daemon.
+        runtime: Container runtime, resolved exactly as the agent sandbox
+            resolves it, so an operator who hardened that one with gVisor
+            gets the same isolation here. It matters MORE here: with every
+            capability dropped and no host path writable, a kernel or runtime
+            bug is the only escape left, and this is the one path in the
+            product that executes code nobody reviewed. ``None`` means the
+            daemon default. There is a single category of work here, so the
+            global value is the one to carry.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = True
-    image: NotBlankStr = "node:22-alpine"
+    image: NotBlankStr = Field(default_factory=get_resolved_sandbox_image)
     memory_limit: NotBlankStr = "512m"
     pids_limit: int = Field(default=256, gt=0)
     cpus: NotBlankStr = "1.0"
     network: SandboxNetwork = "bridge"
+    deployment_id: NotBlankStr | None = None
+    runtime: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _reject_unusable_limits(self) -> Self:
+        """Parse both resource limits where they are configured.
+
+        Both travel as free-form strings and are only converted at connect
+        time, so a malformed one fails on every reconnect rather than once,
+        far from the setting that caused it. The cpu quota is worse than
+        malformed-late: the daemon reads a ``NanoCpus`` of zero as "no
+        limit", so ``"0"`` does not clamp the container, it uncaps it, and an
+        MCP server is the one thing in this product running code nobody
+        reviewed.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If either limit cannot be applied as written.
+        """
+        parse_memory_limit(self.memory_limit)
+        nano_cpus(float(self.cpus))
+        return self
+
+    @field_validator("cpus")
+    @classmethod
+    def _cpus_is_a_number(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject a cpu quota that is not a finite number.
+
+        ``float()`` accepts ``"inf"``, ``"-inf"`` and ``"nan"``, and none of
+        them survives the conversion the daemon needs: ``nano_cpus`` compares
+        against zero, which every ``nan`` comparison answers False, and then
+        ``int()`` raises ``OverflowError`` for an infinity and ``ValueError``
+        for a ``nan``. Refusing here keeps that a validation error the
+        operator can read, at the setting they wrote, rather than an
+        unhandled conversion failure at connect time.
+
+        Returns:
+            The quota unchanged.
+
+        Raises:
+            ValueError: If the quota does not parse as a finite float.
+        """
+        try:
+            parsed = float(value)
+        except ValueError as exc:
+            msg = f"Cpu quota must be a number of cores, got: {value!r}"
+            raise ValueError(msg) from exc
+        if not math.isfinite(parsed):
+            msg = f"Cpu quota must be a finite number of cores, got: {value!r}"
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def _warn_on_host_network(self) -> Self:
         """Surface the ``host`` network mode as an isolation-defeating choice.
 
         ``host`` shares the host network namespace, so the container can reach
-        loopback services and the cloud metadata endpoint -- it defeats the
+        loopback services and the cloud metadata endpoint: it defeats the
         very isolation the sandbox exists to provide. It stays selectable for
         the rare operator who needs it, but never silently.
 
@@ -85,63 +142,4 @@ class MCPSandboxConfig(BaseModel):
         return self
 
 
-def wrap_stdio_in_sandbox(
-    *,
-    command: str,
-    args: list[str],
-    env: dict[str, str],
-    sandbox: MCPSandboxConfig,
-) -> tuple[str, list[str], dict[str, str]]:
-    """Rewrite a stdio launch to run inside a hardened container.
-
-    Args:
-        command: The original launch command (e.g. ``npx``).
-        args: The original command arguments.
-        env: Resolved environment (including injected credentials).
-        sandbox: The container-isolation policy.
-
-    Returns:
-        A ``(command, args, env)`` triple launching the same server via
-        ``docker run -i``. The env is returned unchanged: it seeds the docker
-        process so ``-e KEY`` forwarding pulls each secret into the container
-        by name, keeping secrets out of host ``argv``. ``HOME``/npm cache point
-        at the writable tmpfs so ``npx`` works under the read-only rootfs.
-    """
-    docker_args = [
-        "run",
-        "--rm",
-        "-i",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        # Drop root inside the container: the official node image ships a
-        # non-root ``node`` user (uid 1000), which can still write the tmpfs
-        # ``HOME``/npm cache below under the read-only rootfs.
-        "--user=node",
-        "--read-only",
-        "--tmpfs=/tmp:rw,nosuid,size=128m",
-        f"--memory={sandbox.memory_limit}",
-        f"--pids-limit={sandbox.pids_limit}",
-        f"--cpus={sandbox.cpus}",
-        f"--network={sandbox.network}",
-        "--workdir=/tmp",
-        "--env=HOME=/tmp",
-        "--env=NPM_CONFIG_CACHE=/tmp/.npm",
-        # Supply-chain hardening: never run a package's install/postinstall
-        # scripts (the primary npm RCE vector), independent of version pinning.
-        "--env=NPM_CONFIG_IGNORE_SCRIPTS=true",
-    ]
-    for key in env:
-        if key in _RESERVED_ENV_KEYS:
-            # Forwarding this would override a trusted sandbox control.
-            logger.warning(
-                MCP_SANDBOX_RESERVED_ENV_DROPPED,
-                key=key,
-                note="supplied env key collides with a sandbox control; dropped",
-            )
-            continue
-        # Forward by name so the value never lands in host argv.
-        docker_args.extend(("--env", key))
-    docker_args.append(sandbox.image)
-    docker_args.append(command)
-    docker_args.extend(args)
-    return "docker", docker_args, dict(env)
+__all__ = ["MCPSandboxConfig", "SandboxNetwork"]

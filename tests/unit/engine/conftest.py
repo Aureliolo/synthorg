@@ -660,6 +660,7 @@ def make_exec_result(
     *,
     all_succeed: bool = True,
     parked_task_ids: frozenset[str] = frozenset(),
+    succeeded_task_ids: frozenset[str] = frozenset(),
 ) -> ParallelExecutionResult:
     """Build a ParallelExecutionResult with given outcomes.
 
@@ -669,11 +670,16 @@ def make_exec_result(
         all_succeed: Whether the non-parked outcomes completed or errored.
         parked_task_ids: Task ids whose run terminated ``PARKED`` (awaiting a
             human decision), regardless of *all_succeed*.
+        succeeded_task_ids: Task ids that completed even when *all_succeed*
+            is ``False``. A real wave rarely fails whole, and a helper that
+            can only build all-or-nothing waves cannot express the case that
+            matters most: one sibling delivering while another dies.
 
     Returns:
         A ``ParallelExecutionResult`` over the requested outcomes.
     """
     parked = {coerce_id(t) for t in parked_task_ids}
+    succeeded = {coerce_id(t) for t in succeeded_task_ids}
     outcomes: list[AgentOutcome] = []
     for raw_task_id, agent_id in task_agent_pairs:
         task_id = coerce_id(raw_task_id)
@@ -689,7 +695,7 @@ def make_exec_result(
                     ),
                 )
             )
-        elif all_succeed:
+        elif all_succeed or task_id in succeeded:
             run_result = build_run_result(task_id, agent_id)
             outcomes.append(
                 AgentOutcome(
