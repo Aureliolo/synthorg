@@ -1,11 +1,19 @@
 """Tests for CSRF middleware."""
 
 import pytest
+import structlog
 from litestar import Litestar, get, post
 
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.core.auth.config import AuthConfig
-from tests._shared import LoopAsyncClient
+from synthorg.core.error_taxonomy import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
+from synthorg.observability.events.security import SECURITY_CSRF_REJECTED
+from tests._shared import UUID_RE, LoopAsyncClient
 
 
 def _build_csrf_app(
@@ -113,6 +121,95 @@ class TestCsrfWithSessionCookie:
                 },
             )
             assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestCsrfRejectionEnvelope:
+    """A rejection answers in the same envelope every other error uses.
+
+    The middleware writes its response over raw ASGI, before Litestar's
+    exception pipeline exists, so nothing forces the shape on it. A
+    divergent body leaves a client parsing ``error_detail`` with
+    ``None`` on exactly the responses a security control produces, and
+    leaves the rejection with no correlation id to tie it back to the
+    ``security.csrf.rejected`` log line it already writes.
+    """
+
+    async def test_rejection_body_is_the_standard_error_envelope(self) -> None:
+        app = _build_csrf_app()
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
+                "/mutate",
+                headers={"Cookie": "session=some.jwt.token"},
+            )
+
+        assert resp.status_code == 403
+        body = resp.json()
+        assert set(body) == {"data", "error", "error_detail", "success"}
+        assert body["data"] is None
+        assert body["success"] is False
+
+        detail = body["error_detail"]
+        assert detail["detail"] == body["error"]
+        assert detail["error_code"] == ErrorCode.CSRF_REJECTED
+        assert detail["error_category"] == ErrorCategory.AUTH
+        assert detail["retryable"] is False
+        assert detail["retry_after"] is None
+        assert detail["title"] == category_title(ErrorCategory.AUTH)
+        assert detail["type"] == category_type_uri(ErrorCategory.AUTH)
+
+    async def test_mismatched_token_rejection_uses_the_same_envelope(self) -> None:
+        """The other rejection branch answers identically.
+
+        Both branches call the same responder today, but only one was
+        exercised for its body, so a change that differentiated them
+        could ship with half the shape unverified.
+        """
+        csrf_value = "test-csrf-token-value"
+        app = _build_csrf_app()
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
+                "/mutate",
+                headers={
+                    "Cookie": f"session=some.jwt.token; csrf_token={csrf_value}",
+                    "X-CSRF-Token": "a-different-token",
+                },
+            )
+
+        assert resp.status_code == 403
+        body = resp.json()
+        assert set(body) == {"data", "error", "error_detail", "success"}
+        assert body["error_detail"]["error_code"] == ErrorCode.CSRF_REJECTED
+
+    async def test_instance_matches_the_id_the_rejection_was_logged_under(
+        self,
+    ) -> None:
+        """The correlation id is the whole point, so pin the join.
+
+        This middleware runs outside ``RequestLoggingMiddleware`` and a
+        rejection never reaches the inner app, so no correlation id is
+        ever bound for it. Asserting only that ``instance`` looks like a
+        UUID would pass just as well against a freshly minted id that
+        appears in no log line at all, which is exactly the state this
+        replaced. Assert the response and the log record carry the SAME
+        id.
+        """
+        app = _build_csrf_app()
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(app) as client:
+                resp = await client.post(
+                    "/mutate",
+                    headers={"Cookie": "session=some.jwt.token"},
+                )
+
+        instance = resp.json()["error_detail"]["instance"]
+        assert UUID_RE.match(instance) is not None
+
+        rejections = [
+            entry for entry in logs if entry.get("event") == SECURITY_CSRF_REJECTED
+        ]
+        assert len(rejections) == 1
+        assert rejections[0]["request_id"] == instance
 
 
 @pytest.mark.unit

@@ -207,6 +207,16 @@ class TestETagMiddleware:
         assert etag1 != etag2
 
     async def test_cache_control_default_private_for_user_data(self) -> None:
+        """User-scoped reads are private AND carry a zero lifetime.
+
+        Asserted exactly, not by substring: ``must-revalidate`` alone
+        governs only what a cache already considers stale, and a
+        response with no explicit freshness lifetime may be assigned a
+        heuristic one, so dropping ``max-age=0`` would let a browser
+        reuse an authenticated settings or audit-trail body without
+        revalidating. Zero lifetime still permits the conditional
+        request this middleware exists to answer with a 304.
+        """
         mw = ETagMiddleware(_ok_app_factory(b"{}"))
         recorder = _Recorder()
         await mw(
@@ -215,10 +225,15 @@ class TestETagMiddleware:
             recorder,
         )
         headers = dict(recorder.messages[0]["headers"])
-        assert b"cache-control" in headers
-        assert b"private" in headers[b"cache-control"]
+        assert headers[b"cache-control"] == b"private, max-age=0, must-revalidate"
 
     async def test_cache_control_default_public_for_reference_data(self) -> None:
+        """Deployment-wide reference data is shareable but still revalidated.
+
+        Asserted exactly for the same reason as the private branch: the
+        heuristic-freshness gap this policy closes applies to both, and
+        a substring check would not notice ``max-age=0`` going away.
+        """
         mw = ETagMiddleware(_ok_app_factory(b"[]"))
         recorder = _Recorder()
         await mw(
@@ -227,8 +242,7 @@ class TestETagMiddleware:
             recorder,
         )
         headers = dict(recorder.messages[0]["headers"])
-        assert b"cache-control" in headers
-        assert b"public" in headers[b"cache-control"]
+        assert headers[b"cache-control"] == b"public, max-age=0, must-revalidate"
 
     async def test_non_200_response_passes_through(self) -> None:
         """4xx/5xx responses are not ETag'd."""
@@ -409,7 +423,7 @@ class TestETagMiddleware:
         ]
         # Single Cache-Control header carrying the private policy
         # this middleware owns; the upstream ``no-store`` is dropped.
-        assert cache_values == [b"private, must-revalidate"]
+        assert cache_values == [b"private, max-age=0, must-revalidate"]
 
     async def test_streaming_response_skips_etag_and_buffers_nothing(self) -> None:
         """Multi-chunk responses are forwarded as-is with no ETag and no buffering."""
@@ -450,7 +464,7 @@ class TestETagMiddleware:
         assert len(recorder.messages) == 1 + len(chunks)
         headers = dict(recorder.messages[0]["headers"])
         assert b"etag" not in headers
-        assert headers[b"cache-control"] == b"private, must-revalidate"
+        assert headers[b"cache-control"] == b"private, max-age=0, must-revalidate"
         bodies = [m["body"] for m in recorder.messages[1:]]
         assert bodies == chunks
         # The middle chunks must keep ``more_body=True``; only the last is False.

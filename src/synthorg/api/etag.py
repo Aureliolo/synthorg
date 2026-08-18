@@ -23,13 +23,14 @@ Only applies to GET requests on path prefixes in the allowlist:
 ``/api/v1/settings``, ``/api/v1/agents``, ``/api/v1/template-packs``,
 ``/api/v1/providers``, ``/api/v1/ontology``, ``/api/v1/departments``,
 ``/api/v1/company``, ``/api/v1/meta/analytics``,
+``/api/v1/security/audit``, ``/api/v1/tasks``, ``/api/v1/activities``,
 ``/api/v1/healthz``, ``/api/v1/readyz``. Prefix matching requires
 either an exact match or a ``/`` boundary so siblings like
 ``/api/v1/providers-extra`` do not get accidental cache treatment.
 
 The ``Cache-Control`` companion header is **always replaced**
 (not just appended-when-missing) on allowlisted responses:
-``private, must-revalidate`` for user-scoped data and
+``private, max-age=0, must-revalidate`` for user-scoped data and
 ``public, max-age=0, must-revalidate`` for deployment-wide
 reference data (``template-packs``, ``providers``, ``ontology``,
 ``healthz``, ``readyz``). The replace is required because the
@@ -85,7 +86,7 @@ _ETAG_PATH_PREFIXES: tuple[str, ...] = (
 )
 
 # Path prefixes that are deployment-wide reference data (public
-# cache control); everything else gets ``private, must-revalidate``.
+# cache control); everything else gets the private policy.
 _PUBLIC_CACHE_PREFIXES: tuple[str, ...] = (
     "/api/v1/template-packs",
     "/api/v1/providers",
@@ -94,7 +95,14 @@ _PUBLIC_CACHE_PREFIXES: tuple[str, ...] = (
     "/api/v1/readyz",
 )
 
-_DEFAULT_PRIVATE_CACHE: bytes = b"private, must-revalidate"
+# ``max-age=0`` on both branches, not just the public one: a response
+# with no explicit freshness lifetime may be given a heuristic one, and
+# ``must-revalidate`` governs only what a cache already considers stale,
+# so omitting it would let a browser reuse an authenticated audit-trail
+# or settings body without revalidating. Zero lifetime still permits the
+# conditional request, which is the 304 exchange this allowlist exists
+# for.
+_DEFAULT_PRIVATE_CACHE: bytes = b"private, max-age=0, must-revalidate"
 _DEFAULT_PUBLIC_CACHE: bytes = b"public, max-age=0, must-revalidate"
 
 _HTTP_OK: int = 200

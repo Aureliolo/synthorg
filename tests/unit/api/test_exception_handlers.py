@@ -1,6 +1,5 @@
 """Tests for exception handlers with RFC 9457 structured error responses."""
 
-import re
 from collections.abc import Callable
 from typing import Annotated
 from unittest.mock import MagicMock, patch
@@ -18,10 +17,9 @@ from litestar.params import PathParameter
 
 from synthorg.api.dto import ApiResponse, ProblemDetail
 from synthorg.api.exception_handlers import (
-    _build_error_response,
     _build_response,
     _category_for_status,
-    _get_instance_id,
+    build_error_response,
     handle_http_exception,
     handle_unexpected,
 )
@@ -55,14 +53,15 @@ from synthorg.core.persistence_errors import (
     PersistenceError,
     RecordNotFoundError,
 )
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import (
+    UUID_RE,
+    JsonDict,
+    LoopAsyncClient,
+    assert_no_card_shaped_run,
+)
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
-
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-)
 
 
 def _assert_error_detail(
@@ -1283,7 +1282,7 @@ class TestStructuredErrorMetadata:
 
         resp = handle_unexpected(request, exc)
         instance = resp.content.error_detail.instance  # type: ignore[union-attr]
-        assert _UUID_RE.match(instance), f"Expected UUID, got {instance!r}"
+        assert UUID_RE.match(instance), f"Expected UUID, got {instance!r}"
 
     async def test_error_detail_detail_matches_error_field(self) -> None:
         """error_detail.detail must match the top-level error field."""
@@ -1312,6 +1311,50 @@ class TestStructuredErrorMetadata:
             ed = body["error_detail"]
             assert ed["title"] == category_title(ErrorCategory.NOT_FOUND)
             assert ed["type"] == category_type_uri(ErrorCategory.NOT_FOUND)
+
+    async def test_envelope_fields_carry_no_card_shaped_digit_run(self) -> None:
+        """Only ``instance`` can hold a run a card matcher would consider.
+
+        ``instance`` is a UUID4, whose 12-character tail is occasionally
+        all digits and occasionally passes a Luhn check, which is what a
+        DAST run reported as a "credit card" on ``/setup/complete``. The
+        suppression in .github/zap-rules.tsv rests on nothing ELSE in
+        the envelope being able to hold such a run, so a numeric field
+        added to ``ErrorDetail`` (an epoch stamp, a counter) has to fail
+        here rather than pass quietly behind that row. ``detail`` is
+        held to fixed prose by the handler under test; it carries
+        handler text in general, which the row's rationale says.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "no such record"
+            raise NotFoundError(msg)
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+
+        instance = resp.json()["error_detail"]["instance"]
+        assert UUID_RE.match(instance) is not None
+        assert_no_card_shaped_run(resp.text, instance=instance)
+
+    def test_problem_detail_fields_carry_no_card_shaped_digit_run(self) -> None:
+        """Same claim for the bare RFC 9457 body a client can negotiate."""
+        request = MagicMock(spec=Request)
+        request.accept.best_match.return_value = "application/problem+json"
+
+        resp = _build_response(
+            request,
+            detail="Resource not found",
+            error_code=ErrorCode.RECORD_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
+            status_code=404,
+        )
+
+        assert isinstance(resp.content, ProblemDetail)
+        instance = resp.content.instance
+        assert UUID_RE.match(instance) is not None
+        assert_no_card_shaped_run(resp.content.model_dump_json(), instance=instance)
 
     async def test_retry_after_is_none_for_non_rate_limit(self) -> None:
         """retry_after should be None for non-rate-limit errors."""
@@ -1342,40 +1385,6 @@ class TestStructuredErrorMetadata:
             assert "upstream rejected" in body["error"]
             # ...but a credential token in the message is still redacted.
             assert "sk-secret-leak-me" not in body["error"]
-
-
-class TestGetInstanceId:
-    """Direct unit tests for _get_instance_id helper."""
-
-    def test_returns_request_id_from_context(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id="req-known-123")
-        try:
-            result = _get_instance_id()
-            assert result == "req-known-123"
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
-
-    def test_falls_back_to_uuid_when_no_context(self) -> None:
-        structlog.contextvars.unbind_contextvars("request_id")
-
-        result = _get_instance_id()
-        assert _UUID_RE.match(result)
-
-    def test_falls_back_for_non_string_request_id(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id=12345)
-        try:
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
-
-    def test_falls_back_for_empty_string_request_id(self) -> None:
-        structlog.contextvars.bind_contextvars(request_id="")
-        try:
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
-        finally:
-            structlog.contextvars.unbind_contextvars("request_id")
 
 
 class TestCategoryForStatus:
@@ -1446,23 +1455,11 @@ class TestDomainErrorInstantiation:
         assert exc.status_code == 404
 
 
-class TestGetInstanceIdExceptionFallback:
-    """Test that _get_instance_id falls back when get_contextvars raises."""
-
-    def test_falls_back_when_get_contextvars_raises(self) -> None:
-        with patch(
-            "structlog.contextvars.get_contextvars",
-            side_effect=RuntimeError("broken"),
-        ):
-            result = _get_instance_id()
-            assert _UUID_RE.match(result)
-
-
 class TestBuildErrorResponseRetryAfter:
-    """Test _build_error_response with non-None retry_after."""
+    """Test build_error_response with non-None retry_after."""
 
     def test_retry_after_propagated(self) -> None:
-        resp = _build_error_response(
+        resp = build_error_response(
             detail="Slow down",
             error_code=ErrorCode.RATE_LIMITED,
             error_category=ErrorCategory.RATE_LIMIT,
@@ -1495,7 +1492,7 @@ class TestBuildResponseFallback:
         request.accept.best_match.return_value = "application/json"
 
         with patch(
-            "synthorg.api.exception_handlers._build_error_response",
+            "synthorg.api.exception_handlers.build_error_response",
             side_effect=RuntimeError("construction failed"),
         ):
             resp = _build_response(

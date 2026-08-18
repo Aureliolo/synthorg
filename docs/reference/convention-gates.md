@@ -148,10 +148,11 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_workspace_share_modes.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |
 | `check_ws_protocol_version_in_sync.py` | commit+push | `ws_models.py` + `constants.ts` | full | no | none | keep |
+| `check_zap_rules_documented.py` | push | `.github/zap-rules.tsv` + `docs/security.md` | full | no | none | add |
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->122<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->128<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

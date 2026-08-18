@@ -17,11 +17,14 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 import structlog
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability._logger import get_logger
+from synthorg.observability.events.api import API_CORRELATION_FALLBACK
 from synthorg.observability.events.correlation import (
     CORRELATION_ASYNC_DECORATOR_MISUSE,
     CORRELATION_SYNC_DECORATOR_MISUSE,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -63,6 +66,35 @@ def generate_correlation_id() -> str:
         A UUID4 string suitable for use as a correlation identifier.
     """
     return str(uuid.uuid4())
+
+
+def current_correlation_id() -> str:
+    """Return the request's bound correlation id, or a fresh one.
+
+    Every caller is a response path that must never raise while
+    building a body: the exception handlers, which are the last line of
+    defence, and the raw-ASGI CSRF rejection, which has no handler
+    pipeline behind it at all. So the contextvars read is wrapped.
+    ``MemoryError`` and ``RecursionError`` are re-raised so process-level
+    failures still surface; anything else falls back to a fresh id with
+    a warning, which keeps the fallback correlatable to the request that
+    triggered it.
+
+    Returns:
+        The bound ``request_id`` when one is set, otherwise a new UUID4.
+    """
+    try:
+        request_id = structlog.contextvars.get_contextvars().get("request_id")
+        if isinstance(request_id, str) and request_id:
+            return request_id
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_CORRELATION_FALLBACK,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    return generate_correlation_id()
 
 
 def bind_correlation_id(
