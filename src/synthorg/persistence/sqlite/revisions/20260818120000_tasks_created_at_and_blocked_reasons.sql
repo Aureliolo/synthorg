@@ -13,23 +13,14 @@
 --    an UPPER BOUND, not their real creation time: a legacy task reads as no
 --    older than the migration. Every row filed after this reads exactly.
 --
--- 2. ``no_capable_agent`` shipped in ``BlockedReason`` and is written by
---    production code (``engine/coordination/service.py`` when routing finds
---    nobody, and ``engine/review_staffing/unroutable.py``), but was never
---    added to either backend's CHECK. Every such park therefore failed its
---    write, leaving the subtask in whatever status it already held: on the
---    run that surfaced this, two subtasks sat at ``created``, undispatched,
---    with nothing watching them and no exit.
+-- 2. ``dependency_failed``. A wave is gated on whether the work its subtasks
+--    declared they depend on actually delivered; one whose inputs died parks
+--    under this reason instead of dispatching against outputs nobody wrote.
+--    It is kept apart from ``wave_released`` because the two wait on
+--    different things: a released subtask waits on a scheduler, and this one
+--    waits on its dependency being redone, which only a replan can order.
 --
--- 3. ``dependency_failed`` is new. A wave is now gated on whether the work
---    its subtasks declared they depend on actually delivered; one whose
---    inputs died parks under this reason instead of dispatching against
---    outputs nobody wrote. It is kept apart from ``wave_released`` because
---    the two wait on different things: a released subtask waits on a
---    scheduler, and this one waits on its dependency being redone, which
---    only a replan can order.
---
--- 4. ``run_stopped`` is the honest complement of ``dependency_failed``. An
+-- 3. ``run_stopped`` is the honest complement of ``dependency_failed``. An
 --    execution group is one round of AGENTS, not one level of the DAG: a
 --    level whose subtasks share an agent is split across several groups. So
 --    the groups after the one a run stopped at include SIBLINGS of it, whose
@@ -38,10 +29,24 @@
 --    dependency failure, and the rest say they merely never started.
 --
 -- SQLite cannot alter a column CHECK in place, so the table is rebuilt into
--- its final shape, copied across, and its four indices recreated. The rebuild
+-- its final shape, copied across, and its indices recreated. The rebuild
 -- is what carries the backfill: the SELECT supplies the timestamp for
 -- ``created_at`` rather than a column default, so the new table needs none and
 -- the application stays the only writer of the value.
+--
+-- Every index on ``tasks`` is recreated here, not just the ones this revision
+-- has a reason to care about: ``DROP TABLE`` takes the table's whole index
+-- set with it, so one omitted from the list below is one silently dropped
+-- from every database that migrates, while a fresh install built from
+-- ``schema.sql`` still has it. That divergence surfaces only as a query plan
+-- nobody profiles.
+--
+-- This revision runs with foreign-key enforcement OFF, which is yoyo's
+-- default and is load-bearing here: ``DROP TABLE tasks`` performs an implicit
+-- delete and ``plans.parent_task_id`` references it ON DELETE RESTRICT, so
+-- the drop fails outright with enforcement on. The pragma is a no-op inside a
+-- transaction and ``defer_foreign_keys`` does not rescue it, because RESTRICT
+-- is immediate.
 
 CREATE TABLE tasks_new (
     id TEXT NOT NULL PRIMARY KEY,
@@ -139,3 +144,11 @@ CREATE INDEX idx_tasks_status ON tasks (status);
 CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
 CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
+
+-- The unroutable sweep pages ``WHERE status = 'blocked' AND blocked_reason =
+-- ...`` every pass. Status leads because it is the more selective of the two
+-- and the pair is how every caller asks; ``id`` trails because that sweep
+-- pages by keyset (``id > <last>`` under the query's ``ORDER BY id``), so
+-- with it the walk is one index range scan and without it every page
+-- re-sorts the matching rows.
+CREATE INDEX idx_tasks_status_blocked_reason ON tasks (status, blocked_reason, id);

@@ -13,23 +13,14 @@
 --    an UPPER BOUND, not their real creation time: a legacy task reads as no
 --    older than the migration. Every row filed after this reads exactly.
 --
--- 2. ``no_capable_agent`` shipped in ``BlockedReason`` and is written by
---    production code (``engine/coordination/service.py`` when routing finds
---    nobody, and ``engine/review_staffing/unroutable.py``), but was never
---    added to either backend's CHECK. Every such park therefore failed its
---    write, leaving the subtask in whatever status it already held: on the
---    run that surfaced this, two subtasks sat at ``created``, undispatched,
---    with nothing watching them and no exit.
+-- 2. ``dependency_failed``. A wave is gated on whether the work its subtasks
+--    declared they depend on actually delivered; one whose inputs died parks
+--    under this reason instead of dispatching against outputs nobody wrote.
+--    It is kept apart from ``wave_released`` because the two wait on
+--    different things: a released subtask waits on a scheduler, and this one
+--    waits on its dependency being redone, which only a replan can order.
 --
--- 3. ``dependency_failed`` is new. A wave is now gated on whether the work
---    its subtasks declared they depend on actually delivered; one whose
---    inputs died parks under this reason instead of dispatching against
---    outputs nobody wrote. It is kept apart from ``wave_released`` because
---    the two wait on different things: a released subtask waits on a
---    scheduler, and this one waits on its dependency being redone, which
---    only a replan can order.
---
--- 4. ``run_stopped`` is the honest complement of ``dependency_failed``. An
+-- 3. ``run_stopped`` is the honest complement of ``dependency_failed``. An
 --    execution group is one round of AGENTS, not one level of the DAG: a
 --    level whose subtasks share an agent is split across several groups. So
 --    the groups after the one a run stopped at include SIBLINGS of it, whose

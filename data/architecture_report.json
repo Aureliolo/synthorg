@@ -140,8 +140,8 @@
     },
     "src/synthorg/api/controllers/requests/lifecycle.py": {
       "cap": 400,
-      "loc": 395,
-      "ratio": 0.988,
+      "loc": 380,
+      "ratio": 0.95,
       "tier": "controller"
     },
     "src/synthorg/api/controllers/scaling.py": {
@@ -170,8 +170,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 487,
-      "ratio": 0.974,
+      "loc": 492,
+      "ratio": 0.984,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/engine/workflow/diff.py": {
       "cap": 500,
-      "loc": 442,
-      "ratio": 0.884,
+      "loc": 485,
+      "ratio": 0.97,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/execution_activation_helpers.py": {
@@ -980,8 +980,8 @@
     },
     "src/synthorg/meta/mcp/handlers/agents_crud.py": {
       "cap": 500,
-      "loc": 405,
-      "ratio": 0.81,
+      "loc": 407,
+      "ratio": 0.814,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
@@ -992,8 +992,8 @@
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
       "cap": 500,
-      "loc": 400,
-      "ratio": 0.8,
+      "loc": 402,
+      "ratio": 0.804,
       "tier": "code"
     },
     "src/synthorg/meta/rollout/ab_test.py": {
@@ -1663,10 +1663,10 @@
     "synthorg.api.pagination": 67,
     "synthorg.api.path_params": 90,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 396,
+    "synthorg.api.state": 399,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 48,
-    "synthorg.api.ws_models": 23,
+    "synthorg.api.ws_models": 24,
     "synthorg.approval.enums": 90,
     "synthorg.approval.protocol": 63,
     "synthorg.approval.state": 42,
@@ -1678,7 +1678,7 @@
     "synthorg.budget.errors": 27,
     "synthorg.budget.state": 48,
     "synthorg.budget.tracker_protocol": 119,
-    "synthorg.client.models": 41,
+    "synthorg.client.models": 43,
     "synthorg.communication.bus_protocol": 35,
     "synthorg.communication.enums": 33,
     "synthorg.communication.errors": 24,
@@ -1695,7 +1695,7 @@
     "synthorg.core.boundary": 73,
     "synthorg.core.clock": 287,
     "synthorg.core.completion_enums": 26,
-    "synthorg.core.critical_errors": 788,
+    "synthorg.core.critical_errors": 789,
     "synthorg.core.domain_errors": 286,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 76,
@@ -1714,7 +1714,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 149,
     "synthorg.core.task_enums": 151,
-    "synthorg.core.types": 1434,
+    "synthorg.core.types": 1439,
     "synthorg.engine.agent_engine": 20,
     "synthorg.engine.context": 54,
     "synthorg.engine.coordination.models": 22,
@@ -1729,7 +1729,7 @@
     "synthorg.engine.task_engine": 55,
     "synthorg.engine.task_engine_models": 26,
     "synthorg.engine.workflow.ceremony_policy": 21,
-    "synthorg.engine.workflow.definition": 42,
+    "synthorg.engine.workflow.definition": 43,
     "synthorg.engine.workflow.enums": 40,
     "synthorg.engine.workflow.sprint_lifecycle": 20,
     "synthorg.engine.workspace.state": 21,
@@ -1776,9 +1776,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 25,
     "synthorg.notifications.models": 28,
-    "synthorg.observability": 2110,
+    "synthorg.observability": 2113,
     "synthorg.observability.background_tasks": 32,
-    "synthorg.observability.events.api": 268,
+    "synthorg.observability.events.api": 271,
     "synthorg.observability.events.approval_gate": 34,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 42,
@@ -1811,10 +1811,10 @@
     "synthorg.persistence._shared.pagination": 77,
     "synthorg.persistence.ontology_protocol": 21,
     "synthorg.persistence.project_protocol": 22,
-    "synthorg.persistence.protocol": 70,
+    "synthorg.persistence.protocol": 71,
     "synthorg.persistence.sqlite._shared": 100,
     "synthorg.persistence.state": 105,
-    "synthorg.persistence.task_protocol": 31,
+    "synthorg.persistence.task_protocol": 32,
     "synthorg.project_brain.models": 26,
     "synthorg.providers.cost_recording": 55,
     "synthorg.providers.enums": 110,
