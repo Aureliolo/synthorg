@@ -98,14 +98,51 @@ class TestNoVendorProbeIsBilled:
 
         assert brave.probe_verdict(422, body) is ProbeVerdict.AUTH_FAILED
 
-    def test_an_unverified_vendor_claims_nothing(self) -> None:
-        # Exa publishes no free way to check a key, so its preset asserts no
-        # error contract and the probe must not invent one in either
-        # direction.
+    @pytest.mark.parametrize("vendor", [HttpVendor.EXA, HttpVendor.OLLAMA])
+    def test_a_vendor_claims_nothing_it_could_not_observe(
+        self,
+        vendor: HttpVendor,
+    ) -> None:
+        # A rejection can be provoked without a key, so what a BAD credential
+        # answers is observable. What a GOOD one answers when only the request
+        # shape is wrong is not, without holding one. Each vendor therefore
+        # declares the half it was watched doing and nothing else: naming a
+        # cleared status from a published table is the guess that reports a
+        # revoked key as healthy, and Exa's table was already caught describing
+        # the wrong status for a missing key.
+        preset = HTTP_VENDOR_PRESETS[vendor]
+
+        assert preset.auth_cleared_statuses == frozenset()
+        assert preset.probe_verdict(422, "{}") is ProbeVerdict.INDETERMINATE
+
+    @pytest.mark.parametrize(
+        ("vendor", "status", "body"),
+        [
+            (HttpVendor.EXA, 401, '{"tag":"INVALID_API_KEY"}'),
+            (HttpVendor.EXA, 402, '{"tag":"X402_PAYMENT_REQUIRED"}'),
+            (HttpVendor.OLLAMA, 401, '{"error":"Unauthorized"}'),
+        ],
+    )
+    def test_a_rejected_credential_is_still_caught(
+        self,
+        vendor: HttpVendor,
+        status: int,
+        body: str,
+    ) -> None:
+        # Declining to claim a good key must not cost the ability to report a
+        # dead one; these bodies are what the live endpoints returned.
+        preset = HTTP_VENDOR_PRESETS[vendor]
+
+        assert preset.probe_verdict(status, body) is ProbeVerdict.AUTH_FAILED
+
+    def test_a_spent_wallet_is_not_blamed_on_the_credential(self) -> None:
+        # Exa's other 402 tags name a key that WAS accepted, so reading them as
+        # auth failures would send an operator to rotate a working key.
         exa = HTTP_VENDOR_PRESETS[HttpVendor.EXA]
 
-        assert exa.probe_verdict(422, "{}") is ProbeVerdict.INDETERMINATE
-        assert exa.auth_cleared_statuses == frozenset()
+        verdict = exa.probe_verdict(402, '{"tag":"NO_MORE_CREDITS"}')
+
+        assert verdict is ProbeVerdict.INDETERMINATE
 
 
 @pytest.mark.unit

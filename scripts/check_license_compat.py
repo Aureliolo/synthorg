@@ -101,6 +101,20 @@ _HARD_DENYLIST: frozenset[str] = frozenset(
 # it is asserted here rather than discovered through the declared set.
 _KNOWN_LGPL: frozenset[str] = frozenset({"psycopg", "psycopg-pool", "psycopg-binary"})
 
+# Transitive dists offered under an SPDX DISJUNCTION, mapped to the family we
+# elect. A disjunction is an offer of alternatives, so the package is only
+# compatible while the offer still contains an arm we can take, and the arm we
+# took is recorded in NOTICE.
+#
+# These need naming because nothing else reaches them. The direct-dependency
+# classifier walks ``pyproject.toml`` only, and the denylist matches names
+# rather than licences, so a dist pulled in three levels down is classified by
+# neither. ``tld`` arrives via trafilatura -> courlan and is the reason the
+# disjunction handling exists at all; leaving it unlisted meant that handling
+# was written for a package it never ran against, with NOTICE's election
+# asserted by prose alone.
+_ELECTED_DISJUNCTIVE: dict[str, str] = {"tld": "lgpl"}
+
 _GO_GPL_TOOLS: frozenset[str] = frozenset({"golangci-lint"})
 
 # Upper bound for the opt-in ``go-licenses`` scan: it fetches the whole CLI
@@ -236,42 +250,180 @@ def _uv_lock_package_names(lock: dict[str, object]) -> set[str]:
 # ── installed-dist licence classification ───────────────────────
 
 
-def _license_blob(dist: metadata.Distribution) -> str:
-    """Lowercased STRUCTURED licence metadata of a dist.
+def _license_expression(dist: metadata.Distribution) -> str:
+    """Lowercased SPDX ``License-Expression`` of a dist, or empty.
 
     Deliberately excludes the freeform ``License`` field: packages often
     paste a full licence text there that quotes the names of bundled
     components under other licences (SciPy's BSD text names LGPL
-    components), which substring classification would misread. The SPDX
-    ``License-Expression`` and the ``License ::`` trove classifiers are
-    structured and authoritative for the dist's own licence.
+    components), which substring classification would misread.
 
     Returns:
-        ``License-Expression`` + every ``License ::`` trove classifier,
-        lowercased, for substring classification.
+        The SPDX expression, lowercased, or ``""`` when the dist declares
+        none.
     """
-    meta = dist.metadata
-    parts: list[str] = []
-    expression = meta.get("License-Expression")
-    if expression:
-        parts.append(str(expression))
-    parts.extend(
+    expression = dist.metadata.get("License-Expression")
+    return str(expression).lower() if expression else ""
+
+
+def _license_classifiers(dist: metadata.Distribution) -> str:
+    """Lowercased ``License ::`` trove classifiers of a dist, joined.
+
+    Returns:
+        Every ``License ::`` classifier joined by ``"; "``, lowercased. The
+        separator is deliberately not a space: these are PROSE, and joining
+        them into one run of words invites a substring match that spans two
+        unrelated classifiers.
+    """
+    return "; ".join(
         classifier
-        for classifier in (meta.get_all("Classifier") or [])
+        for classifier in (dist.metadata.get_all("Classifier") or [])
         if classifier.startswith("License ::")
-    )
-    return " ".join(parts).lower()
+    ).lower()
+
+
+def _classify_dist(dist: metadata.Distribution) -> str:
+    """Classify an installed dist into a copyleft family.
+
+    The two structured sources answer the question differently and must not
+    be concatenated. ``License-Expression`` is SPDX, so ``OR`` in it is the
+    disjunction operator. A trove classifier is PROSE that happens to contain
+    the word, and the canonical LGPL one reads ``GNU Library or Lesser
+    General Public License (LGPL)``: split on the operator it yields the arm
+    ``gnu library``, which classifies permissive and takes an LGPL dependency
+    straight past the NOTICE-attribution requirement. So only the expression
+    is split, and the classifiers are classified whole.
+
+    The expression wins when present: PEP 639 makes it the authoritative
+    field, and a dist carrying both is describing one licence twice.
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    expression = _license_expression(dist)
+    if expression:
+        return _classify(expression)
+    return _classify_one(_license_classifiers(dist))
+
+
+def _offered_families(dist: metadata.Distribution) -> set[str]:
+    """Every copyleft family this dist's licence offer actually reaches.
+
+    A disjunction is an offer of alternatives, so it reaches one family per
+    arm. Membership is the question an ELECTION asks, and it is not the
+    question a rank comparison answers: an offer that lost its LGPL arm and
+    kept only ``MPL-1.1`` is LESS restrictive, so a rank test passes it while
+    the arm named in NOTICE has ceased to exist.
+
+    Returns:
+        The family of each arm, or the single family of a dist that offers
+        no choice.
+    """
+    expression = _license_expression(dist)
+    if not expression:
+        return {_classify_one(_license_classifiers(dist))}
+    return {_classify_bound(arm) for arm in _disjunction_arms(expression)}
+
+
+#: Copyleft families ordered most to least restrictive, so a disjunction can
+#: be resolved to the arm a licensee would actually elect.
+_FAMILY_RANK: dict[str, int] = {"agpl": 3, "gpl": 2, "lgpl": 1, "permissive": 0}
+
+#: Tokens that make an expression more than a flat list of alternatives. A
+#: conjunction binds its side to every arm of any disjunction beside it, and a
+#: parenthesis can nest one anywhere, so neither can be resolved by splitting.
+_UNPARSEABLE_EXPRESSION_TOKENS: tuple[str, ...] = ("(", ")", " and ")
+
+#: Everything an SPDX licence identifier cannot contain, so splitting on it
+#: yields one identifier per token (``lgpl-2.1-only``, ``mpl-1.1``).
+_IDENTIFIER_SPLIT: re.Pattern[str] = re.compile(r"[^a-z0-9.+-]+")
 
 
 def _classify(blob: str) -> str:
     """Classify a licence blob into a copyleft family.
 
-    Recognises both the SPDX short forms (``agpl`` / ``lgpl`` / ``gpl``)
-    and the spelled-out trove-classifier names (``GNU Affero General
-    Public License`` etc.), which carry no SPDX abbreviation. Order
-    matters: every long form ends in ``general public license`` and the
-    short forms ``agpl`` / ``lgpl`` both contain ``gpl``, so the more
-    specific families are tested first.
+    An SPDX expression may be a DISJUNCTION (``MPL-1.1 OR GPL-2.0-only OR
+    LGPL-2.1-or-later``), which is an offer of alternatives rather than a
+    conjunction of obligations: the licensee elects one arm and is bound by
+    that arm alone. Substring-matching the whole expression answers a
+    different question than the one being asked, and would either fail a
+    package that is compatible under an arm we elect, or pass one whose only
+    permissive-looking arm we cannot use. So each arm is classified and the
+    LEAST restrictive is returned, which is the arm a licensee elects; the
+    election itself is recorded in ``NOTICE``.
+
+    Within a single arm, order matters: every long form ends in ``general
+    public license`` and the short forms ``agpl`` / ``lgpl`` both contain
+    ``gpl``, so the more specific families are tested first.
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    arms = _disjunction_arms(blob)
+    if len(arms) > 1:
+        return min(
+            (_classify_bound(arm) for arm in arms),
+            key=lambda family: _FAMILY_RANK[family],
+        )
+    return _classify_bound(blob)
+
+
+def _classify_bound(blob: str) -> str:
+    """Classify an expression every named licence of which BINDS.
+
+    A conjunction is refused by :func:`_disjunction_arms` and reaches here
+    whole, and a whole-blob specificity scan answers the wrong question for
+    one: ``_classify_one`` tests ``lgpl`` before ``gpl`` because the long form
+    of the weaker licence contains the name of the stronger one, which is
+    right for ONE identifier and inverted across several. In
+    ``GPL-2.0-only AND (MIT OR LGPL-2.1-only)`` the GPL half binds whichever
+    inner arm is elected, yet the scan reports ``lgpl``, which is the family
+    the gate merely attributes in NOTICE rather than the one it rejects.
+
+    So every identifier in the blob is classified on its own and the
+    STRONGEST wins, alongside the whole-blob answer, which is what still
+    catches a long-form name whose words tokenise apart (``lesser general
+    public license``).
+
+    Returns:
+        One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
+    """
+    families = [
+        _classify_one(blob),
+        *(_classify_one(token) for token in _IDENTIFIER_SPLIT.split(blob) if token),
+    ]
+    return max(families, key=lambda family: _FAMILY_RANK[family])
+
+
+def _disjunction_arms(blob: str) -> list[str]:
+    """Split a FLAT SPDX ``OR`` expression into its arms.
+
+    Splits on the SPDX operator, which is a SPACE-DELIMITED word. A word-
+    boundary match would also split inside an identifier: ``GPL-3.0-or-later``
+    is ONE licence whose name happens to contain ``or``, and tearing it apart
+    yields an arm that classifies as permissive, quietly passing the strongest
+    copyleft licence there is.
+
+    An expression carrying a parenthesis or an ``AND`` is refused rather than
+    split, and is returned whole so the caller classifies it conservatively.
+    Splitting one is not naive-but-safe, it is a fail-open: in
+    ``GPL-2.0-only AND (MIT OR Apache-2.0)`` the GPL half binds whichever inner
+    arm is elected, but a flat split yields the arm ``apache-2.0)``, which
+    classifies permissive and wins the least-restrictive rule. Resolving nested
+    expressions properly needs a real SPDX parser; refusing to guess is the
+    honest gap, and nothing in this tree ships such an expression.
+
+    Returns:
+        The arms, or a single-element list when there is no flat disjunction
+        to resolve.
+    """
+    if any(token in blob for token in _UNPARSEABLE_EXPRESSION_TOKENS):
+        return [blob]
+    return [arm.strip() for arm in re.split(r"\s+or\s+", blob) if arm.strip()]
+
+
+def _classify_one(blob: str) -> str:
+    """Classify a single (non-disjunctive) licence expression.
 
     Returns:
         One of ``"agpl"``, ``"lgpl"``, ``"gpl"``, or ``"permissive"``.
@@ -553,7 +705,7 @@ def _check_direct_copyleft(
             # An unsynced EXTRA cannot be classified here; the denylist
             # (uv.lock) and _KNOWN_LGPL/NOTICE checks remain authoritative.
             continue
-        family = _classify(_license_blob(dist))
+        family = _classify_dist(dist)
         if family in {"agpl", "gpl"}:
             violations.append(
                 Violation(
@@ -703,6 +855,66 @@ def _check_known_lgpl_notice(notice: str) -> list[Violation]:
     ]
 
 
+def _check_elected_disjunctive(notice: str) -> list[Violation]:
+    """Assert each electable transitive dist still offers the arm we elected.
+
+    Two ways this can rot, and the gate has to catch both. The offer itself can
+    change: a version bump can drop the elected arm, and an offer that no
+    longer contains it cannot be elected from, even though the package NAME
+    never moved, which is all a denylist would have watched. And the election
+    can go unrecorded: an elected arm that NOTICE does not name is a licence
+    obligation nobody discharged.
+
+    The declared election is the single owner of which arm this project takes.
+    ``_classify`` independently resolves a disjunction to its LEAST restrictive
+    arm, which for ``tld`` is MPL-1.1 while NOTICE elects LGPL-2.1-or-later; a
+    check built on that would be verifying a different election than the one
+    the project actually made.
+
+    Returns:
+        A violation per dist whose offer no longer reaches the elected family,
+        or whose election is missing from NOTICE. An absent dist is reported
+        rather than skipped: these arrive transitively through a core
+        dependency, so absence means the environment cannot answer the
+        question, and answering it is the whole point of the check.
+    """
+    violations: list[Violation] = []
+    for name, elected in sorted(_ELECTED_DISJUNCTIVE.items()):
+        try:
+            dist = metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            violations.append(
+                Violation(
+                    "dependencies",
+                    f"transitive dependency {name!r} could not be resolved for"
+                    " licence classification; sync the environment so its"
+                    " elected licence arm cannot go unverified",
+                )
+            )
+            continue
+        offered = _offered_families(dist)
+        if elected not in offered:
+            offer = ", ".join(sorted(family.upper() for family in offered)) or "nothing"
+            violations.append(
+                Violation(
+                    "dependencies",
+                    f"transitive dependency {name!r} no longer offers a"
+                    f" {elected.upper()} arm; it now offers {offer}, so the"
+                    " election recorded in NOTICE names an arm that is not on"
+                    " offer",
+                )
+            )
+        elif not _notice_covers(notice, name):
+            violations.append(
+                Violation(
+                    "NOTICE",
+                    f"dependency {name!r} ships under an elected"
+                    f" {elected.upper()} arm but is not attributed in NOTICE",
+                )
+            )
+    return violations
+
+
 def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violation]:
     """Run every licence-compatibility check against the repo.
 
@@ -726,6 +938,7 @@ def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violat
     violations.extend(_check_go_gpl(repo_root))
     violations.extend(_check_go_licenses(repo_root, notice, run=scan_go_modules))
     violations.extend(_check_known_lgpl_notice(notice))
+    violations.extend(_check_elected_disjunctive(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
     violations.extend(_check_web_copyleft(repo_root, notice))
     return violations

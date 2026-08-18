@@ -9,7 +9,7 @@ from synthorg.config.loader import load_config_from_string
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 
 @pytest.mark.integration
@@ -35,7 +35,7 @@ company_name: test-corp
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         git_tools = [t for t in tools if isinstance(t, _BaseGitTool)]
@@ -64,7 +64,7 @@ sandboxing:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         git_tools = [t for t in tools if isinstance(t, _BaseGitTool)]
@@ -101,7 +101,7 @@ sandboxing:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         # Git tools (version_control) should get docker backend
@@ -133,7 +133,7 @@ sandboxing:
         build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         call_kwargs = mock_subprocess_cls.call_args.kwargs

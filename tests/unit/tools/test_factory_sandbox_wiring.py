@@ -16,7 +16,7 @@ from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
-from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 _GIT_TOOL_NAMES: frozenset[str] = frozenset(
     {
@@ -82,7 +82,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         for tool in _git_tools(tools):
@@ -109,7 +109,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         shell = next(
@@ -151,7 +151,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         by_name = {tool.name: tool for tool in tools}
@@ -184,7 +184,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         for tool in _git_tools(tools):
@@ -205,7 +205,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             sandbox_backends={"subprocess": mock_backend},
         )
 
@@ -230,7 +230,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         # Should have built subprocess backend from config
@@ -256,7 +256,7 @@ class TestFactorySandboxWiring:
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         fs_tools = [t for t in tools if t.name in _FS_TOOL_NAMES]
@@ -284,7 +284,7 @@ class TestFactorySandboxWiring:
         tools_explicit = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             sandbox_backends={
                 "subprocess": MagicMock(spec=SandboxBackend),
                 "docker": MagicMock(spec=SandboxBackend),
@@ -295,7 +295,7 @@ class TestFactorySandboxWiring:
         tools_auto = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
 
         assert len(tools_explicit) == _EXPECTED_TOOL_COUNT

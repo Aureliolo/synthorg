@@ -23,7 +23,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 
 # Version tracks incompatible template changes.  Bump when the template
 # structure changes in ways that affect caching, snapshots, or migrations.
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.2.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.3.0"
 
 # ── Autonomy instructions by autonomy mode ───────────────────────
 
@@ -108,6 +108,36 @@ if _missing_minimal:
 #: exist, so a loop bringing its own tools must drop it rather than inherit it.
 #: Paired with the template by ``test_prompt_template``.
 TOOL_CATALOGUE_HEADING: Final[str] = "## Available Tools"
+
+#: Injected only when this session actually holds a web research tool. The
+#: non-inferable principle below says tool DEFINITIONS need not be repeated in
+#: the prompt, because the API already carries them; it says nothing about when
+#: to reach for one, and a model's own sense of how current its knowledge is
+#: cannot be read off a tool schema. Kept out of the tool description alone
+#: because the description argues for one call, and this argues for a habit.
+WEB_RESEARCH_GUIDANCE: Final[str] = """\
+Your training data has a cutoff. The libraries, APIs, services and standards \
+you are asked to work with keep moving after it, and you cannot tell from the \
+inside which of your recollections have since gone stale: a wrong memory feels \
+exactly like a right one.
+
+So before you rely on an external interface you have not read in this \
+workspace, check it:
+
+- Reading the current page costs a fraction of what debugging code written \
+from a stale memory of an API costs, and far less than shipping it.
+- Prefer the primary source (official docs, the changelog, the specification, \
+the repository) over a summary of it, and prefer `web_fetch` on that page over \
+trusting a search snippet.
+- Pin your searches to what is current and authoritative: `recency` for \
+anything that changes over time, `include_domains` for the project's own \
+documentation site.
+- State what you actually checked. If you could not verify something and \
+proceeded on memory, say so rather than presenting it as established.
+
+This applies to version numbers, function and method signatures, \
+configuration formats, deprecations, and whether an approach is still the \
+recommended one."""
 
 DEFAULT_TEMPLATE: Final[str] = """\
 ## Identity
@@ -284,5 +314,11 @@ You work at **{{ company.name }}**.
 ## Context Budget
 
 {{ context_budget }}
+{% endif %}
+{% if web_research %}
+
+## Working From Current Sources
+
+{{ web_research_section }}
 {% endif %}
 """

@@ -52,6 +52,7 @@ import { resetProvidersStore } from '@/stores/providers'
 // (no `@/api/client` side effects), so it is safe in this global setup.
 import { _settleSessionProbeForTests } from '@/api/client'
 import { resetCircuitBreaker } from '@/utils/circuit-breaker'
+import { resetCapabilitiesCache } from '@/hooks/useCapabilities'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
 // `CookieJar`, which schedules a `createPromiseCallback` for every
@@ -359,6 +360,10 @@ afterEach(() => {
   // Plans store holds the review inbox + selected plan + filter; reset it so a
   // prior test's plans do not bleed into the next in the same worker.
   usePlansStore.getState().reset()
+  // The capability matrix is cached for the whole session and consumers
+  // subscribe to it for live refreshes; clear both so a test inherits neither
+  // an earlier test's matrix nor a setter belonging to an unmounted tree.
+  resetCapabilitiesCache()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.

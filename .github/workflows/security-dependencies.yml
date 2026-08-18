@@ -134,6 +134,29 @@ jobs:
           # scancode detects vendored BSD variants, and the action cannot
           # split AND expressions; import-linter ships no SPDX field so the
           # action reports it as unknown. Both are permissive.
+          # tld: reached transitively (trafilatura -> courlan -> tld) and
+          # offered under a tri-license DISJUNCTION. Its own declared
+          # metadata is `License-Expression: MPL-1.1 OR GPL-2.0-only OR
+          # LGPL-2.1-or-later`, i.e. an offer of three alternatives from
+          # which a licensee elects one. The action instead reports
+          # `(GPL-2.0-only AND LGPL-2.1-only AND LGPL-2.1-or-later AND
+          # MPL-1.1) OR (GPL-2.0-only AND LGPL-2.1-only AND MPL-1.1)`,
+          # because its license data comes from a per-file source scan
+          # whose findings are joined with AND. Every arm of that
+          # composed expression therefore carries GPL-2.0-only, which
+          # describes a package obligated by all three licenses at once
+          # rather than one offering a choice between them. Same failure
+          # mode as grimp above, and unfixable in the action: it cannot
+          # split a disjunction and has no way to prefer an arm.
+          #
+          # This project elects the LGPL-2.1-or-later arm and expressly
+          # does NOT elect GPL-2.0-only; the election is recorded in
+          # NOTICE. The exemption is not a suspension of the license
+          # rule: `scripts/check_license_compat.py` classifies tld from
+          # its installed metadata on every run via `_ELECTED_DISJUNCTIVE`
+          # and fails if the offer ever stops reaching the elected arm,
+          # which is a stricter check than the one being exempted here.
+          #
           # PURLs are intentionally version-less: a package's license does not
           # change across patch/minor bumps, so pinning a version only made the
           # exemption silently fall off the moment the lockfile advanced (the
@@ -187,5 +210,6 @@ jobs:
             pkg:pypi/nvidia-nvtx,
             pkg:pypi/pillow,
             pkg:pypi/grimp,
-            pkg:pypi/import-linter
+            pkg:pypi/import-linter,
+            pkg:pypi/tld
           comment-summary-in-pr: always

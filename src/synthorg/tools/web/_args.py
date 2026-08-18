@@ -9,16 +9,19 @@ timeout bounds match the wire schema).
 Tools wired to consume these models:
 
 * :class:`~synthorg.tools.web.web_search.WebSearchTool` -> :class:`WebSearchArgs`
+* :class:`~synthorg.tools.web.web_fetch.WebFetchTool` -> :class:`WebFetchArgs`
 * :class:`~synthorg.tools.web.http_request.HttpRequestTool` -> :class:`HttpRequestArgs`
 * :class:`~synthorg.tools.web.html_parser.HtmlParserTool` -> :class:`HtmlParserArgs`
 """
 
 import re
-from typing import Literal
+from typing import Final, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.network_validator import is_allowed_http_scheme
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,
@@ -39,14 +42,27 @@ _ASCII_DEL = 0x7F
 _RFC_TOKEN_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
 
 
-# ``HttpMethod`` is closed: the existing tool body rejects anything
-# outside ``_ALLOWED_METHODS`` after consuming the arg, so promoting
-# the gate to a typed Literal eliminates the runtime check entirely.
+# Closed to the four verbs the tool dispatches on, so a request naming any
+# other one is refused at the typed boundary rather than reaching the dispatch
+# with a verb nothing handles.
 HttpMethod = Literal["GET", "POST", "PUT", "DELETE"]
 
 
 # ``HtmlExtractMode`` mirrors the closed set the parser dispatches on.
 HtmlExtractMode = Literal["text", "links", "metadata"]
+
+
+# Recency windows every date-filtering provider can express. Kept coarse on
+# purpose: a provider that takes an ISO date and one that takes a keyword both
+# render these, while an exact date range would only survive on some of them.
+SearchRecency = Literal["day", "week", "month", "year"]
+
+
+# Mirrors ``tools.web.fetch_types.FetchBackend``; spelled as a Literal here so
+# the args model stays importable without pulling the tool module in.
+FetchBackendName = Literal["local", "proxy", "render"]
+
+_MAX_DOMAIN_FILTERS: Final[int] = 20
 
 
 class WebSearchArgs(BaseModel):
@@ -61,16 +77,89 @@ class WebSearchArgs(BaseModel):
         le=100,
         description="Maximum results to return",
     )
+    recency: SearchRecency | None = Field(
+        default=None,
+        description=(
+            "Restrict results to those published within this window. Use it"
+            " when the answer changes over time: current API surfaces, recent"
+            " releases, whether something is still the recommended approach."
+            " Ignored, with a note, by a provider that offers no date filter."
+        ),
+    )
+    include_domains: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_DOMAIN_FILTERS,
+        description=(
+            "Restrict results to these hostnames, e.g. the official docs site"
+            " for the library in question. Ignored, with a note, by a provider"
+            " that offers no domain filter."
+        ),
+    )
+    exclude_domains: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_DOMAIN_FILTERS,
+        description=(
+            "Drop results from these hostnames. Ignored, with a note, by a"
+            " provider that offers no domain filter."
+        ),
+    )
+
+
+class WebFetchArgs(BaseModel):
+    """Args for ``web_fetch``.
+
+    The URL is checked for SHAPE here and for POLICY at execution. This
+    boundary answers "is this a usable absolute http(s) URL at all", which is
+    a property of the string; whether the host it names may be reached is a
+    live SSRF decision that belongs where the request is made, and stays
+    there.
+    """
+
+    model_config = _ARGS_CONFIG
+
+    url: NotBlankStr = Field(description="Absolute http(s) URL of the page to read")
+    via: FetchBackendName | None = Field(
+        default=None,
+        description=(
+            "Which backend reads the page. Omit for the cheapest configured"
+            " one. 'local' fetches and extracts here; 'proxy' hands the URL to"
+            " the configured search vendor's reader; 'render' drives a headless"
+            " browser first, for pages that build their body in JavaScript."
+        ),
+    )
+
+    @field_validator("url")
+    @classmethod
+    def _url_is_an_absolute_http_url(cls, value: str) -> str:
+        """Reject anything that is not an absolute http(s) URL with a host.
+
+        A bare path or a scheme-less name reaches the fetch rungs as a
+        request that cannot succeed, and the agent gets a backend failure
+        naming a transport problem instead of the mistake it actually made.
+
+        Returns:
+            The URL unchanged.
+
+        Raises:
+            ValueError: If the scheme is not http(s) or no host is present.
+        """
+        if not is_allowed_http_scheme(value):
+            msg = f"url must be an absolute http:// or https:// URL, got {value!r}"
+            raise ValueError(msg)
+        if not urlparse(value).hostname:
+            msg = f"url must name a host, got {value!r}"
+            raise ValueError(msg)
+        return value
 
 
 class HttpRequestArgs(BaseModel):
     """Args for ``http_request``.
 
-    The HTTP method is restricted to the closed set the tool dispatches
-    on; the previous ``_ALLOWED_METHODS`` runtime check becomes a
-    Pydantic ``Literal`` validation.  ``timeout`` is left optional so
-    callers can fall back to the per-tool default; the bounds match the
-    JSON-Schema cap (``0-300`` seconds).
+    The HTTP method is a closed ``Literal`` matching the verbs the tool
+    dispatches on, so an unsupported one is rejected at the boundary rather
+    than inside the tool body.  ``timeout`` is left optional so callers can
+    fall back to the per-tool default; the bounds match the JSON-Schema cap
+    (``0-300`` seconds).
     """
 
     model_config = _ARGS_CONFIG
@@ -161,9 +250,12 @@ class HtmlParserArgs(BaseModel):
 
 
 __all__ = [
+    "FetchBackendName",
     "HtmlExtractMode",
     "HtmlParserArgs",
     "HttpMethod",
     "HttpRequestArgs",
+    "SearchRecency",
+    "WebFetchArgs",
     "WebSearchArgs",
 ]

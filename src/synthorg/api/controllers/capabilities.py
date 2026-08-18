@@ -2,10 +2,10 @@
 
 Returns one boolean per optional subsystem so the web dashboard can
 gate polling on the surfaces that are actually wired in this
-deployment. Without this surface the dashboard polled every endpoint
-unconditionally and recorded a 503 every cycle for any subsystem the
-operator had not configured -- a minimally-configured install used
-to log 16+ such errors in 57h of runtime.
+deployment. Without it the dashboard polls every endpoint
+unconditionally and records a 503 each cycle for every subsystem the
+operator has not configured, which on a minimally-configured install
+is a steady stream of errors describing nothing wrong.
 """
 
 from litestar import Controller, get
@@ -21,7 +21,13 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger
 from synthorg.ontology.state import OntologyStateSlice
+from synthorg.settings.state import config_resolver_of
 from synthorg.telemetry.state import TelemetryStateSlice
+from synthorg.tools.state import ToolsStateSlice
+from synthorg.tools.web.readiness import (
+    WebSearchBlocker,
+    resolve_web_research_readiness,
+)
 
 logger = get_logger(__name__)
 
@@ -56,6 +62,25 @@ class CapabilitiesResponse(BaseModel):
             (``effective_config.integrations.enabled``) is on; when
             False the connections / oauth / webhooks / mcp catalog
             surfaces are not registered at all.
+        web_search: A search provider is selected AND bound, so agents
+            can actually search. False covers both "off by choice" and
+            "on but unusable", which ``web_search_blocker``
+            distinguishes.
+        web_search_blocker: The named condition stopping web search, or
+            ``none``. Typed as the enum so the published schema keeps the
+            closed set rather than degrading to a free-form string. Anything
+            other than ``none`` / ``disabled`` is an operator misconfiguration
+            the dashboard surfaces, because a feature that reads as enabled
+            everywhere else and answers nothing is otherwise invisible until
+            an agent needs it.
+        web_search_message: Operator-facing explanation of the blocker,
+            empty when there is nothing to fix.
+        web_search_notify: Whether the dashboard should raise the blocker
+            with the operator, which a dismissal turns off.
+        web_search_reusable_connections: Saved connections whose vendor
+            matches the selected provider, so a blocked setup can point at
+            a credential that already exists instead of asking again.
+        web_fetch: Agents can read a page as markdown.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -68,6 +93,12 @@ class CapabilitiesResponse(BaseModel):
     a2a: bool
     telemetry: bool
     integrations: bool
+    web_search: bool
+    web_search_blocker: WebSearchBlocker
+    web_search_message: str
+    web_search_notify: bool
+    web_search_reusable_connections: tuple[str, ...]
+    web_fetch: bool
 
 
 class CapabilitiesController(Controller):
@@ -124,6 +155,19 @@ class CapabilitiesController(Controller):
         )
         a2a_wired = app_state.slice(A2aStateSlice).peer_registry is not None
         simulation_runtime = has_simulation_runtime(app_state)
+        # Two different questions, and the capability is the AND of them.
+        # Readiness answers "is this configured", read live from the same
+        # settings boot builds from, and it owns the blocker an operator has to
+        # act on. What the runtime INSTALLED answers "can an agent call it":
+        # assembly stops before the tool registry when no provider is active or
+        # the decomposition pair is unbound, and neither is visible to the
+        # settings the readiness verdict reads. Reporting readiness alone told
+        # an operator web research was on while no session held either tool.
+        readiness = await resolve_web_research_readiness(
+            config_resolver_of(app_state),
+            connections=app_state.slice(IntegrationsStateSlice).connection_catalog,
+        )
+        installed = app_state.slice(ToolsStateSlice).web_research
         return ApiResponse(
             data=CapabilitiesResponse(
                 simulations=simulation_runtime,
@@ -135,6 +179,16 @@ class CapabilitiesController(Controller):
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
+                web_search=readiness.search_ready
+                and installed is not None
+                and installed.search,
+                web_search_blocker=readiness.search_blocker,
+                web_search_message=readiness.describe(),
+                web_search_notify=readiness.should_notify,
+                web_search_reusable_connections=readiness.reusable_connections,
+                web_fetch=readiness.fetch_enabled
+                and installed is not None
+                and installed.fetch,
             ),
         )
 

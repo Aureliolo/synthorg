@@ -33,6 +33,7 @@ from synthorg.observability.events.web import (
     WEB_SSRF_BLOCKED,
     WEB_SSRF_DISABLED,
 )
+from synthorg.providers.url_utils import redact_url
 
 logger = get_logger(__name__)
 
@@ -426,12 +427,17 @@ async def validate_url_host(
     """
     hostname = extract_hostname(url)
     if not hostname:
+        # The URL is deliberately absent from both the log and the returned
+        # message. Redaction cannot help here: it works by rebuilding the URL
+        # around a parsed hostname, and returns the input untouched when there
+        # is none, which is precisely this branch. Since the caller already
+        # holds the URL it sent, echoing it back adds nothing but a copy of
+        # whatever credentials were sitting in the authority.
         logger.warning(
             WEB_SSRF_BLOCKED,
-            url=url,
             reason="hostname_extraction_failed",
         )
-        return f"Could not extract hostname from URL: {url!r}"
+        return "Could not extract a hostname from the URL"
 
     normalized = normalize_ascii_lowercase(hostname)
     is_https = compare_ci(urlparse(url).scheme, "https")
@@ -445,7 +451,7 @@ async def validate_url_host(
             hostname=normalized,
             reason="malformed_port",
         )
-        return f"Invalid port in URL: {url!r}"
+        return f"Invalid port in URL: {redact_url(url)!r}"
     if raw_port is not None and raw_port <= 0:
         logger.warning(
             WEB_SSRF_BLOCKED,

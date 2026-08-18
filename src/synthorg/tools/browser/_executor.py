@@ -647,6 +647,25 @@ async def _sync_keystore(
     _save_keystore(state_path, list(merged.values()))
 
 
+def _bounded_content(html: str, limit: int) -> tuple[str, bool]:
+    """Cap the serialised DOM at *limit* characters.
+
+    The document's size is chosen by the page, and this envelope is handed
+    back as a single JSON string over the sandbox result channel, so an
+    unbounded capture lets any target decide how much memory the host spends
+    parsing its reply. The ceiling is required rather than optional, because
+    an absent one read as "no cap" is that unbounded capture.
+
+    Returns:
+        The (possibly cut) HTML and whether anything was dropped. Cutting
+        mid-tag is safe for the consumer: every reader of this field parses
+        with recovery on, which is what reads real-world markup at all.
+    """
+    if len(html) <= limit:
+        return html, False
+    return html[:limit], True
+
+
 async def _dispatch_page(
     context: BrowserContext,
     payload: "BrowserPayload",
@@ -669,6 +688,8 @@ async def _dispatch_page(
         screenshot_result: dict[str, object] | None = None
         a11y_result: dict[str, object] | None = None
         storage_result: "StoragePayload | None" = None
+        content_html: str | None = None
+        content_truncated = False
         if operation in {"capture", "screenshot"}:
             if not payload.get("screenshot_path"):
                 raise ValueError("screenshot_path required for capture / screenshot")
@@ -677,6 +698,12 @@ async def _dispatch_page(
             a11y_result = await _accessibility(page, payload)
         if operation in _STORAGE_OPERATIONS:
             storage_result = await _STORAGE_HANDLERS[operation](page, payload)
+        if operation == "content":
+            limit = payload.get("content_max_characters")
+            if type(limit) is not int or limit <= 0:
+                raise ValueError("content_max_characters must be a positive integer")
+            html = await page.content()
+            content_html, content_truncated = _bounded_content(html, limit)
         # Persist session state while the page (and its origin's
         # localStorage) is still open, so a later call sees the writes.
         await _persist_storage_state(context, payload)
@@ -688,6 +715,8 @@ async def _dispatch_page(
             "screenshot": screenshot_result,
             "accessibility": a11y_result,
             "storage": storage_result,
+            "content": content_html,
+            "content_truncated": content_truncated,
         }
     finally:
         await page.close()

@@ -33,6 +33,17 @@ class _StubCatalog:
         # rate-limit ceiling, which is all these wiring tests need.
         return None
 
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
+        del limit, offset
+        # Readiness reads this to name a connection the operator could reuse,
+        # which is a setup convenience and changes no wiring verdict.
+        return ()
+
 
 def _app_state(*, catalog: object) -> AppState:
     integrations = SimpleNamespace(connection_catalog=catalog)

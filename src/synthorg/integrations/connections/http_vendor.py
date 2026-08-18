@@ -58,6 +58,7 @@ class HttpVendor(StrEnum):
     BRAVE = "brave"
     TAVILY = "tavily"
     EXA = "exa"
+    OLLAMA = "ollama"
     CUSTOM = "custom"
 
 
@@ -78,6 +79,10 @@ class HttpVendorPreset(BaseModel):
         health_url: Absolute URL to probe instead of ``base_url``. Set only
             for a vendor with a genuinely free metadata endpoint, where a
             ``2xx`` proves the credential without buying anything.
+        reader_url: Absolute URL of this vendor's page-reader endpoint, which
+            takes a target URL and returns that page's content. Empty when the
+            vendor sells search but no reader, which is what makes it absent
+            from the fetch ladder rather than present and always failing.
         auth_cleared_statuses: Error statuses this vendor is *known* to
             return once the credential has been accepted and only the
             request shape was rejected. Empty unless verified against the
@@ -97,6 +102,7 @@ class HttpVendorPreset(BaseModel):
     auth_header: NotBlankStr
     auth_template: NotBlankStr = "{key}"
     health_url: str = ""
+    reader_url: str = ""
     auth_cleared_statuses: frozenset[int] = Field(default_factory=frozenset)
     auth_failure_markers: tuple[str, ...] = ()
 
@@ -182,6 +188,7 @@ _TAVILY: Final = HttpVendorPreset(
     # 2xx here is the whole verdict, which is why no error contract is
     # declared below.
     health_url="https://api.tavily.com/usage",
+    reader_url="https://api.tavily.com/extract",
 )
 
 _EXA: Final = HttpVendorPreset(
@@ -189,12 +196,43 @@ _EXA: Final = HttpVendorPreset(
     label=NotBlankStr("Exa"),
     base_url=NotBlankStr("https://api.exa.ai/search"),
     auth_header=NotBlankStr("x-api-key"),
-    # No free endpoint and no verified error contract, so nothing is claimed:
-    # the probe sends no query (buying nothing), and only Exa's documented
-    # 401 for a bad key is treated as a verdict. Anything else reports
-    # unknown rather than guessing, because a guess here either bills for
-    # every probe or reports a revoked key as healthy. Fill in
-    # ``auth_cleared_statuses`` once observed against the live API.
+    # The probe sends no query, which this API rejects as a malformed body
+    # rather than running a search, so it buys nothing. Observed against the
+    # live endpoint: a rejected key answers 401 tagged ``INVALID_API_KEY``,
+    # and a request carrying no key at all answers 402 tagged
+    # ``X402_PAYMENT_REQUIRED``, not the 401 the published table describes.
+    # The other 402 tags (exhausted credits, exceeded budget) are deliberately
+    # absent: they name a key that WAS accepted, and calling them auth failures
+    # would blame the credential for an empty wallet.
+    #
+    # ``auth_cleared_statuses`` stays empty. The published table says a
+    # malformed body answers 400, but that same table was wrong about the
+    # no-key case above, and what a valid key answers cannot be observed
+    # without holding one. A documented status is exactly the guess this field
+    # refuses.
+    auth_failure_markers=("INVALID_API_KEY", "X402_PAYMENT_REQUIRED"),
+    reader_url="https://api.exa.ai/contents",
+)
+
+_OLLAMA: Final = HttpVendorPreset(
+    id=NotBlankStr(HttpVendor.OLLAMA.value),
+    label=NotBlankStr("Ollama"),
+    base_url=NotBlankStr("https://ollama.com/api/web_search"),
+    auth_header=NotBlankStr("Authorization"),
+    auth_template=NotBlankStr("Bearer {key}"),
+    # Observed against the live endpoint: both a rejected key and no key at
+    # all answer 401 ``{"error":"Unauthorized"}``. The marker carries the JSON
+    # key with it rather than the bare word, which otherwise matches any page
+    # that merely discusses authorisation, and the probe reads bodies it did
+    # not author.
+    #
+    # ``auth_cleared_statuses`` stays empty on purpose. This vendor publishes
+    # no error contract, and what a request WITH a valid key but no query
+    # answers cannot be observed without holding one; naming a status anyway
+    # is the guess that reports a revoked key as healthy. Empty costs a
+    # working key an indeterminate badge, which is the survivable half.
+    auth_failure_markers=('"error":"Unauthorized"',),
+    reader_url="https://ollama.com/api/web_fetch",
 )
 
 
@@ -203,6 +241,7 @@ HTTP_VENDOR_PRESETS: Final[Mapping[HttpVendor, HttpVendorPreset]] = MappingProxy
         HttpVendor.BRAVE: _BRAVE,
         HttpVendor.TAVILY: _TAVILY,
         HttpVendor.EXA: _EXA,
+        HttpVendor.OLLAMA: _OLLAMA,
     }
 )
 

@@ -28,6 +28,12 @@ class BrowserPayload(TypedDict):
     storage_type: NotRequired[Literal["local", "session"]]
     storage_key: NotRequired[str]
     storage_value: NotRequired[str]
+    # Ceiling on the serialised DOM the ``content`` operation returns. The
+    # page decides how big its own document is, and the result crosses a
+    # process boundary as one JSON string, so the cap is applied in the
+    # container before the envelope is built rather than by the host after
+    # it has already been transported and parsed.
+    content_max_characters: NotRequired[int]
     # Workspace-mounted paths that persist a browsing session across
     # separate tool calls: the Playwright storage_state (cookies +
     # localStorage) and the host-side virtual-authenticator keystore.

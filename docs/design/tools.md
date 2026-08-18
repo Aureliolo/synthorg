@@ -14,7 +14,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **File System** | Read, write, edit, list, delete files | All developers, writers |
 | **Code Execution** | Run code in sandboxed environments | Developers, QA |
 | **Version Control** | Git operations, PR management | Developers, DevOps |
-| **Web** | HTTP requests, web scraping, search | Researchers, analysts |
+| **Web** | `http_request` (raw HTTP under an SSRF policy), `html_parser`, `web_search` (vendor-agnostic, with declared recency / domain filters) and `web_fetch` (one page as markdown over an explicit `local` / `proxy` / `render` ladder). See [web-research.md](web-research.md) | Researchers, analysts, any agent working against a third-party API |
 | **Database** | Query, migrate, admin | Backend devs, DBAs |
 | **Terminal** | Shell commands (sandboxed) | DevOps, senior devs |
 | **Design** | Image generation, mockup tools | Designers |

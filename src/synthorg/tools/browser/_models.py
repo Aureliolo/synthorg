@@ -133,6 +133,36 @@ class NavigationResult(BaseModel):
     )
 
 
+class PageContentResult(BaseModel):
+    """A page's readable content after its scripts have run.
+
+    Carries markdown rather than the serialised DOM. This model is rendered
+    into the tool result an agent reads, and a page's raw DOM is mostly
+    navigation, inline scripts and styling: on a script-heavy site it runs to
+    megabytes, of which the part worth reading is a fraction. Handing that back
+    whole would spend an agent's entire context on the markup around the
+    answer. The DOM is still what the render fetch rung consumes, and it
+    reaches that caller through the result metadata.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    requested_url: str = Field(description="URL originally requested.")
+    final_url: str = Field(description="Final URL after redirects.")
+    markdown: str = Field(
+        description="Readable page content as markdown, boilerplate removed.",
+    )
+    title: str = Field(default="", description="Document title, if declared.")
+    truncated: bool = Field(
+        default=False,
+        description="Whether the markdown was cut to fit the character budget.",
+    )
+    content_length: int = Field(
+        ge=0,
+        description="Length of the serialised DOM in characters, before extraction.",
+    )
+
+
 class ScreenshotMetadata(BaseModel):
     """Metadata for a captured screenshot."""
 

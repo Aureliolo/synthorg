@@ -9451,6 +9451,12 @@ export type components = {
             readonly simulations: boolean;
             readonly telemetry: boolean;
             readonly tunnel: boolean;
+            readonly web_fetch: boolean;
+            readonly web_search: boolean;
+            readonly web_search_blocker: components["schemas"]["WebSearchBlocker"];
+            readonly web_search_message: string;
+            readonly web_search_notify: boolean;
+            readonly web_search_reusable_connections: readonly string[];
             readonly webhooks: boolean;
         };
         /** CapabilityAssignmentDTO */
@@ -20370,6 +20376,12 @@ export type components = {
             /** @description Source page URL */
             readonly url: string;
         };
+        /**
+         * WebSearchBlocker
+         * @description Why web search is not serving requests.
+         * @enum {string}
+         */
+        readonly WebSearchBlocker: "none" | "disabled" | "no_provider" | "no_connection" | "no_catalog";
         /** WindowMetrics */
         readonly WindowMetrics: {
             /** @description Average completion time */

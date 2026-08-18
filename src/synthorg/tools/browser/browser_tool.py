@@ -44,9 +44,6 @@ from synthorg.observability.events.browser import (
     BROWSER_DIFF_START,
     BROWSER_DIFF_SUCCESS,
     BROWSER_EXECUTOR_FAILED,
-    BROWSER_NAVIGATE_FAILED,
-    BROWSER_NAVIGATE_START,
-    BROWSER_NAVIGATE_SUCCESS,
     BROWSER_SCREENSHOT_FAILED,
     BROWSER_SCREENSHOT_START,
     BROWSER_SCREENSHOT_SUCCESS,
@@ -76,6 +73,7 @@ from synthorg.tools.browser._constants import (
     AXE_VERSION_PIN,
     BROWSER_STATE_SUBDIR,
     CONTAINER_WORKSPACE_ROOT,
+    CONTENT_SOURCE_BUDGET_MULTIPLIER,
     NAVIGATION_TIMEOUT_SECONDS,
     SCREENSHOT_TIMEOUT_SECONDS,
     SCREENSHOTS_SUBDIR,
@@ -86,6 +84,7 @@ from synthorg.tools.browser._models import (
     ScreenshotDiffResult,
     SpecResult,
 )
+from synthorg.tools.browser._page_modes import _PageModesMixin
 from synthorg.tools.browser._protocols import ScreenshotDiffer
 from synthorg.tools.browser._result_helpers import (
     error_result,
@@ -178,7 +177,7 @@ def _get_baseline_lock(
     return lock
 
 
-class BrowserTool(_BrowserBuilderMixin, BaseTool):
+class BrowserTool(_PageModesMixin, _BrowserBuilderMixin, BaseTool):
     """Headless-browser automation backed by Playwright in a sandbox.
 
     Caller contract: invoke :meth:`cleanup` at the task boundary to
@@ -224,11 +223,15 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
         super().__init__(
             name="browser",
             description=(
-                "Headless browser via Playwright. Modes: navigate, "
+                "Headless browser via Playwright. Modes: navigate, content, "
                 "screenshot, diff, accessibility_scan, spec, storage_get, "
                 "storage_set, storage_remove, storage_clear, "
                 "webauthn_install, webauthn_create_credential, "
                 "webauthn_list_credentials, webauthn_delete_credential. "
+                "'content' runs the page's scripts and returns the readable "
+                "text as markdown within a character budget, which is what "
+                "makes a JavaScript-built page readable; the serialised DOM "
+                "stays in the result metadata for programmatic callers. "
                 "Captures screenshots to the project workspace; diffs "
                 "against stored baselines via SSIM; injects axe-core for "
                 "accessibility scans; reads/writes localStorage and "
@@ -289,6 +292,8 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             match args.mode:
                 case "navigate":
                     return await self._mode_navigate(args)
+                case "content":
+                    return await self._mode_content(args)
                 case "screenshot":
                     return await self._mode_screenshot(args)
                 case "accessibility_scan":
@@ -331,38 +336,6 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
     # ---------------------------------------------------------------
     # Mode handlers
     # ---------------------------------------------------------------
-
-    async def _mode_navigate(
-        self,
-        args: BrowserToolArgs,
-    ) -> ToolExecutionResult:
-        """Mode navigate.
-
-        Returns:
-            Result of type ``ToolExecutionResult``.
-
-        Raises:
-            BrowserDomainError: If the related operation fails.
-        """
-        url = self._resolve_url(args)
-        logger.debug(BROWSER_NAVIGATE_START, url=redact_url(url))
-        try:
-            payload = await self._run_executor(
-                operation="navigate",
-                url=url,
-                args=args,
-            )
-            navigation = self._build_navigation(payload, url)
-        except BrowserDomainError as exc:
-            logger.warning(
-                BROWSER_NAVIGATE_FAILED,
-                url=redact_url(url),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-        logger.debug(BROWSER_NAVIGATE_SUCCESS, url=redact_url(navigation.final_url))
-        return ok_result(navigation)
 
     async def _mode_screenshot(
         self,
@@ -940,6 +913,9 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
             "storage_type": args.storage_type,
             "storage_key": args.storage_key,
             "storage_value": args.storage_value,
+            "content_max_characters": (
+                self._settings.content_max_characters * CONTENT_SOURCE_BUDGET_MULTIPLIER
+            ),
             "storage_state_path": self._state_container_path(STORAGE_STATE_FILENAME),
             "webauthn_state_path": self._state_container_path(WEBAUTHN_STATE_FILENAME),
             "webauthn_rp_id": args.webauthn_rp_id,
@@ -1165,6 +1141,14 @@ class BrowserTool(_BrowserBuilderMixin, BaseTool):
     # ---------------------------------------------------------------
     # Path translation + asset staging
     # ---------------------------------------------------------------
+
+    def _content_char_budget(self) -> int:
+        """Ceiling on the readable content the ``content`` mode hands an agent.
+
+        Returns:
+            The operator-configured character budget.
+        """
+        return self._settings.content_max_characters
 
     def _resolve_url(self, args: BrowserToolArgs) -> str:
         """Resolve url.

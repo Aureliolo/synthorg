@@ -20,6 +20,13 @@ Response shape per provider (the only thing that differs beyond auth):
   ``title`` / ``url`` / ``content``.
 * exa: ``POST`` ``{query, numResults, contents}``; results at ``results[]``
   with ``title`` / ``url`` / ``text``.
+* ollama: ``POST`` ``{query, max_results}``; results at ``results[]`` with
+  ``title`` / ``url`` / ``content``.
+
+Result filters are declared, never assumed. A provider names the keys it
+implements and the tool reports any filter the selected provider cannot
+express, because a recency filter that is silently dropped returns stale
+results that look filtered.
 """
 
 from collections.abc import Mapping
@@ -36,6 +43,11 @@ from synthorg.integrations.connections.http_vendor import (
 )
 
 SearchMethod = Literal["GET", "POST"]
+FreshnessStyle = Literal["keyword", "iso_date"]
+
+RECENCY_WINDOW_DAYS: Final[Mapping[str, int]] = MappingProxyType(
+    {"day": 1, "week": 7, "month": 30, "year": 365}
+)
 
 
 class SearchProviderPreset(BaseModel):
@@ -58,6 +70,22 @@ class SearchProviderPreset(BaseModel):
         title_key: Result-object key for the title.
         url_key: Result-object key for the URL.
         snippet_key: Result-object key for the text snippet.
+        freshness_key: Param/body key carrying a recency window, or ``None``
+            when this provider offers no date filter.
+        freshness_style: How that key is spelled. ``keyword`` sends this
+            provider's own token from ``freshness_values``; ``iso_date`` sends
+            an absolute earliest-publication date, which the provider derives
+            from the window because days-per-window is arithmetic rather than
+            anything a vendor gets to define.
+        freshness_values: This provider's token for each recency window. Only
+            read under ``keyword`` style, since every keyword provider spells
+            the same four windows differently.
+        include_domains_key: Param/body key restricting results to a set of
+            hostnames, or ``None`` when unsupported.
+        exclude_domains_key: Param/body key dropping a set of hostnames, or
+            ``None`` when unsupported.
+        domains_as_csv: Whether the domain keys take a comma-joined string
+            rather than a JSON array.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -72,6 +100,19 @@ class SearchProviderPreset(BaseModel):
     title_key: NotBlankStr = "title"
     url_key: NotBlankStr = "url"
     snippet_key: NotBlankStr
+    freshness_key: NotBlankStr | None = None
+    freshness_style: FreshnessStyle = "keyword"
+    freshness_values: Mapping[str, str] = Field(default_factory=dict)
+    include_domains_key: NotBlankStr | None = None
+    exclude_domains_key: NotBlankStr | None = None
+    domains_as_csv: bool = False
+
+    @property
+    def supports_recency(self) -> bool:
+        """Whether this provider can filter by publication date."""
+        if self.freshness_key is None:
+            return False
+        return self.freshness_style == "iso_date" or bool(self.freshness_values)
 
     @computed_field
     @property
@@ -102,6 +143,8 @@ _BRAVE: Final = SearchProviderPreset(
     max_results_cap=20,
     results_path=("web", "results"),
     snippet_key="description",
+    freshness_key="freshness",
+    freshness_values={"day": "pd", "week": "pw", "month": "pm", "year": "py"},
 )
 
 _TAVILY: Final = SearchProviderPreset(
@@ -112,6 +155,10 @@ _TAVILY: Final = SearchProviderPreset(
     max_results_cap=20,
     results_path=("results",),
     snippet_key="content",
+    freshness_key="time_range",
+    freshness_values={"day": "day", "week": "week", "month": "month", "year": "year"},
+    include_domains_key="include_domains",
+    exclude_domains_key="exclude_domains",
 )
 
 _EXA: Final = SearchProviderPreset(
@@ -123,16 +170,30 @@ _EXA: Final = SearchProviderPreset(
     max_results_cap=100,
     results_path=("results",),
     snippet_key="text",
+    freshness_key="startPublishedDate",
+    freshness_style="iso_date",
+    include_domains_key="includeDomains",
+    exclude_domains_key="excludeDomains",
+)
+
+_OLLAMA: Final = SearchProviderPreset(
+    vendor=HTTP_VENDOR_PRESETS[HttpVendor.OLLAMA],
+    method="POST",
+    query_key="query",
+    count_key="max_results",
+    # Ten, against twenty and a hundred for the others: this endpoint rejects
+    # a larger count rather than clamping it, so the ceiling is load-bearing.
+    max_results_cap=10,
+    results_path=("results",),
+    snippet_key="content",
 )
 
 
 SEARCH_PROVIDER_PRESETS: Final[Mapping[str, SearchProviderPreset]] = MappingProxyType(
-    {p.id: p for p in (_BRAVE, _TAVILY, _EXA)}
+    {p.id: p for p in (_BRAVE, _TAVILY, _EXA, _OLLAMA)}
 )
 
-# Ordered provider ids; first entry is the recommended default.
 SEARCH_PROVIDER_IDS: Final[tuple[str, ...]] = tuple(SEARCH_PROVIDER_PRESETS)
-DEFAULT_SEARCH_PROVIDER_ID: Final[str] = _BRAVE.id
 
 
 def get_search_preset(provider_id: str) -> SearchProviderPreset | None:
@@ -153,9 +214,10 @@ def get_search_preset(provider_id: str) -> SearchProviderPreset | None:
 
 
 __all__ = [
-    "DEFAULT_SEARCH_PROVIDER_ID",
+    "RECENCY_WINDOW_DAYS",
     "SEARCH_PROVIDER_IDS",
     "SEARCH_PROVIDER_PRESETS",
+    "FreshnessStyle",
     "SearchMethod",
     "SearchProviderPreset",
     "get_search_preset",

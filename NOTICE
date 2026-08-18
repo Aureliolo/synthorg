@@ -22,6 +22,18 @@ under the terms of the GNU Lesser General Public License, version 3.
 The full text of the GNU Lesser General Public License, version 3, is available
 at https://www.gnu.org/licenses/lgpl-3.0.html.
 
+This distribution also includes `tld`, reached transitively through
+`trafilatura` -> `courlan`, which is offered under a choice of three licences:
+
+  - tld                        MPL-1.1 OR GPL-2.0-only OR LGPL-2.1-or-later
+                               https://github.com/barseghyanartur/tld
+
+SynthOrg elects the LGPL-2.1-or-later arm of that offer. It is imported as a
+separate work and is not modified; it may be replaced or relinked under the
+terms of the GNU Lesser General Public License, version 2.1, whose full text is
+available at https://www.gnu.org/licenses/lgpl-2.1.html. The GPL-2.0-only arm
+of the offer is expressly NOT elected.
+
 Re-linking note (LGPL-3.0 section 4d0): to substitute a modified psycopg, build
 the backend image with a replacement psycopg wheel installed in place of the
 pinned version (the C extension `psycopg_binary` is an optional acceleration of

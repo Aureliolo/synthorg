@@ -13,6 +13,7 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.security.redteam.builder import RedTeamRuntime
 from synthorg.security.visionverify.protocol import VisionVerifierGate
+from synthorg.tools.state import WebResearchTools
 from synthorg.workers.execution_service import WorkerExecutionService
 
 
@@ -49,3 +50,7 @@ class RuntimeServices(NamedTuple):
     completion_oracle_runtime: CompletionOracleRuntime | None = None
     completion_oracle_enabled: bool = False
     vision_gate: VisionVerifierGate | None = None
+    # Defaults to neither installed, which is what the two early returns above
+    # the tool-registry build actually produce. A default of "installed" would
+    # make every path that never reached the build claim it had.
+    web_research: WebResearchTools = WebResearchTools()

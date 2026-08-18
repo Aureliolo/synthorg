@@ -67,6 +67,7 @@ from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
+from synthorg.tools.state import ToolsStateSlice, WebResearchTools
 from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
 )
@@ -98,6 +99,7 @@ from synthorg.workers._runtime_aux_wiring import (
 )
 from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers._vision_gate_wiring import build_vision_gate_or_none
+from synthorg.workers._web_fetch_rung_wiring import build_web_fetch_rungs_or_none
 from synthorg.workers._web_search_provider_wiring import (
     build_web_search_provider_or_none,
 )
@@ -322,6 +324,7 @@ async def build_runtime_services(
     # instance into both the tool registry and the coordinator's planning grant,
     # rather than each assembly re-resolving settings and building its own.
     search_provider = await build_web_search_provider_or_none(app_state)
+    fetch_rungs = await build_web_fetch_rungs_or_none(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
@@ -331,6 +334,7 @@ async def build_runtime_services(
             *mcp_bridge_tools,
         ),
         search_provider=search_provider,
+        fetch_rungs=fetch_rungs,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
@@ -488,6 +492,13 @@ async def build_runtime_services(
         completion_oracle_runtime=completion_oracle_runtime,
         completion_oracle_enabled=completion_oracle_config.enabled,
         vision_gate=vision_gate,
+        # Reported from what was built, not from what settings asked for: this
+        # is the only point at which both are known, and it sits below the two
+        # early returns that skip the tool registry entirely.
+        web_research=WebResearchTools(
+            search=search_provider is not None,
+            fetch=fetch_rungs is not None and bool(fetch_rungs.providers),
+        ),
     )
 
 
@@ -576,6 +587,10 @@ async def reload_runtime_services(
                 workspace_root=agent_workspace_root_of(app_state),
             )
             app_state.swap_worker_execution_service(services.worker_execution_service)
+            # Republished on every rebuild: a reload that loses the provider
+            # also loses both web tools, and a claim that is only ever written
+            # at boot would keep reporting the rungs the old build had.
+            app_state.wire(ToolsStateSlice, web_research=services.web_research)
             if services.coordinator is not None:
                 app_state.swap_coordinator(services.coordinator)
                 coordinator_swapped = True

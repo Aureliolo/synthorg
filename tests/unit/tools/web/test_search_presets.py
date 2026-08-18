@@ -4,49 +4,53 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.tools.web.providers.presets import (
-    DEFAULT_SEARCH_PROVIDER_ID,
+    RECENCY_WINDOW_DAYS,
     SEARCH_PROVIDER_IDS,
     SEARCH_PROVIDER_PRESETS,
     get_search_preset,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestSearchPresets:
     """The declarative preset registry."""
 
-    @pytest.mark.unit
-    def test_default_is_brave_and_first(self) -> None:
-        assert DEFAULT_SEARCH_PROVIDER_ID == "brave"
-        assert SEARCH_PROVIDER_IDS[0] == "brave"
+    def test_no_provider_is_privileged_as_a_default(self) -> None:
+        """The setting ships blank, so no preset may claim to be the default.
 
-    @pytest.mark.unit
-    def test_all_three_providers_registered(self) -> None:
-        assert set(SEARCH_PROVIDER_IDS) == {"brave", "tavily", "exa"}
+        A shipped default here is a vendor the operator never chose being
+        billed the moment web search is switched on.
+        """
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.settings.registry import get_registry
 
-    @pytest.mark.unit
+        definition = get_registry().get("tools", "web_search_provider")
+        assert definition is not None
+        assert definition.default == ""
+
+    def test_all_providers_registered(self) -> None:
+        assert set(SEARCH_PROVIDER_IDS) == {"brave", "tavily", "exa", "ollama"}
+
     def test_get_known_preset(self) -> None:
         preset = get_search_preset("tavily")
         assert preset is not None
         assert preset.id == "tavily"
         assert preset.method == "POST"
 
-    @pytest.mark.unit
     def test_get_unknown_preset_returns_none(self) -> None:
         assert get_search_preset("does-not-exist") is None
 
-    @pytest.mark.unit
     def test_preset_id_matches_registry_key(self) -> None:
         for key, preset in SEARCH_PROVIDER_PRESETS.items():
             assert key == preset.id
 
-    @pytest.mark.unit
     def test_preset_is_frozen(self) -> None:
         preset = get_search_preset("brave")
         assert preset is not None
         with pytest.raises(ValidationError):
             preset.endpoint = "https://evil.example"  # type: ignore[misc]
 
-    @pytest.mark.unit
     def test_preset_extra_mutation_does_not_leak(self) -> None:
         """A caller mutating ``extra`` must not corrupt the shared singleton.
 
@@ -60,7 +64,47 @@ class TestSearchPresets:
         assert fresh is not None
         assert "injected" not in fresh.extra
 
-    @pytest.mark.unit
+    def test_ollama_cap_is_lower_than_the_others(self) -> None:
+        """The cap is load-bearing: this endpoint rejects a larger count."""
+        ollama = get_search_preset("ollama")
+        assert ollama is not None
+        assert ollama.max_results_cap == 10
+
+    @pytest.mark.parametrize(
+        ("provider_id", "recency", "include_domains", "exclude_domains"),
+        [
+            ("brave", True, False, False),
+            ("tavily", True, True, True),
+            ("exa", True, True, True),
+            ("ollama", False, False, False),
+        ],
+    )
+    def test_declared_filter_support(
+        self,
+        provider_id: str,
+        recency: bool,
+        include_domains: bool,
+        exclude_domains: bool,
+    ) -> None:
+        """Each preset declares exactly the filters its vendor implements.
+
+        Include and exclude are asserted apart because the tool reports them
+        apart: a provider that can restrict hostnames but not drop them owes
+        the agent a note about the half it ignored.
+        """
+        preset = get_search_preset(provider_id)
+        assert preset is not None
+        assert preset.supports_recency is recency
+        assert (preset.include_domains_key is not None) is include_domains
+        assert (preset.exclude_domains_key is not None) is exclude_domains
+
+    def test_keyword_freshness_presets_cover_every_window(self) -> None:
+        """A keyword provider missing a window would drop that filter silently."""
+        for preset in SEARCH_PROVIDER_PRESETS.values():
+            if not preset.supports_recency or preset.freshness_style != "keyword":
+                continue
+            assert set(preset.freshness_values) == set(RECENCY_WINDOW_DAYS)
+
     def test_provider_setting_enum_matches_presets(self) -> None:
         """The tools.web_search_provider enum must not drift from the registry.
 

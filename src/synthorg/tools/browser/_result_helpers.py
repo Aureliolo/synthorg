@@ -9,9 +9,10 @@ per-operation dispatch.
 """
 
 import json
+from collections.abc import Mapping
 from typing import Final
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.observability import safe_error_description
 from synthorg.tools.base import ToolExecutionResult
@@ -30,8 +31,19 @@ from synthorg.tools.browser.errors import (
 )
 
 
-def ok_result(model: BaseModel) -> ToolExecutionResult:
+def ok_result(
+    model: BaseModel,
+    *,
+    metadata_only: Mapping[str, JsonValue] | None = None,
+) -> ToolExecutionResult:
     """Wrap a successful result model in a tool execution result.
+
+    Args:
+        model: The result model, rendered into both the agent-visible content
+            and the metadata.
+        metadata_only: Extra fields for programmatic consumers that must NOT
+            reach the agent's context. ``content`` is what the model reads, so
+            anything large or unreadable belongs here rather than on *model*.
 
     Returns:
         Result of type ``ToolExecutionResult``.
@@ -40,7 +52,7 @@ def ok_result(model: BaseModel) -> ToolExecutionResult:
     return ToolExecutionResult(
         content=json.dumps(payload),
         is_error=False,
-        metadata=payload,
+        metadata=payload if metadata_only is None else {**payload, **metadata_only},
     )
 
 

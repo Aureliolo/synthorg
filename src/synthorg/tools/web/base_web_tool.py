@@ -12,6 +12,7 @@ from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.web import WEB_SSRF_BLOCKED
+from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
 from synthorg.tools.network_validator import (
@@ -88,13 +89,18 @@ class BaseWebTool(BaseTool, ABC):
             ``DnsValidationOk`` on success.
         """
         if not is_allowed_http_scheme(url):
+            # Redacted in both places: this string is logged AND handed back to
+            # the caller, which for an agent-supplied URL means a credential in
+            # the userinfo or a signed-URL token would land in the log stream
+            # and in the persisted turn record.
+            safe_url = redact_url(url)
             logger.warning(
                 WEB_SSRF_BLOCKED,
-                url=url,
+                url=safe_url,
                 reason="disallowed_scheme",
             )
             return (
-                f"URL scheme not allowed: {url!r}. "
+                f"URL scheme not allowed: {safe_url!r}. "
                 "Only http:// and https:// are permitted."
             )
         return await validate_url_host(url, self._network_policy)

@@ -31,10 +31,25 @@ runs:
         RETRY_CMD_ATTEMPT_TIMEOUT: "90"
         RETRY_CMD_DEADLINE: "240"
       run: |
+        # apt's own acquisition timeout defaults to 120s, which is longer
+        # than the whole attempt budget above, so one index file served by
+        # a mirror that accepts the connection and then stalls outlives the
+        # attempt on its own. The runner's mirrorlist leads with an Azure
+        # mirror that is periodically unreachable, and apt would otherwise
+        # reach its healthy fallback only after that timeout: every attempt
+        # then dies identically at 90s and the ladder spends its deadline
+        # retrying a fault no number of retries can clear. Bounding the
+        # acquisition instead lets the fallback serve the request while the
+        # attempt is still alive, which is what makes the retry meaningful.
+        APT_ACQUIRE_OPTS=(
+          -o Acquire::http::Timeout=15
+          -o Acquire::https::Timeout=15
+          -o Acquire::Retries=1
+        )
         .github/scripts/retry_cmd.sh "apt-get update (melange deps)" \
-          sudo apt-get update
+          sudo apt-get "${APT_ACQUIRE_OPTS[@]}" update
         .github/scripts/retry_cmd.sh "apt-get install melange deps" \
-          sudo apt-get install -y \
+          sudo apt-get "${APT_ACQUIRE_OPTS[@]}" install -y \
             qemu-user-static build-essential git jq bubblewrap
 
     # Ubuntu 24.04 confines unprivileged user namespaces under AppArmor, so

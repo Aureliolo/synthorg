@@ -48,6 +48,7 @@ import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer'
 import { Sidebar } from './Sidebar'
 import { StatusBar } from './StatusBar'
+import { WebResearchBanner } from './WebResearchBanner'
 
 function PageLoadingFallback() {
   return (
@@ -293,6 +294,7 @@ export default function AppLayout() {
       </a>
       <header>
         <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
+        <WebResearchBanner />
       </header>
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />

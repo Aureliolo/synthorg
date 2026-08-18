@@ -298,6 +298,13 @@ async def install_runtime_services(
     app_state.set_worker_execution_service(
         services.worker_execution_service,
     )
+    # Published on every assembly, including the degraded ones, so the
+    # capability an operator is shown tracks what the runtime last installed
+    # rather than what settings requested. A rebuild that loses a rung has to
+    # be able to take the claim back.
+    from synthorg.tools.state import ToolsStateSlice  # noqa: PLC0415
+
+    app_state.wire(ToolsStateSlice, web_research=services.web_research)
     # An explicitly injected coordinator (``create_app(coordinator=)``
     # in tests / custom DI) wins over the autowired one, matching the
     # injection-over-autowire convention used across ``create_app``.

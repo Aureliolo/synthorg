@@ -213,13 +213,17 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="web_search_provider",
         type=SettingType.ENUM,
-        default="brave",
-        enum_values=("brave", "tavily", "exa"),
+        default="",
+        enum_values=("brave", "tavily", "exa", "ollama"),
         description=(
-            "Which search provider backs the web_search tool. 'brave' (default)"
-            " is the broadest independent index; 'tavily' returns answer-shaped"
-            " results; 'exa' does semantic/conceptual search. All three read"
-            " their API key from the bound web_search connection."
+            "Which search provider backs the web_search tool. Ships unset, so"
+            " enabling web search never bills a vendor nobody chose: pick one"
+            " and bind a connection holding its key. The options differ in the"
+            " index they search, whether results come back answer-shaped or as"
+            " ranked links, whether ranking is semantic or keyword, which"
+            " recency and domain filters they can express, and how they price"
+            " a request. Each reads its key from the bound web_search"
+            " connection."
         ),
         group="Web Search",
         level=SettingLevel.BASIC,
@@ -256,6 +260,155 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_notice_dismissed",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether the dashboard stops raising an enabled-but-unconfigured"
+            " web search with the operator. A deployment content with"
+            " local-only page reading is not misconfigured, so the notice can"
+            " be dismissed; it returns if the configuration changes."
+        ),
+        group="Web Search",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Page fetching ────────────────────────────────────────────────
+# The local rung needs no credential and no spend, so the tool ships ON:
+# an agent can already reach the same pages through http_request, and this
+# reads them as markdown instead of raw DOM. The rungs that cost something
+# (a vendor's reader, a container) are opt-in on top.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether agents may read a web page as markdown. On by default:"
+            " the local backend needs no API key and grants no reach the"
+            " existing http_request tool does not already have, while"
+            " returning far less noise per page."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_proxy_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether the 'proxy' backend is offered, which hands the target"
+            " URL to the configured search vendor's own reader. Off by"
+            " default: it spends against the bound connection. Needs"
+            " web_search_connection bound and web_search_provider set to a"
+            " vendor that ships a reader, which not every search vendor does;"
+            " the rung stays absent, with a log line naming the reason, when"
+            " the selected one sells search only."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_render_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether the 'render' backend is offered, which drives the"
+            " headless browser so a page that builds its body in JavaScript"
+            " becomes readable. Off by default: it needs the Docker sandbox"
+            " and costs a container start per fetch."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_max_characters",
+        type=SettingType.INTEGER,
+        default="40000",
+        description=(
+            "Ceiling on the markdown a single fetch returns. Content past it"
+            " is cut at a paragraph boundary and the result says so, so the"
+            " agent knows to narrow rather than assuming it read the page."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=500000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_max_response_bytes",
+        type=SettingType.INTEGER,
+        default="2097152",
+        description=(
+            "Hard ceiling on the response body the local backend reads from"
+            " the wire, before extraction. Bounds memory on a hostile or"
+            " misconfigured target."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.ADVANCED,
+        min_value=65536,
+        max_value=52428800,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_user_agent",
+        type=SettingType.STRING,
+        default="SynthOrgBot/1.0 (+https://synthorg.io/bot)",
+        description=(
+            "User-Agent the local backend sends. Servers vary what they"
+            " return by it, so it is operator-visible rather than hidden;"
+            " identifying the fetcher honestly is also what lets a site"
+            " rate-limit us rather than block the whole address."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_fetch_docs_index_discovery_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether a successful fetch also probes the site for an"
+            " '/llms.txt' documentation index and reports it. Costs one small"
+            " request and often replaces several page fetches. The probe is"
+            " made by this process directly, even when the fetch itself went"
+            " through a vendor's reader, so turn it off if this process should"
+            " not contact the sites being read."
+        ),
+        group="Web Fetch",
+        level=SettingLevel.ADVANCED,
     )
 )
 
@@ -566,6 +719,26 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=300.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_content_max_characters",
+        type=SettingType.INTEGER,
+        default="40000",
+        description=(
+            "Ceiling on the readable content the browser tool's content mode"
+            " returns. The mode extracts markdown from the rendered page rather"
+            " than handing back the raw document, because a script-heavy page"
+            " serialises to megabytes of markup around the part worth reading."
+            " A page over the ceiling is cut at a block boundary and says so."
+        ),
+        group="Browser",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=500000,
     )
 )
 

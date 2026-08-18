@@ -52,8 +52,12 @@ from synthorg.tools.web.errors import (
     WebSearchResponseError,
     WebSearchTransientError,
 )
+from synthorg.tools.web.providers._filters import (
+    build_filter_params,
+    unsupported_filter_names,
+)
 from synthorg.tools.web.providers.presets import SearchProviderPreset
-from synthorg.tools.web.web_search import SearchResult
+from synthorg.tools.web.web_search import SearchFilters, SearchResult
 
 logger = get_logger(__name__)
 
@@ -138,6 +142,7 @@ class HttpWebSearchProvider:
         self._timeout = timeout_seconds
         self._max_results_ceiling = max_results_ceiling
         self._rate_limiter = rate_limiter
+        self._clock = clock if clock is not None else SystemClock()
         self._retry = (
             retry_handler
             if retry_handler is not None
@@ -149,7 +154,7 @@ class HttpWebSearchProvider:
                 event=WEB_SEARCH_RETRY,
                 jitter=False,
                 delay_override=_transient_delay_override,
-                clock=clock if clock is not None else SystemClock(),
+                clock=self._clock,
             )
         )
 
@@ -157,12 +162,17 @@ class HttpWebSearchProvider:
         self,
         query: str,
         max_results: int = _DEFAULT_MAX_RESULTS,
+        filters: SearchFilters | None = None,
     ) -> list[SearchResult]:
         """Execute a search, resolving credentials and retrying transients.
 
         Args:
             query: The search query string.
             max_results: Requested result count (clamped to the preset cap).
+            filters: Recency / domain restrictions. Any the selected provider
+                cannot express are reported by ``unsupported_filters`` rather
+                than dropped, since a filter that vanishes returns unfiltered
+                results the caller believes were filtered.
 
         Returns:
             The normalised search results (possibly empty).
@@ -184,6 +194,11 @@ class HttpWebSearchProvider:
         if self._max_results_ceiling is not None:
             cap = min(cap, self._max_results_ceiling)
         count = min(max_results, cap)
+        params = build_filter_params(
+            self._preset,
+            filters,
+            now=self._clock.now(),
+        )
 
         # Each retry attempt is a real request, so the rate limit wraps the
         # per-attempt call (retries count against the ceiling), not the outer
@@ -200,9 +215,19 @@ class HttpWebSearchProvider:
                 count=count,
                 key=key,
                 validation=validation,
+                filter_params=params,
             )
 
         return await self._retry.execute(rate_limited, provider=self._preset.id)
+
+    def unsupported_filters(self, filters: SearchFilters | None) -> tuple[str, ...]:
+        """Name the requested filters the selected provider cannot express.
+
+        Returns:
+            The filter names this provider will not apply, for the tool to
+            report alongside the results.
+        """
+        return unsupported_filter_names(self._preset, filters, now=self._clock.now())
 
     async def _resolve_key(self) -> str:
         """Broker the API key from the bound connection.
@@ -272,6 +297,7 @@ class HttpWebSearchProvider:
         count: int,
         key: str,
         validation: DnsValidationOk,
+        filter_params: dict[str, JsonValue],
     ) -> list[SearchResult]:
         """Issue one DNS-pinned request and parse the response.
 
@@ -302,6 +328,7 @@ class HttpWebSearchProvider:
                     query=query,
                     count=count,
                     headers=headers,
+                    filter_params=filter_params,
                 )
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             logger.warning(
@@ -326,6 +353,7 @@ class HttpWebSearchProvider:
         query: str,
         count: int,
         headers: dict[str, str],
+        filter_params: dict[str, JsonValue],
     ) -> httpx.Response:
         """Dispatch the preset's GET or POST request.
 
@@ -336,6 +364,17 @@ class HttpWebSearchProvider:
             params: dict[str, str] = {self._preset.query_key: query}
             if self._preset.count_key is not None:
                 params[self._preset.count_key] = str(count)
+            # A GET carries everything in the query string, so a list-valued
+            # filter is joined here rather than sent as repeated keys, which
+            # no current GET-style provider accepts.
+            params.update(
+                {
+                    name: ",".join(str(v) for v in value)
+                    if isinstance(value, list)
+                    else str(value)
+                    for name, value in filter_params.items()
+                }
+            )
             return await client.get(
                 self._preset.endpoint,
                 params=params,
@@ -353,6 +392,7 @@ class HttpWebSearchProvider:
         }
         if self._preset.count_key is not None:
             body[self._preset.count_key] = count
+        body.update(filter_params)
         return await client.post(
             self._preset.endpoint,
             json=body,

@@ -1371,6 +1371,15 @@ export const VELOCITY_CALC_TYPE_VALUES = [
 ] as const
 export type VelocityCalcType = (typeof VELOCITY_CALC_TYPE_VALUES)[number]
 
+export const WEB_SEARCH_BLOCKER_VALUES = [
+    'none',
+    'disabled',
+    'no_provider',
+    'no_connection',
+    'no_catalog',
+] as const
+export type WebSearchBlocker = (typeof WEB_SEARCH_BLOCKER_VALUES)[number]
+
 export const WEBHOOK_INGEST_STATE_VALUES = [
     'not_applicable',
     'ready',

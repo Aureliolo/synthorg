@@ -391,20 +391,290 @@ def test_known_lgpl_satisfied_by_notice() -> None:
     assert _MODULE._check_known_lgpl_notice(notice) == []
 
 
+# ── SPDX disjunction resolution ─────────────────────────────────
+
+
+def test_disjunction_elects_the_least_restrictive_arm() -> None:
+    """An OR expression is an offer, so the arm a licensee would take wins."""
+    assert _MODULE._classify("gpl-3.0-only or lgpl-2.1-or-later") == "lgpl"
+
+
+def test_disjunction_with_a_permissive_arm_elects_it() -> None:
+    assert _MODULE._classify("gpl-3.0-only or mit") == "permissive"
+
+
+def test_the_real_tld_offer_clears_the_gate_on_its_weakest_arm() -> None:
+    """The expression that motivated this handling, classified end to end.
+
+    The family model knows only the GPL ladder, so an arm naming none of those
+    reads as permissive. That is the correct direction here: the offer includes
+    an arm carrying no GPL obligation, so nothing about it can fail the gate.
+    NOTICE separately records which arm was actually elected, because the crude
+    family is not a licence decision.
+    """
+    offer = "mpl-1.1 or gpl-2.0-only or lgpl-2.1-or-later"
+    assert _MODULE._classify(offer) == "permissive"
+
+
+def test_disjunction_of_strong_copyleft_stays_strong() -> None:
+    """Nothing weaker is on offer, so there is no compatible arm to elect."""
+    assert _MODULE._classify("agpl-3.0-only or gpl-3.0-only") == "gpl"
+
+
+def test_or_inside_a_licence_identifier_is_not_a_disjunction() -> None:
+    """``-or-later`` is part of one name; splitting it passes the strongest
+    copyleft there is as permissive."""
+    assert _MODULE._classify("gpl-3.0-or-later") == "gpl"
+    assert _MODULE._classify("lgpl-2.1-or-later") == "lgpl"
+    assert _MODULE._classify("agpl-3.0-or-later") == "agpl"
+
+
+def test_disjunction_arms_split_on_the_operator_only() -> None:
+    arms = _MODULE._disjunction_arms("mpl-1.1 or gpl-2.0-only or lgpl-2.1-or-later")
+    assert arms == ["mpl-1.1", "gpl-2.0-only", "lgpl-2.1-or-later"]
+
+
+def test_single_licence_is_one_arm() -> None:
+    assert _MODULE._disjunction_arms("gpl-3.0-or-later") == ["gpl-3.0-or-later"]
+
+
+# ── nested expressions are refused, not guessed ─────────────────
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("gpl-2.0-only and (mit or apache-2.0)", "gpl"),
+        ("agpl-3.0-only and (mit or apache-2.0)", "agpl"),
+        ("lgpl-2.1-only and (mit or bsd-3-clause)", "lgpl"),
+    ],
+)
+def test_a_conjunction_is_not_resolved_by_splitting(
+    expression: str,
+    expected: str,
+) -> None:
+    """The fail-open a flat split creates once an AND is in the expression.
+
+    The copyleft half binds whichever inner arm a licensee elects, so the
+    answer cannot be weaker than that half. Splitting on the operator yields
+    the arm ``apache-2.0)``, which classifies permissive and then WINS the
+    least-restrictive rule, passing a licence that governs regardless.
+    """
+    assert _MODULE._classify(expression) == expected
+
+
+def test_a_nested_expression_is_returned_whole() -> None:
+    expression = "gpl-2.0-only and (mit or apache-2.0)"
+
+    assert _MODULE._disjunction_arms(expression) == [expression]
+
+
+def test_refusing_to_split_can_over_restrict_and_that_is_the_safe_direction() -> None:
+    """``MIT AND (GPL-2.0-only OR MIT)`` is electable down to MIT.
+
+    Reading it whole calls it GPL, which is stricter than a licensee would
+    have to accept. That is the intended trade: resolving nesting properly
+    needs a real SPDX parser, and refusing to guess fails a compatible package
+    loudly rather than passing an incompatible one quietly.
+    """
+    assert _MODULE._classify("mit and (gpl-2.0-only or mit)") == "gpl"
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("gpl-2.0-only and (mit or lgpl-2.1-only)", "gpl"),
+        ("gpl-2.0-only and lgpl-2.1-only", "gpl"),
+        ("agpl-3.0-only and lgpl-2.1-only", "agpl"),
+    ],
+)
+def test_a_bound_expression_takes_its_strongest_family(
+    expression: str,
+    expected: str,
+) -> None:
+    """Two copyleft names in one conjunction: the STRONGER one binds.
+
+    A whole-blob specificity scan tests ``lgpl`` before ``gpl``, because the
+    long form of the weaker licence contains the name of the stronger one.
+    That ordering is right for ONE identifier and inverted across several, so
+    the expression here reported ``lgpl``, the family the gate merely
+    attributes in NOTICE, rather than ``gpl``, the family it rejects.
+    """
+    assert _MODULE._classify(expression) == expected
+
+
+def test_a_membership_read_of_a_bound_expression_names_the_binding_family() -> None:
+    """``_offered_families`` answers about the same expression the same way.
+
+    It feeds the NOTICE-election check, so an answer weaker than
+    ``_classify_dist``'s would let a dist be rejected as GPL by one read and
+    recorded as an elected LGPL arm by the other.
+    """
+    dist = SimpleNamespace(metadata=_FakeMeta("GPL-2.0-only AND (MIT OR LGPL-2.1)", ()))
+
+    assert _MODULE._offered_families(dist) == {"gpl"}
+    assert _MODULE._classify_dist(dist) == "gpl"
+
+
+# ── expression and classifiers are classified apart ─────────────
+
+
+def test_a_trove_classifier_is_prose_not_an_spdx_disjunction() -> None:
+    """The canonical LGPL classifier contains the word ``or``.
+
+    ``GNU Library or Lesser General Public License (LGPL)`` is ONE licence
+    name. Split on the SPDX operator it yields the arm ``gnu library``, which
+    matches no family and so reads permissive, and the least-restrictive rule
+    then elects it: an LGPL dependency classified permissive walks past the
+    NOTICE-attribution requirement that exists for exactly that licence.
+    """
+    classifier = (
+        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)"
+    )
+    dist = SimpleNamespace(metadata=_FakeMeta("", (classifier,)))
+
+    assert _MODULE._classify_dist(dist) == "lgpl"
+
+
+def test_the_spdx_expression_wins_over_classifiers() -> None:
+    """PEP 639 makes the expression authoritative; a dist may carry both."""
+    dist = SimpleNamespace(
+        metadata=_FakeMeta(
+            "MIT",
+            ("License :: OSI Approved :: MIT License",),
+        )
+    )
+
+    assert _MODULE._classify_dist(dist) == "permissive"
+
+
+def test_classifiers_are_classified_whole_so_the_strongest_wins() -> None:
+    """Without an expression, several classifiers are not an offer of arms.
+
+    A dist listing two licence classifiers is describing obligations that both
+    apply, so the most restrictive governs; treating the list as a disjunction
+    would elect the weaker and under-report.
+    """
+    dist = SimpleNamespace(
+        metadata=_FakeMeta(
+            "",
+            (
+                "License :: OSI Approved :: MIT License",
+                "License :: OSI Approved :: GNU General Public License (GPL)",
+            ),
+        )
+    )
+
+    assert _MODULE._classify_dist(dist) == "gpl"
+
+
+# ── elected transitive disjunctions ─────────────────────────────
+
+
+def test_elected_disjunctive_requires_notice_attribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The elected arm is a licence obligation, so NOTICE must record it."""
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"tld": "MPL-1.1 OR GPL-2.0-only OR LGPL-2.1"}),
+    )
+    violations = _MODULE._check_elected_disjunctive("no attribution here")
+    assert any("tld" in v.message and v.location == "NOTICE" for v in violations)
+
+
+def test_elected_disjunctive_satisfied_by_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"tld": "MPL-1.1 OR GPL-2.0-only OR LGPL-2.1"}),
+    )
+    assert _MODULE._check_elected_disjunctive("attributes tld here") == []
+
+
+def test_elected_disjunctive_fails_when_the_arm_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The regression a name denylist cannot see.
+
+    A version bump can drop the arm this project elected while the package name
+    stays put, which leaves a dependency nobody may redistribute sitting behind
+    a green gate.
+    """
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"tld": "GPL-2.0-only"}),
+    )
+    violations = _MODULE._check_elected_disjunctive("attributes tld here")
+    assert any(
+        "tld" in v.message and "no longer offers" in v.message for v in violations
+    )
+
+
+def test_elected_disjunctive_fails_when_only_a_weaker_arm_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The blind spot in comparing restrictiveness instead of membership.
+
+    An offer that drops to MPL-1.1 alone is LESS restrictive than the elected
+    LGPL arm, so a rank test reads it as fine. But NOTICE states that this
+    project elects LGPL-2.1-or-later, and that arm is no longer on offer: the
+    attribution now describes an election nobody can make.
+    """
+    monkeypatch.setattr(
+        _MODULE.metadata,
+        "distribution",
+        _fake_distribution_factory({"tld": "MPL-1.1"}),
+    )
+
+    violations = _MODULE._check_elected_disjunctive("attributes tld here")
+
+    assert any(
+        "tld" in v.message and "no longer offers" in v.message for v in violations
+    )
+
+
+def test_elected_disjunctive_reports_an_unresolvable_dist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Absent means the environment cannot answer, which is not a pass."""
+
+    def _missing(name: str) -> object:
+        raise _MODULE.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(_MODULE.metadata, "distribution", _missing)
+    violations = _MODULE._check_elected_disjunctive("attributes tld here")
+    assert any("could not be resolved" in v.message for v in violations)
+
+
+def test_the_real_tld_still_offers_the_elected_arm() -> None:
+    """Runs against the installed distribution, not a fake.
+
+    This is the check the disjunction handling was written for; asserting it
+    only against synthetic blobs would leave the real package unverified.
+    """
+    assert _MODULE._check_elected_disjunctive(_MODULE._notice_text(_REPO_ROOT)) == []
+
+
 # ── direct copyleft scan (deterministic via monkeypatch) ────────
 
 
 class _FakeMeta:
     """Minimal stand-in for ``importlib.metadata`` ``PackageMetadata``."""
 
-    def __init__(self, expression: str) -> None:
+    def __init__(self, expression: str, classifiers: tuple[str, ...] = ()) -> None:
         self._expression = expression
+        self._classifiers = classifiers
 
     def get(self, key: str) -> str | None:
         return self._expression if key == "License-Expression" else None
 
-    def get_all(self, _key: str) -> list[str]:
-        return []
+    def get_all(self, key: str) -> list[str]:
+        return list(self._classifiers) if key == "Classifier" else []
 
 
 def _fake_distribution_factory(
@@ -502,12 +772,12 @@ def test_direct_copyleft_unsynced_extra_is_skipped(
 def _make_clean_repo(tmp_path: Path) -> Path:
     _write(tmp_path / "pyproject.toml", '[project]\nname = "demo"\ndependencies = []\n')
     _write(tmp_path / "uv.lock", _CLEAN_LOCK)
-    # The known-LGPL NOTICE assertion is unconditional, so a clean repo
-    # must attribute all three psycopg dists even though it declares no
-    # dependencies.
+    # The known-LGPL and elected-disjunction NOTICE assertions are both
+    # unconditional, so a clean repo must attribute every dist they name even
+    # though it declares no dependencies of its own.
     _write(
         tmp_path / "NOTICE",
-        "SynthOrg NOTICE\npsycopg psycopg-pool psycopg-binary\n",
+        "SynthOrg NOTICE\npsycopg psycopg-pool psycopg-binary tld\n",
     )
     _write(tmp_path / "cli" / "go.mod", "module x\n")
     return tmp_path

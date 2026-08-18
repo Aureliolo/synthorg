@@ -18,6 +18,7 @@ from synthorg.tools.base import BaseTool
 from synthorg.tools.design.config import DesignToolsConfig
 from synthorg.tools.design.provider_image_provider import ProviderImageProvider
 from synthorg.tools.factory import build_default_tools
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +31,7 @@ async def test_agent_generates_image_asset_end_to_end(tmp_path: Path) -> None:
     asset_dir = tmp_path / "assets"
     tools = build_default_tools(
         workspace=tmp_path,
-        web_request_timeout=30.0,
+        web=DEFAULT_TEST_WEB_WIRING,
         design_config=DesignToolsConfig(asset_storage_path=str(asset_dir)),
         image_provider=ProviderImageProvider(
             provider=ScriptedDriver(), model="example-image-001"

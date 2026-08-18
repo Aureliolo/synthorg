@@ -8,7 +8,7 @@ from synthorg.tools.database.config import DatabaseConfig, DatabaseConnectionCon
 from synthorg.tools.factory import build_default_tools
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.terminal.config import TerminalConfig
-from tests._shared.web_timeout import DEFAULT_TEST_WEB_REQUEST_TIMEOUT
+from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ class TestFactoryWebTools:
     def test_web_tools_included_by_default(self, workspace: Path) -> None:
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "http_request" in names
@@ -35,7 +35,7 @@ class TestFactoryWebTools:
     def test_web_search_excluded_without_provider(self, workspace: Path) -> None:
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "web_search" not in names
@@ -46,8 +46,9 @@ class TestFactoryWebTools:
 
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
-            web_search_provider=MockSearchProvider(),
+            web=DEFAULT_TEST_WEB_WIRING.model_copy(
+                update={"search_provider": MockSearchProvider()}
+            ),
         )
         names = {t.name for t in tools}
         assert "web_search" in names
@@ -57,8 +58,7 @@ class TestFactoryWebTools:
         policy = NetworkPolicy(block_private_ips=False)
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
-            web_network_policy=policy,
+            web=DEFAULT_TEST_WEB_WIRING.model_copy(update={"network_policy": policy}),
         )
         http_tool = next(t for t in tools if t.name == "http_request")
         from synthorg.tools.web.http_request import HttpRequestTool
@@ -74,7 +74,7 @@ class TestFactoryDatabaseTools:
     def test_no_database_tools_by_default(self, workspace: Path) -> None:
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "sql_query" not in names
@@ -92,7 +92,7 @@ class TestFactoryDatabaseTools:
         )
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             database_config=config,
         )
         names = {t.name for t in tools}
@@ -104,7 +104,7 @@ class TestFactoryDatabaseTools:
         config = DatabaseConfig(connections={})
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             database_config=config,
         )
         names = {t.name for t in tools}
@@ -119,7 +119,7 @@ class TestFactoryTerminalTools:
     def test_terminal_tool_included_by_default(self, workspace: Path) -> None:
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = {t.name for t in tools}
         assert "shell_command" in names
@@ -129,7 +129,7 @@ class TestFactoryTerminalTools:
         config = TerminalConfig(command_allowlist=("ls", "cat"))
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
             terminal_config=config,
         )
         shell_tool = next(t for t in tools if t.name == "shell_command")
@@ -149,7 +149,7 @@ class TestFactoryToolCount:
         deployment condition instead of going missing."""
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         assert len(tools) == 17
 
@@ -157,7 +157,7 @@ class TestFactoryToolCount:
     def test_tools_sorted_by_name(self, workspace: Path) -> None:
         tools = build_default_tools(
             workspace=workspace,
-            web_request_timeout=DEFAULT_TEST_WEB_REQUEST_TIMEOUT,
+            web=DEFAULT_TEST_WEB_WIRING,
         )
         names = [t.name for t in tools]
         assert names == sorted(names)

@@ -1,11 +1,51 @@
 """Tests for ``GET /api/v1/capabilities``."""
 
+from typing import Protocol
+
 import pytest
 
+from synthorg.tools.state import ToolsStateSlice, WebResearchTools
+from synthorg.tools.web.readiness import WebResearchReadiness, WebSearchBlocker
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
+
+
+class _FixedResolver(Protocol):
+    """The call shape the controller uses to reach readiness."""
+
+    async def __call__(
+        self,
+        resolver: object,
+        *,
+        connections: object,
+    ) -> WebResearchReadiness:
+        """Answer with a fixed verdict."""
+        ...
+
+
+def _returning(readiness: WebResearchReadiness) -> _FixedResolver:
+    """Build a stand-in resolver that answers with a fixed verdict.
+
+    Substituted at the controller rather than driven through settings: what is
+    under test here is that the controller reports the verdict faithfully, and
+    reaching that state through the settings backend would test the resolver
+    a second time instead.
+
+    Returns:
+        A coroutine function answering with *readiness* whatever it is passed.
+    """
+
+    async def _resolve(
+        resolver: object,
+        *,
+        connections: object,
+    ) -> WebResearchReadiness:
+        del resolver, connections
+        return readiness
+
+    return _resolve
 
 
 @pytest.mark.unit
@@ -34,10 +74,23 @@ class TestCapabilitiesController:
             "a2a",
             "telemetry",
             "integrations",
+            "web_search",
+            "web_search_notify",
+            "web_fetch",
         }
-        assert set(data.keys()) == expected_flags
+        # Web search reports WHY it is not up as well as whether it is, so the
+        # dashboard can tell "off by choice" from "on but unusable".
+        expected_reasons = {"web_search_blocker", "web_search_message"}
+        # A blocked setup is told which credential it already holds, so it is
+        # never asked for one that is sitting in the connection catalog.
+        expected_lists = {"web_search_reusable_connections"}
+        assert set(data.keys()) == expected_flags | expected_reasons | expected_lists
         for key in expected_flags:
             assert isinstance(data[key], bool), key
+        for key in expected_reasons:
+            assert isinstance(data[key], str), key
+        for key in expected_lists:
+            assert isinstance(data[key], list), key
         # The shared test app is built with a TaskEngine, so the
         # client-simulation runtime is boot-wired (DirectIntake +
         # InternalReviewStage); simulations + requests are therefore
@@ -50,6 +103,160 @@ class TestCapabilitiesController:
         assert data["a2a"] is False
         assert data["telemetry"] is False
         assert data["integrations"] is False
+        # Web search ships off, and off-by-choice is not a fault to report, so
+        # there is nothing to raise with the operator either.
+        assert data["web_search"] is False
+        assert data["web_search_blocker"] == "disabled"
+        assert data["web_search_message"] == ""
+        assert data["web_search_notify"] is False
+        assert data["web_search_reusable_connections"] == []
+        # Fetch needs no credential, so it is on out of the box as far as
+        # SETTINGS are concerned. The capability is still false here because
+        # this app never ran a runtime assembly, so no agent holds the tool:
+        # the flag reports what an agent can call, not what was requested.
+        assert data["web_fetch"] is False
+
+    async def test_an_enabled_but_unconfigured_search_is_reported(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The whole point of the surface: on-but-unusable must be visible.
+
+        The default boot has search off, which is not a fault and reports
+        nothing, so without driving the misconfigured state the controller's
+        plumbing of the blocker, the notice flag and the reuse suggestion is
+        never exercised at all.
+        """
+        readiness = WebResearchReadiness(
+            search_ready=False,
+            search_blocker=WebSearchBlocker.NO_CONNECTION,
+            provider_id="test-provider",
+            fetch_enabled=True,
+            reusable_connections=("saved-key",),
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data["web_search"] is False
+        assert data["web_search_blocker"] == "no_connection"
+        assert "tools.web_search_connection" in data["web_search_message"]
+        assert data["web_search_notify"] is True
+        assert data["web_search_reusable_connections"] == ["saved-key"]
+
+    async def test_a_dismissed_notice_stops_notifying_but_still_reports_blocked(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Dismissal silences the notice and changes nothing else."""
+        readiness = WebResearchReadiness(
+            search_ready=False,
+            search_blocker=WebSearchBlocker.NO_PROVIDER,
+            fetch_enabled=True,
+            notice_dismissed=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+        data = resp.json()["data"]
+        assert data["web_search"] is False
+        assert data["web_search_blocker"] == "no_provider"
+        assert data["web_search_notify"] is False
+
+    async def test_a_configured_but_unassembled_tool_is_not_a_capability(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Settings can say yes while no agent holds the tool.
+
+        Runtime assembly returns early, before it builds the tool registry,
+        when no provider is active or the decomposition pair is unbound. That
+        is the ordinary state of a fresh install, and neither condition is
+        visible to the ``tools`` settings the readiness verdict reads, so
+        reporting readiness alone claimed a capability nothing could serve.
+        """
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is False
+        assert data["web_fetch"] is False
+        # The blocker still describes the CONFIGURATION, which is complete;
+        # the operator is not sent to fix a setting that is already right.
+        assert data["web_search_blocker"] == "none"
+
+    async def test_an_assembled_tool_is_reported_as_a_capability(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The other half: with both halves true the capability is true."""
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        app_state = async_test_client.app.state.app_state
+        app_state.wire(
+            ToolsStateSlice,
+            web_research=WebResearchTools(search=True, fetch=True),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is True
+        assert data["web_fetch"] is True
+
+    async def test_a_rung_the_runtime_did_not_build_is_not_reported(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Each tool is reported from its own build, not from the pair."""
+        readiness = WebResearchReadiness(
+            search_ready=True,
+            search_blocker=WebSearchBlocker.NONE,
+            provider_id="test-provider",
+            fetch_enabled=True,
+        )
+        monkeypatch.setattr(
+            "synthorg.api.controllers.capabilities.resolve_web_research_readiness",
+            _returning(readiness),
+        )
+        async_test_client.app.state.app_state.wire(
+            ToolsStateSlice,
+            web_research=WebResearchTools(search=True, fetch=False),
+        )
+
+        resp = await async_test_client.get("/api/v1/capabilities/", headers=_HEADERS)
+
+        data = resp.json()["data"]
+        assert data["web_search"] is True
+        assert data["web_fetch"] is False
 
     async def test_capabilities_reflects_wired_simulation_runtime(
         self,

@@ -10,9 +10,8 @@ not a middleware.
 """
 
 import re
-from typing import Final
 
-from lxml.html import HtmlElement, HTMLParser
+from lxml.html import HtmlElement, tostring
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
@@ -21,7 +20,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_HTML_PARSE_ERROR,
     TOOL_HTML_PARSE_GAP_DETECTED,
-    TOOL_HTML_PARSE_XXE_DETECTED,
+)
+from synthorg.tools.html_parse_safety import (
+    XXEDetectedError,
+    parse_html_safely,
 )
 
 logger = get_logger(__name__)
@@ -30,9 +32,32 @@ logger = get_logger(__name__)
 _HTML_TAG_PATTERN = re.compile(r"<[a-zA-Z][^>]*>")
 
 # CSS patterns for hidden elements.
+#
+# Text a human never sees but a model reads in full is the whole point of an
+# indirect prompt injection, and "hidden" has more spellings than the obvious
+# two. Each pattern below was confirmed to carry injected text through the
+# extractor and into a model's context: a zero font size renders nothing, and
+# a large negative offset parks the element outside the viewport while leaving
+# it in the document.
+#
+# Deliberately NOT matched: text coloured to match its background. Deciding
+# that needs the computed cascade and a colour comparison, neither of which a
+# per-element attribute scan has, and a guess would strip legitimately styled
+# prose. It is the one hiding technique left standing here.
 _HIDDEN_STYLE_PATTERNS = (
     re.compile(r"display\s*:\s*none", re.IGNORECASE),
     re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
+    re.compile(
+        r"font-size\s*:\s*0(?:\.0*)?\s*(?:px|em|rem|pt|%)?\s*(?:;|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:left|top|right|bottom)\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"text-indent\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)", re.IGNORECASE),
+    re.compile(r"clip\s*:\s*rect\s*\(\s*0[a-z%]*[\s,]+0[a-z%]*[\s,]", re.IGNORECASE),
+    re.compile(r"opacity\s*:\s*0(?:\.0*)?\s*(?:;|$)", re.IGNORECASE),
 )
 
 # Tags to strip entirely (content and all).
@@ -47,50 +72,6 @@ _STRIP_TAGS = frozenset(
         "applet",
     }
 )
-
-# Pre-parse rejection patterns for XXE.
-#
-# ``<!DOCTYPE foo SYSTEM "...">`` and the PUBLIC variant load external
-# entities which can reach internal network or filesystem resources.
-# ``<!ENTITY>`` declarations (any form) enable billion-laughs expansion
-# and reference to external entities.  The regexes are case-insensitive
-# and intentionally loose: any match triggers a safe-empty fallback,
-# so a false positive only loses sanitisation of that one tool
-# response, not a security property.
-_EXTERNAL_DOCTYPE_RE: Final[re.Pattern[str]] = re.compile(
-    r"<!DOCTYPE[^>]*\b(SYSTEM|PUBLIC)\b",
-    re.IGNORECASE,
-)
-_ENTITY_DECL_RE: Final[re.Pattern[str]] = re.compile(
-    r"<!ENTITY\b",
-    re.IGNORECASE,
-)
-# HTML comments are stripped from the pre-scan copy so a DOCTYPE
-# mentioned inside a comment does not trigger a false positive.
-_HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
-    r"<!--.*?-->",
-    re.DOTALL,
-)
-
-
-class XXEDetectedError(
-    ValueError,
-):  # lint-allow: domain-error-hierarchy -- caught by HTMLParseGuard.sanitize
-    """Pre-parse detection of an XXE payload.
-
-    Subclass of ``ValueError``. :meth:`HTMLParseGuard.sanitize` catches
-    this explicitly (ahead of its generic ``except Exception`` branch)
-    and returns a safe-empty :class:`HTMLSanitizeResult` so the XXE
-    rejection event is not double-emitted.
-
-    ``is_retryable = False`` so the resilience layer's retry-classifier
-    (see ``BaseCompletionProvider`` / ``api/exception_handlers.py``)
-    never retries on an XXE-detected payload -- retrying a malicious
-    DOCTYPE buys nothing and wastes a real call.
-    """
-
-    is_retryable = False
-
 
 # Event handler attributes to strip from all elements.
 _EVENT_HANDLER_PREFIXES = frozenset(
@@ -264,13 +245,52 @@ class HTMLParseGuard:
                 stripped_element_count=0,
             )
 
+    def sanitize_document(self, raw: str) -> tuple[str, HTMLSanitizeResult]:
+        """Strip hidden and dangerous content, re-serialised as HTML.
+
+        :meth:`sanitize` answers with flat TEXT, which suits a caller whose
+        tool returned prose and ruins one about to extract structure: the
+        headings, tables and fenced code an extractor exists to preserve are
+        gone before it sees them.
+
+        This exists because the invoker's guard is keyed on a tool RESULT
+        looking like HTML, so a tool that consumes HTML and returns markdown
+        offers it nothing to act on. By then the page's hidden text has been
+        inlined into ordinary prose, indistinguishable from the author's own
+        words. The strip therefore has to run before the extractor rather
+        than after the tool.
+
+        Returns:
+            The sanitised HTML, and the verdict whose ``gap_detected`` is the
+            operator-visible alarm that a page carried substantial hidden
+            content. ``cleaned`` stays the TEXT reading so the gap ratio
+            remains comparable with every other caller's.
+
+        Raises:
+            XXEDetectedError: If the payload carries an external DOCTYPE or an
+                entity declaration.
+        """
+        doc = parse_html_safely(raw)
+        result = self._strip_and_measure(doc)
+        return tostring(doc, encoding="unicode", method="html"), result
+
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
         """Parse and sanitize HTML content using lxml.
 
         Returns:
             Result of type ``HTMLSanitizeResult``.
         """
-        doc = _parse_html_safely(raw)
+        return self._strip_and_measure(parse_html_safely(raw))
+
+    def _strip_and_measure(self, doc: HtmlElement) -> HTMLSanitizeResult:
+        """Strip *doc* in place and report how much content was hidden.
+
+        Shared by the text-returning and HTML-returning entry points, so both
+        judge a page by the same rule and one alarm covers both.
+
+        Returns:
+            The verdict for the stripped document.
+        """
         # Capture original text before stripping (single parse).
         original_text = doc.text_content().strip()
         stripped_count = self._strip_dangerous_elements(doc)
@@ -383,104 +403,28 @@ class HTMLParseGuard:
         return min(hidden_len / original_len, 1.0)
 
 
-def _parse_html_safely(raw: str) -> HtmlElement:
-    """Parse *raw* HTML with explicit XXE and entity-expansion defences.
+def sanitize_html_document(
+    raw: str,
+    config: HTMLParseGuardConfig | None = None,
+) -> tuple[str, HTMLSanitizeResult]:
+    """Strip hidden and dangerous content, keeping the result as HTML.
 
-    Replaces a bare ``lxml.html.fromstring`` call, which would
-    otherwise allow XXE / billion-laughs attacks against operator
-    input.
-
-    Pipeline:
-
-    1. Strip HTML comments from a local copy before the XXE pre-scan
-       so a ``<!DOCTYPE ...>`` inside a ``<!-- ... -->`` block does not
-       trigger a false positive.
-    2. Reject any external DOCTYPE (``SYSTEM`` / ``PUBLIC``
-       identifiers) or internal ``<!ENTITY>`` declaration by raising
-       :class:`XXEDetectedError`. Callers catch this via the ``except
-       Exception`` branch in :meth:`HTMLParseGuard.sanitize` which
-       returns a safe-empty result.
-    3. Parse with a module-scope :class:`lxml.html.HTMLParser`
-       configured with ``no_network=True``, ``recover=True``,
-       ``remove_blank_text=True``, and ``huge_tree=False``,
-       belt-and-braces in case a novel payload slips past the
-       pre-scan.  (``resolve_entities`` and ``load_dtd`` are
-       ``XMLParser``-only knobs; see :func:`_build_safe_parser` for
-       the rationale.)
-
-    Args:
-        raw: Raw (potentially attacker-controlled) HTML string.
+    Thin wrapper over :meth:`HTMLParseGuard.sanitize_document` for a caller
+    that wants the default configuration.
 
     Returns:
-        Parsed root ``lxml`` element.
+        The sanitised HTML and the strip's verdict.
 
     Raises:
-        XXEDetectedError: If the payload carries an external DOCTYPE
-            or any entity declaration.
+        XXEDetectedError: If the payload carries an external DOCTYPE or an
+            entity declaration.
     """
-    # Strip comments before the XXE scan.  The parser itself still
-    # removes comments from the tree later.
-    scan_source = _HTML_COMMENT_RE.sub("", raw)
-    if _EXTERNAL_DOCTYPE_RE.search(scan_source):
-        logger.warning(
-            TOOL_HTML_PARSE_XXE_DETECTED,
-            reason="external_doctype",
-            content_length=len(raw),
-        )
-        msg = "external DOCTYPE (SYSTEM/PUBLIC) detected; refusing to parse"
-        raise XXEDetectedError(msg)
-    if _ENTITY_DECL_RE.search(scan_source):
-        logger.warning(
-            TOOL_HTML_PARSE_XXE_DETECTED,
-            reason="entity_declaration",
-            content_length=len(raw),
-        )
-        msg = "ENTITY declaration detected; refusing to parse"
-        raise XXEDetectedError(msg)
-
-    from lxml import html as lxml_html  # noqa: PLC0415
-
-    # Use the lxml.html fromstring so the returned element supports
-    # ``text_content()`` / ``drop_tree()`` which the sanitiser relies
-    # on. Pass the shared safe parser explicitly so our no-network +
-    # huge_tree guards apply.
-    return lxml_html.fromstring(raw, parser=_SAFE_PARSER)
+    return HTMLParseGuard(config).sanitize_document(raw)
 
 
-def _build_safe_parser() -> HTMLParser:
-    """Build the shared ``HTMLParser`` used by :func:`_parse_html_safely`.
-
-    ``no_network=True`` blocks external resource loads (the primary
-    XXE vector); ``huge_tree=False`` caps entity expansion; ``recover``
-    keeps existing sanitiser behaviour on malformed input.
-
-    Uses :class:`lxml.html.HTMLParser` rather than
-    :class:`lxml.etree.HTMLParser` so parsed elements carry the
-    ``HtmlElement`` API (``text_content``, ``drop_tree``, etc.) the
-    sanitiser depends on.
-
-    Note: ``resolve_entities`` / ``load_dtd`` are ``XMLParser`` knobs,
-    not valid on ``HTMLParser``.  lxml's HTML parser does not resolve
-    DTDs or external entities by default, so our pre-parse DOCTYPE /
-    ENTITY rejection in :func:`_parse_html_safely` carries the
-    defence here rather than a parser flag.
-
-    Returns:
-        Result of type ``HTMLParser``.
-    """
-    from lxml import html as lxml_html  # noqa: PLC0415
-
-    return lxml_html.HTMLParser(
-        no_network=True,
-        remove_blank_text=True,
-        recover=True,
-        huge_tree=False,
-    )
-
-
-_SAFE_PARSER: Final[HTMLParser] = _build_safe_parser()
-"""Module-scope HTML parser with XXE / entity-expansion defences.
-
-Reused across calls to avoid re-building lxml state on every
-``sanitize()`` invocation.
-"""
+__all__ = [
+    "HTMLParseGuard",
+    "HTMLParseGuardConfig",
+    "HTMLSanitizeResult",
+    "sanitize_html_document",
+]
