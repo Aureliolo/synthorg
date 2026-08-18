@@ -103,9 +103,15 @@ func runStableHighlightsWalk(
 	// not silently regress.
 	base := normalizeVersionRef(result.CurrentVersion)
 	head := normalizeVersionRef(result.LatestVersion)
+	// Display-only copies. The raw values keep going to the API, which needs
+	// the ref as published; the labels below are read by an operator, and
+	// UI.Warn strips control bytes but leaves the bidi and zero-width runes
+	// a remote tag can carry to spoof the range being offered.
+	baseLabel := ui.SanitizeUntrustedLine(base)
+	headLabel := ui.SanitizeUntrustedLine(head)
 	releases, err := releasesBetween(ctx, base, head, false)
 	if err != nil {
-		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v", base, head, err))
+		out.Warn(fmt.Sprintf("Could not load release list (%s..%s): %v", baseLabel, headLabel, err))
 		out.HintError("Showing terse update notice instead. Re-run later or check release notes manually.")
 		printOfflineNotice(out, result)
 		return
@@ -113,7 +119,7 @@ func runStableHighlightsWalk(
 	if len(releases) == 0 {
 		out.Warn(fmt.Sprintf(
 			"No releases found strictly between %s and %s -- the walk has nothing to show.",
-			base, head))
+			baseLabel, headLabel))
 		out.HintError("This is unusual on the stable channel; check the GitHub releases page if a release was pruned.")
 		printOfflineNotice(out, result)
 		return
@@ -213,6 +219,10 @@ func runDevCommitWalk(
 
 	base := normalizeVersionRef(result.CurrentVersion)
 	head := normalizeVersionRef(result.LatestVersion)
+	// Display-only copies; see runStableHighlightsWalk. The raw values still
+	// go to the compare API below.
+	baseLabel := ui.SanitizeUntrustedLine(base)
+	headLabel := ui.SanitizeUntrustedLine(head)
 	apiBase := effectiveBaseRef(base, currentBuildCommit())
 	commitRange, err := commitsBetween(ctx, apiBase, head)
 	if err != nil {
@@ -223,15 +233,18 @@ func runDevCommitWalk(
 		// label before formatting. The inner cause (rate-limit, 404,
 		// etc.) is preserved because it is genuinely useful for
 		// self-diagnosis and contains no secret data.
-		errMsg := scrubAPIBase(err.Error(), apiBase, base)
-		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %s", base, head, errMsg))
+		//
+		// The wrapper embeds the head ref verbatim, so the message is
+		// itself remote-influenced and gets the same scrub as the labels.
+		errMsg := ui.SanitizeUntrustedLine(scrubAPIBase(err.Error(), apiBase, base))
+		out.Warn(fmt.Sprintf("Could not fetch commit list for %s..%s: %s", baseLabel, headLabel, errMsg))
 		out.HintError(devCommitWalkErrorHint(apiBase != base))
 		printOfflineNotice(out, result)
 		return
 	}
 	if len(commitRange.Commits) == 0 {
 		out.Warn(fmt.Sprintf(
-			"GitHub returned 0 commits between %s and %s -- range looks empty.", base, head))
+			"GitHub returned 0 commits between %s and %s -- range looks empty.", baseLabel, headLabel))
 		printOfflineNotice(out, result)
 		return
 	}

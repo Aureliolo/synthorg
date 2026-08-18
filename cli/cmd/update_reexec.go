@@ -35,11 +35,27 @@ func reexecUpdate(cmd *cobra.Command, recovered bool) error {
 	if runErr := c.Run(); runErr != nil {
 		// Preserve the child's exit code so the parent can propagate it.
 		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
-			return &ChildExitError{Code: exitErr.ExitCode()}
+			return &ChildExitError{Code: normalizeChildExitCode(exitErr.ExitCode())}
 		}
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)
 	}
 	return nil
+}
+
+// normalizeChildExitCode maps a child's reported exit code onto one the CLI
+// actually defines.
+//
+// A signal-terminated child never carried an exit status, and os/exec says
+// so by reporting -1. Propagating that verbatim would reach os.Exit, which
+// takes the low byte, so the shell would report 255: a code this CLI does
+// not document and no caller can key on. ExitRuntime is the honest answer,
+// because a child killed mid-update did fail at runtime. A genuine status
+// from the child is passed through untouched.
+func normalizeChildExitCode(code int) int {
+	if code < 0 {
+		return ExitRuntime
+	}
+	return code
 }
 
 // resolveCurrentExecutable returns the absolute, symlink-resolved path

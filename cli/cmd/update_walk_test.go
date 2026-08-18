@@ -279,6 +279,94 @@ func TestRunStableHighlightsWalk_warnsOnEmptyRange(t *testing.T) {
 	)
 }
 
+// A tag name is remote-controlled and git permits the whole invisible
+// format class in one, so a target label reaching a warning carries the
+// same spoofing surface as the release bodies below it. UI.Warn strips
+// control bytes and nothing else, which leaves exactly these runes free to
+// reorder or pad the version range an operator is being shown.
+// Written as UTF-8 byte escapes: the literal characters are invisible in a
+// diff and staticcheck rejects them in a string literal (ST1018).
+const (
+	rloRune        = "\xe2\x80\xae" // U+202E RIGHT-TO-LEFT OVERRIDE
+	zwspRune       = "\xe2\x80\x8b" // U+200B ZERO WIDTH SPACE
+	wordJoinerRune = "\xe2\x81\xa0" // U+2060 WORD JOINER
+
+	spoofedTargetTag = "v0.7.5" + rloRune + zwspRune + "evil" + wordJoinerRune
+	spoofedTargetSaf = "v0.7.5evil"
+)
+
+// requireLacks is the negative half of requireContains: proof that a rune
+// was dropped, not merely that the visible text survived.
+func requireLacks(t *testing.T, got string, unwanted ...string) {
+	t.Helper()
+	for _, u := range unwanted {
+		if strings.Contains(got, u) {
+			t.Errorf("expected output NOT to contain %q\n--- got ---\n%s", u, got)
+		}
+	}
+}
+
+func TestRunStableHighlightsWalk_scrubsSpoofedLabelOnLoadFailure(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return nil, errors.New("simulated GitHub 503")
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.1", LatestVersion: spoofedTargetTag}
+	state := config.DefaultState()
+
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, state, walkModeStatic)
+
+	got := buf.String()
+	requireContains(t, got, "Could not load release list", "v0.7.1..", spoofedTargetSaf)
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+}
+
+func TestRunStableHighlightsWalk_scrubsSpoofedLabelOnEmptyRange(t *testing.T) {
+	withReleasesBetween(t, func(_ context.Context, _, _ string, _ bool) ([]selfupdate.Release, error) {
+		return nil, nil
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: spoofedTargetTag}
+	state := config.DefaultState()
+
+	runStableHighlightsWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, state, walkModeStatic)
+
+	got := buf.String()
+	requireContains(t, got, "No releases found strictly between", spoofedTargetSaf)
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+}
+
+// The compare wrapper embeds the head ref verbatim ("comparing a...b: ..."),
+// so the error text is remote-influenced even once the labels beside it are
+// clean, and it gets scrubbed too.
+func TestRunDevCommitWalk_scrubsSpoofedLabelOnCompareError(t *testing.T) {
+	withCommitsBetween(t, func(_ context.Context, base, head string) (selfupdate.CommitRange, error) {
+		return selfupdate.CommitRange{}, fmt.Errorf("comparing %s...%s: simulated 502", base, head)
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: spoofedTargetTag}
+
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
+
+	got := buf.String()
+	requireContains(t, got, "Could not fetch commit list for", spoofedTargetSaf, "simulated 502")
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+}
+
+func TestRunDevCommitWalk_scrubsSpoofedLabelOnEmptyRange(t *testing.T) {
+	withCommitsBetween(t, func(_ context.Context, _, _ string) (selfupdate.CommitRange, error) {
+		return selfupdate.CommitRange{}, nil
+	})
+	cmd, buf := newWalkTestCmd(t)
+	result := selfupdate.CheckResult{CurrentVersion: "v0.7.4", LatestVersion: spoofedTargetTag}
+
+	runDevCommitWalk(cmd.Context(), cmd, changelogUI(cmd, walkModeStatic), result, walkModeStatic)
+
+	got := buf.String()
+	requireContains(t, got, "GitHub returned 0 commits between", spoofedTargetSaf)
+	requireLacks(t, got, rloRune, zwspRune, wordJoinerRune)
+}
+
 // The static path is what every non-interactive invocation takes, so the
 // whole changelog has to survive the trip to stdout: the summary index AND
 // every release body, with nothing waiting on a key press.

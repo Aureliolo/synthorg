@@ -198,6 +198,18 @@ const (
 	zwjRune  = "\xe2\x80\x8d" // U+200D ZERO WIDTH JOINER
 	bomRune  = "\xef\xbb\xbf" // U+FEFF BYTE ORDER MARK
 	nelRune  = "\xc2\x90"     // U+0090 DEVICE CONTROL STRING (C1)
+
+	// Invisible format runes outside the bidi and zero-width blocks above.
+	// Each renders as nothing, so each can pad a version label into looking
+	// like a different one.
+	wordJoinerRune  = "\xe2\x81\xa0"     // U+2060 WORD JOINER
+	invisiblePlus   = "\xe2\x81\xa4"     // U+2064 INVISIBLE PLUS
+	softHyphenRune  = "\xc2\xad"         // U+00AD SOFT HYPHEN
+	arabicLetterMar = "\xd8\x9c"         // U+061C ARABIC LETTER MARK
+	mongolianVowel  = "\xe1\xa0\x8e"     // U+180E MONGOLIAN VOWEL SEPARATOR
+	interlinearAnch = "\xef\xbf\xb9"     // U+FFF9 INTERLINEAR ANNOTATION ANCHOR
+	langTagRune     = "\xf3\xa0\x80\x81" // U+E0001 LANGUAGE TAG
+	tagLetterARune  = "\xf3\xa0\x81\x81" // U+E0041 TAG LATIN CAPITAL LETTER A
 )
 
 func TestSanitizeUntrusted(t *testing.T) {
@@ -229,6 +241,26 @@ func TestSanitizeUntrusted(t *testing.T) {
 		{"strip_bidi_override", "v1.0.0" + rloRune + "gnitset" + pdfRune, "v1.0.0gnitset"},
 		{"strip_bidi_isolate", "v1" + lriRune + ".0" + pdiRune + ".0", "v1.0.0"},
 		{"strip_zero_width", "v1." + zwspRune + "0." + zwjRune + "0" + bomRune, "v1.0.0"},
+		// The rest of the invisible-format class. None is a control
+		// character or a bidi control, so only the spoofing sweep sees them.
+		{"strip_word_joiner", "v1." + wordJoinerRune + "0.0", "v1.0.0"},
+		{"strip_invisible_operator", "v1.0" + invisiblePlus + ".0", "v1.0.0"},
+		{"strip_soft_hyphen", "v1." + softHyphenRune + "0.0", "v1.0.0"},
+		{"strip_arabic_letter_mark", "v1.0" + arabicLetterMar + ".0", "v1.0.0"},
+		{"strip_mongolian_vowel_separator", "v1" + mongolianVowel + ".0.0", "v1.0.0"},
+		{"strip_interlinear_anchor", "v1.0." + interlinearAnch + "0", "v1.0.0"},
+		// The tag block smuggles a whole hidden string one codepoint at a
+		// time, which is why it goes with its opener rather than alone.
+		{"strip_tag_block", "v1.0.0" + langTagRune + tagLetterARune, "v1.0.0"},
+		// Visible text either side of a dropped rune must survive, or the
+		// sweep would be eating the label it exists to keep readable.
+		{"keep_neighbours_of_dropped_rune", "a" + wordJoinerRune + "b", "ab"},
+		// Bytes that are not text at all: they decode to U+FFFD and the
+		// rebuild writes the replacement rather than passing them through.
+		{"replace_invalid_utf8", "v1\xff.0", "v1\xef\xbf\xbd.0"},
+		// Printable multi-byte text survives, including the bullet, which
+		// shares its leading byte with the zero-width block above.
+		{"keep_multibyte_text", "café • release", "café • release"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
