@@ -115,6 +115,24 @@ deterministic synthesis (`synthesise_review`) consolidates them onto `Plan.revie
 (overall verdict = the most severe). The panel is wired at startup without failing
 boot, and runs as a distinct pipeline phase between decompose and the human gate.
 
+**A finding sends the plan back to be re-planned.** The panel exists to catch a
+plan before the operator has to, so its verdict drives another planning pass
+rather than riding along as commentary: `build_reviewed_plan`
+(`engine/pipeline/plan_revision.py`) re-decomposes against a brief carrying every
+finding, then re-reviews, until the panel stops objecting or
+`coordination.plan_review_max_revision_rounds` is spent. Any finding counts,
+whatever verdict carries it, since an endorsement that still notes a gap has
+still noted one. Each round is its own `plan_review_panel_revision_N` phase, so
+how many panels ran is readable rather than inferred, and each round briefs from
+the ORIGINAL objective plus the LATEST review: findings describe the plan they
+were raised against, so carrying a superseded round's forward asks the planner
+to fix a plan that no longer exists. Reaching the cap is not a failure. The plan
+is parked for the operator carrying whatever is still outstanding, which is
+exactly what happened before anything read the findings, and
+`pipeline.plan_review.revision_exhausted` says so. Setting the cap to `0` keeps
+that older behaviour deliberately: the panel still reviews and its findings
+still reach the plan and the operator, but nothing acts on them.
+
 **The finding vocabulary answers the questions the brief asks.**
 `PlanReviewFindingCategory` names the kinds a reviewer produces: `GAP`,
 `MISSING_OWNER`, `MISCALIBRATED_STAKES`, `RISKY_DECISION`, `BUDGET_CONCERN`,
@@ -186,7 +204,7 @@ stateDiagram-v2
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> FAILED: approval-park failed
-    PENDING_REVIEW --> DRAFT: edit / request-changes
+    PENDING_REVIEW --> PENDING_REVIEW: edit / request-changes (new revision)
     DRAFT --> SUPERSEDED: superseded by a re-plan
     PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
     APPROVED --> EXECUTING: dispatched
@@ -251,6 +269,16 @@ reworkable status, so a decided or failed plan cannot be revived (a retry is a
 fresh run). Each edit bumps `version`, and every write is version-guarded
 (optimistic concurrency): a stale writer is rejected with a conflict rather than
 silently clobbering a concurrent edit.
+
+Both land the plan back in `PENDING_REVIEW` carrying a new revision, because
+both produce revised items: nothing is dispatched from a reworkable status, so
+there is no running work to retire and no successor to point a project at. A
+change request that parked the plan in `DRAFT` instead is what left one sitting
+with nobody assigned to revise it, since the org has no trigger on `DRAFT` and
+the operator's only remaining route was to hand-author the item list through
+`/plans/{id}/replan`. The prior revision is snapshotted into `version_history`
+either way, so a reviewer can diff what changed, and `Plan.review` is cleared:
+the panel's findings referenced items that no longer exist.
 
 **Approval is not the end of the plan's life.** `APPROVED` dispatches the plan and
 hands it to `EXECUTING`, where its items' tasks are in flight. Every item being
@@ -334,7 +362,7 @@ to the operator's comment. It is **loop-safe** (only a human comment is answered
 so an agent reply never triggers another) and **failure-isolated**: the human
 `POST .../comments` always returns 201 even if reply generation fails, and the
 reply is gated live per comment by `coordination.plan_review_reply_enabled`
-(opt-out, default on). Lightweight discussion never resets the plan; only
+(opt-out, default on). Lightweight discussion never re-plans the plan; only
 `request-changes` does that.
 
 ## Owners come from the roster
@@ -439,7 +467,7 @@ so approval stays atomic).
 | `GET` | `/plans/{id}/transitions` | The plan's recorded status transitions, newest first: who asked, why, and from which version (see [Initiative Tail](initiative-tail.md)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
 | `DELETE` | `/plans/{id}` | Remove a plan that is not a record of work. Always deletable while undispatched (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED`); a plan deletes only when it has **zero live task rows**, because "its items are building" is checked against the tasks rather than inferred from the status: a dispatch that died before writing a single row leaves nothing building. That check and the delete are ONE repository call in one transaction (`delete_if_no_live_tasks`), never a count followed by a delete: a task filed between the two would be stranded on a plan id that no longer resolves, and nothing would report it. A terminal plan is refused outright (its record and its delivery verdicts outlive it), and a genuinely building plan is refused naming the count (409). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
-| `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
+| `POST` | `/plans/{id}/request-changes` | Re-plan against the operator's note. The org decomposes afresh from a brief the note leads and the plan's outstanding panel findings follow (`_plan_rework.py`), and the revised items replace the reviewed ones through the same validated path an edit takes, so the plan comes back under review carrying a new version rather than parked for a revision nobody performs. LLM-bound, like any other turn that asks the org to think. Refused rather than parked when it cannot be honoured: 503 when no planner or task engine is running, 409 when the objective task is gone, 422 when neither the note nor a finding says what should change. Every refusal lands before any write, so the operator's plan stays reviewable |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |
 
@@ -522,6 +550,7 @@ waiting for a restart.
 | `coordination.plan_review_panel_size` | `4` (max `8`) | Maximum panellists seated (the relevant leads sized to the plan, not everyone). |
 | `coordination.plan_review_panel_max_turns` | `6` | Hard turn cap per panellist session before it must submit a verdict. |
 | `coordination.plan_review_panel_cost_ceiling` | `1.0` | Per-reviewer spend ceiling (base currency); the session halts once accumulated cost reaches it. |
+| `coordination.plan_review_max_revision_rounds` | `2` (max `5`) | How many times a reviewed plan may be sent back to be re-planned before it is parked for the operator regardless. Each round costs a fresh decomposition and a fresh panel, so the cap is what stops a panel and a planner that disagree from arguing indefinitely. `0` makes the panel advisory: findings are still recorded and shown, but nothing acts on them. |
 | `budget.session_token_ceiling` | `2000000` | Per-reviewer token ceiling, shared with every other bounded helper session. The money ceiling above measures nothing against a connection that bills by flat subscription, where cost never rises and the panellist's only other bound is its turn cap. |
 
 ## Workspace

@@ -710,6 +710,9 @@ async def wire_plan_review_panel(
     config = PlanReviewPanelConfig(
         panel_size=await resolver.get_int("coordination", "plan_review_panel_size"),
         max_turns=await resolver.get_int("coordination", "plan_review_panel_max_turns"),
+        max_revision_rounds=await resolver.get_int(
+            "coordination", "plan_review_max_revision_rounds"
+        ),
         ceilings=SessionCeilings.of(
             cost_ceiling=await resolver.get_float(
                 "coordination", "plan_review_panel_cost_ceiling"

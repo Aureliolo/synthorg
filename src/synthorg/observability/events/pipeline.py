@@ -121,5 +121,15 @@ PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_at
 PIPELINE_PLAN_REVIEW_PANEL_FAILED: Final[str] = "pipeline.plan_review.panel_failed"
 """The stakeholder panel errored; the plan is parked for approval review-less."""
 
+PIPELINE_PLAN_REVISION_STARTED: Final[str] = "pipeline.plan_review.revision_started"
+"""A reviewed plan was sent back to be re-planned against the panel's findings."""
+
+PIPELINE_PLAN_REVISION_SETTLED: Final[str] = "pipeline.plan_review.revision_settled"
+"""A revision round produced a plan the panel no longer objects to."""
+
+PIPELINE_PLAN_REVISION_EXHAUSTED: Final[str] = "pipeline.plan_review.revision_exhausted"
+"""The revision cap was reached with findings still outstanding; the plan is
+parked for the operator carrying them."""
+
 PIPELINE_ENTRY_UNKNOWN_SOURCE: Final[str] = "pipeline.entry.unknown_source"
 """No work-entry adapter is wired for the requested work source."""

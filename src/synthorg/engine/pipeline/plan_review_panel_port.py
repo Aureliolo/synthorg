@@ -23,6 +23,21 @@ from synthorg.engine.decomposition.models import DecompositionResult
 class PlanReviewPanel(Protocol):
     """Runs a bounded stakeholder review of a built plan."""
 
+    @property
+    def max_revision_rounds(self) -> int:
+        """How many re-plan rounds this panel's findings may drive.
+
+        Every other bound on a review round is baked into the panel at
+        construction and replaced by the reconciler when the operator writes
+        one, so this rides with them rather than beside the spine: a second
+        home for it would be a second answer to how long a disagreement runs.
+        Zero makes the panel advisory.
+
+        Returns:
+            The maximum number of revision rounds, zero or more.
+        """
+        ...
+
     async def review(
         self,
         *,

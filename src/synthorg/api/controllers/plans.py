@@ -28,6 +28,7 @@ from synthorg.api.controllers._plan_replan import (
     reject_unroutable_owners,
     replan_initiative,
 )
+from synthorg.api.controllers._plan_rework import replan_for_change_request
 from synthorg.api.controllers._plan_translation import (
     item_from_payload,
     parse_status,
@@ -432,6 +433,10 @@ class PlanController(Controller):
     ) -> Response[ApiResponse[PlanRow]]:
         """Send a plan back to the org for revision, with a note.
 
+        The org re-plans against the note before this returns, so the operator
+        gets the corrected plan rather than a parked one nobody will revise.
+        LLM-bound, like any other turn that asks the org to think.
+
         Args:
             request: The incoming request.
             state: Application state.
@@ -439,7 +444,7 @@ class PlanController(Controller):
             data: The requested-changes note.
 
         Returns:
-            The plan, now back in draft.
+            The re-planned plan, back under review.
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
@@ -452,7 +457,10 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        drafted = await service.request_changes(existing, note=data.note)
+        items = await replan_for_change_request(
+            state.app_state, existing, note=data.note
+        )
+        drafted = await service.request_changes(existing, items=items, note=data.note)
         publish_ws_event(
             request,
             WsEventType.PLAN_CHANGES_REQUESTED,

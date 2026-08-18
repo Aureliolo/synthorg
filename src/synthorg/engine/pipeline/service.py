@@ -60,6 +60,10 @@ from synthorg.engine.pipeline.models import (
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
+from synthorg.engine.pipeline.plan_revision import (
+    build_reviewed_plan,
+    review_phase_name,
+)
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.engine.roster import AvailableRoster
@@ -112,7 +116,6 @@ _PHASE_SOLO = "solo_execution"
 _PHASE_TEAM = "team_execution"
 _PHASE_REFINE = "refinement_handoff"
 _PHASE_PLAN_REVIEW = "plan_review_handoff"
-_PHASE_REVIEW_PANEL = "plan_review_panel"
 _PHASE_METRICS = "coordination_metrics"
 
 #: Recorded on the durable plan when no panel is wired at all, so the
@@ -993,24 +996,42 @@ class DefaultWorkPipeline:
         gate = self._plan_review_gate
         assert coordinator is not None  # noqa: S101 -- guarded by _should_gate_plan
         assert gate is not None  # noqa: S101 -- guarded by _should_gate_plan
+
+        async def build_plan(planned: Task) -> DecompositionResult:
+            return await coordinator.plan_preview(
+                self._coordination_context(planned, agents, owner)
+            )
+
+        async def review_plan(
+            round_index: int,
+            planned: Task,
+            plan: DecompositionResult,
+        ) -> PlanReviewOutcome:
+            return await self._phase(
+                phases,
+                review_phase_name(round_index),
+                self._run_review_panel(planned, plan, agents, owner),
+            )
+
         # Persist the plan as a first-class shell at greenlight, so a failure
         # anywhere below leaves a visible FAILED plan rather than an orphan task.
         plan_id = await gate.open_plan(work_item=work_item, task=task)
         try:
-            plan = await coordinator.plan_preview(
-                self._coordination_context(task, agents, owner)
+            reviewed = await build_reviewed_plan(
+                task=task,
+                build_plan=build_plan,
+                review_plan=review_plan,
+                max_rounds=self._max_revision_rounds(),
             )
-            review = await self._phase(
-                phases,
-                _PHASE_REVIEW_PANEL,
-                self._run_review_panel(task, plan, agents, owner),
-            )
+            # The durable plan is for the objective the operator filed, not for
+            # the briefed copy a revision round planned against: the brief is a
+            # planning input that dies with the round.
             handoff = await gate.request_plan_approval(
                 plan_id=plan_id,
                 work_item=work_item,
                 task=task,
-                plan=plan,
-                review=review,
+                plan=reviewed.plan,
+                review=reviewed.outcome,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- not swallowed: any failure across
@@ -1025,8 +1046,20 @@ class DefaultWorkPipeline:
             task_id=str(task.id),
             approval_id=handoff.approval_id,
             subtask_count=handoff.subtask_count,
+            revision_rounds=reviewed.rounds_used,
+            review_settled=reviewed.settled,
         )
         return handoff
+
+    def _max_revision_rounds(self) -> int:
+        """How many revision rounds the attached panel's findings may drive.
+
+        Returns:
+            The panel's own cap, or zero when no panel is attached: nothing
+            raised a finding, so there is nothing to re-plan against.
+        """
+        panel = self._plan_review_panel
+        return 0 if panel is None else panel.max_revision_rounds
 
     async def _compensate_plan_failure(
         self,

@@ -266,6 +266,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_review_max_revision_rounds",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many times a reviewed plan may be sent back to be re-planned"
+            " before it is parked for the operator regardless. Each round costs"
+            " a fresh decomposition and a fresh panel, so the cap is what stops"
+            " a panel and a planner that disagree from arguing indefinitely."
+            " Set 0 to make the panel advisory: its findings are still recorded"
+            " and shown, but nothing acts on them. Resolved on the next"
+            " runtime-services rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=5,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="plan_review_panel_cost_ceiling",
         type=SettingType.FLOAT,
         default="1.0",

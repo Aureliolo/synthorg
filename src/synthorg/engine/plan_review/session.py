@@ -192,6 +192,17 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         self._shutdown_checker = shutdown_checker
         self._clock = clock if clock is not None else SystemClock()
 
+    @property
+    @override
+    def max_revision_rounds(self) -> int:
+        """How many re-plan rounds this panel's findings may drive.
+
+        Returns:
+            The configured cap, baked in at construction like every other
+            bound on a review round.
+        """
+        return self._config.max_revision_rounds
+
     @override
     async def review(
         self,

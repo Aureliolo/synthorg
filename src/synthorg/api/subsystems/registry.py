@@ -1673,6 +1673,7 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             "coordination.plan_review_panel_size",
             "coordination.plan_review_panel_max_turns",
             "coordination.plan_review_panel_cost_ceiling",
+            "coordination.plan_review_max_revision_rounds",
             "budget.session_token_ceiling",
         ),
         rebuild_on_change=True,
