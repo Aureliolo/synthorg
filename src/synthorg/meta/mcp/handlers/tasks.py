@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from synthorg.api._read_activity_names import enrich_activity_names
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -435,6 +436,10 @@ async def _activities_list(
                 offset=offset,
                 limit=limit,
             )
+        # Named here as well as on the REST route: a reference resolved on one
+        # surface and left raw on the other is the same leak, just harder to
+        # find.
+        events = await enrich_activity_names(app_state, events)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)

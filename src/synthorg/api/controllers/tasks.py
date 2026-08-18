@@ -12,10 +12,10 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
-from synthorg.api._read_names import agent_name_map
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
+from synthorg.api.controllers._task_names import names_and_titles
 from synthorg.api.controllers._task_removal import remove_task
 from synthorg.api.dto import (
     ApiResponse,
@@ -154,12 +154,16 @@ def _spawn_task_board_pipeline(
 
 
 async def _named(app_state: AppState, task: Task) -> TaskRow:
-    """Pair a task's assignee id with the name the operator knows them by.
+    """Pair a task's references with the names the operator knows them by.
+
+    Its dependencies are titled here too: the detail surface lists them, and a
+    list of ids names nothing an operator can act on.
 
     Returns:
         The task as the dashboard reads it.
     """
-    return TaskRow.of(task, await agent_name_map(app_state))
+    names, titles = await names_and_titles(app_state, task.dependencies)
+    return TaskRow.of(task, names, titles)
 
 
 class TaskController(Controller):
@@ -222,8 +226,15 @@ class TaskController(Controller):
         )
         meta = meta.model_copy(update={"total": total})
         logger.debug(API_TASK_LISTED, count=len(page), total=total)
-        names = await agent_name_map(app_state)
-        return PaginatedResponse(data=task_rows(page, names), pagination=meta)
+        # Once for the whole page, not once per row. Titled here as well as on
+        # the detail read because the field promises the same thing on both, and
+        # a row answering "nothing could name this" on the list while the detail
+        # named it would be making that claim falsely.
+        names, titles = await names_and_titles(
+            app_state,
+            [dependency for task in page for dependency in task.dependencies],
+        )
+        return PaginatedResponse(data=task_rows(page, names, titles), pagination=meta)
 
     @get("/{task_id:str}")
     async def get_task(
@@ -296,9 +307,11 @@ class TaskController(Controller):
         # unexpected ``ServiceUnavailableError``.
         adapter = app_state.slice(EngineStateSlice).task_board_entry_adapter
         if adapter is None:
+            # The title is human-typed and says nothing about why the board
+            # refused; the project and requester bound the refusal without
+            # putting free text a person wrote into the log.
             logger.warning(
                 API_TASK_BOARD_REJECTED_NO_ADAPTER,
-                title=data.title,
                 requester=requester,
                 project=data.project,
             )

@@ -69,15 +69,15 @@ All fonts self-hosted via `@fontsource`; no external CDN dependencies.
 | Role | Font | Size | Weight | Line height | Letter spacing | Example |
 |------|------|------|--------|-------------|----------------|---------|
 | Page heading | Sans | 18px (`text-lg`) | 600 | 1.5 | -0.01em | "Overview" |
-| Section heading | Sans | 13px | 600 | 1.4 | 0 | "Org Health" |
-| Section sublabel | Sans | 11px | 400 | 1.4 | 0 | "Department performance" |
+| Section heading | Sans | 13px | 600 | 1.4 | 0 | "Org Pulse" |
+| Section sublabel | Sans | 11px | 400 | 1.4 | 0 | "Running now, and what is blocking" |
 | Body text | Sans | 13px (`text-sm`) | 400 | 1.5 | 0 | Descriptions, paragraphs |
 | Small text | Sans | 12px (`text-xs`) | 400 | 1.5 | 0 | Secondary info, sublabels |
 | Label (uppercase) | Sans | 11px | 500 | 1.2 | 0.06em | "TASKS TODAY" |
 | Metric value | Mono | 26px | 700 | 1.0 | -0.02em | "24", "$42.17" |
 | Data value | Mono | 12px | 600 | 1.4 | 0 | "87%", "$12.50" |
 | Timestamp | Mono | 10px | 400 | 1.2 | 0 | "2m ago", "15:42 UTC" |
-| Code / agent name | Mono | 12px | 400 | 1.4 | 0 | "agent-cfo-001" |
+| Code / model id | Mono | 12px | 400 | 1.4 | 0 | "example-capable-001" |
 | Change badge | Mono | 11px | 500 | 1.2 | 0 | "+12%", "-3.2%" |
 
 **Rule**: Numbers and data always use monospace. Labels and descriptions always use sans-serif.
@@ -285,10 +285,20 @@ not "as a fallback" when a lookup misses.
 **Where the name comes from.** The backend resolves it, once per response, and
 sends it beside the id it stands for (`assigned_to` + `assigned_to_name`,
 `owner` + `owner_name`, `lead` + `lead_name`, `task_id` + `task_title`). The
-browser never resolves an id itself: a client-side lookup has to fetch the
-roster first, which means an id renders on the first paint of every cold load
-and renders forever for anyone the fetched page did not cover. That is not a
-timing bug to tighten; it is the wrong place for the question.
+browser never resolves a reference a row carries: a client-side lookup has to
+fetch the roster first, which means an id renders on the first paint of every
+cold load and renders forever for anyone the fetched page did not cover. That
+is not a timing bug to tighten; it is the wrong place for the question.
+
+A page reading the entity it is **about** is a different thing and stays in
+the browser. `useProjectName` and `useWorkflowName` each take a route
+parameter and read that one row; no response could carry the answer, because
+the page's own content is what the request is for. Two rules still hold there:
+the key never renders (the hook answers `Unknown project` while unresolved,
+never the identifier from the URL), and the resolved name is stored **with the
+id it was read for**. A name held on its own outlives its route, so moving
+between two projects labels the new one with the previous one's name until the
+next read lands, and permanently if that read fails.
 
 **What to show when there is no name.** The surface's own words, never the
 key: `Unassigned` for nobody assigned, `Unknown agent` for an actor the roster
@@ -301,12 +311,44 @@ in a link's `href`: correlation, routing and React identity all need the key
 and none of them are read by a person. A link is labelled by the name and
 navigates by the id.
 
-Enforced by `scripts/check_web_no_id_render.py`, which fails any JSX text
-child whose expression ends in a declared identifier field. Prose sitting
-beside the expression does not exempt it. A genuine exception takes
-`{/* lint-allow: no-id-render -- <reason> */}` on the rendering line or the
-one directly above it, because a JSX comment placed inside the text it
-annotates becomes a child node of that text.
+**Where a leak actually happens.** At three boundaries, and a rule that
+watches only one of them is theatre, because all three shipped: the render
+itself; the mapping layer that fills a name-shaped field (`agentName:
+event.related_ids.agent_id`, whose render site reads perfectly); and the
+backend prose an event carries in its own `description`, which survives even
+once the name beside it is resolved.
+
+Enforced by `scripts/check_no_raw_id_in_ui.py` at all three. It fails a JSX
+text child or an `aria-label` / `title` whose expression ends in an
+identifier, a `*name` / `*title` / `*label` field assigned one, and a `*Event`
+`description` f-string interpolating one. A name is judged an identifier by
+its `_id` / `Id` suffix, so a field added next year is refused until somebody
+writes down why it is a word; the handful carrying no suffix (`owner`, `lead`,
+`assigned_to` and their kin) are declared. Prose sitting beside the expression
+does not exempt it.
+
+A lone name is read too (`<div>ID: {nodeId}</div>`), but only once its container
+is established as an element's child and nothing in front of it makes it a
+destructure, an import specifier, a guarded object literal, or a block. That
+distinction needs the surrounding text rather than the expression, which is why
+it was left out at first, and the omission cost a real leak: a properties drawer
+printed a node id the editor mints from a UUID. Comments are blanked before any
+of this, so a route documented as `PATCH /agents/{id}` is read as documentation.
+
+A genuine exception takes a marker on the line above, written in the comment
+syntax of the boundary it sits at:
+
+| Boundary | Marker |
+| --- | --- |
+| JSX render | `{/* lint-allow: id-in-ui -- <reason> */}` |
+| `.ts` / `.tsx` mapping | `// lint-allow: id-in-ui -- <reason>` |
+| Python event description | `# lint-allow: id-in-ui -- <reason>` |
+
+The JSX form is a block comment in expression position because a comment placed
+inside the text it annotates would become a child node of that text. The reason
+is mandatory at every boundary: every legitimate case is a claim that the value
+is something a person reads (a model id, an author-chosen slug, a support
+reference), and the marker is the only place that claim gets written down.
 
 ---
 

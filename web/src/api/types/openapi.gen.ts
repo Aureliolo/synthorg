@@ -6578,8 +6578,10 @@ export type components = {
         };
         /** ActivityEvent */
         readonly ActivityEvent: {
+            /** @description Display name of whoever acted, resolved at the read boundary; None when nothing names them, which the surface words itself */
+            readonly actor_name: string | null;
             /**
-             * @description Human-readable event description
+             * @description Human-readable event description, free of identifiers
              * @default
              */
             readonly description: string;
@@ -6588,6 +6590,8 @@ export type components = {
             readonly related_ids: {
                 readonly [key: string]: string;
             };
+            /** @description Title of the task this event concerns, resolved at the read boundary; None when the task is gone or unreadable */
+            readonly subject_title: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -7295,9 +7299,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[ClientRequest] */
-        readonly ApiResponse_ClientRequest_: {
-            readonly data: components["schemas"]["ClientRequest"] | null;
+        /** ApiResponse[ClientRequestRow] */
+        readonly ApiResponse_ClientRequestRow_: {
+            readonly data: components["schemas"]["ClientRequestRow"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9909,10 +9913,12 @@ export type components = {
              */
             readonly strictness_level: number;
         };
-        /** ClientRequest */
-        readonly ClientRequest: {
+        /** ClientRequestRow */
+        readonly ClientRequestRow: {
             /** @description ID of the submitting client */
             readonly client_id: string;
+            /** @description Display name of the submitting client, when it is known */
+            readonly client_name: string | null;
             /**
              * Format: date-time
              * @description Timestamp of request creation
@@ -11661,12 +11667,15 @@ export type components = {
             /** @enum {string} */
             readonly change_type: "added" | "removed" | "reconnected" | "type_changed" | "label_changed";
             readonly edge_id: string;
+            readonly edge_label: string | null;
             readonly new_value: {
                 readonly [key: string]: unknown;
             } | null;
             readonly old_value: {
                 readonly [key: string]: unknown;
             } | null;
+            readonly source_label: string | null;
+            readonly target_label: string | null;
         };
         /** EditPlanRequest */
         readonly EditPlanRequest: {
@@ -12919,6 +12928,7 @@ export type components = {
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
+            readonly agent_name: string | null;
             readonly context_snippet: string | null;
             readonly created_at: string;
             readonly evidence_package_id: string | null;
@@ -13598,6 +13608,10 @@ export type components = {
             readonly meeting_type_name: string;
             /** @description Complete minutes on success */
             readonly minutes: components["schemas"]["MeetingMinutes"] | null;
+            /** @description Display name of every agent this meeting references, keyed by id: speakers, agenda presenters and action-item assignees. An id absent from the map is one nothing could name, which the surface words itself rather than printing the key */
+            readonly participant_names: {
+                readonly [key: string]: string;
+            };
             readonly protocol_type: components["schemas"]["MeetingProtocolType"];
             readonly status: components["schemas"]["MeetingStatus"];
             /**
@@ -13962,6 +13976,7 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
             readonly node_id: string;
+            readonly node_label: string | null;
             readonly old_value: {
                 readonly [key: string]: unknown;
             } | null;
@@ -14347,10 +14362,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[ClientRequest] */
-        readonly PaginatedResponse_ClientRequest_: {
+        /** PaginatedResponse[ClientRequestRow] */
+        readonly PaginatedResponse_ClientRequestRow_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["ClientRequest"][];
+            readonly data: readonly components["schemas"]["ClientRequestRow"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -19168,6 +19183,10 @@ export type components = {
              * @default []
              */
             readonly dependencies: readonly string[];
+            /** @description Title of each dependency that resolved, keyed by its id. A dependency absent from the map is one nothing could name, which the surface words itself rather than printing the key */
+            readonly dependency_titles: {
+                readonly [key: string]: string;
+            };
             /** @description Detailed task description */
             readonly description: string;
             readonly estimated_complexity: components["schemas"]["Complexity"];
@@ -31643,7 +31662,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31673,7 +31692,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31703,7 +31722,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31733,7 +31752,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31768,7 +31787,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -31803,7 +31822,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequestRow_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

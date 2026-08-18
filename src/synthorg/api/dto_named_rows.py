@@ -16,10 +16,11 @@ model forbidding extras rejects its own derived values on the way back in, so
 one computed field anywhere in an entity's tree would 500 the endpoint.
 """
 
+import copy
 from collections.abc import Iterable, Mapping
 from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from synthorg.api._read_names import resolved_actor_name
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
@@ -237,23 +238,66 @@ class PlanRow(Plan):
 
 
 class TaskRow(Task):
-    """A task, plus the name of the agent it is assigned to."""
+    """A task, plus the names its own references stand for."""
 
     assigned_to_name: NotBlankStr | None = Field(
         default=None,
         description="Display name of the assignee, when the assignee has one",
     )
+    dependency_titles: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Title of each dependency that resolved, keyed by its id. A"
+            " dependency absent from the map is one nothing could name, which"
+            " the surface words itself rather than printing the key"
+        ),
+    )
 
-    @classmethod
-    def of(cls, task: Task, names: Mapping[str, str]) -> Self:
-        """Build the row for *task*.
+    @model_validator(mode="after")
+    def _deep_copy_dependency_titles(self) -> Self:
+        """Deep-copy dependency_titles so the frozen model cannot be aliased.
+
+        `frozen=True` stops the field being reassigned and does nothing to the
+        dict behind it, so without this a caller holding the mapping it passed
+        in could still mutate a row it already handed over.
 
         Returns:
-            The task with its assignee resolved.
+            The instance with ``dependency_titles`` deep-copied.
         """
+        object.__setattr__(
+            self, "dependency_titles", copy.deepcopy(self.dependency_titles)
+        )
+        return self
+
+    @classmethod
+    def of(
+        cls,
+        task: Task,
+        names: Mapping[str, str],
+        titles: Mapping[str, str] | None = None,
+    ) -> Self:
+        """Build the row for *task*.
+
+        Args:
+            task: The task to name the references of.
+            names: Agent id to display name, from :func:`agent_name_map`.
+            titles: Task id to title, from :func:`task_titles`. May cover a whole
+                page, because the list read resolves once across every row; the
+                row keeps only its own dependencies out of it, so the field means
+                the same thing on every surface that carries it.
+
+        Returns:
+            The task with its assignee and its dependencies resolved.
+        """
+        resolved = titles or {}
         return cls(
             **dict(task),
             assigned_to_name=_as_name(resolved_actor_name(task.assigned_to, names)),
+            dependency_titles={
+                dependency: resolved[dependency]
+                for dependency in task.dependencies
+                if dependency in resolved
+            },
         )
 
 
@@ -297,13 +341,21 @@ def project_rows(
     return tuple(ProjectRow.of(project, names) for project in projects)
 
 
-def task_rows(tasks: Iterable[Task], names: Mapping[str, str]) -> tuple[TaskRow, ...]:
-    """Name the assignee on every task in *tasks*.
+def task_rows(
+    tasks: Iterable[Task],
+    names: Mapping[str, str],
+    titles: Mapping[str, str] | None = None,
+) -> tuple[TaskRow, ...]:
+    """Name the assignee and title the dependencies on every task in *tasks*.
+
+    One title map for the whole page, resolved by the caller across every
+    dependency it references, so a list row carries the same map a detail row
+    would rather than a different one per row.
 
     Returns:
         The rows, in order.
     """
-    return tuple(TaskRow.of(task, names) for task in tasks)
+    return tuple(TaskRow.of(task, names, titles) for task in tasks)
 
 
 __all__ = [

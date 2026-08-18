@@ -1,9 +1,9 @@
 """Task repository protocol."""
 
-from typing import Protocol, override, runtime_checkable
+from typing import Protocol, Self, override, runtime_checkable
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import BlockedReason, TaskStatus
@@ -40,6 +40,40 @@ class TaskFilterSpec(BaseModel):
         default=None,
         description="Filter by why a blocked task is parked",
     )
+    after_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Return only rows ordered after this id. Query ordering is"
+            " deterministic on the primary key, so a caller walking a large"
+            " set pages by carrying the last id forward instead of by offset:"
+            " an offset re-counts every row it has already read, and skips a"
+            " row outright when a concurrent writer removes one behind the"
+            " window"
+        ),
+    )
+    ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description=(
+            "Return only these rows. A caller resolving a page's references"
+            " asks once for the set rather than once per reference, which is"
+            " the difference between one query and one per row"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _reject_an_empty_id_set(self) -> Self:
+        """Refuse ``ids=()``, which reads as "no filter" and returns everything.
+
+        Returns:
+            ``self`` when the filter is expressible.
+
+        Raises:
+            ValueError: When ``ids`` is present but empty.
+        """
+        if self.ids is not None and not self.ids:
+            msg = "ids must name at least one row; use None for no id filter"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

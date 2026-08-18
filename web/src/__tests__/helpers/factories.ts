@@ -29,6 +29,7 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Dashboa
     created_by: 'agent-cto',
     assigned_to: 'agent-eng',
     assigned_to_name: 'Engineer',
+    dependency_titles: {},
     requested_by_user_id: null,
     reviewers: [],
     dependencies: [],
@@ -202,6 +203,7 @@ export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): M
     error_message: null,
     token_budget: 2000,
     token_usage_by_participant: { 'agent-alice': 350, 'agent-bob': 300 },
+    participant_names: { 'agent-alice': 'Alice Smith', 'agent-bob': 'Bob Jones' },
     contribution_rank: ['agent-alice', 'agent-bob'],
     meeting_duration_seconds: 300,
     tasks_created: 0,
@@ -275,8 +277,10 @@ export function makeActivityEvent(overrides?: Partial<AgentActivityEvent>): Agen
   return {
     event_type: 'task_completed',
     timestamp: '2026-03-25T12:00:00Z',
-    description: 'Completed task task-1',
+    description: 'Task succeeded',
     related_ids: {},
+    actor_name: null,
+    subject_title: null,
     ...overrides,
   }
 }

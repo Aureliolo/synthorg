@@ -125,10 +125,13 @@ function MeetingDetailBanners({
 function MeetingMinutesSections({ meeting }: { meeting: MeetingDetail }) {
   const minutes = meeting.minutes
   if (!minutes) return null
+  // Resolved once by the backend for the whole meeting; every section that
+  // names a person reads the same map rather than each printing the key.
+  const names = meeting.participant_names
   return (
     <>
       <ErrorBoundary level="section">
-        <MeetingAgendaSection agenda={minutes.agenda} />
+        <MeetingAgendaSection agenda={minutes.agenda} participantNames={names} />
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
@@ -137,7 +140,10 @@ function MeetingMinutesSections({ meeting }: { meeting: MeetingDetail }) {
 
       {minutes.contributions.length > 0 && (
         <ErrorBoundary level="section">
-          <MeetingContributions contributions={minutes.contributions} />
+          <MeetingContributions
+            contributions={minutes.contributions}
+            participantNames={names}
+          />
         </ErrorBoundary>
       )}
 
@@ -146,7 +152,10 @@ function MeetingMinutesSections({ meeting }: { meeting: MeetingDetail }) {
           <MeetingDecisions decisions={minutes.decisions} />
         </ErrorBoundary>
         <ErrorBoundary level="section">
-          <MeetingActionItems actionItems={minutes.action_items} />
+          <MeetingActionItems
+            actionItems={minutes.action_items}
+            participantNames={names}
+          />
         </ErrorBoundary>
       </div>
 

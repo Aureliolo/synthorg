@@ -207,7 +207,15 @@ function isMeetingNullableFields(c: Record<string, unknown>): boolean {
     && isMeetingDurationField(c['meeting_duration_seconds'])
     && (c['token_usage_by_participant'] === undefined
       || isTokenUsageMap(c['token_usage_by_participant']))
+    && isNameMap(c['participant_names'])
   )
+}
+
+/** Validate that ``participant_names`` is a plain ``Record<string, string>``. */
+function isNameMap(value: unknown): value is Record<string, string> {
+  if (value === undefined) return true
+  if (!isPlainObject(value)) return false
+  return Object.values(value).every((name) => typeof name === 'string')
 }
 
 /**
@@ -329,7 +337,13 @@ function sanitizeMeetingMinutes(
 function sanitizeTokenUsage(
   raw: Record<string, number> | undefined,
 ): Record<string, number> {
-  const tokenUsage: Record<string, number> = {}
+  // Null-prototype: a plain object answers `Object.prototype` for a
+  // `__proto__` key, which is not nullish, so the consumer's `?? 0` would not
+  // fire and an object would reach the renderer (CWE-1321).
+  const tokenUsage: Record<string, number> = Object.create(null) as Record<
+    string,
+    number
+  >
   for (const [participantId, count] of Object.entries(raw ?? {})) {
     const safeId = sanitizeWsString(participantId, 128)
     if (safeId && safeId.length > 0) {
@@ -337,6 +351,21 @@ function sanitizeTokenUsage(
     }
   }
   return tokenUsage
+}
+
+/** Agent id to display name, resolved by the backend for the whole meeting. */
+function sanitizeParticipantNames(
+  raw: Record<string, string> | undefined,
+): Record<string, string> {
+  const names: Record<string, string> = Object.create(null) as Record<string, string>
+  for (const [agentId, displayName] of Object.entries(raw ?? {})) {
+    const safeId = sanitizeWsString(agentId, 128)
+    const safeName = sanitizeWsString(displayName, 128)
+    if (safeId && safeName) {
+      names[safeId] = safeName
+    }
+  }
+  return names
 }
 
 /**
@@ -376,6 +405,7 @@ export function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
       .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
       .filter((agentId) => agentId.length > 0),
     meeting_duration_seconds: c.meeting_duration_seconds,
+    participant_names: sanitizeParticipantNames(c.participant_names),
     tasks_created: c.tasks_created,
     tasks_failed: c.tasks_failed,
   }

@@ -1,67 +1,57 @@
 import type { Node } from '@xyflow/react'
-import { type GroupResult, DESIRED_INTER_DEPT_GAP, getNodeDim } from './layout-shared'
+import { flowIntoGrid } from './layout-grid'
+import {
+  type GroupResult,
+  DESIRED_INTER_DEPT_GAP,
+  DESIRED_INTER_DEPT_GAP_X,
+  getNodeDim,
+} from './layout-shared'
 
 /**
- * De-overlap sibling dept boxes horizontally.
+ * Arrange the departments hanging off the root as a block rather than a row.
  *
- * The top-level frame separates boxes by dagre's nodesep, which is tuned for
- * cards rather than for the visible gap the chart reads by. Sweeping
- * left-to-right and shifting any box that sits closer than the target gap
- * guarantees a constant one. Contents ride along automatically: they are
- * stored relative to their box.
+ * A single row costs width per department without bound while the height stays
+ * fixed, so the chart runs off the canvas sideways with most of the viewport
+ * still empty: six departments measure 2700 px across against 654 px tall.
+ * Wrapping into a block spends both axes, and the whole block is centred on the
+ * root so the spine stays straight.
+ *
+ * The order handed to the grid is the order they arrive in, which is the
+ * operator's own: dagre's order constraints pinned it to emission order, and
+ * that is what the reorder endpoints persist.
+ *
+ * Contents ride along automatically, being stored relative to their box. The
+ * block keeps the top dagre gave it rather than resetting to the origin: with a
+ * root department `anchorNonRootBelowRoot` shifts the whole block into place
+ * afterwards, but an org with no CEO has no root to anchor against and dagre's
+ * own rank is then the only thing holding the departments below the owner row.
  */
-export function enforceHorizontalGaps(
+export function placeDepartmentGrid(
   allGroupResults: GroupResult[],
   rootGroupIds: ReadonlySet<string>,
-  gap: number,
+  rootResult: GroupResult | undefined,
 ): void {
-  const nonRoot = allGroupResults.filter((r) => !rootGroupIds.has(r.node.id))
-  if (nonRoot.length < 2) return
-  const sorted = [...nonRoot].sort((a, b) => a.node.position.x - b.node.position.x)
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1]!
-    const curr = sorted[i]!
-    const minLeft = prev.node.position.x + prev.groupWidth + gap
-    if (curr.node.position.x < minLeft) {
-      curr.node = { ...curr.node, position: { x: minLeft, y: curr.node.position.y } }
-    }
-  }
-}
+  const nonRoot = allGroupResults
+    .filter((r) => !rootGroupIds.has(r.node.id))
+    .sort((a, b) => a.node.position.x - b.node.position.x)
+  if (nonRoot.length === 0) return
 
-/**
- * Centre the MEDIAN non-root dept under root. For odd counts the visual middle
- * is the median-x dept (siblings have different widths, so the bbox midpoint
- * drifts off the median item's centre); for even counts the two middle items
- * are averaged.
- */
-export function centerNonRootUnderRoot(
-  allGroupResults: GroupResult[],
-  rootGroupIds: ReadonlySet<string>,
-  rootPopulated: GroupResult | undefined,
-): void {
-  const nonRootResults = allGroupResults.filter((r) => !rootGroupIds.has(r.node.id))
-  if (!rootPopulated || nonRootResults.length === 0) return
-
-  const rootCenterX = rootPopulated.node.position.x + rootPopulated.groupWidth / 2
-  const sortedByX = [...nonRootResults].sort(
-    (a, b) => a.node.position.x + a.groupWidth / 2 - (b.node.position.x + b.groupWidth / 2),
+  const grid = flowIntoGrid(
+    nonRoot.map((r) => ({ id: r.node.id, w: r.groupWidth, h: r.groupHeight })),
+    { gapX: DESIRED_INTER_DEPT_GAP_X, gapY: DESIRED_INTER_DEPT_GAP },
   )
-  let targetCenterX: number
-  if (sortedByX.length % 2 === 1) {
-    const mid = sortedByX[(sortedByX.length - 1) / 2]!
-    targetCenterX = mid.node.position.x + mid.groupWidth / 2
-  } else {
-    const left = sortedByX[sortedByX.length / 2 - 1]!
-    const right = sortedByX[sortedByX.length / 2]!
-    targetCenterX =
-      (left.node.position.x + left.groupWidth / 2 + right.node.position.x + right.groupWidth / 2) / 2
-  }
-  const deltaX = rootCenterX - targetCenterX
-  if (Math.abs(deltaX) <= 0.5) return
-  for (const result of nonRootResults) {
+  const anchorX = rootResult
+    ? rootResult.node.position.x + rootResult.groupWidth / 2
+    : nonRoot[0]!.node.position.x + grid.width / 2
+  const left = anchorX - grid.width / 2
+  const top = Math.min(...nonRoot.map((r) => r.node.position.y))
+
+  const byId = new Map(nonRoot.map((r) => [r.node.id, r]))
+  for (const placement of grid.placements) {
+    const result = byId.get(placement.id)!
     result.node = {
       ...result.node,
-      position: { x: result.node.position.x + deltaX, y: result.node.position.y },
+      position: { x: left + placement.x, y: top + placement.y },
     }
   }
 }

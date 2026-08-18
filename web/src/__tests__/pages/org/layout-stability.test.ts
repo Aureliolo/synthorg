@@ -9,6 +9,7 @@ import {
   fitsInside,
   layoutOf,
   leftToRight,
+  readingOrder,
   nodeById,
   orgConfig,
   overlaps,
@@ -164,7 +165,7 @@ describe('org chart layout under structural change', () => {
       SMALL_ORG[1]!,
     ]
     const execs = agentIds(['cto', 'cfo', 'coo'])
-    expect(leftToRight(layoutOf(orgConfig(wideExec)), execs)).toEqual(execs)
+    expect(readingOrder(layoutOf(orgConfig(wideExec)), execs)).toEqual(execs)
   })
 
   it('keeps an unstaffed department in its configured slot', () => {
@@ -176,7 +177,7 @@ describe('org chart layout under structural change', () => {
     ]
     const nodes = layoutOf(orgConfig(withEmpty))
     const order = ['dept-engineering', 'dept-legal', 'dept-sales']
-    expect(leftToRight(nodes, order)).toEqual(order)
+    expect(readingOrder(nodes, order)).toEqual(order)
   })
 
   it('removing a department does not reorder the surviving departments', () => {
@@ -270,7 +271,7 @@ describe('org chart layout spine anchor', () => {
     ).toEqual(before)
   })
 
-  it('centres the median department under the root for an odd count', () => {
+  it('centres the whole department block under the root for an odd count', () => {
     const odd = orgConfig([
       SMALL_ORG[0]!,
       SMALL_ORG[1]!,
@@ -282,11 +283,12 @@ describe('org chart layout spine anchor', () => {
     const nonRoot = nodes.filter(
       (n) => n.type === 'department' && n.id !== ROOT_DEPT_NODE_ID,
     )
-    const centres = nonRoot
-      .map((n) => n.position.x + (n.width as number) / 2)
-      .sort((a, b) => a - b)
+    // The departments wrap into a block, so no single one of them sits on the
+    // spine; what has to stay on it is the block, whatever the count.
+    const left = Math.min(...nonRoot.map((n) => n.position.x))
+    const right = Math.max(...nonRoot.map((n) => n.position.x + (n.width as number)))
     const rootCentre = root.position.x + (root.width as number) / 2
-    expect(centres[(centres.length - 1) / 2]).toBeCloseTo(rootCentre, 5)
+    expect((left + right) / 2).toBeCloseTo(rootCentre, 5)
   })
 })
 

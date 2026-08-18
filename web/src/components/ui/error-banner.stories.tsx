@@ -103,6 +103,56 @@ export const TitleOnlyError: Story = {
   },
 }
 
+/** Retry is disabled and counts down while the server's cooldown runs. */
+export const RetryCooldown: Story = {
+  args: {
+    variant: 'section',
+    severity: 'warning',
+    title: 'Rate limited',
+    description: 'The provider asked us to wait before trying again.',
+    retryAfterSeconds: 45,
+    onRetry: () => {},
+  },
+}
+
+/** A fresh 429 restarts the cooldown even at the same `retryAfterSeconds`. */
+export const RetryCooldownRestarted: Story = {
+  args: {
+    variant: 'section',
+    severity: 'warning',
+    title: 'Rate limited again',
+    description: 'A second refusal at the same interval restarts the wait.',
+    retryAfterSeconds: 45,
+    retryResetToken: 'second-429',
+    onRetry: () => {},
+  },
+}
+
+/** The support reference, truncated with copy-to-clipboard. */
+export const WithCorrelationId: Story = {
+  args: {
+    variant: 'section',
+    severity: 'error',
+    title: 'Request failed',
+    description: 'Quote the reference below when opening a support ticket.',
+    correlationId: '2f8c1a5e-9d64-4c2f-b8a1-6e0f77c3b912',
+    onRetry: () => {},
+  },
+}
+
+/** Cooldown and reference together, which is what a 429 actually renders. */
+export const CooldownWithCorrelationId: Story = {
+  args: {
+    variant: 'section',
+    severity: 'warning',
+    title: 'Rate limited',
+    description: 'Retry re-enables when the wait ends.',
+    retryAfterSeconds: 30,
+    correlationId: '2f8c1a5e-9d64-4c2f-b8a1-6e0f77c3b912',
+    onRetry: () => {},
+  },
+}
+
 export const AllSeverities: Story = {
   render: () => (
     <div className="flex flex-col gap-3">

@@ -69,6 +69,12 @@ export interface CeoNodeData extends AgentNodeData {
 
 export interface DepartmentAgentStatusDot {
   agentId: string
+  /**
+   * Who the dot stands for. A dot carries no visible text, so its accessible
+   * label is the only way to read it, and a label built from the key told a
+   * screen-reader user a UUID was idle.
+   */
+  agentName: string
   runtimeStatus: AgentRuntimeStatus
 }
 
@@ -118,7 +124,12 @@ export interface CrossDeptEdgeData {
 
 // ── Dept admin node dimensions ──────────────────────────────
 
+// The card renders at exactly these and the layout reserves exactly these, the
+// same reserve-must-equal-render contract `card-metrics.ts` holds for a
+// department: a second number for either would drift and the layout would place
+// the card's neighbours against a footprint it does not have.
 export const DEPT_ADMIN_WIDTH = 200
+export const DEPT_ADMIN_HEIGHT = 70
 
 // ── Owner / admin input ─────────────────────────────────────
 

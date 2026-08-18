@@ -96,17 +96,28 @@ Two complementary gates run in pre-push and CI:
 - `scripts/check_schema_drift.py` (cross-backend): compares the two
   `schema.sql` files via sqlglot and the two `revisions/`
   directories by filename suffix. Catches per-column type drift,
-  NOT NULL / PRIMARY KEY / UNIQUE constraint drift, one-sided
+  NOT NULL / DEFAULT / PRIMARY KEY / UNIQUE constraint drift, one-sided
   indexes, and shared-name index attribute mismatches (UNIQUE /
   WHERE / USING).  Cross-backend drift is recorded in
   `scripts/schema_drift_baseline.txt` with a per-entry justification.
+
+  It deliberately does NOT compare CHECK expressions or foreign-key
+  actions. The two backends spell the same constraint differently by
+  necessity (a timestamp guard SQLite needs because it stores TEXT,
+  `JSON_VALID` against `JSONB_TYPEOF`, `GLOB` against `REGEXP_LIKE`), and
+  a normalisation table wide enough to admit those would be its own
+  hiding place. The same-backend gate below compares them exactly.
 
 - `scripts/check_schema_drift_revisions.py` (declared vs applied):
   applies the declared `schema.sql` and the accumulated
   `revisions/*.sql` to two fresh throwaway databases via yoyo, dumps
   each schema (`sqlite_master` for SQLite, `pg_dump --schema-only`
-  for Postgres), and structurally diffs the two dumps. Run per
-  backend:
+  for Postgres), and structurally diffs the two dumps. Both sides are
+  the same dialect, so this one compares every CHECK expression, every
+  column DEFAULT and every foreign key's `ON DELETE` / `ON UPDATE`
+  action as exact text: those three are what a SQLite table rebuild
+  retypes by hand, and losing one leaves two schemas that compare
+  identical on shape and behave differently. Run per backend:
 
   ```bash
   uv run python scripts/check_schema_drift_revisions.py --backend sqlite
@@ -115,6 +126,14 @@ Two complementary gates run in pre-push and CI:
 
   Zero drift is the only acceptable state; the gate has no baseline
   escape hatch.
+
+  Shape is still not row safety. A rebuild that transposes two columns
+  between its INSERT list and its SELECT produces an identical schema and
+  writes each row's description into its title, so a table rebuild also
+  needs a data-preservation test that seeds a fully populated row and
+  reads every column back.
+  `tests/unit/persistence/test_blocked_reason_migration.py` is the worked
+  example.
 
 ## What You Must Not Do
 

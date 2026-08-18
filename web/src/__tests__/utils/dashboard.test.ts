@@ -1,11 +1,10 @@
 import {
   computeMetricCards,
-  computeOrgHealth,
   computeSpendTrend,
   describeEvent,
   wsEventToActivityItem,
 } from '@/utils/dashboard'
-import type { DepartmentHealth, OverviewMetrics } from '@/api/types/analytics'
+import type { OverviewMetrics } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -246,65 +245,6 @@ describe('computeSpendTrend', () => {
       { timestamp: '2026-03-21', value: 5 },
     ])
     expect(result).toBeUndefined()
-  })
-})
-
-function dh(
-  name: DepartmentHealth['department_name'],
-  health: number | null,
-  agents = 1,
-): DepartmentHealth {
-  return {
-    department_name: name,
-    agent_count: agents,
-    active_agent_count: agents,
-    currency: 'EUR',
-    avg_performance_score: null,
-    department_cost_7d: 0,
-    cost_trend: [],
-    collaboration_score: null,
-    total_runs: health === null ? 0 : 10,
-    task_success_rate: health === null ? null : health / 100,
-    // Roster utilisation is deliberately full to prove health does NOT read it.
-    utilization_percent: 100,
-    utilization_degraded: false,
-    health_score: health,
-  }
-}
-
-describe('computeOrgHealth', () => {
-  it('returns null for empty array', () => {
-    expect(computeOrgHealth([])).toBeNull()
-  })
-
-  it('returns exact health_score for a single department', () => {
-    expect(computeOrgHealth([dh('engineering', 85, 4)])).toBe(85)
-  })
-
-  it('averages department health_score, never utilisation', () => {
-    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', 60, 2)])).toBe(70)
-  })
-
-  it('rounds to nearest integer', () => {
-    expect(computeOrgHealth([dh('engineering', 33), dh('design', 33), dh('product', 34)])).toBe(33)
-  })
-
-  it('skips no-data (null health_score) departments', () => {
-    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', null)])).toBe(80)
-  })
-
-  it('returns null (no-data) when every department lacks a health signal', () => {
-    expect(computeOrgHealth([dh('design', null), dh('product', null)])).toBeNull()
-  })
-
-  it('does not report full health from utilisation at zero activity', () => {
-    // Every department is fully utilised (roster) but has no runs: honest
-    // result is no-data, not 100%.
-    expect(computeOrgHealth([dh('engineering', null, 4), dh('design', null, 2)])).toBeNull()
-  })
-
-  it('filters out non-finite health_score values', () => {
-    expect(computeOrgHealth([dh('engineering', 60, 2), dh('product', NaN)])).toBe(60)
   })
 })
 

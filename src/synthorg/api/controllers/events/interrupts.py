@@ -7,6 +7,7 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api._read_names import agent_name_map, resolved_actor_name
 from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
@@ -27,6 +28,10 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_INTERRUPTS_QUERIED
+
+logger = get_logger(__name__)
 
 
 class InterruptController(Controller):
@@ -64,12 +69,23 @@ class InterruptController(Controller):
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
         pending = await store.list_pending(session_id=session_id)
+        logger.debug(
+            API_INTERRUPTS_QUERIED,
+            session_id=session_id,
+            pending=len(pending),
+        )
+        # One roster read for the whole list: the card that renders an interrupt
+        # has to name who is asking, and a browser-side lookup would print the
+        # key on the first paint of every cold load. Skipped outright when there
+        # is nothing to name, which is the steady state of this poll.
+        names = await agent_name_map(app_state) if pending else {}
         items = tuple(
             InterruptResponse(
                 id=i.id,
                 type=i.type,
                 session_id=i.session_id,
                 agent_id=i.agent_id,
+                agent_name=resolved_actor_name(i.agent_id, names),
                 created_at=i.created_at.isoformat(),
                 timeout_seconds=i.timeout_seconds,
                 tool_name=i.tool_name,

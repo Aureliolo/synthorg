@@ -9,6 +9,7 @@ from litestar import Controller, Request, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api._read_activity_names import enrich_activity_names
 from synthorg.api.controllers.activities._shared import _build_timeline
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import has_write_role, require_read_access
@@ -136,6 +137,9 @@ class ActivityController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
+        # After paginating, so one page costs one roster read rather than one
+        # lookup per event in the whole window.
+        named = await enrich_activity_names(app_state, page)
 
         logger.debug(
             API_ACTIVITY_FEED_QUERIED,
@@ -147,7 +151,7 @@ class ActivityController(Controller):
         )
 
         return PaginatedResponse(
-            data=page,
+            data=named,
             pagination=meta,
             degraded_sources=tuple(degraded),
         )

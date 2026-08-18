@@ -26,9 +26,12 @@ from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.display_name import display_name_or_none
 from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APPROVAL_ENRICH_FAILED
+from synthorg.observability.events.api import API_READ_NAME_RESOLVE_FAILED
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.persistence.task_protocol import TaskFilterSpec
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -37,24 +40,38 @@ logger = get_logger(__name__)
 #: fan out one query per row at once and starve the connection pool.
 _MAX_CONCURRENT_TITLE_READS: Final[int] = 16
 
+#: Bound one name read. Generous against a healthy point read and far under any
+#: request budget: the response is already complete without the names, so a slow
+#: lookup must cost the row its name rather than cost the caller the page.
+_NAME_READ_TIMEOUT_SECONDS: Final[float] = 2.0
+
+#: Bound one ``IN`` list. A page can reference more rows than a driver will take
+#: bound parameters for, and a chunked set read is still one query per chunk
+#: against one per reference.
+_MAX_IDS_PER_QUERY: Final[int] = 100
+
 
 async def agent_name_map(app_state: AppState) -> dict[str, str]:
     """Resolve the configured agents once into an id to display-name map.
 
     Best-effort: a roster that cannot be read yields an empty map, so the
-    surface falls back to naming nobody rather than failing the request.
+    surface falls back to naming nobody rather than failing the request. Bounded
+    like every other read here, because the response is already complete without
+    the names: a stalled roster must cost the rows their names, never cost the
+    caller a task, meeting or interrupt page that was ready to send.
 
     Returns:
-        Map of normalised agent id to display name (empty on failure).
+        Map of normalised agent id to display name (empty on failure or timeout).
     """
     try:
-        agents = await config_resolver_of(app_state).get_agents()
+        async with asyncio.timeout(_NAME_READ_TIMEOUT_SECONDS):
+            agents = await config_resolver_of(app_state).get_agents()
     except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
         # lint-allow: swallow-ok -- a name is context, not the response; the
         # gap is reported and every caller degrades to an unnamed actor.
         reraise_critical(exc)
         logger.warning(
-            API_APPROVAL_ENRICH_FAILED,
+            API_READ_NAME_RESOLVE_FAILED,
             stage="agents",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -87,6 +104,11 @@ def resolved_actor_name(actor: str | None, names: Mapping[str, str]) -> str | No
 async def task_titles(app_state: AppState, task_ids: Iterable[str]) -> dict[str, str]:
     """Resolve each distinct task id in *task_ids* to the task's title.
 
+    Asked as a set rather than one point read per reference: at the maximum page
+    size a per-reference read is two hundred queries for one response, and the
+    feed is polled. Chunked so the ``IN`` list stays a size a driver will accept
+    whatever the page holds.
+
     Returns:
         Map of task id to title (unresolvable ids omitted).
     """
@@ -94,11 +116,51 @@ async def task_titles(app_state: AppState, task_ids: Iterable[str]) -> dict[str,
     if backend is None:
         return {}
 
-    async def _title(task_id: str) -> str | None:
-        task = await backend.tasks.get(task_id)
-        return None if task is None else str(task.title)
+    distinct = list(dict.fromkeys(task_ids))
+    if not distinct:
+        return {}
 
-    return await _named_by_id(task_ids, _title, stage="task_title")
+    titles: dict[str, str] = {}
+    for start in range(0, len(distinct), _MAX_IDS_PER_QUERY):
+        chunk = tuple(
+            NotBlankStr(task_id)
+            for task_id in distinct[start : start + _MAX_IDS_PER_QUERY]
+        )
+        titles.update(await _titles_of(backend, chunk))
+    return titles
+
+
+async def _titles_of(
+    backend: PersistenceBackend,
+    chunk: tuple[NotBlankStr, ...],
+) -> dict[str, str]:
+    """Read one bounded set of task titles.
+
+    Best-effort, like every read on this boundary: a chunk that cannot be read
+    leaves its rows unnamed, which the surface words itself, rather than failing
+    a response that is already complete without the names.
+
+    Returns:
+        Map of task id to title for the rows that came back.
+    """
+    try:
+        async with asyncio.timeout(_NAME_READ_TIMEOUT_SECONDS):
+            found = await backend.tasks.query(
+                TaskFilterSpec(ids=chunk), limit=len(chunk)
+            )
+    except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
+        # lint-allow: swallow-ok -- a name is context, not the response; the
+        # gap is reported and the surface names each row as unknown.
+        reraise_critical(exc)
+        logger.warning(
+            API_READ_NAME_RESOLVE_FAILED,
+            stage="task_title",
+            requested=len(chunk),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return {}
+    return {str(task.id): str(task.title) for task in found}
 
 
 async def project_names(
@@ -146,14 +208,18 @@ async def _named_by_id(
 
     async def _one(entity_id: str) -> tuple[str, str | None]:
         try:
-            async with semaphore:
+            # Bounded per call, not just in flight: a name is context, and a
+            # read that stalls would hold the whole response open behind it
+            # while the rows it decorates are already in hand. Past the bound
+            # the row is simply unnamed, which the surface already words.
+            async with semaphore, asyncio.timeout(_NAME_READ_TIMEOUT_SECONDS):
                 return entity_id, await read(entity_id)
         except Exception as exc:  # noqa: BLE001 -- best-effort enrichment
             # lint-allow: swallow-ok -- a name is context, not the response;
             # the gap is reported and the surface names the row as unknown.
             reraise_critical(exc)
             logger.warning(
-                API_APPROVAL_ENRICH_FAILED,
+                API_READ_NAME_RESOLVE_FAILED,
                 stage=stage,
                 resource_id=entity_id,
                 error_type=type(exc).__name__,

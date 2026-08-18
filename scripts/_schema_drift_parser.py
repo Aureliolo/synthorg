@@ -13,6 +13,12 @@ from sqlglot import expressions as exp
 from sqlglot.expressions import DataType
 
 if __package__ in {None, ""}:
+    from _schema_drift_constraints import (  # type: ignore[import-not-found]
+        column_default,
+        is_zero_one_in_check,
+        table_checks,
+        table_foreign_keys,
+    )
     from _schema_drift_models import (  # type: ignore[import-not-found]
         INTEGER_TYPES_FOR_BOOLEAN_CHECK,
         NormalizedColumn,
@@ -20,6 +26,12 @@ if __package__ in {None, ""}:
         NormalizedTable,
     )
 else:
+    from ._schema_drift_constraints import (
+        column_default,
+        is_zero_one_in_check,
+        table_checks,
+        table_foreign_keys,
+    )
     from ._schema_drift_models import (
         INTEGER_TYPES_FOR_BOOLEAN_CHECK,
         NormalizedColumn,
@@ -110,11 +122,20 @@ def _normalise_table(stmt: exp.Create, dialect: str) -> NormalizedTable | None:
     table_pk = _extract_table_pk(schema)
     primary_key = tuple(table_pk) if table_pk else tuple(column_pk)
     table_uniques = _extract_table_uniques(schema)
+    # The columns the normaliser collapsed, so their CHECK is recognised as the
+    # type it already became rather than reported as a constraint Postgres lacks.
+    boolean_columns = frozenset(
+        name
+        for name, column in columns.items()
+        if column.canonical_type == DataType.Type.BOOLEAN
+    )
     return NormalizedTable(
         name=table_name,
         columns=columns,
         primary_key=primary_key,
         uniques=frozenset(column_uniques | table_uniques),
+        checks=table_checks(schema, boolean_columns),
+        foreign_keys=table_foreign_keys(schema),
     )
 
 
@@ -188,6 +209,7 @@ def _normalise_column(
         canonical_type=canonical_type,
         raw_type=raw_type,
         nullable=nullable,
+        default=column_default(coldef),
     )
 
 
@@ -197,7 +219,7 @@ def _has_boolean_check_in_column(
 ) -> bool:
     """Return True if any column constraint encodes ``IN (0, 1)`` for *column_name*."""
     for c in constraints:
-        if isinstance(c.kind, exp.CheckColumnConstraint) and _is_zero_one_in_check(
+        if isinstance(c.kind, exp.CheckColumnConstraint) and is_zero_one_in_check(
             c.kind.this, column_name
         ):
             return True
@@ -209,29 +231,7 @@ def _has_boolean_check_in_table(
     table_check_exprs: list[exp.Expression],
 ) -> bool:
     """Return True if any table-level CHECK encodes ``IN (0, 1)`` for *column_name*."""
-    return any(_is_zero_one_in_check(expr, column_name) for expr in table_check_exprs)
-
-
-def _is_zero_one_in_check(expr: exp.Expression, column_name: str) -> bool:
-    """Return True iff *expr* is the AST shape ``column_name IN (0, 1)``.
-
-    Order of values is irrelevant: ``IN (1, 0)`` matches too. String
-    literals (``IN ('0', '1')``) do NOT match: that is a TEXT-stored
-    flag, not a SQLite boolean idiom.
-    """
-    if not isinstance(expr, exp.In):
-        return False
-    target = expr.this
-    if not isinstance(target, exp.Column):
-        return False
-    if target.name != column_name:
-        return False
-    values = {
-        literal.this
-        for literal in expr.expressions
-        if isinstance(literal, exp.Literal) and not literal.is_string
-    }
-    return values == {"0", "1"}
+    return any(is_zero_one_in_check(expr, column_name) for expr in table_check_exprs)
 
 
 def _normalise_index(stmt: exp.Create, dialect: str) -> NormalizedIndex | None:

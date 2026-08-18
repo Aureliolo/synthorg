@@ -1,21 +1,16 @@
 import type { Node } from '@xyflow/react'
 import type { Density } from '@/stores/theme'
+import { AGENT_CARD_WIDTH, agentCardSize, cardPaddingFor } from './card-metrics'
 
-// The direction of the chart AS A WHOLE.  Only 'TB' is used: the
-// post-layout adjustment pass (Steps 4-5) places owner row, root box and
-// department row along the y-axis, and 'LR' would need all of it mirrored.
+// The chart as a whole flows top to bottom. Siblings that would overrun the
+// canvas wrap into a block rather than turning the flow on its side, so there
+// is no second direction for any frame to be laid out in.
 export type LayoutDirection = 'TB'
-
-// The direction INSIDE one department card.  A department is laid out in
-// isolation and placed as a single box by the passes above, so its own flow
-// is contained by its card and leaves the global top-to-bottom reading intact.
-export type ClusterDirection = 'TB' | 'LR'
 
 /**
  * Per-render visual preferences that affect how much space the dept
  * card chrome takes up.  Passed through from `useOrgChartData` so the
- * layout reserves exactly the space that will actually be rendered --
- * no more "100 px of empty space when the user turns toggles off" bug.
+ * layout reserves exactly the space that will actually be rendered.
  */
 export interface LayoutVisualPrefs {
   showBudgetBar?: boolean
@@ -28,9 +23,9 @@ export interface LayoutOptions extends LayoutVisualPrefs {
   nodeSep?: number
   rankSep?: number
   /**
-   * The density the cards will actually render at. Department cards use the
-   * density-aware `p-card` token, so the space this layout reserves for card
-   * chrome only matches what appears on screen if it tracks the same axis.
+   * The density the cards will actually render at. Both card types use the
+   * density-aware `p-card` token, so the space this layout reserves only
+   * matches what appears on screen if it tracks the same axis.
    */
   density?: Density
 }
@@ -46,48 +41,24 @@ export interface GroupResult {
   groupHeight: number
 }
 
-// Matches the fixed `w-44` (176px) agent-card width in AgentNode so the
-// layout estimate equals the rendered width and sibling edge centres align.
-export const DEFAULT_NODE_WIDTH = 176
-export const DEFAULT_NODE_HEIGHT = 80
+export { cardPaddingFor }
+
+// Fallback footprint for a node the chart does not size itself. Agent cards are
+// sized from `card-metrics`, so this only backs a node type with no declared
+// geometry at all.
+export const DEFAULT_NODE_WIDTH = AGENT_CARD_WIDTH
+export const DEFAULT_NODE_HEIGHT = 66
 
 // Separation between two cards on the same rank, and between two ranks. Every
 // unit is laid out in its own graph, so these are the values that actually
 // apply inside every card as well as between the department boxes.
 export const DEFAULT_NODE_SEP = 60
 export const DEFAULT_RANK_SEP = 50
-// A department card's inner padding comes from the density-aware `p-card`
-// token, so the reserve has to track the same axis; these mirror
-// `--so-density-card-padding` in styles/design-tokens.css.
-const CARD_PADDING_BY_DENSITY: Record<Density, number> = {
-  dense: 12,
-  medium: 14,
-  balanced: 16,
-  sparse: 20,
-}
-const DEFAULT_GROUP_PADDING = CARD_PADDING_BY_DENSITY.balanced
 
-/** Inner padding a department card renders at the given density. */
-export function cardPaddingFor(density: Density | undefined): number {
-  return density === undefined ? DEFAULT_GROUP_PADDING : CARD_PADDING_BY_DENSITY[density]
-}
-
-// Title row plus the bottom margin under it, which leaves a small breathing
-// gap between the stats (Active / Cost) row and the first agent card below.
-const HEADER_TITLE_ROW = 40
-// Department stats pill row (Active / Cost) rendered on every populated,
-// expanded dept card. One StatPill row is ~22 px plus the header's
-// space-y-1.5 (6 px) gap above it. Not gated by a view toggle, so it is
-// always reserved -- omitting it let child agent cards overlap it.
-const HEADER_STATS_BAR = 30
-// Added when budget bar is on (label + 1 px bar + spacing)
-const HEADER_BUDGET_BAR = 26
-// Added when status dots are on.  The dots are `size-2.5` (10 px) +
-// `ring-2` (4 px per side) and sit on a `pt-1` (4 px) padding line, so
-// the row occupies roughly 18 px of vertical space inside the header.
-const HEADER_STATUS_DOTS = 20
-// Bottom footer chip ("+ Add agent")
-const FOOTER_ADD_AGENT = 34
+// Vertical gap between the rows of a wrapped rank. A rank's members are
+// siblings, so no edge runs between the rows and they need no rank separation;
+// they need only enough room for a connector's bus to pass between them.
+export const WRAPPED_RANK_GAP_Y = 20
 
 // Team card chrome: `p-2` padding on all sides plus a `text-xs` title row
 // with a `pb-1` gap under it, matching what TeamGroupNode renders.
@@ -100,8 +71,10 @@ export const EMPTY_TEAM_WIDTH = 200
 export const EMPTY_TEAM_HEIGHT = 64
 
 export const EMPTY_GROUP_MIN_WIDTH = 240
-// Matches the empty-state card's min-h -- header + "No agents yet"
-// icon + label + (optional) add agent chip.
+// The height reserved for a department with nobody in it. Nothing in the card
+// floors its own height (see `deptCardClassName`), so this is what the card
+// becomes: enough for the header, the "No agents yet" icon and label, and the
+// add-agent chip when it is on.
 export const EMPTY_GROUP_HEIGHT = 180
 
 // Minimum width for a POPULATED dept card. Wide enough that the
@@ -110,46 +83,41 @@ export const EMPTY_GROUP_HEIGHT = 180
 // same visual weight as a multi-agent one.
 export const POPULATED_GROUP_MIN_WIDTH = 340
 
-// Widest a department card may get before it flows left-to-right instead.
-// Every department sits in the same row under the root, so their widths add
-// up while their heights only take the max: past three minimum-width cards a
-// single flat department dominates the canvas and shoves its siblings out of
-// view, where the same members in a column cost nothing but row height.
-export const DEPT_HORIZONTAL_WIDTH_BUDGET = POPULATED_GROUP_MIN_WIDTH * 3
-
-// Target visible gap between any two adjacent dept boxes.  Enforced
-// AFTER dagre by a manual shift pass, not by dagre's minlen (dagre's
-// integer ranks quantize into 50 px jumps depending on how close the
-// header chrome is to a rankSep boundary, which made the gap change
-// when the user toggled status dots on/off).
+// Target visible gap between the chart's stacked bands (owner row, root box,
+// department block). Enforced AFTER dagre by a manual shift pass, not by
+// dagre's minlen, whose integer ranks quantize into rankSep-sized jumps and so
+// changed the gap whenever the header chrome crossed a boundary.
 export const DESIRED_INTER_DEPT_GAP = 48
 
-// Horizontal gap enforced between adjacent sibling dept cards in the
-// non-root row. Dagre only separates the leaf agents (by nodeSep), not
-// the dept BOXES that wrap them, so wide multi-agent depts would otherwise
-// overlap their neighbours. A dedicated de-overlap pass uses this.
+// Horizontal gap between adjacent department boxes in the department block.
 export const DESIRED_INTER_DEPT_GAP_X = 56
 
 /**
- * Height of the department card's header content.
+ * The footprint a node occupies, preferring what it declares over a fallback.
  *
- * The card's own padding is not part of it: the sizing pass reserves one band
- * on every side, so counting the top one here would reserve it twice and leave
- * a blank strip between the stats row and the first agent card.
+ * A measured size is preferred where React Flow has one, but an agent card is
+ * sized from `card-metrics` before the first paint precisely so the reserve does
+ * not depend on a measurement that only exists after it.
  */
-export function computeHeaderHeight(prefs: LayoutVisualPrefs): number {
-  let h = HEADER_TITLE_ROW + HEADER_STATS_BAR
-  if (prefs.showBudgetBar) h += HEADER_BUDGET_BAR
-  if (prefs.showStatusDots) h += HEADER_STATUS_DOTS
-  return h
-}
-
-export function computeFooterHeight(prefs: LayoutVisualPrefs): number {
-  return prefs.showAddAgentButton ? FOOTER_ADD_AGENT : 0
-}
-
 export function getNodeDim(node: Node): { w: number; h: number } {
-  const w = node.measured?.width ?? (node.width) ?? DEFAULT_NODE_WIDTH
-  const h = node.measured?.height ?? (node.height) ?? DEFAULT_NODE_HEIGHT
+  const w = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH
+  const h = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT
   return { w, h }
+}
+
+/**
+ * Give every agent card the footprint it will render at.
+ *
+ * Without this the layout falls back to a default height, and a default that
+ * disagrees with the card leaves either dead space inside the department box or
+ * a card overlapping the chrome below it. The size travels on the node, so the
+ * same number reaches dagre, the box that wraps it and the rendered element.
+ */
+export function sizeAgentNodes(nodes: readonly Node[], density: Density | undefined): Node[] {
+  const { width, height } = agentCardSize(density)
+  return nodes.map((node) =>
+    node.type === 'agent'
+      ? { ...node, width, height, style: { ...node.style, width, height } }
+      : node,
+  )
 }

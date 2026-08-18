@@ -39,6 +39,7 @@ function arbTask(): fc.Arbitrary<Task> {
     created_by: fc.constant('agent-cto'),
     assigned_to: arbAgentName,
     assigned_to_name: arbDisplayName,
+    dependency_titles: fc.constant({}),
     requested_by_user_id: arbAgentName,
     reviewers: fc.constant([] as readonly string[]),
     dependencies: fc.constant([] as readonly string[]),

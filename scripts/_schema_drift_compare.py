@@ -5,7 +5,7 @@ across the two backends. Emits canonical drift keys (without trailing
 reason) suitable for comparison against baseline entries.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,6 +18,7 @@ if __package__ in {None, ""}:
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
+        NormalizedColumn,
         NormalizedIndex,
         NormalizedTable,
         bool_yn,
@@ -31,11 +32,16 @@ else:
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
+        NormalizedColumn,
         NormalizedIndex,
         NormalizedTable,
         bool_yn,
         yn,
     )
+
+#: What a finding prints on the side that declares nothing, matching the
+#: absent-column findings above it so one key format reads the same throughout.
+_NO_DEFAULT: Final[str] = "_"
 
 
 def diff_schemas(
@@ -49,10 +55,21 @@ def diff_schemas(
     Diff passes:
 
     1. Tables: symmetric difference of table-name sets.
-    2. Per shared table: column existence + type + nullability + PK +
-       UNIQUE.
+    2. Per shared table: column existence + type + nullability +
+       DEFAULT + PK + UNIQUE.
     3. Indexes: symmetric difference of index-name sets, plus per
        shared-name index attribute (columns, unique, where, using).
+
+    CHECK expressions and foreign-key actions are deliberately NOT
+    compared here, and are compared strictly by the same-backend gate
+    instead (``check_schema_drift_revisions.py``). The two backends
+    spell the same constraint differently by necessity: a timestamp
+    guard SQLite needs because it stores TEXT and Postgres does not
+    need at all, ``JSON_VALID`` against ``JSONB_TYPEOF``, ``GLOB``
+    against ``REGEXP_LIKE``. Admitting those here would take a
+    normalisation table large enough to be its own hiding place, while
+    the risk they answer (a hand-retyped table rebuild losing one) is
+    same-dialect and caught exactly.
 
     Each finding is a colon-separated key suitable for direct
     inclusion in the baseline file (with a trailing reason field
@@ -110,7 +127,37 @@ def _diff_columns(
                 f"nullable:{table}:{col_name}:"
                 f"{yn(nullable=s_col.nullable)}:{yn(nullable=p_col.nullable)}"
             )
+        findings.extend(_default_finding(table, col_name, s_col, p_col))
     return findings
+
+
+def _default_finding(
+    table: str,
+    col_name: str,
+    sqlite_column: NormalizedColumn,
+    postgres_column: NormalizedColumn,
+) -> list[str]:
+    """Report a DEFAULT one backend applies and the other does not.
+
+    A default is the value every insert that omits the column receives, so two
+    backends disagreeing on one write different rows from identical statements:
+    the shape stays identical and the data diverges, which is the drift no
+    column-shape comparison can see. Compared on the canonical text
+    (:func:`canonical_default` already folds the dialects' spellings of the same
+    value together), because the raw text differs by dialect for defaults that
+    are in fact the same.
+
+    Returns:
+        The finding, or nothing when both sides agree.
+    """
+    if sqlite_column.default == postgres_column.default:
+        return []
+    finding = (
+        f"default:{table}:{col_name}:"
+        f"{sqlite_column.default or _NO_DEFAULT}:"
+        f"{postgres_column.default or _NO_DEFAULT}"
+    )
+    return [finding]
 
 
 def _diff_pk(

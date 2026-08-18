@@ -129,9 +129,14 @@ describe('WebhookReceiptsPage', () => {
     )
     connections = [makeConnection('slack-app')]
     renderPage()
-    // The default activity handler returns one failed (retryable) receipt.
-    const checkbox = await screen.findByLabelText('Select receipt 00000000-0000-0000-0000-000000000002')
-    fireEvent.click(checkbox)
+    // The default activity handler returns one failed (retryable) receipt, and
+    // only a retryable row's checkbox is enabled. Selected by what arrived and
+    // when, which is how the row identifies it to a person; its key is never
+    // read aloud.
+    const boxes = await screen.findAllByLabelText(/^Select the .* receipt from /)
+    const checkbox = boxes.find((box) => !(box as HTMLInputElement).disabled)
+    expect(checkbox).toBeDefined()
+    fireEvent.click(checkbox!)
     fireEvent.click(await screen.findByRole('button', { name: /Retry selected/ }))
     await waitFor(() => {
       expect(retriedId).toBe('00000000-0000-0000-0000-000000000002')

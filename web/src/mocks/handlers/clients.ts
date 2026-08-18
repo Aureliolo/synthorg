@@ -21,7 +21,7 @@ import type {
 } from '@/api/endpoints/clients'
 import type {
   ClientProfile,
-  ClientRequest,
+  ClientRequestRow,
   SimulationStatusResponse,
   TaskRequirement,
 } from '@/api/types/clients'
@@ -49,10 +49,11 @@ function buildRequirement(): TaskRequirement {
   }
 }
 
-function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
+function buildRequest(overrides: Partial<ClientRequestRow> = {}): ClientRequestRow {
   return {
     request_id: 'req-default',
     client_id: 'client-default',
+    client_name: 'Default Client',
     requirement: buildRequirement(),
     status: 'submitted',
     created_at: '2026-04-19T00:00:00Z',

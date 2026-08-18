@@ -15,8 +15,10 @@ import sqlite3  # lint-allow: persistence-boundary -- reads the schema the gate 
 import tempfile
 from pathlib import Path
 from types import ModuleType
+from typing import Final
 
 import pytest
+from scripts._schema_drift_models import NormalizedTable
 
 from synthorg.persistence import migrations
 
@@ -311,3 +313,222 @@ class TestReferencesResolve:
         detail = str(caught.value)
         assert "a_child" in detail
         assert "z_child -> also_gone" in detail
+
+
+def _one_table(sql: str) -> dict[str, NormalizedTable]:
+    """Parse one CREATE TABLE the way the gate does.
+
+    Returns:
+        The normalised tables, keyed by name.
+    """
+    tables: dict[str, NormalizedTable] = _MODULE.parse_schema(sql, "sqlite")[0]
+    return tables
+
+
+# Every pair below produces two tables identical in column names, types,
+# nullability, keys and indexes, and different in what they refuse, what they
+# write when nobody says, or what a delete does. The DDL is this suite's
+# subject rather than a query it issues.
+_CHECKED = "CREATE TABLE t (id TEXT PRIMARY KEY, reason TEXT CHECK (reason IN ('a', 'b')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_UNCHECKED = "CREATE TABLE t (id TEXT PRIMARY KEY, reason TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NARROW_CHECK = "CREATE TABLE t (reason TEXT CHECK (reason IN ('a')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_WIDE_CHECK = "CREATE TABLE t (reason TEXT CHECK (reason IN ('a', 'b')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_WITH_DEFAULT = "CREATE TABLE t (id TEXT PRIMARY KEY, tally INTEGER DEFAULT 0);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NO_DEFAULT = "CREATE TABLE t (id TEXT PRIMARY KEY, tally INTEGER);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_CASCADING = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE CASCADE);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_RESTRICTING = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE RESTRICT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_STATED_NO_ACTION = "CREATE TABLE t (parent TEXT REFERENCES p (id) ON DELETE NO ACTION);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_UNSTATED_ACTION = "CREATE TABLE t (parent TEXT REFERENCES p (id));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_NO_REFERENCE = "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+_EVERY_DIMENSION = (
+    "CREATE TABLE t ("  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "  id TEXT PRIMARY KEY,"
+    "  tally INTEGER NOT NULL DEFAULT 0,"
+    "  parent TEXT REFERENCES p (id) ON DELETE CASCADE,"
+    "  reason TEXT CHECK (reason IN ('a', 'b'))"
+    ");"
+)
+_ALTER_ADDED_KEY = (
+    "CREATE TABLE t (id TEXT, reason TEXT CHECK (reason IN ('a')));"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE t ADD CONSTRAINT t_pkey PRIMARY KEY (id);"
+)
+_ALTER_ADDED_REFERENCE = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+)
+_BOTH_ACTIONS = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE ON UPDATE SET NULL;"
+)
+_INVENTED_ACTION = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE FROBNICATE;"
+)
+#: What ``pg_dump`` emits for a reference carrying more than its two actions.
+#: Every one is a valid catalog state this repository's own migrations reach:
+#: ``NOT VALID`` is how a constraint is added without an up-front scan.
+_ADD_FK: Final[str] = (
+    "ALTER TABLE ONLY t ADD CONSTRAINT t_parent_fkey FOREIGN KEY (parent) REFERENCES p(id)"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+)
+_MODIFIED_REFERENCES: Final[tuple[str, ...]] = (
+    f"{_ADD_FK} MATCH FULL ON DELETE CASCADE;",
+    f"{_ADD_FK} ON DELETE CASCADE MATCH FULL;",
+    f"{_ADD_FK} ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;",
+    f"{_ADD_FK} ON DELETE CASCADE NOT VALID;",
+    f"{_ADD_FK} NOT DEFERRABLE;",
+)
+#: Two references on the SAME referencing column, to different parents. Legal,
+#: and the shape a map keyed on the columns silently collapses to one.
+_TWO_ON_ONE_COLUMN = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_p_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_q_fkey "
+    "FOREIGN KEY (parent) REFERENCES q(id) ON DELETE RESTRICT;"
+)
+_ONE_ON_ONE_COLUMN = (
+    "CREATE TABLE t (parent TEXT);"  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "\nALTER TABLE ONLY t ADD CONSTRAINT t_parent_p_fkey "
+    "FOREIGN KEY (parent) REFERENCES p(id) ON DELETE CASCADE;"
+)
+
+
+class TestTheRebuildDimensions:
+    """What a hand-retyped table rebuild loses, and shapes alone cannot see."""
+
+    def test_a_dropped_check_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(_one_table(_CHECKED), _one_table(_UNCHECKED))
+        assert any("check:t:missing_from_revisions" in f for f in findings)
+
+    def test_a_widened_check_is_drift(self) -> None:
+        """Same column, same type, a value the archive now accepts."""
+        assert _MODULE._diff_tables(_one_table(_NARROW_CHECK), _one_table(_WIDE_CHECK))
+
+    def test_a_dropped_default_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(
+            _one_table(_WITH_DEFAULT), _one_table(_NO_DEFAULT)
+        )
+        assert any("t.tally:default" in f for f in findings)
+
+    def test_a_changed_delete_action_is_drift(self) -> None:
+        """The one difference that decides what a delete does."""
+        findings = _MODULE._diff_tables(
+            _one_table(_CASCADING), _one_table(_RESTRICTING)
+        )
+        assert any("fk:t.parent:on_delete" in f for f in findings)
+
+    def test_an_unstated_action_reads_as_the_standard_default(self) -> None:
+        """So a rebuild that simply drops the clause is caught, not excused."""
+        assert (
+            _MODULE._diff_tables(
+                _one_table(_STATED_NO_ACTION), _one_table(_UNSTATED_ACTION)
+            )
+            == []
+        )
+
+    def test_a_dropped_reference_is_drift(self) -> None:
+        findings = _MODULE._diff_tables(
+            _one_table(_UNSTATED_ACTION), _one_table(_NO_REFERENCE)
+        )
+        assert any("fk:t.parent:missing_from_revisions" in f for f in findings)
+
+    def test_an_identical_table_is_not_drift(self) -> None:
+        assert (
+            _MODULE._diff_tables(
+                _one_table(_EVERY_DIMENSION), _one_table(_EVERY_DIMENSION)
+            )
+            == []
+        )
+
+    def test_a_patched_table_keeps_its_checks(self) -> None:
+        """A field added to the dataclass must survive the ALTER overlay.
+
+        The overlay rebuilds each table it touches, so a field it forgets is
+        silently emptied on BOTH sides and its comparison then always passes.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_ALTER_ADDED_KEY), _ALTER_ADDED_KEY
+        )
+        assert patched["t"].primary_key == ("id",)
+        assert patched["t"].checks
+
+    def test_an_alter_added_reference_is_read(self) -> None:
+        """Which is the only way Postgres's own dump spells one."""
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_ALTER_ADDED_REFERENCE), _ALTER_ADDED_REFERENCE
+        )
+        (foreign_key,) = patched["t"].foreign_keys
+        assert foreign_key.columns == ("parent",)
+        assert foreign_key.ref_table == "p"
+        assert foreign_key.on_delete == "CASCADE"
+        assert foreign_key.on_update == _MODULE.NO_ACTION
+
+    def test_both_actions_on_one_reference_are_read(self) -> None:
+        """The repetition has to consume each clause exactly one way.
+
+        A class admitting the separator would let one repetition's tail and
+        the next one's leading whitespace both claim the same space, so a
+        clause with several actions has exponentially many parses.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_BOTH_ACTIONS), _BOTH_ACTIONS
+        )
+        (foreign_key,) = patched["t"].foreign_keys
+        assert foreign_key.on_delete == "CASCADE"
+        assert foreign_key.on_update == "SET NULL"
+
+    def test_an_unknown_action_is_not_read_as_one(self) -> None:
+        """Only the five the standard defines.
+
+        Asserted against the pattern rather than through a parse, because
+        sqlglot refuses the DDL outright and the ALTER overlay never runs.
+        """
+        assert _MODULE._ALTER_TABLE_ADD_FK_PATTERN.search(_INVENTED_ACTION) is None
+
+    @pytest.mark.parametrize("statement", _MODIFIED_REFERENCES)
+    def test_a_modified_reference_is_still_read(self, statement: str) -> None:
+        """A modifier must not make the whole reference invisible.
+
+        None of these changes what a delete does, so none is compared. They are
+        matched so that carrying one does not drop the reference from the
+        Postgres side entirely, which is the gate reporting clean because it
+        lost the very thing it exists to watch.
+        """
+        match = _MODULE._ALTER_TABLE_ADD_FK_PATTERN.search(statement)
+        assert match is not None
+        actions = _MODULE.referential_actions(match.group("actions") or "")
+        assert actions.get("DELETE") in {"CASCADE", None}
+
+    def test_two_references_on_one_column_both_survive(self) -> None:
+        """Keyed on the columns, the second overwrote the first.
+
+        A column may carry more than one reference, and a map keyed by the
+        referencing columns keeps whichever the iteration reached last, so the
+        comparison ran against a set the table does not have.
+        """
+        patched = _MODULE._patch_constraints_from_alter(
+            _one_table(_TWO_ON_ONE_COLUMN), _TWO_ON_ONE_COLUMN
+        )
+        assert len(patched["t"].foreign_keys) == 2
+
+    def test_dropping_one_of_two_references_on_a_column_is_drift(self) -> None:
+        declared = _MODULE._patch_constraints_from_alter(
+            _one_table(_TWO_ON_ONE_COLUMN), _TWO_ON_ONE_COLUMN
+        )
+        actual = _MODULE._patch_constraints_from_alter(
+            _one_table(_ONE_ON_ONE_COLUMN), _ONE_ON_ONE_COLUMN
+        )
+        findings = _MODULE._diff_tables(declared, actual)
+        # The dropped reference is named as gone. Keyed by the columns, the two
+        # sides each collapsed to one entry and the pair was diffed against
+        # each other, which reports either nothing at all or a target that
+        # changed: both say a reference is still there.
+        assert [
+            finding
+            for finding in findings
+            if "q(id)" in finding and finding.endswith("missing_from_revisions")
+        ]
+        assert not any(":target:" in finding for finding in findings)

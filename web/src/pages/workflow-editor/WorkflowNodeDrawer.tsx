@@ -165,7 +165,11 @@ export function WorkflowNodeDrawer({
     >
       <div className="flex flex-col gap-section-gap p-card">
         <div className="text-xs text-muted-foreground">
-          ID: {nodeId}
+          {/* lint-allow: id-in-ui -- the token the YAML view references this
+              node by, which an operator types to author an edge by hand. The
+              drawer's own title names the node; this is the reference, and
+              labelled as one rather than offered as the node's name. */}
+          Referenced in YAML as: {nodeId}
         </div>
 
         {fields.map((field: ConfigField) => (

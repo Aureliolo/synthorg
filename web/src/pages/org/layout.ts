@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
+import type { Density } from '@/stores/theme'
 import {
   type GroupResult,
   type LayoutOptions,
@@ -6,22 +7,25 @@ import {
   DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
   DEFAULT_RANK_SEP,
-  DESIRED_INTER_DEPT_GAP_X,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
   cardPaddingFor,
-  computeFooterHeight,
-  computeHeaderHeight,
+  sizeAgentNodes,
 } from './layout-shared'
+import { flowIntoGrid } from './layout-grid'
 import { planRanks } from './layout-clusters'
-import { runDagreLayout } from './layout-graph'
-import { type HierarchyPlan, collectRootGroupIds, planHierarchy } from './layout-groups'
+import { type DagreParams, runDagreLayout } from './layout-graph'
+import {
+  type DeptChromePrefs,
+  type HierarchyPlan,
+  collectRootGroupIds,
+  planHierarchy,
+} from './layout-groups'
 import {
   anchorLayout,
-  centerNonRootUnderRoot,
   centerOwnersOverRoot,
-  enforceHorizontalGaps,
   enforceVerticalGaps,
+  placeDepartmentGrid,
 } from './layout-passes'
 
 export type { LayoutOptions } from './layout-shared'
@@ -35,17 +39,33 @@ export type { LayoutOptions } from './layout-shared'
  * does NOT come here: those boxes still carry the order the operator chose and
  * still need the spine anchored, and this grid can express neither.
  */
+function emptyChartSize(node: Node): { w: number; h: number } {
+  if (node.type === 'owner') {
+    return { w: DEFAULT_NODE_WIDTH, h: DEFAULT_NODE_HEIGHT }
+  }
+  // A node that already carries a footprint keeps it. `sizeAgentNodes` runs
+  // before this branch is reached, so an agent card arrives measured at the
+  // size it renders at; handing it the empty-group box instead would place a
+  // card in a 320x180 slot and leave the canvas full of holes.
+  if (node.width !== undefined && node.height !== undefined) {
+    return { w: node.width, h: node.height }
+  }
+  return { w: EMPTY_GROUP_MIN_WIDTH, h: EMPTY_GROUP_HEIGHT }
+}
+
 function layoutEmptyChart(nodes: Node[]): Node[] {
-  return nodes.map((n, i) => {
-    const major = i % 3
-    const minor = Math.floor(i / 3)
-    const x = major * 260
-    const y = minor * 180
-    const w = n.type === 'owner' ? DEFAULT_NODE_WIDTH : EMPTY_GROUP_MIN_WIDTH
-    const h = n.type === 'owner' ? DEFAULT_NODE_HEIGHT : EMPTY_GROUP_HEIGHT
+  const sizes = nodes.map((n) => ({ id: n.id, ...emptyChartSize(n) }))
+  const grid = flowIntoGrid(sizes, {
+    gapX: DEFAULT_NODE_SEP,
+    gapY: DEFAULT_RANK_SEP,
+  })
+  const placements = new Map(grid.placements.map((p) => [p.id, p]))
+  return nodes.map((n, index) => {
+    const { w, h } = sizes[index]!
+    const at = placements.get(n.id)
     return {
       ...n,
-      position: { x, y },
+      position: { x: at?.x ?? 0, y: at?.y ?? 0 },
       width: w,
       height: h,
       style: { ...n.style, width: w, height: h },
@@ -75,6 +95,33 @@ function splitPositioned(
   return { groupResults, topLevelLeaves }
 }
 
+/** The layout's own inputs, with every option resolved to a value. */
+function resolveOptions(options: LayoutOptions): {
+  params: DagreParams
+  chrome: DeptChromePrefs
+  density: Density | undefined
+} {
+  const {
+    direction = 'TB',
+    rankSep = DEFAULT_RANK_SEP,
+    nodeSep = DEFAULT_NODE_SEP,
+    density,
+    showBudgetBar = false,
+    showStatusDots = false,
+    showAddAgentButton = false,
+  } = options
+  return {
+    params: { direction, nodeSep, rankSep },
+    chrome: {
+      cardPadding: cardPaddingFor(density),
+      showBudgetBar,
+      showStatusDots,
+      showAddAgentButton,
+    },
+    density,
+  }
+}
+
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
  *
@@ -88,43 +135,27 @@ export function applyDagreLayout(
   edges: Edge[],
   options: LayoutOptions = {},
 ): Node[] {
-  const {
-    direction = 'TB',
-    rankSep = DEFAULT_RANK_SEP,
-    nodeSep = DEFAULT_NODE_SEP,
-    density,
-  } = options
-  const cardPadding = cardPaddingFor(density)
+  const { params, chrome, density } = resolveOptions(options)
+  // Sized before anything measures them, so the reserve inside every department
+  // box is the footprint its agent cards actually render at.
+  const sizedNodes = sizeAgentNodes(nodes, density)
 
-  if (!nodes.some((n) => n.type === 'department') && edges.length === 0) {
-    return layoutEmptyChart(nodes)
+  if (!sizedNodes.some((n) => n.type === 'department') && edges.length === 0) {
+    return layoutEmptyChart(sizedNodes)
   }
 
-  const params = { direction, nodeSep, rankSep }
-  const plan = planHierarchy({
-    nodes,
-    edges,
-    params,
-    chrome: {
-      cardPadding,
-      // Reserve exactly the chrome that will be rendered, so turning the
-      // budget bar or status dots off leaves no dead whitespace in the card.
-      headerHeight: computeHeaderHeight(options),
-      footerHeight: computeFooterHeight(options),
-    },
-  })
+  const plan = planHierarchy({ nodes: sizedNodes, edges, params, chrome })
 
-  const topLevelRanks = planRanks(plan.topLevelNodes, plan.topLevelEdges, nodeSep)
+  const topLevelRanks = planRanks(plan.topLevelNodes, plan.topLevelEdges)
   const { groupResults: allGroupResults, topLevelLeaves } = splitPositioned(
     runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params, topLevelRanks.constraints),
     plan,
   )
 
-  const rootGroupIds = collectRootGroupIds(nodes.filter((n) => n.type === 'department'))
+  const rootGroupIds = collectRootGroupIds(sizedNodes.filter((n) => n.type === 'department'))
   const rootResult = allGroupResults.find((r) => rootGroupIds.has(r.node.id))
 
-  enforceHorizontalGaps(allGroupResults, rootGroupIds, DESIRED_INTER_DEPT_GAP_X)
-  centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
+  placeDepartmentGrid(allGroupResults, rootGroupIds, rootResult)
   enforceVerticalGaps(allGroupResults, topLevelLeaves, rootGroupIds)
   centerOwnersOverRoot(topLevelLeaves, rootResult)
   anchorLayout(allGroupResults, topLevelLeaves, rootResult)

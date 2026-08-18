@@ -53,6 +53,25 @@ function MetadataChangeRow({ change }: MetadataChangeRowProps) {
   )
 }
 
+/**
+ * What this dialog calls a node or a connection nothing labels.
+ *
+ * A node's id is generated and never shown on the canvas, so a row headed by
+ * one describes a change to something the operator has never seen. The label is
+ * what they typed; where the diff has none, the dialog says so in its own words.
+ */
+const UNLABELLED_NODE = 'Unlabelled node'
+const UNLABELLED_EDGE = 'Unlabelled connection'
+
+/** A connection reads as its own label, or as the two nodes it joins. */
+function edgeName(change: EdgeChangeType): string {
+  if (change.edge_label !== null) return change.edge_label
+  const source = change.source_label
+  const target = change.target_label
+  if (source !== null && target !== null) return `${source} → ${target}`
+  return UNLABELLED_EDGE
+}
+
 export interface NodeChangeRowProps {
   change: NodeChangeType
 }
@@ -65,7 +84,9 @@ function NodeChangeRow({ change }: NodeChangeRowProps) {
   return (
     <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
       <Icon className={cn('size-3.5', color)} />
-      <span className="font-medium text-foreground">{change.node_id}</span>
+      <span className="font-medium text-foreground">
+        {change.node_label ?? UNLABELLED_NODE}
+      </span>
       <span className={cn('text-xs', color)}>{label}</span>
     </div>
   )
@@ -81,7 +102,7 @@ function EdgeChangeRow({ change }: EdgeChangeRowProps) {
 
   return (
     <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
-      <span className="font-medium text-foreground">{change.edge_id}</span>
+      <span className="font-medium text-foreground">{edgeName(change)}</span>
       <span className={cn('text-xs', color)}>{label}</span>
     </div>
   )
@@ -185,6 +206,7 @@ function NodeChangesSection({ changes }: NodeChangesSectionProps) {
             key={`${nc.node_id}-${nc.change_type}`}
             change={{
               node_id: nc.node_id,
+              node_label: nc.node_label,
               change_type: nc.change_type,
               old_value: nc.old_value ?? null,
               new_value: nc.new_value ?? null,
@@ -213,6 +235,9 @@ function EdgeChangesSection({ changes }: EdgeChangesSectionProps) {
             key={`${ec.edge_id}-${ec.change_type}`}
             change={{
               edge_id: ec.edge_id,
+              edge_label: ec.edge_label,
+              source_label: ec.source_label,
+              target_label: ec.target_label,
               change_type: ec.change_type,
               old_value: ec.old_value ?? null,
               new_value: ec.new_value ?? null,

@@ -255,6 +255,9 @@ export default function ClientDetailPage() {
       <ClientDetailHeaderNav client={client} nav={nav} goPrev={goPrev} goNext={goNext} />
       <div>
         <h1 className="text-lg font-semibold text-foreground">{client.name}</h1>
+        {/* lint-allow: id-in-ui -- a client key is the slug the operator chose
+            for them (``client-default``), and the handle their own systems
+            join on, so it is the name it goes by. */}
         <p className="text-sm text-text-secondary">{client.client_id}</p>
       </div>
       <ClientProfileSection client={client} />

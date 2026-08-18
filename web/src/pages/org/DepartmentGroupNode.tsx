@@ -1,4 +1,4 @@
-import { memo, type MouseEvent as ReactMouseEvent } from 'react'
+import { memo, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { ChevronDown, ChevronRight, Plus, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -6,16 +6,23 @@ import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import type { DepartmentGroupData } from './build-org-tree'
+import {
+  DEPT_HEADER_ROW_GAP,
+  DEPT_HEADER_ROW_HEIGHT,
+  type DeptHeaderInputs,
+  type DeptHeaderRowKind,
+  deptHeaderRows,
+} from './card-metrics'
 import { DepartmentStatsBar } from './DepartmentStatsBar'
 
 export type DepartmentGroupType = Node<DepartmentGroupData, 'department'>
 
 /**
- * Per-status ring color for the dept card's status-dot strip. Each dot
- * gets a colored ring on top of `<StatusBadge>`'s semantic bg so it
- * stands out against the dark card background -- the old 6 px gray
- * "idle" dot was nearly invisible, which made the Status Dots toggle
- * look like it did nothing. Bg color is owned by `<StatusBadge>` via
+ * Per-status ring colour for the dept card's status-dot strip. A dot at this
+ * size carries too little area for its fill alone to read against the card, and
+ * `idle` is the worst case: a grey dot on a dark card is invisible enough that
+ * the Status Dots toggle looks like it does nothing. The ring is what makes it
+ * legible. Background colour is owned by `<StatusBadge>` via
  * `getStatusColor(status)`; only the ring class lives here.
  */
 const STATUS_DOT_RING: Record<AgentRuntimeStatus, string> = {
@@ -28,9 +35,10 @@ const STATUS_DOT_RING: Record<AgentRuntimeStatus, string> = {
 const MAX_STATUS_DOTS = 10
 
 function deptCardClassName(isDropTarget: boolean | undefined, isEmpty: boolean): string {
-  // NO min-h here -- let the layout math in layout.ts drive the
-  // rendered size exactly.  Earlier versions clamped the card above
-  // the computed height, leaving dead whitespace when toggles were off.
+  // Deliberately no `min-h`: the layout computes this card's height from
+  // `card-metrics.ts` and reserves exactly that, so a floor here would clamp
+  // the card above the reservation and leave dead whitespace inside it
+  // whenever the toggles are off.
   return cn(
     'relative flex h-full w-full flex-col rounded-xl border p-card transition-colors duration-[var(--so-transition-default)]',
     'min-w-[220px]',
@@ -116,19 +124,21 @@ function DeptCardHeader({
 
 interface DeptBudgetBarProps {
   displayName: string
-  budgetPercent: number | null
+  /** Non-null by construction: `deptHeaderRows` only lists this row when set. */
+  budgetPercent: number
   utilizationPercent: number | null
 }
 
 /**
  * Budget allocation share + seat utilisation. The left label is the
  * dept's share of the total budget pool; the right label + bar is the
- * fraction of agent seats currently active. Shown only when the dept
- * has a budget allocation AND the user enabled the budget bar toggle.
+ * fraction of agent seats currently active.
+ *
+ * Whether this row appears at all is `deptHeaderRows`' decision, not this
+ * component's: the layout reserves the band from that same list, and a row that
+ * gated itself independently is how the reserve and the render came to disagree.
  */
 function DeptBudgetBar({ displayName, budgetPercent, utilizationPercent }: DeptBudgetBarProps) {
-  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
-  if (!showBudgetBar || budgetPercent === null || budgetPercent <= 0) return null
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between font-mono text-micro text-text-secondary">
@@ -163,23 +173,30 @@ function DeptBudgetBar({ displayName, budgetPercent, utilizationPercent }: DeptB
 
 /**
  * Status dots row -- one `<StatusBadge>` per agent (capped at 10 +N),
- * each with a status-color ring and an "<agentId>: <status>" label.
- * Hidden when the user disables dots in the view menu.
+ * each with a status-color ring and a "<name>: <status>" label.
+ *
+ * Whether the row appears is `deptHeaderRows`' decision, so it is not re-tested
+ * here. The label names the agent rather than keying them, because a dot is the
+ * one part of this card that a screen reader is the only way to read.
  */
 function DeptStatusDots({ statusDots }: Pick<DepartmentGroupData, 'statusDots'>) {
-  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
   // Clamp the dots row so a huge dept doesn't blow the header width.
   const visibleDots = statusDots.slice(0, MAX_STATUS_DOTS)
   const hiddenDotCount = Math.max(0, statusDots.length - MAX_STATUS_DOTS)
-  if (!showStatusDots || visibleDots.length === 0) return null
+  // `role="group"` because a bare `<div>` maps to `generic`, which prohibits an
+  // accessible name: the label would be dropped by every AT.
   return (
-    <div className="flex items-center gap-1.5 pt-1" aria-label="Agent status overview">
+    <div
+      className="flex items-center gap-1.5 pt-1"
+      role="group"
+      aria-label="Agent status overview"
+    >
       {visibleDots.map((dot) => (
         <StatusBadge
           key={dot.agentId}
           status={dot.runtimeStatus}
           dotClassName={cn('size-2.5 ring-2', STATUS_DOT_RING[dot.runtimeStatus])}
-          ariaLabel={`${dot.agentId}: ${dot.runtimeStatus}`}
+          ariaLabel={`${dot.agentName}: ${dot.runtimeStatus}`}
         />
       ))}
       {hiddenDotCount > 0 && (
@@ -194,8 +211,13 @@ function DeptStatusDots({ statusDots }: Pick<DepartmentGroupData, 'statusDots'>)
  * empty dept is never blank; the "+ Add agent" chip is gated on the
  * view-menu toggle. `flex-1` centres the stack in the remaining space.
  */
-function DeptEmptyState({ isEmpty }: { isEmpty: boolean }) {
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+function DeptEmptyState({
+  isEmpty,
+  showAddAgentButton,
+}: {
+  isEmpty: boolean
+  showAddAgentButton: boolean
+}) {
   if (!isEmpty) return null
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 pb-2 text-text-muted">
@@ -212,8 +234,13 @@ function DeptEmptyState({ isEmpty }: { isEmpty: boolean }) {
 }
 
 /** Inline "+ Add agent" chip pinned to the bottom of a populated card. */
-function DeptAddAgentChip({ isEmpty }: { isEmpty: boolean }) {
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+function DeptAddAgentChip({
+  isEmpty,
+  showAddAgentButton,
+}: {
+  isEmpty: boolean
+  showAddAgentButton: boolean
+}) {
   if (isEmpty || !showAddAgentButton) return null
   return (
     <div className="mt-auto flex items-center justify-center pt-5">
@@ -225,21 +252,99 @@ function DeptAddAgentChip({ isEmpty }: { isEmpty: boolean }) {
   )
 }
 
+/**
+ * The header band, laid out from the row list the layout also reserves from.
+ *
+ * Each row is given its own height from `DEPT_HEADER_ROW_HEIGHT` rather than
+ * sizing to its content. That is what makes the band's height a fact both sides
+ * already agree on: the reserve is the sum of these same numbers, so no restyle
+ * can push the band past what the layout left for it and onto the agent cards.
+ */
+function DeptHeaderRow({
+  kind,
+  id,
+  data,
+}: {
+  kind: DeptHeaderRowKind
+  id: string
+  data: DepartmentGroupData
+}): ReactNode {
+  switch (kind) {
+    case 'title':
+      return (
+        <DeptCardHeader
+          id={id}
+          displayName={data.displayName}
+          agentCount={data.agentCount}
+          isEmpty={data.isEmpty}
+          isCollapsed={data.isCollapsed}
+          onToggleCollapsed={data.onToggleCollapsed}
+        />
+      )
+    case 'budget':
+      return (
+        <DeptBudgetBar
+          displayName={data.displayName}
+          budgetPercent={data.budgetPercent ?? 0}
+          utilizationPercent={data.utilizationPercent}
+        />
+      )
+    case 'dots':
+      return <DeptStatusDots statusDots={data.statusDots} />
+    case 'stats':
+      return (
+        <DepartmentStatsBar
+          activeCount={data.activeCount}
+          cost7d={data.cost7d}
+          {...(data.currency !== null && { currency: data.currency })}
+        />
+      )
+  }
+}
+
+function DeptCardHeaderBlock({
+  id,
+  data,
+  inputs,
+}: {
+  id: string
+  data: DepartmentGroupData
+  inputs: DeptHeaderInputs
+}) {
+  return (
+    <div className="flex flex-col" style={{ gap: DEPT_HEADER_ROW_GAP }}>
+      {deptHeaderRows(inputs).map((kind) => (
+        // Clipped, because a fixed height alone does not stop content painting
+        // past it. The layout reserves exactly this band above the agent cards,
+        // so a row that outgrows it (a restyle, a longer label, a stats pill
+        // that wraps after all) would paint straight onto them, which is the
+        // overlap this whole reserve exists to remove.
+        <div
+          key={kind}
+          className="overflow-hidden"
+          style={{ height: DEPT_HEADER_ROW_HEIGHT[kind] }}
+        >
+          <DeptHeaderRow kind={kind} id={id} data={data} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupType>) {
-  const {
-    displayName,
-    agentCount,
-    activeCount,
-    cost7d,
-    currency,
-    budgetPercent,
-    utilizationPercent,
-    statusDots,
+  const { displayName, agentCount, isEmpty, isDropTarget } = data
+  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
+  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
+  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const headerInputs: DeptHeaderInputs = {
+    showBudgetBar,
+    showStatusDots,
+    showAddAgentButton,
+    budgetPercent: data.budgetPercent,
+    statusDotCount: data.statusDots.length,
     isEmpty,
-    isDropTarget,
-    isCollapsed,
-    onToggleCollapsed,
-  } = data
+    isCollapsed: data.isCollapsed ?? false,
+  }
 
   // `h-full w-full` makes the visible border span the full size React
   // Flow reserved on the outer wrapper -- otherwise the border would
@@ -248,6 +353,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
     <div
       className={deptCardClassName(isDropTarget, isEmpty)}
       data-testid="department-group-node"
+      role="group"
       aria-label={deptAriaLabel(displayName, agentCount)}
     >
       {/* Hidden target handle (top) receives incoming edges; hidden
@@ -256,32 +362,12 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
       <Handle type="target" position={Position.Top} className="!size-0 !border-0 !bg-transparent" />
       <Handle type="source" position={Position.Bottom} className="!size-0 !border-0 !bg-transparent" />
 
-      <div className="space-y-1.5">
-        <DeptCardHeader
-          id={id}
-          displayName={displayName}
-          agentCount={agentCount}
-          isEmpty={isEmpty}
-          isCollapsed={isCollapsed}
-          onToggleCollapsed={onToggleCollapsed}
-        />
-        <DeptBudgetBar
-          displayName={displayName}
-          budgetPercent={budgetPercent}
-          utilizationPercent={utilizationPercent}
-        />
-        <DeptStatusDots statusDots={statusDots} />
-        {!isEmpty && !isCollapsed && (
-          <DepartmentStatsBar
-            activeCount={activeCount}
-            cost7d={cost7d}
-            {...(currency !== null && { currency })}
-          />
-        )}
-      </div>
+      <DeptCardHeaderBlock id={id} data={data} inputs={headerInputs} />
 
-      <DeptEmptyState isEmpty={isEmpty} />
-      <DeptAddAgentChip isEmpty={isEmpty} />
+      {/* The toggle is read once for the whole card: three subscriptions to one
+          store field re-render this node three times for a single flip. */}
+      <DeptEmptyState isEmpty={isEmpty} showAddAgentButton={showAddAgentButton} />
+      <DeptAddAgentChip isEmpty={isEmpty} showAddAgentButton={showAddAgentButton} />
     </div>
   )
 }

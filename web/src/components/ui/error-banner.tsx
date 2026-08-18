@@ -379,6 +379,9 @@ function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
       className="gap-1 font-mono text-compact text-muted-foreground"
     >
       <Copy className="size-3" aria-hidden="true" />
+      {/* lint-allow: id-in-ui -- a correlation id exists to be quoted back when
+          reporting the failure, so showing it IS the point; it is truncated
+          here and the full value is what the copy button puts on the clipboard. */}
       {displayId}
     </Button>
   )

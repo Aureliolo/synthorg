@@ -17,6 +17,7 @@ const mockTask: Task = {
   created_by: 'agent-cto',
   assigned_to: 'agent-eng',
   assigned_to_name: 'Engineer',
+  dependency_titles: {},
   requested_by_user_id: null,
   reviewers: [],
   dependencies: [],

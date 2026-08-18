@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { useAgentsStore } from '@/stores/agents'
 import { useCompanyStore } from '@/stores/company'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
+import { orgConfig } from '../helpers/org-layout'
 import type { WsEvent } from '@/api/types/websocket'
 
 const mockFetchCompanyData = vi.fn().mockResolvedValue(undefined)
@@ -95,5 +96,57 @@ describe('useOrgChartData live sync', () => {
     await deliver(frame('agent.status_changed'))
     expect(await skipIfFresh()).toBe(false)
     expect(mockAgentsWsEvent).toHaveBeenCalledWith(frame('agent.status_changed'))
+  })
+})
+
+describe('collapsing a department', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCompanyWsEvent.mockReturnValue(false)
+    useCompanyStore.setState({
+      config: orgConfig([
+        { name: 'executive', members: ['zoe'] },
+        {
+          name: 'engineering',
+          members: ['alice', 'bob', 'carol'],
+          teams: [{ name: 'core', members: ['bob', 'carol'] }],
+        },
+      ]),
+      departmentHealths: [],
+      loading: false,
+      error: null,
+      fetchCompanyData: mockFetchCompanyData,
+      fetchDepartmentHealths: mockFetchDepartmentHealths,
+      updateFromWsEvent: mockCompanyWsEvent,
+    })
+    useAgentsStore.setState({ updateFromWsEvent: mockAgentsWsEvent })
+  })
+
+  it('takes every descendant with it, not just its direct children', () => {
+    // A department holding a team has agents whose parent is the TEAM. Removing
+    // direct children alone took the team away and left its agents behind, and
+    // React Flow renders a node whose parent is gone as a top-level one: the
+    // agents reappeared loose on the canvas, which is the opposite of what
+    // collapsing asked for.
+    const expanded = renderHook(() => useOrgChartData('hierarchy'))
+    const teamId = 'team-engineering-core'
+    const nested = expanded.result.current.nodes
+      .filter((n) => n.parentId === teamId)
+      .map((n) => n.id)
+    // The fixture has to actually nest something, or the assertion below is
+    // satisfied by ids that were never there.
+    expect(nested.length).toBeGreaterThan(0)
+    expect(expanded.result.current.nodes.map((n) => n.id)).toContain(teamId)
+
+    const collapsed = renderHook(() =>
+      useOrgChartData('hierarchy', new Set(['dept-engineering'])),
+    )
+
+    const rendered = collapsed.result.current.nodes.map((n) => n.id)
+    expect(rendered).toContain('dept-engineering')
+    expect(rendered).not.toContain(teamId)
+    for (const inside of nested) {
+      expect(rendered).not.toContain(inside)
+    }
   })
 })

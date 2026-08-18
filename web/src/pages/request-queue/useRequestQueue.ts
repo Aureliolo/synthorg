@@ -6,7 +6,7 @@ import {
   rejectRequest,
   scopeRequest,
 } from '@/api/endpoints/clients'
-import type { ClientRequest, RequestStatus } from '@/api/types/clients'
+import type { ClientRequestRow, RequestStatus } from '@/api/types/clients'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -26,18 +26,26 @@ function requirementMatchesQuery(requirement: unknown, query: string): boolean {
   )
 }
 
+/** Every field a typed query is matched against. */
+function matchesQuery(r: ClientRequestRow, query: string): boolean {
+  return (
+    r.request_id.toLowerCase().includes(query)
+    || r.client_id.toLowerCase().includes(query)
+    // The name is the only client field the card shows, so it has to be
+    // searchable: without it, typing what is on screen finds nothing and the
+    // one field that does match is invisible.
+    || (r.client_name?.toLowerCase().includes(query) ?? false)
+    || requirementMatchesQuery(r.requirement, query)
+  )
+}
+
 function matchesRequest(
-  r: ClientRequest,
+  r: ClientRequestRow,
   statusFilter: RequestStatus | 'all',
   query: string,
 ): boolean {
   if (statusFilter !== 'all' && r.status !== statusFilter) return false
-  if (query === '') return true
-  return (
-    r.request_id.toLowerCase().includes(query)
-    || r.client_id.toLowerCase().includes(query)
-    || requirementMatchesQuery(r.requirement, query)
-  )
+  return query === '' || matchesQuery(r, query)
 }
 
 interface RequestActions {
@@ -118,14 +126,14 @@ export interface RequestQueueState {
   capabilities: ReturnType<typeof useCapabilities>['capabilities']
   capLoading: boolean
   capError: string | null
-  requests: readonly ClientRequest[]
+  requests: readonly ClientRequestRow[]
   loading: boolean
   error: string | null
   searchQuery: string
   setSearchQuery: (value: string) => void
   statusFilter: RequestStatus | 'all'
   setStatusFilter: (value: RequestStatus | 'all') => void
-  filteredRequests: readonly ClientRequest[]
+  filteredRequests: readonly ClientRequestRow[]
   pending: Record<string, boolean>
   handleScope: (id: string) => void
   handleApprove: (id: string) => void
@@ -134,7 +142,7 @@ export interface RequestQueueState {
 
 export function useRequestQueue(): RequestQueueState {
   const { capabilities, loading: capLoading, error: capError } = useCapabilities()
-  const [requests, setRequests] = useState<readonly ClientRequest[]>([])
+  const [requests, setRequests] = useState<readonly ClientRequestRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')

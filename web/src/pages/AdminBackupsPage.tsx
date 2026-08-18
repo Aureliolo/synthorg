@@ -381,10 +381,16 @@ interface BackupRowProps {
 }
 
 function BackupRow({ backup, onDelete, onRestore }: BackupRowProps) {
+  // A backup is identified to a person by when it was taken; the id is the
+  // handle to cross-check against the archive on disk before a restore, which
+  // is why it stays on this admin table and is named in neither action's label.
+  const takenAt = formatDateTime(backup.timestamp)
   return (
     <tr className="align-top">
+      {/* lint-allow: id-in-ui -- the restore handle an operator matches against
+          the archive on disk; the row is titled by its timestamp beside it. */}
       <td className="px-3 py-2 font-mono text-micro text-text-muted">{backup.backup_id}</td>
-      <td className="px-3 py-2 text-text-secondary">{formatDateTime(backup.timestamp)}</td>
+      <td className="px-3 py-2 text-text-secondary">{takenAt}</td>
       <td className="px-3 py-2">
         <StatPill value={backup.trigger} />
       </td>
@@ -396,7 +402,7 @@ function BackupRow({ backup, onDelete, onRestore }: BackupRowProps) {
             variant="ghost"
             size="sm"
             onClick={() => onRestore(backup.backup_id)}
-            aria-label={`Restore backup ${backup.backup_id}`}
+            aria-label={`Restore the backup taken ${takenAt}`}
           >
             <RotateCcw className="size-3.5" />
             Restore
@@ -406,7 +412,7 @@ function BackupRow({ backup, onDelete, onRestore }: BackupRowProps) {
             size="sm"
             className="text-danger hover:text-danger"
             onClick={() => onDelete(backup.backup_id)}
-            aria-label={`Delete backup ${backup.backup_id}`}
+            aria-label={`Delete the backup taken ${takenAt}`}
           >
             <Trash2 className="size-3.5" />
             Delete

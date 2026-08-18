@@ -8,10 +8,10 @@ import {
   layout,
 } from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
-import { type ClusterDirection, getNodeDim } from './layout-shared'
+import { type LayoutDirection, getNodeDim } from './layout-shared'
 
 export interface DagreParams {
-  direction: ClusterDirection
+  direction: LayoutDirection
   nodeSep: number
   rankSep: number
 }

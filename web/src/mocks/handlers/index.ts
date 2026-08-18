@@ -100,6 +100,7 @@ import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
 import { ssrfViolationsHandlers } from './ssrf-violations'
 import { steeringHandlers } from './steering'
+import { subsystemHandlers } from './subsystems'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
 import { templatePacksHandlers } from './template-packs'
@@ -175,6 +176,7 @@ export const defaultHandlers = [
   ...setupHandlers,
   ...ssrfViolationsHandlers,
   ...steeringHandlers,
+  ...subsystemHandlers,
   ...subworkflowsHandlers,
   ...tasksHandlers,
   ...templatePacksHandlers,

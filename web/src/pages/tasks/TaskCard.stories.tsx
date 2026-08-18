@@ -14,6 +14,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     created_by: 'agent-cto',
     assigned_to: 'agent-eng-lead',
     assigned_to_name: 'Engineering Lead',
+    dependency_titles: {},
     requested_by_user_id: null,
     reviewers: [],
     dependencies: ['task-0'],

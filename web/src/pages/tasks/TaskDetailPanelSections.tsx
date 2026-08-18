@@ -11,8 +11,9 @@ import {
   getTaskStatusLabel,
   getTaskTypeLabel,
   parsePriority,
+  UNTITLED_TASK_NAME,
 } from '@/utils/tasks'
-import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
+import { resolvedName, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import { AssigneeSelect } from './AssigneeSelect'
@@ -199,9 +200,11 @@ export function DependenciesList({ task }: TaskOnlyProps) {
         {task.dependencies.map((depId) => (
           <li
             key={depId}
-            className="rounded border border-border px-2 py-1 font-mono text-xs text-text-secondary"
+            className="rounded border border-border px-2 py-1 text-xs text-text-secondary"
           >
-            {depId}
+            {/* Titled at the read boundary; its key named nothing an operator
+                could act on. */}
+            {resolvedName(task.dependency_titles, depId, UNTITLED_TASK_NAME)}
           </li>
         ))}
       </ul>

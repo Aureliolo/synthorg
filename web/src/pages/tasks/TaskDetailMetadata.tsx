@@ -1,15 +1,18 @@
+import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { InlineEdit } from '@/components/ui/inline-edit'
+import { ROUTES } from '@/router/routes'
 import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
 import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
-import { UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
+import { resolvedName, UNASSIGNED_LABEL, UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
 import {
+  UNTITLED_TASK_NAME,
   getBlockedReasonLabel,
   getPriorityLabel,
   getTaskTypeLabel,
@@ -143,6 +146,7 @@ function TaskMetadataGrid({ task }: TaskFieldProps) {
 }
 
 function DependenciesList({ task }: TaskFieldProps) {
+  const dependencyTitles = task.dependency_titles
   return (
     <div>
       <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
@@ -152,9 +156,23 @@ function DependenciesList({ task }: TaskFieldProps) {
         {task.dependencies.map((depId) => (
           <li
             key={depId}
-            className="rounded border border-border px-2 py-1 font-mono text-xs text-text-secondary"
+            className="rounded border border-border px-2 py-1 text-xs text-text-secondary"
           >
-            {depId}
+            {/* Titled at the read boundary. A dependency nothing could name gets
+                our words, never its key, which named nothing an operator could
+                act on anyway. It is not linked either: the read omits the ids it
+                could not resolve, so a link here would open a task that is not
+                there. */}
+            {Object.hasOwn(dependencyTitles, depId) ? (
+              <Link
+                to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(depId))}
+                className="hover:text-accent hover:underline"
+              >
+                {resolvedName(dependencyTitles, depId, UNTITLED_TASK_NAME)}
+              </Link>
+            ) : (
+              UNTITLED_TASK_NAME
+            )}
           </li>
         ))}
       </ul>

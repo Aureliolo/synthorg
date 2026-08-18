@@ -6,7 +6,7 @@ import { emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
 import type { listRequests } from '@/api/endpoints/clients'
-import type { ClientRequest } from '@/api/types/clients'
+import type { ClientRequestRow } from '@/api/types/clients'
 import { approveRequest, rejectRequest, scopeRequest } from '@/api/endpoints/clients'
 
 interface CapReturn {
@@ -28,7 +28,7 @@ function seedSubmittedRequest() {
     http.get('/api/v1/requests', () =>
       HttpResponse.json(
         paginatedFor<typeof listRequests>({
-          ...emptyPage<ClientRequest>(),
+          ...emptyPage<ClientRequestRow>(),
           data: [makeRequest({ status: 'submitted' })],
         }),
       ),
@@ -53,10 +53,11 @@ const ALL_ENABLED: Capabilities = {
   web_fetch: true,
 }
 
-function makeRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
+function makeRequest(overrides: Partial<ClientRequestRow> = {}): ClientRequestRow {
   return {
     request_id: 'req-1',
     client_id: 'client-1',
+    client_name: 'Client One',
     requirement: {
       title: 'Build a thing',
       description: 'A requirement',
@@ -116,7 +117,7 @@ describe('RequestQueuePage', () => {
       http.get('/api/v1/requests', () =>
         HttpResponse.json(
           paginatedFor<typeof listRequests>({
-            ...emptyPage<ClientRequest>(),
+            ...emptyPage<ClientRequestRow>(),
             data: [makeRequest({ status: 'submitted' })],
           }),
         ),

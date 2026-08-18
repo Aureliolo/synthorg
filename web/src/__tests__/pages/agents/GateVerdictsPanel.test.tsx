@@ -1,11 +1,25 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router'
+import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { GateVerdictsPanel } from '@/pages/agents/GateVerdictsPanel'
 import { gateForRole } from '@/pages/agents/useGateVerdicts'
 import { server } from '@/test-setup'
+
+/**
+ * The panel links each verdict to the task it judged, so it needs the router
+ * context it has in the app. Rendering it bare threw inside the link.
+ */
+function renderInRouter(ui: ReactElement) {
+  const view = render(<MemoryRouter>{ui}</MemoryRouter>)
+  return {
+    ...view,
+    rerender: (next: ReactElement) => view.rerender(<MemoryRouter>{next}</MemoryRouter>),
+  }
+}
 
 describe('gateForRole', () => {
   it('maps each gate role onto its archive, and nothing else', () => {
@@ -17,7 +31,7 @@ describe('gateForRole', () => {
 
 describe('GateVerdictsPanel', () => {
   it('reports the reviewer verdict counts the backend counted', async () => {
-    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
 
     await screen.findByText('Peer-review verdicts')
     // The tally is the backend's own total, not a count of the rows shown:
@@ -29,7 +43,7 @@ describe('GateVerdictsPanel', () => {
   })
 
   it('names the model a verdict actually ran on', async () => {
-    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
 
     expect(
       await screen.findByText(/example-capable-001 \(capable\)/),
@@ -37,7 +51,7 @@ describe('GateVerdictsPanel', () => {
   })
 
   it('reports the adversary verdicts for a red-team holder', async () => {
-    render(<GateVerdictsPanel agentId="agent-1" gate="red_team" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="red_team" />)
 
     await screen.findByText('Adversarial verdicts')
     expect(await screen.findAllByText('Passed')).toHaveLength(2)
@@ -60,7 +74,7 @@ describe('GateVerdictsPanel', () => {
         }),
       ),
     )
-    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
 
     expect(await screen.findByText('No reviews yet')).toBeInTheDocument()
   })
@@ -71,7 +85,7 @@ describe('GateVerdictsPanel', () => {
         HttpResponse.json({ success: false }, { status: 500 }),
       ),
     )
-    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
 
     expect(await screen.findByText(/Failed to load/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
@@ -103,7 +117,7 @@ describe('GateVerdictsPanel', () => {
         })
       }),
     )
-    render(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
+    renderInRouter(<GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />)
     await screen.findByText(/Failed to load/)
 
     await userEvent.click(screen.getByRole('button', { name: /retry/i }))
@@ -142,7 +156,7 @@ describe('GateVerdictsPanel', () => {
         })
       }),
     )
-    const view = render(
+    const view = renderInRouter(
       <GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />,
     )
     expect(await screen.findByText('4')).toBeInTheDocument()
@@ -178,7 +192,7 @@ describe('GateVerdictsPanel', () => {
         })
       }),
     )
-    const view = render(
+    const view = renderInRouter(
       <GateVerdictsPanel agentId="agent-1" gate="completion_oracle" />,
     )
 

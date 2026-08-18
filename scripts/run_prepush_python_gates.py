@@ -121,7 +121,7 @@ _GATES: tuple[str, ...] = (
     "check_runtime_reachability",
     "check_output_boundaries_guarded",
     "check_no_raw_playwright_imports",
-    "check_web_no_id_render",
+    "check_no_raw_id_in_ui",
     "check_forbidden_literals",
     "check_persistence_boundary",
     "check_currency_aggregation_invariant",

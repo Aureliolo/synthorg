@@ -1,5 +1,6 @@
-import type { ClientRequest } from '@/api/types/clients'
+import type { ClientRequestRow } from '@/api/types/clients'
 import { Button } from '@/components/ui/button'
+import { formatDateTime } from '@/utils/format'
 
 /**
  * Per-request row inside the Request Queue Kanban board.
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button'
  * `.map()`) per the web/CLAUDE.md "no >8-line JSX inside .map()" rule.
  */
 export interface RequestCardProps {
-  request: ClientRequest
+  request: ClientRequestRow
   /**
    * Per-request optimistic-flight flag. Disables every action button
    * for the matching request_id while a Scope / Approve / Reject
@@ -26,6 +27,16 @@ export interface RequestCardProps {
   onApprove: (requestId: string) => void
   onReject: (requestId: string) => void
 }
+
+/**
+ * What this card calls a client the pool no longer holds.
+ *
+ * `client_id` is a key: `ClientProfile` carries a separate `name`, which is
+ * what the client is called everywhere else, so the key is not a fallback for
+ * it. The backend resolves the name per response and answers `null` when it
+ * cannot; the card then says so in its own words.
+ */
+const UNKNOWN_CLIENT_NAME = 'Unknown client'
 
 const _ACTIONABLE_STATUSES = new Set([
   'submitted',
@@ -51,7 +62,8 @@ export function RequestCard({
         {request.requirement.title}
       </div>
       <div className="text-xs text-text-secondary">
-        {request.client_id} · {request.request_id.slice(0, 8)}
+        {request.client_name ?? UNKNOWN_CLIENT_NAME} ·{' '}
+        {formatDateTime(request.created_at)}
       </div>
       {showActions && (
         <div className="flex flex-wrap gap-2 pt-1">

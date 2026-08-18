@@ -9,6 +9,8 @@ import {
   type DepartmentGroupData,
   type DeptAdminInfo,
   type OwnerInfo,
+  DEPT_ADMIN_HEIGHT,
+  DEPT_ADMIN_WIDTH,
   findCeo,
   findDeptHead,
   humanizeDepartmentName,
@@ -120,6 +122,7 @@ function buildDeptData(
       : Math.round((activeCount / deptMembers.length) * 100)
   const statusDots: DepartmentAgentStatusDot[] = deptMembers.map((a) => ({
     agentId: a.id,
+    agentName: a.name,
     runtimeStatus: resolveRuntimeStatus(a.id, a.status ?? 'active', ctx.runtimeStatuses),
   }))
   return {
@@ -290,8 +293,8 @@ export function emitDeptAdmins(
       position: { x: 0, y: 0 },
       parentId: `dept-${matchedDept.name}`,
       extent: 'parent' as const,
-      width: 200,
-      height: 70,
+      width: DEPT_ADMIN_WIDTH,
+      height: DEPT_ADMIN_HEIGHT,
       data: {
         adminId: admin.id,
         displayName: admin.displayName,

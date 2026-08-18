@@ -1,29 +1,53 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useMissionControlStore } from '@/stores/mission-control'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { computeBlockers, computeQueue, type Blocker, type PulseQueue } from '@/utils/org-pulse'
 import type {
   ActivityItem,
-  DepartmentHealth,
   ForecastResponse,
   OverviewMetrics,
 } from '@/api/types/analytics'
+import type { AgentActivity } from '@/api/types/cockpit'
 import type { BudgetConfig } from '@/api/types/budget'
 import type { WsChannel } from '@/api/types/websocket'
 
 const DASHBOARD_POLL_INTERVAL = 30_000
 const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] as const satisfies readonly WsChannel[]
 
+/** Separator between two reasons one panel is reporting at once. */
+const REASON_SEPARATOR = '; '
+
+/**
+ * Every reason present, or `null` when there are none.
+ *
+ * The panel makes a positive claim out of an empty list, so it has to name each
+ * input it is missing rather than the first: two failed reads leave two
+ * different halves of the answer unknown.
+ */
+function joinErrors(...reasons: readonly (string | null)[]): string | null {
+  const present = reasons.filter((reason): reason is string => reason !== null)
+  return present.length === 0 ? null : present.join(REASON_SEPARATOR)
+}
+
 export interface UseDashboardDataReturn {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
-  departmentHealths: readonly DepartmentHealth[]
-  /** How many departments exist, whatever their health read returned. */
-  departmentCount: number
   activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
-  orgHealthPercent: number | null
+  /** Work being executed right now, for the pulse panel. */
+  running: readonly AgentActivity[]
+  queue: PulseQueue
+  /** Everything standing between the org and progress, worst first. */
+  blockers: readonly Blocker[]
+  /** Why each half of the pulse panel cannot be trusted, when it cannot. */
+  runningError: string | null
+  blockersError: string | null
+  runningLoading: boolean
+  blockersLoading: boolean
   loading: boolean
   error: string | null
   isRefetching: boolean
@@ -34,17 +58,26 @@ export interface UseDashboardDataReturn {
 export function useDashboardData(): UseDashboardDataReturn {
   const overview = useAnalyticsStore((s) => s.overview)
   const forecast = useAnalyticsStore((s) => s.forecast)
-  const departmentHealths = useAnalyticsStore((s) => s.departmentHealths)
-  const departmentCount = useAnalyticsStore((s) => s.departmentCount)
   const activities = useAnalyticsStore((s) => s.activities)
   const budgetConfig = useAnalyticsStore((s) => s.budgetConfig)
-  const orgHealthPercent = useAnalyticsStore((s) => s.orgHealthPercent)
   const loading = useAnalyticsStore((s) => s.loading)
   const error = useAnalyticsStore((s) => s.error)
+  const snapshot = useMissionControlStore((s) => s.snapshot)
+  const snapshotError = useMissionControlStore((s) => s.snapshotError)
+  const snapshotLoading = useMissionControlStore((s) => s.snapshotLoading)
+  const subsystems = useOrgPulseStore((s) => s.subsystems)
+  const blockedTasks = useOrgPulseStore((s) => s.blockedTasks)
+  const subsystemsError = useOrgPulseStore((s) => s.subsystemsError)
+  const blockedTasksError = useOrgPulseStore((s) => s.blockedTasksError)
+  const pulseLoading = useOrgPulseStore((s) => s.loading)
 
-  // Initial data fetch
+  // Initial data fetch. The pulse reads run alongside the analytics ones rather
+  // than after them: neither depends on the other, and a slow subsystem probe
+  // must not hold the metric cards back.
   useEffect(() => {
     void useAnalyticsStore.getState().fetchDashboardData()
+    void useOrgPulseStore.getState().fetchOrgPulse()
+    void useMissionControlStore.getState().fetchSnapshot()
   }, [])
 
   // The shared gate, not a local timestamp: a WS frame only ever adds or
@@ -53,9 +86,19 @@ export function useDashboardData(): UseDashboardDataReturn {
   // long as the events keep coming.
   const { skipIfFresh, markFresh } = useFreshnessGate()
 
-  // Lightweight polling for overview refresh
+  // Lightweight polling for overview refresh. The pulse rides the dashboard's
+  // own 30s cadence rather than the cockpit page's 5s one: a summary panel does
+  // not need per-turn resolution, and three requests every five seconds would be
+  // a real cost for a page nobody is watching that closely.
+  // Settled together, not awaited in sequence: the three reads are independent,
+  // so serialising them makes each tick cost their sum for no ordering benefit,
+  // and one slow read would delay the other two.
   const pollFn = useCallback(async () => {
-    await useAnalyticsStore.getState().fetchOverview()
+    await Promise.allSettled([
+      useAnalyticsStore.getState().fetchOverview(),
+      useOrgPulseStore.getState().fetchOrgPulse(),
+      useMissionControlStore.getState().fetchSnapshot(),
+    ])
   }, [])
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL, { skipIfFresh })
 
@@ -83,14 +126,30 @@ export function useDashboardData(): UseDashboardDataReturn {
     bindings,
   })
 
+  const blockers = useMemo(
+    () => computeBlockers({ overview, blockedTasks, subsystems }),
+    [overview, blockedTasks, subsystems],
+  )
+  const queue = useMemo(() => computeQueue(overview), [overview])
+
   return {
     overview,
     forecast,
-    departmentHealths,
-    departmentCount,
     activities,
     budgetConfig,
-    orgHealthPercent,
+    running: snapshot?.agents ?? [],
+    queue,
+    blockers,
+    // Each half of the pulse panel reports the read that feeds it. A failed
+    // fetch must never reach the panel as an empty list, because both halves
+    // make a positive claim about the org when their list is empty.
+    runningError: snapshotError,
+    // Both, when both failed. The store keeps them apart precisely so the panel
+    // can name which input is missing, and selecting one would report a single
+    // reason while two halves of the answer are unknown.
+    blockersError: joinErrors(subsystemsError, blockedTasksError),
+    runningLoading: snapshotLoading,
+    blockersLoading: pulseLoading,
     loading,
     error,
     isRefetching: polling.isRefetching,

@@ -9,7 +9,7 @@ import { useDashboardData } from '@/hooks/useDashboardData'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { computeMetricCards } from '@/utils/dashboard'
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
-import { OrgHealthSection } from './dashboard/OrgHealthSection'
+import { OrgPulseSection } from './dashboard/OrgPulseSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
 import { PendingApprovalsCard } from './dashboard/PendingApprovalsCard'
 import { useApprovalsStore } from '@/stores/approvals'
@@ -55,11 +55,15 @@ export default function DashboardPage() {
   const {
     overview,
     forecast,
-    departmentHealths,
-    departmentCount,
     activities,
     budgetConfig,
-    orgHealthPercent,
+    running,
+    queue,
+    blockers,
+    runningError,
+    blockersError,
+    runningLoading,
+    blockersLoading,
     loading,
     error,
   } = useDashboardData()
@@ -101,10 +105,14 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">
-          <OrgHealthSection
-            departments={departmentHealths}
-            departmentCount={departmentCount}
-            overallHealth={orgHealthPercent}
+          <OrgPulseSection
+            running={running}
+            queue={queue}
+            blockers={blockers}
+            runningError={runningError}
+            blockersError={blockersError}
+            runningLoading={runningLoading}
+            blockersLoading={blockersLoading}
           />
         </ErrorBoundary>
         <div className="flex flex-col gap-grid-gap">

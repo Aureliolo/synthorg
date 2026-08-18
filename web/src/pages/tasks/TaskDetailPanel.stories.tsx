@@ -13,6 +13,7 @@ const mockTask: DashboardTask = {
   created_by: 'agent-cto',
   assigned_to: 'agent-eng-lead',
   assigned_to_name: 'Engineering Lead',
+  dependency_titles: {},
   requested_by_user_id: null,
   reviewers: ['agent-qa'],
   dependencies: ['task-0', 'task-2'],

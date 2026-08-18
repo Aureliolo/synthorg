@@ -62,6 +62,9 @@ function CatalogEntryHeader({ entry }: CatalogEntryHeaderProps) {
       </span>
       <div className="flex flex-col gap-1">
         <span className="text-base font-semibold text-foreground">{entry.name}</span>
+        {/* lint-allow: id-in-ui -- a catalog entry id is the slug its author
+            published it under (``filesystem``, ``github``), which is what an
+            operator types to install it; the name sits directly above. */}
         <code className="font-mono text-xs text-text-muted">{entry.id}</code>
       </div>
     </div>

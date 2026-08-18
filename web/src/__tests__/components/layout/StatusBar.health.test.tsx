@@ -29,10 +29,8 @@ function resetStore() {
   useAnalyticsStore.setState({
     overview: null,
     forecast: null,
-    departmentHealths: [],
     activities: [],
     budgetConfig: null,
-    orgHealthPercent: null,
     loading: false,
     error: null,
   })

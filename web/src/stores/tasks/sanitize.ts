@@ -142,6 +142,13 @@ function isAcceptanceCriteriaShape(
   })
 }
 
+/** ``dependency_titles`` maps a dependency id to the title it resolved to. */
+function isTitleMapShape(value: unknown): value is Record<string, string> {
+  if (value === undefined) return true
+  if (!isPlainObject(value)) return false
+  return Object.values(value).every((title) => typeof title === 'string')
+}
+
 function isNullableString(value: unknown): boolean {
   return value === undefined || value === null || typeof value === 'string'
 }
@@ -185,6 +192,7 @@ function isTaskCollectionFields(c: Record<string, unknown>): boolean {
     && isPlainObject(c['metadata'])
     && isArtifactsExpectedShape(c['artifacts_expected'])
     && isAcceptanceCriteriaShape(c['acceptance_criteria'])
+    && isTitleMapShape(c['dependency_titles'])
   )
 }
 
@@ -307,6 +315,28 @@ function sanitizeIds(ids: readonly string[]): string[] {
     .filter((id) => id.length > 0)
 }
 
+/**
+ * Sanitize a dependency-id to title map, dropping any entry whose key or
+ * title sanitizes away. An absent title is what the surface words itself,
+ * so losing one is strictly better than rendering an unsafe string.
+ *
+ * Accumulates into a null-prototype object, like `sanitizeMetadataObject`
+ * above and for the same CWE-1321 reason: a plain object answers
+ * `Object.prototype` for a `__proto__` key, which is truthy, so a consumer's
+ * `?? fallback` would not fire and React would be handed an object to render.
+ */
+function sanitizeTitleMap(
+  titles: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+  const cleaned: Record<string, string> = Object.create(null) as Record<string, string>
+  for (const [id, title] of Object.entries(titles ?? {})) {
+    const key = sanitizeWsString(id, 128)
+    const value = sanitizeWsString(title, 256)
+    if (key && value) cleaned[key] = value
+  }
+  return cleaned
+}
+
 function sanitizeRequiredStrings(c: DashboardTask) {
   return {
     id: sanitizeWsString(c.id, 128) ?? '',
@@ -401,6 +431,7 @@ function sanitizeTaskCollections(c: DashboardTask) {
       met: ac.met,
     })),
     metadata: sanitizeMetadata(c.metadata),
+    dependency_titles: sanitizeTitleMap(c.dependency_titles),
   }
 }
 

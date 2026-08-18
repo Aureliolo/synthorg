@@ -45,20 +45,32 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, Literal
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _schema_drift_constraints import (  # type: ignore[import-not-found]
+        FK_ACTIONS,
+        NO_ACTION,
+        referential_actions,
+    )
     from _schema_drift_models import (  # type: ignore[import-not-found]
+        NormalizedForeignKey,
         NormalizedIndex,
         NormalizedTable,
         install_sqlglot_filter,
     )
     from _schema_drift_parser import parse_schema  # type: ignore[import-not-found]
 else:
+    from scripts._schema_drift_constraints import (
+        FK_ACTIONS,
+        NO_ACTION,
+        referential_actions,
+    )
     from scripts._schema_drift_models import (
+        NormalizedForeignKey,
         NormalizedIndex,
         NormalizedTable,
         install_sqlglot_filter,
@@ -209,6 +221,47 @@ _FUNCTION_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
 _ALTER_TABLE_ADD_PK_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
     r"ADD\s+CONSTRAINT\s+\w+\s+PRIMARY\s+KEY\s*\(([^)]+)\)",
+    re.IGNORECASE,
+)
+# pg_dump emits references the same way it emits keys: as an ALTER, after every
+# table exists. Without this the Postgres side reads every table as having no
+# references at all, and a revision that changed ON DELETE would compare two
+# empty sets and pass.
+#: The reference modifiers that are not actions, as one alternation.
+#:
+#: A reference may carry more than its two actions, and ``pg_dump`` reproduces
+#: whatever the catalog holds: ``MATCH``, the deferral clauses, and ``NOT VALID``
+#: for a constraint added without an up-front scan (the shape this repository's
+#: own migrations use). None of them changes what a delete does, so none is
+#: compared; they are matched only so that carrying one does not make the whole
+#: ALTER unparseable. That failure is silent and one-sided: the reference simply
+#: does not appear on the Postgres side, and a gate whose entire job is catching
+#: a dropped reference reports clean because it dropped one itself.
+_FK_MODIFIER: Final[str] = (
+    r"(?:MATCH\s+(?:FULL|PARTIAL|SIMPLE)"
+    r"|NOT\s+DEFERRABLE|DEFERRABLE"
+    r"|INITIALLY\s+(?:DEFERRED|IMMEDIATE)"
+    r"|NOT\s+VALID)"
+)
+_ALTER_TABLE_ADD_FK_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:\w+\.)?(\w+)\s+"
+    r"ADD\s+CONSTRAINT\s+\w+\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s*"
+    r"REFERENCES\s+(?:\w+\.)?(\w+)\s*(?:\(([^)]*)\))?"
+    # Modifiers are admitted on both sides of the actions because the grammar
+    # puts no order on them: ``MATCH FULL`` precedes them and the deferral
+    # clauses follow. Each repetition here begins with a mandatory separator and
+    # then a keyword, so none can match empty and none can share a character
+    # with its neighbour; the number of parses is linear in the modifier count
+    # rather than exponential.
+    rf"(?:\s+{_FK_MODIFIER})*"
+    # The action is one of five literals, never a run of letters and spaces.
+    # A class admitting the separator lets one repetition's tail and the next
+    # one's leading ``\s+`` both claim the same space, so a clause with several
+    # actions has exponentially many parses and a non-matching tail walks them
+    # all. Naming the alternation is what makes each repetition consume exactly
+    # one way.
+    rf"(?P<actions>(?:\s+ON\s+(?:DELETE|UPDATE)\s+{FK_ACTIONS})*)"
+    rf"(?:\s+{_FK_MODIFIER})*\s*;",
     re.IGNORECASE,
 )
 _ALTER_TABLE_ADD_UNIQUE_PATTERN: Final[re.Pattern[str]] = re.compile(
@@ -386,7 +439,13 @@ async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> st
         password = pg.password
         dbname = pg.dbname
         url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
-        await migrations.migrate_apply(url, revisions_path=revisions_path)
+        # ``backend`` only selects the revisions directory when one is not
+        # given, and one always is here, but it is also what the migration log
+        # reports: left at its default this run labels a Postgres URL
+        # ``backend=sqlite`` in every line an operator reads afterwards.
+        await migrations.migrate_apply(
+            url, revisions_path=revisions_path, backend="postgres"
+        )
         wrapped_container = pg.get_wrapped_container()
         if wrapped_container is None or wrapped_container.id is None:
             # Provisioning, not drift: the split exit code exists so a
@@ -481,6 +540,10 @@ def _patch_constraints_from_alter(
     Returns a fresh dict; the input is not mutated.
     """
     patched = dict(tables)
+    # ``replace`` rather than a fresh ``NormalizedTable(...)``: a constructor
+    # call here names the fields it carries forward, so a field added to the
+    # dataclass later is silently dropped on every patched table, and the
+    # comparison that reads it then compares two empty values and passes.
     for match in _ALTER_TABLE_ADD_PK_PATTERN.finditer(sql_text):
         table_name = match.group(1)
         cols = tuple(c.strip().strip('"') for c in match.group(2).split(","))
@@ -489,12 +552,7 @@ def _patch_constraints_from_alter(
             continue
         if existing.primary_key:
             continue
-        patched[table_name] = NormalizedTable(
-            name=existing.name,
-            columns=existing.columns,
-            primary_key=cols,
-            uniques=existing.uniques,
-        )
+        patched[table_name] = replace(existing, primary_key=cols)
     for match in _ALTER_TABLE_ADD_UNIQUE_PATTERN.finditer(sql_text):
         table_name = match.group(1)
         cols = tuple(c.strip().strip('"') for c in match.group(2).split(","))
@@ -503,13 +561,39 @@ def _patch_constraints_from_alter(
             continue
         if cols in existing.uniques:
             continue
-        patched[table_name] = NormalizedTable(
-            name=existing.name,
-            columns=existing.columns,
-            primary_key=existing.primary_key,
-            uniques=frozenset(existing.uniques | {cols}),
+        patched[table_name] = replace(
+            existing, uniques=frozenset(existing.uniques | {cols})
+        )
+    for match in _ALTER_TABLE_ADD_FK_PATTERN.finditer(sql_text):
+        table_name = match.group(1)
+        existing = patched.get(table_name)
+        if existing is None:
+            continue
+        patched[table_name] = replace(
+            existing,
+            foreign_keys=frozenset(
+                existing.foreign_keys | {_foreign_key_from_alter(match)}
+            ),
         )
     return patched
+
+
+def _foreign_key_from_alter(match: re.Match[str]) -> NormalizedForeignKey:
+    """Build a reference from an ``ALTER TABLE ... ADD CONSTRAINT`` match.
+
+    Returns:
+        The normalised reference, with each unstated action defaulted.
+    """
+    actions = referential_actions(match.group("actions") or "")
+    return NormalizedForeignKey(
+        columns=tuple(c.strip().strip('"') for c in match.group(2).split(",")),
+        ref_table=match.group(3),
+        ref_columns=tuple(
+            c.strip().strip('"') for c in (match.group(4) or "").split(",") if c.strip()
+        ),
+        on_delete=str(actions.get("DELETE") or NO_ACTION),
+        on_update=str(actions.get("UPDATE") or NO_ACTION),
+    )
 
 
 def _strip_postgres_dump_prelude(dump: str) -> str:
@@ -684,6 +768,165 @@ def _normalise_whitespace(text: str) -> str:
 # ── Diff layer (strict same-backend) ───────────────────────────
 
 
+def _diff_table_checks(
+    name: str,
+    declared: NormalizedTable,
+    actual: NormalizedTable,
+) -> list[str]:
+    """Return CHECK drift for one table, compared as exact text.
+
+    Exact is right here and would be wrong across backends: both sides of this
+    comparison are the same dialect, dumped by the same engine, so any
+    difference in the rendered predicate is a difference in what the table
+    refuses. A rebuild retypes every CHECK by hand and one dropped leaves the
+    column shapes identical while the archive starts accepting a value nothing
+    can mean.
+
+    Returns:
+        One finding per CHECK present on only one side.
+    """
+    findings: list[str] = []
+    findings.extend(
+        f"check:{name}:missing_from_revisions:{expression}"
+        for expression in sorted(declared.checks - actual.checks)
+    )
+    findings.extend(
+        f"check:{name}:missing_from_declared:{expression}"
+        for expression in sorted(actual.checks - declared.checks)
+    )
+    return findings
+
+
+def _diff_table_foreign_keys(
+    name: str,
+    declared: NormalizedTable,
+    actual: NormalizedTable,
+) -> list[str]:
+    """Return reference drift for one table, target and actions alike.
+
+    Grouped on the referencing columns rather than keyed by them: a column may
+    carry more than one reference, and keying would keep whichever the iteration
+    reached last and compare a set the table does not have. Grouping means a
+    dropped second reference is reported instead of being dropped again here.
+
+    Returns:
+        One finding per missing reference, plus one per differing attribute.
+    """
+    declared_groups = _foreign_keys_by_columns(declared)
+    actual_groups = _foreign_keys_by_columns(actual)
+    findings: list[str] = []
+    findings.extend(
+        f"fk:{name}.{','.join(columns)}:missing_from_revisions"
+        for columns in sorted(set(declared_groups) - set(actual_groups))
+    )
+    findings.extend(
+        f"fk:{name}.{','.join(columns)}:missing_from_declared"
+        for columns in sorted(set(actual_groups) - set(declared_groups))
+    )
+    for columns in sorted(set(declared_groups) & set(actual_groups)):
+        findings.extend(
+            _diff_column_group(name, declared_groups[columns], actual_groups[columns])
+        )
+    return findings
+
+
+def _foreign_keys_by_columns(
+    table: NormalizedTable,
+) -> dict[tuple[str, ...], list[NormalizedForeignKey]]:
+    """Group *table*'s references by the columns doing the referencing.
+
+    Returns:
+        Referencing columns to every reference declared on them.
+    """
+    grouped: dict[tuple[str, ...], list[NormalizedForeignKey]] = {}
+    for foreign_key in table.foreign_keys:
+        grouped.setdefault(foreign_key.columns, []).append(foreign_key)
+    return grouped
+
+
+def _diff_column_group(
+    table: str,
+    declared: list[NormalizedForeignKey],
+    actual: list[NormalizedForeignKey],
+) -> list[str]:
+    """Compare every reference declared on one set of referencing columns.
+
+    One on each side is the ordinary case and the only one where the two are
+    unambiguously the same reference, so it is diffed attribute by attribute:
+    ``ON DELETE CASCADE`` retyped as the standard's unstated default reads as a
+    changed action rather than as one reference vanishing and another appearing,
+    which is what makes the finding say what actually happened.
+
+    With several on a side nothing identifies which is which, so they are
+    compared as sets of whole references and a change reads as a removal and an
+    addition. That is less precise and still exact: no reference is lost.
+
+    Returns:
+        The findings for this column group.
+    """
+    if len(declared) == 1 and len(actual) == 1:
+        return _diff_foreign_key_pair(table, declared[0], actual[0])
+    columns = ",".join(declared[0].columns)
+    declared_refs = {_canonical_reference(fk) for fk in declared}
+    actual_refs = {_canonical_reference(fk) for fk in actual}
+    findings = [
+        f"fk:{table}.{columns}:{reference}:missing_from_revisions"
+        for reference in sorted(declared_refs - actual_refs)
+    ]
+    findings.extend(
+        f"fk:{table}.{columns}:{reference}:missing_from_declared"
+        for reference in sorted(actual_refs - declared_refs)
+    )
+    return findings
+
+
+def _canonical_reference(foreign_key: NormalizedForeignKey) -> str:
+    """Render a whole reference, so two on one column set stay distinguishable.
+
+    Returns:
+        Target and both actions as one comparable token.
+    """
+    return (
+        f"{_foreign_key_target(foreign_key)}"
+        f":delete={foreign_key.on_delete}:update={foreign_key.on_update}"
+    )
+
+
+def _foreign_key_target(foreign_key: NormalizedForeignKey) -> str:
+    """Render a reference's target for a finding key."""
+    columns = ",".join(foreign_key.ref_columns)
+    return f"{foreign_key.ref_table}({columns})" if columns else foreign_key.ref_table
+
+
+def _diff_foreign_key_pair(
+    table: str,
+    declared: NormalizedForeignKey,
+    actual: NormalizedForeignKey,
+) -> list[str]:
+    """Return target and per-event action drift for one matched reference."""
+    columns = ",".join(declared.columns)
+    findings: list[str] = []
+    if (declared.ref_table, declared.ref_columns) != (
+        actual.ref_table,
+        actual.ref_columns,
+    ):
+        findings.append(
+            f"fk:{table}.{columns}:target:"
+            f"declared({_foreign_key_target(declared)}):"
+            f"revisions({_foreign_key_target(actual)})"
+        )
+    for event, declared_action, actual_action in (
+        ("delete", declared.on_delete, actual.on_delete),
+        ("update", declared.on_update, actual.on_update),
+    ):
+        if declared_action != actual_action:
+            findings.append(
+                f"fk:{table}.{columns}:on_{event}:"
+                f"declared({declared_action}):revisions({actual_action})"
+            )
+    return findings
+
+
 def _diff_tables(
     declared: dict[str, NormalizedTable],
     actual: dict[str, NormalizedTable],
@@ -724,6 +967,13 @@ def _diff_tables(
                 findings.append(
                     f"column:{name}.{col}:nullable:declared({d_col.nullable}):revisions({a_col.nullable})"
                 )
+            if d_col.default != a_col.default:
+                findings.append(
+                    f"column:{name}.{col}:default:"
+                    f"declared({d_col.default or '_'}):revisions({a_col.default or '_'})"
+                )
+        findings.extend(_diff_table_checks(name, d, a))
+        findings.extend(_diff_table_foreign_keys(name, d, a))
         if d.primary_key != a.primary_key:
             findings.append(
                 f"pk:{name}:declared({','.join(d.primary_key) or '_'}):revisions({','.join(a.primary_key) or '_'})"

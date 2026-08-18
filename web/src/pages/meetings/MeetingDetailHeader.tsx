@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { ArrowLeft, Clock, Hash } from 'lucide-react'
+import { ArrowLeft, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
@@ -74,10 +74,6 @@ function MeetingHeaderTimestamps({ meeting }: { meeting: MeetingResponse }) {
           Ended: {formatDateTime(endedAt)}
         </span>
       )}
-      <span className="flex items-center gap-1">
-        <Hash className="size-3.5" aria-hidden="true" />
-        {meeting.meeting_id}
-      </span>
     </div>
   )
 }

@@ -6,6 +6,13 @@ const meta = {
   title: 'Meetings/MeetingAgendaSection',
   component: MeetingAgendaSection,
   tags: ['autodocs'],
+  args: {
+    participantNames: {
+      'agent-alice': 'Alice Smith',
+      'agent-bob': 'Bob Jones',
+      'agent-carol': 'Carol Diaz',
+    },
+  },
 } satisfies Meta<typeof MeetingAgendaSection>
 
 export default meta

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.engine.workflow._diff_naming import edge_naming
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -496,6 +497,79 @@ class TestEdgeChangeValidation:
                 change_type="reconnected",
                 old_value={"source_node_id": "a"},
             )
+
+
+class TestDiffRowsCarryLabels:
+    """Every change names its node or edge by the label, never by the id."""
+
+    @pytest.mark.unit
+    def test_added_node_carries_its_label(self) -> None:
+        diff = compute_diff(
+            _ver(1, nodes=(_START, _END), edges=()),
+            _ver(2, nodes=(_START, _END, _TASK_A), edges=()),
+        )
+        assert [(c.node_id, c.node_label) for c in diff.node_changes] == [
+            ("task-a", "Task A"),
+        ]
+
+    @pytest.mark.unit
+    def test_removed_node_carries_the_label_it_had(self) -> None:
+        diff = compute_diff(
+            _ver(1, nodes=(_START, _END, _TASK_A), edges=()),
+            _ver(2, nodes=(_START, _END), edges=()),
+        )
+        assert [(c.node_id, c.node_label) for c in diff.node_changes] == [
+            ("task-a", "Task A"),
+        ]
+
+    @pytest.mark.unit
+    def test_modified_node_carries_its_current_label(self) -> None:
+        renamed = _TASK_A.model_copy(update={"label": "Task A renamed"})
+        diff = compute_diff(
+            _ver(1, nodes=(_START, _END, _TASK_A), edges=()),
+            _ver(2, nodes=(_START, _END, renamed), edges=()),
+        )
+        assert [c.node_label for c in diff.node_changes] == ["Task A renamed"]
+
+    @pytest.mark.unit
+    def test_edge_carries_its_own_label_and_both_ends(self) -> None:
+        labelled = WorkflowEdge(
+            id="e2",
+            source_node_id="start",
+            target_node_id="task-a",
+            label="on approval",
+        )
+        diff = compute_diff(
+            _ver(1, nodes=(_START, _END, _TASK_A), edges=()),
+            _ver(2, nodes=(_START, _END, _TASK_A), edges=(labelled,)),
+        )
+        (change,) = diff.edge_changes
+        assert change.edge_label == "on approval"
+        assert change.source_label == "Start"
+        assert change.target_label == "Task A"
+
+    @pytest.mark.unit
+    def test_removed_edge_names_a_node_only_the_old_version_had(self) -> None:
+        """A node removed alongside its edge still labels that edge."""
+        edge = WorkflowEdge(id="e2", source_node_id="start", target_node_id="task-a")
+        diff = compute_diff(
+            _ver(1, nodes=(_START, _END, _TASK_A), edges=(edge,)),
+            _ver(2, nodes=(_START, _END), edges=()),
+        )
+        (change,) = diff.edge_changes
+        assert change.edge_label is None
+        assert (change.source_label, change.target_label) == ("Start", "Task A")
+
+    @pytest.mark.unit
+    def test_an_end_nothing_labels_reports_none_not_the_id(self) -> None:
+        """The definition rejects a dangling edge, so this is the naming unit.
+
+        The fallback still has to be ``None``: the surface says its own words
+        for an unnameable end, and a row that printed the id instead is the
+        leak the labels exist to close.
+        """
+        naming = edge_naming(_EDGE_1, {})
+        assert (naming.source, naming.target) == (None, None)
 
 
 class TestWorkflowDiffVersionRangeValidation:

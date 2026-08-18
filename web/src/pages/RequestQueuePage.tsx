@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
-import type { ClientRequest, RequestStatus } from '@/api/types/clients'
+import type { ClientRequestRow, RequestStatus } from '@/api/types/clients'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
@@ -142,7 +142,7 @@ function RequestQueueBoard({
   onApprove,
   onReject,
 }: {
-  filteredRequests: readonly ClientRequest[]
+  filteredRequests: readonly ClientRequestRow[]
   pending: Record<string, boolean>
   onScope: (id: string) => void
   onApprove: (id: string) => void
@@ -207,10 +207,18 @@ interface RequestConfirmCopy {
   variant: 'default' | 'destructive'
 }
 
-function buildConfirmCopy(target: RequestConfirmTarget | null): RequestConfirmCopy {
+function buildConfirmCopy(
+  target: RequestConfirmTarget | null,
+  requests: readonly ClientRequestRow[],
+): RequestConfirmCopy {
   if (!target) return { title: '', description: undefined, label: 'Confirm', variant: 'default' }
+  // Named by what was asked for, not by the key: the operator is confirming a
+  // piece of work, and its own requirement title is how they recognise it.
+  const subject =
+    requests.find((r) => r.request_id === target.id)?.requirement.title
+    ?? 'this request'
   return {
-    title: `${ACTION_VERB[target.kind]} request ${target.id}?`,
+    title: `${ACTION_VERB[target.kind]} "${subject}"?`,
     description: ACTION_PROMPT[target.kind],
     label: ACTION_VERB[target.kind],
     variant: target.kind === 'reject' ? 'destructive' : 'default',
@@ -238,7 +246,7 @@ function RequestQueueActiveView({ q }: { q: RequestQueueState }) {
     setConfirm(null)
   }, [confirm, q])
 
-  const copy = buildConfirmCopy(confirm)
+  const copy = buildConfirmCopy(confirm, q.requests)
 
   return (
     <>
@@ -293,7 +301,7 @@ function RequestQueueActiveView({ q }: { q: RequestQueueState }) {
 /**
  * Lightweight Kanban-style view of the client request lifecycle.
  *
- * Groups stored ``ClientRequest``s by status so operators can watch the
+ * Groups stored ``ClientRequestRow``s by status so operators can watch the
  * independent request state machine (SUBMITTED → TRIAGING → ... →
  * TASK_CREATED | CANCELLED) at a glance. Per-card actions only expose
  * the legal next transition for each status; the state machine is

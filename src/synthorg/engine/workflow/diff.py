@@ -6,12 +6,14 @@ changes).
 """
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._diff_invariants import validate_change_invariants
+from synthorg.engine.workflow._diff_naming import edge_naming, node_labels
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -34,6 +36,10 @@ class NodeChange(BaseModel):
 
     Attributes:
         node_id: The node affected.
+        node_label: The node's display label, which is what the editor shows
+            and therefore what a diff row has to name it by. ``None`` when
+            nothing in either version labels it, and the surface then says so
+            in its own words rather than falling back to the id.
         change_type: Kind of change detected.
         old_value: Previous state (None for added nodes).
         new_value: New state (None for removed nodes).
@@ -42,6 +48,7 @@ class NodeChange(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     node_id: NotBlankStr
+    node_label: NotBlankStr | None = None
     change_type: Literal[
         "added",
         "removed",
@@ -75,8 +82,15 @@ class NodeChange(BaseModel):
 class EdgeChange(BaseModel):
     """A single change to a workflow edge between two versions.
 
+    An edge is named by its own label where its author gave it one, and by the
+    two nodes it joins where they did not, which is how it reads on the canvas.
+    Each is ``None`` when nothing supplies it, never the id it stands for.
+
     Attributes:
         edge_id: The edge affected.
+        edge_label: The edge's own display label, when it carries one.
+        source_label: Display label of the node the edge leaves.
+        target_label: Display label of the node the edge reaches.
         change_type: Kind of change detected.
         old_value: Previous state (None for added edges).
         new_value: New state (None for removed edges).
@@ -85,6 +99,9 @@ class EdgeChange(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     edge_id: NotBlankStr
+    edge_label: NotBlankStr | None = None
+    source_label: NotBlankStr | None = None
+    target_label: NotBlankStr | None = None
     change_type: Literal[
         "added",
         "removed",
@@ -248,6 +265,7 @@ def _compare_matched_node(
         changes.append(
             NodeChange(
                 node_id=node_id,
+                node_label=new_node.label,
                 change_type="type_changed",
                 old_value={"type": old_node.type.value},
                 new_value={"type": new_node.type.value},
@@ -258,6 +276,7 @@ def _compare_matched_node(
         changes.append(
             NodeChange(
                 node_id=node_id,
+                node_label=new_node.label,
                 change_type="label_changed",
                 old_value={"label": old_node.label},
                 new_value={"label": new_node.label},
@@ -270,6 +289,7 @@ def _compare_matched_node(
         changes.append(
             NodeChange(
                 node_id=node_id,
+                node_label=new_node.label,
                 change_type="moved",
                 old_value={
                     "position_x": old_node.position_x,
@@ -288,6 +308,7 @@ def _compare_matched_node(
         changes.append(
             NodeChange(
                 node_id=node_id,
+                node_label=new_node.label,
                 change_type="config_changed",
                 old_value={"config": old_cfg},
                 new_value={"config": new_cfg},
@@ -317,6 +338,7 @@ def _diff_nodes(
         changes.append(
             NodeChange(
                 node_id=nid,
+                node_label=n.label,
                 change_type="added",
                 new_value=n.model_dump(mode="json"),
             )
@@ -328,6 +350,7 @@ def _diff_nodes(
         changes.append(
             NodeChange(
                 node_id=nid,
+                node_label=n.label,
                 change_type="removed",
                 old_value=n.model_dump(mode="json"),
             )
@@ -346,6 +369,7 @@ def _compare_matched_edge(
     edge_id: str,
     old_edge: WorkflowEdge,
     new_edge: WorkflowEdge,
+    labels: Mapping[str, str],
 ) -> list[EdgeChange]:
     """Compare a single matched edge pair and return all changes.
 
@@ -353,11 +377,13 @@ def _compare_matched_edge(
         edge_id: The shared edge ID.
         old_edge: The edge from the earlier version.
         new_edge: The edge from the later version.
+        labels: Node id to display label, across both versions.
 
     Returns:
         A list of ``EdgeChange`` items for every detected difference.
     """
     changes: list[EdgeChange] = []
+    named = edge_naming(new_edge, labels)
 
     if (
         old_edge.source_node_id != new_edge.source_node_id
@@ -366,6 +392,9 @@ def _compare_matched_edge(
         changes.append(
             EdgeChange(
                 edge_id=edge_id,
+                edge_label=named.edge,
+                source_label=named.source,
+                target_label=named.target,
                 change_type="reconnected",
                 old_value={
                     "source_node_id": old_edge.source_node_id,
@@ -382,6 +411,9 @@ def _compare_matched_edge(
         changes.append(
             EdgeChange(
                 edge_id=edge_id,
+                edge_label=named.edge,
+                source_label=named.source,
+                target_label=named.target,
                 change_type="type_changed",
                 old_value={"type": old_edge.type.value},
                 new_value={"type": new_edge.type.value},
@@ -392,6 +424,9 @@ def _compare_matched_edge(
         changes.append(
             EdgeChange(
                 edge_id=edge_id,
+                edge_label=named.edge,
+                source_label=named.source,
+                target_label=named.target,
                 change_type="label_changed",
                 old_value={"label": old_edge.label},
                 new_value={"label": new_edge.label},
@@ -413,14 +448,19 @@ def _diff_edges(
     """
     old_map = {e.id: e for e in old.edges}
     new_map = {e.id: e for e in new.edges}
+    labels = node_labels(old, new)
     changes: list[EdgeChange] = []
 
     # Added edges.
     for eid in sorted(new_map.keys() - old_map.keys()):
         e = new_map[eid]
+        named = edge_naming(e, labels)
         changes.append(
             EdgeChange(
                 edge_id=eid,
+                edge_label=named.edge,
+                source_label=named.source,
+                target_label=named.target,
                 change_type="added",
                 new_value=e.model_dump(mode="json"),
             )
@@ -429,9 +469,13 @@ def _diff_edges(
     # Removed edges.
     for eid in sorted(old_map.keys() - new_map.keys()):
         e = old_map[eid]
+        named = edge_naming(e, labels)
         changes.append(
             EdgeChange(
                 edge_id=eid,
+                edge_label=named.edge,
+                source_label=named.source,
+                target_label=named.target,
                 change_type="removed",
                 old_value=e.model_dump(mode="json"),
             )
@@ -440,7 +484,7 @@ def _diff_edges(
     # Matched edges -- check for modifications.
     for eid in sorted(old_map.keys() & new_map.keys()):
         changes.extend(
-            _compare_matched_edge(eid, old_map[eid], new_map[eid]),
+            _compare_matched_edge(eid, old_map[eid], new_map[eid], labels),
         )
 
     return changes

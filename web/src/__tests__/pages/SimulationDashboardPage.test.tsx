@@ -39,13 +39,22 @@ const ALL_ENABLED: Capabilities = {
   web_fetch: true,
 }
 
+/** What the run is headed by, stated here rather than taken from a default. */
+const RUNNING_PROJECT_NAME = 'Migrate the billing service'
+
 function seedRunningSimulation() {
   server.use(
     http.get('/api/v1/simulations', () =>
       HttpResponse.json(
         paginatedFor<typeof listSimulations>({
           ...emptyPage<SimulationStatusResponse>(),
-          data: [buildSimulation({ simulation_id: 'sim-1', status: 'running' })],
+          data: [
+            buildSimulation({
+              simulation_id: 'sim-1',
+              status: 'running',
+              project_name: RUNNING_PROJECT_NAME,
+            }),
+          ],
         }),
       ),
     ),
@@ -96,17 +105,24 @@ describe('SimulationDashboardPage', () => {
   it('renders run cards and active-run metrics when simulations load', async () => {
     seedRunningSimulation()
     renderPage()
-    expect(await screen.findByText('sim-1')).toBeInTheDocument()
+    // The run is headed by what it simulates, not by its own key.
+    expect(await screen.findByText(RUNNING_PROJECT_NAME)).toBeInTheDocument()
+    expect(screen.queryByText('sim-1')).not.toBeInTheDocument()
     expect(screen.getByText('Active runs')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Report' })).toBeInTheDocument()
   })
 
-  it('shows the report card when Report is clicked', async () => {
+  it('names the run the report belongs to, without its key', async () => {
     seedRunningSimulation()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Report' }))
-    expect(await screen.findByText('Report: sim-1')).toBeInTheDocument()
+    // Runs share their statuses and round counts, so a heading that named
+    // neither left the operator unable to tell which report they were reading.
+    expect(
+      await screen.findByText(`Simulation report: ${RUNNING_PROJECT_NAME}`),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('sim-1')).not.toBeInTheDocument()
   })
 
   it('cancels a running simulation and reflects the cancelled status', async () => {

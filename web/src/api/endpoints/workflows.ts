@@ -5,6 +5,7 @@ import type {
   BlueprintInfo,
   CreateFromBlueprintRequest,
   CreateWorkflowDefinitionRequest,
+  EdgeChange,
   RollbackWorkflowRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinition,
@@ -137,6 +138,27 @@ export async function getWorkflowDiff(
   return unwrap(response)
 }
 
+/** What a diff row calls a node the author never labelled. */
+const UNNAMED_NODE = 'an unnamed step'
+
+/** What a diff row calls an edge with no label and no named end. */
+const UNNAMED_EDGE = 'an unnamed connection'
+
+/**
+ * How a row names one edge, given the three labels the backend resolved.
+ *
+ * An edge carries its own label where the author typed one, and is otherwise
+ * known by the two steps it joins, which is the same order
+ * ``engine/workflow/_diff_naming.py`` establishes on the way out.
+ */
+function edgeLabel(change: EdgeChange): string {
+  if (change.edge_label !== null) return change.edge_label
+  if (change.source_label !== null && change.target_label !== null) {
+    return `${change.source_label} to ${change.target_label}`
+  }
+  return UNNAMED_EDGE
+}
+
 /**
  * Diff two workflow versions, normalised for the shared diff drawer.
  *
@@ -145,6 +167,12 @@ export async function getWorkflowDiff(
  * lists) and flattens all three -- prefixing each path with its change
  * domain so node, edge, and metadata entries stay distinguishable -- into
  * the cross-domain ``VersionDiffResponse`` shape the drawer renders.
+ *
+ * Rows are named by label, never by id. A node id is minted, not authored, so
+ * `node:a3f7b2c1-...` in the drawer describes a change to something the
+ * operator has never seen; the backend resolves the label precisely so this
+ * does not have to, and answers `null` where nothing names one, which is where
+ * these words stand in.
  */
 export async function diffWorkflowVersions(
   id: string,
@@ -157,12 +185,12 @@ export async function diffWorkflowVersions(
     to_version: diff.to_version,
     entries: [
       ...diff.node_changes.map((change) => ({
-        path: `node:${change.node_id}`,
+        path: `node:${change.node_label ?? UNNAMED_NODE}`,
         before: change.old_value,
         after: change.new_value,
       })),
       ...diff.edge_changes.map((change) => ({
-        path: `edge:${change.edge_id}`,
+        path: `edge:${edgeLabel(change)}`,
         before: change.old_value,
         after: change.new_value,
       })),

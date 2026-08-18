@@ -1,23 +1,5 @@
 import type { OrderConstraint } from '@dagrejs/dagre'
 import type { Edge, Node } from '@xyflow/react'
-import {
-  type ClusterDirection,
-  DEPT_HORIZONTAL_WIDTH_BUDGET,
-  getNodeDim,
-} from './layout-shared'
-
-/**
- * Pick a unit's internal flow from what its widest rank would really measure
- * laid out top-to-bottom.
- *
- * The decision is made on summed rendered widths rather than a member count
- * times a card width: a department's members include team boxes already sized
- * around their own contents, routinely several cards wide, so a count clears
- * the budget on paper while the row it stands for overruns the canvas.
- */
-export function chooseClusterDirection(widestRankWidth: number): ClusterDirection {
-  return widestRankWidth > DEPT_HORIZONTAL_WIDTH_BUDGET ? 'LR' : 'TB'
-}
 
 /** Members with no parent inside `memberIds`, keeping the given order. */
 function rootsWithin(memberIds: readonly string[], edges: readonly Edge[]): string[] {
@@ -63,14 +45,12 @@ function sameRankSets(memberIds: readonly string[], edges: readonly Edge[]): str
 
 /** What one unit's rank structure tells the layout, from a single traversal. */
 export interface RankPlan {
-  /** What the widest rank would measure laid out side by side, gaps included. */
-  readonly widestRankWidth: number
   /** Consecutive `{left, right}` pairs over each rank, in the operator's order. */
   readonly constraints: OrderConstraint[]
 }
 
 /**
- * Read a unit's rank structure: how wide it gets, and how to pin its order.
+ * Read a unit's rank structure: how to pin its left-to-right order.
  *
  * `members` must already be in the operator's order. Emission order IS that
  * order: `build-org-tree` walks `config.departments`, and `groupAgentsByDept`
@@ -86,27 +66,15 @@ export interface RankPlan {
  * endpoints sit on different ranks is not inert: chaining every member of a
  * unit in one run reversed sibling pairs that the per-rank chains get right.
  */
-export function planRanks(
-  members: readonly Node[],
-  edges: readonly Edge[],
-  nodeSep: number,
-): RankPlan {
-  const byId = new Map(members.map((member) => [member.id, member]))
-  const sets = sameRankSets([...byId.keys()], edges)
+export function planRanks(members: readonly Node[], edges: readonly Edge[]): RankPlan {
+  const memberIds = members.map((member) => member.id)
   const constraints: OrderConstraint[] = []
-  let widestRankWidth = 0
-  for (const set of sets) {
+  for (const set of sameRankSets(memberIds, edges)) {
     for (let index = 1; index < set.length; index++) {
       constraints.push({ left: set[index - 1]!, right: set[index]! })
     }
-    const gaps = Math.max(0, set.length - 1) * nodeSep
-    const rankWidth = set.reduce((total, id) => {
-      const member = byId.get(id)
-      return member === undefined ? total : total + getNodeDim(member).w
-    }, gaps)
-    widestRankWidth = Math.max(widestRankWidth, rankWidth)
   }
-  return { widestRankWidth, constraints }
+  return { constraints }
 }
 
 /**

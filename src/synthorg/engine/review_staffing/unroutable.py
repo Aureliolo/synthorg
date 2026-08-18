@@ -12,6 +12,7 @@ stranded row hide inside a count that reads as "waiting on a hire".
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import UNROUTABLE_ROLE_KEY, BlockedReason, TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 
@@ -39,15 +40,15 @@ async def unroutable_by_role(
     """
     by_role: dict[str, list[Task]] = {}
     roleless = 0
-    offset = 0
+    after: NotBlankStr | None = None
     for _ in range(max_pages):
         page = await task_repo.query(
             TaskFilterSpec(
                 status=TaskStatus.BLOCKED,
                 blocked_reason=BlockedReason.NO_CAPABLE_AGENT,
+                after_id=after,
             ),
             limit=page_size,
-            offset=offset,
         )
         for task in page:
             role = task.metadata.get(UNROUTABLE_ROLE_KEY)
@@ -57,10 +58,11 @@ async def unroutable_by_role(
                 roleless += 1
         if len(page) < page_size:
             break
-        # This read does not mutate the set it is walking, so the window
-        # advances by the page: the releases happen after every page is in
-        # hand, unlike the gate sweep, which releases as it goes.
-        offset += len(page)
+        # Keyset, not offset: this sweep runs against a set the reconciler is
+        # releasing rows from, and an offset window skips a row whenever one
+        # behind it leaves. It is also the shape the (status, blocked_reason,
+        # id) index serves, where an offset re-walks every entry already read.
+        after = NotBlankStr(page[-1].id)
     return by_role, roleless
 
 

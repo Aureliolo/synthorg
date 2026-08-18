@@ -7,11 +7,11 @@ import {
   OWNER_NODE_ID,
   ROOT_DEPT_NODE_ID,
   layoutOf,
-  leftToRight,
   nodeById,
   orgConfig,
   overlaps,
   pairsOf,
+  readingOrder,
 } from '../../helpers/org-layout'
 
 function makeNode(id: string, opts: Partial<Node> = {}): Node {
@@ -210,7 +210,7 @@ describe('applyDagreLayout on degenerate charts', () => {
     ]
     const nodes = layoutOf(orgConfig(specs))
     const order = ['dept-engineering', 'dept-sales', 'dept-support']
-    expect(leftToRight(nodes, order)).toEqual(order)
+    expect(readingOrder(nodes, order)).toEqual(order)
     for (const node of nodes) {
       expect(Number.isFinite(node.position.x)).toBe(true)
       expect(Number.isFinite(node.position.y)).toBe(true)
@@ -246,7 +246,7 @@ describe('applyDagreLayout on degenerate charts', () => {
       { name: 'support', members: ['dave', 'erin'] },
     ]
     const order = ['dept-engineering', 'dept-sales', 'dept-support']
-    expect(leftToRight(layoutOf(orgConfig(specs)), order)).toEqual(order)
+    expect(readingOrder(layoutOf(orgConfig(specs)), order)).toEqual(order)
   })
 
   it('terminates on a parentId cycle instead of spinning', () => {

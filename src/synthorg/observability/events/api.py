@@ -73,6 +73,10 @@ API_APPROVAL_REPO_FETCHED: Final[str] = "api.approval.repo_fetched"
 API_APPROVAL_REPO_LISTED: Final[str] = "api.approval.repo_listed"
 API_APPROVAL_ENRICH_FAILED: Final[str] = "api.approval.enrich_failed"
 API_APPROVAL_REPO_DELETED: Final[str] = "api.approval.repo_deleted"
+# Emitted by every read boundary that resolves a reference to a name. Kept apart
+# from the approval-specific event so that alerting on it means "a name would not
+# resolve" rather than "an approval failed to enrich".
+API_READ_NAME_RESOLVE_FAILED: Final[str] = "api.read.name_resolve_failed"
 API_APPROVAL_REPO_FAILED: Final[str] = "api.approval.repo_failed"
 API_BRIDGE_CHANNEL_DEAD: Final[str] = "api.bus_bridge.channel_dead"
 API_WS_TRANSPORT_ERROR: Final[str] = "api.ws.transport_error"
@@ -254,6 +258,7 @@ API_SECURITY_CONFIG_EXPORTED: Final[str] = "api.security_config.exported"
 API_SECURITY_CONFIG_IMPORTED: Final[str] = "api.security_config.imported"
 API_SECURITY_CONFIG_IMPORT_FAILED: Final[str] = "api.security_config.import_failed"
 API_COORDINATION_METRICS_QUERIED: Final[str] = "api.coordination_metrics.queried"
+API_INTERRUPTS_QUERIED: Final[str] = "api.interrupts.queried"
 API_AGENT_HEALTH_TREND_MISSING: Final[str] = "api.agent.health.trend_missing"
 
 # Ceremony policy
