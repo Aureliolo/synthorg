@@ -971,6 +971,24 @@ async def _deactivate_review_staffing(app_state: AppState) -> None:
     await unwire_review_staffing(app_state)
 
 
+async def _activate_run_recovery(app_state: AppState) -> None:
+    """Resume the runs a stopped process left behind, then keep asking."""
+    from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
+        wire_run_recovery,
+    )
+
+    await wire_run_recovery(app_state)
+
+
+async def _deactivate_run_recovery(app_state: AppState) -> None:
+    """Stop the recovery sweep so the next pass rebuilds it."""
+    from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
+        unwire_run_recovery,
+    )
+
+    await unwire_run_recovery(app_state)
+
+
 async def _activate_scaling(app_state: AppState) -> None:
     """Wire the agent-scaling service."""
     from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
@@ -1759,6 +1777,23 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         ),
         activate=_activate_review_staffing,
         deactivate=_deactivate_review_staffing,
+    ),
+    SubsystemSpec(
+        name="run_recovery",
+        provides=CapabilityId.RUN_RECOVERY,
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.AGENT_REGISTRY,
+            # The coordinator is what a resumed plan's waves are handed to,
+            # and the rollup is what reads whatever they deliver. Declared
+            # rather than checked at activation so a boot without either
+            # reports which one it is waiting on instead of "declined".
+            CapabilityId.COORDINATOR,
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+        ),
+        activate=_activate_run_recovery,
+        deactivate=_deactivate_run_recovery,
     ),
     SubsystemSpec(
         name="quota_poller",

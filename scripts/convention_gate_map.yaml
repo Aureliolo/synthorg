@@ -115,6 +115,11 @@ mandatory_rules:
     header: Reachable Lifecycle Exit
     gate: scripts/check_lifecycle_exit_reachable.py
 
+  - id: claude-md::resumable-runs
+    file: CLAUDE.md
+    header: Resumable Runs
+    gate: scripts/check_run_recovery_covers_plan_statuses.py
+
   - id: claude-md::single-owner-decisions
     file: CLAUDE.md
     header: Single-Owner Decisions

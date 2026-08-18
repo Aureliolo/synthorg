@@ -21,6 +21,7 @@ COORDINATION_WAVES_ABANDONED: Final[str] = "coordination.waves.abandoned"
 COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED: Final[str] = (
     "coordination.wave.assignment_release_failed"
 )
+COORDINATION_RUN_CLAIM_REFUSED: Final[str] = "coordination.run.claim_refused"
 COORDINATION_UNROUTABLE_PARKED: Final[str] = "coordination.unroutable.parked"
 COORDINATION_UNROUTABLE_PARK_FAILED: Final[str] = "coordination.unroutable.park_failed"
 COORDINATION_FACTORY_BUILT: Final[str] = "coordination.factory.built"

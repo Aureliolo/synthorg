@@ -216,7 +216,7 @@ async def _run_one_wave(
     Returns:
         ``True`` when the run must not proceed to the next wave.
     """
-    gated = await gate_wave(
+    outcome = await gate_wave(
         group,
         wave_idx=wave_idx,
         assignment_writer=run.assignment_writer,
@@ -225,8 +225,13 @@ async def _run_one_wave(
         start=start,
         phases=run.phases,
     )
+    gated = outcome.group
     if gated is None:
-        return run.fail_fast
+        # A wave with nothing left because every subtask already delivered is
+        # a level a previous run finished, so this run walks on. Stopping
+        # there would fail a resumed plan for the work it had already done,
+        # and ``fail_fast`` is about a level that did NOT deliver.
+        return False if outcome.delivered else run.fail_fast
     if run.resources is None:
         stop, _ = await _dispatch_gated_wave(
             gated, wave_idx=wave_idx, start=start, run=run

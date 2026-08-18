@@ -39,6 +39,48 @@ NON_DELIVERING_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
 )
 
 
+#: Statuses in which a subtask has not yet had its outcome, so a wave
+#: dispatching it is asking for work rather than repeating it.
+#:
+#: Every subtask of a plan dispatched for the first time sits at ``CREATED``,
+#: so this narrows nothing on a fresh run. It matters when a run is RESUMED:
+#: the waves are rebuilt from the plan's items, which say what the plan wants
+#: and not what already happened, so a level whose work finished in an earlier
+#: process would be dispatched a second time. ``ASSIGNED`` and ``IN_PROGRESS``
+#: stay in because a wave racing another for the same subtask is a case the
+#: writer already resolves by owner, and taking them out would change that.
+#:
+#: Everything absent has an outcome that belongs to somebody: a finished or
+#: reviewed subtask has delivered, a failed or rejected one is the replan's
+#: question, a parked one carries a reason naming what it waits on, and a
+#: subtask waiting on a human is waiting on the human. Re-dispatching any of
+#: them spends a turn budget to overwrite an answer that already exists.
+AWAITS_DISPATCH_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {
+        TaskStatus.CREATED,
+        TaskStatus.ASSIGNED,
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.INTERRUPTED,
+    }
+)
+
+
+def awaits_dispatch(status: TaskStatus | None) -> bool:
+    """Whether a wave should still dispatch the subtask holding *status*.
+
+    Args:
+        status: The status the task engine holds, or ``None`` when it holds
+            no row at all.
+
+    Returns:
+        ``True`` when the subtask has no outcome yet. A missing row counts,
+        so a wave rebuilt against a subtask nothing filed still reaches the
+        writer and fails there with the id, rather than being silently
+        dropped as though its work were done.
+    """
+    return status is None or status in AWAITS_DISPATCH_STATUSES
+
+
 def dependency_map(
     subtasks: Iterable[SubtaskDefinition],
 ) -> Mapping[str, tuple[str, ...]]:
@@ -127,8 +169,10 @@ def unstarted_reason(wave_idx: int) -> str:
 
 
 __all__ = [
+    "AWAITS_DISPATCH_STATUSES",
     "NON_DELIVERING_STATUSES",
     "abandon_reason",
+    "awaits_dispatch",
     "block_reason",
     "dependency_map",
     "unmet_dependencies",

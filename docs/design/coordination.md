@@ -201,6 +201,63 @@ Shutdown still matters, because the container runtime performs one: a
 below runs. The compose file's `restart: unless-stopped` is what brings a
 crashed process back, and nothing inside the product asks for that.
 
+### Resuming what a stop interrupted
+
+Shutting down cleanly is half the promise. The other half is that the work
+comes back, and until run recovery existed it did not: a plan's waves are
+driven by a background task created when an operator approves the plan, so
+once that task was gone nothing anywhere asked again whether the plan still
+needed driving. A restart left subtasks at `in_progress`, the plan at
+`executing`, and the board showing work in flight with nothing behind it,
+permanently.
+
+`RunRecoveryReconciler` (`engine/run_recovery/`) answers that on the same
+shape the subsystem reconciler uses for wiring: boot is the first pass, the
+cadence (`engine.run_recovery_resync_interval_seconds`, pausable via
+`engine.run_recovery_sweep_paused`) repeats the same idempotent question, and
+every plan status gets an answer.
+
+| plan status | what recovery does |
+| --- | --- |
+| `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
+| `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
+| `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
+| `APPROVED` / `EXECUTING` | requeues the orphaned rows, then hands the remaining waves back to the coordinator |
+| `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
+
+Three properties are load-bearing:
+
+**A resumed wave dispatches what is left, not what the plan wanted.** Waves are
+rebuilt from the plan's items, which record the goal rather than the history,
+so a resumed run re-proposes every level including the finished ones.
+`gate_wave` therefore narrows on two grounds rather than one: what can deliver
+(its dependencies arrived) and what still awaits dispatch (no outcome yet). A
+wave left with nothing because everything already delivered records a
+**successful** phase; only a wave emptied by inputs that died records the
+failed one. Confusing the two fails a plan for having made progress.
+
+**Requeueing writes `INTERRUPTED`**, which is the status that says what
+happened and the one the lifecycle already documented as eligible for
+reassignment on restart. The objective task is left alone (the rollup derives
+its status from the items, and a second author of one value is its own defect);
+the assembly task is requeued, because nothing else would move it and the tail
+would read it as `RUNNING` for ever.
+
+**One driver per plan.** `LiveRunLedger` is claimed by the approval path and by
+the sweep alike, so neither can start a second driver on a plan the other is
+already building; two drivers assign the same subtasks, the engine refuses the
+second, and the wave that lost fails the plan it was helping. The ledger is
+in-process by construction and claims nothing about another process, so a
+deployment running distributed workers requeues nothing at all: JetStream
+redelivery of an unacknowledged claim already owns recovering a dead runner
+there, and a second answer could move a row a live worker still holds.
+
+Because recovery exists, a dispatch cancelled by a **stopping process** is left
+exactly as it is rather than failed: the next boot pass finds it and resumes
+it. Any other cancellation keeps the old compensation, since nothing is coming
+for it. The signal separating them is `AppState.shutdown_requested`, set by the
+handler above before the server is told.
+
 ### Strategy 1: Cooperative with Timeout (Default / MVP)
 
 The engine sets a shutdown event, stops accepting new tasks, and gives in-flight

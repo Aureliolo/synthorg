@@ -29,6 +29,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.engine.coordination._dependency_gate import (
     abandon_reason,
+    awaits_dispatch,
     block_reason,
     unmet_dependencies,
     unstarted_reason,
@@ -163,6 +164,54 @@ class AssignmentWriter:
                 # conclude on.
                 runnable.append(assignment)
         return group.model_copy(update={"assignments": tuple(runnable)})
+
+    async def narrow_to_awaiting_dispatch(
+        self,
+        group: ParallelExecutionGroup,
+    ) -> tuple[ParallelExecutionGroup, int]:
+        """Drop the subtasks of *group* whose outcome already exists.
+
+        Waves are rebuilt from the plan's items, which record what the plan
+        wants rather than what has happened, so a resumed run re-proposes
+        every level including the ones already delivered. Dispatching those
+        again would re-run finished work, and the engine would refuse the
+        entry transition anyway, failing the whole wave on a subtask that
+        succeeded.
+
+        Nothing is parked here, which is the difference from the dependency
+        gate: a subtask dropped for having an outcome already reached one, so
+        there is no row left without an exit.
+
+        Args:
+            group: The wave as the DAG scheduled it.
+
+        Returns:
+            ``(group, settled)``: the group carrying only the subtasks still
+            awaiting dispatch, and how many were dropped for already having
+            an outcome. When no engine is wired there is no status to read,
+            so the group is returned unchanged and nothing is dropped.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return group, 0
+        awaiting: list[AgentAssignment] = []
+        settled = 0
+        for assignment in group.assignments:
+            live = await engine.get_task(str(assignment.task.id))
+            if awaits_dispatch(None if live is None else live.status):
+                awaiting.append(assignment)
+                continue
+            settled += 1
+            logger.debug(
+                COORDINATION_WAVE_BUILT,
+                subtask_id=str(assignment.task.id),
+                group_id=group.group_id,
+                note="already settled; not re-dispatched",
+                from_status=live.status.value if live else None,
+            )
+        if settled == 0:
+            return group, 0
+        return group.model_copy(update={"assignments": tuple(awaiting)}), settled
 
     async def abandon_remaining(
         self,

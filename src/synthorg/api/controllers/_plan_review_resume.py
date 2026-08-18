@@ -30,6 +30,7 @@ from synthorg.api.lifecycle_helpers.plan_questions import (
     replay_decided_questions,
     retire_open_questions,
 )
+from synthorg.api.lifecycle_helpers.run_recovery_wiring import live_run_ledger_of
 from synthorg.api.state import AppState
 from synthorg.approval.plan_review import is_plan_approval
 from synthorg.approval.questions import is_question
@@ -451,6 +452,12 @@ async def _build_approved_plan(
         CancelledError: Re-raised after the plan is settled, so a shutdown
             drain still completes promptly.
     """
+    ledger = live_run_ledger_of(app_state)
+    # Claimed for as long as this drive runs, so the recovery sweep's periodic
+    # pass cannot start a second driver on a plan already being built here.
+    # Not a reason to abandon the build when the claim is refused: the claim
+    # is a courtesy to the sweep, and the approval is the authority.
+    claimed = plan_id is not None and ledger.try_claim(plan_id)
     try:
         agents = await agent_registry_of(app_state).list_active()
         result = await coordinator.coordinate(
@@ -479,19 +486,37 @@ async def _build_approved_plan(
             )
     except asyncio.CancelledError:
         # Shutdown cancels this task, and `except Exception` does not see it
-        # because CancelledError is a BaseException. Leaving here silently is
-        # the one exit that strands the plan: the approval's resume marker is
-        # cleared once this task is created, so startup has nothing to replay
-        # from and the plan sits EXECUTING with no live dispatch for ever.
+        # because CancelledError is a BaseException. Leaving here silently
+        # used to be the one exit that stranded the plan: the approval's
+        # resume marker is cleared once this task is created, so nothing was
+        # left to replay from and the plan sat EXECUTING with no live
+        # dispatch for ever.
+        #
+        # Which of the two exits is right turns on WHY the cancellation
+        # arrived, and there is exactly one signal for that. A stopping
+        # process leaves the plan alone: run recovery reads a dispatched plan
+        # with nobody driving it on the next boot and resumes it, so failing
+        # it here would destroy an initiative for the sake of a restart, and
+        # a restart is an ordinary operator action. Any other cancellation
+        # has nothing coming for it, and keeps the compensation.
+        #
         # Shielded, because the compensation is itself an await inside an
         # already-cancelled task and would otherwise be cancelled too.
+        if app_state.shutdown_requested.is_set():
+            logger.info(
+                APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+                approval_id=approval_id,
+                plan_id=plan_id,
+                note="cancelled at shutdown; left for run recovery to resume",
+            )
+            raise
         await asyncio.shield(
             _fail_dispatch(
                 app_state,
                 approval_id,
                 task_id=task_id,
                 plan_id=plan_id,
-                why="dispatch cancelled at shutdown before the waves finished",
+                why="dispatch cancelled before the waves finished",
             )
         )
         raise
@@ -502,6 +527,9 @@ async def _build_approved_plan(
         await _record_dispatch_failure(
             app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
         )
+    finally:
+        if claimed and plan_id is not None:
+            ledger.release(plan_id)
 
 
 async def _hand_failure_to_rollup(
