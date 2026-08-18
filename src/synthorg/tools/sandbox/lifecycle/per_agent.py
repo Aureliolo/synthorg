@@ -172,45 +172,33 @@ class PerAgentStrategy:
             # even when no explicit release ran before this acquire.
             self._destroy_fns[owner_id] = destroy_fn
             # Re-check: a concurrent acquire may have won the race.
-            if owner_id in self._containers:
-                existing = self._containers[owner_id]
+            existing = self._containers.get(owner_id)
+            if existing is not None:
                 # Cancel any grace/idle timers from an interleaved release.
                 self._cancel_timer(owner_id)
                 self._cancel_idle_timer(owner_id)
-                logger.info(
-                    SANDBOX_LIFECYCLE_ACQUIRE,
-                    strategy="per-agent",
-                    owner_id=owner_id,
-                    reused=True,
-                )
-                self._last_used[owner_id] = self._clock.monotonic()
                 loser = handle
             else:
-                existing = None
                 self._containers[owner_id] = handle
-                self._last_used[owner_id] = self._clock.monotonic()
-                logger.info(
-                    SANDBOX_LIFECYCLE_ACQUIRE,
-                    strategy="per-agent",
-                    owner_id=owner_id,
-                    reused=False,
-                    container_id=handle.container_id,
-                )
+            self._last_used[owner_id] = self._clock.monotonic()
+            logger.info(
+                SANDBOX_LIFECYCLE_ACQUIRE,
+                strategy="per-agent",
+                owner_id=owner_id,
+                reused=existing is not None,
+                container_id=(existing or handle).container_id,
+            )
 
-        # Destroy the losing handle outside the lock.
+        # Destroy the losing handle outside the lock, through the same reaper
+        # the eviction path uses: a container this acquire created and lost is
+        # discarded for the same reason and must not fail the caller either.
         if loser is not None:
-            try:
-                await destroy_fn(loser)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    SANDBOX_LIFECYCLE_DESTROY_FAILED,
-                    strategy="per-agent",
-                    owner_id=owner_id,
-                    container_id=loser.container_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+            await reap(
+                loser,
+                strategy="per-agent",
+                owner_id=owner_id,
+                destroy_fn=destroy_fn,
+            )
 
         return existing if existing is not None else handle
 

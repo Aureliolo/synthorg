@@ -49,6 +49,13 @@ AGENT_RUNTIME_STATE_IDLE_SKIPPED: Final[str] = "agent_runtime_state.idle.skipped
 agent, so the idle clear was skipped rather than blanking the sibling's row and
 reporting a working agent as idle."""
 
+AGENT_RUNTIME_STATE_CLAIM_SKIPPED: Final[str] = "agent_runtime_state.claim.skipped"
+"""A running dispatch could not claim the live row because a sibling dispatch on
+the same agent already holds it. The row describes one execution and the agent
+is holding two, so the second reads from its recorded frames until the first
+goes idle and releases the row. Kept apart from the idle event because that one
+reports a clear that was declined, and this one a claim that was."""
+
 TURN_OBSERVER_FAILED: Final[str] = "turn_observer.failed"
 """One per-turn observer raised. The others still ran and the run continued:
 watching a run must never fail it, and one watcher's fault must not blind the

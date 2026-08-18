@@ -70,6 +70,9 @@ else:
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SCAN_ROOT_REL: Final[str] = "src/synthorg/engine/coordination"
+#: The same package as an import path, for recognising a sibling helper an
+#: absolute import names.
+_SCAN_PACKAGE: Final[str] = "engine.coordination"
 
 #: Calling this is what makes a module a wave loop: it is the one function
 #: that turns a decomposition plus a routing into dependency-ordered waves.
@@ -211,6 +214,71 @@ def _called_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(called)
 
 
+def _imported_siblings(tree: ast.Module) -> frozenset[str]:
+    """Return the coordination modules this one imports from.
+
+    Only siblings inside the scanned package: a helper anywhere else is not
+    something this gate reads, and following an import out of the package
+    would walk the whole tree to answer a question about three dispatchers.
+
+    Returns:
+        Module base names, as they appear in ``coordination.<name>``.
+    """
+    siblings: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            # A relative import inside the package names the sibling
+            # directly; an absolute one carries the package path in front.
+            if node.module and (node.level or _SCAN_PACKAGE in node.module):
+                siblings.add(node.module.rsplit(".", 1)[-1])
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if _SCAN_PACKAGE in alias.name:
+                    siblings.add(alias.name.rsplit(".", 1)[-1])
+    return frozenset(siblings)
+
+
+def _reachable_calls(
+    start: str,
+    called_by_module: dict[str, frozenset[str]],
+    siblings_by_module: dict[str, frozenset[str]],
+) -> frozenset[str]:
+    """Return every name reachable from *start* through sibling helpers.
+
+    The direct-call reading was one refactor from lying. Extracting a wave
+    loop's parking into a sibling module is the ordinary way a module stays
+    under its size cap, and against a name-only check that extraction reads
+    as a dispatcher that stopped gating: the gate would fail correct code and
+    teach that the fix is to inline the helper back. What the rule actually
+    requires is that the call is REACHED, not that it is written in the same
+    file.
+
+    Module-level rather than per-function, unlike the reachability walk in
+    ``check_verified_completion_paths.py``: that gate asks whether one
+    specific entry point reaches a guard, so it has to know which function
+    calls what. Here the module is already known to be a wave loop, so the
+    question is only whether the module reaches the call at all, and a
+    coarser walk answers it without a second copy of a function-level graph.
+    Coarser is also the safe direction for this gate, whose failure mode is
+    refusing a dispatcher that does gate.
+
+    Returns:
+        The union of *start*'s own calls and those of every sibling it
+        reaches, transitively.
+    """
+    seen: set[str] = set()
+    pending = [start]
+    reachable: set[str] = set()
+    while pending:
+        module = pending.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        reachable |= called_by_module.get(module, frozenset())
+        pending.extend(siblings_by_module.get(module, frozenset()))
+    return frozenset(reachable)
+
+
 def _collect_wave_loops(project_root: Path) -> list[_WaveLoop]:
     """Return every module that builds execution waves, and whether it gates.
 
@@ -220,20 +288,32 @@ def _collect_wave_loops(project_root: Path) -> list[_WaveLoop]:
     Raises:
         GateSourceError: When a tracked source file cannot be read or parsed.
     """
-    loops: list[_WaveLoop] = []
+    called_by_module: dict[str, frozenset[str]] = {}
+    siblings_by_module: dict[str, frozenset[str]] = {}
+    rel_by_module: dict[str, str] = {}
     for path, rel in _tracked_python_files(project_root):
+        module = Path(rel).stem
+        _, tree = read_and_parse(path)
+        called_by_module[module] = _called_names(tree)
+        siblings_by_module[module] = _imported_siblings(tree)
+        rel_by_module[module] = rel
+
+    loops: list[_WaveLoop] = []
+    for module, rel in sorted(rel_by_module.items(), key=lambda item: item[1]):
         if rel == _GATE_OWNER_REL:
             continue
-        _, tree = read_and_parse(path)
-        called = _called_names(tree)
-        if _WAVE_BUILDER not in called:
+        # The builder itself is read directly: a module that merely imports a
+        # sibling which builds waves is not a wave loop, and reaching for it
+        # transitively would make every importer of a dispatcher one too.
+        if _WAVE_BUILDER not in called_by_module[module]:
             continue
+        reached = _reachable_calls(module, called_by_module, siblings_by_module)
         loops.append(
             _WaveLoop(
                 rel=rel,
-                gates=bool(called & _GATE_NAMES),
-                abandons=bool(called & _ABANDON_NAMES),
-                parks_stranded=bool(called & _STRANDED_NAMES),
+                gates=bool(reached & _GATE_NAMES),
+                abandons=bool(reached & _ABANDON_NAMES),
+                parks_stranded=bool(reached & _STRANDED_NAMES),
             )
         )
     return loops

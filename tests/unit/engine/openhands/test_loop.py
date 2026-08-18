@@ -170,6 +170,31 @@ async def test_completed_run_maps_events_to_turns(
     assert result.termination_reason is TerminationReason.COMPLETED
     assert len(result.turns) == 2
     assert result.total_tool_calls == 1
+    assert [turn.turn_number for turn in result.turns] == [1, 2]
+
+
+async def test_a_resumed_run_continues_its_turn_numbering(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    """A resumed run arrives with turns already on its conversation.
+
+    Numbering the next one 1 gives the execution a second turn 1, and the
+    flight-recorder frames are keyed on that index, so the pairing a replay
+    depends on comes apart on exactly the runs that were interrupted.
+    """
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality),
+        task=sample_task_with_criteria,
+    ).model_copy(update={"turn_count": 4})
+    events = (_action("edit_file"), _OBSERVATION, _MESSAGE, _FINISHED)
+
+    result = await _loop(_deps(events, {})).execute(
+        context=ctx,
+        provider=mock_of[CompletionProvider](),
+    )
+
+    assert [turn.turn_number for turn in result.turns] == [5, 6]
 
 
 async def test_zero_tool_work_run_is_no_op(

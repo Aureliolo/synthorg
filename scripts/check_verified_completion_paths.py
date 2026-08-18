@@ -52,10 +52,18 @@ SUPPRESSION_MARKER: Final[str] = "lint-allow: verified-completion"
 
 #: What bounds a scope for the call walk: a body that runs only when
 #: something invokes it, rather than where it is written.
+#:
+#: A generator expression belongs here for the same reason a lambda does: its
+#: body runs when something consumes it, which can be after the review it is
+#: supposed to precede, so reading the call at the line the generator is
+#: WRITTEN reports an ordering the run does not have. The eager comprehensions
+#: (list, set, dict) are deliberately absent: they run where they are written,
+#: so their calls belong to this scope.
 _NESTED_SCOPES: Final[tuple[type[ast.AST], ...]] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
     ast.Lambda,
+    ast.GeneratorExp,
 )
 
 _SUPPRESSION_RE: Final[re.Pattern[str]] = re.compile(

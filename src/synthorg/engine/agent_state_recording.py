@@ -32,6 +32,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
+    AGENT_RUNTIME_STATE_CLAIM_SKIPPED,
     AGENT_RUNTIME_STATE_IDLE_SKIPPED,
     AGENT_RUNTIME_STATE_WRITE_FAILED,
     TURN_OBSERVER_FAILED,
@@ -49,13 +50,33 @@ async def _save(
     repository: AgentStateRepository,
     state: AgentRuntimeState,
 ) -> None:
-    """Persist *state*, logging rather than raising on failure.
+    """Persist *state* for its own execution, logging rather than raising.
+
+    The row is keyed by agent, but an agent can hold two dispatches at once,
+    so the write is a compare-and-set on execution ownership rather than a
+    plain upsert: it lands while the row is free or already this execution's,
+    and is refused while a sibling holds it. A plain upsert made the row
+    last-write-wins, so two overlapping runs alternated ownership every turn
+    and the live view flipped between them; refusing instead means the first
+    claim holds until it goes idle and releases the row, and the sibling reads
+    from its recorded frames in the meantime, which is what the cockpit
+    already does for an agent with no live row.
 
     Every caller is observing a run it must not disturb, so a storage fault
     here is reported and dropped.
     """
+    execution_id = state.execution_id
     try:
-        await repository.save(state)
+        if execution_id is None:
+            # Nothing to assert ownership with, so there is nothing to guard:
+            # a state naming no execution cannot be stolen from a sibling
+            # because it never claimed anything.
+            await repository.save(state)
+            return
+        written = await repository.save_if_execution(
+            state,
+            expected_execution_id=execution_id,
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
@@ -65,6 +86,14 @@ async def _save(
             status=state.status.value,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+        )
+        return
+    if not written:
+        logger.debug(
+            AGENT_RUNTIME_STATE_CLAIM_SKIPPED,
+            agent_id=state.agent_id,
+            execution_id=execution_id,
+            status=state.status.value,
         )
 
 

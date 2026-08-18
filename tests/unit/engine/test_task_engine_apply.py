@@ -1,5 +1,6 @@
 """Unit tests for task_engine_apply dispatch and apply functions."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from uuid import UUID
@@ -834,12 +835,24 @@ class TestARetryGetsItsOwnSpan:
     actually delivered.
     """
 
-    @staticmethod
-    def _tracker_with_exporter() -> tuple[TaskSpanTracker, InMemorySpanExporter]:
+    @pytest.fixture
+    def tracker_with_exporter(
+        self,
+    ) -> Iterator[tuple[TaskSpanTracker, InMemorySpanExporter]]:
+        """Yield a span tracker and its exporter, shutting the provider down.
+
+        A ``TracerProvider`` owns its span processors, and dropping the last
+        reference does not close them. Left running, each test leaks one into
+        a suite that runs hundreds in the same process.
+
+        Yields:
+            The tracker and the exporter recording its spans.
+        """
         exporter = InMemorySpanExporter()
         provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
         provider.add_span_processor(SimpleSpanProcessor(exporter))
-        return TaskSpanTracker(tracer=provider.get_tracer("test")), exporter
+        yield TaskSpanTracker(tracer=provider.get_tracer("test")), exporter
+        provider.shutdown()
 
     async def _hop(
         self,
@@ -871,8 +884,9 @@ class TestARetryGetsItsOwnSpan:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        tracker_with_exporter: tuple[TaskSpanTracker, InMemorySpanExporter],
     ) -> None:
-        spans, exporter = self._tracker_with_exporter()
+        spans, exporter = tracker_with_exporter
         create_result = await apply_create(
             CreateTaskMutation(
                 request_id="req-c",

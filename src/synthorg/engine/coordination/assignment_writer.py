@@ -276,7 +276,7 @@ class AssignmentWriter:
             reraise_critical(exc)
             logger.warning(
                 COORDINATION_WAVE_DEPENDENCY_UNMET,
-                task_id=str(assignment.task.id),
+                subtask_id=str(assignment.task.id),
                 note="could not read a subtask while abandoning; left unparked",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

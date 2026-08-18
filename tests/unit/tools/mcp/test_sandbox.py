@@ -110,6 +110,19 @@ class TestLimitsAreRejectedWhereTheyAreConfigured:
         with pytest.raises(ValidationError):
             MCPSandboxConfig(cpus=NotBlankStr("plenty"))
 
+    @pytest.mark.parametrize("quota", ["inf", "-inf", "nan", "Infinity"])
+    def test_a_non_finite_cpu_quota_is_refused(self, quota: str) -> None:
+        """``float()`` accepts these; nothing downstream survives them.
+
+        ``nan`` answers False to every comparison, so it walks through the
+        positive check and dies in ``int()``; an infinity dies there too, and
+        with an ``OverflowError`` that is not a validation error at all. The
+        operator would see an unhandled failure at connect time rather than a
+        refusal at the setting they wrote.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(cpus=NotBlankStr(quota))
+
     def test_a_malformed_memory_limit_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             MCPSandboxConfig(memory_limit=NotBlankStr("512 megabytes"))
@@ -129,3 +142,18 @@ class TestDeploymentAttribution:
 
     def test_carries_the_id_it_is_given(self) -> None:
         assert MCPSandboxConfig(deployment_id="abc123").deployment_id == "abc123"
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t"])
+    def test_a_blank_id_is_refused_rather_than_labelled(self, blank: str) -> None:
+        """Unset and blank are different, and only one of them is honest.
+
+        The id becomes a container label the boot reconciliation pass matches
+        on to reclaim what a hard kill left running. ``None`` says "no
+        deployment claims this", which the sweep can act on; a blank string
+        would be a label that matches nothing while looking like attribution,
+        so a container would be neither claimed nor reclaimable. The field's
+        type refuses it, and this pins that rather than leaving it to the
+        next person to rediscover.
+        """
+        with pytest.raises(ValidationError):
+            MCPSandboxConfig(deployment_id=blank)

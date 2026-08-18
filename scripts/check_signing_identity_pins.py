@@ -121,8 +121,16 @@ _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
 # a context expression regardless of case, so `${{ GITHUB.WORKSPACE }}` is the
 # same root; the flag can only ever strip MORE spellings, and for a gate whose
 # failure mode is skipping a helper, reading one more file is the safe direction.
+#
+# The optional quote before the slash is load-bearing for the same reason.
+# `"$GITHUB_WORKSPACE"/scripts/sign.sh` is ordinary shell (quoting the part
+# that can contain spaces and leaving the literal path outside), and without
+# the quote in the pattern the prefix does not strip, so `_SCRIPT_REFERENCE`
+# then sees `scripts/` preceded by `/` and its lookbehind rejects it. The
+# helper is skipped in silence, which means a workflow could drop out of this
+# gate's view by changing nothing but its path quoting.
 _WORKSPACE_ROOT_PREFIX: Final[re.Pattern[str]] = re.compile(
-    r"(?:\$\{?GITHUB_WORKSPACE\}?|\$\{\{\s*github\.workspace\s*\}\})/",
+    r'"?(?:\$\{?GITHUB_WORKSPACE\}?|\$\{\{\s*github\.workspace\s*\}\})"?/',
     re.IGNORECASE,
 )
 

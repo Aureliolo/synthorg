@@ -266,6 +266,44 @@ def test_signing_through_a_workspace_rooted_helper_counts(
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"rooted"}
 
 
+@pytest.mark.parametrize(
+    "root",
+    [
+        pytest.param("$GITHUB_WORKSPACE", id="bare_variable"),
+        pytest.param("${GITHUB_WORKSPACE}", id="braced_variable"),
+        pytest.param("${{ github.workspace }}", id="expression"),
+    ],
+)
+def test_a_quote_between_the_root_and_the_path_still_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    root: str,
+) -> None:
+    """``"$GITHUB_WORKSPACE"/scripts/sign.sh`` is ordinary shell.
+
+    Quoting only the part that can contain spaces and leaving the literal
+    path outside the quotes is a normal way to write this, and it puts a
+    quote between the root and the slash. Unmatched, the prefix does not
+    strip, so the path reference is then preceded by ``/`` and the scan's
+    leading-character test rejects it: the helper is skipped in silence and
+    the workflow drops out of this gate's view having changed nothing but
+    its quoting.
+    """
+    _write(
+        tmp_path / "scripts" / "quoted_root.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(
+        tmp_path,
+        "quoted.yml",
+        f'- run: bash "{root}"/scripts/quoted_root.sh checksums.txt',
+    )
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"quoted"}
+
+
 def test_signing_through_a_chain_of_helpers_counts(
     gate: ModuleType,
     tmp_path: Path,

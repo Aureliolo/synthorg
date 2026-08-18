@@ -9,6 +9,7 @@ transport that applies it over the Docker API is
 :mod:`synthorg.tools.mcp.container_stdio`.
 """
 
+import math
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -94,19 +95,30 @@ class MCPSandboxConfig(BaseModel):
     @field_validator("cpus")
     @classmethod
     def _cpus_is_a_number(cls, value: NotBlankStr) -> NotBlankStr:
-        """Reject a cpu quota that is not a number at all.
+        """Reject a cpu quota that is not a finite number.
+
+        ``float()`` accepts ``"inf"``, ``"-inf"`` and ``"nan"``, and none of
+        them survives the conversion the daemon needs: ``nano_cpus`` compares
+        against zero, which every ``nan`` comparison answers False, and then
+        ``int()`` raises ``OverflowError`` for an infinity and ``ValueError``
+        for a ``nan``. Refusing here keeps that a validation error the
+        operator can read, at the setting they wrote, rather than an
+        unhandled conversion failure at connect time.
 
         Returns:
             The quota unchanged.
 
         Raises:
-            ValueError: If the quota does not parse as a float.
+            ValueError: If the quota does not parse as a finite float.
         """
         try:
-            float(value)
+            parsed = float(value)
         except ValueError as exc:
             msg = f"Cpu quota must be a number of cores, got: {value!r}"
             raise ValueError(msg) from exc
+        if not math.isfinite(parsed):
+            msg = f"Cpu quota must be a finite number of cores, got: {value!r}"
+            raise ValueError(msg)
         return value
 
     @model_validator(mode="after")

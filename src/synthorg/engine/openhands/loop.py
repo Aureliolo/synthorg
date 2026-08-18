@@ -159,7 +159,12 @@ class OpenHandsLoop:
         """
         # OpenHands runs its own LLM (via the gateway) and tools (native + MCP).
         del provider, tool_invoker, streaming_enabled
-        state = _RunState(ctx=context)
+        # Continued from the context, not restarted: a resumed run arrives with
+        # turns already on its conversation, and numbering the next one 1 gives
+        # the recorder a second turn 1 for the same execution. The frames are
+        # keyed on that index, so the pairing a replay depends on comes apart
+        # exactly on the runs that were interrupted.
+        state = _RunState(ctx=context, turn_index=context.turn_count)
         spec = self._build_spec(context, completion_config)
 
         async def sink(event: OpenHandsEvent) -> bool:

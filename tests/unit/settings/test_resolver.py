@@ -527,6 +527,10 @@ class TestGetCoordinationConfig:
         assert result.fail_fast is False
         assert result.enable_workspace_isolation is True
         assert result.base_branch == "main"
+        # Pinned alongside the override case below: with only that one, a
+        # resolver that ignored the setting entirely would still pass, since
+        # nothing would have asked what it produces when nobody overrides it.
+        assert result.max_delegation_rounds == 3
 
     async def test_db_overrides_delegation_rounds(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

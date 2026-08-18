@@ -534,6 +534,36 @@ class TestAbandonNamesWhatActuallyHappened:
         assert parked == 1
         assert self._reason_for(engine) == "run_stopped"
 
+    async def test_a_refused_park_is_not_counted_as_one(self) -> None:
+        """The count reports writes that landed, not writes that were tried.
+
+        The engine refuses by RETURNING an unsuccessful result rather than
+        raising, so a caller reading only "did the call complete" counts a
+        row that never moved. The tail then reads as cleaned up while the row
+        still sits at CREATED with nothing watching it, which is the exact
+        state the abandonment exists to remove.
+        """
+        identity = _identity("agent-1")
+        stranded = _task("stranded")
+        engine = _engine(
+            live=stranded,
+            result=TaskMutationResult(
+                request_id="r",
+                success=False,
+                version=1,
+                error="refused",
+                error_code="validation",
+            ),
+        )
+        writer = AssignmentWriter(engine)
+
+        parked = await writer.abandon_stranded(
+            _group(AgentAssignment(identity=identity, task=stranded)),
+            stopped_at=2,
+        )
+
+        assert parked == 0
+
     async def test_an_unreadable_row_does_not_end_the_abandonment(self) -> None:
         """The run's own outcome outranks the bookkeeping that follows it.
 

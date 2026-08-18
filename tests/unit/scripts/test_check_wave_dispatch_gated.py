@@ -180,6 +180,57 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
+    def test_gating_from_an_extracted_sibling_passes(self, tmp_path: Path) -> None:
+        """The guard is the reachable call, not the file it sits in.
+
+        Moving a loop's parking into a sibling module is the ordinary way a
+        module stays under its size cap, and a name-only reading calls that
+        extraction a dispatcher that stopped gating. The gate would then fail
+        correct code and teach that the fix is to inline the helper back.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from .parking import park_everything\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 0
+
+    def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
+        """Following imports must not become a way to pass by association.
+
+        The walk widens what counts as reaching the gate, so the case that
+        matters is the one it must still refuse: a dispatcher importing a
+        sibling that does not gate either.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from .helpers import tidy\n"
+                    "def dispatch():\n"
+                    "    return tidy(build_execution_waves())\n"
+                ),
+                "helpers.py": ("def tidy(groups):\n    return groups\n"),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
     def test_a_re_export_is_not_a_wave_loop(self, tmp_path: Path) -> None:
         """The false positive the first version produced.
 

@@ -86,6 +86,37 @@ def _progress(
     )
 
 
+def _claiming_repository(
+    saved: list[AgentRuntimeState],
+    *,
+    claimed: bool = True,
+) -> AgentStateRepository:
+    """A repository recording the claim every running write now makes.
+
+    The running writes are a compare-and-set on execution ownership rather
+    than a plain upsert, so a fake wired to ``save`` alone observes none of
+    them.
+
+    Args:
+        saved: Collects each state the writer offered.
+        claimed: What the store answers, i.e. whether this execution holds
+            the row.
+
+    Returns:
+        The recording repository.
+    """
+
+    async def _claim(state: AgentRuntimeState, **_: object) -> bool:
+        saved.append(state)
+        return claimed
+
+    repository: AgentStateRepository = mock_of[AgentStateRepository](
+        save=AsyncMock(side_effect=saved.append),
+        save_if_execution=AsyncMock(side_effect=_claim),
+    )
+    return repository
+
+
 class TestTheLiveStateFollowsTheRun:
     async def test_a_turn_records_the_runs_own_numbers(
         self,
@@ -93,9 +124,7 @@ class TestTheLiveStateFollowsTheRun:
         sample_task_with_criteria: Task,
     ) -> None:
         saved: list[AgentRuntimeState] = []
-        repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=saved.append),
-        )
+        repository = _claiming_repository(saved)
         observer = make_runtime_state_observer(
             repository_provider=lambda: repository,
             currency=_EUR,
@@ -146,7 +175,7 @@ class TestTheLiveStateFollowsTheRun:
     ) -> None:
         """Watching a run must not be able to fail it."""
         repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=RuntimeError("state store down")),
+            save_if_execution=AsyncMock(side_effect=RuntimeError("state store down")),
         )
         observer = make_runtime_state_observer(
             repository_provider=lambda: repository,
@@ -267,9 +296,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
         sample_task_with_criteria: Task,
     ) -> None:
         saved: list[AgentRuntimeState] = []
-        repository = mock_of[AgentStateRepository](
-            save=AsyncMock(side_effect=saved.append),
-        )
+        repository = _claiming_repository(saved)
 
         await mark_agent_running(
             repository_provider=lambda: repository,
@@ -286,6 +313,74 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
         assert len(saved) == 1
         assert saved[0].status is ExecutionStatus.EXECUTING
         assert saved[0].turn_count == 0
+
+    async def test_the_running_write_asserts_its_own_execution(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The row is per agent, and an agent can hold two dispatches.
+
+        A plain upsert made ownership last-write-wins, so two overlapping
+        runs on one agent alternated the row every turn and the live view
+        flipped between them. The write is a compare-and-set on the writer's
+        OWN execution, so the claim is what the store arbitrates.
+        """
+        repository = mock_of[AgentStateRepository](
+            save_if_execution=AsyncMock(return_value=True),
+        )
+
+        await mark_agent_running(
+            repository_provider=lambda: repository,
+            context=_context(
+                sample_agent_with_personality,
+                sample_task_with_criteria,
+                turn=0,
+                cost=0.0,
+                execution_id="exec-a",
+            ),
+            currency=_EUR,
+            clock=FakeClock(start=_NOW),
+        )
+
+        assert repository.save_if_execution.await_args is not None
+        assert (
+            repository.save_if_execution.await_args.kwargs["expected_execution_id"]
+            == "exec-a"
+        )
+
+    async def test_a_sibling_holding_the_row_is_not_overwritten(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A refused claim is not a failure, and must not fail the run.
+
+        The second dispatch keeps working with no live row of its own; the
+        cockpit reads its recorded frames, which is what it already does for
+        an agent that has none. The alternative -- taking the row anyway --
+        is what made the first dispatch disappear from the live view.
+        """
+        repository = mock_of[AgentStateRepository](
+            save_if_execution=AsyncMock(return_value=False),
+        )
+        observer = make_runtime_state_observer(
+            repository_provider=lambda: repository,
+            currency=_EUR,
+            clock=FakeClock(start=_NOW),
+        )
+
+        await observer(
+            _progress(
+                sample_agent_with_personality,
+                sample_task_with_criteria,
+                turn=3,
+                cost=0.5,
+            )
+        )
+
+        assert repository.save_if_execution.await_count == 1
+        assert repository.save.await_count == 0
 
     async def test_no_store_is_a_noop(
         self,

@@ -1,5 +1,7 @@
 """Postgres repository implementation for agent runtime state persistence."""
 
+from typing import Final
+
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -25,6 +27,35 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 
 logger = get_logger(__name__)
+
+#: The unconditional upsert both writers share. Declared once because the two
+#: differ by a guard and nothing else: kept as two literals, a column added to
+#: one and missed on the other is a silent divergence between the write that
+#: claims a row and the write that updates it.
+_UPSERT_SQL: Final = """\
+INSERT INTO agent_states (
+    agent_id, execution_id, task_id, status, turn_count,
+    accumulated_cost, currency, last_activity_at, started_at
+) VALUES (
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
+)
+ON CONFLICT (agent_id) DO UPDATE SET
+    execution_id = EXCLUDED.execution_id,
+    task_id = EXCLUDED.task_id,
+    status = EXCLUDED.status,
+    turn_count = EXCLUDED.turn_count,
+    accumulated_cost = EXCLUDED.accumulated_cost,
+    currency = EXCLUDED.currency,
+    last_activity_at = EXCLUDED.last_activity_at,
+    started_at = EXCLUDED.started_at
+"""
+
+#: The same upsert, refused unless the stored row is unclaimed or already this
+#: execution's. Appended rather than rewritten so the two can never drift.
+_UPSERT_IF_EXECUTION_SQL: Final = (
+    _UPSERT_SQL + "WHERE agent_states.execution_id IS NULL\n"
+    "   OR agent_states.execution_id = %s\n"
+)
 
 
 class PostgresAgentStateRepository:
@@ -59,25 +90,7 @@ class PostgresAgentStateRepository:
             data = state.model_dump(mode="json")
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """\
-INSERT INTO agent_states (
-    agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost, currency, last_activity_at, started_at
-) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s
-)
-ON CONFLICT (agent_id) DO UPDATE SET
-    execution_id = EXCLUDED.execution_id,
-    task_id = EXCLUDED.task_id,
-    status = EXCLUDED.status,
-    turn_count = EXCLUDED.turn_count,
-    accumulated_cost = EXCLUDED.accumulated_cost,
-    currency = EXCLUDED.currency,
-    last_activity_at = EXCLUDED.last_activity_at,
-    started_at = EXCLUDED.started_at
-WHERE agent_states.execution_id IS NULL
-   OR agent_states.execution_id = %s
-""",
+                    _UPSERT_IF_EXECUTION_SQL,
                     (
                         data["agent_id"],
                         data["execution_id"],
@@ -114,23 +127,7 @@ WHERE agent_states.execution_id IS NULL
             data = state.model_dump(mode="json")
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """\
-INSERT INTO agent_states (
-    agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost, currency, last_activity_at, started_at
-) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s, %s
-)
-ON CONFLICT (agent_id) DO UPDATE SET
-    execution_id = EXCLUDED.execution_id,
-    task_id = EXCLUDED.task_id,
-    status = EXCLUDED.status,
-    turn_count = EXCLUDED.turn_count,
-    accumulated_cost = EXCLUDED.accumulated_cost,
-    currency = EXCLUDED.currency,
-    last_activity_at = EXCLUDED.last_activity_at,
-    started_at = EXCLUDED.started_at
-""",
+                    _UPSERT_SQL,
                     (
                         data["agent_id"],
                         data["execution_id"],

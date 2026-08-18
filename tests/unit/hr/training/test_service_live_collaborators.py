@@ -13,6 +13,8 @@ passed.
 """
 
 import asyncio
+import contextlib
+from collections.abc import AsyncIterator
 
 import pytest
 
@@ -86,42 +88,53 @@ def _service(extractors: dict[ContentType, ContentExtractor]) -> TrainingService
 
 
 class TestLiveCollaborators:
-    async def test_an_extractor_holding_a_running_task_is_accepted(self) -> None:
+    @pytest.fixture
+    async def running_task(self) -> AsyncIterator[asyncio.Task[None]]:
+        """Yield a task that stays running, and reap it afterwards.
+
+        Cancelling without awaiting leaves the cancellation to be delivered
+        whenever the loop next runs the task, which is usually after the test
+        that owns it has finished. The loop then closes with a task still
+        pending and the warning surfaces against whichever test happens to be
+        running, so awaiting it here is what keeps the failure attributable.
+
+        Yields:
+            The running task.
+        """
         task = asyncio.create_task(_forever())
-        try:
-            extractor = _TaskHoldingExtractor(task)
-            service = _service({ContentType.PROCEDURAL: extractor})
+        yield task
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
-            assert service._extractors[ContentType.PROCEDURAL] is extractor
-        finally:
-            task.cancel()
+    async def test_an_extractor_holding_a_running_task_is_accepted(
+        self, running_task: asyncio.Task[None]
+    ) -> None:
+        extractor = _TaskHoldingExtractor(running_task)
+        service = _service({ContentType.PROCEDURAL: extractor})
 
-    async def test_the_extractor_is_shared_not_cloned(self) -> None:
+        assert service._extractors[ContentType.PROCEDURAL] is extractor
+
+    async def test_the_extractor_is_shared_not_cloned(
+        self, running_task: asyncio.Task[None]
+    ) -> None:
         # A cloned memory-backed extractor would read and write a second
         # memory backend, so what a new hire learned would land nowhere the
         # rest of the system looks.
-        task = asyncio.create_task(_forever())
-        try:
-            extractor = _TaskHoldingExtractor(task)
-            service = _service({ContentType.SEMANTIC: extractor})
+        extractor = _TaskHoldingExtractor(running_task)
+        service = _service({ContentType.SEMANTIC: extractor})
 
-            held = service._extractors[ContentType.SEMANTIC]
-            assert isinstance(held, _TaskHoldingExtractor)
-            assert held.task is task
-        finally:
-            task.cancel()
+        held = service._extractors[ContentType.SEMANTIC]
+        assert isinstance(held, _TaskHoldingExtractor)
+        assert held.task is running_task
 
-    async def test_the_caller_cannot_change_the_mapping_afterwards(self) -> None:
-        task = asyncio.create_task(_forever())
-        try:
-            first = _TaskHoldingExtractor(task)
-            passed: dict[ContentType, ContentExtractor] = {
-                ContentType.PROCEDURAL: first
-            }
-            service = _service(passed)
+    async def test_the_caller_cannot_change_the_mapping_afterwards(
+        self, running_task: asyncio.Task[None]
+    ) -> None:
+        first = _TaskHoldingExtractor(running_task)
+        passed: dict[ContentType, ContentExtractor] = {ContentType.PROCEDURAL: first}
+        service = _service(passed)
 
-            passed[ContentType.PROCEDURAL] = _TaskHoldingExtractor(task)
+        passed[ContentType.PROCEDURAL] = _TaskHoldingExtractor(running_task)
 
-            assert service._extractors[ContentType.PROCEDURAL] is first
-        finally:
-            task.cancel()
+        assert service._extractors[ContentType.PROCEDURAL] is first

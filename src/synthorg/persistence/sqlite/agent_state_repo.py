@@ -2,6 +2,7 @@
 
 import contextlib
 import sqlite3
+from typing import Final
 
 import aiosqlite
 from pydantic import ValidationError
@@ -27,6 +28,36 @@ from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
+
+#: The unconditional upsert both writers share. Declared once because the two
+#: differ by a guard and nothing else: kept as two literals, a column added to
+#: one and missed on the other is a silent divergence between the write that
+#: claims a row and the write that updates it.
+_UPSERT_SQL: Final = """\
+INSERT INTO agent_states (
+    agent_id, execution_id, task_id, status, turn_count,
+    accumulated_cost, currency, last_activity_at, started_at
+) VALUES (
+    :agent_id, :execution_id, :task_id, :status, :turn_count,
+    :accumulated_cost, :currency, :last_activity_at, :started_at
+)
+ON CONFLICT (agent_id) DO UPDATE SET
+    execution_id = excluded.execution_id,
+    task_id = excluded.task_id,
+    status = excluded.status,
+    turn_count = excluded.turn_count,
+    accumulated_cost = excluded.accumulated_cost,
+    currency = excluded.currency,
+    last_activity_at = excluded.last_activity_at,
+    started_at = excluded.started_at
+"""
+
+#: The same upsert, refused unless the stored row is unclaimed or already this
+#: execution's. Appended rather than rewritten so the two can never drift.
+_UPSERT_IF_EXECUTION_SQL: Final = (
+    _UPSERT_SQL + "WHERE agent_states.execution_id IS NULL\n"
+    "   OR agent_states.execution_id = :expected_execution_id"
+)
 
 
 class SQLiteAgentStateRepository:
@@ -60,17 +91,7 @@ class SQLiteAgentStateRepository:
         async with self._write_context():
             try:
                 data = state.model_dump(mode="json")
-                await self._db.execute(
-                    """\
-INSERT OR REPLACE INTO agent_states (
-    agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost, currency, last_activity_at, started_at
-) VALUES (
-    :agent_id, :execution_id, :task_id, :status, :turn_count,
-    :accumulated_cost, :currency, :last_activity_at, :started_at
-)""",
-                    data,
-                )
+                await self._db.execute(_UPSERT_SQL, data)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
@@ -107,25 +128,7 @@ INSERT OR REPLACE INTO agent_states (
                 data = state.model_dump(mode="json")
                 data["expected_execution_id"] = expected_execution_id
                 async with self._db.execute(
-                    """\
-INSERT INTO agent_states (
-    agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost, currency, last_activity_at, started_at
-) VALUES (
-    :agent_id, :execution_id, :task_id, :status, :turn_count,
-    :accumulated_cost, :currency, :last_activity_at, :started_at
-)
-ON CONFLICT (agent_id) DO UPDATE SET
-    execution_id = excluded.execution_id,
-    task_id = excluded.task_id,
-    status = excluded.status,
-    turn_count = excluded.turn_count,
-    accumulated_cost = excluded.accumulated_cost,
-    currency = excluded.currency,
-    last_activity_at = excluded.last_activity_at,
-    started_at = excluded.started_at
-WHERE agent_states.execution_id IS NULL
-   OR agent_states.execution_id = :expected_execution_id""",
+                    _UPSERT_IF_EXECUTION_SQL,
                     data,
                 ) as cursor:
                     written = cursor.rowcount > 0

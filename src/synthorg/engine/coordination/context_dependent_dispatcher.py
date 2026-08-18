@@ -340,10 +340,26 @@ class _PerWaveWorkspaces:
             # there would report a false failure on the exact path a park is
             # supposed to take; the retained-workspace line above already
             # says why.
+            #
+            # The phase is recorded as well as logged, because the log does
+            # not survive the restart the question outlives and a rollup reads
+            # the phase list, not the log: a level that emits no phase at all
+            # reads as still working rather than as failed.
+            merge_error = verdict.error or "Skipped merge: wave failed"
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=f"merge_wave_{wave_idx}",
-                error=verdict.error or "Skipped merge: wave failed",
+                error=merge_error,
+            )
+            phases.append(
+                CoordinationPhaseResult(
+                    phase=f"merge_wave_{wave_idx}",
+                    success=False,
+                    # No merge was attempted, so there is no duration to
+                    # report: the wave failed before this stage could start.
+                    duration_seconds=0.0,
+                    error=merge_error,
+                )
             )
         if settled:
             await teardown_workspaces(workspace_service, settled)
