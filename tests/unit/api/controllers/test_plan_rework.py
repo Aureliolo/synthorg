@@ -30,6 +30,7 @@ from synthorg.core.plan_review import (
     PlanReviewerVerdict,
     PlanReviewFinding,
 )
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
@@ -41,8 +42,10 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.state import HrStateSlice
+from synthorg.persistence.state import persistence_of
 from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import LoopAsyncClient, as_uuid, sid
+from tests._shared.scripted_provider import make_e2e_identity
 
 pytestmark = pytest.mark.unit
 
@@ -212,6 +215,54 @@ class TestTheNoteReachesThePlanner:
             _plan(review=_review("no item builds the engine")),
             note=None,
         )
+        assert len(items) == 1
+
+
+class TestItPlansAsTheInitiativesOwner:
+    async def test_the_pass_is_owned_by_the_projects_lead(
+        self, planner: SimpleNamespace, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Without an identity the agent-session strategy declines.
+
+        It falls back to the single-shot decomposer, so a rework would be
+        planned by a different mechanism than the plan it revises. A live
+        rework fell back exactly that way and exhausted its parse retries.
+        """
+        lead = make_e2e_identity(label="lead-agent")
+        registry = AgentRegistryService()
+        await registry.register(lead)
+        planner.app_state.wire(HrStateSlice, agent_registry=registry)
+        backend = persistence_of(async_test_client.app.state.app_state)
+        await backend.projects.save(
+            Project(
+                id=as_uuid("proj-1"),
+                name=NotBlankStr("Blocks"),
+                description=NotBlankStr("The falling-blocks initiative"),
+                lead=NotBlankStr(str(lead.id)),
+            )
+        )
+
+        await replan_for_change_request(
+            planner.app_state, _plan(), note="split movement"
+        )
+
+        context = planner.decomposition.decompose_task.await_args.args[1]
+        assert context.owner_identity is not None
+        assert context.owner_identity.id == lead.id
+
+    async def test_an_unresolvable_lead_still_plans(
+        self, planner: SimpleNamespace
+    ) -> None:
+        """Degrading is worse than planning as the owner, but it still plans.
+
+        Refusing an operator's change request over a missing lead would be a
+        worse answer than the fallback decomposer.
+        """
+        items = await replan_for_change_request(
+            planner.app_state, _plan(), note="split movement"
+        )
+        context = planner.decomposition.decompose_task.await_args.args[1]
+        assert context.owner_identity is None
         assert len(items) == 1
 
 

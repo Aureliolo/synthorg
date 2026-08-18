@@ -36,8 +36,9 @@ export function PlanRequestChanges({ planId, onDone }: PlanRequestChangesProps) 
         <span className="text-sm font-medium text-foreground">Ask the org for changes</span>
       </div>
       <p className="text-xs text-text-secondary">
-        Describe what should change. The plan returns to draft so the org can revise
-        it before it comes back for review.
+        Describe what should change. The org re-plans against your note and any
+        outstanding review findings, then brings the revised plan back for review.
+        This takes a minute.
       </p>
       <InputField
         label="Requested changes"

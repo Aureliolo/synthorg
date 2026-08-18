@@ -25,6 +25,7 @@ that the human is overriding.
 from synthorg.api.controllers._plan_replan import reject_unroutable_owners
 from synthorg.api.services._plan_revision import require_reworkable
 from synthorg.api.state import AppState
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
@@ -44,6 +45,7 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_PLAN_CHANGES_REPLANNED
+from synthorg.persistence.state import project_repository_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
@@ -97,9 +99,17 @@ async def replan_for_change_request(
     briefed = parent.model_copy(
         update={"description": f"{parent.description}\n\n{brief}"}
     )
+    # Plan AS the initiative's existing owner. Without an identity the
+    # agent-session strategy declines to the single-shot fallback decomposer,
+    # so a rework would be planned by a different mechanism than the plan it
+    # revises: a live rework fell back this way and its three parse retries
+    # exhausted against output the fallback prompt could not get as JSON.
     result = await decomposition.decompose_task(
         briefed,
-        DecompositionContext(available_roles=await _roster(app_state)),
+        DecompositionContext(
+            owner_identity=await _initiative_owner(app_state, existing),
+            available_roles=await _roster(app_state),
+        ),
     )
     items = items_from_decomposition(result)
     await reject_unroutable_owners(app_state, items)
@@ -156,6 +166,29 @@ async def _objective_task(app_state: AppState, plan: Plan) -> Task:
         )
         raise ConflictError(msg)
     return parent
+
+
+async def _initiative_owner(app_state: AppState, plan: Plan) -> AgentIdentity | None:
+    """Resolve the agent already accountable for *plan*'s initiative.
+
+    Read from the project's durable lead rather than staffed afresh: the
+    initiative already has an owner, and picking a second one would plan the
+    revision as somebody who does not own the work.
+
+    Returns:
+        The lead's identity, or ``None`` when the project names no lead or the
+        lead no longer resolves. ``None`` degrades planning to the single-shot
+        decomposer, which is worse but still plans, so it is not worth
+        refusing an operator's change request over.
+    """
+    projects = project_repository_of(app_state)
+    registry = app_state.slice(HrStateSlice).agent_registry
+    if projects is None or registry is None:
+        return None
+    project = await projects.get(plan.project)
+    if project is None or project.lead is None:
+        return None
+    return await registry.get(project.lead)
 
 
 async def _roster(app_state: AppState) -> tuple[NotBlankStr, ...]:
