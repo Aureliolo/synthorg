@@ -4,6 +4,7 @@ Provides a convenience function to start the API server
 with settings from ``RootConfig``.
 """
 
+import signal
 from typing import TypedDict
 
 import uvicorn
@@ -11,6 +12,7 @@ import uvicorn
 from synthorg.api.app import create_app
 from synthorg.api.drain import RequestDrainMiddleware
 from synthorg.api.lifecycle import _DRAIN_TIMEOUT_SECONDS
+from synthorg.api.signals import set_shutdown_chain
 from synthorg.config.schema import RootConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -27,6 +29,53 @@ logger = get_logger(__name__)
 # import string (not a pre-built object) to spawn worker subprocesses or
 # the reloader; each child imports and calls this factory afresh.
 _DRAIN_APP_FACTORY_PATH: str = "synthorg.api.server:create_drain_app"
+
+
+def _run_uvicorn(
+    app_target: str | RequestDrainMiddleware,
+    *,
+    supervised: bool,
+    **kwargs: object,
+) -> None:
+    """Run uvicorn, owning the server object when we are the one process.
+
+    ``uvicorn.run`` builds and runs the server internally, which leaves
+    nothing to hand a signal on to. That matters because the app's lifespan
+    startup installs its own SIGTERM handler and
+    ``loop.add_signal_handler`` REPLACES uvicorn's, so without a reference
+    to the server the signal reaches a handler that logs and returns while
+    uvicorn waits for a shutdown nobody asked it to start. A live
+    ``docker stop`` exited 137 at the grace deadline with no teardown.
+
+    So the single-process path (the shipped container topology) constructs
+    the ``Server`` here and registers its ``handle_exit`` as the shutdown
+    chain. The supervised paths keep ``uvicorn.run``: a reloader or a
+    worker pool is a parent process whose supervisor owns the signals and
+    forwards them to children, and there is no single server object to
+    chain to. Those register no chain, which is what makes
+    ``install_shutdown_handlers`` leave uvicorn's own handler alone.
+
+    Args:
+        app_target: The ASGI app, or an import string for a supervised run.
+        supervised: Whether uvicorn will spawn a reloader or worker pool.
+        **kwargs: Passed through to uvicorn unchanged.
+    """
+    if supervised:
+        uvicorn.run(app_target, **kwargs)  # type: ignore[arg-type]
+        return
+    config = uvicorn.Config(app_target, **kwargs)  # type: ignore[arg-type]
+    server = uvicorn.Server(config)
+
+    def _chain(sig: signal.Signals) -> None:
+        server.handle_exit(sig, None)
+
+    set_shutdown_chain(_chain)
+    try:
+        server.run()
+    finally:
+        # A second run in the same process (tests, an embedded host) must
+        # not chain into a server that has already exited.
+        set_shutdown_chain(None)
 
 
 def create_drain_app() -> RequestDrainMiddleware:
@@ -169,9 +218,10 @@ def run_server(config: RootConfig) -> None:
             drain_timeout_seconds=_DRAIN_TIMEOUT_SECONDS,
         )
     )
-    uvicorn.run(
+    _run_uvicorn(
         app_target,
         factory=needs_import_string,
+        supervised=needs_import_string,
         host=host,
         port=port,
         workers=server.workers,

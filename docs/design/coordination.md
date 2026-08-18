@@ -163,6 +163,31 @@ when an agent waits for human approval; see
 [Approval Timeout Policy](security.md#approval-timeout-policy) for the
 agent-driven parking mechanism.
 
+### Who owns the signal
+
+Stopping the process has exactly one owner: the ASGI server. Observing the
+signal early has another: `api/signals.py`, which flags
+`AppState.shutdown_requested` and closes the cooperative drain gate the moment
+SIGTERM arrives, so subsystems can leave at a turn boundary instead of being
+cancelled mid-call.
+
+Those two cannot both hold the handler. `loop.add_signal_handler` **replaces**
+whatever is registered, uvicorn registers its `handle_exit` before it runs the
+app, and the app's lifespan startup is what installs ours, so ours lands second
+and uvicorn's is gone. An early-observation handler that does not pass the
+signal on therefore silently becomes the only owner of a job it does not do:
+the process logs the signal, keeps working, and is SIGKILLed when the
+orchestrator's grace period expires, with no teardown at all.
+
+So the entry point that owns the server registers it as the chain
+(`set_shutdown_chain`), the handler hands the signal on after setting the early
+flag, and **absent a chain the handlers are not installed** and uvicorn's own
+are left intact. That is why `api/server.py` builds `uvicorn.Server` itself for
+the single-process topology rather than calling `uvicorn.run`, which keeps the
+server object internal and leaves nothing to chain to. A reloader or worker
+pool registers no chain: the supervisor owns signals there and forwards them to
+its children.
+
 ### No operator-triggered restart
 
 There is no restart endpoint, and no "saved but not in effect" state for one to
