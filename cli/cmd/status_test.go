@@ -93,6 +93,22 @@ func TestImageTag(t *testing.T) {
 		{"", ""},
 		{"registry:5000/image:v1.0", "v1.0"},
 		{"registry:5000/image", "registry:5000/image"},
+		// A container started from a locally built image has no named
+		// reference, so Docker reports the image id. Printing 64 hex
+		// characters in a column headed IMAGE tells the reader nothing
+		// about which version is running and pushes every other column
+		// off the terminal.
+		{
+			"914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b0",
+			"untagged (914ece089871)",
+		},
+		{
+			"sha256:914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b0",
+			"untagged (914ece089871)",
+		},
+		{"914ece089871", "untagged (914ece089871)"},
+		// Not an id: a tag may be hex, and a repository may be hex-named.
+		{"ghcr.io/aureliolo/synthorg-backend:914ece089871", "914ece089871"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

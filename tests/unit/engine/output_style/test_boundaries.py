@@ -10,9 +10,10 @@ shadow and auto-rewrite modes at a boundary, not just at the evaluator.
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.communication._output_guard import guard_message_output
 from synthorg.communication.bus_protocol import MessageBus
@@ -28,20 +29,13 @@ from synthorg.core.task_enums import (
     Priority,
     Stakes,
     TaskStatus,
-    TaskStructure,
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
-from synthorg.engine.decomposition.models import (
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskDefinition,
-)
-from synthorg.engine.decomposition.plan_mapping import (
-    PlanProvenance,
-    plan_from_decomposition,
-)
+from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
+from synthorg.engine.decomposition.models import DecompositionPlan
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.initiative.evaluate_session import (
     SubmitEvaluationTool,
     _EvaluationCapture,
@@ -64,7 +58,7 @@ from synthorg.tools.file_system.edit_file import EditFileTool
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.forge.forge_tools import _guard_forge_text
 from synthorg.tools.git_tools import GitCommitTool
-from tests._shared import mock_of, sid
+from tests._shared import mock_of
 
 _EM_DASH = chr(0x2014)
 
@@ -462,55 +456,44 @@ def _submit_args(summary: str, evidence: str) -> dict[str, object]:
     }
 
 
-def _subtask(**overrides: object) -> SubtaskDefinition:
-    defaults: dict[str, object] = {
-        "id": sid("sub-1"),
+def _args(**overrides: object) -> dict[str, JsonValue]:
+    """One submitted subtask, in the shape the submit tool receives.
+
+    Returns:
+        The subtask arguments.
+    """
+    subtask: dict[str, JsonValue] = {
+        "id": "sub-1",
         "title": "Build the core loop",
         "description": "Blocks fall, move, rotate, and lines clear",
-        "acceptance_criteria": (NotBlankStr("the core loop is playable"),),
-        "expected_artifacts": (NotBlankStr("src/engine.js"),),
+        "acceptance_criteria": ["the core loop is playable"],
+        "expected_artifacts": ["src/engine.js"],
     }
-    defaults.update(overrides)
-    return SubtaskDefinition(**defaults)  # type: ignore[arg-type]
+    subtask.update(cast("dict[str, JsonValue]", overrides))
+    return subtask
 
 
-def _decomposition(
-    subtask: SubtaskDefinition,
+def _submit(
+    subtask: dict[str, JsonValue],
     *,
-    assumptions: tuple[NotBlankStr, ...] = (),
-    open_questions: tuple[NotBlankStr, ...] = (),
-) -> DecompositionResult:
-    return DecompositionResult(
-        plan=DecompositionPlan(
-            parent_task_id=NotBlankStr("root"),
-            subtasks=(subtask,),
-            task_structure=TaskStructure.SEQUENTIAL,
-            assumptions=assumptions,
-            open_questions=open_questions,
-        ),
-        created_tasks=(
-            Task(
-                id=UUID(subtask.id),
-                title="Subtask",
-                description="A subtask the decomposition created",
-                type=TaskType.DEVELOPMENT,
-                priority=Priority.MEDIUM,
-                project="beachhead",
-                created_by="ceo",
-            ),
-        ),
-    )
+    assumptions: list[JsonValue] | None = None,
+    open_questions: list[JsonValue] | None = None,
+) -> DecompositionPlan:
+    """Submit one plan the way both planning strategies do.
 
+    Returns:
+        The accepted plan.
 
-def _provenance() -> PlanProvenance:
-    return PlanProvenance(
-        project=NotBlankStr("beachhead"),
-        project_name=NotBlankStr("Beachhead"),
-        objective_id=NotBlankStr("objective-1"),
-        objective_title=NotBlankStr("Ship the game"),
-        parent_task_id=NotBlankStr("root"),
-        created_at=datetime(2026, 8, 19, tzinfo=UTC),
-    )
+    Raises:
+        DecompositionError: When the submission is refused.
+    """
+    args: dict[str, JsonValue] = {
+        "subtasks": [subtask],
+        "task_structure": "sequential",
+        "assumptions": assumptions or [],
+        "open_questions": open_questions or [],
+    }
+    return args_to_decomposition_plan(args, "root")
 
 
 @pytest.mark.usefixtures("_wired_service")
@@ -520,60 +503,59 @@ class TestPlanProseBoundary:
     Every item title, description and done-when criterion, and every
     plan-level assumption and open question, is written by a model and
     rendered on the plan page the operator approves. The run that found this
-    gap produced a plan whose first assumption carried the one punctuation
-    mark the policy ships a hard rule against.
+    gap produced a plan whose title and four item titles carried the one
+    punctuation mark the policy ships a hard rule against.
+
+    Guarded on the SUBMIT path, which both planning strategies come through
+    and where the producer can still be asked for a better plan: the tool
+    turns the refusal into a correctable error, the tool-less fallback into
+    a retry. That placement is the point, so these drive the submit entry.
     """
 
     def test_an_item_title_blocks(self) -> None:
-        result = _decomposition(_subtask(title=f"Build the core loop {_EM_DASH} v1"))
-        with pytest.raises(OutputPolicyViolationError):
-            plan_from_decomposition(result, _provenance())
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(title=f"Build the core loop {_EM_DASH} v1"))
 
     def test_an_item_description_blocks(self) -> None:
-        result = _decomposition(
-            _subtask(description=f"Blocks fall {_EM_DASH} and lines clear")
-        )
-        with pytest.raises(OutputPolicyViolationError):
-            plan_from_decomposition(result, _provenance())
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(description=f"Blocks fall {_EM_DASH} and lines clear"))
 
     def test_a_done_when_criterion_blocks(self) -> None:
-        result = _decomposition(
-            _subtask(
-                acceptance_criteria=(NotBlankStr(f"playable {_EM_DASH} end to end"),)
-            )
-        )
-        with pytest.raises(OutputPolicyViolationError):
-            plan_from_decomposition(result, _provenance())
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(acceptance_criteria=[f"playable {_EM_DASH} end to end"]))
 
     def test_a_plan_assumption_blocks(self) -> None:
-        result = _decomposition(
-            _subtask(),
-            assumptions=(NotBlankStr(f"the workspace is empty {_EM_DASH} for now"),),
-        )
-        with pytest.raises(OutputPolicyViolationError):
-            plan_from_decomposition(result, _provenance())
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(
+                _args(),
+                assumptions=[f"the workspace is empty {_EM_DASH} for now"],
+            )
 
     def test_an_open_question_blocks(self) -> None:
-        result = _decomposition(
-            _subtask(),
-            open_questions=(NotBlankStr(f"which runtime {_EM_DASH} node or python"),),
-        )
-        with pytest.raises(OutputPolicyViolationError):
-            plan_from_decomposition(result, _provenance())
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(
+                _args(),
+                open_questions=[f"which runtime {_EM_DASH} node or python"],
+            )
 
     def test_an_artifact_path_is_not_prose(self) -> None:
         # A file name is read by a tool before a person, so rewriting one
         # renames the deliverable. The carve-out is deliberate and stated
         # here so it cannot be closed by accident.
-        result = _decomposition(
-            _subtask(expected_artifacts=(NotBlankStr(f"src/a{_EM_DASH}b.js"),))
-        )
-        plan = plan_from_decomposition(result, _provenance())
-        assert plan.items[0].expected_artifacts[0].endswith("b.js")
+        plan = _submit(_args(expected_artifacts=[f"src/a{_EM_DASH}b.js"]))
+        assert plan.subtasks[0].expected_artifacts[0].endswith("b.js")
 
-    def test_a_clean_plan_maps(self) -> None:
-        plan = plan_from_decomposition(_decomposition(_subtask()), _provenance())
-        assert plan.items[0].title == "Build the core loop"
+    def test_a_clean_plan_is_accepted(self) -> None:
+        plan = _submit(_args())
+        assert plan.subtasks[0].title == "Build the core loop"
+
+    def test_the_refusal_tells_the_producer_what_to_fix(self) -> None:
+        # It reaches the planning agent as a tool error and the single-shot
+        # strategy as a retry reason, so it has to name the rule rather than
+        # say the plan was rejected.
+        with pytest.raises(DecompositionError) as raised:
+            _submit(_args(title=f"Build {_EM_DASH} it"))
+        assert "wording" in str(raised.value)
 
 
 class TestEvaluationVerdictBoundary:

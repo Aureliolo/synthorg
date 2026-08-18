@@ -67,12 +67,41 @@ func printVersionInfo(out *ui.UI, state config.State) {
 
 // imageTag extracts the tag from an image string like "ghcr.io/foo/bar:v1.0".
 // Handles registry ports correctly (e.g. "registry:5000/image" has no tag).
+//
+// A container started from a locally built image carries no named reference,
+// so Docker reports its image id instead. That is a key, not a name: 64 hex
+// characters under a column headed IMAGE answer nothing about which version is
+// running and push every other column off the terminal. Such a value is
+// shortened and labelled as untagged, which is the fact the reader needs.
 func imageTag(image string) string {
+	if id, ok := bareImageID(image); ok {
+		return "untagged (" + id + ")"
+	}
 	i := strings.LastIndex(image, ":")
 	if i < 0 || i < strings.LastIndex(image, "/") {
 		return image
 	}
 	return image[i+1:]
+}
+
+// shortImageIDLen is how much of an image id identifies it in practice, and
+// is what `docker images` shows.
+const shortImageIDLen = 12
+
+// bareImageID reports whether image is an unnamed image id (optionally
+// "sha256:"-prefixed) and returns its short form. A hex TAG on a named image
+// is not one: the name is what makes it a reference.
+func bareImageID(image string) (string, bool) {
+	digest := strings.TrimPrefix(image, "sha256:")
+	if strings.ContainsAny(digest, "/:") || len(digest) < shortImageIDLen {
+		return "", false
+	}
+	for _, r := range digest {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return "", false
+		}
+	}
+	return digest[:shortImageIDLen], true
 }
 
 // healthIcon returns a status icon for a container's health/state.

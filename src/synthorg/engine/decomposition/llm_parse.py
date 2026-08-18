@@ -20,6 +20,11 @@ from synthorg.core.plan_validation import (
 )
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._plan_output_guard import (
+    guard_plan_text,
+    guard_plan_texts,
+    plan_style_refusal,
+)
 from synthorg.engine.decomposition.llm_parse_subtask import (
     enum_or_default,
     parse_subtask,
@@ -32,6 +37,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.errors import DecompositionError
+from synthorg.engine.output_style.errors import OutputPolicyViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_LLM_PARSE_ERROR,
@@ -219,6 +225,76 @@ def _args_to_plan(
     )
 
 
+def _guarded_plan(
+    args: dict[str, JsonValue],
+    parent_task_id: str,
+    available_roles: tuple[NotBlankStr, ...] = (),
+) -> DecompositionPlan:
+    """Parse *args* into a plan whose prose passes the output-style policy.
+
+    Every plan the product accepts comes through here, from the submit tool
+    and from the tool-less fallback alike, and both callers can still ask the
+    producer for a better one: the tool turns the refusal into a correctable
+    error, the fallback into a retry. That is why the check lives here rather
+    than at the mapping to the durable plan, where the producer has gone and
+    the only thing left to refuse is a finished decomposition.
+
+    Args:
+        args: Parsed tool call arguments or JSON content.
+        parent_task_id: ID of the parent task.
+        available_roles: The roles the org staffs.
+
+    Returns:
+        A validated ``DecompositionPlan`` fit to render.
+
+    Raises:
+        DecompositionError: If the arguments are invalid, or the plan's
+            wording breaks a hard output-style rule.
+    """
+    plan = _args_to_plan(args, parent_task_id, available_roles)
+    try:
+        return _style_checked(plan)
+    except OutputPolicyViolationError as exc:
+        detail = plan_style_refusal(exc)
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            error=detail,
+            parent_task_id=parent_task_id,
+        )
+        raise DecompositionError(detail) from exc
+
+
+def _style_checked(plan: DecompositionPlan) -> DecompositionPlan:
+    """Return *plan* with its prose passed through the output-style guard.
+
+    Artefact paths are deliberately not prose: a file name is read by a tool
+    before a person reads it, so rewriting one renames the deliverable.
+
+    Returns:
+        The plan, carrying any auto-rewrite a rule resolved.
+
+    Raises:
+        OutputPolicyViolationError: When a non-exempt hard rule blocks.
+    """
+    subtasks = tuple(
+        subtask.model_copy(
+            update={
+                "title": guard_plan_text(subtask.title),
+                "description": guard_plan_text(subtask.description),
+                "acceptance_criteria": guard_plan_texts(subtask.acceptance_criteria),
+            }
+        )
+        for subtask in plan.subtasks
+    )
+    return plan.model_copy(
+        update={
+            "subtasks": subtasks,
+            "open_questions": guard_plan_texts(plan.open_questions),
+            "assumptions": guard_plan_texts(plan.assumptions),
+        }
+    )
+
+
 def args_to_decomposition_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
@@ -247,7 +323,7 @@ def args_to_decomposition_plan(
         DecompositionError: If the arguments are invalid.
     """
     try:
-        return _args_to_plan(args, parent_task_id, available_roles)
+        return _guarded_plan(args, parent_task_id, available_roles)
     except DecompositionError:
         raise
     except Exception as exc:
@@ -288,7 +364,7 @@ def parse_tool_call_response(
     for tc in response.tool_calls:
         if tc.name == TOOL_NAME:
             try:
-                return _args_to_plan(tc.arguments, parent_task_id, available_roles)
+                return _guarded_plan(tc.arguments, parent_task_id, available_roles)
             except DecompositionError as exc:
                 # Re-raise without wrapping to preserve the original error
                 logger.warning(
@@ -445,7 +521,7 @@ def parse_content_response(
         data = embedded
 
     try:
-        return _args_to_plan(data, parent_task_id, available_roles)
+        return _guarded_plan(data, parent_task_id, available_roles)
     except DecompositionError as exc:
         # Re-raise without wrapping to preserve the original error
         logger.warning(

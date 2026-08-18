@@ -72,7 +72,7 @@ _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
         "shared plan-prose guard",
         frozenset({"enforce_output_policy"}),
     ),
-    "src/synthorg/engine/decomposition/plan_mapping.py": (
+    "src/synthorg/engine/decomposition/llm_parse.py": (
         "plan item titles, descriptions, criteria, assumptions, questions",
         frozenset({"guard_plan_text", "guard_plan_texts"}),
     ),
