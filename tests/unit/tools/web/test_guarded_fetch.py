@@ -14,6 +14,7 @@ import httpcore
 import pytest
 
 from synthorg.tools._dns_pinning import SOCKET_OPTION, PinnedDnsBackend
+from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
@@ -108,13 +109,13 @@ class TestHostHeaderCarriesTheAuthority:
         stated". The request would then go to the scheme default, which is not
         where the caller pointed it, and which answers.
         """
-        with pytest.raises(ValueError, match="no usable authority"):
+        with pytest.raises(ToolParameterError, match="no usable authority"):
             pin_url(url, {}, _validation("example.test"))
 
     def test_a_url_with_no_host_is_refused_too(self) -> None:
         # The alternative is a request carrying ``Host: ""``, which names no
         # site at all.
-        with pytest.raises(ValueError, match="no usable authority"):
+        with pytest.raises(ToolParameterError, match="no usable authority"):
             pin_url("http://user:pw@/docs", {}, _validation("example.test"))
 
     def test_the_refusal_does_not_echo_the_url(self) -> None:
@@ -123,7 +124,7 @@ class TestHostHeaderCarriesTheAuthority:
         ``redact_url`` cannot help: it rebuilds around a parsed hostname and
         returns its input untouched when there is none, which is this branch.
         """
-        with pytest.raises(ValueError, match="no usable authority") as excinfo:
+        with pytest.raises(ToolParameterError, match="no usable authority") as excinfo:
             pin_url("http://user:hunter2@/docs", {}, _validation("example.test"))
 
         assert "hunter2" not in str(excinfo.value)

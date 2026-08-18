@@ -10,6 +10,7 @@ import httpx
 import pytest
 import respx
 
+from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.llms_txt import (
     INDEX_PROBE_TTL_SECONDS,
@@ -40,7 +41,7 @@ class TestIndexUrls:
         assert index == _INDEX
 
     def test_a_url_with_no_host_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="cannot derive an origin"):
+        with pytest.raises(ToolParameterError, match="cannot derive an origin"):
             index_urls_for("not-a-url")
 
     def test_userinfo_is_absent_from_the_derived_urls(self) -> None:
@@ -101,13 +102,27 @@ class TestIndexUrls:
         network validator refuses the original URL, but it never sees it here,
         because the derived URL is what gets validated.
         """
-        with pytest.raises(ValueError, match="cannot derive an origin"):
+        with pytest.raises(ToolParameterError, match="cannot derive an origin"):
             index_urls_for(url)
 
     def test_userinfo_without_a_host_is_rejected(self) -> None:
         """``netloc`` is non-empty here while there is no host to probe."""
-        with pytest.raises(ValueError, match="cannot derive an origin"):
+        with pytest.raises(ToolParameterError, match="cannot derive an origin"):
             index_urls_for("https://user:pw@/guide")
+
+    def test_the_rejection_does_not_echo_the_credential(self) -> None:
+        """A malformed port parses a host, so a credentialed URL reaches here.
+
+        The message is returned to the caller and reaches the log stream, and
+        ``redact_url`` is no help on the hostless variant of this same branch,
+        so the URL is left out of it entirely rather than redacted.
+        """
+        with pytest.raises(ToolParameterError, match="cannot derive an origin") as exc:
+            index_urls_for("https://reader:s3cr3t-token@docs.example.test:abc/guide")
+
+        rendered = str(exc.value)
+        assert "s3cr3t-token" not in rendered
+        assert "reader" not in rendered
 
 
 class TestOriginKey:

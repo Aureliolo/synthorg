@@ -25,6 +25,7 @@ from synthorg.observability.events.web import (
     WEB_LLMS_TXT_DISCOVERED,
 )
 from synthorg.providers.url_utils import redact_url
+from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import (
     NetworkPolicy,
     is_allowed_http_scheme,
@@ -125,17 +126,21 @@ def index_urls_for(url: str) -> tuple[str, str]:
         The index URL and the full-content URL, both on the same origin.
 
     Raises:
-        ValueError: If *url* carries nothing to build an origin from: no
-            scheme, no host, or a port that is not a port. The last is refused
-            rather than dropped because this runs before the network validator,
-            so a derived URL missing the port would probe the scheme default,
-            an endpoint the caller never named and one that answers.
+        ToolParameterError: If *url* carries nothing to build an origin from:
+            no scheme, no host, or a port that is not a port. The last is
+            refused rather than dropped because this runs before the network
+            validator, so a derived URL missing the port would probe the
+            scheme default, an endpoint the caller never named and one that
+            answers. The URL stays out of the message: a rejected authority is
+            where userinfo sits unparsed, and ``redact_url`` cannot help,
+            since it rebuilds around a parsed hostname and returns its input
+            untouched when there is none.
     """
     parts = urlsplit(url)
     authority = authority_of(parts)
     if not parts.scheme or not authority:
-        msg = f"cannot derive an origin from {url!r}"
-        raise ValueError(msg)
+        msg = "cannot derive an origin from a URL with no usable authority"
+        raise ToolParameterError(msg)
     return (
         urlunsplit((parts.scheme, authority, LLMS_TXT_PATH, "", "")),
         urlunsplit((parts.scheme, authority, LLMS_FULL_TXT_PATH, "", "")),
@@ -170,7 +175,7 @@ async def discover_llms_txt(
     """
     try:
         index_url, _ = index_urls_for(url)
-    except ValueError:
+    except ToolParameterError:
         return ""
     if not is_allowed_http_scheme(index_url):
         return ""

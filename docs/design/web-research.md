@@ -286,8 +286,10 @@ refuses rather than sending one. The two belong together because a URL parses
 its host happily while only the port read raises, so dropping the port on that
 read is indistinguishable from "no port stated" and lands the derived URL on
 the scheme default: an endpoint nobody named, and unlike the stated one, one
-that answers. The network validator refuses such a URL, but this runs before
-it and hands it the derived URL rather than the original.
+that answers. The network validator refuses such a URL too, but it was never
+what guarded this: what reaches it is the derived URL, not the one the caller
+gave, so a derivation that dropped the port would have handed it a perfectly
+valid URL for the wrong endpoint.
 
 It only ever *reports*: it never
 redirects the fetch that was asked for, because answering from a different URL

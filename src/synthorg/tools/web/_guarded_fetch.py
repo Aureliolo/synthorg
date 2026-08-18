@@ -22,6 +22,7 @@ from synthorg.core.resilience.retry_after import (
     parse_retry_after_seconds,
 )
 from synthorg.tools._dns_pinning import PinnedDnsTransport
+from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import DnsValidationOk
 
 # How many per-operation timeouts a whole exchange may take before it is
@@ -118,22 +119,23 @@ def pin_url(
         the caller's mapping is never mutated.
 
     Raises:
-        ValueError: If *url* has no authority to pin to. Unreachable through a
-            validated call, since ``validate_url_host`` refuses both a hostless
-            URL and a malformed port before any caller arrives here, so this is
-            a broken invariant rather than an input case. It raises because
-            both ways of carrying on lie about where the request goes: an empty
-            ``Host`` names no site, and a dropped port names a different one.
-            The URL stays out of the message for the reason the validator gives
-            at its own hostless branch: redaction rebuilds around a parsed
-            hostname and returns its input untouched when there is none, so
-            echoing it back would copy out whatever sat in the authority.
+        ToolParameterError: If *url* has no authority to pin to. Unreachable
+            through a validated call, since ``validate_url_host`` refuses both
+            a hostless URL and a malformed port before any caller arrives here,
+            so this is a broken invariant rather than an input case. It raises
+            because both ways of carrying on lie about where the request goes:
+            an empty ``Host`` names no site, and a dropped port names a
+            different one. The URL stays out of the message for the reason the
+            validator gives at its own hostless branch: redaction rebuilds
+            around a parsed hostname and returns its input untouched when there
+            is none, so echoing it back would copy out whatever sat in the
+            authority.
     """
     parsed = urlparse(url)
     resolved = _host_and_port(parsed)
     if resolved is None:
         msg = "cannot pin a URL with no usable authority"
-        raise ValueError(msg)
+        raise ToolParameterError(msg)
     host, port = resolved
     normalized_headers = {k: v for k, v in headers.items() if not compare_ci(k, "host")}
     normalized_headers["Host"] = _render_authority(host, port)
