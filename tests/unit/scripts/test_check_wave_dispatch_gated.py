@@ -339,6 +339,66 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
+    def test_a_package_whose_name_merely_starts_the_same_is_not_a_sibling(
+        self, tmp_path: Path
+    ) -> None:
+        """The scanned package name is a prefix of other package names.
+
+        Matching it as a substring credits ``engine.coordination_helpers`` to
+        ``engine.coordination``, which puts a module this scan never reads
+        into the sibling set. Same fail-open as crediting a parent import,
+        reached by a package somebody named next door.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from synthorg.engine.coordination_helpers.parking import (\n"
+                    "    park_everything,\n"
+                    ")\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
+    def test_an_absolute_import_of_the_scanned_package_still_counts(
+        self, tmp_path: Path
+    ) -> None:
+        """The other direction, so the boundary rule cannot refuse everything."""
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from synthorg.engine.coordination.parking import park_everything\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 0
+
     def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
         """Following imports must not become a way to pass by association.
 

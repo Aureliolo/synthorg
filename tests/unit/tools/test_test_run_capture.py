@@ -348,6 +348,30 @@ class TestForgedTestEvidence:
         """Both spellings have to toggle, or the pair cannot round-trip."""
         assert is_test_run("set +eo pipefail && set -euo pipefail && pytest -q | tail")
 
+    def test_the_last_option_in_one_set_command_is_the_one_that_lands(self) -> None:
+        """``set -o pipefail +o pipefail`` leaves the option OFF.
+
+        The shell applies the options of a single ``set`` left to right, so
+        the state it leaves behind is the last one named. Reading the first
+        inverts the answer on exactly this line, which then reads a pipeline
+        that masks its exit status as evidence the suite passed.
+        """
+        assert not is_test_run("set -o pipefail +o pipefail && pytest -q | tail -5")
+
+    def test_the_last_option_wins_in_the_other_order_too(self) -> None:
+        """The mirror image, so the rule cannot be "a disable anywhere"."""
+        assert is_test_run("set +o pipefail -o pipefail && pytest -q | tail -5")
+
+    def test_a_toggle_inside_a_pipeline_does_not_reach_the_line(self) -> None:
+        """Every component of a pipeline runs in a subshell.
+
+        So ``set +o pipefail | cat`` turns the option off in that subshell
+        and exits, leaving the line's own option untouched. Persisting it
+        would refuse a later pipeline that really is protected, discarding
+        the evidence a genuine test run produced.
+        """
+        assert is_test_run("set +o pipefail | cat && pytest -q | tail -5")
+
     def test_a_combined_set_reads_the_flag_next_to_the_option(self) -> None:
         """``set +o errexit -o pipefail`` enables pipefail, whatever else it does.
 

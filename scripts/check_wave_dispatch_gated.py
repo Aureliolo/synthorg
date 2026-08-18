@@ -223,6 +223,26 @@ def _called_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(called)
 
 
+def _in_scan_package(dotted: str) -> bool:
+    """Whether *dotted* names a module inside the scanned package.
+
+    Matched on dotted components rather than as a substring: the package
+    name is a prefix of other package names, so a plain ``in`` credits
+    ``engine.coordination_helpers`` to ``engine.coordination`` and puts a
+    module this scan never reads into the sibling set, which is the same
+    fail-open as crediting a parent-package import.
+
+    Returns:
+        ``True`` when the scanned package is a component-aligned prefix.
+    """
+    parts = dotted.split(".")
+    target = _SCAN_PACKAGE.split(".")
+    return any(
+        parts[index : index + len(target)] == target
+        for index in range(len(parts) - len(target) + 1)
+    )
+
+
 def _imported_siblings(tree: ast.Module) -> frozenset[str]:
     """Return the coordination modules this one imports from.
 
@@ -264,12 +284,12 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
             # claim about where the module lives rather than how far up the
             # writer reached.
             elif node.level == _SIBLING_IMPORT_LEVEL or (
-                node.level == _ABSOLUTE_IMPORT_LEVEL and _SCAN_PACKAGE in node.module
+                node.level == _ABSOLUTE_IMPORT_LEVEL and _in_scan_package(node.module)
             ):
                 siblings.add(node.module.rsplit(".", 1)[-1])
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if _SCAN_PACKAGE in alias.name:
+                if _in_scan_package(alias.name):
                     siblings.add(alias.name.rsplit(".", 1)[-1])
     return frozenset(siblings)
 

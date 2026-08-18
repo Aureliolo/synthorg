@@ -11,7 +11,7 @@ destroys the container whatever else happened.
 """
 
 import json
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, suppress
 from typing import Final, NoReturn, cast, override
 
 import aiodocker
@@ -20,6 +20,7 @@ import pytest
 import structlog
 from aiodocker.containers import DockerContainer
 from aiodocker.stream import Message, Stream
+from anyio.lowlevel import checkpoint
 from mcp import types
 from mcp.client._transport import TransportStreams
 from mcp.shared.message import SessionMessage
@@ -122,6 +123,11 @@ class _FakeStream(Stream):
 
     @override
     async def close(self) -> None:
+        # A real close talks to the daemon, so it yields before it finishes.
+        # Without a checkpoint here a cancelled caller would complete the
+        # close anyway, and a cleanup path that forgot to shield itself
+        # would look correct in every test.
+        await checkpoint()
         self.closed = True
         self._eof.set()
 
@@ -609,6 +615,45 @@ class TestTheContainerIsAlwaysDestroyed:
         with pytest.raises(MCPConnectionError, match="would not start"):
             async with harness.open():
                 pass
+
+        assert harness.stream.connected, "the attach has to have happened"
+        assert harness.stream.closed
+
+    async def test_a_cancelled_start_still_closes_the_attached_stream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cancellation is the case the cleanup most has to survive.
+
+        An unshielded await inside a handler that is running BECAUSE of a
+        cancellation is cancelled at once, so the close never happens and
+        the socket the handler exists to release stays open. The caller
+        never received the stream, so nothing downstream can close it
+        either.
+        """
+        harness = _Harness(monkeypatch)
+        reached_start = anyio.Event()
+
+        async def _hang(_container: object, _server_name: str) -> None:
+            # Cancelled while genuinely suspended, which is the state that
+            # makes the next await cancel too. Raising the cancellation
+            # directly would not: the task is not cancel-pending, so the
+            # cleanup runs to completion and the test proves nothing.
+            reached_start.set()
+            await anyio.sleep_forever()
+
+        monkeypatch.setattr("synthorg.tools.mcp.container_stdio._start", _hang)
+
+        async def _open_until_cancelled() -> None:
+            # The cancellation is what drives this test, so it is swallowed
+            # here rather than failing the run it is meant to exercise.
+            with suppress(BaseException):
+                async with harness.open():
+                    pass
+
+        async with anyio.create_task_group() as group:
+            _opener = group.start_soon(_open_until_cancelled)
+            await reached_start.wait()
+            group.cancel_scope.cancel()
 
         assert harness.stream.connected, "the attach has to have happened"
         assert harness.stream.closed

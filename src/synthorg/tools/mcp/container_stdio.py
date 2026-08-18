@@ -26,15 +26,13 @@ supply-chain vector that version pinning does not close.
 import contextlib
 from collections.abc import AsyncGenerator, Awaitable, Mapping
 from contextlib import asynccontextmanager
-from types import MappingProxyType
-from typing import Final, cast
+from typing import Final
 
 import aiodocker
 import anyio
 import anyio.lowlevel
 from aiodocker.containers import DockerContainer
 from aiodocker.stream import Stream
-from aiodocker.types import JSONObject
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import types
 
@@ -54,22 +52,12 @@ from synthorg.observability.events.mcp import (
     MCP_CONTAINER_STDIO_STOPPED,
     MCP_CONTAINER_STDIO_TEARDOWN_FAILED,
     MCP_CONTAINER_STDIO_TRANSPORT_ERROR,
-    MCP_SANDBOX_RESERVED_ENV_DROPPED,
 )
+from synthorg.tools.mcp.container_spec import container_config
 from synthorg.tools.mcp.errors import MCPConnectionError
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
-from synthorg.tools.sandbox._container_limits import nano_cpus, parse_memory_limit
-from synthorg.tools.sandbox.deployment_identity import (
-    DEPLOYMENT_LABEL,
-    MANAGED_LABEL,
-    MANAGED_LABEL_VALUE,
-)
 
 logger = get_logger(__name__)
-
-#: Names the server on its container, so ``docker ps`` on a shared daemon says
-#: which MCP server a process belongs to.
-_MCP_SERVER_LABEL: Final[str] = "synthorg.mcp.server"
 
 #: aiodocker attach frame id for stderr on a multiplexed (non-TTY) stream.
 #: Every other id is stdout, which is the JSON-RPC channel.
@@ -83,33 +71,6 @@ _MAX_LINE_CHARS: Final[int] = 4_000_000
 #: Cap buffered stderr in the structured log: a server's diagnostics are
 #: useful, its binary output is not worth the logging pipeline.
 _MAX_STDERR_LOG_CHARS: Final[int] = 400
-
-#: Writable tmpfs the container's ``$HOME`` and npm cache point at, since the
-#: root filesystem is read-only.
-_CONTAINER_TMP: Final[str] = "/tmp"  # noqa: S108 -- container path, not a host path
-
-#: Enough for one package install; the tmpfs is charged to the container's
-#: memory, so it is deliberately smaller than the memory limit.
-#:
-#: ``noexec`` is deliberately absent, unlike the agent sandbox's otherwise
-#: identical spec: the runtime execs the package's own binary out of the npm
-#: cache, which lives here because the root is read-only, so ``noexec`` would
-#: refuse every launch. It costs little: the package IS the code this
-#: container exists to run, so denying it execute permission on one mount
-#: does not change what the container is trusted with. ``nosuid`` stays, and
-#: with every capability dropped and ``no-new-privileges`` set there is no
-#: escalation for a dropped binary to reach for.
-_TMPFS_SPEC: Final[str] = "rw,nosuid,size=192m"
-
-#: Environment the runtime needs under a read-only root, plus the
-#: supply-chain control that keeps a package's install scripts from running.
-_RUNTIME_ENV: Final[Mapping[str, str]] = MappingProxyType(
-    {
-        "HOME": _CONTAINER_TMP,
-        "NPM_CONFIG_CACHE": f"{_CONTAINER_TMP}/.npm",
-        "NPM_CONFIG_IGNORE_SCRIPTS": "true",
-    }
-)
 
 #: How long to let the server exit on its own before it is killed. It is a
 #: stateless request responder, so nothing is lost by not waiting long.
@@ -273,13 +234,17 @@ async def _attached_and_started(container: DockerContainer, server_name: str) ->
         await _start(container, server_name)
     except BaseException:
         # Cancellation included: the socket is open either way, and the
-        # caller cannot close what it was never handed.
-        await _guarded(
-            stream.close(),
-            server_name,
-            step="stream_close",
-            limit_seconds=_CLOSE_TIMEOUT_SECONDS,
-        )
+        # caller cannot close what it was never handed. Shielded because
+        # when the failure IS the cancellation, an unshielded await here is
+        # cancelled at once and the close never runs, which leaves exactly
+        # the socket this handler exists to release.
+        with anyio.CancelScope(shield=True):
+            await _guarded(
+                stream.close(),
+                server_name,
+                step="stream_close",
+                limit_seconds=_CLOSE_TIMEOUT_SECONDS,
+            )
         raise
     return stream
 
@@ -303,7 +268,7 @@ async def _create(
             policy could not be expressed in the units the daemon takes.
     """
     try:
-        config = _container_config(command, args, env, sandbox, server_name)
+        config = container_config(command, args, env, sandbox, server_name)
         return await docker.containers.create(config=config)  # pyright: ignore[reportAttributeAccessIssue]
     except Exception as exc:
         reraise_critical(exc)
@@ -320,103 +285,6 @@ async def _create(
             f"container from image {sandbox.image!r}"
         )
         raise MCPConnectionError(msg, context={"server": server_name}) from exc
-
-
-def _container_config(
-    command: str,
-    args: list[str],
-    env: Mapping[str, str],
-    sandbox: MCPSandboxConfig,
-    server_name: str,
-) -> JSONObject:
-    """Express the launch and the isolation policy as a create config.
-
-    Returns:
-        The container-creation body for the daemon.
-
-    Raises:
-        ValueError: The configured memory limit is not a Docker size string.
-    """
-    return cast(
-        "JSONObject",
-        {
-            "Image": sandbox.image,
-            "Cmd": [command, *args],
-            "Env": _env_list(env, server_name),
-            "Labels": _labels(sandbox, server_name),
-            "WorkingDir": _CONTAINER_TMP,
-            # Attached before the start, so no output frame is missed and the
-            # session's first request has somewhere to go.
-            "OpenStdin": True,
-            "AttachStdin": True,
-            "AttachStdout": True,
-            "AttachStderr": True,
-            "StdinOnce": False,
-            "Tty": False,
-            "HostConfig": {
-                "AutoRemove": False,
-                "ReadonlyRootfs": True,
-                "CapDrop": ["ALL"],
-                "SecurityOpt": ["no-new-privileges"],
-                "Tmpfs": {_CONTAINER_TMP: _TMPFS_SPEC},
-                "Memory": parse_memory_limit(sandbox.memory_limit),
-                "PidsLimit": sandbox.pids_limit,
-                "NanoCpus": nano_cpus(float(sandbox.cpus)),
-                "NetworkMode": sandbox.network,
-                **({"Runtime": sandbox.runtime} if sandbox.runtime is not None else {}),
-            },
-        },
-    )
-
-
-def _labels(sandbox: MCPSandboxConfig, server_name: str) -> dict[str, str]:
-    """Label the container so the boot reconciliation pass can reclaim it.
-
-    A hard kill of the backend leaves the server running with nothing attached
-    to it. ``synthorg.managed`` is what the pass filters on and the deployment
-    label is what proves the container is this installation's to remove; a
-    container carrying neither is left alone for ever, which is how an
-    orphaned runtime would otherwise outlive every reference to it.
-
-    Returns:
-        The labels the daemon records on the container.
-    """
-    labels = {
-        MANAGED_LABEL: MANAGED_LABEL_VALUE,
-        _MCP_SERVER_LABEL: server_name,
-    }
-    if sandbox.deployment_id is not None:
-        labels[DEPLOYMENT_LABEL] = sandbox.deployment_id
-    return labels
-
-
-def _env_list(env: Mapping[str, str], server_name: str) -> list[str]:
-    """Render the container environment, trusted controls last.
-
-    The controls the isolation depends on cannot be supplied by whoever
-    configured the server: ``NPM_CONFIG_IGNORE_SCRIPTS=false`` re-enables the
-    primary npm RCE vector, and ``HOME`` redirects writes off the one writable
-    mount. They win by being merged last, and a collision is reported rather
-    than silently overridden, since the operator wrote it expecting it to
-    apply.
-
-    Returns:
-        The ``KEY=value`` lines the daemon takes.
-    """
-    for key in env:
-        if key in _RUNTIME_ENV:
-            logger.warning(
-                MCP_SANDBOX_RESERVED_ENV_DROPPED,
-                server=server_name,
-                key=key,
-                effective_value=_RUNTIME_ENV[key],
-                note=(
-                    "supplied env key collides with a sandbox control; the "
-                    "sandbox value below is what the container receives"
-                ),
-            )
-    merged = {**dict(env), **_RUNTIME_ENV}
-    return [f"{key}={value}" for key, value in merged.items()]
 
 
 async def _start(container: DockerContainer, server_name: str) -> None:

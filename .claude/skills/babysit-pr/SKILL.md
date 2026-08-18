@@ -222,14 +222,19 @@ Run this immediately before the merge call, and re-run it if ANYTHING intervenes
    | Any rollup entry failing or non-terminal | CI regressed or restarted after the snapshot. |
    | Any in-scope security alert open, or any scanner recorded `scan_failed` | Phase 6b's exits are FIX or DISMISS; neither is "merge anyway". |
 
-3. **On refusal:** record `{round, action: "merge_blocked_by_freshness", head_sha: headRefOid, trigger: <which row fired>, detail: <ids / check name>}`, do NOT call merge, and fold whatever arrived into the working set via Phase 6 (collect) so it is triaged and fixed this round. A review that arrives during the gap is ordinary new feedback and gets the ordinary treatment; the only thing the gate changes is that it is seen before the PR closes rather than after.
+3. **On refusal:** record `{round, action: "merge_blocked_by_freshness", head_sha: headRefOid, trigger: <which row fired>, detail: <ids / check name>}` and do NOT call merge. What happens next depends on the state the re-fetch just observed, because two of the rows above are not "come back with fixes":
 
-4. **Adjacency.** The gate's fetch and the merge call must be adjacent, with no waiting operation between them. If more than ~60 seconds elapse, or any monitor / sleep / fix cycle runs in between, the evidence is stale again and the gate re-runs from step 1. Verifying CI and then merging is not sufficient on its own: CI and the reviewer are independent clocks, and reading only the faster one is what produced the #2786 miss.
+   - **`state` is `MERGED` or `CLOSED`:** the PR reached a terminal state while this round was working. There is nothing to fix and nowhere to push it. Append the Phase 2 terminal entry, print the terminal verdict with the PR URL, and exit the loop. Routing a closed PR into Phase 6 would collect feedback for a branch that can no longer land it.
+   - **`state` is `OPEN`:** fold whatever arrived into the working set via Phase 6 (collect) so it is triaged and fixed this round. A review that arrives during the gap is ordinary new feedback and gets the ordinary treatment; the only thing the gate changes is that it is seen before the PR closes rather than after.
+
+4. **Adjacency, and let the server enforce it too.** The gate's fetch and the merge call must be adjacent, with no waiting operation between them. If more than ~60 seconds elapse, or any monitor / sleep / fix cycle runs in between, the evidence is stale again and the gate re-runs from step 1. Verifying CI and then merging is not sufficient on its own: CI and the reviewer are independent clocks, and reading only the faster one is what produced the #2786 miss.
+
+   Adjacency is a discipline, not a guarantee: however short the gap, the head can still move inside it, and every check above was computed before the call. So the merge itself carries the head it was authorised for, `gh pr merge N --squash --match-head-commit "$headRefOid"`, which makes the server refuse the merge if the branch moved after the gate read it. That turns "we looked recently" into an atomic check-and-merge, and it is the half a re-read cannot supply from outside. A refusal on that flag is not a transport error: classify it as `merge_blocked_by_freshness` with `trigger: "head moved between gate and merge"` and take step 3's `OPEN` branch, because a new head means new work to fold in.
 
 5. **An operator instruction never removes this gate.** A standing instruction such as "merge once CI is green" removes the requirement for a reviewer *verdict* (the convergence bullet above), because the operator has decided they do not need the reviewer's approval to ship. It does not license merging over reviewer output that already exists and has never been read -- the operator asked to stop waiting for an opinion, not to discard one already given. When such an instruction is in force, this gate still runs in full; only the "CodeRabbit no-findings signal" convergence bullet is waived, and the waiver is recorded on the merge history entry.
 
 If converged AND Phase 3a passes:
-- Append history `{round, action: "converged", checks_passed: N, freshness_gate: "passed", evidence_fetched_at: <ISO>}`.
+- Append history `{round, action: "converged", head_sha: headRefOid, checks_passed: N, freshness_gate: "passed", evidence_fetched_at: <ISO>}`. Every Phase 3 append carries `head_sha` (see the naming convention below), and this one carries it for a second reason: it is the record binding the freshness evidence to the head it was gathered on, which is meaningless without naming that head.
 - **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Compare the current `headRefOid` against `state.last_merge_attempt_headRefOid` to decide which sub-flow to enter. (Phase 11 owns clearing `state.last_merge_attempt_headRefOid` when a new commit lands; Phase 3 only reads the guard.)
 
   **Naming convention.** Throughout Phase 3, `headRefOid` is the in-memory variable from the Phase 1 fetch and `head_sha` is the canonical history-entry field name. They carry the same value; the two names exist only to distinguish "live PR state, just fetched" from "persisted state we wrote earlier." Every history append below MUST include `head_sha: headRefOid` so the reverse-walk lookup in sub-flow A can match entries by a single, consistent identifier. Do NOT omit `head_sha` from any append, even when the action is `merged` (the success-path entry must still carry it so a future round can confirm which head merged).
@@ -253,7 +258,7 @@ If converged AND Phase 3a passes:
      `MERGE_REASON` normalises the captured stderr into a single line of plain text (ANSI escape sequences stripped, all whitespace collapsed) so the history entry and terminal output are both legible regardless of what the underlying tool printed:
 
      ```bash
-     MERGE_STDERR="$(gh pr merge N --squash 2>&1 >/dev/null)"
+     MERGE_STDERR="$(gh pr merge N --squash --match-head-commit "$headRefOid" 2>&1 >/dev/null)"
      MERGE_EXIT=$?
      # Strip ANSI escape sequences (CSI, OSC, single-character SS3 etc.)
      # and collapse all whitespace runs (including embedded newlines)

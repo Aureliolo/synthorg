@@ -142,20 +142,26 @@ def _pipefail_toggle(command: Sequence[str]) -> bool | None:
         ``True`` when the command enables ``pipefail``, ``False`` when it
         disables it, and ``None`` when it says nothing about it.
     """
-    if not command or command[0] != _SET_BUILTIN or _PIPEFAIL_OPTION not in command:
+    if not command or command[0] != _SET_BUILTIN:
         return None
     # A single command can carry both (``set +o errexit -o pipefail``), so the
-    # answer is the flag immediately preceding the option name rather than
-    # whichever flag appears anywhere in the line. The index is never zero:
-    # reaching here required the first token to be the builtin.
-    preceding = command[command.index(_PIPEFAIL_OPTION) - 1]
-    if not preceding.endswith(_OPTION_FLAG):
-        return None
-    if preceding.startswith(_SET_SIGN):
-        return True
-    if preceding.startswith(_UNSET_SIGN):
-        return False
-    return None
+    # answer is the flag immediately preceding each option name rather than
+    # whichever flag appears anywhere in the line. It can also name the option
+    # twice (``set -o pipefail +o pipefail``), and the shell applies them in
+    # order, so the LAST one is the state the command leaves behind: reading
+    # the first inverts the answer on exactly that line.
+    state: bool | None = None
+    for index, token in enumerate(command):
+        if index == 0 or token != _PIPEFAIL_OPTION:
+            continue
+        preceding = command[index - 1]
+        if not preceding.endswith(_OPTION_FLAG):
+            continue
+        if preceding.startswith(_SET_SIGN):
+            state = True
+        elif preceding.startswith(_UNSET_SIGN):
+            state = False
+    return state
 
 
 #: Prefixes that run another program without changing what is being run.
@@ -313,6 +319,7 @@ def _conjunctive_commands(
 
     segments: list[tuple[str, ...]] = []
     current: list[str] = []
+    preceding_separator: str | None = None
     skip_target = False
     for token in tokens:
         if skip_target:
@@ -340,10 +347,20 @@ def _conjunctive_commands(
                 # whatever the suite did. Read per segment rather than once
                 # up front, because the toggle and the pipeline are separate
                 # commands and only a pipe AFTER the toggle is affected.
-                toggled = _pipefail_toggle(current)
+                #
+                # A toggle only reaches the shell running the LINE when it
+                # ran there itself. Every component of a pipeline runs in a
+                # subshell, so ``set +o pipefail | cat`` changes that
+                # subshell and exits, leaving the line's own option untouched
+                # and a later pipeline still protected. Persisting it would
+                # refuse the evidence that later pipeline legitimately
+                # produced.
+                in_pipeline = _PIPE in (token, preceding_separator)
+                toggled = None if in_pipeline else _pipefail_toggle(current)
                 if toggled is not None:
                     pipefail = toggled
                 segments.append(tuple(current))
+            preceding_separator = token
             current = []
             continue
         current.append(token)

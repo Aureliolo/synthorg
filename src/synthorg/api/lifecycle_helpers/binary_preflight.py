@@ -356,16 +356,20 @@ def _describe(record: BinaryRecord) -> str:
 
 
 def run_binary_preflight(*, backend_name: str) -> None:
-    """Assert every binary this deployment cannot supply for itself is present.
+    """Assert every binary this deployment cannot supply for itself will serve.
+
+    Presence first, then the version floor where a record declares one, so
+    the more actionable message wins when a binary is missing outright.
 
     Args:
         backend_name: The configured persistence backend, which decides
             whether the PostgreSQL client tools are required.
 
     Raises:
-        RequiredBinaryMissingError: When any of them is absent. Raised
-            rather than logged: the product cannot dispatch without it,
-            and an image that ships without one is a build defect the
+        RequiredBinaryMissingError: When any of them is absent, or is present
+            but older than the floor its record declares. Raised rather than
+            logged in both cases: the product cannot dispatch, and a binary
+            an image ships too old or not at all is a build defect the
             operator fixes by rebuilding, not by restarting.
     """
     required = required_binaries_for(backend_name)
