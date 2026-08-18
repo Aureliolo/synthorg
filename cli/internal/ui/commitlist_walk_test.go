@@ -47,6 +47,47 @@ func TestCommitWalk_renderHeader(t *testing.T) {
 	}
 }
 
+func TestRenderCommitWalkStatic_carriesEveryCommit(t *testing.T) {
+	out := RenderCommitWalkStatic(makeCommitInput(Options{NoColor: true}))
+	for _, want := range []string{
+		"v0.7.3-dev.5", "v0.7.3-dev.9", "3 commits",
+		"feat(cli): per-version Highlights walk",
+		"fix(selfupdate): pagination cap",
+		"chore(deps): bump",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("static render missing %q\n--- got ---\n%s", want, out)
+		}
+	}
+	// The whole point of the static render: nothing to press, so nothing
+	// may advertise a key. A footer here would be an instruction the
+	// caller has already moved past by the time it is read.
+	if strings.Contains(out, "[j/k]") || strings.Contains(out, "[enter]") {
+		t.Errorf("static render must carry no key footer\n--- got ---\n%s", out)
+	}
+}
+
+// The static render is not height-bounded: the interactive walk caps its
+// viewport at the terminal height, and a static block that inherited that
+// cap would silently drop commits the operator is about to install.
+func TestRenderCommitWalkStatic_ignoresTerminalHeight(t *testing.T) {
+	in := makeCommitInput(Options{NoColor: true})
+	in.Height = 3
+	out := RenderCommitWalkStatic(in)
+	if !strings.Contains(out, "chore(deps): bump") {
+		t.Errorf("last commit dropped on a short terminal\n--- got ---\n%s", out)
+	}
+}
+
+func TestRenderCommitWalkStatic_keepsTruncationNotice(t *testing.T) {
+	in := makeCommitInput(Options{NoColor: true})
+	in.Commits.TotalCommits = 400 // more than the compare API returned
+	out := RenderCommitWalkStatic(in)
+	if !strings.Contains(out, "400") {
+		t.Errorf("static render should report the full commit count\n--- got ---\n%s", out)
+	}
+}
+
 func TestCommitWalk_emptyRange(t *testing.T) {
 	in := makeCommitInput(Options{NoColor: true})
 	in.Commits = selfupdate.CommitRange{TotalCommits: 0}

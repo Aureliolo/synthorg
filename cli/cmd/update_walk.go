@@ -42,27 +42,39 @@ var currentBuildCommit = func() string { return version.Commit }
 // prompt in updateCLI. The walk is informational and never blocks the
 // update; any failure falls back to a terse "Update available" notice.
 //
-// Gating: walk is skipped entirely in non-interactive contexts (--yes,
-// --quiet, --json, non-TTY stdin or stdout). The single-line fallback is
-// printed in those cases so the user still sees the version jump.
-func runChangelogWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult, state config.State) {
-	if !shouldShowWalk(cmd) {
-		printOfflineNotice(cmd, result)
+// autoAccept is the auto_update_cli verdict updateCLI already resolved, and
+// decides whether the walk waits for keys -- not whether it renders.
+func runChangelogWalk(
+	ctx context.Context,
+	cmd *cobra.Command,
+	result selfupdate.CheckResult,
+	state config.State,
+	autoAccept bool,
+) {
+	mode := resolveWalkMode(cmd, autoAccept)
+	if mode == walkModeSuppressed {
 		return
 	}
 
 	if state.Channel == "dev" {
-		runDevCommitWalk(ctx, cmd, result)
+		runDevCommitWalk(ctx, cmd, result, mode)
 		return
 	}
 
-	runStableHighlightsWalk(ctx, cmd, result, state)
+	runStableHighlightsWalk(ctx, cmd, result, state, mode)
 }
 
 // runStableHighlightsWalk fetches every release in (installed, target] and
-// renders them oldest-to-newest in batches of walkBatchSize using the
-// per-release Highlights walk Model.
-func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult, state config.State) {
+// renders them oldest-to-newest: in batches of walkBatchSize through the
+// per-release Highlights walk Model when interactive, or as one printed
+// block when static.
+func runStableHighlightsWalk(
+	ctx context.Context,
+	cmd *cobra.Command,
+	result selfupdate.CheckResult,
+	state config.State,
+	mode walkMode,
+) {
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
@@ -90,12 +102,32 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 	}
 
 	printWalkSummary(out, releases, result)
-	if !confirmStartWalk(opts) {
-		return
-	}
 
 	width, height := terminalSize(cmd)
 	view := state.ChangelogViewOrDefault()
+	if mode == walkModeStatic {
+		printStaticBlock(cmd, ui.RenderWalkStatic(ui.WalkBatchInput{
+			Versions:    releases,
+			InitialView: view,
+			Width:       width,
+			Options:     opts.UIOptions(),
+		}))
+		return
+	}
+	runStableWalkBatches(ctx, cmd, out, releases, view, width, height)
+}
+
+// runStableWalkBatches drives the interactive per-release walk, carrying the
+// operator's `c` view toggle across batch boundaries.
+func runStableWalkBatches(
+	ctx context.Context,
+	cmd *cobra.Command,
+	out *ui.UI,
+	releases []selfupdate.Release,
+	view string,
+	width, height int,
+) {
+	opts := GetGlobalOpts(ctx)
 	batches := batchReleases(releases, walkBatchSize)
 	for batchIdx, batch := range batches {
 		isFinal := batchIdx == len(batches)-1
@@ -122,6 +154,15 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 	}
 }
 
+// printStaticBlock writes a pre-rendered changelog block verbatim.
+//
+// Deliberately not ui.UI.Plain: that runs stripControl, which drops ESC and
+// would strip every colour out of the block. Writing raw is safe because
+// both renderers ANSI-scrub the untrusted release/commit text they format.
+func printStaticBlock(cmd *cobra.Command, block string) {
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), block)
+}
+
 // runDevCommitWalk fetches all commits between the installed and target dev
 // (or stable) tag via the GitHub compare API and renders them in a single
 // scrollable bubbletea program. Dev pre-releases have no Highlights blocks,
@@ -142,7 +183,7 @@ func runStableHighlightsWalk(ctx context.Context, cmd *cobra.Command, result sel
 // explaining why the rich walk did not render -- silent fallbacks have
 // repeatedly bitten users who could not tell whether the changelog was
 // missing because of an empty range or a real error.
-func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult) {
+func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate.CheckResult, mode walkMode) {
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
@@ -171,7 +212,7 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 		return
 	}
 	width, height := terminalSize(cmd)
-	if _, err := ui.RunCommitWalk(ctx, ui.CommitWalkInput{
+	in := ui.CommitWalkInput{
 		Installed: base,
 		Target:    head,
 		Commits:   commitRange,
@@ -179,7 +220,12 @@ func runDevCommitWalk(ctx context.Context, cmd *cobra.Command, result selfupdate
 		Height:    height,
 		Options:   opts.UIOptions(),
 		Output:    cmd.OutOrStdout(),
-	}); err != nil {
+	}
+	if mode == walkModeStatic {
+		printStaticBlock(cmd, ui.RenderCommitWalkStatic(in))
+		return
+	}
+	if _, err := ui.RunCommitWalk(ctx, in); err != nil {
 		out.Warn(fmt.Sprintf("commit walk failed: %v", err))
 		printOfflineNotice(cmd, result)
 	}
@@ -268,18 +314,39 @@ func devCommitWalkErrorHint(usedCommitSHA bool) string {
 		"commit SHA. Showing terse update notice instead."
 }
 
-// shouldShowWalk reports whether the walk UI should run for this invocation.
-// Bubbletea requires both stdin and stdout to be a TTY; --yes / --quiet /
-// --json all suppress the walk.
-func shouldShowWalk(cmd *cobra.Command) bool {
+// walkMode is how the changelog is presented for one invocation.
+type walkMode int
+
+const (
+	// walkModeInteractive runs the bubbletea pager and waits for keys.
+	walkModeInteractive walkMode = iota
+	// walkModeStatic prints the whole changelog and returns immediately.
+	walkModeStatic
+	// walkModeSuppressed renders nothing.
+	walkModeSuppressed
+)
+
+// resolveWalkMode decides how this invocation presents the changelog.
+//
+// Only --json suppresses it: what somebody is about to install is worth
+// seeing even when nothing is going to ask them about it, so every other
+// non-interactive context downgrades to the static render rather than
+// losing the content. That deliberately includes --quiet, the one place
+// this outranks a flag's usual meaning: an unattended install is exactly
+// where the record of what landed is worth most.
+//
+// Interactive needs what bubbletea needs (a TTY on both stdin and stdout)
+// plus an operator who has not already said yes, via --yes or
+// auto_update_cli.
+func resolveWalkMode(cmd *cobra.Command, autoAccept bool) walkMode {
 	opts := GetGlobalOpts(cmd.Context())
-	if opts.Quiet || opts.JSON || opts.Yes {
-		return false
+	if opts.JSON {
+		return walkModeSuppressed
 	}
-	if !opts.ShouldPrompt() {
-		return false
+	if autoAccept || opts.Quiet || !opts.ShouldPrompt() || !writerIsTTY(cmd.OutOrStdout()) {
+		return walkModeStatic
 	}
-	return writerIsTTY(cmd.OutOrStdout())
+	return walkModeInteractive
 }
 
 // writerIsTTY reports whether w is a terminal file descriptor.
@@ -302,11 +369,11 @@ func terminalSize(cmd *cobra.Command) (int, int) {
 	return 80, 24
 }
 
-// printWalkSummary prints a one-line summary above the walk so the user
-// sees what they are about to walk through. The bubbletea Model handles
-// the per-version layout; this is plain UI output.
+// printWalkSummary prints an index of what the changelog covers above the
+// releases themselves. Worded for both presentations: the interactive walk
+// and the static block show the same list underneath it.
 func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupdate.CheckResult) {
-	out.Section(fmt.Sprintf("Walking %d release%s: %s -> %s",
+	out.Section(fmt.Sprintf("%d release%s: %s -> %s",
 		len(releases), pluralS(len(releases)),
 		normalizeVersionRef(result.CurrentVersion),
 		normalizeVersionRef(result.LatestVersion),
@@ -320,21 +387,6 @@ func printWalkSummary(out *ui.UI, releases []selfupdate.Release, result selfupda
 		out.KeyValue(r.TagName, fmt.Sprintf("%s   %s", formatPublishedDate(r.PublishedAt), marker))
 	}
 	out.Blank()
-}
-
-// confirmStartWalk asks the user (interactively) to start the walk. Returns
-// false to abort; non-interactive paths (Yes, no TTY) never reach this code.
-func confirmStartWalk(opts *GlobalOpts) bool {
-	// In non-prompting modes (Yes, no TTY) shouldShowWalk would have already
-	// returned false before reaching here. Belt-and-braces: skip the prompt
-	// if for some reason we got here without a TTY.
-	if !opts.ShouldPrompt() {
-		return false
-	}
-	// We could prompt here, but the issue's UX explicitly opens the walk
-	// directly after the summary table. Returning true preserves that flow.
-	// Users can still abort via `q` once inside the bubbletea program.
-	return true
 }
 
 // pluralS returns "s" when n != 1, "" otherwise.

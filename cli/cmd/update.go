@@ -319,9 +319,9 @@ func isDevChannelMismatch(channel, ver string) bool {
 
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
-// re-exec the updated binary. runChangelogWalk (or its offline fallback)
-// prints the "New version available" notice before this is called, so this
-// function goes straight to the install confirm prompt.
+// re-exec the updated binary. runChangelogWalk has already shown what the
+// jump contains (the changelog, or its terse offline notice when that could
+// not be fetched), so this function goes straight to the install confirm.
 func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
@@ -329,6 +329,11 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	}
 	if !ok {
 		return nil
+	}
+	if autoAccept {
+		// Name the setting that answered, or an install nobody confirmed
+		// looks like the confirm prompt went missing.
+		out.Step(fmt.Sprintf("auto_update_cli is set: installing %s without confirmation.", result.LatestVersion))
 	}
 
 	// Surface a permission error in the install directory before the
@@ -438,7 +443,7 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 	// Failure is non-fatal here: an unreadable config only degrades the
 	// changelog walk to its offline fallback, and the update proceeds.
 	state, _ := config.Load(opts.DataDir)
-	runChangelogWalk(ctx, cmd, result, state)
+	runChangelogWalk(ctx, cmd, result, state, autoAcceptCLI)
 
 	return downloadAndApplyCLI(ctx, out, result, autoAcceptCLI)
 }

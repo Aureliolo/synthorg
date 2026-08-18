@@ -107,6 +107,57 @@ func TestWalk_cTogglesView(t *testing.T) {
 	}
 }
 
+func TestRenderWalkStatic_carriesEveryRelease(t *testing.T) {
+	// Height 30 fits one batch interactively; the static render must ignore
+	// both the batch size and the viewport cap and emit all five.
+	out := RenderWalkStatic(makeWalkInput(t, 5, nil, true, viewHighlights))
+	for i := range 5 {
+		tag := "v0.7." + string(rune('0'+i))
+		if !strings.Contains(out, tag) {
+			t.Errorf("static render missing %s\n--- got ---\n%s", tag, out)
+		}
+		if !strings.Contains(out, "Bullet for "+tag) {
+			t.Errorf("static render missing highlights for %s\n--- got ---\n%s", tag, out)
+		}
+		if !strings.Contains(out, "["+string(rune('1'+i))+"/5]") {
+			t.Errorf("static render missing position marker for %s\n--- got ---\n%s", tag, out)
+		}
+	}
+	if strings.Contains(out, "[j/k]") || strings.Contains(out, "[enter]") {
+		t.Errorf("static render must carry no key footer\n--- got ---\n%s", out)
+	}
+}
+
+func TestRenderWalkStatic_honoursCommitsView(t *testing.T) {
+	out := RenderWalkStatic(makeWalkInput(t, 1, nil, true, viewCommits))
+	if !strings.Contains(out, "commit for v0.7.0") {
+		t.Errorf("commits view should render the commit log\n--- got ---\n%s", out)
+	}
+	if strings.Contains(out, "Bullet for v0.7.0") {
+		t.Errorf("commits view should not render highlights\n--- got ---\n%s", out)
+	}
+}
+
+// A release predating AI highlights has only a commit log to show, whatever
+// view was asked for, and says so -- same rule the interactive walk applies
+// in loadCurrentContent.
+func TestRenderWalkStatic_fallsBackForReleaseWithoutHighlights(t *testing.T) {
+	out := RenderWalkStatic(makeWalkInput(t, 1, map[int]bool{0: true}, true, viewHighlights))
+	if !strings.Contains(out, "No AI highlights") {
+		t.Errorf("missing fallback note\n--- got ---\n%s", out)
+	}
+	if !strings.Contains(out, "basic feature") {
+		t.Errorf("missing commit log\n--- got ---\n%s", out)
+	}
+}
+
+func TestRenderWalkStatic_emptyInput(t *testing.T) {
+	in := makeWalkInput(t, 0, nil, true, viewHighlights)
+	if out := RenderWalkStatic(in); out != "" {
+		t.Errorf("no versions should render nothing, got %q", out)
+	}
+}
+
 func TestWalk_cIgnoredOnNonToggleable(t *testing.T) {
 	in := makeWalkInput(t, 1, map[int]bool{0: true}, true, viewHighlights)
 	m := newWalkModel(in)

@@ -22,7 +22,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_WEB_PORT` | CLI | Override web dashboard port |
 | `SYNTHORG_CHANNEL` | CLI | Override release channel (stable / dev) |
 | `SYNTHORG_IMAGE_TAG` | CLI | Override container image tag |
-| `SYNTHORG_AUTO_UPDATE_CLI` | CLI | Auto-accept CLI self-updates |
+| `SYNTHORG_AUTO_UPDATE_CLI` | CLI | Auto-accept CLI self-updates; the changelog is printed rather than paged |
 | `SYNTHORG_AUTO_PULL` | CLI | Auto-accept container image pulls |
 | `SYNTHORG_AUTO_RESTART` | CLI | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY_ENABLED` | CLI | Enable anonymous project telemetry (true / false) |
