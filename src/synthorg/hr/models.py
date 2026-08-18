@@ -135,6 +135,17 @@ class HiringRequest(BaseModel):
         default=None,
         description="Associated approval item ID",
     )
+    bound_model_ref: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "The (provider, model) pair this hire will be instantiated on, in"
+            " canonical MODEL_REF form. Written when the approval is raised"
+            " (the proposal's recommendation) and rewritten when the operator"
+            " picks a different option on the approval itself. None means"
+            " nothing was proposable, and instantiation refuses rather than"
+            " registering an agent that fails every dispatch."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_status_candidate_consistency(self) -> Self:

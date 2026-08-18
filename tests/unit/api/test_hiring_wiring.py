@@ -22,6 +22,8 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.state import HrStateSlice
 from synthorg.persistence.hiring_request_protocol import HiringRequestRepository
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.management.service import ProviderManagementService
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state, mock_of
 
@@ -33,6 +35,7 @@ def _app_state(
     backend: object | None = object(),
     with_store: bool = True,
     with_resolver: bool = True,
+    with_catalogue: bool = True,
     existing: HiringService | None = None,
 ) -> AppState:
     """App state with a registry, an approval store and persistence."""
@@ -47,6 +50,15 @@ def _app_state(
             },
             ApprovalStateSlice: {"store": ApprovalStore() if with_store else None},
             PersistenceStateSlice: {"backend": backend},
+            ProvidersStateSlice: {
+                "management": (
+                    mock_of[ProviderManagementService](
+                        list_providers=AsyncMock(return_value={})
+                    )
+                    if with_catalogue
+                    else None
+                )
+            },
         },
     )
 

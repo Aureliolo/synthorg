@@ -25,44 +25,49 @@ from synthorg.observability.events.hr import (
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_MODEL_UNSET,
 )
-from synthorg.settings.bound_model import resolve_bound_model_live
-from synthorg.settings.kill_switch import require_configured_model
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.settings.model_ref import parse_model_ref
 
 logger = get_logger(__name__)
 
 
-async def resolve_new_hire_model(
-    config_resolver: ConfigResolverProtocol | None,
-) -> ModelConfig:
-    """Read the pair a new hire is bound to, refusing an unset one.
+def resolve_hire_model(request: HiringRequest) -> ModelConfig:
+    """Read the pair THIS hire was approved on, refusing an absent one.
 
-    Read live per instantiation rather than captured at wiring, so an
-    operator who binds the pair after boot can approve a hire without a
-    restart. There is deliberately nothing to fall back to: an agent
-    registered against a placeholder provider joins the roster looking
-    staffed and fails every dispatch it is ever given.
+    The pair travels with the request rather than being read from a standing
+    org-wide setting, because it is part of what the operator approved: the
+    approval proposes pairs from the models they actually have and records
+    the one they picked. A setting could only ever give every hire the same
+    answer, and gave every hire NO answer whenever it was unset, which is how
+    an approval came to be raised for a hire the system would then refuse.
+
+    There is deliberately nothing to fall back to: an agent registered
+    against a placeholder provider joins the roster looking staffed and fails
+    every dispatch it is ever given.
 
     Args:
-        config_resolver: Reads the live ``hr.new_hire_model`` setting.
-
-    Returns:
-        The bound pair the new agent runs on.
+        request: The approved request, carrying the pair it was approved on.
 
     Raises:
-        ServiceUnavailableError: When no pair is bound.
+        HiringError: When the request carries no pair, which means nothing
+            was proposable when the approval was raised.
+
+    Returns:
+        The pair the new agent runs on.
     """
-    ref = require_configured_model(
-        await resolve_bound_model_live(
-            config_resolver,
-            namespace="hr",
-            key="new_hire_model",
-            unset_event=HR_HIRING_MODEL_UNSET,
-        ),
-        namespace="hr",
-        key="new_hire_model",
-        feature_label="hiring",
-    )
+    ref = parse_model_ref(request.bound_model_ref or "")
+    if not ref.is_bound:
+        msg = (
+            f"Hiring request {request.id!s} carries no model binding, so there "
+            "is nothing to register this agent against. No configured model "
+            "was proposable when the approval was raised."
+        )
+        logger.warning(
+            HR_HIRING_MODEL_UNSET,
+            request_id=str(request.id),
+            role=str(request.role),
+            error=msg,
+        )
+        raise HiringError(msg)
     return ModelConfig(
         provider=NotBlankStr(ref.provider),
         model_id=NotBlankStr(ref.model_id),
@@ -147,4 +152,4 @@ async def try_onboard(
         )
 
 
-__all__ = ["register_agent", "resolve_new_hire_model", "try_onboard"]
+__all__ = ["register_agent", "resolve_hire_model", "try_onboard"]

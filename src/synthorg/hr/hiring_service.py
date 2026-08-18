@@ -7,14 +7,11 @@ generation, approval submission, and agent instantiation.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency import RefcountedLockMap
-from synthorg.core.domain_errors import DomainError
-from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -23,22 +20,33 @@ from synthorg.hr.errors import (
     HiringError,
     InvalidCandidateError,
 )
+from synthorg.hr.hire_model_proposal import HireModelProposal, ProviderCatalogue
+from synthorg.hr.hiring_approval_submission import (
+    build_approval,
+    propose_models,
+    recommended_ref,
+)
 from synthorg.hr.hiring_candidates import (
     build_agent_identity,
     build_candidate,
-    build_hire_approval_item,
     select_candidate,
 )
 from synthorg.hr.hiring_instantiation import (
     register_agent,
-    resolve_new_hire_model,
+    resolve_hire_model,
     try_onboard,
+)
+from synthorg.hr.hiring_request_durability import read_all, save_request
+from synthorg.hr.hiring_request_queries import (
+    approved_not_instantiated,
+    by_approval_id,
+    in_flight_for_role,
 )
 from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
     HR_HIRING_APPROVAL_SUBMITTED,
@@ -47,7 +55,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
-    HR_HIRING_PERSIST_FAILED,
     HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_CREATED,
     HR_HIRING_REQUEST_INVALID,
@@ -58,16 +65,6 @@ from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
 )
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-
-_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
-_HYDRATE_PAGE_SIZE: Final[int] = 100
-
-#: Statuses that mean a hire for a role is already under way. APPROVED
-#: belongs here because approval and instantiation are separate steps, so a
-#: request the operator said yes to is still an unanswered ask for an agent.
-_IN_FLIGHT_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
-    {HiringRequestStatus.PENDING, HiringRequestStatus.APPROVED}
-)
 
 logger = get_logger(__name__)
 
@@ -83,9 +80,13 @@ class HiringService:
         approval_store: Optional approval store for human approval.
         onboarding_service: Optional onboarding service to start
             onboarding after instantiation.
-        config_resolver: Settings resolver, read per instantiation for the
-            pair a new hire is bound to. Without one (or with the setting
-            unset) instantiation refuses rather than inventing a pair.
+        config_resolver: Settings resolver, read when an approval is raised
+            for the company's model-spend profile, which decides which
+            proposed pair is recommended.
+        provider_catalogue: The operator's configured providers, read live
+            when a hire is proposed so the pairs offered are the ones they
+            actually have. Without one nothing is proposable and the approval
+            says so rather than offering a pair that does not exist.
     """
 
     def __init__(
@@ -96,11 +97,13 @@ class HiringService:
         onboarding_service: OnboardingService | None = None,
         config_resolver: ConfigResolverProtocol | None = None,
         request_repo: HiringRequestRepository | None = None,
+        provider_catalogue: ProviderCatalogue | None = None,
     ) -> None:
         self._registry = registry
         self._approval_store = approval_store
         self._onboarding_service = onboarding_service
         self._config_resolver = config_resolver
+        self._provider_catalogue = provider_catalogue
         # Durable backing store for in-flight requests. When attached
         # (production) every lifecycle write is best-effort persisted and
         # the in-flight set is rehydrated at startup so an approved
@@ -172,23 +175,7 @@ class HiringService:
             # the whole truth and a later pass has nothing to recover.
             self._hydrated = True
             return
-        loaded: dict[str, HiringRequest] = {}
-        offset = 0
-        # lint-allow: long-running-loop-kill-switch -- bounded startup pagination
-        while True:
-            # Bound each page read so a hung backend cannot stall the on-startup
-            # wiring hook indefinitely; mirrors the write-path timeout in
-            # ``_store``. A timeout surfaces to the caller (wire_scaling) where
-            # it degrades to leaving the service unwired rather than hanging.
-            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
-                batch = await self._request_repo.list_items(
-                    limit=_HYDRATE_PAGE_SIZE, offset=offset
-                )
-            for request in batch:
-                loaded[str(request.id)] = request
-            if len(batch) < _HYDRATE_PAGE_SIZE:
-                break
-            offset += _HYDRATE_PAGE_SIZE
+        loaded = await read_all(self._request_repo)
         # Merged, not replaced, and the in-memory entry wins: the paginated
         # read above spans awaits, and a request created or transitioned
         # during it is newer than anything the durable pages carry. Replacing
@@ -207,13 +194,8 @@ class HiringService:
     ) -> None:
         """Update the in-memory set and persist the request.
 
-        With ``require_persist`` a persistence failure raises ``HiringError``
-        instead of being swallowed, so a caller that already performed an
-        external side effect (approval-item write, agent registration) cannot
-        leave the request transition durable-less: a restart would otherwise
-        rehydrate stale request state while the side effect already exists,
-        wedging retries. A persistence-less boot (no repo) stays in-memory
-        only and never raises, since nothing is rehydrated on restart.
+        A persistence-less boot (no repo) stays in-memory only and never
+        raises, since nothing is rehydrated on restart.
 
         Raises:
             HiringError: If ``require_persist`` and the durable save fails.
@@ -221,19 +203,7 @@ class HiringService:
         self._requests[str(request.id)] = request
         if self._request_repo is None:
             return
-        try:
-            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
-                await self._request_repo.save(request)
-        except (PersistenceError, TimeoutError) as exc:
-            logger.warning(
-                HR_HIRING_PERSIST_FAILED,
-                request_id=str(request.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            if require_persist:
-                msg = f"Failed to persist hiring request {request.id!s}"
-                raise HiringError(msg) from exc
+        await save_request(self._request_repo, request, require_persist=require_persist)
 
     def _get_request(self, request_id: str) -> HiringRequest:
         """Look up a hiring request by ID.
@@ -406,10 +376,17 @@ class HiringService:
                 # Auto-approve when no approval store: no external side effect,
                 # so a swallowed persist failure only loses an in-memory status
                 # flip a restart would discard cleanly.
+                #
+                # The pair is still proposed. Nobody is here to override it,
+                # but the binding travels with the request either way, and an
+                # auto-approved hire with none would fail at instantiation for
+                # a decision that was never put to anybody.
+                proposal = await self._propose_models(candidate)
                 updated = request.model_copy(
                     update={
                         "status": HiringRequestStatus.APPROVED,
                         "selected_candidate_id": candidate_id,
+                        "bound_model_ref": recommended_ref(proposal),
                     },
                 )
                 await self._store(updated)
@@ -445,22 +422,6 @@ class HiringService:
         )
         return updated
 
-    async def _new_hire_model_or_none(self) -> ModelConfig | None:
-        """Read the pair a hire would run on, for the approval to show.
-
-        Unset is an answer here rather than a refusal: the refusal belongs at
-        instantiation, and an approval that cannot say "nothing is bound" is
-        exactly the card an operator cannot decide.
-
-        Returns:
-            The bound pair, or ``None`` when ``hr.new_hire_model`` is unset
-            or could not be read.
-        """
-        try:
-            return await resolve_new_hire_model(self._config_resolver)
-        except DomainError:
-            return None
-
     async def _submit_approval_item(
         self,
         request: HiringRequest,
@@ -468,6 +429,11 @@ class HiringService:
         candidate_id: str,
     ) -> HiringRequest:
         """Create and store an approval item for a candidate.
+
+        The pair the hire would run on is proposed here rather than read from
+        a standing setting, and the recommendation is stamped onto the request
+        so an approval taken without an explicit pick still has a binding to
+        instantiate.
 
         Args:
             request: The hiring request.
@@ -479,21 +445,65 @@ class HiringService:
         """
         assert self._approval_store is not None  # noqa: S101
         approval_id = str(uuid4())
+        proposal = await self._propose_models(candidate)
         await self._approval_store.add(
-            build_hire_approval_item(
+            build_approval(
                 request,
                 candidate,
                 candidate_id=candidate_id,
                 approval_id=approval_id,
-                bound_model=await self._new_hire_model_or_none(),
+                proposal=proposal,
             )
         )
         return request.model_copy(
             update={
                 "selected_candidate_id": candidate_id,
                 "approval_id": approval_id,
+                "bound_model_ref": recommended_ref(proposal),
             },
         )
+
+    async def _propose_models(self, candidate: CandidateCard) -> HireModelProposal:
+        """Offer the pairs this candidate could be hired onto.
+
+        Returns:
+            The proposal, empty and carrying its reason when the operator has
+            configured nothing this role can use.
+        """
+        return await propose_models(
+            candidate,
+            catalogue=self._provider_catalogue,
+            resolver=self._config_resolver,
+        )
+
+    async def bind_model(self, request_id: str, model_ref: str) -> HiringRequest:
+        """Record the pair an operator picked on the approval.
+
+        The override half of the proposal: the approval offers the pairs, and
+        this is where the one the operator actually chose becomes the binding
+        the hire is instantiated with. Idempotent by construction, since it
+        writes a value rather than moving a state.
+
+        Args:
+            request_id: The request the approval decides.
+            model_ref: The chosen pair, in canonical MODEL_REF form.
+
+        Returns:
+            The updated request.
+
+        Raises:
+            HiringError: When no such request is in flight.
+        """
+        async with self._request_locks.acquire(request_id):
+            request = self._requests.get(request_id)
+            if request is None:
+                msg = f"Hiring request {request_id!r} not found"
+                raise HiringError(msg)
+            updated = request.model_copy(
+                update={"bound_model_ref": NotBlankStr(model_ref)}
+            )
+            await self._store(updated, require_persist=True)
+            return updated
 
     def find_by_approval_id(self, approval_id: str) -> HiringRequest | None:
         """Find the in-flight request an approval item decides.
@@ -506,29 +516,12 @@ class HiringService:
             approval_id: The decided approval item's id.
 
         Returns:
-            The request carrying that approval, or ``None`` when none does
-            (every non-hiring approval lands here, and must read as a miss
-            rather than an error).
+            The request carrying that approval, or ``None`` when none does.
         """
-        return next(
-            (r for r in self._requests.values() if r.approval_id == approval_id),
-            None,
-        )
+        return by_approval_id(self._requests, approval_id)
 
     def find_in_flight_request_for_role(self, role: str) -> HiringRequest | None:
         """Find a request for *role* that is still on its way to an agent.
-
-        In flight is PENDING **or** APPROVED, not PENDING alone. Approval and
-        instantiation are separate steps, so a request a human approved but
-        that has not registered anybody yet is still the answer to "is a hire
-        already under way for this role". Counting only PENDING would let a
-        request stuck at APPROVED (an unbound new-hire pair, say) open a fresh
-        approval item and a fresh operator notification on every single pass,
-        which is a queue full of duplicates asking for the same agent.
-
-        A REJECTED request is deliberately NOT in flight: the operator
-        answered, and a later gap is a new question rather than the one they
-        already declined.
 
         Args:
             role: The role name being staffed.
@@ -536,14 +529,7 @@ class HiringService:
         Returns:
             The in-flight request, or ``None`` when no hire is under way.
         """
-        return next(
-            (
-                r
-                for r in self._requests.values()
-                if r.status in _IN_FLIGHT_HIRING_STATUSES and str(r.role) == role
-            ),
-            None,
-        )
+        return in_flight_for_role(self._requests, role)
 
     def get_request(self, request_id: str) -> HiringRequest | None:
         """Return the tracked request with *request_id*.
@@ -559,25 +545,11 @@ class HiringService:
     def find_approved_requests(self) -> tuple[HiringRequest, ...]:
         """Return every request a human approved that has not been hired yet.
 
-        Approval and instantiation are separate steps, so a failure between
-        them (an unbound new-hire pair, a registry outage) leaves an APPROVED
-        request with no agent. The staffing sweep reads this to finish those
-        rather than leaving the operator's decision half-applied.
-
         Returns:
             The approved-but-not-instantiated requests, oldest first so a
             sweep applies decisions in the order they were made.
         """
-        return tuple(
-            sorted(
-                (
-                    r
-                    for r in self._requests.values()
-                    if r.status is HiringRequestStatus.APPROVED
-                ),
-                key=lambda r: r.created_at,
-            )
-        )
+        return approved_not_instantiated(self._requests)
 
     async def approve_request(
         self,
@@ -690,8 +662,8 @@ class HiringService:
             HiringApprovalRequiredError: If request is not approved.
             HiringRejectedError: If request was rejected.
             InvalidCandidateError: If no candidate is selected.
-            ServiceUnavailableError: If no pair is bound for new hires.
-            HiringError: If instantiation fails.
+            HiringError: If instantiation fails, including when the approved
+                request carries no model binding.
         """
         async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
@@ -701,7 +673,7 @@ class HiringService:
             identity = build_agent_identity(
                 candidate,
                 request=request,
-                model=await resolve_new_hire_model(self._config_resolver),
+                model=resolve_hire_model(request),
                 status=(
                     AgentStatus.ONBOARDING
                     if self._onboarding_service is not None

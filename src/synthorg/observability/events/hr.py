@@ -15,11 +15,24 @@ HR_HIRING_APPROVED: Final[str] = "hr.hiring.approved"
 HR_HIRING_REJECTED: Final[str] = "hr.hiring.rejected"
 HR_HIRING_INSTANTIATED: Final[str] = "hr.hiring.instantiated"
 HR_HIRING_MODEL_UNSET: Final[str] = "hr.hiring.model_unset"
-"""No pair is bound for new hires, so instantiation refused.
+"""The approved hire carries no pair, so instantiation refused.
 
 A hire that registered against a placeholder provider would join the roster
 looking staffed and fail every dispatch, so the absence surfaces here and at
-the caller as a 503 naming ``hr.new_hire_model``."""
+the caller as a 503."""
+
+HR_HIRING_MODEL_PROPOSED: Final[str] = "hr.hiring.model_proposed"
+"""Pairs were offered for an operator to bind this hire to.
+
+Proposed by the same capability matcher the setup wizard runs, scored against
+the operator's own configured models, one option per spend profile."""
+
+HR_HIRING_MODEL_CHOSEN: Final[str] = "hr.hiring.model_chosen"
+"""The operator bound the hire to a pair other than the recommended one.
+
+Recorded because the choice is the operator overriding a proposal, and the
+approval's own reason text says which option without saying it was an
+override."""
 
 # ── Staffing (who holds a role, and who fits a piece of work) ─────
 
