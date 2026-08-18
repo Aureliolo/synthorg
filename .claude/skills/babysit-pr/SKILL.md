@@ -197,8 +197,39 @@ Convergence holds when ALL true:
 - **Every in-scope scanner actually ran.** A scanner Phase 1 recorded as `scan_failed` blocks convergence until a later tick scans successfully. Zero alerts from a scan that did not execute is not evidence of zero alerts, and this is the one place where treating the two alike would ship an unscanned PR as clean. A scanner marked genuinely unavailable is different and does not block, because "this repository does not serve that endpoint" is a fact about the repository rather than a gap in this round's evidence.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4). **Evaluate this over EVERY review with `id > last_review_id`, not the highest-id review or `reviewDecision` alone:** CodeRabbit posts a `COMMENTED` review (outside-diff findings) immediately followed by an empty `APPROVED` review on the same head, so a max-id-only or `reviewDecision == APPROVED` check reads as "converged" while actionable findings sit unread in the lower-id `COMMENTED` review (see the Phase 6 caution). Open each review body before declaring convergence.
 
-If converged:
-- Append history `{round, action: "converged", checks_passed: N}`.
+### Phase 3a: pre-merge freshness gate (MANDATORY immediately before EVERY merge call)
+
+**NEVER merge while a review is in progress, and never merge on convergence evidence that was gathered earlier in the tick.**
+
+Every bullet above is computed from the Phase 1 snapshot. The merge call can fire minutes or hours after that snapshot: a tick may wait on CI, run a fix cycle, or block on a monitor before reaching this point. A reviewer writing a review during that gap is the ordinary case, not the exotic one -- a review takes minutes to produce and lands whenever it lands. So convergence is a *precondition*, never a *permission slip*: it says the PR looked ready when it was measured, and only this gate says it is still ready now.
+
+This is the merge-side twin of Phase 9b. Phase 9b exists because a push must not ship a stale view; this exists for the same reason and higher stakes, because a push is corrected by the next push and a merge is not. Applying the sweep to pushes and skipping it before the merge protects every reversible action and leaves the single irreversible one unguarded, which is exactly backwards. **A real merge on PR #2786 landed 78 seconds after a `CHANGES_REQUESTED` review carrying 7 findings -- 4 of them regressions introduced by that very round, including a security one that silently dropped a configured gVisor runtime -- because the tick verified CI immediately before merging and did not re-read the review streams.**
+
+Run this immediately before the merge call, and re-run it if ANYTHING intervenes between the gate and the call:
+
+1. **Re-fetch, with the same queries as Phase 1** (full bodies, no author allowlist): reviews, inline comments, issue comments, PR metadata including `state` / `headRefOid` / `statusCheckRollup`, and all three security scanners.
+
+2. **Refuse the merge if ANY of these holds.** Each is a stop, not a warning:
+
+   | Condition | Why it blocks |
+   |---|---|
+   | Any review with `id > last_review_id` from an author other than self / `synthorg-repo-bot[bot]` | Unread reviewer output. This is the one that was missed. |
+   | Any inline or issue comment past its cursor (excluding self and own `@coderabbitai review` pings) | Same, on the other two streams. |
+   | The reviewer's own status check is non-terminal (`CodeRabbit` context in `PENDING` / `EXPECTED` / `IN_PROGRESS` / `QUEUED`) | **A review is being written right now.** Merging here guarantees the verdict lands on a closed PR. |
+   | The rolling summary carries an in-progress marker (`currently processing`, `Review in progress`, or any Phase 4 marker) | Same, reported through the summary rather than the check. |
+   | `headRefOid` differs from the value convergence was computed on | Something pushed; the evidence describes a different tree. |
+   | `state != "OPEN"` | Already merged or closed. |
+   | Any rollup entry failing or non-terminal | CI regressed or restarted after the snapshot. |
+   | Any in-scope security alert open, or any scanner recorded `scan_failed` | Phase 6b's exits are FIX or DISMISS; neither is "merge anyway". |
+
+3. **On refusal:** record `{round, action: "merge_blocked_by_freshness", head_sha: headRefOid, trigger: <which row fired>, detail: <ids / check name>}`, do NOT call merge, and fold whatever arrived into the working set via Phase 6 (collect) so it is triaged and fixed this round. A review that arrives during the gap is ordinary new feedback and gets the ordinary treatment; the only thing the gate changes is that it is seen before the PR closes rather than after.
+
+4. **Adjacency.** The gate's fetch and the merge call must be adjacent, with no waiting operation between them. If more than ~60 seconds elapse, or any monitor / sleep / fix cycle runs in between, the evidence is stale again and the gate re-runs from step 1. Verifying CI and then merging is not sufficient on its own: CI and the reviewer are independent clocks, and reading only the faster one is what produced the #2786 miss.
+
+5. **An operator instruction never removes this gate.** A standing instruction such as "merge once CI is green" removes the requirement for a reviewer *verdict* (the convergence bullet above), because the operator has decided they do not need the reviewer's approval to ship. It does not license merging over reviewer output that already exists and has never been read -- the operator asked to stop waiting for an opinion, not to discard one already given. When such an instruction is in force, this gate still runs in full; only the "CodeRabbit no-findings signal" convergence bullet is waived, and the waiver is recorded on the merge history entry.
+
+If converged AND Phase 3a passes:
+- Append history `{round, action: "converged", checks_passed: N, freshness_gate: "passed", evidence_fetched_at: <ISO>}`.
 - **Squash-merge immediately, but only once per head SHA.** Convergence is not a "ready for human" handoff; the user mandate is for this skill to drive the PR all the way to `MERGED`. Compare the current `headRefOid` against `state.last_merge_attempt_headRefOid` to decide which sub-flow to enter. (Phase 11 owns clearing `state.last_merge_attempt_headRefOid` when a new commit lands; Phase 3 only reads the guard.)
 
   **Naming convention.** Throughout Phase 3, `headRefOid` is the in-memory variable from the Phase 1 fetch and `head_sha` is the canonical history-entry field name. They carry the same value; the two names exist only to distinguish "live PR state, just fetched" from "persisted state we wrote earlier." Every history append below MUST include `head_sha: headRefOid` so the reverse-walk lookup in sub-flow A can match entries by a single, consistent identifier. Do NOT omit `head_sha` from any append, even when the action is `merged` (the success-path entry must still carry it so a future round can confirm which head merged).

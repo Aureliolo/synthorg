@@ -241,6 +241,42 @@ class TestWhatCountsAsAWaveLoop:
         )
         assert _MODULE.main(["--repo-root", str(root)]) == 0
 
+    def test_a_parent_package_import_is_not_a_sibling(self, tmp_path: Path) -> None:
+        """``from .. import x`` leaves the package, so it credits nothing.
+
+        Both spellings leave ``ImportFrom.module`` empty, so a check that
+        only asks whether the import is relative reads a parent-package
+        import as a sibling. If the package then happens to hold a module by
+        that name, the real sibling's gate calls are credited to a dispatcher
+        that never reaches them, and the gate passes an ungated wave loop:
+        the one verdict it exists to prevent.
+
+        The fake tree gives the parent import the same name as the gating
+        sibling, which is what makes the mistake observable rather than
+        merely possible.
+        """
+        root = _tree(
+            tmp_path,
+            {
+                "dispatcher.py": (
+                    "from x import build_execution_waves\n"
+                    "from .. import parking\n"
+                    "def dispatch():\n"
+                    "    groups = build_execution_waves()\n"
+                    "    return parking.park_everything(groups)\n"
+                ),
+                "parking.py": (
+                    "from x import abandon_after, abandon_stranded, gate_wave\n"
+                    "def park_everything(groups):\n"
+                    "    runnable = [gate_wave(g) for g in groups]\n"
+                    "    abandon_stranded(groups[0], 0)\n"
+                    "    abandon_after(groups, 0)\n"
+                    "    return runnable\n"
+                ),
+            },
+        )
+        assert _MODULE.main(["--repo-root", str(root)]) == 1
+
     def test_a_sibling_that_gates_nothing_still_reports(self, tmp_path: Path) -> None:
         """Following imports must not become a way to pass by association.
 

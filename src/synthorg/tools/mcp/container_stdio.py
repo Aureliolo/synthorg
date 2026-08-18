@@ -182,20 +182,7 @@ async def container_stdio_client(
             sandbox=sandbox,
             server_name=server_name,
         )
-        stream = container.attach(stdin=True, stdout=True, stderr=True, logs=False)
-        # ``attach`` builds the Stream and performs NO I/O: the client opens
-        # the connection lazily, inside the first ``read_out``/``write_in``.
-        # Left alone, that first call happens in a pump, i.e. AFTER the start,
-        # and a server that writes on startup or dies immediately has its
-        # output dropped by the daemon with nobody attached. ``logs=False``
-        # means there is no replay to recover it from. Entering the stream
-        # here performs the attach before the start, which is what the rest
-        # of this module says happens, and it also settles which task runs
-        # the lazy init: both pumps would otherwise race it, and its guard is
-        # unlocked, so each could open its own connection and the loser's
-        # would be leaked with the winner overwriting the shared queue.
-        await stream.__aenter__()
-        await _start(container, server_name)
+        stream = await _attached_and_started(container, server_name)
         read_writer, read_stream = anyio.create_memory_object_stream[
             SessionMessage | Exception
         ](0)
@@ -231,6 +218,34 @@ async def container_stdio_client(
             await _teardown(docker, container, stream, server_name)
     if session_failure is not None:
         raise session_failure
+
+
+async def _attached_and_started(container: DockerContainer, server_name: str) -> Stream:
+    """Attach to *container*'s stdio, then start it, in that order.
+
+    ``attach`` builds the Stream and performs NO I/O: the client opens the
+    connection lazily, inside the first ``read_out`` / ``write_in``. Left
+    alone, that first call happens in a pump, i.e. AFTER the start, and a
+    server that writes on startup or dies immediately has its output dropped
+    by the daemon with nobody attached. ``logs=False`` means there is no
+    replay to recover it from.
+
+    Entering the stream here performs the attach before the start, which is
+    what the rest of this module says happens, and it also settles which task
+    runs the lazy init: both pumps would otherwise race it, and its guard is
+    unlocked, so each could open its own connection and the loser's would be
+    leaked with the winner overwriting the shared queue.
+
+    Returns:
+        The entered stream, with the container running.
+
+    Raises:
+        MCPConnectionError: The container could not be started.
+    """
+    stream = container.attach(stdin=True, stdout=True, stderr=True, logs=False)
+    await stream.__aenter__()
+    await _start(container, server_name)
+    return stream
 
 
 async def _create(

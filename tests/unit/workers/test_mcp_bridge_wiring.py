@@ -162,6 +162,12 @@ async def test_a_blank_deployment_id_degrades_instead_of_poisoning_boot(
     # rather than an exception escaping a helper the caller does not guard.
     assert config.deployment_id is None
     assert config.enabled is True
+    # And the runtime survives it. The two derivations shared one guard, so
+    # the id failing skipped the runtime read and silently downgraded an
+    # operator's gVisor to the daemon default on the one path that runs
+    # unreviewed code. An unattributed container is recoverable; an
+    # uncontained one is the thing the runtime was configured to prevent.
+    assert config.runtime == "runsc"
 
 
 async def test_an_unwired_resolver_falls_back_rather_than_raising(

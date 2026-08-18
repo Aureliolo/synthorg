@@ -301,6 +301,30 @@ class TestForgedTestEvidence:
         """The rule targets the disable, not the builtin."""
         assert is_test_run("set -o pipefail && pytest -q | tail -5")
 
+    def test_turning_pipefail_off_then_on_again_protects_the_pipe(self) -> None:
+        """The option is a toggle, not a one-way latch.
+
+        Reading only the disable makes the first ``set +o pipefail`` on a line
+        permanent, so a line that restores the option before its pipeline is
+        refused. That withholds the evidence a genuine test run produced,
+        which is the same cost as refusing ``&&`` and ``|`` outright.
+        """
+        assert is_test_run("set +o pipefail && set -o pipefail && pytest -q | tail -5")
+
+    def test_the_last_toggle_before_the_pipe_is_the_one_that_counts(self) -> None:
+        """Re-disabling after re-enabling is still a disable."""
+        assert not is_test_run(
+            "set -o pipefail && set +o pipefail && pytest -q | tail -5"
+        )
+
+    def test_a_combined_set_reads_the_flag_next_to_the_option(self) -> None:
+        """``set +o errexit -o pipefail`` enables pipefail, whatever else it does.
+
+        One command can carry both flags, so the answer is the flag directly
+        before ``pipefail``, not whichever flag appears somewhere in the line.
+        """
+        assert is_test_run("set +o errexit -o pipefail && pytest -q | tail -5")
+
     def test_unsetting_another_option_leaves_the_pipe_alone(self) -> None:
         """Only ``pipefail`` decides how a pipeline reports its status."""
         assert is_test_run("set +o errexit && pytest -q | tail -5")

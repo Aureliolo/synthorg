@@ -332,15 +332,22 @@ class MCPClient:
                     timeout=timeout,
                 )
             except TimeoutError:
-                # The transport close did not confirm within the bound, so the
-                # child may still be alive. Latch the client unrestartable so a
-                # later connect()/reconnect() cannot spawn a fresh session over
-                # the abandoned one.
+                # The transport close did not confirm within the bound, so
+                # whatever it owns may still be live. Latch the client
+                # unrestartable so a later connect()/reconnect() cannot spawn
+                # a fresh session over the abandoned one.
                 self._unrestartable = True
                 logger.warning(
                     MCP_CLIENT_DISCONNECT_FAILED,
                     server=self._config.name,
-                    error=f"disconnect timed out after {timeout}s; child may be hung",
+                    # Transport-neutral: this handler also runs for
+                    # streamable_http, which owns no child process, and naming
+                    # one there sends an operator looking for a process that
+                    # was never spawned.
+                    error=(
+                        f"disconnect timed out after {timeout}s; "
+                        "transport may still be active"
+                    ),
                 )
                 record_client_disconnect(
                     transport=metric_transport,

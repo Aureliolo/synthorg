@@ -107,21 +107,40 @@ _STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
 #: The pipe, whose conjunctive reading holds only under ``pipefail``.
 _PIPE: Final[str] = "|"
 
-#: The builtin that can turn ``pipefail`` off, and the flag that does it.
+#: The builtin that toggles ``pipefail``, and the two flags that do it.
+#: ``set -o`` enables, ``set +o`` disables, which is the opposite of the
+#: convention most flags follow.
 _SET_BUILTIN: Final[str] = "set"
 _UNSET_OPTION: Final[str] = "+o"
+_SET_OPTION: Final[str] = "-o"
 _PIPEFAIL_OPTION: Final[str] = "pipefail"
 
 
-def _disables_pipefail(command: Sequence[str]) -> bool:
-    """Whether *command* turns ``pipefail`` off for the rest of the line.
+def _pipefail_toggle(command: Sequence[str]) -> bool | None:
+    """Read a ``set`` builtin's effect on ``pipefail``.
+
+    Both directions, not just the disable. Tracking only ``set +o`` makes the
+    option a one-way latch: a line that turns it off and back on before its
+    pipeline is refused, and refusing a line whose pipeline IS protected
+    withholds the evidence a genuine test run produced, which is the failure
+    this module's whole conjunctive reading exists to avoid.
 
     Returns:
-        ``True`` for a ``set`` builtin unsetting ``pipefail``.
+        ``True`` when the command enables ``pipefail``, ``False`` when it
+        disables it, and ``None`` when it says nothing about it.
     """
-    if not command or command[0] != _SET_BUILTIN:
+    if not command or command[0] != _SET_BUILTIN or _PIPEFAIL_OPTION not in command:
+        return None
+    # A single command can carry both (``set +o errexit -o pipefail``), so the
+    # answer is the flag immediately preceding the option name rather than
+    # whichever flag appears anywhere in the line.
+    index = command.index(_PIPEFAIL_OPTION)
+    preceding = command[index - 1] if index else None
+    if preceding == _SET_OPTION:
+        return True
+    if preceding == _UNSET_OPTION:
         return False
-    return _UNSET_OPTION in command and _PIPEFAIL_OPTION in command
+    return None
 
 
 #: Prefixes that run another program without changing what is being run.
@@ -304,10 +323,11 @@ def _conjunctive_commands(
                 # rests on: after ``set +o pipefail`` a pipeline reports its
                 # LAST command's status again, so ``pytest | tail`` exits 0
                 # whatever the suite did. Read per segment rather than once
-                # up front, because the disable and the pipeline are separate
-                # commands and only a pipe AFTER the disable is affected.
-                if _disables_pipefail(current):
-                    pipefail = False
+                # up front, because the toggle and the pipeline are separate
+                # commands and only a pipe AFTER the toggle is affected.
+                toggled = _pipefail_toggle(current)
+                if toggled is not None:
+                    pipefail = toggled
                 segments.append(tuple(current))
             current = []
             continue

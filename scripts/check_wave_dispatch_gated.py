@@ -74,6 +74,11 @@ _SCAN_ROOT_REL: Final[str] = "src/synthorg/engine/coordination"
 #: absolute import names.
 _SCAN_PACKAGE: Final[str] = "engine.coordination"
 
+#: ``ImportFrom.level`` for a same-package import. Level two and above walk
+#: out to a parent package, whose modules this scan does not read and must
+#: not credit as siblings.
+_SIBLING_IMPORT_LEVEL: Final[int] = 1
+
 #: Calling this is what makes a module a wave loop: it is the one function
 #: that turns a decomposition plus a routing into dependency-ordered waves.
 _WAVE_BUILDER: Final[str] = "build_execution_waves"
@@ -235,7 +240,16 @@ def _imported_siblings(tree: ast.Module) -> frozenset[str]:
                 # alone sees no import at all. It is an ordinary way to reach
                 # a sibling, and missing it makes a loop that gates through
                 # one read as a loop that does not gate.
-                if node.level:
+                #
+                # Level ONE exactly. ``from .. import x`` names a module of
+                # the PARENT package, which is not a sibling and whose calls
+                # this scan never reads. Accepting it puts an unrelated name
+                # into the sibling set, and if the package happens to hold a
+                # module by that name, its gate calls are credited to a
+                # dispatcher that never reaches them: the gate then passes an
+                # ungated wave loop, which is the one verdict it must never
+                # produce.
+                if node.level == _SIBLING_IMPORT_LEVEL:
                     siblings.update(alias.name for alias in node.names)
             elif node.level or _SCAN_PACKAGE in node.module:
                 siblings.add(node.module.rsplit(".", 1)[-1])

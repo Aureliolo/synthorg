@@ -22,7 +22,21 @@ programs the backend needs and **cannot obtain for itself**. A missing one
 raises `RequiredBinaryMissingError` and aborts the boot, naming the binary, the
 apko package that provides it, and the subsystems it breaks. Refusing to start
 is the honest outcome: the alternative is a backend that accepts work it can
-never dispatch. `git` is required always; `pg_dump` / `pg_restore` only when the
+never dispatch.
+
+A record may also declare a `min_version`, because being on PATH is not the
+same as being able to do the job. `git` declares 2.48, the release that added
+`worktree.useRelativePaths`: git IGNORES a config key it does not know rather
+than refusing it, so an older binary accepts the option, reports nothing, and
+returns a worktree recording the backend's absolute path. The agent opens that
+worktree through a different mount, and every git command it runs fails with a
+"not a git repository" naming a path that exists on one side only. The version
+is read by asking the binary; a version that cannot be read is logged and
+allowed through, because not knowing is not evidence of an old one and
+refusing on an unparsed line would take a working deployment down over output
+the parser did not anticipate.
+
+`git` is required always; `pg_dump` / `pg_restore` only when the
 configured backend is Postgres, which is why the preflight is handed the
 resolved backend name (empty when persistence has not resolved one, so only the
 backend-independent binaries are demanded).

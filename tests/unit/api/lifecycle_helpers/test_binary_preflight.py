@@ -42,6 +42,17 @@ def _resolving(*present: str) -> AbstractContextManager[object]:
     return patch(f"{_MODULE}.shutil.which", side_effect=_which)
 
 
+def _reporting(version: str | None) -> AbstractContextManager[object]:
+    """Patch the version probe so a test never reads the host's own toolchain.
+
+    Without this the git floor is checked against whatever git the machine
+    happens to have, so the suite would pass or fail on a property of the
+    developer's box rather than on the code under test.
+    """
+    parsed = None if version is None else tuple(int(p) for p in version.split("."))
+    return patch(f"{_MODULE}.installed_version", return_value=parsed)
+
+
 def _names(records: Iterable[BinaryRecord]) -> set[str]:
     return {record.name for record in records}
 
@@ -113,13 +124,67 @@ class TestRequired:
         assert "workspace provisioning" in message.lower()
 
     def test_present_required_binaries_pass(self) -> None:
-        with _resolving(*_every_name()):
+        with _resolving(*_every_name()), _reporting("2.48"):
             run_binary_preflight(backend_name="postgres")
 
     def test_postgres_tools_do_not_block_a_sqlite_boot(self) -> None:
         """A SQLite deployment never shells out to the Postgres tools."""
-        with _resolving("git"):
+        with _resolving("git"), _reporting("2.48"):
             run_binary_preflight(backend_name="sqlite")
+
+
+class TestVersionFloor:
+    """Present on PATH is not the same as able to do the job."""
+
+    def test_a_git_below_the_floor_refuses_the_boot(self) -> None:
+        """git ignores an unknown config key instead of refusing it.
+
+        So an old binary accepts ``worktree.useRelativePaths``, reports
+        nothing, and hands back a worktree recording the backend's absolute
+        path. The agent opens it through a different mount and every git
+        command it runs fails. Refused at boot because the alternative first
+        report is a failing agent deep inside a sandbox.
+        """
+        with (
+            _resolving(*_every_name()),
+            _reporting("2.47.1"),
+            pytest.raises(RequiredBinaryMissingError) as excinfo,
+        ):
+            run_binary_preflight(backend_name="sqlite")
+
+        message = str(excinfo.value)
+        assert "2.47.1" in message
+        assert "2.48" in message
+        assert "useRelativePaths" in message
+
+    def test_the_floor_itself_passes(self) -> None:
+        with _resolving(*_every_name()), _reporting("2.48"):
+            run_binary_preflight(backend_name="sqlite")
+
+    def test_a_longer_version_is_compared_on_the_shared_prefix(self) -> None:
+        """``2.55.0.windows.3`` is not below ``2.48``."""
+        with _resolving(*_every_name()), _reporting("2.55.0.3"):
+            run_binary_preflight(backend_name="sqlite")
+
+    def test_an_unreadable_version_does_not_refuse_the_boot(self) -> None:
+        """Not knowing the version is not evidence of an old one.
+
+        Refusing here would take a working deployment down over output this
+        parser did not anticipate, which is a worse failure than the one the
+        floor exists to prevent.
+        """
+        with _resolving(*_every_name()), _reporting(None):
+            run_binary_preflight(backend_name="sqlite")
+
+    def test_a_floor_without_a_reason_is_refused(self) -> None:
+        """The reason is rendered into the refusal, so it cannot be blank."""
+        with pytest.raises(ValueError, match="version_reason"):
+            BinaryRecord(
+                name="git",
+                package="git",
+                consumers=("workspace provisioning",),
+                min_version=(2, 48),
+            )
 
 
 class TestItRunsAtBoot:

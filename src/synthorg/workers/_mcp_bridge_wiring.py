@@ -46,6 +46,15 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
     # here poisons boot rather than degrading to no bridge tools. The fallback
     # return reads these too, which is why a raise cannot be allowed to leave
     # them unbound.
+    #
+    # ONE BLOCK EACH, deliberately. The two are independent facts, and sharing
+    # a guard orders them: the id is derived first, so anything that raises
+    # there skips the runtime read entirely and leaves it ``None``. ``None``
+    # is the daemon default, which silently downgrades the isolation on the
+    # one path in this product that runs code nobody reviewed, in exchange for
+    # an unrelated failure to name the deployment. A blank id is a container
+    # nobody can reclaim; a lost runtime is a container nobody is contained
+    # by, and neither may be paid for with the other.
     try:
         # Derived from the same workspace root the agent sandboxes use,
         # because the reconciliation pass asks one question of every
@@ -65,13 +74,6 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
                 "deployment_id",
             )
         )
-        # The same runtime the agent sandbox uses. An operator who installed
-        # gVisor did it to contain code they do not trust, and this is the
-        # path that runs code nobody reviewed at all: taking the daemon
-        # default here while honouring their choice for their own agents
-        # would give the weaker isolation to the stronger threat, silently,
-        # because the two configs read as siblings.
-        runtime = app_state.config.sandboxing.docker.runtime
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- an unattributed container is recoverable;
         # a boot that cannot wire MCP at all is not
@@ -80,6 +82,28 @@ async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
             API_APP_STARTUP,
             service="mcp_bridge",
             note="could not derive MCP sandbox identity; container is unattributed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    try:
+        # The same runtime the agent sandbox uses. An operator who installed
+        # gVisor did it to contain code they do not trust, and this is the
+        # path that runs code nobody reviewed at all: taking the daemon
+        # default here while honouring their choice for their own agents
+        # would give the weaker isolation to the stronger threat, silently,
+        # because the two configs read as siblings.
+        runtime = app_state.config.sandboxing.docker.runtime
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- the daemon default still isolates; a boot
+        # that cannot wire MCP at all does not
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="mcp_bridge",
+            note=(
+                "could not read the configured sandbox runtime; MCP containers "
+                "fall back to the daemon default and lose any configured gVisor"
+            ),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
