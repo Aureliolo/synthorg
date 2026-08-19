@@ -64,6 +64,7 @@ from synthorg.observability.events.hr import (
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
 )
+from synthorg.settings.model_ref import parse_model_ref, serialize_model_ref
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -486,21 +487,35 @@ class HiringService:
 
         Args:
             request_id: The request the approval decides.
-            model_ref: The chosen pair, in canonical MODEL_REF form.
+            model_ref: The chosen pair, in MODEL_REF form.
 
         Returns:
             The updated request.
 
         Raises:
-            HiringError: When no such request is in flight.
+            HiringError: When no such request is in flight, or the chosen
+                value does not name both halves of a pair.
         """
+        # Parsed here, not only at the controller that happens to check its
+        # value against the approval's options: this method is the service
+        # boundary and is callable on its own, and a provider-less value
+        # persisted as a binding is an agent bound to a connection nobody
+        # named. Stored canonically so what comes back out is what the rest
+        # of the system reads everywhere else.
+        parsed = parse_model_ref(model_ref)
+        if not parsed.is_bound:
+            msg = (
+                f"Hiring request {request_id!r} cannot bind {model_ref!r}: a"
+                " binding names both a provider connection and a model id"
+            )
+            raise HiringError(msg)
         async with self._request_locks.acquire(request_id):
             request = self._requests.get(request_id)
             if request is None:
                 msg = f"Hiring request {request_id!r} not found"
                 raise HiringError(msg)
             updated = request.model_copy(
-                update={"bound_model_ref": NotBlankStr(model_ref)}
+                update={"bound_model_ref": NotBlankStr(serialize_model_ref(parsed))}
             )
             await self._store(updated, require_persist=True)
             return updated

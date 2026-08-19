@@ -120,3 +120,27 @@ class TestShellCommandTimeout:
         result = await tool.execute(arguments={"command": "echo hello"})
         assert not result.is_error
         assert sandbox.calls[0].timeout == 45.0
+
+    @pytest.mark.parametrize("resolved", [0.0, -1.0])
+    async def test_a_non_positive_resolved_timeout_falls_back(
+        self, resolved: float
+    ) -> None:
+        # The third way the read can be useless, and the only one that
+        # answers successfully: a stored zero or negative would be passed
+        # straight to the sandbox as the deadline, so every command would
+        # time out the instant it started.
+        async def _answer(namespace: str, key: str) -> float:
+            del namespace, key
+            return resolved
+
+        sandbox = _sandbox()
+        tool = ShellCommandTool(
+            sandbox=sandbox,
+            config=TerminalConfig(default_timeout=45.0),
+            config_resolver=mock_of[ConfigResolverProtocol](get_float=_answer),
+        )
+
+        result = await tool.execute(arguments={"command": "echo hello"})
+
+        assert not result.is_error
+        assert sandbox.calls[0].timeout == 45.0

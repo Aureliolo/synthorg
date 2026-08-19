@@ -16,6 +16,7 @@ from typing import Final, overload
 
 from synthorg.observability import get_logger
 from synthorg.persistence._shared.datetime_marshaller import (
+    canonical_deadline,
     coerce_row_timestamp,
     format_iso_utc,
     parse_iso_utc,

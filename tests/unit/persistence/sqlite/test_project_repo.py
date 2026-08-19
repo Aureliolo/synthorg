@@ -154,9 +154,15 @@ class TestSQLiteProjectRepository:
         assert fetched is not None
         assert fetched.plan_id == as_uuid("plan-1")
 
-    async def test_roundtrip_preserves_deadline_and_budget(
+    async def test_roundtrip_canonicalises_the_deadline_and_keeps_the_budget(
         self, repo: SQLiteProjectRepository
     ) -> None:
+        # Written on the way in rather than kept verbatim, because the other
+        # backend's column is a TIMESTAMPTZ and its reader formats as UTC: a
+        # spelling this backend preserved was one the other could not, and
+        # ``Project.deadline`` is a STRING that callers compare and render.
+        # An offsetless value is taken as UTC, the same reading Postgres
+        # already imposed on it.
         project = _make_project(
             deadline="2026-12-31T23:59:59",
             budget=1500.50,
@@ -164,7 +170,7 @@ class TestSQLiteProjectRepository:
         await repo.save(project)
         fetched = await repo.get(sid("proj-001"))
         assert fetched is not None
-        assert fetched.deadline == "2026-12-31T23:59:59"
+        assert fetched.deadline == "2026-12-31T23:59:59+00:00"
         assert fetched.budget == 1500.50
 
     async def test_roundtrip_preserves_none_lead_and_deadline(

@@ -30,7 +30,8 @@ _DRAFT_JSON = (
     '"envelope": {"amount": 5000, "currency": "USD", '
     '"deadline": null, "time_horizon": "1 month"}, '
     '"project_id": null, "proposed_project_name": "memory-layer", '
-    '"proposed_project_description": "A better memory layer."}}'
+    '"proposed_project_description": "A better memory layer.", '
+    '"assumed_facets": []}}'
 )
 
 
@@ -77,6 +78,20 @@ class TestLLMCharterInterviewer:
 
     async def test_malformed_json_raises(self) -> None:
         provider = ScriptedProvider(response=make_text_response("not json at all"))
+        with pytest.raises(CharterInterviewResponseInvalidError):
+            await _interviewer(provider).run_turn(
+                _history(),
+                project_id=None,
+                config=CharterConfig(interview_model=bound_ref()),
+            )
+
+    async def test_a_draft_omitting_its_assumptions_is_retried(self) -> None:
+        # The coverage press fires on a non-empty value, so a draft that left
+        # the key out would read as "assumed nothing", skip the press, and put
+        # the org's own proposals to the operator as their own answers. The
+        # planner is asked again instead.
+        without = _DRAFT_JSON.replace(', "assumed_facets": []', "")
+        provider = ScriptedProvider(response=make_text_response(without))
         with pytest.raises(CharterInterviewResponseInvalidError):
             await _interviewer(provider).run_turn(
                 _history(),

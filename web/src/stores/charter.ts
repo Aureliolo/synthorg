@@ -153,6 +153,29 @@ export function awaitsDispatch(charter: ProjectCharter): boolean {
   return charter.status === 'approved' && charter.task_id === null
 }
 
+/**
+ * Read every page of one charter status.
+ *
+ * The list orders by `created_at DESC`, and `approved` covers dispatched
+ * charters as well as the ones still awaiting a run, so newer dispatched
+ * charters can fill the first page while the older charter this panel exists
+ * to reopen sits on a later one. Reading page one alone then shows nothing
+ * and looks exactly like having nothing to show.
+ */
+async function readEveryPage(status: string): Promise<ProjectCharter[]> {
+  const found: ProjectCharter[] = []
+  let cursor: string | undefined
+  for (;;) {
+    const page: PaginatedResult<ProjectCharter> = await charterApi.listCharters({
+      status,
+      cursor,
+    })
+    found.push(...page.data)
+    if (!page.hasMore || page.nextCursor === null) return found
+    cursor = page.nextCursor
+  }
+}
+
 async function hydrateOpenCharterImpl(
   set: CharterSet,
   get: CharterGet,
@@ -162,12 +185,12 @@ async function hydrateOpenCharterImpl(
   // operator has not saved.
   if (get().draftCharter !== null) return
   try {
-    const pages: PaginatedResult<ProjectCharter>[] = await Promise.all([
-      charterApi.listCharters({ status: 'drafted' }),
-      charterApi.listCharters({ status: 'approved' }),
+    const statuses = await Promise.all([
+      readEveryPage('drafted'),
+      readEveryPage('approved'),
     ])
-    const open = pages
-      .flatMap((page) => page.data)
+    const open = statuses
+      .flat()
       .filter(awaitsDispatch)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
     const newest = open[0]

@@ -36,6 +36,7 @@ def draft(**overrides: object) -> CharterDraft:
         "success_criteria": (NotBlankStr("recall +10%"),),
         "envelope": BudgetEnvelope(amount=5000.0, currency="USD"),
         "proposed_project_name": "memory-layer",
+        "assumed_facets": (),
     }
     defaults.update(overrides)
     return CharterDraft(**defaults)  # type: ignore[arg-type]

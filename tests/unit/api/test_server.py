@@ -3,9 +3,10 @@
 import signal
 from collections.abc import Callable
 from typing import NamedTuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
+import uvicorn
 
 from synthorg.api.config import ApiConfig, ServerConfig
 from synthorg.config.schema import RootConfig
@@ -27,6 +28,15 @@ class _UvicornRun(NamedTuple):
     chains: list[Callable[[signal.Signals], None] | None]
     """Every value handed to ``set_shutdown_chain``, in order."""
 
+    chains_when_run_started: list[list[Callable[[signal.Signals], None] | None]]
+    """``chains`` as it stood each time ``Server.run()`` was entered.
+
+    The recorded end state alone cannot tell a chain installed BEFORE the
+    server ran from one installed after it returned, and only the first is
+    any use: lifespan startup replaces the signal handlers from inside
+    ``run()``, so a chain arriving afterwards is installed into a process
+    that has already missed the signal it exists to forward."""
+
 
 def _run_recording_uvicorn(server: ServerConfig | None = None) -> _UvicornRun:
     """Run ``run_server`` against a fully stubbed uvicorn.
@@ -41,9 +51,16 @@ def _run_recording_uvicorn(server: ServerConfig | None = None) -> _UvicornRun:
     )
     dummy_app = MagicMock()
     mock_run = MagicMock()
-    mock_config = MagicMock()
+    # Autospecced, so a kwarg uvicorn's Config does not accept fails here
+    # rather than at the first real boot. ``uvicorn.run`` takes ``**kwargs``
+    # and so cannot validate anything, which is why only Config is specced.
+    mock_config = create_autospec(uvicorn.Config)
     mock_server = MagicMock()
     chains: list[Callable[[signal.Signals], None] | None] = []
+    chains_when_run_started: list[list[Callable[[signal.Signals], None] | None]] = []
+    mock_server.return_value.run.side_effect = lambda: chains_when_run_started.append(
+        list(chains)
+    )
     with (
         patch(
             "synthorg.api.server.create_app",
@@ -61,6 +78,7 @@ def _run_recording_uvicorn(server: ServerConfig | None = None) -> _UvicornRun:
         entry=mock_config if mock_config.called else mock_run,
         server=mock_server,
         chains=chains,
+        chains_when_run_started=chains_when_run_started,
     )
 
 
@@ -195,6 +213,17 @@ class TestShutdownChainOwnership:
     def test_single_process_runs_the_server_it_chained_to(self) -> None:
         run = _run_recording_uvicorn(ServerConfig(workers=1, reload=False))
         run.server.return_value.run.assert_called_once_with()
+
+    def test_the_chain_is_installed_before_the_server_runs(self) -> None:
+        # The ordering the class docstring turns on, and the one the recorded
+        # end state cannot show: lifespan startup replaces the signal handlers
+        # from inside ``run()``, so a chain registered after ``run()`` returns
+        # produces the same final recording and forwards nothing.
+        run = _run_recording_uvicorn(ServerConfig(workers=1, reload=False))
+        assert len(run.chains_when_run_started) == 1
+        installed = run.chains_when_run_started[0]
+        assert installed
+        assert installed[-1] is not None
 
     def test_supervised_registers_no_chain(self) -> None:
         # A reloader or worker pool is a supervisor that owns signals and

@@ -67,6 +67,31 @@ class TestProjectRepository:
             _DEADLINE
         )
 
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "2026-08-21T02:00:00+02:00",
+            "2026-08-21",
+            "2026-08-21T00:00:00Z",
+        ],
+    )
+    async def test_every_input_shape_reads_back_as_one_spelling(
+        self, backend: PersistenceBackend, written: str
+    ) -> None:
+        """The stored text itself has to agree, not only the instant.
+
+        ``Project.deadline`` is a STRING, so what a caller compares, renders
+        and sends back is the spelling. SQLite kept whatever text it was
+        handed while Postgres round-tripped it through ``TIMESTAMPTZ`` and
+        formatted the result as UTC, so the same project read back
+        differently depending on the backend. The instant-comparing test
+        above passes either way, which is exactly why it did not catch this.
+        """
+        await backend.projects.save(_project("proj-shape", deadline=written))
+        fetched = await backend.projects.get(sid("proj-shape"))
+        assert fetched is not None
+        assert fetched.deadline == _DEADLINE
+
     async def test_no_deadline_stays_absent(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project("proj-undated"))
         fetched = await backend.projects.get(sid("proj-undated"))

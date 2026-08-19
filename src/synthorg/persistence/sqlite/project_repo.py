@@ -26,7 +26,11 @@ from synthorg.observability.events.persistence.project import (
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._shared import (
+    canonical_deadline,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.sqlite._shared import (
@@ -94,7 +98,7 @@ class SQLiteProjectRepository:
             project.description,
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
-            project.deadline,
+            canonical_deadline(project.deadline),
             project.budget,
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
@@ -200,7 +204,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             project.description,
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
-            project.deadline,
+            canonical_deadline(project.deadline),
             project.budget,
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,

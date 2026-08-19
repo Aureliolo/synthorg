@@ -60,6 +60,7 @@ class TestCharterDraft:
             "brief": "Build an alternative to the incumbent memory tool.",
             "envelope": _envelope(),
             "proposed_project_name": "memory-layer",
+            "assumed_facets": (),
         }
         defaults.update(overrides)
         return CharterDraft(**defaults)  # type: ignore[arg-type]
@@ -85,6 +86,20 @@ class TestCharterDraft:
         with pytest.raises(ValidationError):
             self._make(unexpected="x")
 
+    def test_omitting_assumed_facets_is_refused(self) -> None:
+        # Parsed from LLM output, and the coverage press fires on a non-empty
+        # value, so a default would let a draft that simply left the key out
+        # read as "assumed nothing": the press is skipped and the org's own
+        # proposals reach the operator as though they were the answers given.
+        defaults: dict[str, object] = {
+            "title": "Better memory layer",
+            "brief": "Build an alternative to the incumbent memory tool.",
+            "envelope": _envelope(),
+            "proposed_project_name": "memory-layer",
+        }
+        with pytest.raises(ValidationError):
+            CharterDraft(**defaults)  # type: ignore[arg-type]
+
 
 class TestInterviewDecision:
     """InterviewDecision elicit-XOR-draft invariant."""
@@ -95,6 +110,7 @@ class TestInterviewDecision:
             brief="b",
             envelope=_envelope(),
             proposed_project_name="p",
+            assumed_facets=(),
         )
 
     def test_needs_more_requires_question(self) -> None:

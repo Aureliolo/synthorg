@@ -130,7 +130,13 @@ class CharterDraft(BaseModel):
     project_id: NotBlankStr | None = None
     proposed_project_name: NotBlankStr | None = None
     proposed_project_description: str = ""
-    assumed_facets: tuple[CharterFacet, ...] = ()
+    # Required, with no default, because this model is parsed from LLM output
+    # and the coverage press fires on a non-empty value: a default would let a
+    # draft that simply omitted the key read as "assumed nothing", skip the
+    # press, and put the org's own proposals in front of an operator as though
+    # they were the operator's answers. Omitting it is a parse error the
+    # planner is asked to correct, which is the whole point of the field.
+    assumed_facets: tuple[CharterFacet, ...]
 
     @model_validator(mode="after")
     def _validate_binding(self) -> Self:

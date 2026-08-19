@@ -213,9 +213,8 @@ class TestASuccessorCanActuallyBeDecided:
         # The gate's own rule, applied to this path: a PENDING_REVIEW plan
         # nobody can decide is worse than a plan that says it failed.
         state, backend, _ = await _seed()
-        _parked_store(state).add = AsyncMock(
-            side_effect=QueryError("approval store down")
-        )
+        # Configure the existing autospec'd mock rather than replacing it.
+        _parked_store(state).add.side_effect = QueryError("approval store down")
 
         successor = await replan_initiative(
             state, _plan(PlanStatus.EXECUTING), revision=_REVISION, requested_by="admin"
@@ -246,7 +245,8 @@ class TestASuccessorCanActuallyBeDecided:
                 raise QueryError(down)
             added.append(item)
 
-        store.add = AsyncMock(side_effect=_add_then_fail)
+        # Configure the existing autospec'd mock rather than replacing it.
+        store.add.side_effect = _add_then_fail
 
         successor = await replan_initiative(
             state, asking, revision=_REVISION, requested_by="admin"
