@@ -12,9 +12,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.redteam_review_input import (
+    DeliverableArtifact,
+    RedTeamReviewInput,
+)
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     BlockedReason,
@@ -24,6 +28,7 @@ from synthorg.core.task_enums import (
     TaskStatus,
     TaskType,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_completion_gates import run_completion_gates
 from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
@@ -387,13 +392,14 @@ async def test_at_or_above_stakes_threshold_runs_red_team_gate(
     builder.build.assert_awaited_once()
 
 
-async def test_output_policy_checks_low_stakes_deliverable() -> None:
-    """A blocking output policy reworks a low-stakes completion.
+async def test_output_policy_reports_a_violation_without_blocking() -> None:
+    """A violating artifact is observed and the completion still stands.
 
-    The output-style backstop is stakes-independent, so the deliverable is
-    built and policy-checked even when neither the oracle nor the red-team gate
-    fires for a below-threshold task; a hard-rule violation must still route the
-    task back to rework rather than reaching COMPLETED unchecked.
+    The backstop is stakes-independent, so the deliverable is built and read
+    even when neither the oracle nor the red-team gate fires for a
+    below-threshold task. What it may not do is decide: the session has ended
+    by then, so its only correction would be a whole re-dispatch, and work
+    whose substance passed review must not be destroyed over punctuation.
     """
     from synthorg.engine.output_style import (
         OutputStyleConfig,
@@ -401,35 +407,48 @@ async def test_output_policy_checks_low_stakes_deliverable() -> None:
         current_output_policy_service,
         set_output_policy_service,
     )
+    from synthorg.observability.events.output_style import (
+        OUTPUT_STYLE_BACKSTOP_OBSERVED,
+    )
 
     em_dash = chr(0x2014)
     builder = mock_of[DeliverableReviewInputBuilder](
-        build=AsyncMock(return_value=_deliverable(f"ship {em_dash} now")),
+        build=AsyncMock(
+            return_value=_deliverable(artifacts=(("out.md", f"ship {em_dash} now"),))
+        ),
     )
     previous = current_output_policy_service()
     set_output_policy_service(OutputStylePolicyService.from_config(OutputStyleConfig()))
     try:
-        target, _reason, _event, approved, _blocked = await run_completion_gates(
-            red_team_gate=None,
-            vision_gate=None,
-            deliverable_input_builder=builder,
-            on_missing_deliverable="block",
-            task=_task(stakes=Stakes.NORMAL),
-            target=TaskStatus.COMPLETED,
-            transition_reason="approved",
-            event=APPROVAL_GATE_REVIEW_COMPLETED,
-            approved=True,
-            vision_input=None,
-            red_team_min_stakes=Stakes.HIGH,
-        )
+        with capture_logs() as caplog:
+            target, _reason, _event, approved, _blocked = await run_completion_gates(
+                red_team_gate=None,
+                vision_gate=None,
+                deliverable_input_builder=builder,
+                on_missing_deliverable="block",
+                task=_task(stakes=Stakes.NORMAL),
+                target=TaskStatus.COMPLETED,
+                transition_reason="approved",
+                event=APPROVAL_GATE_REVIEW_COMPLETED,
+                approved=True,
+                vision_input=None,
+                red_team_min_stakes=Stakes.HIGH,
+            )
     finally:
         set_output_policy_service(previous)
 
-    assert (target, approved) == (TaskStatus.IN_PROGRESS, False)
+    assert (target, approved) == (TaskStatus.COMPLETED, True)
     builder.build.assert_awaited_once()
+    observed = [r for r in caplog if r.get("event") == OUTPUT_STYLE_BACKSTOP_OBSERVED]
+    assert observed, "the violation must still be reported, just not enforced"
+    assert observed[-1]["paths"] == ["out.md"]
 
 
-def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
+def _deliverable(
+    content: str = "the deliverable",
+    *,
+    artifacts: tuple[tuple[str, str], ...] = (),
+) -> RedTeamReviewInput:
     return RedTeamReviewInput(
         task_id="task-1",
         execution_id="exec-1",
@@ -440,6 +459,10 @@ def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
         autonomy=AutonomyLevel.SUPERVISED,
         stakes=Stakes.NORMAL,
         estimated_complexity=Complexity.MEDIUM,
+        produced_artifacts=tuple(
+            DeliverableArtifact(path=NotBlankStr(path), content=body)
+            for path, body in artifacts
+        ),
     )
 
 

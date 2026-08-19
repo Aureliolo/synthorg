@@ -378,7 +378,7 @@ beside the timestamp where it informs instead of repeating:
 
 The same shape covers a status that hides a question: a plan waiting on an
 operator decision renders "Awaiting your decision" beside its raw status,
-because `executing` is true and tells the operator nothing about what the
+because `executing` is true and leaves the operator no wiser about what the
 initiative is actually waiting for.
 
 ---

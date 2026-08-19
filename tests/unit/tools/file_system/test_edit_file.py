@@ -410,26 +410,45 @@ class TestEditFileExecution:
         that marker (so ``rule_id`` and ``match_text`` distinguish distinct
         violations), letting the guard's before/after multiset delta be
         exercised without a live policy pack.
-        """
-        from types import SimpleNamespace
 
+        Real verdict objects rather than an attribute bag: the guard reports
+        through a verdict carrying only the findings the write introduced, so
+        it needs the model's own ``model_copy`` and the ``summary`` derived
+        from the surviving findings.
+        """
+        from synthorg.core.types import NotBlankStr
         from synthorg.engine import output_style
+        from synthorg.engine.output_style.models import (
+            EnforcementMode,
+            OutputChannel,
+            OutputPolicyFinding,
+            OutputPolicyVerdict,
+            RuleSeverity,
+            RuleType,
+            SegmentKind,
+        )
 
         markers = ("VIOL_A", "VIOL_B")
 
-        def fake_evaluate(text: str, ctx: object) -> object:
+        def fake_evaluate(text: str, ctx: object) -> OutputPolicyVerdict:
             del ctx
-            findings = [
-                SimpleNamespace(
-                    blocks=True,
-                    rule_id=marker,
+            findings = tuple(
+                OutputPolicyFinding(
+                    rule_id=NotBlankStr(marker),
+                    rule_type=RuleType.LITERAL_BAN,
+                    severity=RuleSeverity.CRITICAL,
+                    mode=EnforcementMode.REJECT_REWORK,
+                    message=NotBlankStr(f"{marker} is banned"),
                     match_text=marker,
-                    message=f"{marker} is banned",
+                    context=marker,
+                    segment_kind=SegmentKind.CODE,
                 )
                 for marker in markers
                 for _ in range(text.count(marker))
-            ]
-            return SimpleNamespace(blocked=bool(findings), findings=tuple(findings))
+            )
+            return OutputPolicyVerdict(
+                channel=OutputChannel.CODE_FILE, findings=findings
+            )
 
         monkeypatch.setattr(output_style, "evaluate_output_policy", fake_evaluate)
 

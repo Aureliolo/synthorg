@@ -241,7 +241,7 @@ An initiative in that state needs a person, and the loop's own rule for
 reaching one is by exception: a question needing an answer. So
 `engine/initiative/stall_escalation.py` raises exactly one `initiative:stalled`
 approval per plan, sends one notification on the edge that opens it, and leaves
-the plan where it is, still replannable by hand while the operator thinks.
+the plan where it is, still open to a manual replan while the operator thinks.
 Later passes find the decision open and say nothing, because an alert repeated
 every cadence is an alert nobody reads.
 
@@ -305,7 +305,7 @@ lie: a boot with no coordinator would get no integrate stage either. The stall
 escalation is its own subsystem for the sharper version of that reason: it is
 needed exactly when the replan trigger is absent or refusing, so folding it
 into the trigger's spec would leave a boot with one reading as covered for the
-other.  Their
+other. Their
 liveness is read one probe per collaborator for the same reason: a shared probe
 let a tail whose retro capture never resolved (memory blocked because no
 embedder was chosen) read as converged, and the reconciler never revisits that.

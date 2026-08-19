@@ -101,7 +101,7 @@ the output escapes:
 |----------|------|---------|
 | Inter-agent message | `communication/messenger.py` + `communication/messages/service.py`, via the shared `communication/_output_guard.py` `guard_message_output` (which applies any auto-rewrite back onto the message) | `message` |
 | Outbound chat message | `tools/chat/chat_tools.py` `ChatMessagesTool._check_preconditions` (the `send` action only) | `message` |
-| Outbound email | `tools/communication/email_sender.py` `_guard_email_text`, over the subject and the body | `message` |
+| Outbound email | `tools/communication/email_sender.py` `_guard_email_text` guarding both the subject and the body | `message` |
 | Commit message | `tools/git_tools.py` `GitCommitTool.execute` | `commit_message` |
 | Code file write | `tools/file_system/write_file.py` + `edit_file.py`, both through the shared `_output_policy_guard.py` `guard_written_content` over the whole resulting content | `code_file` |
 | Living document | `tools/docs/write_living_doc.py`, via `tools/docs/_doc_output_guard.py` `guard_doc_output` over the title and every block | `deliverable` (prose fields) / `code_file` (a code body, a metric value, a URL) |
@@ -127,7 +127,7 @@ substituting different text after that approval would send something nobody
 agreed to; the agent is handed the correction and sends it itself. A **living
 document's** code body, metric value and URL are literals, where a punctuation
 swap corrupts the value rather than tidying it, which is the same ruling the
-segmenter already makes for a fenced block inside a PR body.
+`segmenter` already applies to a fenced block inside a PR body.
 
 **Only a write counts, and only what the write introduces.** Both file tools
 subtract the blocking findings the file already carried, matched by rule and
@@ -157,8 +157,8 @@ structural rather than a docstring.
 
 It exists because one arm produces no in-session signal at all. The bundled
 OpenHands harness writes files with the SDK's own editor tools inside the
-sandbox and commits through a shell, so no boundary in this process sees them,
-and the post-session read is the only observation available there. Deleting the
+sandbox and commits through a shell, out of reach of every boundary in this
+process, so the post-session read is the only observation available there. Deleting the
 gate would leave that arm silent; making it block would reintroduce the failure
 above. Shadow is the honest answer, and it is stated here rather than implying
 the hard ban is enforced everywhere.
@@ -170,7 +170,7 @@ declares a kind, an `ENFORCING` one must still call a guard, and the single
 ### Why `emdash_literal` sets `scan_code: true`
 
 Because the artifact is the enforced path. `OutputChannel.CODE_FILE` is a code
-channel, and the segmenter returns a code channel as one `CODE` span, so a rule
+channel, and the `segmenter` returns a code channel as one `CODE` span, so a rule
 with `scan_code: false` matches nothing at the file-write boundary: the setting
 is what makes the hard ban enforceable on the thing the organisation actually
 ships. Three separate mechanisms keep it from over-reaching: segmentation picks
