@@ -34,14 +34,17 @@
 #      their side effects, not a value, so there is no command-substitution
 #      contamination concern.
 #   3. A KILLED attempt leaves nothing that defeats the next one. Idempotent
-#      is not enough once RETRY_CMD_ATTEMPT_TIMEOUT is set: the kill only
-#      reaches what this process may signal, so a command that escalates to
-#      root survives it holding whatever it held. `playwright install
-#      --with-deps` sudo's to apt, and a timed-out attempt left apt-get alive
-#      on /var/lib/apt/lists/lock, so both remaining attempts died in under a
-#      second on "Could not get lock" and the ladder could not succeed. Wrap
-#      such a command with the deadline as its only bound, or split the part
-#      that escalates out of the retried unit.
+#      is not enough once a kill is in play, and what decides it is whether
+#      the escalating command is the one this helper was handed or one
+#      nested inside it. Handed `sudo apt-get install` directly, the kill
+#      lands: a CI run measured three attempts, each re-reading the package
+#      lists with no lock to wait on and the third completing the install.
+#      Nested, it does not: `playwright install --with-deps` sudo'd to apt
+#      from under node, the kill reached node, and apt-get outlived it
+#      holding /var/lib/apt/lists/lock, so both remaining attempts died in
+#      under a second on "Could not get lock". Give a nested escalation one
+#      attempt with the deadline as its bound, or split the escalating half
+#      out of the retried unit.
 #
 # Posture: 5 attempts, 15s base doubling to a 120s cap
 # (15 + 30 + 60 + 120 (capped) = ~3m45s of wait before the final attempt).
@@ -62,12 +65,22 @@
 # mid-retry and the failure surfaces as an opaque "cancelled" job instead of
 # the loud message below, with the last attempts unreachable dead
 # configuration. RETRY_CMD_DEADLINE (seconds; 0 = off, the default) bounds
-# the whole ladder in wall-clock: every attempt is clamped to the time left,
-# and the loop stops rather than sleeping into a backoff it cannot afford.
-# Clamping is what lets a caller keep a generous per-attempt timeout on a
-# short job, and it bounds a caller that sets no attempt timeout at all --
-# with a deadline set, a hang is killed by whatever remains of it. Set it
+# the whole ladder in wall-clock: the loop stops rather than sleeping into a
+# backoff, or starting an attempt, that the remaining budget cannot afford.
+# It also bounds a caller that sets no attempt timeout at all -- there the
+# remaining budget IS the attempt's bound, which is what kills a hang. Set it
 # comfortably below the job budget so teardown still fits.
+#
+# What a deadline must NOT do is shorten an attempt the caller sized. A
+# per-attempt timeout states how long one attempt legitimately needs, so an
+# attempt handed less is doing the same work with no chance of finishing it,
+# and the 124 it dies with is then reported as the wrapped command's own
+# verdict. A CI run died exactly there: the third apt attempt downloaded,
+# unpacked and configured every package, and the remaining-budget clamp
+# killed it a second after the last `Setting up` line, with the ladder
+# blaming the mirror. So a deadline decides WHETHER an attempt starts, never
+# how long it gets, and a deadline too small for one attempt is a
+# configuration error refused up front rather than a silent truncation.
 #
 # Usage:
 #   retry_cmd.sh "label for log" <command> [args...]
@@ -128,6 +141,13 @@ if ! [[ "$DEADLINE" =~ ^[0-9]+$ ]]; then
   echo "::error::retry_cmd.sh: RETRY_CMD_DEADLINE must be a non-negative integer (got '$DEADLINE')" >&2
   exit 2
 fi
+# A deadline that cannot afford one whole attempt makes the first attempt a
+# truncated one, which is the failure this refuses: it would die doing work
+# it was never given time to finish and report its own 124 as the command's.
+if [ "$DEADLINE" -gt 0 ] && [ "$ATTEMPT_TIMEOUT" -gt "$DEADLINE" ]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_DEADLINE (${DEADLINE}s) is smaller than RETRY_CMD_ATTEMPT_TIMEOUT (${ATTEMPT_TIMEOUT}s), leaving no room for a single whole attempt" >&2
+  exit 2
+fi
 
 # Resolve the per-attempt timeout wrapper once, before the loop. macOS ships
 # coreutils' `timeout` as `gtimeout` (or not at all); when a timeout was asked
@@ -148,16 +168,14 @@ fi
 attempt=0
 while :; do
   attempt=$((attempt + 1))
-  # Clamp this attempt to whatever the deadline leaves. The loop only starts
-  # an attempt when the tail check below proved time remained, so this stays
-  # positive. A caller with a deadline but no attempt timeout gets the
-  # remaining budget as its bound, which is what stops a hang there too.
+  # A caller with a deadline but no attempt timeout gets the remaining budget
+  # as its bound, which is what stops a hang there too. A caller that sized
+  # its attempt keeps that size: the tail check below refuses to start one
+  # the deadline cannot afford, so the budget is never spent on an attempt
+  # that could not have finished.
   this_timeout="$ATTEMPT_TIMEOUT"
-  if [ "$DEADLINE" -gt 0 ]; then
-    remaining=$((DEADLINE - SECONDS))
-    if [ "$this_timeout" -eq 0 ] || [ "$this_timeout" -gt "$remaining" ]; then
-      this_timeout="$remaining"
-    fi
+  if [ "$DEADLINE" -gt 0 ] && [ "$this_timeout" -eq 0 ]; then
+    this_timeout=$((DEADLINE - SECONDS))
   fi
   # `|| rc=$?` keeps `set -e`-style aborts away and captures the real exit
   # code, sidestepping the `if cmd; then` idiom that resets $? to 0.
@@ -189,10 +207,12 @@ while :; do
     echo "::error::${LABEL} failed after ${attempt} attempts (last exit ${rc})" >&2
     exit "$rc"
   fi
-  # Stop once the backoff would run past the deadline. Sleeping into it would
-  # hand the job reaper a loop mid-retry, replacing this loud exit with the
-  # opaque cancellation the deadline exists to prevent.
-  if [ "$DEADLINE" -gt 0 ] && [ $((SECONDS + DELAY)) -ge "$DEADLINE" ]; then
+  # Stop once the backoff PLUS a whole attempt would run past the deadline.
+  # Sleeping into it would hand the job reaper a loop mid-retry, replacing
+  # this loud exit with the opaque cancellation the deadline exists to
+  # prevent; starting an attempt shorter than the caller sized would replace
+  # it with a 124 from work that was going fine.
+  if [ "$DEADLINE" -gt 0 ] && [ $((SECONDS + DELAY + ATTEMPT_TIMEOUT)) -ge "$DEADLINE" ]; then
     echo "::error::${LABEL} exhausted its ${DEADLINE}s deadline after ${attempt} attempts (last exit ${rc})" >&2
     exit "$rc"
   fi

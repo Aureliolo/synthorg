@@ -37,18 +37,25 @@ hardening they carry cannot silently regress:
    bound, so this gate requires every call site to set it, via step
    ``env:`` or an inline ``VAR=n`` prefix.
 
-   The bound has a consequence: every attempt can now be KILLED, and the
-   kill reaches only what the runner user may signal. A command that
-   escalates to root leaves that child alive holding whatever it held, so
-   the next attempt fails on the wreckage rather than on the fault that
-   timed the first one out. ``playwright install --with-deps`` sudo'd to
-   apt; a timed-out attempt left ``apt-get`` on
-   ``/var/lib/apt/lists/lock``; both remaining attempts died in under a
-   second on "Could not get lock", and the ladder reported that instead of
-   the stalled mirror. A retried unit must therefore be one whose kill
-   leaves nothing behind, so a multi-attempt call site may not wrap an
-   escalating command: give it one attempt, or split the escalating half
-   out. Escalation is recognised from the command text (``sudo``, and
+   The bound has a consequence: every attempt can now be KILLED, and a
+   retried unit must be one whose kill leaves nothing that defeats the next
+   attempt. Whether an escalating command satisfies that is decided by where
+   the escalation sits, and both halves were measured. Handed ``sudo
+   apt-get install`` DIRECTLY, the kill lands: a run took three attempts,
+   each re-reading the package lists with no lock to wait on and each
+   re-fetching the archive the previous one had not finished, and the third
+   completed the install. NESTED inside another program it does not:
+   ``playwright install --with-deps`` sudo'd to apt from under node, the
+   kill reached node, ``apt-get`` outlived it on
+   ``/var/lib/apt/lists/lock``, and both remaining attempts died in under a
+   second on "Could not get lock" while the ladder reported that instead of
+   the stalled mirror.
+
+   So the rule is about nesting, not about the word: a multi-attempt call
+   site may hand the helper an escalating command as the command itself,
+   and may not bury one inside a wrapper the kill would stop short at.
+   Give a nested escalation one attempt, or split the escalating half out.
+   Escalation is recognised from the command text (``sudo``, and
    playwright's ``--with-deps``, whose sudo is internal and unwritten),
    which names the paths this tree uses rather than deciding the general
    question.
@@ -240,7 +247,9 @@ Usage::
 """
 
 import argparse
+import itertools
 import re
+import shlex
 import sys
 from collections.abc import Iterable, Sequence
 from functools import cache
@@ -1609,21 +1618,24 @@ def _helper_segment(line: str) -> str:
 
 
 def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
-    """Return violations for a multi-attempt ladder over a sudo command.
+    """Return violations for a multi-attempt ladder over a NESTED escalation.
 
     Every call site is deadline-bounded by the rule above, so every attempt
-    can be killed, and the kill reaches only what the runner user may signal.
-    A command that escalates to root leaves that child alive holding whatever
-    it held: `playwright install --with-deps` sudo'd to apt, a timed-out
-    attempt left apt-get on /var/lib/apt/lists/lock, and both remaining
-    attempts died in under a second on "Could not get lock". The ladder could
-    not succeed once its first attempt was killed, and it reported the
-    wreckage instead of the mirror stall that caused it.
+    can be killed, and a retried unit must be one whose kill leaves nothing
+    that defeats the next attempt. Where the escalation sits decides that,
+    and both halves were measured. `sudo apt-get install` handed to the
+    helper directly dies with its attempt: a run took three, each re-reading
+    the package lists with no lock to wait on, and the third completed the
+    install. `playwright install --with-deps` sudo'd to apt from under node,
+    the kill reached node, apt-get outlived it holding
+    /var/lib/apt/lists/lock, and both remaining attempts died in under a
+    second on "Could not get lock" -- the ladder reporting the wreckage
+    rather than the mirror stall that caused it.
 
-    So a retried unit must be one whose kill leaves nothing behind. An
-    escalating command gets one attempt (the deadline still bounds it, and
-    the single failure names the real fault), or the escalating half is split
-    out of the retried unit.
+    So the offending shape is an escalation the kill would stop short of: one
+    buried inside a wrapper rather than being the retried command itself. It
+    gets one attempt (the deadline still bounds it, and the single failure
+    names the real fault), or the escalating half is split out.
 
     Args:
         context: Human-readable location (job or composite-action step).
@@ -1638,17 +1650,51 @@ def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
     from_env = _attempts_from_env(step)
     return [
         (
-            f"{context}: `{line}` retries a command that escalates privilege."
-            " The per-attempt kill cannot signal a root child, so it survives"
-            " holding what it held and every later attempt fails on that"
-            f" instead of the original fault. Set {_ATTEMPTS_VAR} to 1, or"
-            " split the escalating half out of the retried unit."
+            f"{context}: `{line}` retries a command that escalates privilege"
+            " from inside a wrapper. The per-attempt kill stops at the"
+            " wrapper, so the root child survives holding what it held and"
+            " every later attempt fails on that instead of the original"
+            f" fault. Set {_ATTEMPTS_VAR} to 1, or hand the escalating"
+            " command to the helper directly."
         )
         for line in _logical_lines(run)
         if _RETRY_HELPER in line
-        and any(marker in line for marker in _ESCALATION_MARKERS)
+        and _escalation_is_nested(line)
         and _attempts_for_line(line, from_env) > 1
     ]
+
+
+def _escalation_is_nested(line: str) -> bool:
+    """Return True when *line* buries an escalation inside a wrapper.
+
+    The retried command is everything after the helper and its label, so its
+    head word is what a per-attempt kill is aimed at. An escalating head is
+    reached by the kill; an escalation anywhere further along is behind a
+    program the kill stops at instead.
+
+    Args:
+        line: One logical line naming the retry helper.
+
+    Returns:
+        True when the line escalates but its retried command does not lead
+        with the escalating word. Fail-closed on a line that cannot be
+        tokenised: an unparseable command reports for a human to look at
+        rather than passing unread.
+    """
+    if not any(marker in line for marker in _ESCALATION_MARKERS):
+        return False
+    try:
+        tokens = shlex.split(_helper_segment(line))
+    except ValueError:
+        return True
+    after_helper = list(
+        itertools.dropwhile(lambda token: _RETRY_HELPER not in token, tokens)
+    )
+    # The helper itself, then its mandatory label, then the command.
+    command = after_helper[2:]
+    if not command:
+        return True
+    return not any(marker.strip() == command[0] for marker in _ESCALATION_MARKERS)
 
 
 def _logical_lines(run: str) -> list[str]:
@@ -1677,6 +1723,15 @@ def _logical_lines(run: str) -> list[str]:
     pending = ""
     for raw in run.splitlines():
         stripped = raw.strip()
+        # A whole-line comment is prose, and its apostrophes are not shell
+        # quoting. Counting them made one `runner's` in a comment glue every
+        # line below it into a single command whose head word was `#`, which
+        # both hid the two real invocations under it and reported that `#` as
+        # a wrapper around their sudo. Only skipped while nothing is pending:
+        # a comment cannot appear mid-continuation, so a `#` there is an
+        # argument.
+        if not pending and stripped.startswith("#"):
+            continue
         pending = f"{pending} {stripped}".strip() if pending else stripped
         if pending.endswith("\\"):
             pending = pending[:-1].strip()

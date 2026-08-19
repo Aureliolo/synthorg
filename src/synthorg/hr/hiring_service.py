@@ -688,7 +688,9 @@ class HiringService:
             identity = build_agent_identity(
                 candidate,
                 request=request,
-                model=resolve_hire_model(request),
+                model=await resolve_hire_model(
+                    request, catalogue=self._provider_catalogue
+                ),
                 status=(
                     AgentStatus.ONBOARDING
                     if self._onboarding_service is not None

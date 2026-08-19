@@ -22,7 +22,12 @@ from uuid import UUID
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
-from synthorg.api.controllers._plan_resume_writes import mark_task, sync_plan_status
+from synthorg.api.controllers._plan_resume_writes import (
+    fail_dispatch,
+    mark_task,
+    record_dispatch_failure,
+    sync_plan_status,
+)
 from synthorg.api.lifecycle_helpers.plan_decisions import record_resolved_decisions
 from synthorg.api.lifecycle_helpers.plan_questions import (
     PLAN_ID_METADATA_KEY,
@@ -52,11 +57,7 @@ from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import agent_registry_of
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-    safe_error_description,
-)
+from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PLAN_CHILDREN_FILED,
@@ -235,7 +236,7 @@ async def _resolve_dispatch_inputs(
         why = "durable plan not found"
     else:
         return coordinator, task, plan
-    await _fail_dispatch(
+    await fail_dispatch(
         app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
     )
     return None
@@ -396,7 +397,7 @@ async def _prepare_dispatch(
         # so a rollup event fired mid-dispatch would otherwise observe a
         # project still PLANNING with tasks already running.
         if not await _link_initiative(app_state, plan):
-            await _fail_dispatch(
+            await fail_dispatch(
                 app_state,
                 approval_id,
                 task_id=task_id,
@@ -423,7 +424,7 @@ async def _prepare_dispatch(
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
         reraise_critical(exc)
-        await _record_dispatch_failure(
+        await record_dispatch_failure(
             app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
         )
         return None
@@ -523,7 +524,7 @@ async def _build_approved_plan(
             )
             raise
         await asyncio.shield(
-            _fail_dispatch(
+            fail_dispatch(
                 app_state,
                 approval_id,
                 task_id=task_id,
@@ -536,7 +537,7 @@ async def _build_approved_plan(
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
         reraise_critical(exc)
-        await _record_dispatch_failure(
+        await record_dispatch_failure(
             app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
         )
     finally:
@@ -589,7 +590,7 @@ async def _hand_failure_to_rollup(
             why=why,
             note="no rollup service; failing the plan here so it cannot hang",
         )
-        await _fail_dispatch(
+        await fail_dispatch(
             app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
         )
         return
@@ -601,38 +602,6 @@ async def _hand_failure_to_rollup(
         note="wave failure handed to the rollup, which owns the plan's verdict",
     )
     await rollup.recompute(UUID(plan_id))
-
-
-async def _record_dispatch_failure(
-    app_state: AppState,
-    exc: Exception,
-    *,
-    approval_id: str,
-    task_id: str | None,
-    plan_id: str | None,
-) -> None:
-    """Fail the task and the plan for a dispatch that could not proceed.
-
-    Shared by both halves of the dispatch, which fail the same way and must
-    say so identically whether the request was still open or not.
-    """
-    log_exception_redacted(
-        logger,
-        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-        exc,
-        approval_id=approval_id,
-        note="approved plan could not be resumed; failing task and plan",
-    )
-    await mark_task(
-        app_state,
-        task_id,
-        _DISPATCH_ACTOR,
-        target=TaskStatus.FAILED,
-        reason="approved plan could not be resumed",
-    )
-    await _fail_plan(
-        app_state, plan_id, f"dispatch failed: {safe_error_description(exc)}"
-    )
 
 
 async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
@@ -686,55 +655,6 @@ def _coordination_failure_detail(result: CoordinationResult) -> str:
         for phase in failed
     ]
     return f"coordination failed ({'; '.join(parts)})"
-
-
-async def _fail_dispatch(
-    app_state: AppState,
-    approval_id: str,
-    *,
-    task_id: str | None,
-    plan_id: str | None,
-    why: str,
-) -> None:
-    """Log an approved-plan dispatch precondition failure; fail task and plan.
-
-    The approval is already persisted APPROVED, so a swallowed failure would
-    leave the parent silently stuck in its pre-approval status with no
-    board-visible signal. Move it to FAILED so the stuck plan surfaces and
-    stays re-runnable (FAILED -> ASSIGNED is valid), and fail the plan too so
-    it does not sit in a dispatch status nothing will ever advance.
-    """
-    logger.error(
-        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-        approval_id=approval_id,
-        note="approved plan cannot dispatch",
-        why=why,
-    )
-    await mark_task(
-        app_state,
-        task_id,
-        _DISPATCH_ACTOR,
-        target=TaskStatus.FAILED,
-        reason=f"approved plan could not be resumed: {why}",
-    )
-    await _fail_plan(app_state, plan_id, f"dispatch failed: {why}")
-
-
-async def _fail_plan(app_state: AppState, plan_id: str | None, why: str) -> None:
-    """Drive a plan that cannot dispatch out of its dispatch status.
-
-    Without this the plan rests in APPROVED or EXECUTING with a failed parent
-    and no child tasks: a state that can be entered, has no exit, and that
-    nothing watches. FAILED is terminal, carries the reason on the plan for
-    Plan Review to show, and is reachable from both dispatch statuses.
-    """
-    await sync_plan_status(
-        app_state,
-        plan_id,
-        PlanStatus.FAILED,
-        requested_by=_DISPATCH_ACTOR,
-        failure_reason=NotBlankStr(why),
-    )
 
 
 async def _cancel_task(

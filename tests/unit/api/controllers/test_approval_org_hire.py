@@ -224,3 +224,32 @@ class TestOrgHireResume:
         # The decision itself stands, so the reconciler can finish the hire
         # once the operator configures a model. It is not silently re-openable.
         assert _status(hiring, submitted) is HiringRequestStatus.APPROVED
+
+    async def test_a_retry_after_a_failed_instantiation_settles(self) -> None:
+        """A landed decision is not re-decided, whoever presses the button.
+
+        The failure above rolls the approval item back to PENDING, which is
+        what makes the operator's retry reachable, but the request is already
+        APPROVED and `approve_request` refuses one that is not awaiting a
+        decision. Reading APPROVED as unsettled therefore turned every retry
+        into a 500 until the staffing reconciler happened to finish the hire.
+        The decision landing and the agent existing are separately owned, and
+        this is the first of the two.
+        """
+        state, hiring, registry, submitted, approval_id = await _seed(
+            catalogue_models=None
+        )
+        with pytest.raises(HiringError):
+            await try_org_hire_resume(
+                state, approval_id, approved=True, decided_by=_DECIDER
+            )
+
+        handled = await try_org_hire_resume(
+            state, approval_id, approved=True, decided_by=_DECIDER
+        )
+
+        assert handled is True
+        # Settling the approval must not invent the agent the hire still owes:
+        # the reconciler instantiates it once a model is configured.
+        assert await registry.list_active() == ()
+        assert _status(hiring, submitted) is HiringRequestStatus.APPROVED

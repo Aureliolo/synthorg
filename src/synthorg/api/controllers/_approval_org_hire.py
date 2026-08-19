@@ -30,9 +30,20 @@ from synthorg.security.autonomy.enums import ActionType
 logger = get_logger(__name__)
 
 #: Statuses a decision has already been applied to, so re-applying one is
-#: not a retry but a refusal.
+#: not a retry but a refusal. APPROVED belongs here even though no agent
+#: exists yet: `approve_request` persists it before instantiation runs, so an
+#: instantiation that fails leaves the decision landed and the hire queued for
+#: the staffing reconciler. Without it, the decision rollback that failure
+#: triggers put the approval back to PENDING while the request stayed
+#: APPROVED, and every operator retry then fell through to `approve_request`,
+#: which refuses a request that is not awaiting a decision: a 500 on each
+#: press until the reconciler happened to finish the hire.
 _SETTLED_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
-    {HiringRequestStatus.INSTANTIATED, HiringRequestStatus.REJECTED}
+    {
+        HiringRequestStatus.APPROVED,
+        HiringRequestStatus.INSTANTIATED,
+        HiringRequestStatus.REJECTED,
+    }
 )
 
 

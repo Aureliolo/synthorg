@@ -55,21 +55,11 @@ runs:
         # the package we need came from PGDG. The base archive indices are
         # already present from image provisioning, so scoping the refresh to
         # pgdg.list is sufficient to resolve postgresql-client-18 and its deps.
-        # Both apt calls reach the PGDG mirror, and both escalate to root, so
-        # both get ONE attempt under a wall-clock deadline rather than a
-        # ladder. The per-attempt kill runs as the runner user and cannot
-        # signal a root child, so a killed apt-get survives holding
-        # /var/lib/apt/lists/lock and every later attempt fails on that
-        # instead of on the fault that timed the first one out. The deadline
-        # still bounds each call, so a mirror that accepts the connection and
-        # then stalls is killed and reported here with the real cause, rather
-        # than hanging until the job timeout reaps it as an opaque
-        # cancellation. Enforced by check_ci_workflow_resilience.py.
-        #
-        # The recovery that matters here never needed a second attempt
-        # anyway. A mirror caught mid-sync serves a Release naming one
-        # Packages size and a Packages of another, which apt reports as "File
-        # has unexpected size (A != B). Mirror sync in progress?", and
+        # The refresh gets ONE attempt, and not because it escalates: the
+        # recovery that matters here has nothing for a second attempt to do.
+        # A mirror caught mid-sync serves a Release naming one Packages size
+        # and a Packages of another, which apt reports as "File has
+        # unexpected size (A != B). Mirror sync in progress?", and
         # List-Cleanup=0 keeps that pair on disk so a retry re-reads the same
         # inconsistent metadata: the ladder was inert against the one failure
         # mode it hit in practice, five attempts over four minutes reporting
@@ -79,7 +69,10 @@ runs:
         # Packages are re-fetched together while the base archive indices the
         # image provisioned stay, which is why List-Cleanup=0 has to stay too:
         # the refresh is scoped to pgdg.list, so apt's own cleanup would read
-        # every other index as obsolete and delete it.
+        # every other index as obsolete and delete it. The deadline still
+        # bounds the call, so a mirror that accepts the connection and then
+        # stalls is killed and reported here with the real cause rather than
+        # hanging until the job timeout reaps it as an opaque cancellation.
         RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \
           .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
           bash -c '
@@ -94,7 +87,14 @@ runs:
               -o Dir::Etc::sourceparts="-" \
               -o APT::Get::List-Cleanup="0"
           '
-        RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \
+        # The install is a plain archive fetch whose only observed fault is a
+        # mirror that answers and then trickles, which a fresh attempt does
+        # clear. It escalates, but the escalating command IS what the helper
+        # is handed, so a killed attempt takes apt-get with it and the next
+        # one re-reads the package lists with no lock to wait on. Two
+        # attempts of 120s plus 15s of backoff is 255s, just inside the
+        # deadline, so the ladder can exhaust and report its own verdict.
+        RETRY_CMD_ATTEMPTS=2 RETRY_CMD_ATTEMPT_TIMEOUT=120 RETRY_CMD_DEADLINE=270 \
           .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
           sudo apt-get install -y \
             -o Acquire::http::Timeout=15 \

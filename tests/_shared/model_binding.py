@@ -161,7 +161,22 @@ def provider_catalogue(
     Returns:
         A ``ProviderCatalogue`` double.
     """
-    configs = {
+    return _catalogue_of(_configs(models, provider))
+
+
+def _configs(models: Sequence[str], provider: str) -> Mapping[str, ProviderConfig]:
+    """Return the configured-provider mapping a catalogue serves.
+
+    Args:
+        models: Model ids the provider offers, cheapest first.
+        provider: The connection name they sit under.
+
+    Returns:
+        One provider carrying *models*. An empty *models* is a configured
+        connection offering nothing, which the proposal says something
+        different about from having no connection at all.
+    """
+    return {
         provider: ProviderConfig(
             # API-key auth is the default and requires a catalog entry to
             # resolve its credentials from; the proposal never dispatches, but
@@ -178,7 +193,56 @@ def provider_catalogue(
             ),
         )
     }
-    return _catalogue_of(configs)
+
+
+class MutableProviderCatalogue:
+    """A catalogue whose contents change between two reads.
+
+    The proposal reads it when the approval is raised and the instantiation
+    reads it again when the hire is finished, and a human decision sits
+    between the two. A test about that interval needs a catalogue that can
+    differ across it, which a fixed double cannot express.
+    """
+
+    def __init__(
+        self,
+        models: Sequence[str] = (TEST_MODEL_ID,),
+        *,
+        provider: str = TEST_PROVIDER,
+    ) -> None:
+        """Serve one provider carrying *models*, cheapest first.
+
+        Args:
+            models: Model ids the provider offers.
+            provider: The connection name they sit under.
+        """
+        self._provider = provider
+        self._configs = _configs(models, provider)
+
+    def serve(self, models: Sequence[str]) -> None:
+        """Replace the models the connection offers, from the next read on.
+
+        Args:
+            models: Model ids the provider now offers.
+        """
+        self._configs = _configs(models, self._provider)
+
+    def delete_connection(self) -> None:
+        """Drop the connection itself, as deleting it in the dashboard does.
+
+        Kept apart from serving no models, which is a connection that still
+        exists: the two are different operator actions and the hire refuses
+        them for different reasons.
+        """
+        self._configs = {}
+
+    async def list_providers(self) -> Mapping[str, ProviderConfig]:
+        """Return every configured provider, keyed by connection name.
+
+        Returns:
+            Whatever was last served.
+        """
+        return self._configs
 
 
 def no_provider_catalogue() -> ProviderCatalogue:

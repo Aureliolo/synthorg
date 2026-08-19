@@ -8,6 +8,7 @@ keeps the decision flow and the durable request state, and this module keeps
 the part that touches the roster.
 """
 
+from synthorg.config.model_metadata import is_tool_capable
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
@@ -15,6 +16,7 @@ from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     HiringError,
 )
+from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
@@ -30,8 +32,12 @@ from synthorg.settings.model_ref import parse_model_ref
 logger = get_logger(__name__)
 
 
-def resolve_hire_model(request: HiringRequest) -> ModelConfig:
-    """Read the pair THIS hire was approved on, refusing an absent one.
+async def resolve_hire_model(
+    request: HiringRequest,
+    *,
+    catalogue: ProviderCatalogue | None,
+) -> ModelConfig:
+    """Read the pair THIS hire was approved on, refusing one that is not real.
 
     The pair travels with the request rather than being read from a standing
     org-wide setting, because it is part of what the operator approved: the
@@ -44,12 +50,27 @@ def resolve_hire_model(request: HiringRequest) -> ModelConfig:
     against a placeholder provider joins the roster looking staffed and fails
     every dispatch it is ever given.
 
+    A pair recorded at proposal time and a pair that still exists are
+    different claims, and only the second is the one that matters here.
+    Approval is a human step, so an arbitrary interval separates the two, and
+    the catalogue is live: the operator can delete the connection, drop the
+    model, or have runtime tool-call failures downgrade it out of eligibility.
+    Every one of those produces the same roster entry as the placeholder this
+    already refuses, so this asks the catalogue the same question the
+    proposal asked and refuses the same way. With no catalogue wired there is
+    nothing to ask, and the absent-binding refusal above already covers that
+    pipeline: it can propose nothing, so nothing reaches here bound except a
+    pair an operator named outright.
+
     Args:
         request: The approved request, carrying the pair it was approved on.
+        catalogue: The operator's configured providers, read live, or ``None``
+            when the pipeline was built without one.
 
     Raises:
         HiringError: When the request carries no pair, which means nothing
-            was proposable when the approval was raised.
+            was proposable when the approval was raised, or when the pair it
+            carries is no longer one the operator has.
 
     Returns:
         The pair the new agent runs on.
@@ -68,10 +89,59 @@ def resolve_hire_model(request: HiringRequest) -> ModelConfig:
             error=msg,
         )
         raise HiringError(msg)
+    if catalogue is not None:
+        await _require_still_offerable(request, ref.provider, ref.model_id, catalogue)
     return ModelConfig(
         provider=NotBlankStr(ref.provider),
         model_id=NotBlankStr(ref.model_id),
     )
+
+
+async def _require_still_offerable(
+    request: HiringRequest,
+    provider: str,
+    model_id: str,
+    catalogue: ProviderCatalogue,
+) -> None:
+    """Refuse a binding the operator's live catalogue no longer offers.
+
+    Args:
+        request: The request being instantiated, for the message and the log.
+        provider: The connection half of the recorded pair.
+        model_id: The model half of the recorded pair.
+        catalogue: The operator's configured providers, read live.
+
+    Raises:
+        HiringError: When the connection is gone, the model is gone from it,
+            or the model can no longer call a tool.
+    """
+    providers = await catalogue.list_providers()
+    config = providers.get(provider)
+    if config is None:
+        reason = f"connection {provider!r} is no longer configured"
+    else:
+        model = next((m for m in config.models if str(m.id) == model_id), None)
+        if model is None:
+            reason = f"connection {provider!r} no longer carries model {model_id!r}"
+        elif not is_tool_capable(model.metadata):
+            reason = (
+                f"model {model_id!r} on {provider!r} can no longer call a tool, "
+                "which every agent needs"
+            )
+        else:
+            return
+    msg = (
+        f"Hiring request {request.id!s} was approved on {provider}/{model_id}, "
+        f"but {reason}. Re-approve it on a pair you still have rather than "
+        "registering an agent that cannot run."
+    )
+    logger.warning(
+        HR_HIRING_MODEL_UNSET,
+        request_id=str(request.id),
+        role=str(request.role),
+        error=msg,
+    )
+    raise HiringError(msg)
 
 
 async def register_agent(

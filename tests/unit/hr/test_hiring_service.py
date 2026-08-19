@@ -1,6 +1,7 @@
 """Tests for HiringService."""
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
@@ -22,6 +23,7 @@ from synthorg.hr.registry import AgentRegistryService
 from tests._shared import sid
 from tests._shared.model_binding import (
     TEST_PROVIDER,
+    MutableProviderCatalogue,
     bound_ref,
     provider_catalogue,
 )
@@ -732,3 +734,46 @@ class TestHiringServiceModelBinding:
         assert rebound.bound_model_ref == chosen
         identity = await service.instantiate_agent(rebound)
         assert str(identity.model.model_id) == "example-basic-001"
+
+    @pytest.mark.parametrize(
+        ("drift", "expected"),
+        [
+            (MutableProviderCatalogue.delete_connection, "no longer configured"),
+            (
+                lambda catalogue: catalogue.serve(["example-expert-001"]),
+                "no longer carries model",
+            ),
+        ],
+        ids=["connection-deleted", "model-dropped"],
+    )
+    async def test_a_binding_the_operator_no_longer_has_refuses(
+        self,
+        registry: AgentRegistryService,
+        drift: Callable[[MutableProviderCatalogue], None],
+        expected: str,
+    ) -> None:
+        """The pair is re-asked of the live catalogue, not trusted as recorded.
+
+        Approval is a human step, so the recorded pair and the pair that still
+        exists are separated by an arbitrary interval. An agent registered on
+        a connection the operator has since deleted joins the roster looking
+        staffed and fails every dispatch, which is the same harm the absent
+        binding above already refuses.
+        """
+        catalogue = MutableProviderCatalogue(["example-basic-001"])
+        service = HiringService(registry=registry, provider_catalogue=catalogue)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Stale binding test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        drift(catalogue)
+
+        with pytest.raises(HiringError, match=expected):
+            await service.instantiate_agent(approved)
+        assert await registry.list_active() == ()

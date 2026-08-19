@@ -486,17 +486,18 @@ class TestRetryEscalation:
     """A retried unit must be one whose per-attempt kill leaves nothing.
 
     Every call site is deadline-bounded, so every attempt can be killed, and
-    the kill reaches only what the runner user may signal. A command that
-    escalates to root survives it holding whatever it held, and the next
-    attempt then fails on that rather than on the fault that timed the first
-    one out.
+    where the escalation sits decides what the kill reaches. Handed the
+    escalating command directly the kill lands and the next attempt starts
+    clean; buried inside a wrapper it stops at the wrapper, and the root
+    child survives holding what it held.
     """
 
     def test_retried_with_deps_install_flagged(self, tmp_path: Path) -> None:
         # The shape that shipped: three attempts over playwright's own
-        # escalating path. Attempt one timed out on a stalled apt mirror and
-        # left apt-get holding the lists lock, so attempts two and three died
-        # in under a second on "Could not get lock".
+        # escalating path, nested under node. Attempt one timed out on a
+        # stalled apt mirror and left apt-get holding the lists lock, so
+        # attempts two and three died in under a second on "Could not get
+        # lock".
         content = _job(
             "      - env:\n"
             '          RETRY_CMD_DEADLINE: "600"\n'
@@ -508,29 +509,49 @@ class TestRetryEscalation:
         assert len(violations) == 1
         assert _ESCALATES in violations[0]
 
-    def test_retried_sudo_flagged(self, tmp_path: Path) -> None:
+    def test_retried_nested_sudo_flagged(self, tmp_path: Path) -> None:
+        # The same shape spelled with sudo: the kill is aimed at `bash`, and
+        # what it needs to reach is two words further in.
         content = _job(
             "      - env:\n"
             '          RETRY_CMD_DEADLINE: "600"\n'
             '          RETRY_CMD_ATTEMPTS: "3"\n'
             "        run: .github/scripts/retry_cmd.sh 'apt'"
-            " sudo apt-get install -y jq\n"
+            " bash -c 'sudo apt-get install -y jq'\n"
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
         assert _ESCALATES in violations[0]
+
+    def test_retried_direct_sudo_clean(self, tmp_path: Path) -> None:
+        """A ladder over a directly-handed escalation is the correct shape.
+
+        Measured, not assumed: a run of this exact call site took three
+        attempts against a mirror stalling mid-item, each re-reading the
+        package lists with no lock to wait on and each re-fetching the
+        archive the previous one had not finished, and the third completed
+        the install. Refusing the ladder here left the step with one attempt
+        and no recovery from the one fault it actually hits.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " sudo apt-get install -y jq\n"
+        )
+        assert _scan(tmp_path, content) == []
 
     def test_a_continuation_split_invocation_is_one_command(
         self, tmp_path: Path
     ) -> None:
         """The unit the rule is about is the command, not the source line.
 
-        The shape that shipped past this check and then failed in CI exactly
-        as the rule describes: the helper on one line, the escalating word on
-        the next after a backslash. Read as physical lines neither string
-        carries both halves, so the step passed while spending 240s on three
-        attempts that all exited 124 against an apt-get the kill never
-        reached.
+        The shape that shipped past this check: the helper on one line, the
+        wrapper and the escalating word on the next after a backslash. Read
+        as physical lines neither string carries both halves, so the step
+        passed while spending its whole budget on attempts that all exited
+        124 against an apt-get the kill never reached.
         """
         content = _job(
             "      - env:\n"
@@ -538,8 +559,8 @@ class TestRetryEscalation:
             '          RETRY_CMD_ATTEMPTS: "3"\n'
             "        run: |\n"
             "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
-            "            sudo apt-get install -y \\\n"
-            "              qemu-user-static bubblewrap\n"
+            "            bash -c 'sudo apt-get install -y \\\n"
+            "              qemu-user-static bubblewrap'\n"
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
@@ -556,7 +577,7 @@ class TestRetryEscalation:
             "        run: |\n"
             "          RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \\\n"
             "            .github/scripts/retry_cmd.sh 'apt' \\\n"
-            "            sudo apt-get install -y jq\n"
+            "            bash -c 'sudo apt-get install -y jq'\n"
         )
         assert _scan(tmp_path, content) == []
 
@@ -571,7 +592,7 @@ class TestRetryEscalation:
             '          RETRY_CMD_ATTEMPTS: "1"\n'
             "        run: |\n"
             "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
-            "            sudo apt-get install -y qemu-user-static\n"
+            "            bash -c 'sudo apt-get install -y qemu-user-static'\n"
         )
         assert _scan(tmp_path, content) == []
 
@@ -586,7 +607,8 @@ class TestRetryEscalation:
             "      - env:\n"
             '          RETRY_CMD_DEADLINE: "600"\n'
             "        run: RETRY_CMD_ATTEMPTS=1 echo ignored;"
-            " .github/scripts/retry_cmd.sh 'apt' sudo apt-get install -y jq\n"
+            " .github/scripts/retry_cmd.sh 'apt'"
+            ' bash -c "sudo apt-get install -y jq"\n'
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
@@ -598,7 +620,8 @@ class TestRetryEscalation:
         content = _job(
             "      - env:\n"
             '          RETRY_CMD_DEADLINE: "600"\n'
-            "        run: .github/scripts/retry_cmd.sh 'apt' sudo apt-get update\n"
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo apt-get update'\n"
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
@@ -612,7 +635,7 @@ class TestRetryEscalation:
             "      - env:\n"
             '          RETRY_CMD_DEADLINE: "420"\n'
             "        run: RETRY_CMD_ATTEMPTS=1 .github/scripts/retry_cmd.sh"
-            " 'apt' sudo apt-get update\n"
+            " 'apt' bash -c 'sudo apt-get update'\n"
         )
         assert _scan(tmp_path, content) == []
 
@@ -640,13 +663,50 @@ class TestRetryEscalation:
         )
         assert _scan(tmp_path, content) == []
 
+    def test_a_comment_apostrophe_does_not_glue_the_script(
+        self, tmp_path: Path
+    ) -> None:
+        """Prose above a call site is prose, not an unterminated quote.
+
+        A single `runner's` in a comment left the quote count odd, so every
+        line below it accumulated into one logical command whose head word
+        was `#`. That both hid the correctly-shaped invocations underneath
+        and reported the `#` as a wrapper around their sudo.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          # the runner's mirror answers and then trickles\n"
+            "          .github/scripts/retry_cmd.sh 'apt' \\\n"
+            "            sudo apt-get install -y jq\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_an_untokenisable_command_is_reported(self, tmp_path: Path) -> None:
+        # A command the reader cannot split cannot be certified as handing
+        # its escalation over directly, and the fail-closed reading is the
+        # one that puts it in front of a human.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            ' sudo apt-get install -y "jq\n'
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
     def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
         content = _composite(
             "    - name: deps\n"
             "      env:\n"
             '        RETRY_CMD_DEADLINE: "600"\n'
             '        RETRY_CMD_ATTEMPTS: "3"\n'
-            "      run: .github/scripts/retry_cmd.sh 'deps' sudo apt-get update\n"
+            "      run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'sudo apt-get update'\n"
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1

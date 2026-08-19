@@ -67,6 +67,32 @@ _PLAN_ID = "plan-1"
 _QUESTION = "Which database should the leaderboard use?"
 _SUB_IDS = (str(as_uuid("sub-1")), str(as_uuid("sub-2")))
 
+#: Comfortably more rows than any fixture here files, so a listing that has to
+#: see all of them is not silently truncated by the default page size.
+_A_FULL_PAGE = 100
+
+
+def _transitions_of(engine: _Configured, task_id: str) -> list[TaskStatus]:
+    """Every status *task_id* was transitioned to, in order.
+
+    Asserted per task rather than over the whole mock, because a failed
+    dispatch now moves more than one row: the parent to FAILED and each child
+    the dispatch had already filed to a terminal, so "the only call" and "the
+    last call" both stopped identifying the parent's.
+
+    Args:
+        engine: The task-engine double.
+        task_id: The task whose transitions to collect.
+
+    Returns:
+        The target statuses, in call order.
+    """
+    return [
+        call.args[1]
+        for call in engine.transition_task.await_args_list
+        if call.args[0] == task_id
+    ]
+
 
 def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
     return Task(
@@ -630,14 +656,58 @@ class TestPlanReviewResume:
         assert handled is True
         await state.drain_entry_background_tasks()
         coordinator.coordinate.assert_awaited_once()
-        engine.transition_task.assert_awaited_once()
-        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.FAILED
         # Plan Review shows the reason rather than an unexplained failure.
         assert stored.failure_reason is not None
         assert "dispatch failed" in stored.failure_reason
+
+    async def test_a_raising_dispatch_leaves_no_child_row_at_created(
+        self,
+    ) -> None:
+        """The rows the dispatch filed before it raised have to be settled.
+
+        Dispatch files the whole task tree BEFORE handing the plan to the
+        coordinator, so a raise from anywhere ahead of the wave loop (a
+        dependency cycle in an operator-edited item graph, a routing decision
+        naming no created task) leaves those rows at CREATED. The wave loop
+        parks what IT drops, but it was never entered.
+
+        Failing the parent and the plan does not reach them, and FAILED is
+        terminal, so the recovery sweep and the rollup both skip that plan for
+        ever after: the rows would sit at CREATED permanently, under a plan
+        the board shows as closed, with nothing watching them and no exit.
+        """
+        parent = _task("parent-1")
+        state, _, engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(error=RuntimeError("boom")),
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        filed = [
+            task
+            for task in await backend.tasks.list_items(limit=_A_FULL_PAGE)
+            if task.plan_item_id is not None
+        ]
+        assert filed, "the dispatch filed no children, so this proves nothing"
+        # Asserted against the engine rather than the stored rows: the engine
+        # is the double here, so it is where a transition is observable.
+        for child in filed:
+            assert _transitions_of(engine, str(child.id)) == [TaskStatus.CANCELLED], (
+                f"child {child.title} was left with no terminal"
+            )
+        # And the parent still goes FAILED, not cancelled with the rest: the
+        # board has to show the initiative failed, and FAILED -> ASSIGNED is
+        # what keeps it re-runnable.
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
 
     async def test_a_coordination_that_failed_every_wave_fails_the_plan(
         self,
@@ -665,7 +735,7 @@ class TestPlanReviewResume:
         assert handled is True
         await state.drain_entry_background_tasks()
         coordinator.coordinate.assert_awaited_once()
-        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.FAILED
@@ -732,7 +802,7 @@ class TestPlanReviewResume:
         await state.drain_entry_background_tasks()
 
         rollup.recompute.assert_awaited_once()
-        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.FAILED

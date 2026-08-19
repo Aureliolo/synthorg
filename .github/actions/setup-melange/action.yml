@@ -16,30 +16,28 @@ runs:
     # nothing while making the transfer, and the window a stalled mirror had
     # to stall in, several times larger.
     #
-    # ONE attempt, deliberately, and it is the rule
-    # `check_ci_workflow_resilience.py` enforces rather than a local
-    # judgement: the per-attempt `timeout` runs as the runner user and this
-    # command escalates to root, so the kill never reaches `apt-get`, which
-    # survives holding /var/lib/apt/lists/lock. Every later attempt then
-    # fails on that lock instead of on the fault that timed the first one
-    # out, which is what this step did in CI: three attempts, exit 124 each,
-    # 240s spent retrying something no retry could clear. The deadline still
-    # bounds it, so a genuinely stalled mirror is killed and reported here
-    # with the real cause rather than the wreckage of a previous attempt.
+    # The mirror's fault here is episodic, not sustained, so the ladder is
+    # what recovers it and a single attempt cannot. One measured run stalled
+    # twice mid-item and then fetched the whole 14.7 MB in 9s on its third
+    # attempt; each attempt re-read the package lists with no lock to wait
+    # on, so a killed attempt leaves nothing behind for the next one. That
+    # is why the escalating command is handed to the helper directly rather
+    # than through a `bash -c` wrapper the kill would stop at.
     - name: Install melange runner dependencies
       shell: bash
       env:
-        # Sized from what the mirror actually delivers on a bad day, not from
-        # a guess. A run measured 11.4 MB of indices at 220 kB/s (the same
-        # fetch had run at 8 MB/s an hour earlier), which puts the 14.7 MB
-        # qemu-user-static .deb at over a minute on its own and the update
-        # that precedes it at just under one. The 90s and then 120s budgets
-        # this step carried were simply under that, so a degraded-but-working
-        # mirror read as a hang. These are ceilings on a slow transfer, not
-        # targets: a healthy mirror finishes the pair in seconds.
-        RETRY_CMD_ATTEMPTS: "1"
-        RETRY_CMD_ATTEMPT_TIMEOUT: "300"
-        RETRY_CMD_DEADLINE: "330"
+        # Sized from what this step has actually been measured doing. Healthy,
+        # the whole install lands in under 20s. Degraded, the mirror answers
+        # and then trickles: one run served indices at 220 kB/s where an hour
+        # earlier it managed 8 MB/s, which puts the qemu-user-static .deb at
+        # over a minute on its own. So 120s is a ceiling on a slow transfer
+        # with headroom, low enough that a stall is cut short while attempts
+        # remain rather than consuming the whole budget. Three of those plus
+        # 15s and 30s of backoff is 405s, and the deadline sits just above it
+        # so the ladder can exhaust and report its own verdict.
+        RETRY_CMD_ATTEMPTS: "3"
+        RETRY_CMD_ATTEMPT_TIMEOUT: "120"
+        RETRY_CMD_DEADLINE: "420"
       run: |
         # apt bounds a connection that never answers (Acquire::*::Timeout)
         # and retries an item that errors (Acquire::Retries). It has no
