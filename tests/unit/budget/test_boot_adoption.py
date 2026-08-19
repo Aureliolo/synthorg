@@ -1,7 +1,8 @@
 """The budget every surface measures against is the configured one, from boot.
 
-Three components hold their own ``BudgetConfig``, and all three are built in
-phase 1, before persistence is connected and before any setting can be read.
+Three components hold their own ``BudgetConfig``, and all three are built
+during construction, before persistence is connected and before any setting
+can be read.
 The settings subscriber hands a write to all three, so a config CHANGED while
 the process runs lands everywhere. A config that was already stored when the
 process started changes nothing, so it landed nowhere: a live deployment with
@@ -27,7 +28,7 @@ from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
-#: What ``BudgetConfig`` defaults to, which is what phase 1 builds from.
+#: What ``BudgetConfig`` defaults to, which is what construction builds from.
 _BOOT_TOTAL = 100.0
 
 #: What the operator configured and every surface has to measure against.
@@ -35,7 +36,7 @@ _CONFIGURED_TOTAL = 500.0
 
 
 def _booted(resolver: MagicMock) -> tuple[AppState, CostTracker, CostOptimizer]:
-    """An app state wired the way phase 1 leaves it: every holder on defaults."""
+    """An app state as construction leaves it: every holder on the defaults."""
     boot = BudgetConfig(total_monthly=_BOOT_TOTAL)
     tracker = CostTracker(budget_config=boot)
     optimizer = CostOptimizer(cost_tracker=tracker, budget_config=boot)

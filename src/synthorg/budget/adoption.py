@@ -4,9 +4,9 @@
 Four components carry their own ``BudgetConfig``: the state slice every read
 goes through, the enforcer that refuses spend, the tracker whose copy decides
 which currency a record may be written in and what the summaries and gauges
-are computed against, and the optimizer that scores every recommendation. All
-four are built in phase 1, from the code defaults, because persistence is not
-connected yet and no setting can be read.
+are computed against, and the cost optimiser that scores every recommendation.
+All four are built during construction, from the code defaults, because
+persistence is not connected there and no setting can be read.
 
 Adoption lives here rather than in the settings subscriber because it has two
 triggers and must have one implementation: boot is the first pass, and a

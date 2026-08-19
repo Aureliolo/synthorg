@@ -377,10 +377,10 @@ async def _wire_signals_service(
             return await collect_all_records(tracker, start=since, end=until)
 
         cost_record_provider = _provider
-        # Boot is the first adoption pass, not a reader of its own. Phase 1
-        # builds the tracker, enforcer and optimizer from the code defaults
-        # because no setting can be read yet, and until this runs the ceiling
-        # every gauge measures against is a number no operator chose.
+        # Boot is the first adoption pass, not a reader of its own.
+        # Construction builds the tracker, enforcer and cost optimiser from
+        # the code defaults because no setting can be read yet, and until this
+        # runs the ceiling every gauge measures against is one nobody chose.
         budget_cfg = await adopt_resolved_budget_config(app_state)
         if budget_cfg is not None:
             budget_total_monthly = budget_cfg.total_monthly
