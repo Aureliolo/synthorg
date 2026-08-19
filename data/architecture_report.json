@@ -74,14 +74,14 @@
     },
     "src/synthorg/api/controllers/_plan_resume_writes.py": {
       "cap": 500,
-      "loc": 412,
-      "ratio": 0.824,
+      "loc": 438,
+      "ratio": 0.876,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_plan_review_resume.py": {
       "cap": 600,
-      "loc": 523,
-      "ratio": 0.872,
+      "loc": 575,
+      "ratio": 0.958,
       "tier": "orchestrator"
     },
     "src/synthorg/api/controllers/_turn_dispatch.py": {
@@ -1774,7 +1774,7 @@
     "synthorg.engine.prompt_safety": 94,
     "synthorg.engine.state": 71,
     "synthorg.engine.strategy.models": 22,
-    "synthorg.engine.task_engine": 56,
+    "synthorg.engine.task_engine": 57,
     "synthorg.engine.task_engine_models": 27,
     "synthorg.engine.workflow.ceremony_policy": 21,
     "synthorg.engine.workflow.definition": 43,

@@ -25,6 +25,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import task_engine_of
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import (
     get_logger,
@@ -142,24 +143,12 @@ async def abandon_filed_children(
         return
     try:
         doomed = await _filed_children(app_state, plan_id)
-        engine = task_engine_of(app_state)
-        abandoned = 0
-        refused = 0
-        for task in doomed:
-            if str(task.id) == parent_task_id:
-                continue
-            if task.status in TRULY_TERMINAL_STATUSES:
-                continue
-            reached = await terminate_task(
-                engine,
-                task,
-                requested_by=_DISPATCH_ACTOR,
-                reason=f"dispatch failed before this work could run: {why}",
-            )
-            if reached is not None:
-                abandoned += 1
-            else:
-                refused += 1
+        abandoned, refused = await _terminate_children(
+            task_engine_of(app_state),
+            doomed,
+            parent_task_id=parent_task_id,
+            why=why,
+        )
         if abandoned:
             logger.info(
                 APPROVAL_GATE_PLAN_DISPATCH_FAILED,
@@ -189,6 +178,47 @@ async def abandon_filed_children(
             error=safe_error_description(exc),
             note="could not abandon filed children; rows may sit at CREATED",
         )
+
+
+async def _terminate_children(
+    engine: TaskEngine,
+    doomed: list[Task],
+    *,
+    parent_task_id: str | None,
+    why: str,
+) -> tuple[int, int]:
+    """Cancel each child that still has somewhere to go.
+
+    Args:
+        engine: The engine that owns task transitions.
+        doomed: Every child row filed under the plan.
+        parent_task_id: The objective task, skipped by id because the caller
+            has just moved it to FAILED deliberately and FAILED is not truly
+            terminal, so terminating it here would undo that choice.
+        why: Recorded on each transition.
+
+    Returns:
+        ``(abandoned, refused)``: how many reached a terminal, and how many
+        the engine would not move.
+    """
+    abandoned = 0
+    refused = 0
+    for task in doomed:
+        if str(task.id) == parent_task_id:
+            continue
+        if task.status in TRULY_TERMINAL_STATUSES:
+            continue
+        reached = await terminate_task(
+            engine,
+            task,
+            requested_by=_DISPATCH_ACTOR,
+            reason=f"dispatch failed before this work could run: {why}",
+        )
+        if reached is not None:
+            abandoned += 1
+        else:
+            refused += 1
+    return abandoned, refused
 
 
 async def fail_plan(app_state: AppState, plan_id: str | None, why: str) -> None:

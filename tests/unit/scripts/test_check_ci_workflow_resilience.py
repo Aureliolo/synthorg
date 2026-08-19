@@ -762,6 +762,54 @@ class TestRetryEscalation:
         assert len(violations) == 1
         assert _ESCALATES in violations[0]
 
+    def test_a_label_naming_sudo_is_not_an_escalation(self, tmp_path: Path) -> None:
+        """The label is prose the helper prints, not part of the command.
+
+        Searching the whole invocation for the marker read the label as the
+        thing being retried, so a step that escalates nothing was reported
+        for the words somebody chose to describe it.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'sudo diagnostics'"
+            " echo ok\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_sudo_separated_by_a_tab_is_still_an_escalation(
+        self, tmp_path: Path
+    ) -> None:
+        # A literal `"sudo "` marker recognised exactly one of the whitespace
+        # characters a shell accepts, so a nested escalation written with a
+        # tab read as no escalation at all. Written as a block scalar because
+        # a plain one refuses the tab outright.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo\tapt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_a_word_ending_in_sudo_is_not_an_escalation(self, tmp_path: Path) -> None:
+        # The complement of matching on word boundaries: the marker names a
+        # command, not a substring, so a program whose name merely contains
+        # it must not be reported.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'tty'"
+            " bash -c 'pseudo-tty --check'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_an_untokenisable_command_is_reported(self, tmp_path: Path) -> None:
         # A command the reader cannot split cannot be certified as handing
         # its escalation over directly, and the fail-closed reading is the

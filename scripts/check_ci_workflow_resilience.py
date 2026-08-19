@@ -272,7 +272,19 @@ _DEFAULT_ATTEMPTS: Final[int] = 5
 # line never says sudo, and that is exactly what made the ladder look sound.
 # A command that escalates by some other spelling is not recognised, so this
 # names the paths the tree uses rather than claiming to decide the question.
-_ESCALATION_MARKERS: Final[tuple[str, ...]] = ("sudo ", "--with-deps")
+#: Words that escalate when they LEAD the retried command, where the kill
+#: reaches them. Compared against the head word, so anything spelled here is
+#: also a direct escalation the ladder may retry.
+_ESCALATING_HEADS: Final[frozenset[str]] = frozenset({"sudo"})
+
+#: Where an escalation can be spelled at all, matched on shell-word
+#: boundaries rather than as ``"sudo "``: a literal trailing space misses
+#: every other whitespace a shell accepts, so ``sudo\tapt-get`` inside a
+#: quoted body read as no escalation. ``--with-deps`` is playwright's, whose
+#: sudo is internal and unwritten, and can never be a head word.
+_ESCALATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w-])(?:sudo|--with-deps)(?![\w-])"
+)
 
 #: A shell word that assigns rather than names a command. Only these, and
 #: only before the executable, are environment the shell applies to it.
@@ -1589,14 +1601,22 @@ class _HelperCall(NamedTuple):
             the helper ran on its zero-second default.
         command: The words after the helper's mandatory label, which are the
             command it actually retries.
-        text: The invocation rejoined, for the marker search: a wrapped
-            command that arrived quoted is one word, so a marker inside it is
-            findable only as a substring.
+        command_text: Those same words rejoined, for the marker search: a
+            wrapped command that arrived quoted is one word, so a marker
+            inside it is findable only as a substring. The LABEL is excluded,
+            because it is prose the helper prints and a label reading
+            ``'sudo diagnostics'`` otherwise reported a command that
+            escalates nothing.
+        parsed: Whether the lexer could split the invocation at all. An
+            unparseable one keeps the whole line as its ``command_text`` so
+            the escalation search still reports it, which is the fail-closed
+            reading.
     """
 
     assignments: dict[str, str]
     command: tuple[str, ...]
-    text: str
+    command_text: str
+    parsed: bool
 
 
 def _helper_calls(line: str) -> list[_HelperCall]:
@@ -1627,7 +1647,9 @@ def _helper_calls(line: str) -> list[_HelperCall]:
         lexer.whitespace_split = True
         tokens = list(lexer)
     except ValueError:
-        return [_HelperCall(assignments={}, command=(), text=line)]
+        return [
+            _HelperCall(assignments={}, command=(), command_text=line, parsed=False)
+        ]
     calls: list[_HelperCall] = []
     for words in _shell_commands(tokens):
         assignments: dict[str, str] = {}
@@ -1639,11 +1661,13 @@ def _helper_calls(line: str) -> list[_HelperCall]:
             continue
         # rest[0] is the helper, rest[1] its mandatory label; the command it
         # retries is everything after that.
+        command = tuple(rest[2:])
         calls.append(
             _HelperCall(
                 assignments=assignments,
-                command=tuple(rest[2:]),
-                text=" ".join(words),
+                command=command,
+                command_text=" ".join(command),
+                parsed=True,
             )
         )
     return calls
@@ -1726,15 +1750,16 @@ def _escalation_is_nested(call: _HelperCall) -> bool:
 
     Returns:
         True when the call escalates but its retried command does not lead
-        with the escalating word. An invocation the lexer could not split
-        carries no command and reads as nested, which is the fail-closed
-        answer: it reports for a human to look at rather than passing unread.
+        with the escalating word. An invocation the lexer could not split has
+        no head to read, so any escalation anywhere in it reads as nested,
+        which is the fail-closed answer: it reports for a human to look at
+        rather than passing unread.
     """
-    if not any(marker in f"{call.text} " for marker in _ESCALATION_MARKERS):
+    if not _ESCALATION_RE.search(call.command_text):
         return False
-    if not call.command:
+    if not call.parsed or not call.command:
         return True
-    return not any(marker.strip() == call.command[0] for marker in _ESCALATION_MARKERS)
+    return call.command[0] not in _ESCALATING_HEADS
 
 
 def _logical_lines(run: str) -> list[str]:
