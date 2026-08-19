@@ -51,6 +51,14 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Review completed work')).toBeInTheDocument()
   })
 
+  it('badges a failed run even when no run context resolved', () => {
+    // The badge is the danger signal on the card. Reading only the optional
+    // run enrichment dropped it from a row that had failed, so that card was
+    // the one thing in the queue not marked as a failure.
+    renderCard({ action_type: 'review:task_failed', run: null })
+    expect(screen.getByText('Run failed')).toBeInTheDocument()
+  })
+
   it('says the agent is unknown rather than printing the requester', () => {
     renderCard()
     expect(screen.getByText('Unknown agent')).toBeInTheDocument()

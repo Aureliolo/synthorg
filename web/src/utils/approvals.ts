@@ -121,6 +121,18 @@ export function isFailedApproval(approval: ApprovalResponse): boolean {
   return approval.run?.outcome === 'failed' || approval.action_type === FAILED_RUN_ACTION_TYPE
 }
 
+/**
+ * The run outcome to show for an approval, or null when there is none.
+ *
+ * The resolved run when the response carries one, and otherwise whatever the
+ * action type alone establishes. A card that skipped the badge for want of
+ * the optional half was the only failure in the queue not marked as one.
+ */
+export function resolvedRunOutcome(approval: ApprovalResponse): RunOutcome | null {
+  if (approval.run) return approval.run.outcome
+  return isFailedApproval(approval) ? 'failed' : null
+}
+
 // ── Approval step label (proposal-time vs review-gate) ──────
 
 const APPROVAL_SOURCE_STEP_LABELS: Record<ApprovalSource, string> = {
