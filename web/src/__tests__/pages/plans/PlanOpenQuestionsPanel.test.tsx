@@ -1,11 +1,39 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import type { listApprovals } from '@/api/endpoints/approvals'
 import type { Plan } from '@/api/types/plans'
+import { emptyPage, paginatedFor, successFor } from '@/mocks/handlers/helpers'
 import { PlanOpenQuestionsPanel } from '@/pages/plans/PlanOpenQuestionsPanel'
+import { server } from '@/test-setup'
 
-import { makePlan, makePlanItem } from '../../helpers/factories'
+import { makeApproval, makePlan, makePlanItem } from '../../helpers/factories'
+
+const A_QUESTION = 'Which persistence backend?'
+
+/** The approval the planner parks so a person can answer one question. */
+function parkedQuestion(id: string, question: string) {
+  return makeApproval(id, {
+    source: 'plan_review',
+    status: 'pending',
+    action_type: 'clarify:question',
+    description: question,
+    metadata: { plan_id: 'p' },
+  })
+}
+
+function servingParkedQuestions(...parked: ReturnType<typeof parkedQuestion>[]) {
+  server.use(
+    http.get('/api/v1/approvals', () =>
+      HttpResponse.json(
+        paginatedFor<typeof listApprovals>({ ...emptyPage(), data: parked }),
+      ),
+    ),
+  )
+}
 
 function renderPanel(plan: Plan) {
   return render(
@@ -40,14 +68,70 @@ describe('PlanOpenQuestionsPanel', () => {
     expect(screen.getByText('Metric units throughout')).toBeInTheDocument()
   })
 
-  it('points at where an answer is given', () => {
-    // The panel was read-only with no affordance: an operator could see what
-    // was wanted and not where to say it.
-    renderPanel(makePlan('p', { open_questions: ['Which persistence backend?'] }))
-    expect(screen.getByRole('link', { name: /answer in chat/i })).toHaveAttribute(
-      'href',
-      '/chat',
+  it('answers a parked question where the question is read', async () => {
+    // The Approvals inbox excludes every plan_review row by design, so this
+    // panel is the only surface that can decide one. Sent anywhere else, the
+    // question stays pending until the plan builds and expires it unanswered.
+    const answered = vi.fn()
+    servingParkedQuestions(parkedQuestion('q-1', A_QUESTION))
+    server.use(
+      http.post('/api/v1/approvals/q-1/approve', async ({ request }) => {
+        answered((await request.json()) as { comment?: string })
+        return HttpResponse.json(
+          successFor<() => Promise<unknown>>(parkedQuestion('q-1', A_QUESTION)),
+        )
+      }),
     )
+    renderPanel(makePlan('p', { open_questions: [A_QUESTION] }))
+
+    const box = await screen.findByLabelText(/your answer/i)
+    await userEvent.type(box, 'SQLite')
+    await userEvent.click(screen.getByRole('button', { name: /send answer/i }))
+
+    // The answer travels as the approval comment, which is what the backend
+    // writes onto the plan the agents execute.
+    await waitFor(() => {
+      expect(answered).toHaveBeenCalledWith({ comment: 'SQLite' })
+    })
+  })
+
+  it('says a question is closed rather than offering an answer that settles nothing', async () => {
+    // Once the plan starts building, its questions are settled by omission and
+    // the parked approvals expire. An answer box there would take an answer
+    // that reaches no task, no agent and no prompt.
+    servingParkedQuestions()
+    renderPanel(makePlan('p', { open_questions: [A_QUESTION] }))
+
+    expect(await screen.findByText(/no longer answerable/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/your answer/i)).not.toBeInTheDocument()
+  })
+
+  it('answers only the question the operator was reading', async () => {
+    // Two questions are parked on one plan under the same source and plan id;
+    // matching on the plan alone would settle whichever the API ordered first.
+    const answered = vi.fn()
+    const other = 'Is offline play in scope?'
+    servingParkedQuestions(
+      parkedQuestion('q-other', other),
+      parkedQuestion('q-1', A_QUESTION),
+    )
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', ({ params }) => {
+        answered(params['id'])
+        return HttpResponse.json(
+          successFor<() => Promise<unknown>>(parkedQuestion('q-1', A_QUESTION)),
+        )
+      }),
+    )
+    renderPanel(makePlan('p', { open_questions: [A_QUESTION, other] }))
+
+    const boxes = await screen.findAllByLabelText(/your answer/i)
+    await userEvent.type(boxes[0]!, 'SQLite')
+    await userEvent.click(screen.getAllByRole('button', { name: /send answer/i })[0]!)
+
+    await waitFor(() => {
+      expect(answered).toHaveBeenCalledWith('q-1')
+    })
   })
 
   it('stops asking a question the plan already settles', () => {

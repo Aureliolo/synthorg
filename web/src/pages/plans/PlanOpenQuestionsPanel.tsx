@@ -1,35 +1,117 @@
-import { CheckCircle2, HelpCircle, Lightbulb, MessagesSquare } from 'lucide-react'
-import { Link } from 'react-router'
+import { useState } from 'react'
+
+import { CheckCircle2, HelpCircle, Lightbulb, RefreshCw, Send } from 'lucide-react'
 
 import type { Plan } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
+import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusPill } from '@/components/ui/status-pill'
-import { ROUTES } from '@/router/routes'
 import { answeredQuestions, type QuestionAnswer } from '@/utils/plans'
+import { usePlanQuestions, type PlanQuestionsController } from './usePlanQuestions'
 
-function OpenQuestions({ questions }: { questions: readonly QuestionAnswer[] }) {
+// Mirrors ApproveRequest.comment's server bound, so an over-long answer is
+// capped here rather than rejected after a round trip.
+const ANSWER_MAX = 4096
+
+/** The answer box for one question the plan has parked for a person. */
+function QuestionAnswerForm({
+  approvalId,
+  questions,
+}: {
+  approvalId: string
+  questions: PlanQuestionsController
+}) {
+  const [draft, setDraft] = useState('')
+  const submitting = questions.submittingId === approvalId
+  const answer = draft.trim()
+  return (
+    <form
+      className="mt-1 flex items-end gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (answer === '') return
+        void questions.answer(approvalId, answer)
+      }}
+    >
+      <div className="flex-1">
+        <InputField
+          label="Your answer"
+          value={draft}
+          maxLength={ANSWER_MAX}
+          onValueChange={setDraft}
+        />
+      </div>
+      <Button type="submit" size="sm" disabled={submitting || answer === ''}>
+        <Send aria-hidden="true" />
+        {submitting ? 'Sending…' : 'Send answer'}
+      </Button>
+    </form>
+  )
+}
+
+/**
+ * One open question, with the answer box when the plan is still holding it
+ * open for a person.
+ *
+ * A question with no parked approval is one the plan already stopped waiting
+ * on: it is closed by omission the moment the plan starts building, and the
+ * agents were briefed that nobody answered. Saying so is the point, because
+ * offering an answer box that settles nothing is the dead end this replaced.
+ */
+function OpenQuestion({
+  question,
+  questions,
+}: {
+  question: string
+  questions: PlanQuestionsController
+}) {
+  const approvalId = questions.approvalFor(question)
+  return (
+    <li className="space-y-1">
+      <div className="flex items-start gap-1.5 text-sm text-foreground">
+        <HelpCircle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
+        {question}
+      </div>
+      {approvalId !== undefined && (
+        <QuestionAnswerForm approvalId={approvalId} questions={questions} />
+      )}
+      {approvalId === undefined && !questions.resolving && !questions.lookupFailed && (
+        <p className="text-xs text-muted-foreground">
+          No longer answerable: the plan stopped waiting and is proceeding on its
+          own assumption.
+        </p>
+      )}
+    </li>
+  )
+}
+
+function OpenQuestions({
+  questions,
+  controller,
+}: {
+  questions: readonly QuestionAnswer[]
+  controller: PlanQuestionsController
+}) {
   return (
     <div className="space-y-1.5">
       <span className="text-micro uppercase tracking-wide text-muted-foreground">
         Open questions
       </span>
-      <ul className="space-y-1.5">
+      <ul className="space-y-2">
         {questions.map(({ question }) => (
-          <li key={question} className="flex items-start gap-1.5 text-sm text-foreground">
-            <HelpCircle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
-            {question}
-          </li>
+          <OpenQuestion key={question} question={question} questions={controller} />
         ))}
       </ul>
-      {/* The answering path is chat, so the panel says where: seeing what the
-          org wants without seeing where to say it is a dead end. */}
-      <Button asChild variant="outline" size="sm" className="mt-1">
-        <Link to={ROUTES.CHAT}>
-          <MessagesSquare className="size-3.5" aria-hidden="true" />
-          Answer in chat
-        </Link>
-      </Button>
+      {controller.lookupFailed && (
+        <div className="flex items-center gap-2 text-xs text-danger">
+          Could not load these questions, so they cannot be answered right now.
+          <Button variant="outline" size="sm" onClick={() => void controller.retry()}>
+            <RefreshCw className="size-3.5" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -88,9 +170,14 @@ function Assumptions({ assumptions }: { assumptions: readonly string[] }) {
  * A question an item's acceptance criteria already settle is moved out of the
  * ask rather than dropped: it stops demanding an answer and stops inflating the
  * count, while a wrong match still costs only a glance.
+ *
+ * Each remaining question is answered here, because here is the only place it
+ * can be: the generic Approvals inbox excludes every ``plan_review`` row by
+ * design, so a question sent anywhere else is a question nobody can decide.
  */
 export function PlanOpenQuestionsPanel({ plan }: { plan: Plan }) {
   const { open_questions: questions, assumptions } = plan
+  const controller = usePlanQuestions(plan.id)
   const paired = answeredQuestions(questions, plan.items)
   const open = paired.filter((entry) => entry.settledBy === null)
   const settled = paired.filter((entry) => entry.settledBy !== null)
@@ -108,7 +195,7 @@ export function PlanOpenQuestionsPanel({ plan }: { plan: Plan }) {
       }
     >
       <div className="space-y-3">
-        {open.length > 0 && <OpenQuestions questions={open} />}
+        {open.length > 0 && <OpenQuestions questions={open} controller={controller} />}
         {settled.length > 0 && <SettledQuestions questions={settled} />}
         {assumptions.length > 0 && <Assumptions assumptions={assumptions} />}
       </div>

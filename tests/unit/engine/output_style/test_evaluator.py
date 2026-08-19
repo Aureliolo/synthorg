@@ -45,6 +45,23 @@ class TestHardBan:
         assert verdict.summary
 
     @pytest.mark.unit
+    def test_the_summary_quotes_what_has_to_change(self) -> None:
+        """A rejection the author cannot act on is a delayed failure.
+
+        The rework loop hands this summary back with "address that
+        specifically", so naming only the rule sends the author hunting for
+        a character in a whole deliverable. A live run spent three rework
+        rounds and half a million tokens never finding four of them, and the
+        task failed with its peer review already approved.
+        """
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
+        text = f"The board renders {_EM_DASH} eventually {_EM_DASH} at 60 fps."
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+
+        assert "renders" in verdict.summary
+        assert "eventually" in verdict.summary
+
+    @pytest.mark.unit
     def test_clean_prose_passes(self) -> None:
         ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
         verdict = ev.evaluate(
