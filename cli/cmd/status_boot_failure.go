@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
 // bootFailureTailLines is how far back a crash-looping container is read.
@@ -24,11 +25,6 @@ const bootFailureTailLines = "80"
 // a terminal width would drop the half that says what to fix. The banner
 // keeps its shape by wrapping instead (see wrapBannerIssue).
 const maxBootFailureLen = 240
-
-// ansiEscape matches the colour codes structlog writes to a terminal. The
-// log is read as text here, so they would otherwise be quoted verbatim into
-// a banner that has already chosen its own colours.
-var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // composeLogPrefix strips the "service-1  | " compose prepends to every
 // line, which repeats the service the banner already names.
@@ -61,12 +57,26 @@ func bootFailureLine(logs string) string {
 	return lastFailureBefore(lines, len(lines))
 }
 
-// cleanLogLines strips the compose prefix and terminal colours from each
-// line, dropping the blanks.
+// cleanLogLines makes each line safe to quote into a banner and strips the
+// compose prefix, dropping the blanks.
+//
+// A backend log line is untrusted text: an agent's own output, a task title
+// and an exception message all reach it, and the operator reads it here
+// through a banner rather than through the pager `logs` gives raw. Stripping
+// only the colour codes structlog writes would leave every other sequence
+// (a cursor move, a screen clear, an OSC title set, a bare CR) free to
+// rewrite what the operator is reading, so the whole line goes through the
+// one sanitiser the CLI already owns for remote-sourced text. Its
+// single-line form, because a banner row is a row: an embedded break would
+// let a hostile line author a second one.
+//
+// Sanitising precedes the prefix strip: that pattern anchors at the start of
+// the line, so a sequence sitting in front of "backend-1  | " would other-
+// wise carry the prefix past it and into the banner.
 func cleanLogLines(logs string) []string {
 	var cleaned []string
 	for raw := range strings.SplitSeq(logs, "\n") {
-		line := strings.TrimSpace(ansiEscape.ReplaceAllString(raw, ""))
+		line := strings.TrimSpace(ui.SanitizeUntrustedLine(raw))
 		line = strings.TrimSpace(composeLogPrefix.ReplaceAllString(line, ""))
 		if line != "" {
 			cleaned = append(cleaned, line)

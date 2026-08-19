@@ -36,6 +36,7 @@ otel
 otp
 polyfactory
 pre-empt
+pre-empts
 pre-emptive
 pre-selected
 pydantic

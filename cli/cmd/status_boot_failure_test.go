@@ -89,6 +89,53 @@ func TestBootFailureLineStripsAnsiAndBounds(t *testing.T) {
 	}
 }
 
+// rtlOverride is RIGHT-TO-LEFT OVERRIDE, which reverses the rendering of
+// everything after it and so lets a hostile line read as a different one.
+// Written as its code point because the character itself is invisible in a
+// source file, and a reviewer cannot check what they cannot see.
+const rtlOverride = rune(0x202E)
+
+// TestBootFailureLineCarriesNothingThatActsOnATerminal asserts the invariant,
+// not one sequence: whatever a log line holds, what the banner quotes only
+// prints.
+//
+// The line is untrusted (an agent's output and an exception message both
+// reach the backend log), and a reader that stripped the colour codes
+// structlog writes would pass every OTHER sequence through to the operator's
+// terminal: a screen clear, a cursor move, an OSC title set, a bare CR that
+// overwrites the row, a RIS that resets the terminal whole.
+func TestBootFailureLineCarriesNothingThatActsOnATerminal(t *testing.T) {
+	t.Parallel()
+	hostile := []struct {
+		name    string
+		payload string
+	}{
+		{"screen clear", "\x1b[2J"},
+		{"cursor home", "\x1b[H"},
+		{"osc title set", "\x1b]0;owned\x07"},
+		{"full terminal reset", "\x1bc"},
+		{"carriage return overwrite", "\rall is well"},
+		{"backspace erase", "boot ok\x08\x08"},
+		{"bell", "\a"},
+		{"right-to-left override", string(rtlOverride)},
+	}
+	for _, tt := range hostile {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			line := "backend-1  | [error    ] boot.failed reason='" + tt.payload + "'"
+			got := bootFailureLine(line)
+			if got == "" {
+				t.Fatal("bootFailureLine() dropped the error line entirely")
+			}
+			for _, r := range got {
+				if r == '\x1b' || r == '\r' || r == '\a' || r == '\x08' || r == rtlOverride {
+					t.Errorf("bootFailureLine() = %q, which still acts on a terminal", got)
+				}
+			}
+		})
+	}
+}
+
 func TestNamesAFailure(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
