@@ -164,12 +164,11 @@ export function awaitsDispatch(charter: ProjectCharter): boolean {
  */
 async function readEveryPage(status: string): Promise<ProjectCharter[]> {
   const found: ProjectCharter[] = []
-  let cursor: string | undefined
+  let cursor: string | null = null
   for (;;) {
-    const page: PaginatedResult<ProjectCharter> = await charterApi.listCharters({
-      status,
-      cursor,
-    })
+    const page: PaginatedResult<ProjectCharter> = await charterApi.listCharters(
+      cursor === null ? { status } : { status, cursor },
+    )
     found.push(...page.data)
     if (!page.hasMore || page.nextCursor === null) return found
     cursor = page.nextCursor
