@@ -102,9 +102,61 @@ func lastFailureBefore(lines []string, limit int) string {
 		if !namesAFailure(lines[i]) {
 			continue
 		}
-		return truncateRunes(lines[i], maxBootFailureLen)
+		line := lines[i]
+		if strings.Contains(line, tracebackHeader) {
+			if cause := tracebackCause(lines, i); cause != "" {
+				line = cause
+			}
+		}
+		return truncateRunes(line, maxBootFailureLen)
 	}
 	return ""
+}
+
+// tracebackHeader opens a Python traceback block.
+const tracebackHeader = "Traceback (most recent call last)"
+
+// tracebackCause returns the terminal exception line of the block opened at
+// header, or "" when nothing follows it.
+//
+// A traceback names its cause on the LAST line of the block, and that line
+// carries no level marker of its own: everything above it is the frames that
+// led there. Returning the header instead puts the word "Traceback" in the
+// banner, which is the one thing the operator already knew from the restart.
+// The failed migration this file exists for states its violated constraint
+// exactly there.
+//
+// The block ends at the next line that opens a record of its own, because the
+// frames' indentation is gone by the time this reads them: every line was
+// trimmed so the compose prefix could be stripped from the front, so the
+// shape of a record header is what is left to key on. The startup-aborted
+// marker is itself such a header, so the scan cannot run past it.
+func tracebackCause(lines []string, header int) string {
+	cause := ""
+	for i := header + 1; i < len(lines); i++ {
+		if opensLogRecord(lines[i]) {
+			break
+		}
+		cause = lines[i]
+	}
+	// A block ending on a frame was cut off before it reached its exception,
+	// so it holds no cause to name and the header is the honest answer.
+	if strings.HasPrefix(cause, `File "`) {
+		return ""
+	}
+	return cause
+}
+
+// recordTimestamp matches the leading timestamp structlog writes, which is
+// what separates one record from the continuation lines of the last one.
+var recordTimestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}`)
+
+// opensLogRecord reports whether a line begins a new log record rather than
+// continuing the previous one.
+func opensLogRecord(line string) bool {
+	return recordTimestamp.MatchString(line) ||
+		plainLevelPrefix.MatchString(line) ||
+		levelMarker.MatchString(line)
 }
 
 // levelMarker matches a structlog level marker, which is the padded level
@@ -130,7 +182,7 @@ var plainLevelPrefix = regexp.MustCompile(`^(ERROR|CRITICAL):`)
 func namesAFailure(line string) bool {
 	return levelMarker.MatchString(line) ||
 		plainLevelPrefix.MatchString(line) ||
-		strings.HasPrefix(line, "Traceback (most recent call last)")
+		strings.HasPrefix(line, tracebackHeader)
 }
 
 // truncateRunes bounds a line to limit runes INCLUDING the elision marker,

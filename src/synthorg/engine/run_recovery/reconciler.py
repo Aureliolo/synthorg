@@ -65,6 +65,7 @@ from synthorg.observability.events.run_recovery import (
     RUN_RECOVERY_SWEEP_STARTED,
     RUN_RECOVERY_TASK_REQUEUED,
 )
+from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -347,6 +348,19 @@ class RunRecoveryReconciler:
                 how="tail-recompute" if plan.status in TAIL_STATUSES else "recompute",
             )
             return _one(recomputed=1, requeued=requeued, rejudged=rejudged)
+        if plan.status not in DRIVEN_STATUSES:
+            # Reaching the driver by elimination is what makes an unnamed
+            # status invisible: a member added later and put in none of these
+            # sets would be driven silently, which is the "a status nothing
+            # names is a status nothing watches" hole this module exists to
+            # refuse. Naming the driven set turns that into a reported gap.
+            logger.warning(
+                RUN_RECOVERY_PLAN_SKIPPED,
+                plan_id=plan_id,
+                plan_status=plan.status.value,
+                reason="status-classified-nowhere",
+            )
+            return _one(skipped=1)
         if not await self._drive_plan(plan):
             # The driver declined, so nothing is running. Reported as a skip
             # because that is what happened: counting it a resume told the
@@ -373,18 +387,43 @@ class RunRecoveryReconciler:
     async def _unfinished_plans(self) -> Sequence[Plan]:
         """Read every plan that has not reached a terminal status.
 
+        Asked per unfinished status rather than by reading every row and
+        discarding the terminal ones. The sweep runs on a cadence for the life
+        of the deployment and terminal plans only accumulate, so a full scan
+        makes each pass cost what the deployment has ever done rather than
+        what it still owes. The filter is a single status, so the set is
+        DERIVED from the enum minus the terminal ones: a member added later is
+        swept because it is not terminal, which is the opposite default from
+        a hand-listed set that would silently stop covering it.
+
         Returns:
-            The unfinished plans, oldest page first.
+            The unfinished plans, oldest page first within each status.
         """
+        found: list[Plan] = []
+        for status in sorted(set(PlanStatus) - TERMINAL_STATUSES):
+            found.extend(await self._plans_with_status(status))
+        return found
+
+    async def _plans_with_status(self, status: PlanStatus) -> Sequence[Plan]:
+        """Page through every plan currently at *status*.
+
+        Args:
+            status: The lifecycle status to enumerate.
+
+        Returns:
+            The matching plans, oldest page first.
+        """
+        spec = PlanFilterSpec(status=status)
         found: list[Plan] = []
         offset = 0
         # lint-allow: long-running-loop-kill-switch -- bounded by plan count
         while True:
-            page = await self._persistence.plans.list_items(
+            page = await self._persistence.plans.query(
+                spec,
                 limit=TASK_PAGE_SIZE,
                 offset=offset,
             )
-            found.extend(plan for plan in page if plan.status not in TERMINAL_STATUSES)
+            found.extend(page)
             if len(page) < TASK_PAGE_SIZE:
                 return found
             offset += TASK_PAGE_SIZE

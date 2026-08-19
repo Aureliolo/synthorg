@@ -218,12 +218,21 @@ func sortedServices(failures map[string]string) []string {
 // Deliberately not filtered by --services: a narrowed status still needs to
 // name why the stack around it is down, and reading a log is what the
 // operator would do next anyway.
+// Each service is named once, because a service scaled to several replicas
+// is several containers under one name: the caller reads that service's log
+// per entry, at one Docker round trip each, and keeps only the last result.
 func failingServices(containers []containerInfo) []string {
 	var failing []string
+	seen := make(map[string]struct{}, len(containers))
 	for _, c := range containers {
-		if c.Health == "unhealthy" || c.State == "restarting" || c.State == "exited" {
-			failing = append(failing, c.Service)
+		if c.Health != "unhealthy" && c.State != "restarting" && c.State != "exited" {
+			continue
 		}
+		if _, dup := seen[c.Service]; dup {
+			continue
+		}
+		seen[c.Service] = struct{}{}
+		failing = append(failing, c.Service)
 	}
 	return failing
 }

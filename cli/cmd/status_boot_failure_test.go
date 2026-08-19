@@ -44,10 +44,37 @@ func TestBootFailureLine(t *testing.T) {
 			want: "[critical ] worker.pool.exhausted count=8",
 		},
 		{
+			// A block cut off before its exception names no cause, so the
+			// header is all there is to say.
 			name: "reads a traceback header as the failure",
 			logs: "backend-1  | Traceback (most recent call last):\n" +
 				"backend-1  |   File \"/app/main.py\", line 1\n",
 			want: "Traceback (most recent call last):",
+		},
+		{
+			// The word "Traceback" is the one thing the operator already knew
+			// from the restart. The cause is the block's last line, and it
+			// carries no level marker, so a reader keying on markers alone
+			// reports the header and names nothing.
+			name: "names the exception a traceback ends on, not its header",
+			logs: "backend-1  | ERROR:    Traceback (most recent call last):\n" +
+				"backend-1  |   File \"/app/main.py\", line 12, in <module>\n" +
+				"backend-1  |     apply_migrations()\n" +
+				"backend-1  | psycopg.errors.CheckViolation: check constraint " +
+				"\"tasks_blocked_reason_check\" is violated by some row\n" +
+				"backend-1  | ERROR:    Application startup failed. Exiting.\n",
+			want: "psycopg.errors.CheckViolation: check constraint " +
+				"\"tasks_blocked_reason_check\" is violated by some row",
+		},
+		{
+			// The scan forward must stop at the next record, or a traceback
+			// followed by unrelated chatter reports the chatter as the cause.
+			name: "a traceback cause never runs into the next record",
+			logs: "backend-1  | Traceback (most recent call last):\n" +
+				"backend-1  |   File \"/app/main.py\", line 12, in <module>\n" +
+				"backend-1  | ValueError: bad revision id\n" +
+				"backend-1  | 2026-08-18 19:02:12 [info     ] api.shutdown.complete\n",
+			want: "ValueError: bad revision id",
 		},
 		{
 			// A healthy log is full of failure COUNTS. Reading one as a

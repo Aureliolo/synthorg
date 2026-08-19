@@ -105,6 +105,8 @@ async def drive_plan_waves(app_state: AppState, plan: Plan) -> bool:
 async def _file_missing_children(
     app_state: AppState,
     children: Sequence[Task],
+    *,
+    plan_id: str,
 ) -> None:
     """File the plan's child rows that do not exist yet, and only those.
 
@@ -121,14 +123,25 @@ async def _file_missing_children(
     Args:
         app_state: Application state carrying the persistence backend.
         children: The tasks rebuilt from the plan's work items.
+        plan_id: The plan being rescued. The boot pass walks every stranded
+            plan and files children for each, so a count with no plan beside
+            it belongs to none of them.
     """
     tasks = persistence_of(app_state).tasks
-    missing = [child for child in children if await tasks.get(str(child.id)) is None]
+    # The probes are independent, and the boot pass runs this per stranded
+    # plan before the API finishes starting, so awaiting them one at a time
+    # holds the whole lifespan for one round trip per item.
+    async with asyncio.TaskGroup() as group:
+        probes = [
+            (child, group.create_task(tasks.get(str(child.id)))) for child in children
+        ]
+    missing = [child for child, probe in probes if probe.result() is None]
     if not missing:
         return
     await tasks.save_many(tuple(missing))
     logger.info(
         RUN_RECOVERY_PLAN_RESUMED,
+        plan_id=plan_id,
         note="filed child rows a stopped dispatch never wrote",
         child_count=len(missing),
     )
@@ -164,7 +177,9 @@ async def _start_drive(app_state: AppState, plan: Plan) -> bool:
     # exist and are NOT re-filed: writing them again would reset the status of
     # every subtask that had already finished.
     decomposition = decomposition_from_plan(plan, parent_task=task)
-    await _file_missing_children(app_state, decomposition.created_tasks)
+    await _file_missing_children(
+        app_state, decomposition.created_tasks, plan_id=plan_id
+    )
     agents = await agent_registry_of(app_state).list_active()
     background = asyncio.create_task(
         _run_drive(
@@ -334,7 +349,24 @@ async def wire_run_recovery(app_state: AppState) -> None:
     # Before the cadence starts, because a restart is exactly when runs are
     # stranded and waiting out an interval first would leave the board showing
     # work in flight with nothing behind it for that whole interval.
-    await reconciler.reconcile(trigger=_BOOT_TRIGGER)
+    #
+    # Bounded, because this one is awaited inline in the lifespan: the pass
+    # reads every unfinished plan, and a persistence backend that hangs would
+    # hold the startup open with no ceiling, so the readiness probe never
+    # succeeds and the orchestrator restarts into the same wait. The bound is
+    # the resync interval rather than a ceiling of its own, since what a
+    # timed-out pass did not reach is exactly what the next pass covers, and
+    # a second number would be a second answer to how long recovery may take.
+    try:
+        async with asyncio.timeout(DEFAULT_RESYNC_INTERVAL_SECONDS):
+            await reconciler.reconcile(trigger=_BOOT_TRIGGER)
+    except TimeoutError:
+        logger.warning(
+            API_APP_STARTUP,
+            service="run_recovery",
+            note="boot pass hit its bound; the cadence covers what it missed",
+            bound_seconds=DEFAULT_RESYNC_INTERVAL_SECONDS,
+        )
     scheduler = RunRecoveryScheduler(
         reconciler,
         interval_seconds=DEFAULT_RESYNC_INTERVAL_SECONDS,

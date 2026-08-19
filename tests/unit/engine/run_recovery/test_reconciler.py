@@ -26,6 +26,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
+from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.run_recovery.reconciler import (
     AWAITING_HUMAN_STATUSES,
     DRIVEN_STATUSES,
@@ -35,7 +36,7 @@ from synthorg.engine.run_recovery.reconciler import (
 )
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
-from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.task_protocol import TaskRepository
 from tests._shared import as_uuid, mock_of
@@ -115,9 +116,26 @@ def _persistence(  # type: ignore[explicit-any]  # mock_of returns Any
         if saved is not None:
             saved.append(plan)
 
+    # Filtered rather than returning every plan: the sweep asks per unfinished
+    # status, so a double ignoring the spec would answer with plans the query
+    # it stands in for could not return, and every status branch below would
+    # be exercised against a set production never produces.
+    async def _query(
+        filter_spec: PlanFilterSpec,
+        *,
+        limit: int = TASK_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        matched = [
+            plan
+            for plan in plans
+            if filter_spec.status is None or plan.status is filter_spec.status
+        ]
+        return tuple(matched[offset : offset + limit])
+
     return mock_of[PersistenceBackend](
         plans=mock_of[PlanRepository](
-            list_items=AsyncMock(return_value=plans),
+            query=AsyncMock(side_effect=_query),
             update=AsyncMock(side_effect=_update),
         ),
         tasks=mock_of[TaskRepository](query=AsyncMock(return_value=tasks or [])),
@@ -169,7 +187,10 @@ def _reconciler(  # type: ignore[explicit-any]  # mock_of returns Any
     return RunRecoveryReconciler(
         persistence=persistence,
         task_engine=engine if engine is not None else _engine(),
-        ledger=ledger or LiveRunLedger(),
+        # An explicitly-passed empty ledger is a test that wants to observe
+        # the claims taken on it, and ``LiveRunLedger.__len__`` makes an empty
+        # one falsy, so ``or`` would silently swap in one nothing can see.
+        ledger=ledger if ledger is not None else LiveRunLedger(),
         drive_plan=_drive,
         recompute_plan=_recompute,
         rejudge_task=None if rejudged is None else _rejudge,
