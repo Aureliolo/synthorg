@@ -77,10 +77,8 @@ def _make_charter(  # noqa: PLR0913 -- test helper carries the charter field set
     forecast_id: object | None = None,
     correlation_id: str | None = None,
     task_id: str | None = None,
-    assumed_facets: tuple[CharterFacet, ...] = (),
 ) -> ProjectCharter:
     return ProjectCharter(
-        assumed_facets=assumed_facets,
         id=NotBlankStr(charter_id),
         conversation_id=NotBlankStr(conversation_id),
         created_by=NotBlankStr(created_by),
@@ -140,9 +138,17 @@ class TestCharterRepository:
         # carries it. Both backends store the array differently (TEXT JSON
         # against native JSONB), which is exactly where it can be lost.
         repo = _repo(backend)
+        # Copied rather than parameterised: the helper already carries the
+        # charter field set at the argument cap, and one test needing a
+        # non-default is not a reason to widen it for every other.
         await repo.save(
-            _make_charter(
-                assumed_facets=(CharterFacet.SUCCESS_CRITERIA, CharterFacet.ENVELOPE)
+            _make_charter().model_copy(
+                update={
+                    "assumed_facets": (
+                        CharterFacet.SUCCESS_CRITERIA,
+                        CharterFacet.ENVELOPE,
+                    )
+                }
             )
         )
 

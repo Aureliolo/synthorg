@@ -486,11 +486,10 @@ async def _build_approved_plan(
             )
     except asyncio.CancelledError:
         # Shutdown cancels this task, and `except Exception` does not see it
-        # because CancelledError is a BaseException. Leaving here silently
-        # used to be the one exit that stranded the plan: the approval's
-        # resume marker is cleared once this task is created, so nothing was
-        # left to replay from and the plan sat EXECUTING with no live
-        # dispatch for ever.
+        # because CancelledError is a BaseException. Leaving here silently is
+        # the one exit that strands the plan: the approval's resume marker is
+        # cleared once this task is created, so nothing is left to replay from
+        # and the plan sits EXECUTING with no live dispatch for ever.
         #
         # Which of the two exits is right turns on WHY the cancellation
         # arrived, and there is exactly one signal for that. A stopping
