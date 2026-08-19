@@ -36,7 +36,11 @@ class _Derived(BaseModel):
 
     parts: tuple[str, ...] = ()
 
-    @computed_field
+    # pydantic stacks this pair by design and mypy cannot model the
+    # pass-through. ``synthorg.*`` disables the code wholesale; the allowlist
+    # is deliberately not extended to tests, so the one test model that needs
+    # a computed field says so here.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def part_count(self) -> int:
         """How many parts there are.

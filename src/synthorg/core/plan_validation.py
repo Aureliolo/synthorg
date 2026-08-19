@@ -323,6 +323,148 @@ def describe_unstated_reference(
     return None
 
 
+class GatedPlanUnit(PlanUnit, Protocol):
+    """A plan unit plus the two fields its own gate is judged from.
+
+    Separate from :class:`PlanUnit` because the graph invariants above need
+    neither: a protocol that demands what its readers do not use rejects
+    callers for nothing.
+    """
+
+    @property
+    def acceptance_criteria(self) -> tuple[str, ...]:
+        """What has to be true for this unit to pass its review gate."""
+        ...
+
+    @property
+    def expected_artifacts(self) -> tuple[str, ...]:
+        """The deliverables this unit itself produces."""
+        ...
+
+
+#: Longest extension treated as naming a file. Past this the dot is prose
+#: ("the 3.5 second budget"), and matching on it would report a criterion
+#: that merely shares a sentence with another item's deliverable.
+_MAX_FILE_EXTENSION: Final[int] = 5
+
+
+def _artifact_filename(artifact: str) -> str | None:
+    """Reduce a declared artifact to the filename a criterion would name it by.
+
+    A deliverable is declared either as a path (``src/index.html``) or as
+    prose (``a playable game``). Only the first can be matched exactly, and
+    only an exact match is worth acting on: prose overlaps whatever the plan
+    is about, so a plan of ten items about one game would report ten times.
+
+    Returns:
+        The lowercased basename when the artifact names a file, else ``None``.
+    """
+    basename = artifact.replace("\\", "/").rsplit("/", maxsplit=1)[-1].strip().lower()
+    stem, dot, extension = basename.rpartition(".")
+    if not dot or not stem or " " in basename:
+        return None
+    if not extension.isalnum() or len(extension) > _MAX_FILE_EXTENSION:
+        return None
+    return basename
+
+
+def _criterion_tokens(unit: GatedPlanUnit) -> frozenset[str]:
+    """Return the filename-shaped tokens the unit's own criteria name.
+
+    Splits on everything a path cannot contain, so ``serves index.html with``
+    yields ``index.html`` rather than ``index`` and ``html``.
+
+    Returns:
+        Lowercased tokens from every acceptance criterion.
+    """
+    text = " ".join(unit.acceptance_criteria).lower()
+    kept = "".join(c if (c.isalnum() or c in "./\\-_") else " " for c in text)
+    return frozenset(
+        token.replace("\\", "/").rsplit("/", maxsplit=1)[-1].strip(".")
+        for token in kept.split()
+    )
+
+
+def _dependency_closure(
+    unit: GatedPlanUnit, by_id: dict[str, GatedPlanUnit]
+) -> frozenset[str]:
+    """Return every unit id *unit* transitively waits for.
+
+    The closure rather than the declared edges, because evidence flows the
+    whole way down a chain: an item three hops below still runs first.
+
+    Returns:
+        The ids reachable from *unit* through dependencies, excluding itself.
+    """
+    seen: set[str] = set()
+    pending = list(unit.dependencies)
+    while pending:
+        current = pending.pop()
+        if current in seen or current == unit.id:
+            continue
+        seen.add(current)
+        upstream = by_id.get(current)
+        if upstream is not None:
+            pending.extend(upstream.dependencies)
+    return frozenset(seen)
+
+
+def describe_undecidable_criterion(
+    *,
+    unit: GatedPlanUnit,
+    others: Sequence[GatedPlanUnit],
+) -> str | None:
+    """Describe a gate that demands evidence its plan produces later, or ``None``.
+
+    The DAG orders the WORK; it says nothing about whether the EVIDENCE each
+    gate demands exists by the time that gate runs. An item whose criterion
+    names a file a downstream item produces cannot pass at the moment it is
+    judged, and cannot pass on any rework either: the task reruns, the file
+    still does not exist, and the reviewer refuses again for as long as the
+    plan stands.
+
+    Matching is on declared artifact filenames only, so it fires on a plan
+    naming its own deliverables rather than on shared subject vocabulary.
+
+    Args:
+        unit: The unit whose criteria are being checked.
+        others: Every unit in the plan, *unit* included or not.
+
+    Returns:
+        A message naming the item, the artifact and its producer, or ``None``
+        when every criterion is decidable where it stands.
+    """
+    if not unit.acceptance_criteria:
+        return None
+    named = _criterion_tokens(unit)
+    if not named:
+        return None
+    own = {
+        filename
+        for artifact in unit.expected_artifacts
+        if (filename := _artifact_filename(artifact)) is not None
+    }
+    by_id = {one.id: one for one in others}
+    by_id[unit.id] = unit
+    reachable = _dependency_closure(unit, by_id)
+    for other in others:
+        if other.id == unit.id or other.id in reachable:
+            continue
+        for artifact in other.expected_artifacts:
+            filename = _artifact_filename(artifact)
+            if filename is None or filename in own or filename not in named:
+                continue
+            return (
+                f"{unit.id!r} has an acceptance criterion naming {filename!r}, "
+                f"which {other.id!r} ({other.title!r}) produces and {unit.id!r} "
+                "does not wait for, so the criterion is unjudgeable when this "
+                "item is reviewed and stays unjudgeable through every rework. "
+                "Declare the dependency, or judge this item on what it "
+                "produces itself"
+            )
+    return None
+
+
 def validate_expected_artifacts(
     *,
     entity_id: str,

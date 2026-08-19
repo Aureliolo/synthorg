@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleFinding,
     CompletionOracleReport,
     CompletionOracleReportRecord,
     CompletionOracleVerdict,
@@ -12,6 +13,7 @@ from synthorg.engine.completion_oracle.review_models import (
 from synthorg.security.redteam.models import (
     RedTeamReport,
     RedTeamReportRecord,
+    RedTeamSeverity,
     RedTeamVerdict,
 )
 from tests._shared import LoopAsyncClient, sid
@@ -41,6 +43,16 @@ def _oracle_record(
             reviewer_agent_id=sid(reviewer),
             executor_agent_id=sid(executor),
             verdict=verdict,
+            findings=(
+                (
+                    CompletionOracleFinding(
+                        severity=RedTeamSeverity.MEDIUM,
+                        description="the acceptance criterion is unmet",
+                    ),
+                )
+                if verdict is CompletionOracleVerdict.REJECT
+                else ()
+            ),
             summary="reviewed",
         ),
         recorded_at=_RECORDED_AT.replace(minute=minute),

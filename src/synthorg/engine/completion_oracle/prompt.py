@@ -47,7 +47,8 @@ Verdicts:
 - approve: criteria met; for code, you saw it build and test green.
 - approve_with_notes: approve, with non-blocking observations attached.
 - reject: a criterion is unmet, tests fail, or the work is a stub. The task
-  returns to the author for rework with your summary as the reason.
+  returns to the author for rework, briefed from your findings, so a reject
+  MUST carry at least one finding naming what the author has to fix.
 - escalate: you genuinely cannot decide (criteria are ambiguous or evidence
   is missing). A human will decide. Do NOT escalate to avoid doing the work.
 

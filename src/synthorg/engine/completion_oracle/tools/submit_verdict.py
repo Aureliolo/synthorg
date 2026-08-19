@@ -57,7 +57,9 @@ _TOOL_DESCRIPTION: Final[str] = (
     "summary and a verdict: approve, approve_with_notes, reject, or escalate. "
     "For a code deliverable you MUST build it and run its tests before "
     "approving; set ran_build / ran_tests and test_command accordingly. High "
-    "and critical findings must carry at least one evidence quote."
+    "and critical findings must carry at least one evidence quote. A reject "
+    "MUST carry at least one finding: the rework brief is built from the "
+    "findings, so a rejection without them sends the work back naming nothing."
 )
 
 
@@ -261,5 +263,11 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = "submit_completion_oracle_verdict report construction failed"
+            # The reviewer sees this string as the tool's error observation and
+            # can file again inside the same bounded session, so it carries the
+            # rule that refused the report rather than the fact of refusal.
+            msg = (
+                "submit_completion_oracle_verdict report construction failed: "
+                f"{safe_error_description(exc)}"
+            )
             raise CompletionOracleVerdictValidationError(msg) from exc

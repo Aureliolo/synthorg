@@ -17,6 +17,7 @@ from synthorg.engine.completion_oracle.report_repo import (
 )
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleFinding,
     CompletionOracleReport,
     CompletionOracleReportRecord,
     CompletionOracleVerdict,
@@ -26,6 +27,7 @@ from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportArchiveRepository,
     CompletionOracleReportFilterSpec,
 )
+from synthorg.security.redteam.models import RedTeamSeverity
 from tests._shared import FakeClock, as_uuid
 from tests._shared.staffing import staffing_with
 
@@ -77,12 +79,23 @@ def _input(*, executor: str = _EXECUTOR) -> CompletionOracleReviewInput:
 
 
 def _report(verdict: CompletionOracleVerdict) -> CompletionOracleReport:
+    rejecting = verdict is CompletionOracleVerdict.REJECT
     return CompletionOracleReport(
         execution_id="exec-1",
         task_id="task-1",
         reviewer_agent_id=_REVIEWER,
         executor_agent_id=_EXECUTOR,
         verdict=verdict,
+        findings=(
+            (
+                CompletionOracleFinding(
+                    severity=RedTeamSeverity.MEDIUM,
+                    description="the acceptance criterion is unmet",
+                ),
+            )
+            if rejecting
+            else ()
+        ),
         summary="review complete",
     )
 

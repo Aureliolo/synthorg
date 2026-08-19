@@ -149,7 +149,13 @@ _SUBTASK_PROPERTIES: Final[dict[str, JsonValue]] = {
     "acceptance_criteria": {
         "type": "array",
         "items": {"type": "string"},
-        "description": "Verifiable criteria that define done for this subtask",
+        "description": (
+            "Verifiable criteria that define done for this subtask, each "
+            "decidable from this item's own expected_artifacts plus those "
+            "of the items it depends on. Naming a file a later item "
+            "produces makes the criterion unjudgeable and the plan is "
+            "rejected at parse time."
+        ),
     },
     "satisfies": {
         "type": "array",
@@ -365,6 +371,11 @@ def build_system_message(
         "artifact: an item that builds nothing cannot be checked, so if you "
         "cannot name a deliverable the item is either a decision or it does "
         "not belong in the plan. A decision item lists no artifacts.\n"
+        "- Each item is judged the moment IT finishes, so its "
+        "acceptance_criteria must be decidable from its own artifacts plus "
+        "those of the items it depends on. A criterion naming a file another "
+        "item produces later can never pass, and the plan is REJECTED for it: "
+        "either declare that dependency or judge the item on what it builds.\n"
         "- Tag each item with the objective acceptance criteria it advances "
         "(satisfies, copied verbatim) so coverage is checkable. Between them, "
         "the items must cover every objective criterion.\n"

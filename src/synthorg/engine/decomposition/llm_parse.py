@@ -15,6 +15,7 @@ from pydantic import JsonValue
 
 from synthorg.core.plan_validation import (
     describe_structureless_graph,
+    describe_undecidable_criterion,
     describe_unroutable_role,
     describe_unstated_reference,
 )
@@ -151,8 +152,9 @@ def _validate_graph(
         structure: The structure the planner declared.
 
     Raises:
-        DecompositionError: When an ordered structure carries no edges, or an
-            item names another it declares no dependency on.
+        DecompositionError: When an ordered structure carries no edges, an
+            item names another it declares no dependency on, or an item's own
+            gate demands evidence the plan produces after it.
     """
     detail = describe_structureless_graph(
         declared_sequential=structure in _ORDERED_STRUCTURES,
@@ -161,6 +163,11 @@ def _validate_graph(
     if detail is None:
         for subtask in subtasks:
             detail = describe_unstated_reference(unit=subtask, others=subtasks)
+            if detail is not None:
+                break
+    if detail is None:
+        for subtask in subtasks:
+            detail = describe_undecidable_criterion(unit=subtask, others=subtasks)
             if detail is not None:
                 break
     if detail is None:

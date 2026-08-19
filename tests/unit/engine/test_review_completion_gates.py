@@ -35,6 +35,7 @@ from synthorg.engine.completion_oracle.build_test_models import (
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleFinding,
     CompletionOracleGateResult,
     CompletionOracleReport,
     CompletionOracleVerdict,
@@ -46,7 +47,7 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_ESCALATION_ROUTED,
 )
-from synthorg.security.redteam.models import RedTeamVerdict
+from synthorg.security.redteam.models import RedTeamSeverity, RedTeamVerdict
 from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import as_uuid, mock_of
 
@@ -453,6 +454,16 @@ def _oracle_result(
         reviewer_agent_id="completion-reviewer",
         executor_agent_id="agent-backend",
         verdict=verdict,
+        findings=(
+            (
+                CompletionOracleFinding(
+                    severity=RedTeamSeverity.MEDIUM,
+                    description="the acceptance criterion is unmet",
+                ),
+            )
+            if verdict is CompletionOracleVerdict.REJECT
+            else ()
+        ),
         summary="review complete",
     )
     return CompletionOracleGateResult(
