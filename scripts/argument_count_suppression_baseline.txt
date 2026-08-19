@@ -125,7 +125,7 @@ src/synthorg/providers/structured_text.py::complete_text::10
 src/synthorg/research/factory.py::build_research_service::11
 src/synthorg/security/service.py::SecOpsService.__init__::12
 src/synthorg/tools/external_api/external_api_tool.py::ExternalApiTool.__init__::12
-src/synthorg/tools/factory.py::build_default_tools::31
+src/synthorg/tools/factory.py::build_default_tools::29
 src/synthorg/tools/factory.py::build_default_tools_from_config::20
 src/synthorg/tools/invoker.py::ToolInvoker.__init__::10
 src/synthorg/tools/sandbox/docker_sandbox.py::DockerSandbox._build_container_config::9
