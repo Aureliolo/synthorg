@@ -219,6 +219,40 @@ class TestTheClaimIsTakenBeforeTheRowExists:
 
 
 class TestTheClaimCoversExactlyTheWritingWindow:
+    async def test_the_claim_outlives_every_await_before_the_row_is_filled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Held until the row itself says PENDING_REVIEW, not a moment sooner.
+
+        Releasing while the row still says PLANNING hands the sweep a shell
+        nobody claims, two awaits before this coroutine fills it, and the
+        sweep fails it as abandoned.
+        """
+        backend = FakePersistenceBackend()
+        ledger = LiveRunLedger()
+        gate, root, plan_id = await _opened_shell(backend, ledger)
+        claimed_at_write: list[bool] = []
+        real_update = backend.plans.update
+
+        async def _observing_update(
+            plan: Plan, *, expected_version: int | None = None
+        ) -> None:
+            claimed_at_write.append(ledger.is_driving(str(plan_id)))
+            await real_update(plan, expected_version=expected_version)
+
+        monkeypatch.setattr(backend.plans, "update", _observing_update)
+
+        await gate.request_plan_approval(
+            plan_id=plan_id,
+            work_item=_work_item(),
+            task=root,
+            plan=_decomposition(),
+            review=_NO_PANEL,
+        )
+
+        assert claimed_at_write == [True]
+        assert not ledger.is_driving(str(plan_id))
+
     async def test_filling_the_shell_drops_the_claim(self) -> None:
         # A claim outliving the write is the mirror defect: the plan becomes
         # permanently invisible to recovery for the life of the process.

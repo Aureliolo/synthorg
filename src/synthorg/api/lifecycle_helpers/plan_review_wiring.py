@@ -356,11 +356,6 @@ class PlanReviewApprovalGate:
                 retired and the plan is failed, so a shutdown mid-park leaves
                 nothing an operator can still act on.
         """
-        # The plan stops being one this process is writing the moment it is
-        # filled, whatever happens to the parking below: from here on the row
-        # is PENDING_REVIEW and recovery reads it as awaiting a human, which
-        # it skips for its own reasons.
-        self.release_plan(plan_id)
         await self._require_parent(task, plan_id)
         detail = plan_detail([s.title for s in plan.plan.subtasks])
         now = self._clock.now()
@@ -383,6 +378,15 @@ class PlanReviewApprovalGate:
         # filled plan fresh so the approval still references a durable plan
         # rather than dangling; the service owns that fork.
         await self._plans.record_decomposed(durable_plan, shell=shell)
+        # Released HERE, not before the awaits above: the plan stops being one
+        # this process is writing the moment the row actually says
+        # PENDING_REVIEW, which recovery reads as awaiting a human and skips.
+        # Releasing any earlier hands the sweep a shell that still says
+        # PLANNING and that nobody claims, which it fails as abandoned while
+        # this coroutine is two awaits from filling it. Whatever happens to
+        # the parking below is not a reason to hold it: the row is durable and
+        # the failure paths release on their own.
+        self.release_plan(plan_id)
         approval = plan_approval_item(
             plan_id=str(durable_plan.id),
             titles=[s.title for s in plan.plan.subtasks],

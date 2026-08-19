@@ -318,14 +318,25 @@ async def _finish_replan(
 ) -> None:
     """Run the tail every committed replan owes, whatever ended the caller.
 
+    Parking runs whatever became of the cancellation. The retirement has
+    already committed by the time this is reached, so a failure cancelling the
+    predecessor's in-flight work cannot undo the replan: the successor is live
+    and ``PENDING_REVIEW``, which recovery reads as parked on a human and
+    leaves alone. Skipping the park there would leave an initiative nobody can
+    decide, permanently, over a task transition that failed. The cancellation
+    error still surfaces afterwards, since the retired work genuinely did not
+    stop.
+
     Args:
         app_state: Application state.
         existing: The plan just superseded.
         successor: The plan now live.
         requested_by: Actor recorded on the writes.
     """
-    await _cancel_retired_work(app_state, existing, requested_by=requested_by)
-    await _park_for_review(app_state, successor, requested_by=requested_by)
+    try:
+        await _cancel_retired_work(app_state, existing, requested_by=requested_by)
+    finally:
+        await _park_for_review(app_state, successor, requested_by=requested_by)
 
 
 async def _park_for_review(

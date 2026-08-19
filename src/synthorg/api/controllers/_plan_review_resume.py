@@ -453,11 +453,24 @@ async def _build_approved_plan(
             drain still completes promptly.
     """
     ledger = live_run_ledger_of(app_state)
-    # Claimed for as long as this drive runs, so the recovery sweep's periodic
-    # pass cannot start a second driver on a plan already being built here.
-    # Not a reason to abandon the build when the claim is refused: the claim
-    # is a courtesy to the sweep, and the approval is the authority.
-    claimed = plan_id is not None and ledger.try_claim(plan_id)
+    # Claimed for as long as this drive runs, and a refusal ENDS this one.
+    # The ledger answers "is somebody already driving this plan", and a
+    # refusal means yes, so building anyway puts two drivers on one plan:
+    # both assign the same subtasks, the engine refuses the second, and the
+    # wave that lost fails the plan it was helping. Nothing is stranded by
+    # returning, because the driver that holds the claim is the one running
+    # the work. An unscoped run (no plan) claims nothing and proceeds.
+    claimed = False
+    if plan_id is not None:
+        claimed = ledger.try_claim(plan_id)
+        if not claimed:
+            logger.info(
+                APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+                approval_id=approval_id,
+                plan_id=plan_id,
+                note="already being driven; left to the driver that holds it",
+            )
+            return
     try:
         agents = await agent_registry_of(app_state).list_active()
         result = await coordinator.coordinate(

@@ -633,6 +633,35 @@ class TestReplan:
         assert project.plan_id is not None
         assert project.plan_id != as_uuid(_PLAN_ID)
 
+    async def test_a_failed_cancellation_still_leaves_a_decidable_successor(
+        self,
+    ) -> None:
+        """Whatever became of the retired work, the successor must be askable.
+
+        Cancelling the predecessor's in-flight tasks runs after the retirement
+        has committed, so a failure there cannot undo the replan: the
+        successor is live and PENDING_REVIEW. Recovery reads that status as
+        parked on a human, correctly, so a successor with no approval row is
+        an initiative that stops for good, which is the state a live run
+        already left one in.
+        """
+        state, _, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.IN_PROGRESS),
+        )
+        engine.transition_task.side_effect = QueryError("cancellation failed")
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        parked = [call.args[0] for call in _parked_store(state).add.await_args_list]
+        assert [
+            item for item in parked if item.action_type == PLAN_APPROVAL_ACTION_TYPE
+        ], "the successor is live and PENDING_REVIEW with nothing to decide it"
+
     async def test_a_cancellation_never_undoes_a_retire_that_committed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -15,6 +15,7 @@ from synthorg.api.controllers._plan_review_resume import (
     try_plan_review_resume,
 )
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.run_recovery_wiring import live_run_ledger_of
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
@@ -420,6 +421,29 @@ class TestPlanReviewResume:
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.EXECUTING
+
+    async def test_a_plan_already_being_driven_is_not_driven_again(self) -> None:
+        """A refused claim means somebody else is building this plan.
+
+        The design states one driver per plan and names the harm: two drivers
+        assign the same subtasks, the engine refuses the second, and the wave
+        that lost fails the plan it was helping. The claim is the mechanism,
+        so its answer has to be obeyed by both of its callers.
+        """
+        parent = _task("parent-1")
+        state, coordinator, _, _ = await _seed(
+            task=parent, plan=_durable_plan("parent-1")
+        )
+        # The recovery sweep got there first.
+        live_run_ledger_of(state).try_claim(str(as_uuid(_PLAN_ID)))
+
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+        await state.drain_entry_background_tasks()
+
+        assert handled is True
+        coordinator.coordinate.assert_not_awaited()
 
     async def test_an_unclicked_decision_is_recorded_on_the_plan_it_dispatches(
         self,
