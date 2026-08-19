@@ -1,6 +1,8 @@
 """Task-family enumerations and stakes ordering."""
 
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final
 
 
@@ -100,15 +102,81 @@ class BlockedReason(StrEnum):
     RUN_STOPPED = "run_stopped"
 
 
+class ParkExit(StrEnum):
+    """Who can end a park, and therefore who the org is waiting on.
+
+    ``BLOCKED`` says a task stopped. It never says whether anything will
+    start it again, and every rule needing that answer was carrying its own
+    list of reasons. The lists disagreed, and the quieter one won: the stall
+    classifier counted an escalated review as dead, so a live run replanned
+    the initiative half a second after asking a human to decide it, and
+    superseded the plan the question was about.
+
+    ``OPERATOR``: a decision is open in front of a person, and the exit is
+    theirs to take. Replanning does not answer them, it discards the question.
+
+    ``SWEEP``: a reconciler releases it with nobody asked, so the org is
+    waiting on itself and a replan would race what is already coming.
+
+    ``REPLAN``: nothing here will move it. The work is still wanted, but
+    only a new plan can order it, so this is the one that means dead.
+    """
+
+    OPERATOR = "operator"
+    SWEEP = "sweep"
+    REPLAN = "replan"
+
+
+#: Who ends each park. Declared per member rather than derived from any
+#: reading rule, because the rules disagreed about it and a claim about who
+#: is being waited on belongs beside the reason itself. Exhaustive by the
+#: guard below: a new reason cannot ship without answering the question.
+PARK_EXIT: Final[Mapping[BlockedReason, ParkExit]] = MappingProxyType(
+    {
+        # A human was asked and the answer is theirs to give.
+        BlockedReason.ORACLE_ESCALATED: ParkExit.OPERATOR,
+        # Hire, re-bind a model, or revise the item; each is the operator's.
+        BlockedReason.NO_CAPABLE_AGENT: ParkExit.OPERATOR,
+        # The review-staffing reconciler releases these and re-drives the
+        # review; it opens the hire itself, so nobody is asked for the park.
+        BlockedReason.REVIEWER_UNSTAFFED: ParkExit.SWEEP,
+        BlockedReason.RED_TEAM_UNSTAFFED: ParkExit.SWEEP,
+        # Routed once, then lost its wave to a refusal partway through. Only
+        # a replan wave picks it back up.
+        BlockedReason.WAVE_RELEASED: ParkExit.REPLAN,
+        # Its declared inputs died, so it needs them planned again.
+        BlockedReason.DEPENDENCY_FAILED: ParkExit.REPLAN,
+        # Nothing is wrong with it, but the run that would have reached it is
+        # over, and no sweep re-dispatches a parked row.
+        BlockedReason.RUN_STOPPED: ParkExit.REPLAN,
+    }
+)
+
+_undeclared_parks = set(BlockedReason) - set(PARK_EXIT)
+if _undeclared_parks:  # pragma: no cover -- import-time declaration guard
+    _names = ", ".join(sorted(reason.value for reason in _undeclared_parks))
+    _msg = (
+        f"BlockedReason members missing from PARK_EXIT: {_names}. Every park "
+        "names who can end it, or the rules reading it each guess differently"
+    )
+    raise RuntimeError(_msg)
+
+
 #: Parks that wait on staffing rather than on a person's answer. The
 #: review-staffing sweep owns exactly these, and checks its role map against
 #: this set at import, so a third gate role cannot ship a park that nothing
-#: ever sweeps. ORACLE_ESCALATED, WAVE_RELEASED and NO_CAPABLE_AGENT are
-#: deliberately absent: the first waits on a human's decision, the second on a
-#: scheduler, and the third on an operator changing the roster, which is not a
-#: gate role the sweep can hire for.
+#: ever sweeps.
 STAFFING_BLOCKED_REASONS: Final[frozenset[BlockedReason]] = frozenset(
-    {BlockedReason.REVIEWER_UNSTAFFED, BlockedReason.RED_TEAM_UNSTAFFED}
+    reason for reason, park_exit in PARK_EXIT.items() if park_exit is ParkExit.SWEEP
+)
+
+#: Parks somebody will end: a person who has been asked, or a sweep that is
+#: already coming. Read wherever "can this still move" is the question, so
+#: the answer is the declaration above rather than a list per caller.
+ATTENDED_BLOCKED_REASONS: Final[frozenset[BlockedReason]] = frozenset(
+    reason
+    for reason, park_exit in PARK_EXIT.items()
+    if park_exit is not ParkExit.REPLAN
 )
 
 #: ``Task.metadata`` key naming the role a ``NO_CAPABLE_AGENT`` park is

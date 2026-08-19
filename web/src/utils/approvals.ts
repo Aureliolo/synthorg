@@ -22,6 +22,19 @@ import {
 /** Action type stamped on the review approval created for a failed run. */
 const FAILED_RUN_ACTION_TYPE = 'review:task_failed'
 
+/** Action type stamped on the review approval created for finished work. */
+const COMPLETED_RUN_ACTION_TYPE = 'review:task_completion'
+
+/**
+ * Whether the approval asks for a verdict on a task's own work.
+ *
+ * The review gate parks other things too (the staffing reconciler's hire),
+ * and those are not reviews of anything.
+ */
+function isTaskReview(actionType: string): boolean {
+  return actionType === COMPLETED_RUN_ACTION_TYPE || actionType === FAILED_RUN_ACTION_TYPE
+}
+
 /** Deep-link to an approval, pre-selected in the queue. */
 export function approvalDetailPath(approvalId: string): string {
   return `${ROUTES.APPROVALS}?selected=${encodeURIComponent(approvalId)}`
@@ -122,11 +135,23 @@ const APPROVAL_SOURCE_STEP_LABELS: Record<ApprovalSource, string> = {
  * Human label for which step of the propose then execute then review flow
  * this approval represents, so proposal-time and completion gates are never
  * confused. Failed/empty completions get their own truthful label.
+ *
+ * The failed case goes through `isFailedApproval` rather than reading the run
+ * outcome again: the enrichment is optional and the action type is not, so
+ * reading only the first put "Review completed work" over a task that failed,
+ * beside that same card's Acknowledge/Retry buttons, which read the second.
+ * One card, two answers, and the visible one was the wrong one.
+ *
+ * A `review_gate` approval that reviews no task borrows nothing from that
+ * label either: the staffing reconciler parks a hire there, and a hire is a
+ * decision to take, not work to look over.
  */
 export function getApprovalStepLabel(approval: ApprovalResponse): string {
-  const outcome = approval.run?.outcome
-  if (outcome === 'failed') return 'Review failed run'
-  if (outcome === 'empty') return 'Review empty run'
+  if (isFailedApproval(approval)) return 'Review failed run'
+  if (approval.run?.outcome === 'empty') return 'Review empty run'
+  if (approval.source === 'review_gate' && !isTaskReview(approval.action_type)) {
+    return APPROVAL_SOURCE_STEP_LABELS.parked_context
+  }
   return APPROVAL_SOURCE_STEP_LABELS[approval.source]
 }
 

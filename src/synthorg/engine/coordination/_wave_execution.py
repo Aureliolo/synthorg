@@ -240,7 +240,12 @@ async def _run_one_wave(
         # a level a previous run finished, so this run walks on. Stopping
         # there would fail a resumed plan for the work it had already done,
         # and ``fail_fast`` is about a level that did NOT deliver.
-        return False if outcome.delivered else run.fail_fast
+        #
+        # Waiting is the third case and it walks on too, because stopping
+        # would park every level below under a reason a replan believes, and
+        # the rows held back here are still at CREATED, which is what the
+        # recovery sweep re-drives once the decision lands.
+        return False if outcome.delivered or outcome.awaiting else run.fail_fast
     if run.resources is None:
         stop, _ = await _dispatch_gated_wave(
             gated, wave_idx=wave_idx, start=start, run=run

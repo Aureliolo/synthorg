@@ -28,7 +28,9 @@ from uuid import uuid4
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import BlockedReason, TaskStatus
 from synthorg.engine.coordination._dependency_gate import (
+    DependencyState,
     abandon_reason,
+    awaited_dependencies,
     awaits_dispatch,
     block_reason,
     unmet_dependencies,
@@ -42,6 +44,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED,
     COORDINATION_WAVE_BUILT,
+    COORDINATION_WAVE_DEPENDENCY_AWAITED,
     COORDINATION_WAVE_DEPENDENCY_UNMET,
 )
 
@@ -101,18 +104,24 @@ class AssignmentWriter:
         self,
         group: ParallelExecutionGroup,
         dependencies: Mapping[str, tuple[str, ...]],
-    ) -> ParallelExecutionGroup:
-        """Drop the subtasks whose declared inputs did not arrive.
+    ) -> tuple[ParallelExecutionGroup, int]:
+        """Drop the subtasks whose declared inputs have not arrived.
 
         Waves are dependency levels, so every subtask here was scheduled
         on the promise that the work it names finished. When that promise
         broke, running it anyway buys a turn budget's worth of spend for a
         task that can only fail against outputs nobody wrote.
 
-        The dropped subtasks are parked BLOCKED rather than left where
-        they were: an undispatched CREATED row has nothing watching it and
-        no exit, so the plan can never derive a terminal status. BLOCKED
-        with a named reason is what a replan wave picks back up.
+        Two ways the promise can be outstanding, and they get opposite
+        treatment. An input that DIED parks its dependent BLOCKED rather than
+        leaving it where it was: an undispatched CREATED row has nothing
+        watching it and no exit, so the plan can never derive a terminal
+        status, and BLOCKED with a named reason is what a replan wave picks
+        back up. An input parked on a person or a sweep has not failed, so
+        its dependent is left at CREATED and simply not proposed this pass:
+        every park available would claim something untrue, and CREATED is
+        the one status the recovery sweep re-drives a plan for, so the wave
+        asks again once the answer has landed.
 
         Args:
             group: The wave about to dispatch.
@@ -120,34 +129,44 @@ class AssignmentWriter:
                 depends on.
 
         Returns:
-            The group carrying only the assignments whose inputs stand.
-            When no engine is wired there is no status to read, so the
-            group is returned unchanged.
+            ``(group, awaiting)``: the group carrying only the assignments
+            whose inputs stand, and how many were held back for an input
+            somebody still owes an answer on. When no engine is wired there
+            is no status to read, so the group is returned unchanged.
         """
         engine = self._task_engine
         if engine is None:
-            return group
+            return group, 0
         runnable: list[AgentAssignment] = []
+        awaiting = 0
         # One read per dependency for the whole wave. Subtasks in a level
         # routinely declare the same input (a fan-out shares its parent), so
         # reading per assignment repeats the round trip; worse, it lets two
         # subtasks in the same gate decide against different views of one
         # dependency if it moves between their reads.
-        known: dict[str, TaskStatus | None] = {}
+        known: dict[str, DependencyState] = {}
         for assignment in group.assignments:
             task_id = str(assignment.task.id)
             declared = dependencies.get(task_id, ())
             for dependency_id in declared:
                 if dependency_id not in known:
-                    known[dependency_id] = await self._dependency_status(
+                    known[dependency_id] = await self._dependency_state(
                         engine, dependency_id
                     )
-            statuses = {
-                dependency_id: known[dependency_id] for dependency_id in declared
-            }
-            unmet = unmet_dependencies(statuses)
+            states = {dependency_id: known[dependency_id] for dependency_id in declared}
+            unmet = unmet_dependencies(states)
             if not unmet:
-                runnable.append(assignment)
+                awaited = awaited_dependencies(states)
+                if not awaited:
+                    runnable.append(assignment)
+                    continue
+                awaiting += 1
+                logger.info(
+                    COORDINATION_WAVE_DEPENDENCY_AWAITED,
+                    subtask_id=task_id,
+                    group_id=group.group_id,
+                    awaited_dependencies=list(awaited),
+                )
                 continue
             logger.warning(
                 COORDINATION_WAVE_DEPENDENCY_UNMET,
@@ -164,7 +183,7 @@ class AssignmentWriter:
                 # an outcome, and the row reaches a terminal the rollup can
                 # conclude on.
                 runnable.append(assignment)
-        return group.model_copy(update={"assignments": tuple(runnable)})
+        return group.model_copy(update={"assignments": tuple(runnable)}), awaiting
 
     async def narrow_to_awaiting_dispatch(
         self,
@@ -452,16 +471,20 @@ class AssignmentWriter:
         return True
 
     @staticmethod
-    async def _dependency_status(
+    async def _dependency_state(
         engine: TaskEngine, dependency_id: str
-    ) -> TaskStatus | None:
-        """Read one dependency's status from the engine.
+    ) -> DependencyState:
+        """Read one dependency's status and park reason from the engine.
 
         Returns:
-            The status the engine holds, or ``None`` when it holds no row.
+            What the engine holds, with a ``None`` status when it holds no
+            row. The reason comes back with the status because BLOCKED alone
+            cannot say whether anything will move the row again.
         """
         live = await engine.get_task(dependency_id)
-        return None if live is None else live.status
+        if live is None:
+            return DependencyState(None)
+        return DependencyState(live.status, live.blocked_reason)
 
     async def _park_on_dependency(
         self,

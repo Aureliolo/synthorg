@@ -323,6 +323,8 @@ API_PLAN_STATUS_TRANSITIONED: Final[str] = "api.plan.status_transitioned"
 API_PLAN_SUCCESSOR_OPENED: Final[str] = "api.plan.successor_opened"
 API_PLAN_REPLANNED: Final[str] = "api.plan.replanned"
 API_PLAN_REPLAN_WORK_TERMINATED: Final[str] = "api.plan.replan_work_terminated"
+API_PLAN_REPLAN_PARKED: Final[str] = "api.plan.replan_parked"
+API_PLAN_REPLAN_PARK_FAILED: Final[str] = "api.plan.replan_park_failed"
 API_PLAN_REPLAN_ROLLBACK_RELINK_FAILED: Final[str] = (
     "api.plan.replan_rollback_relink_failed"
 )

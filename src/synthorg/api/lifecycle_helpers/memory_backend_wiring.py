@@ -20,8 +20,10 @@ Two rules shape this module:
 """
 
 import contextlib
+from typing import NoReturn
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.config import CompanyMemoryConfig, EmbedderOverrideConfig
@@ -49,11 +51,39 @@ from synthorg.providers.state import embedding_endpoint_resolver_of
 logger = get_logger(__name__)
 
 
+def _decline(app_state: AppState, reason: str) -> NoReturn:
+    """Record *reason* on the slice and hand it to the reconciler.
+
+    One sentence, two readers. The health dialog reads the slice and the
+    subsystem surface reads the raise, and until both came from here they
+    disagreed: a returning activation left the reconciler to guess from the
+    declared settings, which named ``memory.embedder_dims`` (a width the
+    product MEASURES by probing, so blank is its normal state and the
+    operator cannot set it) while the dialog named the probe that never
+    answered.
+
+    Args:
+        app_state: Application state whose memory slice carries the reason.
+        reason: What memory is waiting on, in the operator's terms.
+
+    Raises:
+        SubsystemDeclinedError: Always; that is what this is for.
+    """
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+    app_state.wire(MemoryStateSlice, wiring_failure=reason)
+    raise SubsystemDeclinedError(reason)
+
+
 async def wire_memory_backend(app_state: AppState) -> None:
     """Build and wire the durable memory backend.
 
     Idempotent, and gated on connected persistence because the durable
     backend stores vectors in the same database as everything else.
+
+    Raises:
+        SubsystemDeclinedError: When memory cannot be built yet, carrying the
+            condition it is waiting on.
     """
     from synthorg.memory.factory import (  # noqa: PLC0415
         IN_MEMORY_BACKEND,
@@ -73,16 +103,13 @@ async def wire_memory_backend(app_state: AppState) -> None:
         # Replaced rather than left alone: a pass that failed on the embedder
         # earlier left its reason here, and the health surface would go on
         # quoting it while the thing actually blocking memory is the database.
-        app_state.wire(
-            MemoryStateSlice,
-            wiring_failure=(
-                "The database memory stores its vectors in is not connected, "
-                "so no backend could be built. Check the persistence "
-                "connection; memory wires itself on the next pass once it is "
-                "back."
-            ),
+        _decline(
+            app_state,
+            "The database memory stores its vectors in is not connected, "
+            "so no backend could be built. Check the persistence "
+            "connection; memory wires itself on the next pass once it is "
+            "back.",
         )
-        return
 
     memory_config = await _resolved_memory_config(app_state)
     embedder = None
@@ -90,7 +117,13 @@ async def wire_memory_backend(app_state: AppState) -> None:
         embedder = await _build_embedder(app_state)
         if embedder is None:
             logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
-            return
+            # ``_build_embedder`` already put the specific failure on the
+            # slice, so it is read back rather than restated: it names the
+            # half that failed, and a generic sentence here would replace it.
+            raise SubsystemDeclinedError(
+                app_state.slice(MemoryStateSlice).wiring_failure
+                or "no embedding model could be resolved"
+            )
     # Cleared the moment the embedder is known good, not once the whole pass
     # succeeds: anything that fails after this point is not the embedder, and
     # leaving a previous pass's reason on the slice would send an operator to
@@ -118,14 +151,11 @@ async def wire_memory_backend(app_state: AppState) -> None:
         # Named on the slice for the same reason an embedder failure is: the
         # health surface would otherwise fall back to advice about choosing an
         # embedding model, which is the half that just worked.
-        app_state.wire(
-            MemoryStateSlice,
-            wiring_failure=(
-                f"The {memory_config.backend} store refused the connection: "
-                f"{safe_error_description(exc)}"
-            ),
+        _decline(
+            app_state,
+            f"The {memory_config.backend} store refused the connection: "
+            f"{safe_error_description(exc)}",
         )
-        return
     except BaseException:
         # A shutdown delivered inside ``connect()`` leaves a half-open
         # connection reachable only from this frame: the slice never

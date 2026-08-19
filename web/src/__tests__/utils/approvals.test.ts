@@ -225,9 +225,41 @@ describe('getApprovalStepLabel', () => {
     expect(getApprovalStepLabel(makeApproval('1', { source: 'conversational_intake' }))).toBe(
       'Approve to start',
     )
-    expect(getApprovalStepLabel(makeApproval('2', { source: 'review_gate' }))).toBe(
-      'Review completed work',
-    )
+    expect(
+      getApprovalStepLabel(
+        makeApproval('2', { source: 'review_gate', action_type: 'review:task_completion' }),
+      ),
+    ).toBe('Review completed work')
+  })
+
+  it('labels a failed run from its action type when no run context resolved', () => {
+    // A live queue showed 'Review completed work' over a task that failed,
+    // beside its own Acknowledge/Retry buttons. The buttons read the action
+    // type; the label read only the optional run enrichment and fell through
+    // to the source default, so one card stated the opposite of what it was
+    // asking. Both must come from the same fact.
+    const approval = makeApproval('5', {
+      source: 'review_gate',
+      action_type: 'review:task_failed',
+      run: null,
+    })
+
+    expect(isFailedApproval(approval)).toBe(true)
+    expect(getApprovalStepLabel(approval)).toBe('Review failed run')
+  })
+
+  it('does not call a hire a completed review', () => {
+    // Every approval parked by the review gate borrowed its label, including
+    // the staffing reconciler's hire, which reviews nothing.
+    expect(
+      getApprovalStepLabel(
+        makeApproval('6', {
+          source: 'review_gate',
+          action_type: 'org:hire',
+          run: null,
+        }),
+      ),
+    ).not.toBe('Review completed work')
   })
 
   it('labels failed and empty runs truthfully regardless of source', () => {

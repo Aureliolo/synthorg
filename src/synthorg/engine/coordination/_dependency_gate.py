@@ -13,9 +13,14 @@ derived from in-memory wave outcomes would be a second owner of that.
 """
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Final
 
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import (
+    ATTENDED_BLOCKED_REASONS,
+    BlockedReason,
+    TaskStatus,
+)
 from synthorg.engine.decomposition.models import SubtaskDefinition
 
 #: Statuses in which a dependency has not delivered and will not deliver
@@ -65,6 +70,43 @@ AWAITS_DISPATCH_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class DependencyState:
+    """What the engine holds for one declared dependency.
+
+    The reason travels with the status because BLOCKED is reached from
+    directions that mean opposite things, and reading the status alone
+    flattened them: a task parked because a completion review asked a human
+    to decide read identically to one whose own inputs died, so every
+    subtask below it was parked as "the work it depends on did not deliver",
+    naming work that HAD delivered and was waiting on a verdict. That reason
+    is a replan's input, so the successor went looking for work to redo that
+    nobody had said was wrong.
+
+    Attributes:
+        status: The status the engine holds, or ``None`` when it holds no
+            row at all.
+        blocked_reason: Why a BLOCKED dependency is parked. ``None`` means
+            the writer did not say, which is a synonym for no member.
+    """
+
+    status: TaskStatus | None
+    blocked_reason: BlockedReason | None = None
+
+    @property
+    def awaited(self) -> bool:
+        """Whether somebody is holding this dependency's exit.
+
+        Returns:
+            ``True`` when it is parked on a reason a person or a sweep ends,
+            so it has not delivered YET and nothing about it has failed.
+        """
+        return (
+            self.status is TaskStatus.BLOCKED
+            and self.blocked_reason in ATTENDED_BLOCKED_REASONS
+        )
+
+
 def awaits_dispatch(status: TaskStatus | None) -> bool:
     """Whether a wave should still dispatch the subtask holding *status*.
 
@@ -96,25 +138,55 @@ def dependency_map(
 
 
 def unmet_dependencies(
-    dependency_statuses: Mapping[str, TaskStatus | None],
+    dependency_states: Mapping[str, DependencyState],
 ) -> tuple[str, ...]:
-    """Name the dependencies that have not delivered.
+    """Name the dependencies that died and will not deliver.
 
     Args:
-        dependency_statuses: Each declared dependency id mapped to the
-            status the task engine holds for it, or ``None`` when the
-            engine holds no row at all.
+        dependency_states: Each declared dependency id mapped to what the
+            task engine holds for it.
 
     Returns:
         The offending dependency ids, sorted so the reason a subtask
         gives for parking is the same string on every run. Empty when
-        every dependency has delivered or is still on its way.
+        every dependency has delivered, is still on its way, or is parked
+        on somebody who can still release it, which
+        :func:`awaited_dependencies` answers instead.
     """
     return tuple(
         sorted(
             dependency_id
-            for dependency_id, status in dependency_statuses.items()
-            if status is None or status in NON_DELIVERING_STATUSES
+            for dependency_id, state in dependency_states.items()
+            if not state.awaited
+            and (state.status is None or state.status in NON_DELIVERING_STATUSES)
+        )
+    )
+
+
+def awaited_dependencies(
+    dependency_states: Mapping[str, DependencyState],
+) -> tuple[str, ...]:
+    """Name the dependencies parked on somebody who can still release them.
+
+    Kept apart from :func:`unmet_dependencies` because the two lead to
+    opposite treatment. A dead input means this subtask can only fail, so it
+    is parked and named. An input waiting on a decision means this subtask is
+    simply not ready yet: parking it would have to claim something untrue
+    (its input did not fail, and the run did not stop), so it is left where
+    it is and the next pass asks again.
+
+    Args:
+        dependency_states: Each declared dependency id mapped to what the
+            task engine holds for it.
+
+    Returns:
+        The awaited dependency ids, sorted for a stable log line.
+    """
+    return tuple(
+        sorted(
+            dependency_id
+            for dependency_id, state in dependency_states.items()
+            if state.awaited
         )
     )
 
@@ -189,7 +261,9 @@ def unreachable_reason() -> str:
 __all__ = [
     "AWAITS_DISPATCH_STATUSES",
     "NON_DELIVERING_STATUSES",
+    "DependencyState",
     "abandon_reason",
+    "awaited_dependencies",
     "awaits_dispatch",
     "block_reason",
     "dependency_map",

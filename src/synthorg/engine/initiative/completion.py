@@ -41,7 +41,11 @@ from synthorg.core.plan_enums import (
     PlanStatus,
 )
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task_enums import BlockedReason, TaskStatus
+from synthorg.core.task_enums import (
+    ATTENDED_BLOCKED_REASONS,
+    BlockedReason,
+    TaskStatus,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import set_field_names
 
@@ -73,17 +77,6 @@ _DEAD_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
         TaskStatus.SUSPENDED,
         TaskStatus.INTERRUPTED,
     }
-)
-
-#: BLOCKED reasons that are a wait on the operator rather than a dead end, so
-#: they carve out of the rule above for the same stated reason AWAITING_INPUT
-#: does: a replan would rewrite the work into something the current roster can
-#: do, which is not an answer to "nobody here can do this", and it would fire
-#: again on each generation against the same roster. The staffing reasons are
-#: absent because a sweep releases those; this one waits on a hire the operator
-#: approves, and the same sweep releases it once they have.
-_OPERATOR_WAIT_REASONS: Final[frozenset[BlockedReason]] = frozenset(
-    {BlockedReason.NO_CAPABLE_AGENT}
 )
 
 #: The dead statuses that mean the work was attempted and did not survive, as
@@ -290,15 +283,18 @@ def _work_item_is_dead(item: ItemProgress) -> bool:
     creates the task rows, so treating it as dead would replan every
     initiative during its own dispatch window.
 
-    A fourth carve-out reads the reason rather than the status: a task parked
-    because no agent can take it is the same shape of wait, expressed through
-    BLOCKED instead of its own status.
+    A fourth carve-out reads the reason rather than the status, because
+    BLOCKED is reached from directions that mean opposite things and only the
+    reason tells them apart. Which reasons is not decided here: every
+    ``BlockedReason`` declares who ends its park, and a park a person or a
+    sweep will end is the same shape of wait as AWAITING_INPUT, expressed
+    through BLOCKED instead of its own status.
 
     Returns:
         ``True`` when the item's task is in a status nothing will move it out
         of without a new decision.
     """
-    if item.blocked_reason in _OPERATOR_WAIT_REASONS:
+    if item.blocked_reason in ATTENDED_BLOCKED_REASONS:
         return False
     return item.task_status in _DEAD_STATUSES
 

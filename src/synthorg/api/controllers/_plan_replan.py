@@ -40,10 +40,14 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers._task_teardown import terminate_task
+from synthorg.api.lifecycle_helpers._plan_pending_review_park import (
+    review_approvals_for,
+)
 from synthorg.api.services._plan_revision import require_replannable
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
@@ -65,6 +69,8 @@ from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_PLAN_REPLAN_PARK_FAILED,
+    API_PLAN_REPLAN_PARKED,
     API_PLAN_REPLAN_ROLLBACK_DELETE_FAILED,
     API_PLAN_REPLAN_ROLLBACK_RELINK_FAILED,
     API_PLAN_REPLAN_ROLLBACK_UNCONFIRMED,
@@ -78,6 +84,13 @@ from synthorg.persistence.task_protocol import TaskFilterSpec
 logger = get_logger(__name__)
 
 _REPLAN_REASON: Final[str] = "plan superseded by a re-plan"
+
+#: What the operator reads on a successor nobody can be asked about. Stated as
+#: the consequence rather than the cause: what matters to them is that this
+#: revision is not going anywhere and the initiative needs a fresh re-plan.
+_PARK_FAILED_REASON: Final[str] = (
+    "the revision could not be raised for approval, so nothing could decide it"
+)
 
 
 class RevisionInputs(BaseModel):
@@ -235,6 +248,7 @@ async def replan_initiative(
         await asyncio.shield(_rollback_successor(app_state, existing, successor))
         raise
     await _cancel_retired_work(app_state, existing, requested_by=requested_by)
+    await _park_for_review(app_state, successor, requested_by=requested_by)
     logger.info(
         API_PLAN_REPLANNED,
         plan_id=str(successor.id),
@@ -243,6 +257,63 @@ async def replan_initiative(
         requested_by=requested_by,
     )
     return successor
+
+
+async def _park_for_review(
+    app_state: AppState,
+    successor: Plan,
+    *,
+    requested_by: str,
+) -> None:
+    """Raise the decision *successor*'s ``PENDING_REVIEW`` status promises.
+
+    The status says a person will be asked, and the approvals queue is the
+    only surface that asks: there is no approve route on the plans controller
+    and the plan page offers only rework, change-request and delete. A
+    successor parked nowhere is therefore an initiative that stops for good,
+    which a live run proved by leaving one there.
+
+    Failing to park fails the successor, for the reason the first-time gate
+    states on its own path: a plan nobody can decide is worse than a plan that
+    says it failed, because only the second is visible as a problem.
+    """
+    # The slice directly, not the 503-raising accessor: this runs inside the
+    # automatic trigger's detached task too, where a raise is swallowed and
+    # the successor is left in exactly the state this exists to prevent.
+    store = app_state.slice(ApprovalStateSlice).store
+    if store is None:
+        # Nothing asks for approvals in this deployment, so PENDING_REVIEW is
+        # not a promise anything made. Left alone rather than failed.
+        return
+    service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
+    parked = review_approvals_for(
+        successor,
+        requested_by=NotBlankStr(requested_by),
+        now=app_state.clock.now(),
+    )
+    try:
+        for item in parked:
+            await store.add(item)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_PLAN_REPLAN_PARK_FAILED,
+            plan_id=str(successor.id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        await service.sync_status(
+            successor,
+            PlanStatus.FAILED,
+            requested_by=requested_by,
+            failure_reason=NotBlankStr(_PARK_FAILED_REASON),
+        )
+        return
+    logger.info(
+        API_PLAN_REPLAN_PARKED,
+        plan_id=str(successor.id),
+        approvals=len(parked),
+    )
 
 
 async def _retire_predecessor(

@@ -60,11 +60,6 @@ _TOOL_DESCRIPTION: Final[str] = (
     "and critical findings must carry at least one evidence quote."
 )
 
-_TOOL_ACTION_TYPE: Final[str] = "comms:internal"
-"""Filing a structured verdict is an internal communication artefact; the
-existing ``comms:internal`` bucket gives SecOps a known category without a
-new action-type for a single tool."""
-
 
 class SubmitCompletionOracleVerdictTool(BaseTool):
     """The single tool exposed to the built-in completion-reviewer agent.
@@ -88,8 +83,18 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
         super().__init__(
             name=SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
             description=_TOOL_DESCRIPTION,
+            # No declared action type, so the category's own default applies,
+            # which is what the other two terminal submit tools take
+            # (``submit_decomposition_plan``, ``submit_evaluation``). Naming
+            # ``comms:internal`` here for want of a SecOps bucket put the one
+            # act a judging session exists to perform behind the approval
+            # SUPERVISED demands of anything leaving the sandbox. A verdict
+            # leaves nothing: it is written to the archive the gate then
+            # reads. The session is bounded, so the approval it was told to
+            # wait for could never arrive inside it, and a live run spent 63
+            # seconds proving that before the gate reported the reviewer had
+            # filed nothing.
             category=ToolCategory.OTHER,
-            action_type=_TOOL_ACTION_TYPE,
             parameters_schema=SubmitCompletionOracleVerdictArgs.model_json_schema(),
         )
         self._report_repo = report_repo

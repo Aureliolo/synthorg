@@ -36,11 +36,13 @@ logger = get_logger(__name__)
 class GatedWave:
     """What a wave has left to dispatch, and why it has nothing when it does.
 
-    A wave can empty out two ways that must not be confused. Every subtask
+    A wave can empty out three ways that must not be confused. Every subtask
     parked on inputs that died means the plan did not deliver this level, and
     the run has to say so. Every subtask already carrying an outcome means the
     level is DONE, which only a resumed run sees, and calling that a failure
-    would fail a plan for having made progress.
+    would fail a plan for having made progress. Every subtask held back on an
+    input somebody still owes an answer on is neither: the level has not
+    delivered and nothing about it went wrong.
 
     Attributes:
         group: What to dispatch, or ``None`` when nothing is left.
@@ -50,11 +52,17 @@ class GatedWave:
             so there was nothing left for the dependency gate to refuse. The
             caller cannot derive this from ``settled``, because a wave can
             drop some subtasks for being settled and park the rest.
+        awaiting: How many subtasks were held back because an input is
+            parked on somebody who can still release it. A third way to
+            empty out, and it is neither of the two above: nothing failed
+            and nothing is finished, so a run that treats it as either
+            reports something untrue to whoever replans.
     """
 
     group: ParallelExecutionGroup | None
     settled: int
     delivered: bool
+    awaiting: int = 0
 
 
 async def gate_wave(
@@ -70,11 +78,12 @@ async def gate_wave(
     """Narrow a wave to the subtasks that should actually run.
 
     The one owner of "may this subtask run", shared by every dispatcher, so a
-    second wave loop cannot quietly dispatch on work that died. Two grounds,
-    kept together because they answer one question and a caller holding half
-    of it would dispatch on the other half: a subtask whose declared inputs
-    did not arrive is parked BLOCKED naming what it waited on, and a subtask
-    that already has an outcome is simply not proposed again.
+    second wave loop cannot quietly dispatch on work that died. Three grounds,
+    kept together because they answer one question and a caller holding part
+    of it would dispatch on the rest: a subtask whose declared inputs died is
+    parked BLOCKED naming what it waited on, a subtask that already has an
+    outcome is simply not proposed again, and a subtask whose input is parked
+    on somebody who can still release it is left where it is.
 
     Args:
         group: The wave as the DAG scheduled it.
@@ -91,37 +100,62 @@ async def gate_wave(
         plan did not deliver this level, and a phase list that says otherwise
         is what lets a rollup read the run as still working. A wave left with
         nothing because every subtask already delivered records a successful
-        phase, because the level IS delivered.
+        phase, because the level IS delivered. A wave held back on an input
+        somebody still owes an answer on records a failed phase too (it did
+        not deliver either), but says so in its own words, because a replan
+        reads this and a dependency failure that never happened is a lie it
+        acts on.
     """
     unsettled, settled = await assignment_writer.narrow_to_awaiting_dispatch(group)
-    gated = await assignment_writer.gate_on_dependencies(unsettled, dependencies)
+    gated, awaiting = await assignment_writer.gate_on_dependencies(
+        unsettled, dependencies
+    )
     logger.info(
         COORDINATION_WAVE_STARTED,
         wave_index=wave_idx,
         subtask_count=len(gated.assignments),
         gated_out=len(unsettled.assignments) - len(gated.assignments),
+        awaiting=awaiting,
         already_settled=settled,
     )
     delivered = not unsettled.assignments
     if gated.assignments:
-        return GatedWave(group=gated, settled=settled, delivered=delivered)
+        return GatedWave(
+            group=gated, settled=settled, delivered=delivered, awaiting=awaiting
+        )
 
     phases.append(
         CoordinationPhaseResult(
             phase=phase_name(wave_idx),
             success=delivered,
             duration_seconds=clock.monotonic() - start,
-            error=(
-                None
-                if delivered
-                else (
-                    f"Wave {wave_idx}: every subtask parked on work that "
-                    "did not deliver"
-                )
-            ),
+            error=_empty_wave_error(wave_idx, delivered=delivered, awaiting=awaiting),
         )
     )
-    return GatedWave(group=None, settled=settled, delivered=delivered)
+    return GatedWave(
+        group=None, settled=settled, delivered=delivered, awaiting=awaiting
+    )
+
+
+def _empty_wave_error(wave_idx: int, *, delivered: bool, awaiting: int) -> str | None:
+    """Say why a wave had nothing left to dispatch.
+
+    Args:
+        wave_idx: Which wave this is.
+        delivered: Whether every subtask already had an outcome.
+        awaiting: How many were held back on an input somebody owes.
+
+    Returns:
+        The phase error, or ``None`` when the level was simply delivered.
+    """
+    if delivered:
+        return None
+    if awaiting:
+        return (
+            f"Wave {wave_idx}: every subtask is waiting on work that is "
+            "parked for a decision"
+        )
+    return f"Wave {wave_idx}: every subtask parked on work that did not deliver"
 
 
 async def abandon_after(

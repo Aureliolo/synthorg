@@ -13,15 +13,17 @@ unless an operator opts in.
 
 import asyncio
 import contextlib
-import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Final
 from uuid import UUID
 
 from synthorg.api.channels import PlanNotifier
+from synthorg.api.lifecycle_helpers._plan_approval_presentation import plan_detail
+from synthorg.api.lifecycle_helpers._plan_pending_review_park import (
+    plan_approval_item,
+)
 from synthorg.api.lifecycle_helpers.plan_questions import (
-    PLAN_ID_METADATA_KEY,
     build_plan_questions,
     log_parked,
 )
@@ -29,8 +31,6 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
-from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
-from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
 from synthorg.budget.session_budget import (
@@ -78,8 +78,6 @@ from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
-_PLAN_ACTION_TYPE = PLAN_APPROVAL_ACTION_TYPE
-
 #: The gate itself, as an actor: on the compensating FAILED write, and as the
 #: requester of every approval it parks.
 #:
@@ -110,49 +108,6 @@ _SHELL_NOT_YET_REVIEWED: Final[PlanReviewOutcome] = PlanReviewOutcome(
 # its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
 # than aborting the one write meant to make a failure visible.
 _MAX_FAIL_ATTEMPTS: Final[int] = 3
-
-#: ``ApprovalItem.metadata`` key carrying resume context. The plan itself is
-#: durable (referenced by ``PLAN_ID_METADATA_KEY``, re-exported here because
-#: the resume and retire paths have always imported it from this module); the
-#: approval only points at it.
-PROJECT_METADATA_KEY = "project"
-
-_PREVIEW_SUBTASKS: Final[int] = 3
-
-# Plan-approval risk scales with plan size: a larger plan commits more work and
-# budget in one decision, so it warrants proportionally more scrutiny. (Risk
-# level is otherwise a mostly-decorative label; scaling it with size at least
-# makes it an honest signal here rather than a hardcoded constant.)
-_LOW_RISK_MAX_SUBTASKS: Final[int] = 3
-_MEDIUM_RISK_MAX_SUBTASKS: Final[int] = 8
-
-
-def _plan_risk_level(plan: DecompositionResult) -> ApprovalRiskLevel:
-    """Scale plan-approval risk with the size of the decomposed plan.
-
-    Returns:
-        ``LOW`` for a small plan, ``MEDIUM`` for a mid-sized one, ``HIGH``
-        for a large plan (more subtasks commit more work in one approval).
-    """
-    count = len(plan.plan.subtasks)
-    if count <= _LOW_RISK_MAX_SUBTASKS:
-        return ApprovalRiskLevel.LOW
-    if count <= _MEDIUM_RISK_MAX_SUBTASKS:
-        return ApprovalRiskLevel.MEDIUM
-    return ApprovalRiskLevel.HIGH
-
-
-def _plan_detail(plan: DecompositionResult) -> str:
-    """Human-readable one-line summary of a decomposed plan.
-
-    Returns:
-        A ``"<n> subtask(s): title, title, ..."`` summary.
-    """
-    subtasks = plan.plan.subtasks
-    titles = ", ".join(s.title for s in subtasks[:_PREVIEW_SUBTASKS])
-    suffix = ", ..." if len(subtasks) > _PREVIEW_SUBTASKS else ""
-    head = f"{len(subtasks)} subtask(s)"
-    return f"{head}: {titles}{suffix}" if titles else f"{head} awaiting approval"
 
 
 def _log_detached_compensation(done: asyncio.Future[None], plan_id: UUID) -> None:
@@ -398,8 +353,7 @@ class PlanReviewApprovalGate:
         # it skips for its own reasons.
         self.release_plan(plan_id)
         await self._require_parent(task, plan_id)
-        approval_id = uuid.uuid4()
-        detail = _plan_detail(plan)
+        detail = plan_detail([s.title for s in plan.plan.subtasks])
         now = self._clock.now()
         shell = await self._plans.get(NotBlankStr(str(plan_id)))
         filled = plan_from_decomposition(
@@ -420,22 +374,16 @@ class PlanReviewApprovalGate:
         # filled plan fresh so the approval still references a durable plan
         # rather than dangling; the service owns that fork.
         await self._plans.record_decomposed(durable_plan, shell=shell)
-        approval = ApprovalItem(
-            id=approval_id,
-            action_type=NotBlankStr(_PLAN_ACTION_TYPE),
-            title=NotBlankStr(f"Approve plan for: {task.title}"),
-            description=NotBlankStr(detail),
-            requested_by=NotBlankStr(_GATE_ACTOR),
-            risk_level=_plan_risk_level(plan),
-            source=ApprovalSource.PLAN_REVIEW,
-            status=ApprovalStatus.PENDING,
-            created_at=now,
+        approval = plan_approval_item(
+            plan_id=str(durable_plan.id),
+            titles=[s.title for s in plan.plan.subtasks],
+            objective_title=str(task.title),
+            project=str(work_item.project),
             task_id=NotBlankStr(str(task.id)),
-            metadata={
-                PLAN_ID_METADATA_KEY: str(durable_plan.id),
-                PROJECT_METADATA_KEY: work_item.project,
-            },
+            requested_by=NotBlankStr(_GATE_ACTOR),
+            now=now,
         )
+        approval_id = approval.id
         parked: list[ApprovalItem] = []
         try:
             await self._approval_store.add(approval)

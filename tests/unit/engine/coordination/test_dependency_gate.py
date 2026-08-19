@@ -22,6 +22,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
+    ATTENDED_BLOCKED_REASONS,
     BlockedReason,
     CoordinationTopology,
     TaskStatus,
@@ -30,6 +31,8 @@ from synthorg.core.task_enums import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dependency_gate import (
     NON_DELIVERING_STATUSES,
+    DependencyState,
+    awaited_dependencies,
     dependency_map,
     unmet_dependencies,
 )
@@ -143,11 +146,11 @@ def _engine(rows: dict[str, Task]) -> Any:  # type: ignore[explicit-any]  # mock
 
 
 class TestUnmetDependencies:
-    """The rule itself, over statuses the engine holds."""
+    """The rule itself, over the state the engine holds."""
 
     @pytest.mark.parametrize("status", sorted(NON_DELIVERING_STATUSES))
     def test_non_delivering_status_is_unmet(self, status: TaskStatus) -> None:
-        assert unmet_dependencies({"dep-a": status}) == ("dep-a",)
+        assert unmet_dependencies({"dep-a": DependencyState(status)}) == ("dep-a",)
 
     @pytest.mark.parametrize(
         "status",
@@ -159,7 +162,7 @@ class TestUnmetDependencies:
         ],
     )
     def test_delivering_or_in_flight_status_is_met(self, status: TaskStatus) -> None:
-        assert unmet_dependencies({"dep-a": status}) == ()
+        assert unmet_dependencies({"dep-a": DependencyState(status)}) == ()
 
     def test_in_review_is_met_so_waves_do_not_queue_behind_the_review_gate(
         self,
@@ -170,23 +173,124 @@ class TestUnmetDependencies:
         rule requiring COMPLETED would stall every downstream wave on the
         review queue: a second gate nobody declared.
         """
-        assert unmet_dependencies({"dep-a": TaskStatus.IN_REVIEW}) == ()
+        states = {"dep-a": DependencyState(TaskStatus.IN_REVIEW)}
+
+        assert unmet_dependencies(states) == ()
 
     def test_missing_row_is_unmet(self) -> None:
         """A dependency the engine cannot find has delivered nothing."""
-        assert unmet_dependencies({"dep-a": None}) == ("dep-a",)
+        assert unmet_dependencies({"dep-a": DependencyState(None)}) == ("dep-a",)
 
     def test_names_every_offender_in_a_stable_order(self) -> None:
         assert unmet_dependencies(
             {
-                "dep-z": TaskStatus.FAILED,
-                "dep-a": TaskStatus.CANCELLED,
-                "dep-m": TaskStatus.COMPLETED,
+                "dep-z": DependencyState(TaskStatus.FAILED),
+                "dep-a": DependencyState(TaskStatus.CANCELLED),
+                "dep-m": DependencyState(TaskStatus.COMPLETED),
             }
         ) == ("dep-a", "dep-z")
 
     def test_no_dependencies_is_met(self) -> None:
         assert unmet_dependencies({}) == ()
+
+
+class TestADependencyAwaitingAPersonHasNotFailed:
+    """A park somebody holds is not the same fact as a dependency that died.
+
+    A live run's completion review escalated to a human, which parks the
+    reviewed task BLOCKED. Every subtask below it was then parked with
+
+        'Not dispatched: the work it depends on did not deliver (d9b97e44)'
+
+    naming a task that had delivered and was waiting on a verdict. That
+    reason is a replan's input, so the lie propagates: the successor plan
+    goes looking for work to redo that nobody said was wrong. The park also
+    made the rows dead, which is what let the rollup replan over the very
+    decision the operator was being asked for.
+
+    The distinction is the reason, never the status, and it is declared once
+    on ``BlockedReason`` rather than re-derived here.
+    """
+
+    @pytest.mark.parametrize("reason", sorted(ATTENDED_BLOCKED_REASONS))
+    def test_an_attended_park_is_not_unmet(self, reason: BlockedReason) -> None:
+        states = {"dep-a": DependencyState(TaskStatus.BLOCKED, reason)}
+
+        assert unmet_dependencies(states) == ()
+        assert awaited_dependencies(states) == ("dep-a",)
+
+    @pytest.mark.parametrize(
+        "reason",
+        sorted(set(BlockedReason) - ATTENDED_BLOCKED_REASONS),
+    )
+    def test_a_park_only_a_replan_ends_is_still_unmet(
+        self, reason: BlockedReason
+    ) -> None:
+        states = {"dep-a": DependencyState(TaskStatus.BLOCKED, reason)}
+
+        assert unmet_dependencies(states) == ("dep-a",)
+        assert awaited_dependencies(states) == ()
+
+    def test_a_blocked_dependency_with_no_reason_is_unmet(self) -> None:
+        # Absent is not a synonym for any member: the writer did not say, so
+        # nothing may read it as "somebody is holding this".
+        states = {"dep-a": DependencyState(TaskStatus.BLOCKED)}
+
+        assert unmet_dependencies(states) == ("dep-a",)
+        assert awaited_dependencies(states) == ()
+
+    async def test_the_dependent_is_neither_dispatched_nor_parked(self) -> None:
+        """Left at CREATED on purpose, which is what the sweep watches.
+
+        Parking it would need a reason, and every reason available says
+        something untrue: its input did not fail, and the run did not stop.
+        CREATED is the honest state and it has an exit, because the recovery
+        sweep re-drives a plan holding one and the wave will gate again once
+        the person has answered.
+        """
+        dependent = _task("task-b")
+        escalated_id = str(as_uuid("task-a"))
+        escalated = _task("task-a", status=TaskStatus.BLOCKED).model_copy(
+            update={"blocked_reason": BlockedReason.ORACLE_ESCALATED}
+        )
+        engine = _engine({escalated_id: escalated, str(dependent.id): dependent})
+        writer = AssignmentWriter(engine)
+
+        gated, awaited = await writer.gate_on_dependencies(
+            _group(AgentAssignment(identity=_identity("agent-a"), task=dependent)),
+            {str(dependent.id): (escalated_id,)},
+        )
+
+        assert gated.assignments == ()
+        assert awaited == 1
+        engine.submit.assert_not_awaited()
+
+    async def test_a_real_failure_beside_it_still_parks(self) -> None:
+        # The mixed case: one input died and another is waiting. The death
+        # needs a replan whatever the person answers, so it is named.
+        dependent = _task("task-c")
+        escalated_id = str(as_uuid("task-a"))
+        failed_id = str(as_uuid("task-b"))
+        engine = _engine(
+            {
+                escalated_id: _task("task-a", status=TaskStatus.BLOCKED).model_copy(
+                    update={"blocked_reason": BlockedReason.ORACLE_ESCALATED}
+                ),
+                failed_id: _task("task-b", status=TaskStatus.FAILED),
+                str(dependent.id): dependent,
+            }
+        )
+        writer = AssignmentWriter(engine)
+
+        await writer.gate_on_dependencies(
+            _group(AgentAssignment(identity=_identity("agent-a"), task=dependent)),
+            {str(dependent.id): (escalated_id, failed_id)},
+        )
+
+        mutation = engine.submit.call_args.args[0]
+        assert mutation.overrides["blocked_reason"] is BlockedReason.DEPENDENCY_FAILED
+        assert failed_id in mutation.reason
+        assert escalated_id not in mutation.reason
 
 
 class TestDependencyMap:
@@ -223,7 +327,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(AgentAssignment(identity=identity, task=dependent)),
             {str(dependent.id): (str(as_uuid("task-a")),)},
         )
@@ -264,7 +368,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(AgentAssignment(identity=identity, task=dependent)),
             {str(dependent.id): (done_id,)},
         )
@@ -286,7 +390,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(
                 AgentAssignment(identity=_identity("agent-a"), task=blocked_task),
                 AgentAssignment(identity=_identity("agent-b"), task=healthy_task),
@@ -304,7 +408,7 @@ class TestGateOnDependencies:
         engine = _engine({str(task.id): task})
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(AgentAssignment(identity=_identity("agent-a"), task=task)),
             {},
         )
@@ -317,7 +421,7 @@ class TestGateOnDependencies:
         writer = AssignmentWriter(None)
         group = _group(AgentAssignment(identity=_identity("agent-a"), task=task))
 
-        assert await writer.gate_on_dependencies(group, {}) is group
+        assert await writer.gate_on_dependencies(group, {}) == (group, 0)
 
     async def test_a_refused_park_does_not_take_the_wave_down(self) -> None:
         """The healthy siblings still run when a park is rejected."""
@@ -340,7 +444,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(
                 AgentAssignment(identity=_identity("agent-a"), task=blocked_task),
                 AgentAssignment(identity=_identity("agent-c"), task=healthy_task),
@@ -381,7 +485,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(AgentAssignment(identity=_identity("agent-a"), task=blocked_task)),
             {str(blocked_task.id): (str(as_uuid("task-a")),)},
         )
@@ -399,7 +503,7 @@ class TestGateOnDependencies:
         )
         writer = AssignmentWriter(engine)
 
-        gated = await writer.gate_on_dependencies(
+        gated, _ = await writer.gate_on_dependencies(
             _group(AgentAssignment(identity=_identity("agent-a"), task=blocked_task)),
             {str(blocked_task.id): (str(as_uuid("task-a")),)},
         )

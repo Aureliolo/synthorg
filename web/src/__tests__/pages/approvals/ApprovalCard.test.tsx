@@ -40,6 +40,14 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Deploy API')).toBeInTheDocument()
     // Only the human step label is rendered; the raw action_type string is not.
     expect(screen.queryByText('deploy:production')).not.toBeInTheDocument()
+    // A production deploy is not a review of finished work, whatever gate
+    // parked it, so the label states the decision rather than borrowing the
+    // review gate's wording.
+    expect(screen.getByText('Approve to continue')).toBeInTheDocument()
+  })
+
+  it('calls a completed review a completed review', () => {
+    renderCard({ action_type: 'review:task_completion' })
     expect(screen.getByText('Review completed work')).toBeInTheDocument()
   })
 
