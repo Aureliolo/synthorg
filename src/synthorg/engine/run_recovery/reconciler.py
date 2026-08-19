@@ -164,8 +164,8 @@ class RunRecoveryReport(BaseModel):
         requeued: Tasks moved out of an orphaned in-flight status.
         rejudged: Tasks in review whose verdict was asked for again.
         failed: Unfillable shells failed with a reason.
-        skipped: Plans left alone, whether parked on a human or already
-            being driven.
+        skipped: Plans left alone: parked on a human, already being driven,
+            or handed to a driver that declined.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

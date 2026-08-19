@@ -225,7 +225,7 @@ question, and every plan status gets an answer.
 | `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator |
 | `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
 
-Four properties are load-bearing:
+Five properties are load-bearing:
 
 **A review nobody is waiting on is re-judged, not left.** `IN_REVIEW` is the
 one status a plan-level sweep cannot fix by re-driving waves: the row is not
@@ -260,6 +260,15 @@ in-process by construction and claims nothing about another process, so a
 deployment running distributed workers requeues nothing at all: JetStream
 redelivery of an unacknowledged claim already owns recovering a dead runner
 there, and a second answer could move a row a live worker still holds.
+
+**Whether a plan was resumed is the driver's answer, not the sweep's.** The
+driver declines whenever it cannot start one: no coordinator is wired yet, or
+the objective task the plan hangs off no longer exists. The first is transient
+and the next pass picks it up; the second never resolves, so a sweep that
+counted the call as a resume reported one every cadence, for ever, while
+nothing touched the plan. `PlanDriver` returns whether a drive now owns the
+plan and the sweep reports a skip when it does not, which is what makes a
+permanently undrivable run visible instead of continuously rescued.
 
 Because recovery exists, a dispatch cancelled by a **stopping process** is left
 exactly as it is rather than failed: the next boot pass finds it and resumes
