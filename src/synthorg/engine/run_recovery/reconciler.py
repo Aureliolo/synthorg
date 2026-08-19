@@ -140,8 +140,17 @@ class PlanDriver(Protocol):
     reads.
     """
 
-    async def __call__(self, plan: Plan) -> None:
-        """Drive *plan*'s remaining waves to whatever they reach."""
+    async def __call__(self, plan: Plan) -> bool:
+        """Drive *plan*'s remaining waves to whatever they reach.
+
+        Returns:
+            Whether a drive now owns the plan. ``False`` says the driver
+            declined and nothing is running, which the sweep must report as a
+            skip: the driver is the only one that knows, and a caller that
+            assumed a resume logged one on every pass for a plan whose
+            objective task was gone, so a permanently undrivable run read as
+            being rescued every ten minutes for ever.
+        """
         ...
 
 
@@ -336,7 +345,19 @@ class RunRecoveryReconciler:
                 how="tail-recompute" if plan.status in TAIL_STATUSES else "recompute",
             )
             return _one(recomputed=1, requeued=requeued, rejudged=rejudged)
-        await self._drive_plan(plan)
+        if not await self._drive_plan(plan):
+            # The driver declined, so nothing is running. Reported as a skip
+            # because that is what happened: counting it a resume told the
+            # operator a plan whose objective task no longer exists was being
+            # rescued on every pass, for ever, while nothing touched it. The
+            # condition itself is named by the driver's own log line.
+            logger.info(
+                RUN_RECOVERY_PLAN_SKIPPED,
+                plan_id=plan_id,
+                plan_status=plan.status.value,
+                reason="driver-declined",
+            )
+            return _one(skipped=1, requeued=requeued, rejudged=rejudged)
         logger.info(
             RUN_RECOVERY_PLAN_RESUMED,
             plan_id=plan_id,

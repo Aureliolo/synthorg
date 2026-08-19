@@ -120,8 +120,9 @@ def _reconciler(
     *,
     driven: list[str],
 ) -> RunRecoveryReconciler:
-    async def _drive(plan: Plan) -> None:
+    async def _drive(plan: Plan) -> bool:
         driven.append(str(plan.id))
+        return True
 
     async def _recompute(plan: Plan) -> None:
         driven.append(str(plan.id))

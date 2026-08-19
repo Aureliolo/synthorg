@@ -145,9 +145,10 @@ def _reconciler(  # type: ignore[explicit-any]  # mock_of returns Any
     awaiting_a_person: frozenset[str] | None = frozenset(),
     defers_to_queue: bool = False,
 ) -> RunRecoveryReconciler:
-    async def _drive(plan: Plan) -> None:
+    async def _drive(plan: Plan) -> bool:
         if driven is not None:
             driven.append(str(plan.id))
+        return True
 
     async def _recompute(plan: Plan) -> None:
         if recomputed is not None:
@@ -321,6 +322,34 @@ class TestReconcile:
         assert driven == [str(plan.id)]
         assert report.resumed == 1
 
+    async def test_a_driver_that_declines_is_reported_as_a_skip(self) -> None:
+        # Whether the plan was resumed is the DRIVER's answer, not the
+        # sweep's guess. Counting the call as a resume told the operator a
+        # plan whose objective task no longer exists was being rescued on
+        # every pass, for ever, while nothing touched it: the one report that
+        # would have shown the run was stuck said it was being fixed.
+        plan = _plan(status=PlanStatus.APPROVED)
+        asked: list[str] = []
+
+        async def _decline(plan: Plan) -> bool:
+            asked.append(str(plan.id))
+            return False
+
+        async def _recompute(plan: Plan) -> None:
+            del plan
+
+        report = await RunRecoveryReconciler(
+            persistence=_persistence(plans=[plan], tasks=[]),
+            task_engine=_engine(),
+            ledger=LiveRunLedger(),
+            drive_plan=_decline,
+            recompute_plan=_recompute,
+        ).reconcile(trigger="boot")
+
+        assert asked == [str(plan.id)]
+        assert report.resumed == 0
+        assert report.skipped == 1
+
     async def test_a_requeued_row_makes_the_plan_worth_driving(self) -> None:
         plan = _plan(status=PlanStatus.EXECUTING)
         stranded = _task(
@@ -484,11 +513,12 @@ class TestReconcile:
         second = _plan(status=PlanStatus.EXECUTING, plan_id=as_uuid("plan-b"))
         driven: list[str] = []
 
-        async def _drive(plan: Plan) -> None:
+        async def _drive(plan: Plan) -> bool:
             if plan.id == first.id:
                 msg = "cannot read this plan"
                 raise RuntimeError(msg)
             driven.append(str(plan.id))
+            return True
 
         async def _recompute(plan: Plan) -> None:
             del plan

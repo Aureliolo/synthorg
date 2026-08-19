@@ -73,7 +73,7 @@ def live_run_ledger_of(app_state: AppState) -> LiveRunLedger:
     return ledger
 
 
-async def drive_plan_waves(app_state: AppState, plan: Plan) -> None:
+async def drive_plan_waves(app_state: AppState, plan: Plan) -> bool:
     """Hand *plan*'s remaining waves back to the coordinator.
 
     Returns as soon as the drive is under way: resuming a plan runs agents,
@@ -82,17 +82,24 @@ async def drive_plan_waves(app_state: AppState, plan: Plan) -> None:
     Args:
         app_state: Application state holding the coordinator and the graph.
         plan: The plan to resume.
+
+    Returns:
+        Whether a drive now owns the plan. ``False`` covers both a plan
+        somebody else is already driving and one this process cannot drive at
+        all, and the sweep reports it as a skip rather than as a resume it did
+        not perform.
     """
     ledger = live_run_ledger_of(app_state)
     plan_id = str(plan.id)
     if not ledger.try_claim(plan_id):
-        return
+        return False
     started = False
     try:
         started = await _start_drive(app_state, plan)
     finally:
         if not started:
             ledger.release(plan_id)
+    return started
 
 
 async def _file_missing_children(

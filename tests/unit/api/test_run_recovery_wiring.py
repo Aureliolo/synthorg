@@ -264,28 +264,28 @@ class TestTheClaimNeverOutlivesItsDrive:
         ledger = live_run_ledger_of(app_state)
         ledger.try_claim(str(plan.id))
 
-        await drive_plan_waves(app_state, plan)
-
+        assert await drive_plan_waves(app_state, plan) is False
         assert app_state.plan_dispatch_background_tasks == set()
 
-    async def test_an_absent_coordinator_releases_the_claim(self) -> None:
+    async def test_an_absent_coordinator_releases_the_claim_and_says_so(self) -> None:
         # Nothing was dispatched, so nothing will release it later. Holding it
-        # would make every subsequent sweep skip a plan nobody is driving.
+        # would make every subsequent sweep skip a plan nobody is driving, and
+        # answering True would have the sweep report a resume that never was.
         parent = _task()
         app_state = _wired_state(persistence=_persistence(parent=parent))
 
-        await drive_plan_waves(app_state, _plan(parent))
-
+        assert await drive_plan_waves(app_state, _plan(parent)) is False
         assert not live_run_ledger_of(app_state).is_driving(str(as_uuid("plan")))
 
-    async def test_a_missing_objective_task_releases_the_claim(self) -> None:
+    async def test_a_missing_objective_task_releases_the_claim_and_says_so(
+        self,
+    ) -> None:
         app_state = _wired_state(
             persistence=_persistence(parent=None),
             coordinator=mock_of[MultiAgentCoordinator](),
         )
 
-        await drive_plan_waves(app_state, _plan(_task()))
-
+        assert await drive_plan_waves(app_state, _plan(_task())) is False
         assert not live_run_ledger_of(app_state).is_driving(str(as_uuid("plan")))
 
     async def test_a_dispatched_drive_releases_the_claim_when_it_ends(self) -> None:
@@ -301,7 +301,7 @@ class TestTheClaimNeverOutlivesItsDrive:
         )
         plan = _plan(parent)
 
-        await drive_plan_waves(app_state, plan)
+        assert await drive_plan_waves(app_state, plan) is True
         assert live_run_ledger_of(app_state).is_driving(str(plan.id))
         await asyncio.gather(*tuple(app_state.plan_dispatch_background_tasks))
 
