@@ -34,6 +34,7 @@ __all__ = (
     "DEFAULT_LIST_LIMIT",
     "MAX_LIST_LIMIT",
     "TURN_APPEND_MAX_RETRIES",
+    "canonical_deadline",
     "coerce_row_timestamp",
     "collect_all",
     "collect_all_mapping",
