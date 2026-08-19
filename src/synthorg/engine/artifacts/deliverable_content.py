@@ -65,7 +65,10 @@ _MAX_PATH_LABEL: Final[int] = 256
 #: What the reader found at a declared path. ``not_a_path`` is a prose
 #: deliverable rather than a file, which the reviewer can still judge; it is
 #: reported so the reviewer knows the declaration was not simply missed.
-_STATUS_READ: Final[str] = "read"
+#: Public, because a consumer that wants only the files that genuinely came
+#: back has to recognise this status, and a second spelling of the word would
+#: silently select nothing.
+ARTIFACT_STATUS_READ: Final[str] = "read"
 _STATUS_ABSENT: Final[str] = "not_produced"
 _STATUS_DIRECTORY: Final[str] = "directory"
 _STATUS_UNREADABLE: Final[str] = "unreadable"
@@ -122,7 +125,7 @@ def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
     truncated = len(text) > limit
     return {
         "path": label,
-        "status": _STATUS_READ,
+        "status": ARTIFACT_STATUS_READ,
         "truncated": truncated,
         "content": text[:limit],
     }
@@ -254,6 +257,7 @@ def workspace_deliverable_reader(
 
 
 __all__ = [
+    "ARTIFACT_STATUS_READ",
     "DeliverableReader",
     "read_declared_artifacts",
     "workspace_deliverable_reader",

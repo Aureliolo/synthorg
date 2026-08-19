@@ -10,7 +10,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, NamedTuple, cast, override
 
 from pydantic import BaseModel, JsonValue
 
@@ -40,6 +40,60 @@ _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
 # Reject addresses with newlines/carriage returns (header injection).
 _UNSAFE_ADDR_RE: Final[re.Pattern[str]] = re.compile(r"[\r\n]")
+
+
+class _EmailGuard(NamedTuple):
+    """Outcome of guarding an outbound email's agent-authored text.
+
+    ``error`` is set on a hard block and nothing is sent; otherwise ``subject``
+    and ``body`` carry the policy-approved text (rewritten where an
+    AUTO_REWRITE rule fired, else the original).
+    """
+
+    error: ToolExecutionResult | None
+    subject: str
+    body: str
+
+
+def _guard_email_text(*, subject: str, body: str) -> _EmailGuard:
+    """Enforce the output-style policy on an email before it leaves.
+
+    An email is addressed to a person outside the organisation, so it is a
+    ``MESSAGE`` (prose) boundary: an AUTO_REWRITE rule's fixed prose is applied
+    rather than stopping the agent over a formatting nit, and a hard-rule
+    violation is refused here, in-session, so the agent reworks it on its next
+    turn. An HTML body is prose too; the policy governs the words a reader
+    sees, and its own markup is not a fenced code span.
+
+    Deferred import breaks the tools/engine cold-import cycle, matching the
+    sibling forge, file-system and question guards.
+
+    Returns:
+        A guard carrying an ``error`` on a hard block, else the approved
+        subject and body.
+    """
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        OutputChannel,
+        OutputContext,
+        evaluate_output_policy,
+    )
+
+    ctx = OutputContext(channel=OutputChannel.MESSAGE)
+    approved: list[str] = []
+    for text in (subject, body):
+        if not text:
+            approved.append(text)
+            continue
+        verdict = evaluate_output_policy(text, ctx)
+        if verdict is not None and verdict.blocked:
+            return _EmailGuard(
+                ToolExecutionResult(content=verdict.summary, is_error=True), "", ""
+            )
+        if verdict is not None and verdict.rewritten_text is not None:
+            approved.append(verdict.rewritten_text)
+        else:
+            approved.append(text)
+    return _EmailGuard(None, approved[0], approved[1])
 
 
 class EmailSenderTool(BaseCommunicationTool):
@@ -124,8 +178,11 @@ class EmailSenderTool(BaseCommunicationTool):
         to_addrs = list(args.to)
         cc_addrs = list(args.cc)
         bcc_addrs = list(args.bcc)
-        subject = args.subject
-        body = args.body
+        guard = _guard_email_text(subject=args.subject, body=args.body)
+        if guard.error is not None:
+            return guard.error
+        subject = guard.subject
+        body = guard.body
         body_is_html = args.body_is_html
 
         all_recipients = to_addrs + cc_addrs + bcc_addrs

@@ -30,6 +30,7 @@ from synthorg.tools.docs._args import (
     WriteLivingDocArgs,
     WriteLivingDocBlockArg,
 )
+from synthorg.tools.docs._doc_output_guard import guard_doc_output
 
 logger = get_logger(__name__)
 
@@ -85,14 +86,18 @@ class WriteLivingDocTool(BaseTool):
         """
         try:
             parsed = WriteLivingDocArgs.model_validate(arguments)
-            body = _materialise_body(parsed.body)
+            guard = guard_doc_output(
+                title=parsed.title, body=_materialise_body(parsed.body)
+            )
+            if guard.error is not None:
+                return guard.error
             related_task_ids = _with_current_task(parsed.related_task_ids)
             metadata = await self._docs_service.write_doc(
                 project_id=self._project_id,
-                title=parsed.title,
+                title=NotBlankStr(guard.title),
                 doc_type=parsed.doc_type,
                 author_agent_id=self._author_agent_id,
-                body=body,
+                body=guard.body,
                 tags=parsed.tags,
                 related_task_ids=related_task_ids,
                 slug=parsed.slug,

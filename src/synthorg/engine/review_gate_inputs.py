@@ -46,16 +46,22 @@ configured security gate never depends on the flight recorder being on.
 """
 
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.redteam_review_input import RedTeamReviewInput
+from synthorg.core.redteam_review_input import (
+    DeliverableArtifact,
+    RedTeamReviewInput,
+)
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.deliverable_content import DeliverableReader
+from synthorg.engine.artifacts.deliverable_content import (
+    ARTIFACT_STATUS_READ,
+    DeliverableReader,
+)
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.deliverable import DELIVERABLE_NOT_REVIEWABLE
@@ -117,6 +123,44 @@ def attempt_deliverable(result: ExecutionResult) -> AttemptDeliverable | None:
 #: an absent key it would have to interpret.
 _ARTIFACTS_NONE_DECLARED: Final[str] = "none_declared"
 _ARTIFACTS_UNAVAILABLE: Final[str] = "not_verified"
+
+
+def _typed_artifacts(section: object) -> tuple[DeliverableArtifact, ...]:
+    """Lift the files that were genuinely read out of the artifacts section.
+
+    Only ``read`` entries qualify. A declaration that was absent, a directory,
+    unreadable or dropped for budget produced no bytes, and a consumer asking
+    a question about delivered content would otherwise be answered about a
+    file that does not exist.
+
+    Args:
+        section: Whatever :meth:`DeliverableReviewInputBuilder._read_artifacts`
+            returned, which is the reader's mapping or a status naming why the
+            workspace could not be consulted.
+
+    Returns:
+        One entry per file that came back, in declaration order. Empty when
+        the section carries no readable file, whatever the reason.
+    """
+    if not isinstance(section, Mapping):
+        return ()
+    entries = section.get("artifacts")
+    if not isinstance(entries, list):
+        return ()
+    produced: list[DeliverableArtifact] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        if entry.get("status") != ARTIFACT_STATUS_READ:
+            continue
+        path = entry.get("path")
+        content = entry.get("content")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        if not isinstance(content, str):
+            continue
+        produced.append(DeliverableArtifact(path=NotBlankStr(path), content=content))
+    return tuple(produced)
 
 
 class DeliverableReviewInputBuilder:
@@ -212,10 +256,14 @@ class DeliverableReviewInputBuilder:
                 return None
             execution_id, summary = deliverable
         autonomy = await self._autonomy_provider()
+        # Read once and derive both halves from it: a second read could see a
+        # different workspace, and then the typed artifacts and the composed
+        # document would be two accounts of one delivery.
+        artifacts = await self._read_artifacts(task)
         return RedTeamReviewInput(
             task_id=str(task.id),
             execution_id=execution_id,
-            deliverable_content=await self._compose(task, summary=summary),
+            deliverable_content=self._compose(summary=summary, artifacts=artifacts),
             agent_summary=summary,
             acceptance_criteria=criteria,
             assigned_agent_id=task.assigned_to,
@@ -223,9 +271,10 @@ class DeliverableReviewInputBuilder:
             project_id=task.project,
             stakes=task.stakes,
             estimated_complexity=task.estimated_complexity,
+            produced_artifacts=_typed_artifacts(artifacts),
         )
 
-    async def _compose(self, task: Task, *, summary: str) -> str:
+    def _compose(self, *, summary: str, artifacts: object) -> str:
         """Render the produced artifacts plus the agent's closing message.
 
         The two halves occupy separate keys of one JSON document rather
@@ -235,13 +284,17 @@ class DeliverableReviewInputBuilder:
         as further delivered work. A key cannot be forged from inside a
         value.
 
+        Args:
+            summary: The agent's closing message.
+            artifacts: The section :meth:`_read_artifacts` produced.
+
         Returns:
             The reviewable deliverable, as a JSON document.
         """
         return json.dumps(
             {
                 "agent_closing_message": summary,
-                "produced_artifacts": await self._read_artifacts(task),
+                "produced_artifacts": artifacts,
             }
         )
 
