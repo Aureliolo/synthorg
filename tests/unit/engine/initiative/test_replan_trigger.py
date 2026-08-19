@@ -756,12 +756,16 @@ class TestWhoAuthorisedTheReplan:
         The unset form is constructed first, so the refusal below cannot be
         the shared validator objecting to something else about the shape.
         """
-        shape = {
-            "plan": _plan(_item(_ITEM_A), status=PlanStatus.EVALUATING),
-            "reason": StallReason.EVALUATION_UNMET,
-            "items": (),
-        }
-        assert ConfirmedStall(**shape, granted_by=None).granted_by is None
+
+        def stall(granted_by: str | None) -> ConfirmedStall:
+            return ConfirmedStall(
+                plan=_plan(_item(_ITEM_A), status=PlanStatus.EVALUATING),
+                reason=StallReason.EVALUATION_UNMET,
+                items=(),
+                granted_by=granted_by,
+            )
+
+        assert stall(None).granted_by is None
 
         with pytest.raises(ValidationError):
-            ConfirmedStall(**shape, granted_by="")
+            stall("")
