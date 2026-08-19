@@ -9,7 +9,7 @@ the same shape as ``hiring_instantiation`` keeps the roster-touching half.
 """
 
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.hire_model_proposal import (
     HireModelProposal,
@@ -18,7 +18,11 @@ from synthorg.hr.hire_model_proposal import (
 )
 from synthorg.hr.hiring_candidates import build_hire_approval_item
 from synthorg.hr.models import CandidateCard, HiringRequest
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import HR_HIRING_MODEL_PROPOSED
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+logger = get_logger(__name__)
 
 #: The spend profile that biases nothing, used when the company's own cannot
 #: be read. It decides which proposed pair is RECOMMENDED and nothing else, so
@@ -63,7 +67,18 @@ async def _spend_profile(resolver: ConfigResolverProtocol | None) -> str:
         return _NEUTRAL_SPEND_PROFILE
     try:
         return await resolver.get_str("company", "model_spend_profile")
-    except DomainError:
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # Broad on purpose: the settings read reaches a database, so a socket
+        # timeout or a dropped connection arrives as an ordinary exception,
+        # and narrowing to DomainError let one of those abort the whole hire
+        # approval over the field that decides only which option is starred.
+        reraise_critical(exc)
+        logger.warning(
+            HR_HIRING_MODEL_PROPOSED,
+            note="model spend profile unreadable; the neutral one stands",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return _NEUTRAL_SPEND_PROFILE
 
 

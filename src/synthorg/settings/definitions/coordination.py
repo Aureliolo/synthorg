@@ -275,8 +275,9 @@ _r.register(
             " a fresh decomposition and a fresh panel, so the cap is what stops"
             " a panel and a planner that disagree from arguing indefinitely."
             " Set 0 to make the panel advisory: its findings are still recorded"
-            " and shown, but nothing acts on them. Resolved on the next"
-            " runtime-services rebuild."
+            " and shown, but nothing acts on them. The panel bakes this in when"
+            " it is built, and its subsystem rebuilds on a write, so a change"
+            " applies from the next reconcile pass."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

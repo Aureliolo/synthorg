@@ -12,6 +12,7 @@ import re
 from typing import Final
 
 from pydantic import JsonValue
+from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
@@ -255,7 +256,7 @@ def _guarded_plan(
     """
     plan = _args_to_plan(args, parent_task_id, available_roles)
     try:
-        return _style_checked(plan)
+        return _revalidated(_style_checked(plan))
     except OutputPolicyViolationError as exc:
         detail = plan_style_refusal(exc)
         logger.warning(
@@ -264,6 +265,43 @@ def _guarded_plan(
             parent_task_id=parent_task_id,
         )
         raise DecompositionError(detail) from exc
+
+
+def _revalidated(plan: DecompositionPlan) -> DecompositionPlan:
+    """Re-judge a style-rewritten plan on the text it now carries.
+
+    An AUTO_REWRITE rule substitutes a span, and the guard applies it through
+    ``model_copy(update=...)``, which does not validate; ``NotBlankStr`` is an
+    annotation that only runs inside a model, so wrapping the result validates
+    nothing either. A rule whose replacement empties the span therefore lands
+    blank prose on a plan an operator is then shown.
+
+    The graph checks have the same problem one level up: they ran inside
+    ``_args_to_plan``, before the rewrite, and one of them reads artefact names
+    out of the acceptance criteria, so a rewritten token leaves the plan judged
+    decidable on text it no longer carries.
+
+    Args:
+        plan: The plan as the style guard left it.
+
+    Returns:
+        The same plan, re-validated field by field.
+
+    Raises:
+        DecompositionError: When the rewritten plan no longer validates, or its
+            graph no longer holds.
+    """
+    try:
+        revalidated = DecompositionPlan.model_validate(plan.model_dump())
+    except PydanticValidationError as exc:
+        detail = (
+            "The house style rewrite left the plan invalid: "
+            f"{safe_error_description(exc)}"
+        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
+        raise DecompositionError(detail) from exc
+    _validate_graph(revalidated.subtasks, revalidated.task_structure)
+    return revalidated
 
 
 def _style_checked(plan: DecompositionPlan) -> DecompositionPlan:
@@ -521,6 +559,23 @@ def parse_content_response(
             )
             raise DecompositionError(msg) from exc
         data = embedded
+
+    if not isinstance(data, dict):
+        # The embedded path refuses a non-object; the direct decode did not,
+        # so a payload that parsed cleanly to a list, a string or a number
+        # went on under an annotation that had stopped describing it, and the
+        # refusal surfaced two frames down as an AttributeError the broad
+        # handler swallowed into a message about parsing.
+        msg = "Failed to parse plan from content: the JSON is not an object"
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            error=msg,
+            parent_task_id=parent_task_id,
+            content_length=len(raw),
+            fenced=fenced,
+            decoded_type=type(data).__name__,
+        )
+        raise DecompositionError(msg)
 
     try:
         return _guarded_plan(data, parent_task_id, available_roles)

@@ -558,6 +558,54 @@ class TestPlanProseBoundary:
         assert "wording" in str(raised.value)
 
 
+class TestARewriteIsJudgedOnTheTextItProduced:
+    """The guard applies its rewrite through a route that validates nothing.
+
+    ``model_copy(update=...)`` skips validation, and ``NotBlankStr`` is an
+    annotation that only runs inside a model, so wrapping the rewritten string
+    checks nothing either. A rule whose replacement empties the span therefore
+    lands blank prose on the plan an operator is shown and approves.
+    """
+
+    @pytest.mark.unit
+    def test_a_rewrite_that_empties_a_title_is_refused(self) -> None:
+        _wire(
+            OutputStyleRule(
+                id="empty_title",
+                type=RuleType.LITERAL_BAN,
+                patterns=("Build the core loop",),
+                message="no working titles",
+                mode=EnforcementMode.AUTO_REWRITE,
+                rewrite="",
+            )
+        )
+        try:
+            with pytest.raises(DecompositionError):
+                _submit(_args())
+        finally:
+            set_output_policy_service(None)
+
+    @pytest.mark.unit
+    def test_a_rewrite_that_leaves_the_plan_valid_still_passes(self) -> None:
+        # The complement: revalidating must not refuse an ordinary rewrite,
+        # or every auto-rewrite rule becomes a rejection with extra steps.
+        _wire(
+            OutputStyleRule(
+                id="retitle",
+                type=RuleType.LITERAL_BAN,
+                patterns=("core loop",),
+                message="say what it does",
+                mode=EnforcementMode.AUTO_REWRITE,
+                rewrite="falling-blocks loop",
+            )
+        )
+        try:
+            plan = _submit(_args())
+        finally:
+            set_output_policy_service(None)
+        assert plan.subtasks[0].title == "Build the falling-blocks loop"
+
+
 class TestEvaluationVerdictBoundary:
     """The verdict reaches an operator UI and the successor plan's prompt."""
 

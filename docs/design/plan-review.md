@@ -568,7 +568,7 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 
 ## Configuration
 
-The feature reads five `coordination.*` settings
+The feature reads six `coordination.*` settings
 (`settings/definitions/coordination.py`) plus one shared `budget.*` bound, split
 across two subsystems that own different halves of it. The master gate belongs to
 `plan_review_gate`, whose activation reads `coordination.plan_approval_required`.

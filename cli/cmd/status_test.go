@@ -99,11 +99,11 @@ func TestImageTag(t *testing.T) {
 		// about which version is running and pushes every other column
 		// off the terminal.
 		{
-			"914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b0",
+			"914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b",
 			"untagged (914ece089871)",
 		},
 		{
-			"sha256:914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b0",
+			"sha256:914ece0898712ec382d7c5a482622d381c6779dcfc4620492663fbb74acdb40b",
 			"untagged (914ece089871)",
 		},
 		{"914ece089871", "untagged (914ece089871)"},
