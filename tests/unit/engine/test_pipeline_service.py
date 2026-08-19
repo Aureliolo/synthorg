@@ -436,6 +436,45 @@ class TestPlanReviewGate:
         assert "decompose boom" in fail_call.kwargs["reason"]
         cast("AsyncMock", gate.request_plan_approval).assert_not_awaited()
 
+    async def test_a_cancelled_decomposition_still_drops_the_planning_claim(
+        self,
+    ) -> None:
+        # The claim taken when the shell is opened says "this process is
+        # writing this row", and the recovery sweep skips every plan it
+        # covers. Both routes back out of decomposition drop it, but a
+        # cancellation takes neither: it is not an ``Exception``, so the
+        # compensating handler never runs, and the claim then outlives the
+        # attempt that took it. The row stays PLANNING, the sweep skips it on
+        # every pass for the life of the process, and the plan is stranded by
+        # the mechanism that exists to revive it.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.side_effect = asyncio.CancelledError()
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate]()
+        pipeline.attach_plan_review_gate(gate)
+
+        with pytest.raises(asyncio.CancelledError):
+            await pipeline.run(_work_item(plan_required=True))
+
+        cast("AsyncMock", gate.open_plan).assert_awaited_once()
+        release = cast("AsyncMock", gate.release_plan)
+        release.assert_called_once()
+        # Released for the shell that was opened, not for some other plan.
+        opened = cast("AsyncMock", gate.open_plan).return_value
+        assert release.call_args.args[0] == opened
+        # A cancellation is not a failure to compensate: the row stays
+        # PLANNING so the next boot's sweep can decide what became of it.
+        cast("AsyncMock", gate.fail_plan).assert_not_awaited()
+
     async def test_an_over_limit_plan_surfaces_on_the_plan_not_a_thinner_plan(
         self,
     ) -> None:

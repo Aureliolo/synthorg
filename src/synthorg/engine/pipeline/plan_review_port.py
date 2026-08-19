@@ -45,6 +45,23 @@ class PlanReviewGate(Protocol):
         """
         ...
 
+    def release_plan(self, plan_id: UUID) -> None:
+        """Stop claiming *plan_id* as a plan this process is writing.
+
+        The claim taken by :meth:`open_plan` is what tells a recovery sweep
+        apart a shell still being filled from one whose writer died, so a
+        claim outliving its attempt hides the plan from the sweep for the
+        life of the process. :meth:`request_plan_approval` and
+        :meth:`fail_plan` each release on their own way out; this is how the
+        caller closes the routes that reach neither, and it is idempotent so
+        calling it after either costs nothing.
+
+        Args:
+            plan_id: The plan whose writing attempt has ended, however it
+                ended.
+        """
+        ...
+
     async def request_plan_approval(
         self,
         *,

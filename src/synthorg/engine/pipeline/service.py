@@ -1040,6 +1040,16 @@ class DefaultWorkPipeline:
             # so the greenlit run never emits a 500 nor leaves a silent orphan.
             reraise_critical(exc)
             return await self._compensate_plan_failure(plan_id, task, work_item, exc)
+        finally:
+            # The attempt is over on every route out of here, including the
+            # ones no handler above sees: a cancellation is not an Exception,
+            # and a re-raised critical leaves from inside the handler. Both
+            # skip the gate's own two releases, and a claim that outlives its
+            # attempt is skipped by the recovery sweep for the life of the
+            # process, so the plan it names is stranded by the mechanism that
+            # exists to revive it. Idempotent, so this is a no-op wherever the
+            # gate has already released.
+            gate.release_plan(plan_id)
         logger.info(
             PIPELINE_PLAN_REVIEW_REQUESTED,
             correlation_id=work_item.correlation_id,
