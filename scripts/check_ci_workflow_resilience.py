@@ -1522,8 +1522,8 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
-def _declared_attempts(step: dict[str, object]) -> int:
-    """Return the attempt count a step declares, or the helper's default.
+def _attempts_from_env(step: dict[str, object]) -> int:
+    """Return the attempt count the step's ``env:`` declares, or the default.
 
     Args:
         step: The step mapping.
@@ -1531,6 +1531,8 @@ def _declared_attempts(step: dict[str, object]) -> int:
     Returns:
         The count, falling back to the helper's own default when the step
         names none, because an unnamed count is still a multi-attempt ladder.
+        A value this cannot read (a ``${{ }}`` expression) falls back the same
+        way, so an unreadable count is judged as the ladder it might be.
     """
     env = step.get("env")
     if not isinstance(env, dict):
@@ -1540,6 +1542,29 @@ def _declared_attempts(step: dict[str, object]) -> int:
         return _DEFAULT_ATTEMPTS
     text = str(declared).strip()
     return int(text) if text.isdigit() else _DEFAULT_ATTEMPTS
+
+
+def _attempts_for_line(line: str, from_env: int) -> int:
+    """Return the attempt count in force for one invocation line.
+
+    A call site may set the count as an inline ``VAR=n cmd`` prefix instead of
+    via step ``env:``, exactly as it may set the deadline, and an inline prefix
+    binds to the one command it precedes. Reading only the step's ``env:``
+    would report a single-attempt inline call as a ladder.
+
+    Args:
+        line: The stripped invocation line.
+        from_env: What the step's ``env:`` declared, used when the line does
+            not override it.
+
+    Returns:
+        The count that applies to this invocation.
+    """
+    prefix = f"{_ATTEMPTS_VAR}="
+    if prefix not in line:
+        return from_env
+    digits = line.split(prefix, 1)[1].split(maxsplit=1)[0].strip("\"'")
+    return int(digits) if digits.isdigit() else _DEFAULT_ATTEMPTS
 
 
 def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
@@ -1569,8 +1594,7 @@ def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
     run = step.get("run")
     if not isinstance(run, str) or _RETRY_HELPER not in run:
         return []
-    if _declared_attempts(step) <= 1:
-        return []
+    from_env = _attempts_from_env(step)
     return [
         (
             f"{context}: `{line}` retries a command that escalates privilege."
@@ -1582,6 +1606,7 @@ def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
         for line in (raw.strip() for raw in run.splitlines())
         if _RETRY_HELPER in line
         and any(marker in line for marker in _ESCALATION_MARKERS)
+        and _attempts_for_line(line, from_env) > 1
     ]
 
 

@@ -518,6 +518,18 @@ class TestRetryEscalation:
         assert len(violations) == 1
         assert _ESCALATES in violations[0]
 
+    def test_an_inline_single_attempt_prefix_is_read(self, tmp_path: Path) -> None:
+        # An inline prefix binds to the one command it precedes, exactly as it
+        # does for the deadline, so reading only the step's env: would report a
+        # single-attempt call as a ladder and block a correct call site.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            "        run: RETRY_CMD_ATTEMPTS=1 .github/scripts/retry_cmd.sh"
+            " 'apt' sudo apt-get update\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_single_attempt_escalation_clean(self, tmp_path: Path) -> None:
         # One attempt cannot be poisoned by a previous one, and the deadline
         # still bounds it, so the single failure names the real fault.
