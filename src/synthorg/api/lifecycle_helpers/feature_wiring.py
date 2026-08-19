@@ -347,6 +347,9 @@ async def _wire_signals_service(
         raise SubsystemDeclinedError(msg)
     from datetime import datetime  # noqa: PLC0415
 
+    from synthorg.budget.adoption import (  # noqa: PLC0415
+        adopt_resolved_budget_config,
+    )
     from synthorg.budget.cost_record import CostRecord  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.budget.tracker_protocol import (  # noqa: PLC0415
@@ -358,7 +361,6 @@ async def _wire_signals_service(
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.signals.budget import CostRecordProvider  # noqa: PLC0415
     from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     registry = app_state.slice(HrStateSlice).agent_registry
     agent_ids_provider = registry.active_agent_ids if registry is not None else tuple
@@ -375,18 +377,13 @@ async def _wire_signals_service(
             return await collect_all_records(tracker, start=since, end=until)
 
         cost_record_provider = _provider
-        try:
-            budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        # Boot is the first adoption pass, not a reader of its own. Phase 1
+        # builds the tracker, enforcer and optimizer from the code defaults
+        # because no setting can be read yet, and until this runs the ceiling
+        # every gauge measures against is a number no operator chose.
+        budget_cfg = await adopt_resolved_budget_config(app_state)
+        if budget_cfg is not None:
             budget_total_monthly = budget_cfg.total_monthly
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="signals",
-                note="budget config unavailable; budget forecast uses 0 ceiling",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
     # The evolution-outcome store is built earlier (``wire_evolution_outcomes``)
     # when persistence is available; the engine evolution loop writes through
     # it as its durable outcome sink. The aggregator shares that same store so
