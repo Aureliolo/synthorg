@@ -20,7 +20,7 @@ from synthorg.observability.events.persistence.conversation import (
     PERSISTENCE_CONVERSATION_LISTED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_conversation
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.postgres._integrity import raise_constraint_violation
 
@@ -145,7 +145,6 @@ class PostgresConversationRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
-        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         where = "WHERE created_by = %s " if created_by is not None else ""
         params: tuple[object, ...] = (
             (created_by, effective_limit, offset)

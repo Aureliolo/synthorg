@@ -15,7 +15,7 @@ from synthorg.observability.events.persistence.conversation import (
     PERSISTENCE_CONVERSATION_LISTED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_conversation
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 from synthorg.persistence.sqlite._shared import WriteContext
@@ -163,7 +163,6 @@ class SQLiteConversationRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
-        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         where = "WHERE created_by = ?" if created_by is not None else ""
         sql = f"""
             SELECT {_CONVERSATION_COLUMNS}

@@ -659,10 +659,15 @@ class TestEditFileExecution:
         edit_tool: EditFileTool,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A move cannot launder an addition: multiplicity still decides."""
+        """A move cannot launder an addition: multiplicity still decides.
+
+        Two occurrences to start, three after: one relocated and one added.
+        The move alone subtracts to nothing, so what the guard refuses on is
+        the count going up, which is the half a relocation cannot disguise.
+        """
         self._patch_marker_policy(monkeypatch)
         (workspace / "launder.py").write_text(
-            "x = 1  # VIOL_A\nkeep = 2\nz = 3\n", encoding="utf-8"
+            "x = 1  # VIOL_A\ny = 2  # VIOL_A\nkeep = 3\nz = 4\n", encoding="utf-8"
         )
         result = await edit_tool.execute(
             arguments={
@@ -670,8 +675,8 @@ class TestEditFileExecution:
                 "edits": [
                     {"old_text": "x = 1  # VIOL_A\n", "new_text": ""},
                     {
-                        "old_text": "z = 3",
-                        "new_text": "z = 3\nx = 1  # VIOL_A\nq = 4  # VIOL_A",
+                        "old_text": "z = 4",
+                        "new_text": "z = 4\nx = 1  # VIOL_A\nq = 5  # VIOL_A",
                     },
                 ],
             }

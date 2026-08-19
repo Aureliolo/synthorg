@@ -10,7 +10,6 @@ import pytest
 from synthorg.core.pagination import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
-    MAX_PAGE_SIZE,
     collect_all,
     collect_all_mapping,
     paginate,
@@ -52,32 +51,42 @@ class TestPaginate:
             tuple(range(100, 120)),
         ]
 
-    async def test_a_repository_clamping_its_own_page_still_drains(self) -> None:
-        """A short page means "this repo clamps", not "the data ran out".
+    async def test_a_fetch_that_ignores_offset_still_terminates(self) -> None:
+        """Boundedness is the property the short-page rule buys.
 
-        Repositories cap their own pages (``query`` on the conversation-turn
-        repositories stops at ``MAX_PAGE_SIZE``), so a caller asking for more
-        than one method's ceiling used to receive that method's first page and
-        silently lose every row past it.
+        A fetch that hands back rows regardless of offset is a broken fetch,
+        and the sweep has to fail finitely against it rather than accumulate
+        pages until the process dies. Terminating on an empty page instead
+        would spin here, which is what makes the short page the terminator.
         """
-        rows = tuple(range(2_500))
+        calls = 0
+
+        async def stuck(limit: int, offset: int) -> tuple[int, ...]:
+            nonlocal calls
+            calls += 1
+            del limit, offset
+            return (1,)
+
+        assert await collect_all(stuck, page_size=50) == (1,)
+        assert calls == 1
+
+    async def test_the_ask_is_bounded_by_one_ceiling_only(self) -> None:
+        """A page has exactly one ceiling, and this is the one that applies.
+
+        A repository clamping its own ``limit`` lower would answer a larger
+        request with a full-but-short page, which this reads as the end of the
+        data; there is deliberately no second cap here to compensate, because
+        one would tax every drain and still be a repository away from wrong.
+        """
         asked: list[int] = []
 
-        async def clamped(limit: int, offset: int) -> tuple[int, ...]:
-            asked.append(offset)
-            return rows[offset : offset + min(limit, MAX_PAGE_SIZE)]
+        async def honest(limit: int, offset: int) -> tuple[int, ...]:
+            asked.append(limit)
+            del offset
+            return ()
 
-        assert await collect_all(clamped, page_size=MAX_LIST_LIMIT) == rows
-        assert asked == [0, 1_000, 2_000, 2_500]
-
-    async def test_a_mapping_drain_survives_the_same_clamp(self) -> None:
-        entries = {n: str(n) for n in range(2_500)}
-
-        async def clamped(limit: int, offset: int) -> dict[int, str]:
-            keys = sorted(entries)[offset : offset + min(limit, MAX_PAGE_SIZE)]
-            return {k: entries[k] for k in keys}
-
-        assert await collect_all_mapping(clamped, page_size=MAX_LIST_LIMIT) == entries
+        assert await collect_all(honest, page_size=MAX_LIST_LIMIT * 2) == ()
+        assert asked == [MAX_LIST_LIMIT]
 
     async def test_rejects_non_positive_page_size(self) -> None:
         async def fetch(limit: int, offset: int) -> tuple[int, ...]:

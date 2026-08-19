@@ -17,7 +17,7 @@ from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_QUERIED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_turn
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     TURN_APPEND_MAX_RETRIES,
     format_iso_utc,
@@ -237,7 +237,6 @@ class SQLiteConversationTurnRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
         )
-        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.conversation_id is not None:

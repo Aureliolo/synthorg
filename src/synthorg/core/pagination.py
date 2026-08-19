@@ -50,14 +50,18 @@ DEFAULT_LIST_LIMIT: Final[int] = 100
 #: pure-helper limit here vs. the repository-protocol page size).
 DEFAULT_PAGE_SIZE: Final[int] = 100
 
-#: Hard ceiling on one ``query`` page, whatever the caller asked for. Sits
-#: beside :data:`DEFAULT_PAGE_SIZE` because it bounds the same surface, and in
-#: ``core`` for the same reason: a caller that has to know the ceiling to size
-#: its own batch (a page of conversations asking for one opening turn each)
-#: must be able to read it without reaching into a persistence internal, and a
-#: caller reading a private copy is a caller whose bound can disagree with the
-#: one actually applied. Lower than :data:`MAX_LIST_LIMIT`, which bounds the
-#: unfiltered ``list_*`` drain rather than a filtered page.
+#: Largest batch a caller may fold into ONE filtered read: the id set a
+#: page of conversations turns into a single turn query. Lives in ``core``
+#: so that caller can size its batch without reaching into a persistence
+#: internal, and so it cannot read a private copy whose bound disagrees
+#: with the one actually applied.
+#:
+#: Deliberately NOT a second page ceiling. A repository that silently
+#: clamped its own ``limit`` below :data:`MAX_LIST_LIMIT` would make a
+#: short page ambiguous to :func:`paginate`, which reads one as the end of
+#: the data, and a drain asking above that private clamp would stop at the
+#: first page with rows still to read. One ceiling on a page, and it is
+#: the one :func:`validate_pagination_args` applies.
 MAX_PAGE_SIZE: Final[int] = 1_000
 
 # Hard upper bound on ``list_*`` / ``query`` page sizes regardless of
@@ -78,20 +82,28 @@ async def paginate[PageItemT](
 
     Centralises the offset-paging sweep that several services need when
     a single capped read would silently drop rows past the backend page
-    cap. The sweep is bounded: iteration stops on the first EMPTY page,
-    and each step advances by the rows the backend actually returned, so
-    the offset stays correct however small a page comes back and a
-    non-empty page always moves it forward.
+    cap. The sweep is bounded: iteration stops as soon as a backend
+    returns a short (fewer than the effective page size) or empty page,
+    so a caller cannot accidentally spin forever.
 
-    A short page is not the end of the data. Deciding it was assumed
-    every repository honours a request up to one ceiling this module
-    knows, and repositories clamp their own pages: ``query`` on the
-    conversation-turn repositories stops at ``MAX_PAGE_SIZE`` while
-    ``MAX_LIST_LIMIT`` bounds an unfiltered ``list_*`` drain. Under the
-    old rule a caller asking for more than a method's own clamp got that
-    method's first page and silently lost the rest. Terminating on
-    emptiness needs no such knowledge, so no ceiling has to be repeated
-    here to be kept in step with the ones actually applied.
+    That boundedness is load-bearing and not merely tidy, which is why
+    the short page terminates rather than the empty one: a ``fetch``
+    that does not honour ``offset`` returns rows for ever, and a sweep
+    keyed on emptiness alone would accumulate them until the process
+    died. Terminating on the short page costs nothing against a backend
+    that pages correctly and fails loudly-but-finitely against one that
+    does not.
+
+    Reading a short page as the end of the data is sound only while the
+    backend honours the size it was asked for, which is why there is
+    exactly ONE ceiling on a page and ``validate_pagination_args``
+    applies it. A repository that clamped its own ``limit`` lower would
+    answer a larger request with a full-but-short page, this sweep would
+    read that as the end, and the drain would stop with rows still to
+    come. That is a repository defect rather than something to
+    compensate for here: compensating means naming the lowest private
+    clamp in this module, which taxes every other drain and is one
+    repository away from being wrong again.
 
     Implemented with ``itertools.count`` (a ``for`` iterator) rather
     than ``while True``. The long-running-loop kill-switch gate only
@@ -122,13 +134,13 @@ async def paginate[PageItemT](
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
-    offset = 0
-    for _ in count():
+    for offset in count(0, effective_page_size):
         page = await fetch(effective_page_size, offset)
         if not page:
             return
         yield page
-        offset += len(page)
+        if len(page) < effective_page_size:
+            return
 
 
 async def collect_all[PageItemT](
@@ -179,11 +191,10 @@ async def collect_all_mapping[KeyT, ValT](
     stops on the first short page exactly like :func:`paginate`.
 
     Caller invariant: the wrapped repo method MUST return disjoint
-    pages over a stable key order, and its ``offset`` must count the
-    entries it returns. Overlapping keys across pages are silently
-    last-write-wins (``dict.update``); this helper does not detect page
-    overlap. An empty first page legitimately yields an empty dict (a
-    valid result, not an error).
+    pages over a stable key order and honour ``offset``. Overlapping
+    keys across pages are silently last-write-wins (``dict.update``);
+    this helper does not detect page overlap. An empty first page
+    legitimately yields an empty dict (a valid result, not an error).
 
     Cancellation: if the awaiting task is cancelled mid-page the
     ``CancelledError`` from the in-flight ``fetch`` propagates
@@ -207,19 +218,19 @@ async def collect_all_mapping[KeyT, ValT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    # Terminates on emptiness and advances by the entries returned, for
-    # the reason :func:`paginate` gives: a short page means a repository
-    # applied its own clamp at least as often as it means the data ran
-    # out, and this module cannot tell the two apart from the count.
+    # Drain at the backend-clamped size and stop on the short page, for
+    # the reasons :func:`paginate` gives: one ceiling applies to a page,
+    # and terminating on emptiness instead would let a fetch that
+    # ignores ``offset`` run until the process died.
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
     merged: dict[KeyT, ValT] = {}
-    offset = 0
-    for _ in count():
+    for offset in count(0, effective_page_size):
         page = await fetch(effective_page_size, offset)
         if not page:
             return merged
         merged.update(page)
-        offset += len(page)
+        if len(page) < effective_page_size:
+            return merged
     return merged  # unreachable; count() is infinite
 
 
