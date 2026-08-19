@@ -619,6 +619,34 @@ class TestEditFileExecution:
         assert result.is_error
         assert "VIOL_A" in result.content
 
+    async def test_a_copy_of_a_violating_line_verbatim_is_still_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The one shape where both halves of the key collide.
+
+        A copy carries the same rule AND the same line text as the line it was
+        copied from, so the two are one key and only multiplicity separates
+        them. Were the subtraction a set rather than a multiset, the baseline's
+        single occurrence would cancel both and a violation the agent authored
+        would reach disk under the cover of one it did not.
+        """
+        self._patch_marker_policy(monkeypatch)
+        before = "x = 1  # VIOL_A\nkeep = 2\n"
+        (workspace / "copy.py").write_text(before, encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "copy.py",
+                "old_text": "keep = 2",
+                "new_text": "keep = 2\nx = 1  # VIOL_A",
+            }
+        )
+        assert result.is_error
+        assert "VIOL_A" in result.content
+        assert (workspace / "copy.py").read_text(encoding="utf-8") == before
+
     async def test_moving_a_violating_line_is_not_authoring_a_violation(
         self,
         workspace: Path,
