@@ -352,6 +352,25 @@ func TestComputeVerdict(t *testing.T) {
 			wantLevel: statusLevelCritical,
 		},
 		{
+			// The banner reported a count and pointed at the logs while the
+			// logs held the revision id and the constraint it violated.
+			name: "a crash loop names what it aborted on",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "restarting"},
+				},
+				servicesFilterEmpty: true,
+				bootFailures: map[string]string{
+					"backend": "[error    ] persistence.migration.failed error='CheckViolation'",
+				},
+				healthStatusCode: 200,
+				healthEnvelopeOK: true,
+				healthData:       okHealth,
+			},
+			wantLevel:    statusLevelDegraded,
+			wantHasIssue: "backend aborted on: [error    ] persistence.migration.failed",
+		},
+		{
 			name: "services filter matches no containers -> OK (no false critical)",
 			snap: statusSnapshot{
 				containers: []containerInfo{
