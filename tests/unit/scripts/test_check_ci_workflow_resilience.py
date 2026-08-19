@@ -506,6 +506,61 @@ class TestRetryEscalation:
         assert len(violations) == 1
         assert _ESCALATES in violations[0]
 
+    def test_a_continuation_split_invocation_is_one_command(
+        self, tmp_path: Path
+    ) -> None:
+        """The unit the rule is about is the command, not the source line.
+
+        The shape that shipped past this check and then failed in CI exactly
+        as the rule describes: the helper on one line, the escalating word on
+        the next after a backslash. Read as physical lines neither string
+        carries both halves, so the step passed while spending 240s on three
+        attempts that all exited 124 against an apt-get the kill never
+        reached.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "240"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
+            "            sudo apt-get install -y \\\n"
+            "              qemu-user-static bubblewrap\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_an_inline_prefix_above_its_own_call_is_set_on_it(
+        self, tmp_path: Path
+    ) -> None:
+        # Both rules read the same logical lines, so a prefix written above
+        # the helper it applies to is read as set on that call: the deadline
+        # rule must not report it missing, and the escalation rule must read
+        # the attempt count from it.
+        content = _job(
+            "        run: |\n"
+            "          RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \\\n"
+            "            .github/scripts/retry_cmd.sh 'apt' \\\n"
+            "            sudo apt-get install -y jq\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_continuation_split_single_attempt_stays_clean(
+        self, tmp_path: Path
+    ) -> None:
+        # The complement: joining lines must not start reporting the correct
+        # shape, or the fix trades a blind spot for a false positive.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "150"\n'
+            '          RETRY_CMD_ATTEMPTS: "1"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
+            "            sudo apt-get install -y qemu-user-static\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_an_unnamed_attempt_count_is_still_a_ladder(self, tmp_path: Path) -> None:
         # The helper defaults to five, so a call site that names no count is
         # the most retried shape there is, not an exempt one.

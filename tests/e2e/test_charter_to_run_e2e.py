@@ -110,7 +110,11 @@ _DRAFT = (
     '"envelope": {"amount": 5000, "currency": "USD", '
     '"deadline": null, "time_horizon": "1 month"}, '
     '"project_id": null, "proposed_project_name": "memory-layer", '
-    '"proposed_project_description": "A better memory layer."}}'
+    '"proposed_project_description": "A better memory layer.", '
+    # Required: the coverage press fires on a non-empty value, so a draft
+    # that omitted the key would read as "assumed nothing". This interview
+    # asked for every facet, so it assumed none, and says so.
+    '"assumed_facets": []}}'
 )
 
 

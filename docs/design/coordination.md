@@ -806,7 +806,18 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    A wave left with nothing therefore empties three ways that must not be
    confused, and only one of them is a failure. Everything already delivered
    is a **successful** phase; everything held on a person is **awaiting**;
-   only inputs that died record the FAILED phase. A phase list that omits
+   only inputs that died record the FAILED phase.
+
+   The phase itself is two-valued, and answers only whether the level
+   failed, because that is the whole question its consumers ask:
+   `CoordinationResult.is_success` is `all(p.success)`, and a coordination
+   reporting failure fails the plan exactly as a raise does. So an awaiting
+   wave records a non-failed phase, or an initiative is destroyed over a
+   question nobody has answered yet. What separates awaiting from delivered
+   lives where something reads it: the count on `GatedWave.awaiting` and the
+   `awaiting` field of `COORDINATION_WAVE_STARTED`, and the rows themselves,
+   which are `CREATED` rather than `COMPLETED` and are what the recovery
+   sweep re-drives once the answer lands. A phase list that omits
    the level entirely lets the rollup read the run as still working. Without this, a plan whose first real wave died end to
    end still marched through every later wave, paying for each one, with
    every task failing on its own against inputs nobody wrote.

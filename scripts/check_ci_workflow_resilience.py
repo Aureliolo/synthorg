@@ -1481,18 +1481,23 @@ def _retry_lines_missing_deadline(run: str) -> list[str]:
     """Return the ``retry_cmd.sh`` invocations lacking an inline deadline.
 
     A call site may set the deadline as an inline ``VAR=n cmd`` prefix
-    instead of via step ``env:``, so each invocation line is inspected
-    separately: one prefixed line does not cover an unprefixed sibling.
+    instead of via step ``env:``, so each invocation is inspected
+    separately: one prefixed call does not cover an unprefixed sibling.
+
+    Read as LOGICAL lines, for the same reason the escalation rule is: an
+    invocation is one command however many source lines it spans, so a
+    prefix written above its own helper call is set on that call and a
+    physical read would report it as missing.
 
     Args:
         run: The step's shell body.
 
     Returns:
-        The offending lines, stripped, in source order.
+        The offending invocations, in source order.
     """
     return [
-        line.strip()
-        for line in run.splitlines()
+        line
+        for line in _logical_lines(run)
         if _RETRY_HELPER in line and _DEADLINE_VAR not in line
     ]
 
@@ -1603,11 +1608,55 @@ def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
             f" instead of the original fault. Set {_ATTEMPTS_VAR} to 1, or"
             " split the escalating half out of the retried unit."
         )
-        for line in (raw.strip() for raw in run.splitlines())
+        for line in _logical_lines(run)
         if _RETRY_HELPER in line
         and any(marker in line for marker in _ESCALATION_MARKERS)
         and _attempts_for_line(line, from_env) > 1
     ]
+
+
+def _logical_lines(run: str) -> list[str]:
+    r"""Return *run* with backslash continuations joined into single lines.
+
+    A shell invocation is one command however many source lines it occupies,
+    and the escalating word is routinely on a later one:
+
+        .github/scripts/retry_cmd.sh "install deps" \\
+          sudo apt-get install -y ...
+
+    Reading physical lines put the helper and the ``sudo`` in different
+    strings, so neither line matched both halves of the rule and the check
+    passed a step that then failed in CI exactly as the rule describes:
+    three attempts, exit 124 each, the killed apt-get outliving every one of
+    them. The unit the rule is about is the command, so that is the unit it
+    reads.
+
+    Args:
+        run: The step's whole ``run:`` script.
+
+    Returns:
+        The joined logical lines, each stripped.
+    """
+    joined: list[str] = []
+    pending = ""
+    for raw in run.splitlines():
+        stripped = raw.strip()
+        pending = f"{pending} {stripped}".strip() if pending else stripped
+        if pending.endswith("\\"):
+            pending = pending[:-1].strip()
+            continue
+        # An unclosed quote continues too, and for the same reason: a
+        # `bash -c '...'` body spanning several source lines is still one
+        # command, and the escalating word inside it is what the ladder
+        # actually retries. Counting quotes across the accumulated text is
+        # what keeps the two continuation forms from having to agree.
+        if pending.count("'") % 2 or pending.count('"') % 2:
+            continue
+        joined.append(pending)
+        pending = ""
+    if pending:
+        joined.append(pending)
+    return joined
 
 
 def _is_pull_producer(step: dict[str, object]) -> bool:

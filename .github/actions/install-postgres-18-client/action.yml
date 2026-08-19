@@ -55,39 +55,52 @@ runs:
         # the package we need came from PGDG. The base archive indices are
         # already present from image provisioning, so scoping the refresh to
         # pgdg.list is sufficient to resolve postgresql-client-18 and its deps.
-        # Both apt calls reach the PGDG mirror; wrap each in the generic
-        # retry helper so a transient mirror 5xx / connection reset retries
-        # (idempotent: re-running update / install converges) rather than
-        # failing the integration + e2e jobs on a single blip. The deadline
-        # bounds the ladder in wall-clock so a mirror that accepts the
-        # connection then stalls is killed and reported here, instead of
-        # hanging until the job timeout reaps it as an opaque cancellation.
+        # Both apt calls reach the PGDG mirror, and both escalate to root, so
+        # both get ONE attempt under a wall-clock deadline rather than a
+        # ladder. The per-attempt kill runs as the runner user and cannot
+        # signal a root child, so a killed apt-get survives holding
+        # /var/lib/apt/lists/lock and every later attempt fails on that
+        # instead of on the fault that timed the first one out. The deadline
+        # still bounds each call, so a mirror that accepts the connection and
+        # then stalls is killed and reported here with the real cause, rather
+        # than hanging until the job timeout reaps it as an opaque
+        # cancellation. Enforced by check_ci_workflow_resilience.py.
         #
-        # Each attempt drops the mirror's own cached indices first. A mirror
-        # caught mid-sync serves a Release naming one Packages size and a
-        # Packages of another, which apt reports as "File has unexpected size
-        # (A != B). Mirror sync in progress?". List-Cleanup=0 keeps that pair
-        # on disk, so every retry re-reads the same inconsistent metadata and
-        # reproduces the identical byte mismatch: the ladder was inert against
-        # the one failure mode it hit in practice, five attempts over four
-        # minutes reporting the same two numbers. Removing only the
-        # apt.postgresql.org lists re-fetches Release and Packages together
-        # while leaving the base archive indices the image provisioned, which
-        # is why List-Cleanup=0 has to stay: the refresh is scoped to
-        # pgdg.list, so apt's own cleanup would read every other index as
-        # obsolete and delete it.
-        RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
+        # The recovery that matters here never needed a second attempt
+        # anyway. A mirror caught mid-sync serves a Release naming one
+        # Packages size and a Packages of another, which apt reports as "File
+        # has unexpected size (A != B). Mirror sync in progress?", and
+        # List-Cleanup=0 keeps that pair on disk so a retry re-reads the same
+        # inconsistent metadata: the ladder was inert against the one failure
+        # mode it hit in practice, five attempts over four minutes reporting
+        # the same two numbers. What fixes it is dropping the mirror's own
+        # cached indices before the refresh, which happens on the first
+        # attempt. Only the apt.postgresql.org lists go, so Release and
+        # Packages are re-fetched together while the base archive indices the
+        # image provisioned stay, which is why List-Cleanup=0 has to stay too:
+        # the refresh is scoped to pgdg.list, so apt's own cleanup would read
+        # every other index as obsolete and delete it.
+        RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \
+          .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
           bash -c '
             set -euo pipefail
             sudo rm -rf /var/lib/apt/lists/apt.postgresql.org_* \
                         /var/lib/apt/lists/partial/apt.postgresql.org_*
             sudo apt-get update \
+              -o Acquire::http::Timeout=15 \
+              -o Acquire::https::Timeout=15 \
+              -o Acquire::Retries=3 \
               -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
               -o Dir::Etc::sourceparts="-" \
               -o APT::Get::List-Cleanup="0"
           '
-        RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
-          sudo apt-get install -y postgresql-client-18
+        RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \
+          .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
+          sudo apt-get install -y \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            -o Acquire::Retries=3 \
+            postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
         /usr/lib/postgresql/18/bin/pg_dump --version
         /usr/lib/postgresql/18/bin/pg_restore --version
