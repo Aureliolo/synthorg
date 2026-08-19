@@ -379,7 +379,20 @@ Both apply without a restart, and the mechanism differs by consumer.
 `BudgetConfig` is built once per process through the DB-blind bootstrap resolver, so
 the enforcer's copy would otherwise freeze at boot for every limit it holds, not just
 these two: `BudgetConfigSettingsSubscriber` re-resolves the whole config through the
-live resolver on any budget write and hands it to the running enforcer. The bounded
+live resolver on any budget write and hands it to the running enforcer.
+
+Four components hold their own copy (the state slice, the enforcer, the tracker whose
+copy decides which currency a record may be written in and what every gauge is computed
+against, and the `CostOptimizer` that scores each recommendation), so
+`budget/adoption.py`
+owns reaching all four and both triggers call it. **Boot is the first trigger, not a
+special case**: phase 1 builds all four from the code defaults because no setting can be
+read yet, so a deployment whose budget was configured before it started measured against
+`total_monthly`'s default of 100 for the life of the process, and restarting was what
+reintroduced it rather than what fixed it. `adopt_resolved_budget_config` runs once
+persistence and settings are up; a resolve failure leaves the boot defaults standing
+rather than failing the deployment, and those defaults refuse spend sooner than any
+ceiling an operator would choose. The bounded
 sessions read `budget.session_token_ceiling` per call through
 `resolve_session_token_ceiling`, except the two that bake it into a frozen config at
 assembly (the decomposition planner and the plan-review panel), which are rebuilt on a

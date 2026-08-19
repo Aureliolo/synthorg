@@ -581,7 +581,15 @@ list, it renders review panels derived from the plan (no extra persisted state):
   criterion with the judge's evidence, so a parked initiative explains which
   criteria failed. Hidden when nothing has judged the plan.
 - **Needs your input** (`PlanOpenQuestionsPanel`): the planner's open questions and
-  assumptions to answer or correct before approving.
+  assumptions to answer or correct before approving. Each question carries its
+  own answer box, because this panel is the only surface that can decide one:
+  the generic Approvals inbox filters every `plan_review` row out by design
+  (`useApprovalsData`), so a question sent anywhere else is a question nobody
+  can settle. Sending an answer approves that question's own parked approval
+  with the answer as its comment, which is what writes it onto the plan. A
+  question with no parked approval left says so rather than offering a box:
+  once the plan starts building, its questions are retired unanswered and an
+  answer would reach no task, no agent, and no prompt.
 - **Cost forecast** (`PlanForecastPanel`): the plan's `forecast_id` hydrated to show
   the estimate with its band, decision state, and any hard-ceiling halt.
 - **Staffing** (`PlanStaffingPanel`): per-owner item load derived from item owners,
