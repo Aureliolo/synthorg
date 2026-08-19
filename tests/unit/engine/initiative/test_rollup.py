@@ -9,7 +9,10 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.approval.enums import ApprovalStatus
-from synthorg.approval.initiative_stall import INITIATIVE_STALL_ACTION_TYPE
+from synthorg.approval.initiative_stall import (
+    INITIATIVE_STALL_ACTION_TYPE,
+    PLAN_ID_METADATA_KEY,
+)
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem, PlanOption
@@ -28,10 +31,7 @@ from synthorg.engine.initiative.ports import (
     RetroCapturePort,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
-from synthorg.engine.initiative.stall_escalation import (
-    PLAN_ID_METADATA_KEY,
-    StallEscalationService,
-)
+from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.tail_stages import integration_task_id
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult, TaskStateChanged

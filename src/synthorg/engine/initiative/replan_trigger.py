@@ -19,14 +19,13 @@ refuses a plan that is no longer replannable or no longer stalled, which is what
 makes a redelivered rollup event harmless: the first replan supersedes the plan,
 and every later attempt reads a superseded plan and stops.
 
-**A refusal is an answer, not a silence.** Both guards used to be evaluated
-inside the detached task, where nothing could see them: the rollup read "a
-trigger is attached" as "a replan will happen" and asked again on every pass,
-for ever, while one live initiative sat at ``executing`` with every item dead
-and a warning rewritten in the log as the only trace. ``consider`` therefore
-decides both BEFORE starting anything and hands back a
-:class:`~synthorg.engine.initiative.completion.ReplanDisposition`, which its
-caller routes on.
+**A refusal is an answer, not a silence.** Both guards are evaluated BEFORE
+anything is started, and ``consider`` hands back a
+:class:`~synthorg.engine.initiative.completion.ReplanDisposition` its caller
+routes on. A guard applied inside the detached task instead is invisible to the
+caller: the rollup would read "a trigger is attached" as "a replan will happen"
+and ask again on every pass, for ever, while the initiative sat at ``executing``
+with every item dead and a warning in the log as the only trace.
 
 There are two doors, and the difference between them is whose authority
 applies. ``consider`` is the organisation acting unasked, so the switch and the

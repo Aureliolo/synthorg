@@ -17,7 +17,10 @@ from synthorg.api.controllers._approval_initiative_stall import (
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.approval.initiative_stall import INITIATIVE_STALL_ACTION_TYPE
+from synthorg.approval.initiative_stall import (
+    INITIATIVE_STALL_ACTION_TYPE,
+    PLAN_ID_METADATA_KEY,
+)
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
@@ -26,7 +29,6 @@ from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import StallReason
 from synthorg.engine.initiative.rollup import ProjectRollupService
-from synthorg.engine.initiative.stall_escalation import PLAN_ID_METADATA_KEY
 from synthorg.engine.state import EngineStateSlice
 from tests._shared import (
     FakeClock,
