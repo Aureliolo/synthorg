@@ -16,7 +16,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus, TaskType
+from synthorg.core.task_enums import BlockedReason, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination._wave_parking import GatedWave, gate_wave
@@ -191,6 +191,44 @@ class TestGateWaveSkipsSettledWork:
         assert len(phases) == 1
         assert not phases[0].success
         assert phases[0].error is not None
+
+    async def test_a_wave_waiting_on_a_person_is_not_a_failed_phase(self) -> None:
+        """A question nobody has answered yet must not fail the initiative.
+
+        ``CoordinationResult.is_success`` is ``all(p.success)``, and a
+        coordination reporting failure fails the plan exactly as a raise does.
+        The gate deliberately leaves these rows at CREATED so the recovery
+        sweep re-drives them once the answer lands, and a failed phase here is
+        what leaves that sweep nothing to come back to: the initiative is gone
+        before the operator has replied.
+        """
+        waiting = _assignment("waiting")
+        parked = _task("parked", status=TaskStatus.BLOCKED)
+        rows = {
+            str(waiting.task.id): _task("waiting"),
+            str(parked.id): parked.model_copy(
+                update={"blocked_reason": BlockedReason.ORACLE_ESCALATED}
+            ),
+        }
+        phases: list[CoordinationPhaseResult] = []
+        clock: Clock = FakeClock()
+
+        outcome = await gate_wave(
+            _group(waiting),
+            wave_idx=0,
+            assignment_writer=AssignmentWriter(_engine(rows)),
+            dependencies={str(waiting.task.id): (str(parked.id),)},
+            clock=clock,
+            start=clock.monotonic(),
+            phases=phases,
+        )
+
+        assert outcome.group is None
+        assert outcome.awaiting == 1
+        assert not outcome.delivered
+        assert len(phases) == 1
+        assert phases[0].success
+        assert phases[0].error is None
 
     async def test_a_fresh_wave_is_unchanged(self) -> None:
         # Every subtask of a plan dispatched for the first time sits at

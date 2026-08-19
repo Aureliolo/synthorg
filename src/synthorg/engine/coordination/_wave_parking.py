@@ -100,11 +100,20 @@ async def gate_wave(
         plan did not deliver this level, and a phase list that says otherwise
         is what lets a rollup read the run as still working. A wave left with
         nothing because every subtask already delivered records a successful
-        phase, because the level IS delivered. A wave held back on an input
-        somebody still owes an answer on records a failed phase too (it did
-        not deliver either), but says so in its own words, because a replan
-        reads this and a dependency failure that never happened is a lie it
-        acts on.
+        phase, because the level IS delivered.
+
+        A wave held back on an input somebody still owes an answer on records
+        a NON-failed phase, and that is the whole difference between the two
+        empty waves. ``CoordinationResult.is_success`` is ``all(p.success)``,
+        and a coordination that reports failure fails the plan exactly as a
+        raise does, so a failed phase here would destroy the initiative over a
+        question a person has not answered yet. The rows are deliberately left
+        at CREATED for the recovery sweep to re-drive once the answer lands,
+        and failing the plan is what makes that sweep have nothing to return
+        to. The count is on ``COORDINATION_WAVE_STARTED`` as ``awaiting``,
+        which is where the reason lives: the phase model refuses an error
+        beside a success, and inventing a failure to carry the sentence is the
+        thing being fixed.
     """
     unsettled, settled = await assignment_writer.narrow_to_awaiting_dispatch(group)
     gated, awaiting = await assignment_writer.gate_on_dependencies(
@@ -124,12 +133,14 @@ async def gate_wave(
             group=gated, settled=settled, delivered=delivered, awaiting=awaiting
         )
 
+    parked = bool(awaiting)
+    failed = not delivered and not parked
     phases.append(
         CoordinationPhaseResult(
             phase=phase_name(wave_idx),
-            success=delivered,
+            success=not failed,
             duration_seconds=clock.monotonic() - start,
-            error=_empty_wave_error(wave_idx, delivered=delivered, awaiting=awaiting),
+            error=_empty_wave_error(wave_idx) if failed else None,
         )
     )
     return GatedWave(
@@ -137,24 +148,15 @@ async def gate_wave(
     )
 
 
-def _empty_wave_error(wave_idx: int, *, delivered: bool, awaiting: int) -> str | None:
-    """Say why a wave had nothing left to dispatch.
+def _empty_wave_error(wave_idx: int) -> str:
+    """Say why a wave that failed had nothing left to dispatch.
 
     Args:
         wave_idx: Which wave this is.
-        delivered: Whether every subtask already had an outcome.
-        awaiting: How many were held back on an input somebody owes.
 
     Returns:
-        The phase error, or ``None`` when the level was simply delivered.
+        The phase error for the one empty wave that IS a failure.
     """
-    if delivered:
-        return None
-    if awaiting:
-        return (
-            f"Wave {wave_idx}: every subtask is waiting on work that is "
-            "parked for a decision"
-        )
     return f"Wave {wave_idx}: every subtask parked on work that did not deliver"
 
 
