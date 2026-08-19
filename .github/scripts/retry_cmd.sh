@@ -33,6 +33,15 @@
 #   2. Output is STREAMED through, not captured: these commands are run for
 #      their side effects, not a value, so there is no command-substitution
 #      contamination concern.
+#   3. A KILLED attempt leaves nothing that defeats the next one. Idempotent
+#      is not enough once RETRY_CMD_ATTEMPT_TIMEOUT is set: the kill only
+#      reaches what this process may signal, so a command that escalates to
+#      root survives it holding whatever it held. `playwright install
+#      --with-deps` sudo's to apt, and a timed-out attempt left apt-get alive
+#      on /var/lib/apt/lists/lock, so both remaining attempts died in under a
+#      second on "Could not get lock" and the ladder could not succeed. Wrap
+#      such a command with the deadline as its only bound, or split the part
+#      that escalates out of the retried unit.
 #
 # Posture: 5 attempts, 15s base doubling to a 120s cap
 # (15 + 30 + 60 + 120 (capped) = ~3m45s of wait before the final attempt).
@@ -155,9 +164,17 @@ while :; do
   rc=0
   if [ -n "$TIMEOUT_CMD" ] && [ "$this_timeout" -gt 0 ]; then
     # --kill-after escalates to SIGKILL if the command ignores the initial
-    # SIGTERM, so a wedged process cannot outlive its attempt. A timeout exits
-    # 124 (or 137 on the SIGKILL escalation), which the loop treats as any
-    # other retryable non-zero exit.
+    # SIGTERM. A timeout exits 124 (or 137 on the SIGKILL escalation), which
+    # the loop treats as any other retryable non-zero exit.
+    #
+    # The kill reaches only what this process may signal. A command that
+    # escalates to root (anything running sudo underneath) leaves that child
+    # ALIVE, because an unprivileged signal to a root process is refused, and
+    # whatever it holds -- an apt lock, a port, a pidfile -- is still held when
+    # the next attempt starts. So an attempt timeout is only sound over a
+    # command whose kill leaves nothing behind: pair it with sudo and the
+    # retries report the wreckage of attempt one instead of the fault that
+    # timed it out.
     "$TIMEOUT_CMD" --kill-after=10s "$this_timeout" "$@" || rc=$?
   else
     "$@" || rc=$?

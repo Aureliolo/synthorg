@@ -1837,31 +1837,54 @@ jobs:
       - uses: ./.github/actions/install-js-deps
         with:
           working-directory: web
-      - name: Install Playwright chromium + OS deps
+      # The OS deps and the browser download are separate steps because a
+      # killed attempt leaves opposite amounts behind. ``install-deps``
+      # escalates to root ("Switching to root user to install
+      # dependencies..."), so the runner-owned ``timeout`` cannot signal the
+      # apt-get it spawned: the kill lands on the wrapper, apt survives
+      # holding /var/lib/apt/lists/lock, and every later attempt dies in under
+      # a second on "Could not get lock ... held by process N". A ladder over
+      # this command cannot succeed once its first attempt is killed, so the
+      # extra attempts are not resilience, they are a second failure wearing
+      # the first one's clothes and reporting a lock instead of the stall that
+      # caused it.
+      - name: Install Playwright OS deps
         env:
-          # ``--with-deps`` runs apt against the runner's mirrorlist, and the
-          # azure mirror answering `Ign:` sends it to archive.ubuntu.com, which
-          # can accept the connection and then stall with no data and no error.
-          # That is a HANG, not a non-zero exit, so nothing below the job's own
+          # apt against the runner's mirrorlist, where the azure mirror
+          # answering `Ign:` sends it to archive.ubuntu.com, which can accept
+          # the connection and then stall with no data and no error. That is a
+          # HANG, not a non-zero exit, so nothing below the job's own
           # timeout-minutes reaps it: one such stall burned the full 20-minute
           # budget on an install that takes 25s healthy, cancelled the job
           # before a single spec ran, and failed CI Pass with no diagnosis.
-          # 180s is 7x the healthy duration, so it bounds a stall without
-          # converting a merely slow mirror into a failure.
-          RETRY_CMD_ATTEMPT_TIMEOUT: "180"
-          # Three attempts plus backoff is 180 + 15 + 180 + 30 + 180 = 585s,
-          # which fits inside the deadline, so exhaustion is REACHABLE and
-          # prints the ladder's loud error. The deadline in turn sits well
-          # inside the job's 1200s: ~30s of setup precedes it and the build +
-          # specs after it take ~90s healthy.
-          RETRY_CMD_ATTEMPTS: "3"
-          RETRY_CMD_DEADLINE: "600"
+          # One attempt, because a second cannot run: the deadline IS the
+          # bound, and a stall that eats it fails loud naming the stall.
+          RETRY_CMD_ATTEMPTS: "1"
+          RETRY_CMD_DEADLINE: "420"
         # Run from the repository root, with the directory change inside the
         # wrapped command: the helper is named by a repo-relative path, which
         # is the form the signing scan follows to read what a step executes.
         run: >-
-          .github/scripts/retry_cmd.sh "playwright chromium + OS deps"
-          bash -c 'cd web && npx playwright install --with-deps chromium'
+          .github/scripts/retry_cmd.sh "playwright OS deps"
+          bash -c 'cd web && npx playwright install-deps chromium'
+      - name: Install Playwright chromium
+        env:
+          # The browser download runs as the runner user, so a timeout kill
+          # genuinely reaches it and a half-fetched browser is simply
+          # re-fetched. This is the half a ladder works on. 120s is several
+          # times the healthy duration, so it bounds a stalled CDN without
+          # converting a merely slow one into a failure.
+          RETRY_CMD_ATTEMPT_TIMEOUT: "120"
+          # Three attempts plus backoff is 120 + 15 + 120 + 30 + 120 = 405s,
+          # which fits inside the deadline, so exhaustion is REACHABLE and
+          # prints the ladder's loud error. Both deadlines together sit inside
+          # the job's 1200s: ~30s of setup precedes them and the build + specs
+          # after them take ~90s healthy.
+          RETRY_CMD_ATTEMPTS: "3"
+          RETRY_CMD_DEADLINE: "480"
+        run: >-
+          .github/scripts/retry_cmd.sh "playwright chromium"
+          bash -c 'cd web && npx playwright install chromium'
       # The Playwright config's webServer runs ``npm run preview``, which
       # serves ``dist/``; build it first so the preview server has a bundle.
       - name: Production build (preview server source)

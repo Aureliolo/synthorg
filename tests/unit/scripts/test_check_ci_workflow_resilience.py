@@ -220,6 +220,7 @@ _LADDER = _enforced(guard=True) + _enforced(guard=True) + _enforced(guard=False)
 _UNGUARDED = "has an unguarded step"
 _SOFT_ONLY = "no fail-closed final attempt"
 _NO_DEADLINE = "without RETRY_CMD_DEADLINE"
+_ESCALATES = "retries a command that escalates privilege"
 _NEVER_CHECKS_OUT = "the job never checks out"
 _SPARSE_EXCLUDES = "sparse checkout excludes that path"
 _BYPASSES_WRAPPER = "so the retry ladder cannot be bypassed"
@@ -465,6 +466,94 @@ class TestRetryDeadline:
         assert len(violations) == 1
         assert _NO_DEADLINE in violations[0]
         assert "'fetch'" in violations[0]
+
+
+class TestRetryEscalation:
+    """A retried unit must be one whose per-attempt kill leaves nothing.
+
+    Every call site is deadline-bounded, so every attempt can be killed, and
+    the kill reaches only what the runner user may signal. A command that
+    escalates to root survives it holding whatever it held, and the next
+    attempt then fails on that rather than on the fault that timed the first
+    one out.
+    """
+
+    def test_retried_with_deps_install_flagged(self, tmp_path: Path) -> None:
+        # The shape that shipped: three attempts over playwright's own
+        # escalating path. Attempt one timed out on a stalled apt mirror and
+        # left apt-get holding the lists lock, so attempts two and three died
+        # in under a second on "Could not get lock".
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'npx playwright install --with-deps chromium'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_retried_sudo_flagged(self, tmp_path: Path) -> None:
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " sudo apt-get install -y jq\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_an_unnamed_attempt_count_is_still_a_ladder(self, tmp_path: Path) -> None:
+        # The helper defaults to five, so a call site that names no count is
+        # the most retried shape there is, not an exempt one.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt' sudo apt-get update\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_single_attempt_escalation_clean(self, tmp_path: Path) -> None:
+        # One attempt cannot be poisoned by a previous one, and the deadline
+        # still bounds it, so the single failure names the real fault.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "1"\n'
+            "        run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'npx playwright install-deps chromium'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_retried_unprivileged_download_clean(self, tmp_path: Path) -> None:
+        # The complement, and the reason the ladder exists: a download running
+        # as the runner user IS killed by the timeout and simply re-fetched.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "480"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'chromium'"
+            " bash -c 'npx playwright install chromium'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
+        content = _composite(
+            "    - name: deps\n"
+            "      env:\n"
+            '        RETRY_CMD_DEADLINE: "600"\n'
+            '        RETRY_CMD_ATTEMPTS: "3"\n'
+            "      run: .github/scripts/retry_cmd.sh 'deps' sudo apt-get update\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+        assert "'deps'" in violations[0]
 
 
 class TestLocalActionResolution:

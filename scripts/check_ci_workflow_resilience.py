@@ -37,6 +37,22 @@ hardening they carry cannot silently regress:
    bound, so this gate requires every call site to set it, via step
    ``env:`` or an inline ``VAR=n`` prefix.
 
+   The bound has a consequence: every attempt can now be KILLED, and the
+   kill reaches only what the runner user may signal. A command that
+   escalates to root leaves that child alive holding whatever it held, so
+   the next attempt fails on the wreckage rather than on the fault that
+   timed the first one out. ``playwright install --with-deps`` sudo'd to
+   apt; a timed-out attempt left ``apt-get`` on
+   ``/var/lib/apt/lists/lock``; both remaining attempts died in under a
+   second on "Could not get lock", and the ladder reported that instead of
+   the stalled mirror. A retried unit must therefore be one whose kill
+   leaves nothing behind, so a multi-attempt call site may not wrap an
+   escalating command: give it one attempt, or split the escalating half
+   out. Escalation is recognised from the command text (``sudo``, and
+   playwright's ``--with-deps``, whose sudo is internal and unwritten),
+   which names the paths this tree uses rather than deciding the general
+   question.
+
 4. **A local action resolves where it is used, and a wrapped action is
    reached only through its wrapper.** Two halves of one rule.
 
@@ -239,6 +255,16 @@ _ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 
 _RETRY_HELPER: Final[str] = "retry_cmd.sh"
 _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
+_ATTEMPTS_VAR: Final[str] = "RETRY_CMD_ATTEMPTS"
+# The helper's own default when a call site names no count.
+_DEFAULT_ATTEMPTS: Final[int] = 5
+# Command fragments that put the real work behind sudo. `--with-deps` is
+# playwright's own escalating path ("Switching to root user to install
+# dependencies..."), which is why it is named beside the verb: the command
+# line never says sudo, and that is exactly what made the ladder look sound.
+# A command that escalates by some other spelling is not recognised, so this
+# names the paths the tree uses rather than claiming to decide the question.
+_ESCALATION_MARKERS: Final[tuple[str, ...]] = ("sudo ", "--with-deps")
 
 _CHECKOUT_ACTION: Final[str] = "actions/checkout"
 _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
@@ -1496,6 +1522,69 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
+def _declared_attempts(step: dict[str, object]) -> int:
+    """Return the attempt count a step declares, or the helper's default.
+
+    Args:
+        step: The step mapping.
+
+    Returns:
+        The count, falling back to the helper's own default when the step
+        names none, because an unnamed count is still a multi-attempt ladder.
+    """
+    env = step.get("env")
+    if not isinstance(env, dict):
+        return _DEFAULT_ATTEMPTS
+    declared = env.get(_ATTEMPTS_VAR)
+    if declared is None:
+        return _DEFAULT_ATTEMPTS
+    text = str(declared).strip()
+    return int(text) if text.isdigit() else _DEFAULT_ATTEMPTS
+
+
+def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
+    """Return violations for a multi-attempt ladder over a sudo command.
+
+    Every call site is deadline-bounded by the rule above, so every attempt
+    can be killed, and the kill reaches only what the runner user may signal.
+    A command that escalates to root leaves that child alive holding whatever
+    it held: `playwright install --with-deps` sudo'd to apt, a timed-out
+    attempt left apt-get on /var/lib/apt/lists/lock, and both remaining
+    attempts died in under a second on "Could not get lock". The ladder could
+    not succeed once its first attempt was killed, and it reported the
+    wreckage instead of the mirror stall that caused it.
+
+    So a retried unit must be one whose kill leaves nothing behind. An
+    escalating command gets one attempt (the deadline still bounds it, and
+    the single failure names the real fault), or the escalating half is split
+    out of the retried unit.
+
+    Args:
+        context: Human-readable location (job or composite-action step).
+        step: The step mapping.
+
+    Returns:
+        One message per offending invocation.
+    """
+    run = step.get("run")
+    if not isinstance(run, str) or _RETRY_HELPER not in run:
+        return []
+    if _declared_attempts(step) <= 1:
+        return []
+    return [
+        (
+            f"{context}: `{line}` retries a command that escalates privilege."
+            " The per-attempt kill cannot signal a root child, so it survives"
+            " holding what it held and every later attempt fails on that"
+            f" instead of the original fault. Set {_ATTEMPTS_VAR} to 1, or"
+            " split the escalating half out of the retried unit."
+        )
+        for line in (raw.strip() for raw in run.splitlines())
+        if _RETRY_HELPER in line
+        and any(marker in line for marker in _ESCALATION_MARKERS)
+    ]
+
+
 def _is_pull_producer(step: dict[str, object]) -> bool:
     """Return True when the step is a resilient-pull call."""
     uses = step.get("uses")
@@ -1726,6 +1815,7 @@ def _scan_composite_action(
             continue
         label = _step_label(step, index)
         violations.extend(_check_retry_deadlines(f"'{label}'", step))
+        violations.extend(_check_retry_escalation(f"'{label}'", step))
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue
@@ -1767,6 +1857,7 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
     checkout = _CheckoutState()
     for step in steps:
         violations.extend(_check_retry_deadlines(f"job '{job_name}'", step))
+        violations.extend(_check_retry_escalation(f"job '{job_name}'", step))
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue
