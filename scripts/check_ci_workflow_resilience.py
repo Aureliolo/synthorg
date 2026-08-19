@@ -1489,6 +1489,12 @@ def _retry_lines_missing_deadline(run: str) -> list[str]:
     prefix written above its own helper call is set on that call and a
     physical read would report it as missing.
 
+    Then narrowed to the helper's own command SEGMENT, for the same reason
+    again: a prefix binds to the command it precedes and nothing past the
+    next separator, so ``RETRY_CMD_DEADLINE=240 echo x; retry_cmd.sh ...``
+    leaves the helper on its zero-second default while the whole-line read
+    certifies it as bounded.
+
     Args:
         run: The step's shell body.
 
@@ -1498,7 +1504,7 @@ def _retry_lines_missing_deadline(run: str) -> list[str]:
     return [
         line
         for line in _logical_lines(run)
-        if _RETRY_HELPER in line and _DEADLINE_VAR not in line
+        if _RETRY_HELPER in line and _DEADLINE_VAR not in _helper_segment(line)
     ]
 
 

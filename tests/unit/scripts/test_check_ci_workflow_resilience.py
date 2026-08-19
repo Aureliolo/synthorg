@@ -457,6 +457,20 @@ class TestRetryDeadline:
         assert len(violations) == 1
         assert "'b'" in violations[0]
 
+    def test_a_deadline_on_an_earlier_command_does_not_bind_here(
+        self, tmp_path: Path
+    ) -> None:
+        # The same rule one separator along: the assignment prefixes `echo`,
+        # not the helper, which then runs on its zero-second default while a
+        # whole-line read certified it as bounded.
+        content = _job(
+            "      - run: RETRY_CMD_DEADLINE=240 echo ignored;"
+            " .github/scripts/retry_cmd.sh 'x' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
     def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
         # Composite actions host most call sites, so they are scanned too.
         content = _composite(
