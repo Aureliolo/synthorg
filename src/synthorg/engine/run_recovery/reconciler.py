@@ -39,6 +39,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import (
     TAIL_STATUSES,
@@ -323,7 +324,8 @@ class RunRecoveryReconciler:
             )
             return _one(skipped=1)
         if plan.status in UNFILLED_STATUSES:
-            return _one(failed=int(await self._fail_unfilled(plan)))
+            failed = await self._fail_unfilled(plan)
+            return _one(failed=1) if failed else _one(skipped=1)
         revived = await self._revive_rows(plan)
         requeued, rejudged = revived.requeued, revived.rejudged
         # A dispatched plan with nothing left to dispatch is not stranded: its
@@ -552,6 +554,15 @@ class RunRecoveryReconciler:
     async def _fail_unfilled(self, plan: Plan) -> bool:
         """Fail a shell whose items nobody will ever write.
 
+        Guarded on the version the sweep read, not written blind. The verdict
+        is inferred from a row observed a moment ago, and the writer this
+        judges absent is the one that would move it: an unversioned save
+        commits the verdict over whatever the decomposition wrote in between,
+        destroying a plan that was being filled. A conflict IS the proof the
+        inference lacked, so it leaves the shell alone rather than retrying
+        against a fresher version, which would only re-run the same reasoning
+        on evidence that has already contradicted it.
+
         Returns:
             Whether the plan was failed.
         """
@@ -561,7 +572,16 @@ class RunRecoveryReconciler:
                 "failure_reason": _UNFILLED_REASON,
             }
         )
-        await self._persistence.plans.save(failed)
+        try:
+            await self._persistence.plans.update(failed, expected_version=plan.version)
+        except PersistenceVersionConflictError:
+            logger.info(
+                RUN_RECOVERY_PLAN_SKIPPED,
+                plan_id=str(plan.id),
+                plan_status=plan.status.value,
+                reason="another-writer-moved-it",
+            )
+            return False
         logger.warning(
             RUN_RECOVERY_PLAN_FAILED,
             plan_id=str(plan.id),

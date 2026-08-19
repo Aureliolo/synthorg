@@ -14,6 +14,7 @@ from uuid import UUID
 
 import pytest
 
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
     TAIL_STATUSES,
@@ -105,15 +106,19 @@ def _persistence(  # type: ignore[explicit-any]  # mock_of returns Any
     plans: list[Plan],
     tasks: list[Task] | None = None,
     saved: list[Plan] | None = None,
+    update_conflicts: bool = False,
 ) -> Any:
-    async def _save(plan: Plan) -> None:
+    async def _update(plan: Plan, *, expected_version: int | None = None) -> None:
+        if update_conflicts:
+            msg = f"plan {plan.id} moved past version {expected_version}"
+            raise PersistenceVersionConflictError(msg)
         if saved is not None:
             saved.append(plan)
 
     return mock_of[PersistenceBackend](
         plans=mock_of[PlanRepository](
             list_items=AsyncMock(return_value=plans),
-            save=AsyncMock(side_effect=_save),
+            update=AsyncMock(side_effect=_update),
         ),
         tasks=mock_of[TaskRepository](query=AsyncMock(return_value=tasks or [])),
     )
@@ -487,6 +492,33 @@ class TestReconcile:
         assert len(saved) == 1
         assert saved[0].status is PlanStatus.FAILED
         assert saved[0].failure_reason is not None
+
+    async def test_failing_a_shell_is_guarded_on_the_version_it_read(self) -> None:
+        # The sweep decided from a row it read a moment ago. An unversioned
+        # whole-model save commits that verdict over whatever the decomposition
+        # wrote in between, which is the lost update the version guard exists
+        # to refuse.
+        plan = _plan(status=PlanStatus.PLANNING)
+        persistence = _persistence(plans=[plan], saved=[])
+
+        await _reconciler(persistence=persistence).reconcile(trigger="boot")
+
+        update = persistence.plans.update
+        assert isinstance(update, AsyncMock)
+        assert update.await_args is not None
+        assert update.await_args.kwargs["expected_version"] == plan.version
+
+    async def test_a_shell_another_writer_moved_is_left_alone(self) -> None:
+        # A version conflict IS the proof the sweep lacked: somebody is still
+        # writing this shell, so it is not one nobody will ever fill.
+        plan = _plan(status=PlanStatus.PLANNING)
+
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], update_conflicts=True),
+        ).reconcile(trigger="boot")
+
+        assert report.failed == 0
+        assert report.skipped == 1
 
     async def test_a_distributed_deployment_requeues_nothing(self) -> None:
         # The work queue's redelivery already owns recovering a dead runner,

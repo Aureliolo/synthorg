@@ -188,6 +188,36 @@ class TestRecoveryNeverReapsAPlanBeingWritten:
         assert reaped.status is PlanStatus.FAILED
 
 
+class TestTheClaimIsTakenBeforeTheRowExists:
+    async def test_no_sweep_can_see_the_shell_before_the_claim(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The row must never be visible without the claim that covers it.
+
+        Persisting first and claiming second leaves an await between them, so
+        a sweep scheduled in that window reads a PLANNING shell nobody claims
+        and fails the decomposition that is writing it. The window is small
+        and the loss is the whole initiative, which is the wrong trade in
+        both directions.
+        """
+        backend = FakePersistenceBackend()
+        ledger = LiveRunLedger()
+        root = _task("root")
+        await backend.tasks.save(root)
+        claimed_at_create: list[bool] = []
+        real_create = backend.plans.create
+
+        async def _observing_create(plan: Plan) -> None:
+            claimed_at_create.append(ledger.is_driving(str(plan.id)))
+            await real_create(plan)
+
+        monkeypatch.setattr(backend.plans, "create", _observing_create)
+
+        await _gate(backend, ledger).open_plan(work_item=_work_item(), task=root)
+
+        assert claimed_at_create == [True]
+
+
 class TestTheClaimCoversExactlyTheWritingWindow:
     async def test_filling_the_shell_drops_the_claim(self) -> None:
         # A claim outliving the write is the mirror defect: the plan becomes

@@ -19,9 +19,15 @@ change outranks a panel opinion.
 """
 
 from synthorg.core.plan_enums import PlanReviewVerdict
-from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_review import PlanReview, PlanReviewerVerdict
 
 _HEADER = "## Revision requested: this plan was reviewed and must be re-planned"
+
+_UNITEMISED = (
+    "- asked for revision without itemising a finding; treat the verdict "
+    "itself as the concern and re-examine the plan against this reviewer's "
+    "remit"
+)
 
 _CLOSING = (
     "Re-plan the objective addressing every point above. Keep what is sound; "
@@ -57,21 +63,45 @@ def review_demands_revision(review: PlanReview | None) -> bool:
     return any(reviewer.findings for reviewer in review.reviewers)
 
 
-def _review_section(review: PlanReview) -> list[str]:
-    """Render the panel's findings, grouped by the reviewer who raised them.
+def _reviewer_is_heard(reviewer: PlanReviewerVerdict) -> bool:
+    """Whether *reviewer* asked for anything the planner must address.
+
+    Mirrors what :func:`review_demands_revision` admits, one reviewer down: a
+    finding counts whatever verdict carries it, and a verdict above
+    ``ENDORSED`` counts on its own. Rendering only the itemised half made the
+    builder refuse an outcome the guard had just approved, which the revision
+    loop turns into an unhandled error.
+
+    Args:
+        reviewer: One panellist's verdict.
 
     Returns:
-        The rendered lines, empty when no reviewer raised anything.
+        Whether this reviewer belongs in the brief.
+    """
+    return bool(reviewer.findings) or reviewer.verdict is not PlanReviewVerdict.ENDORSED
+
+
+def _review_section(review: PlanReview) -> list[str]:
+    """Render what the panel asked for, grouped by the reviewer who asked.
+
+    Returns:
+        The rendered lines, empty when no reviewer asked for anything.
     """
     lines: list[str] = []
     for reviewer in review.reviewers:
-        if not reviewer.findings:
+        if not _reviewer_is_heard(reviewer):
             continue
         lines.append(f"\n{reviewer.reviewer_role} ({reviewer.verdict.value}):")
-        lines.extend(
-            f"- [{finding.category.value}] {finding.detail}"
-            for finding in reviewer.findings
-        )
+        if reviewer.findings:
+            lines.extend(
+                f"- [{finding.category.value}] {finding.detail}"
+                for finding in reviewer.findings
+            )
+        else:
+            # The verdict IS the request. Saying so beats saying nothing:
+            # the planner is told who is unsatisfied and how strongly, which
+            # is every fact the panel produced.
+            lines.append(_UNITEMISED)
     if lines:
         lines.insert(0, "\nThe stakeholder panel raised these:")
     return lines

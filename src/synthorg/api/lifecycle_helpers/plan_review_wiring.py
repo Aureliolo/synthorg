@@ -295,11 +295,20 @@ class PlanReviewApprovalGate:
                 review=_SHELL_NOT_YET_REVIEWED,
             )
         )
-        await self._plans.create(shell)
-        # Claimed before the shell is announced, so no sweep can see a PLANNING
-        # row this process is about to fill without also seeing the claim.
+        # Claimed BEFORE the row exists, so no sweep can see a PLANNING shell
+        # this process is about to fill without also seeing the claim. The
+        # other order leaves an await between the two, and a sweep scheduled
+        # in that window reads an unclaimed shell and fails the decomposition
+        # that is writing it. Released again if the row never lands, since a
+        # claim over a plan that does not exist blinds the sweep to nothing
+        # and never clears.
         if self._ledger is not None:
             self._ledger.try_claim(str(shell.id))
+        try:
+            await self._plans.create(shell)
+        except BaseException:
+            self.release_plan(shell.id)
+            raise
         logger.info(
             PIPELINE_PLAN_SHELL_OPENED,
             plan_id=str(shell.id),
