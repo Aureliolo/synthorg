@@ -34,6 +34,11 @@ INITIATIVE_REPLAN_SETTINGS_DEGRADED: Final[str] = "initiative.replan.settings_de
 #: WARNING, because it is the one signal that the organisation has stopped and
 #: needs attention; everything else about that state is silent by design.
 INITIATIVE_STALL_ESCALATED: Final[str] = "initiative.stall.escalated"
+#: Raising the decision itself failed. The stall is unchanged and the next
+#: level-triggered pass re-asks, so this reports a delayed escalation rather
+#: than a lost one; it is WARNING because a store that keeps refusing means the
+#: operator is never told.
+INITIATIVE_STALL_ESCALATION_FAILED: Final[str] = "initiative.stall.escalation_failed"
 #: A later pass found the decision already waiting. DEBUG: the operator has
 #: been told, and repeating the alert every cadence is how an alert stops
 #: being read.
@@ -52,6 +57,18 @@ INITIATIVE_STALL_DECIDED: Final[str] = "initiative.stall.decided"
 #: The operator said keep going and there was no longer anything able to. The
 #: plan is failed rather than left reading as though a replan is coming.
 INITIATIVE_STALL_DECISION_STRANDED: Final[str] = "initiative.stall.decision_stranded"
+#: The decision said keep going but the decider was not a person, so the
+#: operator's replan cap and switch were applied rather than lifted.
+INITIATIVE_STALL_NOT_GRANTED: Final[str] = "initiative.stall.not_granted"
+#: An item wearing the stalled-initiative action type that this organisation
+#: did not raise. Not acted on: the action type says what a decision asks, not
+#: who asked it.
+INITIATIVE_STALL_FOREIGN: Final[str] = "initiative.stall.foreign"
+#: The answer being acted on and the answer on the row disagree, so one of them
+#: is not the decision a person took. Not acted on, and reported rather than
+#: passed over, because the two can only differ if something replayed a
+#: decision or wrote the row underneath it.
+INITIATIVE_STALL_STALE_DECISION: Final[str] = "initiative.stall.stale_decision"
 
 INITIATIVE_INTEGRATION_SCHEDULED: Final[str] = "initiative.integration.scheduled"
 INITIATIVE_INTEGRATION_STARTED: Final[str] = "initiative.integration.started"

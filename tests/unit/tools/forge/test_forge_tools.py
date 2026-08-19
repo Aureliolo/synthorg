@@ -683,7 +683,10 @@ class TestForgeInlineReviewAndCi:
         tool = ForgePullRequestTool(
             deps=_deps(conn=_connection(), autonomy=_auto_autonomy())
         )
-        target = "synthorg.engine.output_style.evaluate_output_policy"
+        # Patched where the shared primitive reads it: every boundary reaches
+        # ``approve_texts``, so the policy call the guard makes is that
+        # module's, never the package alias the tool imported.
+        target = "synthorg.engine.output_style.approval.evaluate_output_policy"
         with patch(target, _fake_policy):
             result = await tool.execute(
                 arguments={

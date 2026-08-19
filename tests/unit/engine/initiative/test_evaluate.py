@@ -22,7 +22,7 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.completion import StallReason
+from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 from synthorg.engine.initiative.evaluate import EvaluationStageService
 from synthorg.engine.initiative.evaluate_models import EvaluationReport
 from synthorg.hr.registry import AgentRegistryService
@@ -52,13 +52,22 @@ _CRITERIA = (NotBlankStr("the game is playable"),)
 
 
 class _RecordingReconcile:
-    """A reconcile port that records the plans it was asked to re-derive."""
+    """A reconcile port that records what the stage handed it."""
 
     def __init__(self) -> None:
         self.recomputed: list[UUID] = []
+        self.stalls: list[tuple[UUID, StallReason, ReplanDisposition | None]] = []
 
     async def recompute(self, plan_id: UUID) -> None:
         self.recomputed.append(plan_id)
+
+    async def report_stage_stall(
+        self,
+        plan_id: UUID,
+        reason: StallReason,
+        disposition: ReplanDisposition | None,
+    ) -> None:
+        self.stalls.append((plan_id, reason, disposition))
 
 
 def _lead() -> AgentIdentity:
@@ -329,6 +338,69 @@ class TestApplyingAVerdict:
         await service._apply(_plan(), _report(CriterionOutcome.UNMET))
 
         assert await _status(backend) is PlanStatus.EVALUATING
+
+    async def test_an_unmet_verdict_with_no_trigger_reaches_the_operator(
+        self,
+    ) -> None:
+        """Nothing else can see this: every item IS done by now.
+
+        Parked here with nobody asked, the plan sits at EVALUATING for ever
+        with a per-pass warning as the only trace, which is the deadlock the
+        escalation exists to end.
+        """
+        reconcile = _RecordingReconcile()
+        service, backend = await _seed(
+            plan=_plan(), project=_project(), reconcile=reconcile
+        )
+
+        await service._apply(_plan(), _report(CriterionOutcome.UNMET))
+
+        assert reconcile.stalls == [
+            (as_uuid(_PLAN_ID), StallReason.EVALUATION_UNMET, None)
+        ]
+        assert await _status(backend) is PlanStatus.EVALUATING
+
+    async def test_a_refused_replan_reaches_the_operator_with_its_reason(
+        self,
+    ) -> None:
+        """The stage asked and was told no, so it hands the answer over.
+
+        Asking a second time from the rollup would be a second owner for one
+        decision, and the stage is the only holder of the judged evidence.
+        """
+        reconcile = _RecordingReconcile()
+        service, _ = await _seed(
+            plan=_plan(),
+            project=_project(),
+            replan_trigger=_RecordingReplanTrigger(
+                disposition=ReplanDisposition.BUDGET_EXHAUSTED
+            ),
+            reconcile=reconcile,
+        )
+
+        await service._apply(_plan(), _report(CriterionOutcome.UNMET))
+
+        assert reconcile.stalls == [
+            (
+                as_uuid(_PLAN_ID),
+                StallReason.EVALUATION_UNMET,
+                ReplanDisposition.BUDGET_EXHAUSTED,
+            )
+        ]
+
+    async def test_a_scheduled_replan_reaches_nobody(self) -> None:
+        """Something is happening, so there is nothing to ask a person about."""
+        reconcile = _RecordingReconcile()
+        service, _ = await _seed(
+            plan=_plan(),
+            project=_project(),
+            replan_trigger=_RecordingReplanTrigger(),
+            reconcile=reconcile,
+        )
+
+        await service._apply(_plan(), _report(CriterionOutcome.UNMET))
+
+        assert reconcile.stalls == []
 
     async def test_a_trigger_wired_after_the_stage_is_still_used(self) -> None:
         """The trigger is read per verdict, not captured at construction.

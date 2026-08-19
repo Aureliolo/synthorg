@@ -162,15 +162,23 @@ class ChatMessagesTool(_BaseChatTool):
         Reject-only, including for a rule an operator set to AUTO_REWRITE: the
         gate parks a signature over these arguments and a human approves the
         text they were shown, so substituting different text afterwards would
-        send something nobody agreed to. The agent is handed the correction
-        and sends it itself.
+        send something nobody agreed to. The agent is handed the places to fix
+        and sends the message itself.
+
+        The refusal never carries the message body. An outbound message
+        routinely quotes a fetched page, a tool result or somebody else's
+        chat, so a body echoed behind "send this instead" is third-party bytes
+        arriving as an instruction inside the next turn's tool result. Both
+        refusals therefore go through the verdict's own reporting, which
+        fences every quoted excerpt as data.
 
         Args:
             args: The parsed arguments.
 
         Raises:
-            ChatToolArgumentError: When the text violates a hard rule, or needs
-                a rewrite this boundary may not apply on the agent's behalf.
+            ChatToolArgumentError: When the arguments are not this tool's own,
+                when the text violates a hard rule, or when it needs a rewrite
+                this boundary may not apply on the agent's behalf.
         """
         from synthorg.engine.output_style import (  # noqa: PLC0415
             OutputChannel,
@@ -178,7 +186,12 @@ class ChatMessagesTool(_BaseChatTool):
             evaluate_output_policy,
         )
 
-        assert isinstance(args, ChatMessagesArgs)  # noqa: S101 -- parsed by execute
+        if not isinstance(args, ChatMessagesArgs):
+            # A precondition that holds a send closed is not something to
+            # state in an assertion: ``-O`` strips one, and what is left runs
+            # the guard over an object it never checked.
+            msg = "chat_messages was given arguments it did not parse"
+            raise ChatToolArgumentError(msg)
         if args.action != "send" or not args.text:
             return
         ctx = OutputContext(channel=OutputChannel.MESSAGE)
@@ -188,11 +201,7 @@ class ChatMessagesTool(_BaseChatTool):
         if verdict.blocked:
             raise ChatToolArgumentError(verdict.summary)
         if verdict.rewritten_text is not None:
-            msg = (
-                "Message text violates the house output style; send this "
-                f"text instead: {verdict.rewritten_text}"
-            )
-            raise ChatToolArgumentError(msg)
+            raise ChatToolArgumentError(verdict.rework_notice())
 
     @override
     async def _dispatch(

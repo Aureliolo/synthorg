@@ -25,6 +25,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
     AppendOnlyRepository,
     StatefulRepository,
 )
@@ -37,11 +38,19 @@ class ConversationTurnFilterSpec(BaseModel):
     by the service).
 
     ``conversation_id`` and ``conversation_ids`` ask the same question of the
-    same column and are mutually exclusive, refused at construction: a spec
-    carrying both is two different questions about one column, and whichever
-    the backend happened to translate first would silently be the answer.
-    The plural form exists so a page of conversations costs one query rather
-    than one per row.
+    same column and are mutually exclusive, refused at construction. Both
+    translate to an independent clause, so a spec carrying the two would AND
+    into their intersection on either backend rather than answer either one;
+    what makes it wrong is that no caller means an intersection, so the spec
+    that expresses it is a mistake to catch at the boundary rather than a
+    shape to serve. The plural form exists so a page of conversations costs
+    one query rather than one per row.
+
+    ``sequence`` narrows WITHIN the conversations an id predicate names, and
+    is refused on its own. The index this reads through is keyed on the
+    conversation first, so a sequence alone is a full scan of every turn ever
+    written; a caller wanting the openers of everything is asking for a
+    different query, and it should have to say so.
 
     Attributes:
         conversation_id: A single conversation.
@@ -49,15 +58,22 @@ class ConversationTurnFilterSpec(BaseModel):
             nothing, which is the honest reading of "these ones" when there
             are none, and is written as a false predicate rather than an
             ``IN ()`` neither driver parses.
-        sequence: An exact position within a conversation. ``0`` is the turn
-            that opened it, which every intake path writes before anything
-            else.
+        sequence: An exact position within the named conversations. ``0`` is
+            the turn that opened one, which every intake path writes before
+            anything else.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     conversation_id: NotBlankStr | None = Field(default=None)
-    conversation_ids: tuple[NotBlankStr, ...] | None = Field(default=None)
+    # Bounded by the page ceiling the backends clamp to, because a batch is
+    # answered by ONE page: a caller naming more conversations than a page can
+    # return gets a silently short answer and renders the overflow as though
+    # those conversations had no turns. Refusing the ask is the only reading
+    # that cannot be mistaken for an empty result.
+    conversation_ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None, max_length=MAX_PAGE_SIZE
+    )
     sequence: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
@@ -68,10 +84,16 @@ class ConversationTurnFilterSpec(BaseModel):
             The validated instance.
 
         Raises:
-            ValueError: When both id predicates are set.
+            ValueError: When both id predicates are set, or when ``sequence``
+                is set without one.
         """
         if self.conversation_id is not None and self.conversation_ids is not None:
             msg = "conversation_id and conversation_ids are mutually exclusive"
+            raise ValueError(msg)
+        if self.sequence is not None and (
+            self.conversation_id is None and self.conversation_ids is None
+        ):
+            msg = "sequence narrows a conversation predicate and needs one"
             raise ValueError(msg)
         return self
 
@@ -174,9 +196,9 @@ class ConversationTurnRepository(
     """Append-only ordered turns for a conversation.
 
     Composes :class:`AppendOnlyRepository` (ADR-0001). ``query``
-    returns turns for one conversation newest-first (the append-only
-    invariant); the service reverses the bounded result to
-    chronological order for prompt assembly.
+    returns turns newest-first (the append-only invariant); the service
+    reverses the bounded result to chronological order for prompt
+    assembly.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise
@@ -204,7 +226,10 @@ class ConversationTurnRepository(
     ) -> tuple[ConversationTurn, ...]:
         """Return turns matching the spec, newest-first (paginated).
 
-        Order is ``(sequence DESC, id DESC)`` within a conversation.
+        Order is ``(sequence DESC, id DESC)``. A spec naming several
+        conversations therefore interleaves them by position rather than
+        grouping them, so a caller wanting one conversation's thread asks
+        for one conversation.
 
         Raises:
             QueryError: If the database query fails or pagination args

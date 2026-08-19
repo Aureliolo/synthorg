@@ -8,12 +8,13 @@ waking whatever the decision unblocks.
 
 What this door will not decide
 ------------------------------
-Two classes are refused outright, both because the actor here is an agent: a
-parked agent QUESTION (the org asking a person something), and an approval
-that changes who is in the organisation. Everything else it does decide is
-carried through ``signal_resume_intent``, because a decision written without
-waking what it unblocks leaves the run stranded with nothing PENDING for any
-other door to finish.
+Three classes are refused outright, all because the actor here is an agent: a
+parked agent QUESTION (the org asking a person something), an approval that
+changes who is in the organisation, and an approval whose answer spends past a
+limit the operator set. Everything else it does decide is carried through
+``signal_resume_intent``, because a decision written without waking what it
+unblocks leaves the run stranded with nothing PENDING for any other door to
+finish.
 """
 
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ from synthorg.api.resume_intent_outbox import (
     record_resume_intent,
 )
 from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.initiative_stall import is_initiative_stall
 from synthorg.approval.questions import is_question
 from synthorg.approval.state import approval_store_of
 from synthorg.core.agent import AgentIdentity
@@ -95,6 +97,28 @@ def _refuse_principal_change(item: ApprovalItem) -> None:
             f"Approval {item.id!s} changes who is in the organisation "
             f"({item.action_type}) and cannot be decided through the MCP "
             f"surface. Decide it in the approvals queue."
+        )
+        raise _OutOfScopeError(msg)
+
+
+def _refuse_operator_budget(item: ApprovalItem) -> None:
+    """Refuse a decision whose approval spends past a limit the operator set.
+
+    The stalled-initiative decision grants one replan on the ANSWERER's
+    authority: it lifts ``engine.auto_replan_enabled`` and
+    ``engine.auto_replan_max_generations`` and restarts the generation count,
+    on the sole justification that a person asked for it. An agent settling it
+    would be setting its own budget, and could re-grant on every re-stall, so
+    the cap an operator wrote would bound nothing.
+
+    Raises:
+        _OutOfScopeError: When the approval lifts an operator-set limit.
+    """
+    if is_initiative_stall(item.action_type):
+        msg = (
+            f"Approval {item.id!s} decides whether an initiative continues past "
+            f"the operator's replan budget and cannot be decided through the "
+            f"MCP surface. Decide it in the approvals queue."
         )
         raise _OutOfScopeError(msg)
 
@@ -200,6 +224,7 @@ async def _decide(
         raise _NotFoundError(msg)
     _refuse_question(existing)
     _refuse_principal_change(existing)
+    _refuse_operator_budget(existing)
     if existing.status != ApprovalStatus.PENDING:
         msg = f"Approval {approval_id!r} is {existing.status.value!s}, not pending"
         raise _ConflictError(msg)

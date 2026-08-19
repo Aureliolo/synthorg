@@ -15761,6 +15761,8 @@ export type components = {
             readonly approval_id: string;
             /** @description Why it was raised */
             readonly reason: string;
+            /** @description Who raised the decision */
+            readonly requested_by: string;
             /** @description What the decision is called */
             readonly title: string;
         };

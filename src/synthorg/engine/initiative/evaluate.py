@@ -31,6 +31,7 @@ from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import (
     REPLAN_IN_PROGRESS_DISPOSITIONS,
+    ReplanDisposition,
     StallReason,
 )
 from synthorg.engine.initiative.evaluate_brief import (
@@ -417,8 +418,9 @@ class EvaluationStageService:
                 INITIATIVE_EVALUATION_SKIPPED,
                 plan_id=str(plan.id),
                 reason="replan_trigger_unwired",
-                note="objective unmet; plan parked at evaluating",
+                note="objective unmet; escalating to the operator",
             )
+            await self._report_stall(plan, disposition=None)
             return
         # The judged evidence is the best account of what went wrong that this
         # initiative will ever produce. Handing the trigger only the enum would
@@ -429,10 +431,6 @@ class EvaluationStageService:
             detail=unmet_verdict_detail(unmet),
         )
         if disposition not in REPLAN_IN_PROGRESS_DISPOSITIONS:
-            # The trigger refused and said why. Reported here rather than
-            # dropped: this stage is the only place that knows the objective
-            # went unmet, and the rollup's next recompute is what raises the
-            # decision for the operator.
             logger.warning(
                 INITIATIVE_EVALUATION_SKIPPED,
                 plan_id=str(plan.id),
@@ -440,6 +438,30 @@ class EvaluationStageService:
                 disposition=disposition.value,
                 note="objective unmet and no automatic replan remains",
             )
+            await self._report_stall(plan, disposition=disposition)
+
+    async def _report_stall(
+        self, plan: Plan, *, disposition: ReplanDisposition | None
+    ) -> None:
+        """Hand an unmet objective with no automatic route to the rollup.
+
+        This stage is the only place that knows the objective went unmet: no
+        derivation over items can see it, because every item IS done by the
+        time the judgement runs. Keeping the verdict here would park the plan
+        at EVALUATING for ever with nobody asked, which is the deadlock the
+        escalation exists to end.
+        """
+        if self._reconcile is None:
+            logger.warning(
+                INITIATIVE_EVALUATION_SKIPPED,
+                plan_id=str(plan.id),
+                reason="reconcile_unwired",
+                note="objective unmet and nothing can raise the decision",
+            )
+            return
+        await self._reconcile.report_stage_stall(
+            plan.id, StallReason.EVALUATION_UNMET, disposition
+        )
 
     async def _complete(self, plan: Plan, report: EvaluationReport) -> None:
         """Write the one status only this stage may write, then reconcile.

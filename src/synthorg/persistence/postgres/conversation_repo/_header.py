@@ -10,10 +10,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.communication.conversation.enums import ConversationStatus
-from synthorg.core.persistence_errors import (
-    ConstraintViolationError,
-    QueryError,
-)
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation
 from synthorg.observability import get_logger, safe_error_description
@@ -23,12 +20,9 @@ from synthorg.observability.events.persistence.conversation import (
     PERSISTENCE_CONVERSATION_LISTED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_conversation
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
-from synthorg.persistence.postgres._integrity import constraint_name
-from synthorg.persistence.postgres.conversation_repo._sql import (
-    MAX_PAGE_LIMIT,
-)
+from synthorg.persistence.postgres._integrity import raise_constraint_violation
 
 logger = get_logger(__name__)
 
@@ -79,7 +73,6 @@ class PostgresConversationRepository:
                 await cur.execute(_CONVERSATIONS_UPSERT_SQL, params)
                 await conn.commit()
         except psycopg.errors.IntegrityError as exc:
-            constraint = constraint_name(exc)
             msg = f"Constraint violation saving conversation {entity.id!r}"
             logger.warning(
                 PERSISTENCE_CONVERSATION_FAILED,
@@ -88,7 +81,7 @@ class PostgresConversationRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ConstraintViolationError(msg, constraint=constraint) from exc
+            raise_constraint_violation(exc, msg)
         except psycopg.Error as exc:
             msg = f"Failed to save conversation {entity.id!r}"
             logger.warning(
@@ -152,7 +145,7 @@ class PostgresConversationRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
-        effective_limit = min(effective_limit, MAX_PAGE_LIMIT)
+        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         where = "WHERE created_by = %s " if created_by is not None else ""
         params: tuple[object, ...] = (
             (created_by, effective_limit, offset)

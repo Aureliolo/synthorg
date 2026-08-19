@@ -51,6 +51,9 @@ from typing import Protocol, TypeVar, runtime_checkable
 from synthorg.core.pagination import (
     DEFAULT_PAGE_SIZE as DEFAULT_PAGE_SIZE,  # noqa: PLC0414 -- explicit re-export for persistence protocol importers
 )
+from synthorg.core.pagination import (
+    MAX_PAGE_SIZE as MAX_PAGE_SIZE,  # noqa: PLC0414 -- explicit re-export for persistence protocol importers
+)
 
 # Variance follows the position rule: TypeVars that only appear in
 # argument position are contravariant; TypeVars that only appear in

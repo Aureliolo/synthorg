@@ -74,7 +74,9 @@ class _Boundary(NamedTuple):
 # verdict and suits one that has to turn a rejection into its own result type.
 # The shared helpers (message, plan-prose, question, file-write, living-doc)
 # are listed beside their callers, because the caller is satisfied by reaching
-# the helper and the helper is what actually calls the policy.
+# the helper and the helper is what actually calls the policy. ``approve_texts``
+# is the third door and the one most guards now take: it is the evaluate loop
+# every boundary was hand-copying, so reaching it IS reaching the policy.
 _BOUNDARIES: Final[dict[str, _Boundary]] = {
     "src/synthorg/communication/_output_guard.py": _Boundary(
         "shared message guard",
@@ -139,7 +141,7 @@ _BOUNDARIES: Final[dict[str, _Boundary]] = {
     "src/synthorg/tools/docs/_doc_output_guard.py": _Boundary(
         "shared living-doc guard",
         _ENFORCING,
-        frozenset({"evaluate_output_policy"}),
+        frozenset({"evaluate_output_policy", "approve_texts"}),
     ),
     "src/synthorg/tools/docs/write_living_doc.py": _Boundary(
         "agent living-document publish",
@@ -149,20 +151,25 @@ _BOUNDARIES: Final[dict[str, _Boundary]] = {
     "src/synthorg/tools/chat/chat_tools.py": _Boundary(
         "agent outbound chat message",
         _ENFORCING,
-        frozenset({"evaluate_output_policy"}),
+        frozenset({"evaluate_output_policy", "approve_texts"}),
     ),
     "src/synthorg/tools/communication/email_sender.py": _Boundary(
         "agent outbound email subject / body",
         _ENFORCING,
-        frozenset({"evaluate_output_policy"}),
+        frozenset({"evaluate_output_policy", "approve_texts"}),
     ),
     "src/synthorg/tools/forge/forge_tools.py": _Boundary(
         "agent issue / PR body",
         _ENFORCING,
-        frozenset({"enforce_output_policy", "evaluate_output_policy"}),
+        frozenset({"enforce_output_policy", "evaluate_output_policy", "approve_texts"}),
     ),
     "src/synthorg/tools/_question_output_guard.py": _Boundary(
         "shared parked-question guard",
+        _ENFORCING,
+        frozenset({"evaluate_output_policy", "approve_texts"}),
+    ),
+    "src/synthorg/engine/output_style/approval.py": _Boundary(
+        "shared approve-or-refuse primitive",
         _ENFORCING,
         frozenset({"evaluate_output_policy"}),
     ),

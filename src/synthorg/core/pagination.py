@@ -50,6 +50,16 @@ DEFAULT_LIST_LIMIT: Final[int] = 100
 #: pure-helper limit here vs. the repository-protocol page size).
 DEFAULT_PAGE_SIZE: Final[int] = 100
 
+#: Hard ceiling on one ``query`` page, whatever the caller asked for. Sits
+#: beside :data:`DEFAULT_PAGE_SIZE` because it bounds the same surface, and in
+#: ``core`` for the same reason: a caller that has to know the ceiling to size
+#: its own batch (a page of conversations asking for one opening turn each)
+#: must be able to read it without reaching into a persistence internal, and a
+#: caller reading a private copy is a caller whose bound can disagree with the
+#: one actually applied. Lower than :data:`MAX_LIST_LIMIT`, which bounds the
+#: unfiltered ``list_*`` drain rather than a filtered page.
+MAX_PAGE_SIZE: Final[int] = 1_000
+
 # Hard upper bound on ``list_*`` / ``query`` page sizes regardless of
 # caller-supplied limit. Defense-in-depth: the API layer's
 # ``CursorLimit`` already caps caller input at 200, but internal

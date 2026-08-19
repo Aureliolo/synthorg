@@ -17,6 +17,7 @@ convenience flag, expanded to literals in the loader, so the repo's
 ``check_no_em_dashes.py`` gate never sees a literal in committed source.
 """
 
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Final, Self
 
@@ -380,6 +381,13 @@ class OutputPolicyFinding(BaseModel):
             character, and being shown the character it banned locates
             nothing in a whole deliverable.
         segment_kind: Whether the match landed in prose or code.
+        line: 1-based line of the evaluated text the match starts on. The one
+            piece of locality that survives an edit elsewhere: the file-write
+            boundary subtracts the violations a file already carried, and
+            neither the snippet (a literal ban matches one character, so every
+            occurrence looks alike) nor the surrounding window (which shifts
+            whenever text near it changes) can tell one occurrence from
+            another.
         exempted: Whether a sanctioned exemption covered this match.
         exemption_reason: The sanctioned exemption's reason, when exempted.
     """
@@ -394,6 +402,7 @@ class OutputPolicyFinding(BaseModel):
     match_text: str = Field(max_length=200)
     context: str = Field(default="", max_length=400)
     segment_kind: SegmentKind
+    line: int = Field(default=1, ge=1)
     exempted: bool = False
     exemption_reason: str | None = None
 
@@ -479,10 +488,38 @@ class OutputPolicyVerdict(BaseModel):
         messages are operator-configured and stay outside the fence, which is
         what keeps the instruction distinguishable from the quotation.
         """
+        return self._describe(lambda f: f.blocks)
+
+    def rework_notice(self) -> str:
+        """Agent-facing reason for a boundary that rejects what it may rewrite.
+
+        Same discipline as ``summary`` over the findings a rewrite would have
+        resolved. A boundary that parks a human signature over the exact text
+        (an outbound chat send) may not substitute different text afterwards,
+        so it hands the correction back and the agent sends it itself; it
+        still may not hand back the text, because the message body routinely
+        carries third-party bytes and an imperative wrapped around them is the
+        untrusted content writing the next turn's instruction.
+
+        Returns:
+            The reason and the fenced places, or an empty string when no
+            finding asked for a rewrite.
+        """
+        return self._describe(
+            lambda f: f.mode is EnforcementMode.AUTO_REWRITE and not f.exempted
+        )
+
+    def _describe(self, selects: Callable[[OutputPolicyFinding], bool]) -> str:
+        """Build the agent-facing reason over the findings *selects* accepts.
+
+        Returns:
+            The distinct rule messages and the fenced places they matched, or
+            an empty string when nothing is selected.
+        """
         messages: list[str] = []
         places: list[str] = []
         for finding in self.findings:
-            if not finding.blocks:
+            if not selects(finding):
                 continue
             if finding.message not in messages:
                 messages.append(finding.message)

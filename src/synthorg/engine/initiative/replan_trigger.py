@@ -42,7 +42,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
-from synthorg.core.plan_enums import REPLANNABLE_STATUSES, PlanStatus
+from synthorg.core.plan_enums import REPLANNABLE_STATUSES
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
@@ -53,6 +53,7 @@ from synthorg.engine.decomposition.plan_mapping import items_from_decomposition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import (
     ITEM_DERIVED_STALLS,
+    STAGE_OF_STALL_REASON,
     ItemProgress,
     ReplanDisposition,
     StallReason,
@@ -90,14 +91,6 @@ ACTOR: Final[str] = "initiative-replan"
 _DEFAULT_ENABLED: Final[bool] = True
 _DEFAULT_MAX_GENERATIONS: Final[int] = 2
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 600.0
-
-#: The tail stage each stage-derived verdict came from. A plan that has left
-#: that stage has already been dealt with (a human replanned it, or the stage
-#: re-ran), so the verdict is stale and the replan is dropped.
-_STAGE_OF_REASON: Final[dict[StallReason, PlanStatus]] = {
-    StallReason.INTEGRATION_FAILED: PlanStatus.INTEGRATING,
-    StallReason.EVALUATION_UNMET: PlanStatus.EVALUATING,
-}
 
 
 class ConfirmedStall(BaseModel):
@@ -149,7 +142,7 @@ class ConfirmedStall(BaseModel):
             if stall_reason(self.items) is not self.reason:
                 msg = "reason does not match the live item stall shape"
                 raise ValueError(msg)
-        elif self.plan.status is not _STAGE_OF_REASON[self.reason]:
+        elif self.plan.status is not STAGE_OF_STALL_REASON[self.reason]:
             msg = "reason does not match the plan's tail stage"
             raise ValueError(msg)
         return self
@@ -229,12 +222,18 @@ class ReplanTriggerService:
             What became of the ask.
         """
         plan_id = str(plan.id)
+        # Asked first, because a replan already running is the complete answer
+        # and the two refusals below are not true of it. ``grant`` applies
+        # neither of them, so a plan being replanned on a person's authority
+        # reads as DISABLED or BUDGET_EXHAUSTED to any pass that lands during
+        # that window, and the caller raises a second decision for an
+        # initiative already moving on the first one.
+        if plan_id in self._runner.inflight:
+            return ReplanDisposition.ALREADY_RUNNING
         if not await self._enabled():
             return self._refuse(plan, reason, ReplanDisposition.DISABLED)
         if await self._budget_exhausted(plan):
             return self._refuse(plan, reason, ReplanDisposition.BUDGET_EXHAUSTED)
-        if plan_id in self._runner.inflight:
-            return ReplanDisposition.ALREADY_RUNNING
         started = self._runner.start(
             key=plan_id,
             work=self._run(plan, reason, detail),
@@ -436,7 +435,7 @@ class ReplanTriggerService:
             return None
         items = await collect_item_progress(self._persistence, fresh)
         if reason not in ITEM_DERIVED_STALLS:
-            if fresh.status is not _STAGE_OF_REASON[reason]:
+            if fresh.status is not STAGE_OF_STALL_REASON[reason]:
                 logger.info(
                     INITIATIVE_REPLAN_SKIPPED,
                     plan_id=str(fresh.id),

@@ -25,11 +25,16 @@ export function PlanPendingDecisionBanner({ plan }: PlanPendingDecisionBannerPro
     <ErrorBanner
       severity="warning"
       title={decision.title}
-      description={decision.reason}
+      // The title and the reason are prose whoever raised this chose, and the
+      // approvals queue accepts an item from anything holding write access, so
+      // the requester is shown beside them rather than left for the drawer.
+      description={`${decision.reason} Raised by ${decision.requested_by}.`}
       action={
         <Button variant="outline" size="sm" asChild>
           {/* Labelled by the decision, navigated by its id. */}
-          <Link to={ROUTES.APPROVALS}>Answer it</Link>
+          <Link to={`${ROUTES.APPROVALS}?selected=${encodeURIComponent(decision.approval_id)}`}>
+            Answer it
+          </Link>
         </Button>
       }
     />

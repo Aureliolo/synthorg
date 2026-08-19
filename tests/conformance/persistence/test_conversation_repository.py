@@ -437,6 +437,133 @@ class TestConversationTurnRepository:
         rows = await repo.query(ConversationTurnFilterSpec(conversation_ids=()))
         assert rows == ()
 
+    async def test_an_empty_id_set_beside_a_bound_clause_still_matches_nothing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A false predicate ANDed with a clause that carries a parameter is
+        # the shape a placeholder-ordering slip hides in: get the order wrong
+        # and the sequence value binds into the wrong slot, which either
+        # errors or quietly answers a different question.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="ef-a"))
+        repo = _turn_repo(backend)
+        await repo.append(
+            _make_turn(turn_id="ef-t", conversation_id="ef-a", sequence=0)
+        )
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_ids=(), sequence=0)
+        )
+        assert rows == ()
+
+    async def test_a_batch_sized_to_its_ids_still_returns_every_opener(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # ``opening_turns`` asks for exactly as many rows as conversations,
+        # which is only sufficient because ``sequence`` narrows to one turn
+        # each. Against a table holding the later turns too, a predicate that
+        # stopped narrowing would fill the page with one conversation's
+        # thread and leave the rest of the drawer unnamed.
+        conv_repo = _conversation_repo(backend)
+        repo = _turn_repo(backend)
+        labels = ("b-a", "b-b", "b-c")
+        for label in labels:
+            await conv_repo.save(_make_conversation(conversation_id=label))
+            for position in range(4):
+                await repo.append(
+                    _make_turn(
+                        turn_id=f"t-{label}-{position}",
+                        conversation_id=label,
+                        sequence=position,
+                    )
+                )
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=tuple(sid(label) for label in labels), sequence=0
+            ),
+            limit=len(labels),
+        )
+
+        assert {r.conversation_id for r in rows} == {sid(label) for label in labels}
+
+    async def test_a_batch_naming_a_conversation_with_no_turns_returns_the_rest(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A retention purge takes the opening turn; the row is then simply
+        # absent, and the caller reads that as "nothing names this one".
+        conv_repo = _conversation_repo(backend)
+        repo = _turn_repo(backend)
+        for label in ("p-a", "p-b"):
+            await conv_repo.save(_make_conversation(conversation_id=label))
+        await repo.append(_make_turn(turn_id="p-t", conversation_id="p-a", sequence=0))
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=(sid("p-a"), sid("p-b")), sequence=0
+            )
+        )
+
+        assert {r.conversation_id for r in rows} == {sid("p-a")}
+
+    async def test_a_repeated_id_does_not_repeat_its_turn(
+        self, backend: PersistenceBackend
+    ) -> None:
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="r-a"))
+        repo = _turn_repo(backend)
+        await repo.append(_make_turn(turn_id="r-t", conversation_id="r-a", sequence=0))
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_ids=(sid("r-a"), sid("r-a")))
+        )
+
+        assert len(rows) == 1
+
+    async def test_a_non_zero_sequence_selects_that_position(
+        self, backend: PersistenceBackend
+    ) -> None:
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="n-a"))
+        repo = _turn_repo(backend)
+        for position in range(3):
+            await repo.append(
+                _make_turn(
+                    turn_id=f"n-{position}",
+                    conversation_id="n-a",
+                    sequence=position,
+                )
+            )
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=sid("n-a"), sequence=2)
+        )
+
+        assert [r.id for r in rows] == [as_uuid("n-2")]
+
+    async def test_an_offset_pages_within_a_batch(
+        self, backend: PersistenceBackend
+    ) -> None:
+        conv_repo = _conversation_repo(backend)
+        repo = _turn_repo(backend)
+        for label in ("o-a", "o-b", "o-c"):
+            await conv_repo.save(_make_conversation(conversation_id=label))
+            await repo.append(
+                _make_turn(turn_id=f"t-{label}", conversation_id=label, sequence=0)
+            )
+        wanted = (sid("o-a"), sid("o-b"), sid("o-c"))
+
+        first = await repo.query(
+            ConversationTurnFilterSpec(conversation_ids=wanted), limit=2
+        )
+        rest = await repo.query(
+            ConversationTurnFilterSpec(conversation_ids=wanted), limit=2, offset=2
+        )
+
+        assert len(first) == 2
+        assert len(rest) == 1
+        assert {r.id for r in first}.isdisjoint({r.id for r in rest})
+
     async def test_purge_before_removes_old_turns(
         self, backend: PersistenceBackend
     ) -> None:

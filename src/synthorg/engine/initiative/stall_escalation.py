@@ -33,9 +33,11 @@ from uuid import uuid4
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.initiative_stall import (
     DISPOSITION_METADATA_KEY,
+    ESCALATION_ACTOR,
     INITIATIVE_STALL_ACTION_TYPE,
     PLAN_ID_METADATA_KEY,
     PROJECT_METADATA_KEY,
+    REASON_METADATA_KEY,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
@@ -48,6 +50,7 @@ from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.initiative.completion import (
     ItemProgress,
     ReplanDisposition,
+    StallReason,
     item_is_done,
 )
 from synthorg.engine.initiative.ports import PlanStatusWriter
@@ -69,14 +72,25 @@ from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 
-#: Recorded as the requester on the decision, so the audit trail never
-#: attributes it to an operator who was the one being asked.
-ACTOR: Final[str] = "initiative-rollup"
+#: Recorded as the requester on the decision. Declared beside the action type
+#: rather than here, because the resume flow reads it back as the item's
+#: provenance and neither side should own a fact the other has to agree with.
+ACTOR: Final[str] = ESCALATION_ACTOR
 
 #: Dead items quoted back to the operator before the description starts
 #: counting the rest. Enough to see the shape of the failure, few enough that
 #: the decision stays readable in a queue.
 _MAX_LISTED_ITEMS: Final[int] = 5
+
+
+def _humanise(reason: StallReason) -> str:
+    """Render a stall reason as the operator reads it.
+
+    Returns:
+        The enum's own words with the underscores taken out.
+    """
+    return reason.value.replace("_", " ")
+
 
 #: Why each refusal happened, in the operator's words rather than the enum's.
 _WHY: Final[dict[ReplanDisposition | None, str]] = {
@@ -197,7 +211,7 @@ class StallEscalationService:
         self,
         plan: Plan,
         *,
-        reason_text: str,
+        reason: StallReason,
         disposition: ReplanDisposition | None,
         items: Sequence[ItemProgress],
     ) -> Plan:
@@ -205,7 +219,10 @@ class StallEscalationService:
 
         Args:
             plan: The stalled plan.
-            reason_text: The stall shape as the operator reads it.
+            reason: The stall shape. Carried onto the decision rather than
+                only rendered into it, because re-confirming the stall when
+                the answer arrives takes a different form per reason and only
+                the reason says which.
             disposition: Which refusal raised this, or ``None`` when no
                 trigger is attached at all.
             items: Live item progress, so the decision names what died.
@@ -214,12 +231,13 @@ class StallEscalationService:
             The plan, unchanged when a decision is open or was just raised,
             and failed when nothing in this deployment can ask a human.
         """
+        reason_text = _humanise(reason)
         if self._approvals is None:
             return await self._fail_undecidable(plan, reason_text)
-        if await self._already_open(plan):
+        if await self.is_open(plan):
             return plan
         item = self._build_decision(
-            plan, reason_text=reason_text, disposition=disposition, items=items
+            plan, reason=reason, disposition=disposition, items=items
         )
         await self._approvals.add(item)
         logger.warning(
@@ -233,11 +251,17 @@ class StallEscalationService:
         await self._notify(plan, reason_text=reason_text)
         return plan
 
-    async def _already_open(self, plan: Plan) -> bool:
+    async def is_open(self, plan: Plan) -> bool:
         """Whether a decision for *plan* is already waiting on the operator.
 
         Read from the store rather than remembered, because the rollup runs
         in a process that restarts and the decision outlives it.
+
+        Public because the caller has its own use for the answer: an
+        initiative parked on a person is not one to keep asking the replan
+        trigger about, and a refusal logged at WARNING on every pass for the
+        life of the stall is the repeating log line the decision replaced.
+        One owner, two callers.
 
         Returns:
             ``True`` when one is pending, so this pass says nothing.
@@ -263,7 +287,7 @@ class StallEscalationService:
         self,
         plan: Plan,
         *,
-        reason_text: str,
+        reason: StallReason,
         disposition: ReplanDisposition | None,
         items: Sequence[ItemProgress],
     ) -> ApprovalItem:
@@ -279,7 +303,7 @@ class StallEscalationService:
             description=NotBlankStr(
                 _describe(
                     plan,
-                    reason_text=reason_text,
+                    reason_text=_humanise(reason),
                     why=_WHY[disposition],
                     items=items,
                 )
@@ -296,6 +320,7 @@ class StallEscalationService:
             metadata={
                 PLAN_ID_METADATA_KEY: str(plan.id),
                 PROJECT_METADATA_KEY: str(plan.project),
+                REASON_METADATA_KEY: reason.value,
                 DISPOSITION_METADATA_KEY: (
                     disposition.value if disposition is not None else "no_trigger"
                 ),

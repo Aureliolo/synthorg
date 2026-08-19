@@ -1,7 +1,7 @@
 # module-kind: orchestrator
 """Startup wiring for the initiative rollup service and its tail.
 
-Five activations, because they converge at five different times.
+One activation per collaborator, because they converge at different times.
 :func:`wire_project_rollup_service` constructs the
 :class:`ProjectRollupService` once the task engine and persistence exist, and
 registers it as a :class:`TaskEngine` observer so a task reaching a terminal
@@ -9,14 +9,14 @@ status advances the plan, the project, and the objective task behind it. That
 happens well before setup has configured a provider, so the rollup it builds is
 deliberately tailless.
 
-The four ``attach_*`` functions fill each tail collaborator in later, as the
-work pipeline, provider registry, coordinator and memory backends arrive. Each
-is its own subsystem, and each is probed from what it installed: folding them
-into one made a wired rollup stand for a wired tail, and a reconciler never
-revisits what it reads as converged. Folding the four into a single tail
-subsystem repeated the mistake one level down, because the union of three
-collaborators' requirements became a precondition for any of them: a boot with
-no coordinator got no integrate stage either.
+The ``attach_*`` functions fill each tail collaborator in later, as the
+approval store, work pipeline, provider registry, coordinator and memory
+backends arrive. Each is its own subsystem, and each is probed from what it
+installed: folding them into one made a wired rollup stand for a wired tail,
+and a reconciler never revisits what it reads as converged. Folding them into a
+single tail subsystem repeated the mistake one level down, because the union of
+every collaborator's requirements became a precondition for any of them: a boot
+with no coordinator got no integrate stage either.
 
 All are best-effort and idempotent. A re-run of the first is guarded by the
 state slice, so the observer is never registered twice; a re-run of any

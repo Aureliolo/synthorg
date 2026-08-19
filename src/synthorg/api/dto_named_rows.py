@@ -229,6 +229,11 @@ class PlanPendingDecision(BaseModel):
             another without matching on prose.
         title: What the decision is called, as the operator reads it.
         reason: Why it was raised, in words rather than an enum value.
+        requested_by: Who raised it. Carried because the title and the reason
+            are prose the raiser chose, and an approval queue accepts an item
+            from anything holding write access: without the requester beside
+            them, a decision the organisation raised and one somebody else
+            minted against the same plan read identically.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -237,6 +242,7 @@ class PlanPendingDecision(BaseModel):
     action_type: NotBlankStr = Field(description="Which decision this is")
     title: NotBlankStr = Field(description="What the decision is called")
     reason: NotBlankStr = Field(description="Why it was raised")
+    requested_by: NotBlankStr = Field(description="Who raised the decision")
 
 
 class PlanRow(Plan):

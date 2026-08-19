@@ -7,6 +7,7 @@ model, so every assertion here is about which characters survive.
 import pytest
 
 from synthorg.meta.chief_of_staff.conversation_title import (
+    _MAX_TITLE_CHARS,
     derive_conversation_title,
 )
 
@@ -66,7 +67,15 @@ class TestLongMessages:
         title = derive_conversation_title("x" * 500)
         assert title is not None
         assert title.endswith(_ELLIPSIS)
-        assert len(title) <= len("x" * 80) + len(_ELLIPSIS)
+        # The marker's own length comes off the budget: a cap the marker
+        # pushes past is not a cap on what the row renders.
+        assert len(title) <= _MAX_TITLE_CHARS
+
+    @pytest.mark.parametrize("length", [81, 120, 500])
+    def test_no_title_is_ever_longer_than_the_ceiling(self, length: int) -> None:
+        title = derive_conversation_title(" ".join("word" for _ in range(length)))
+        assert title is not None
+        assert len(title) <= _MAX_TITLE_CHARS
 
     def test_a_message_exactly_at_the_ceiling_is_not_cut(self) -> None:
         content = "a" * 80

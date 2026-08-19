@@ -239,11 +239,22 @@ three are one outcome with three reasons.
 
 An initiative in that state needs a person, and the loop's own rule for
 reaching one is by exception: a question needing an answer. So
-`engine/initiative/stall_escalation.py` raises exactly one `initiative:stalled`
-approval per plan, sends one notification on the edge that opens it, and leaves
-the plan where it is, still open to a manual replan while the operator thinks.
-Later passes find the decision open and say nothing, because an alert repeated
-every cadence is an alert nobody reads.
+`engine/initiative/stall_escalation.py` keeps exactly one OPEN
+`initiative:stalled` decision per plan, sends one notification on the edge that
+opens it, and leaves the plan where it is, still open to a manual replan while
+the operator thinks. Later passes find the decision open and say nothing:
+neither a second alert, nor a second ask of the replan trigger, since an
+initiative waiting on a person is not one to keep considering for an automatic
+replan, and refusing it at WARNING every cadence would be the repeating log
+line the decision replaced.
+
+One OPEN rather than one ever. Answering the decision closes it, and a plan
+that is still stalled on the next pass raises a fresh one. That is the correct
+reading: the answer was taken, it did not move the initiative, and the operator
+is owed the news rather than silence. What must hold for it to stay bounded is
+that answering CHANGES something, which is why the answer is re-confirmed
+against the live state on the branch the recorded reason selects rather than
+re-derived over the items alone.
 
 Failing the plan there was the tempting answer and is the wrong one twice over.
 It is the system deciding whether an initiative the operator may still want

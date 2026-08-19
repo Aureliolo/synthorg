@@ -172,7 +172,7 @@ class ConversationHistoryController(Controller):
         )
         rows = conversations[:limit]
         openings = await service.opening_turns(
-            tuple(NotBlankStr(str(c.id)) for c in rows)
+            rows, created_by=NotBlankStr(actor.actor_id)
         )
         page = tuple(_conversation_to_dict(c, openings) for c in rows)
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)

@@ -16,6 +16,7 @@ import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.initiative_stall import INITIATIVE_STALL_ACTION_TYPE
 from synthorg.approval.questions import QUESTION_ACTION_TYPES
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
@@ -29,6 +30,7 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_APPROVED,
     SECURITY_APPROVAL_REJECTED,
 )
+from synthorg.security.autonomy.enums import ActionType
 from tests._shared import as_uuid, make_app_state, sid
 from tests.unit.meta.mcp.conftest import make_test_actor
 
@@ -460,6 +462,65 @@ class TestParkedQuestionsAreOutOfScope:
         )
 
         assert json.loads(result)["status"] == "ok"
+
+    @pytest.mark.parametrize(
+        "action_type",
+        [ActionType.ORG_HIRE.value, ActionType.ORG_FIRE.value],
+    )
+    async def test_a_principal_change_is_refused_untouched(
+        self,
+        fake_app_state: AppState,
+        fake_approval_store: AsyncMock,
+        actor: AgentIdentity,
+        tool: str,
+        action_type: str,
+    ) -> None:
+        # A hire mints a durable principal that holds a role, spends budget
+        # and can judge other agents' work. Membership is the operator's call,
+        # not something an agent settles through the queue that unblocks its
+        # own run.
+        fake_approval_store.get.return_value = _make_item(
+            approval_id="h1", action_type=action_type
+        )
+        handler = APPROVAL_HANDLERS[tool]
+
+        result = await handler(
+            app_state=fake_app_state,
+            arguments={"approval_id": "h1", "reason": "sure", "confirm": True},
+            actor=actor,
+        )
+
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "forbidden"
+        fake_approval_store.save_if_pending.assert_not_called()
+
+    async def test_a_stalled_initiative_is_refused_untouched(
+        self,
+        fake_app_state: AppState,
+        fake_approval_store: AsyncMock,
+        actor: AgentIdentity,
+        tool: str,
+    ) -> None:
+        # Approving it grants one replan on the ANSWERER's authority: it lifts
+        # the operator's master switch AND generation cap and restarts the
+        # count. An agent settling it sets its own budget, and can re-grant on
+        # every re-stall, so the cap an operator wrote bounds nothing.
+        fake_approval_store.get.return_value = _make_item(
+            approval_id="s1", action_type=INITIATIVE_STALL_ACTION_TYPE
+        )
+        handler = APPROVAL_HANDLERS[tool]
+
+        result = await handler(
+            app_state=fake_app_state,
+            arguments={"approval_id": "s1", "reason": "keep going", "confirm": True},
+            actor=actor,
+        )
+
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "forbidden"
+        fake_approval_store.save_if_pending.assert_not_called()
 
 
 # --- reject (destructive) --------------------------------------------------

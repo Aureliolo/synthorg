@@ -28,7 +28,9 @@ Everything here is pure: no I/O, no clock, no repositories. The rollup service
 supplies the inputs and owns the persistence.
 """
 
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final
 from uuid import UUID
 
@@ -268,6 +270,22 @@ class StallReason(StrEnum):
 #: than re-deriving over items (which would find nothing wrong).
 ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
     {StallReason.ALL_FAILED, StallReason.BLOCKED, StallReason.MIXED_DEAD}
+)
+
+#: The tail stage each stage-derived verdict came from. A plan that has left
+#: that stage has been dealt with (a human replanned it, or the stage re-ran),
+#: so the verdict is stale.
+#:
+#: Declared here, beside the set that decides which branch applies, because
+#: every re-confirmation of a stall needs both halves and two copies of the
+#: pairing is two answers to "is this plan still stalled". Reading only the
+#: item half answers ``None`` for every tail-stage stall, which reads as
+#: "recovered" and silently drops the decision.
+STAGE_OF_STALL_REASON: Final[Mapping[StallReason, PlanStatus]] = MappingProxyType(
+    {
+        StallReason.INTEGRATION_FAILED: PlanStatus.INTEGRATING,
+        StallReason.EVALUATION_UNMET: PlanStatus.EVALUATING,
+    }
 )
 
 

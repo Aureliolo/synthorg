@@ -24,7 +24,10 @@ are foreign keys. Rewriting any of them would repoint a reader's link or drop a
 document out of its own search results.
 """
 
+from collections.abc import Mapping
 from typing import NamedTuple
+
+from pydantic import ValidationError
 
 from synthorg.docs_engine.models import (
     BulletListBlock,
@@ -79,23 +82,17 @@ def _approve(text: str, *, prose: bool, where: str) -> _FieldVerdict:
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
         OutputContext,
-        evaluate_output_policy,
+        approve_texts,
     )
 
-    if not text:
-        return _FieldVerdict(None, text)
     channel = OutputChannel.DELIVERABLE if prose else OutputChannel.CODE_FILE
-    verdict = evaluate_output_policy(text, OutputContext(channel=channel))
-    if verdict is None:
-        return _FieldVerdict(None, text)
-    if verdict.blocked:
+    approval = approve_texts((text,), OutputContext(channel=channel))
+    if approval.refusal is not None:
         return _FieldVerdict(
-            ToolExecutionResult(content=f"{where}: {verdict.summary}", is_error=True),
+            ToolExecutionResult(content=f"{where}: {approval.refusal}", is_error=True),
             "",
         )
-    if verdict.rewritten_text is not None:
-        return _FieldVerdict(None, verdict.rewritten_text)
-    return _FieldVerdict(None, text)
+    return _FieldVerdict(None, approval.texts[0])
 
 
 def _fields_of(block: DocBlock) -> tuple[tuple[str, str, bool], ...]:
@@ -127,6 +124,39 @@ def _fields_of(block: DocBlock) -> tuple[tuple[str, str, bool], ...]:
     return ()
 
 
+def _rebuild(
+    block: DocBlock, updates: Mapping[str, object], where: str
+) -> tuple[ToolExecutionResult | None, DocBlock]:
+    """Rebuild *block* with *updates*, through the block's own validation.
+
+    ``model_copy(update=...)`` writes the fields without re-validating them, so
+    an operator-configured rewrite rule could leave a heading past its length
+    bound or a required field emptied, and the document would be persisted in a
+    shape its own type forbids. Revalidating is the only place that can refuse
+    it, and a rewrite that cannot be applied is reported rather than dropped:
+    silently keeping the original would mean the rule fired, the text did not
+    change, and nothing said so.
+
+    Returns:
+        An error and the untouched block when the rewritten values do not
+        validate, else ``None`` and the rebuilt block.
+    """
+    try:
+        rebuilt = type(block).model_validate({**block.model_dump(), **updates})
+    except ValidationError:
+        return (
+            ToolExecutionResult(
+                content=(
+                    f"{where}: the house-style rewrite produced a value this "
+                    f"block cannot carry. Reword the text yourself."
+                ),
+                is_error=True,
+            ),
+            block,
+        )
+    return None, rebuilt
+
+
 def _guard_bullets(
     block: BulletListBlock, where: str
 ) -> tuple[ToolExecutionResult | None, DocBlock]:
@@ -142,7 +172,7 @@ def _guard_bullets(
         if verdict.error is not None:
             return verdict.error, block
         approved.append(verdict.text)
-    return None, block.model_copy(update={"items": tuple(approved)})
+    return _rebuild(block, {"items": tuple(approved)}, where)
 
 
 def _guard_block(
@@ -163,7 +193,7 @@ def _guard_block(
         if verdict.error is not None:
             return verdict.error, block
         updates[name] = verdict.text
-    return None, block.model_copy(update=updates)
+    return _rebuild(block, updates, where)
 
 
 def guard_doc_output(*, title: str, body: tuple[DocBlock, ...]) -> DocOutputGuard:

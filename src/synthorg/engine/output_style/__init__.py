@@ -6,6 +6,7 @@ violating a hard rule at every agent-output boundary. See
 ``docs/design/output-style-policy.md``.
 """
 
+from synthorg.engine.output_style.approval import TextApproval, approve_texts
 from synthorg.engine.output_style.errors import (
     OutputPolicyViolationError,
     OutputStyleError,
@@ -87,6 +88,8 @@ __all__ = [
     "ScopeKind",
     "SegmentKind",
     "SnapshotHouseStyleProvider",
+    "TextApproval",
+    "approve_texts",
     "current_house_style_provider",
     "current_output_policy_service",
     "enforce_output_policy",

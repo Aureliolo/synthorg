@@ -11,7 +11,6 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import (
-    ConstraintViolationError,
     QueryError,
     TurnSequenceConflictError,
 )
@@ -23,7 +22,7 @@ from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_QUERIED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_turn
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from synthorg.persistence._shared import (
     TURN_APPEND_MAX_RETRIES,
     validate_pagination_args,
@@ -31,9 +30,10 @@ from synthorg.persistence._shared import (
 from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
 )
-from synthorg.persistence.postgres._integrity import constraint_name
-from synthorg.persistence.postgres.conversation_repo._sql import (
-    MAX_PAGE_LIMIT,
+from synthorg.persistence.postgres._integrity import (
+    constraint_name,
+    raise_constraint_violation,
+    shared_sqlstate,
 )
 
 logger = get_logger(__name__)
@@ -183,16 +183,14 @@ class PostgresConversationTurnRepository:
                     )
                     _log_append_failure(current.conversation_id, exc)
                     raise TurnSequenceConflictError(
-                        msg, constraint=constraint, sqlstate=exc.sqlstate
+                        msg, constraint=constraint, sqlstate=shared_sqlstate(exc)
                     ) from exc
                 msg = (
                     "Constraint violation appending turn "
                     f"{current.id!r} (conversation {current.conversation_id!r})"
                 )
                 _log_append_failure(current.conversation_id, exc)
-                raise ConstraintViolationError(
-                    msg, constraint=constraint, sqlstate=exc.sqlstate
-                ) from exc
+                raise_constraint_violation(exc, msg)
             except psycopg.Error as exc:
                 msg = f"Failed to append turn {current.id!r}"
                 _log_append_failure(current.conversation_id, exc)
@@ -224,7 +222,7 @@ class PostgresConversationTurnRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
         )
-        effective_limit = min(effective_limit, MAX_PAGE_LIMIT)
+        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.conversation_id is not None:

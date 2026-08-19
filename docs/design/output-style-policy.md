@@ -105,9 +105,18 @@ the output escapes:
 | Commit message | `tools/git_tools.py` `GitCommitTool.execute` | `commit_message` |
 | Code file write | `tools/file_system/write_file.py` + `edit_file.py`, both through the shared `_output_policy_guard.py` `guard_written_content` over the whole resulting content | `code_file` |
 | Living document | `tools/docs/write_living_doc.py`, via `tools/docs/_doc_output_guard.py` `guard_doc_output` over the title and every block | `deliverable` (prose fields) / `code_file` (a code body, a metric value, a URL) |
-| Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body` |
+| Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body`, except a merge commit title (`is_commit=True`), which is `commit_message` |
 | Parked question | `tools/clarification_tool.py` + `tools/decision_tool.py`, via the shared `tools/_question_output_guard.py` | `message` |
 | Plan prose | `engine/decomposition/_plan_output_guard.py` `guard_plan_text` / `guard_plan_texts`, called from `engine/decomposition/llm_parse.py` on every submitted plan's item titles, descriptions, acceptance criteria, assumptions, and open questions | `deliverable` |
+| Initiative evaluation verdict | `engine/initiative/evaluate_session.py` `SubmitEvaluationTool`, over the summary and every criterion verdict the scoring session submits | `deliverable` |
+
+Every row's guard reaches the same primitive, `engine/output_style/approval.py`
+`approve_texts`: is the policy wired, does anything block, did a rule rewrite
+this, otherwise keep what was written. One copy, because five copies is how one
+boundary comes to reject where its siblings rewrite with nothing to notice. It
+answers a refusal STRING rather than a typed error, since the boundaries do not
+share an error type (a tool result, a chat argument error, a decomposition
+error) and each turns the refusal into its own.
 
 Plan prose is a boundary because a plan is read by a person before anything is
 built: the operator approves it, and the wording they approve is the wording
@@ -121,21 +130,43 @@ consistently at both. The code-file and forge boundaries are code-channel
 issue/PR body is rejected before it lands, unless a matching operator-sanctioned
 scope (a `path` exemption for code files) covers it.
 
-Two boundaries are deliberately reject-only even for prose. A **chat send**
-parks a signature over its own arguments for a human to approve, so
-substituting different text after that approval would send something nobody
-agreed to; the agent is handed the correction and sends it itself. A **living
-document's** code body, metric value and URL are literals, where a punctuation
-swap corrupts the value rather than tidying it, which is the same ruling the
-`segmenter` already applies to a fenced block inside a PR body.
+One boundary is deliberately reject-only even for prose: a **chat send** parks
+a signature over its own arguments for a human to approve, so substituting
+different text after that approval would send something nobody agreed to. The
+agent is handed the places to fix and sends the message itself, and the refusal
+never carries the body back: an outbound message routinely quotes a fetched
+page or somebody else's chat, so a body echoed behind "send this instead" is
+third-party text arriving as an instruction on the agent's next turn.
+
+A **living document's** prose is rewritten like any other prose. Its code body,
+metric value and URL are not prose at all: they go to the code channel, where a
+punctuation swap corrupts the value rather than tidying it, and the code
+channel is reject-only for everything, which is the same ruling the `segmenter`
+already applies to a fenced block inside a PR body.
 
 **Only a write counts, and only what the write introduces.** Both file tools
-subtract the blocking findings the file already carried, matched by rule and
-offending snippet with multiplicity: an agent editing or overwriting a file
-that already violated a rule is never refused over a character somebody else
-left behind, while a write that adds a new violation is refused even when the
-file already violated a different rule. Without that, the only moves left are
-mangling content it does not own or giving up.
+subtract the blocking findings the file already carried: an agent editing or
+overwriting a file that already violated a rule is never refused over a
+character somebody else left behind, while a write that adds a new violation is
+refused even when the file already violated a different rule. Without that, the
+only moves left are mangling content it does not own or giving up.
+
+What identifies "the same violation" across the two evaluations is the rule and
+the SURROUNDINGS of the match, with multiplicity, never the match alone. A
+literal ban matches one character, so every occurrence of it in a file carries
+the same snippet: keyed on that, a write that removes one occurrence while
+adding another subtracts to nothing and the new one lands on disk, and the
+places quoted back to the agent are the first in the file rather than the ones
+it wrote. Rewriting the text AROUND a pre-existing violation therefore
+re-presents it as introduced, which is the intended reading: an agent that
+re-authored the sentence owns what the sentence now says.
+
+The subtraction fails CLOSED past the per-evaluation reporting cap. A file
+already carrying more blocking matches than one evaluation reports produces the
+same saturated set before and after, so every subtraction is empty and the
+boundary would silently stop guarding the one file that needs it most. Over the
+cap the write is refused with the places the evaluation did report, which is a
+state the agent can leave by fixing them.
 
 **Narration is never gated.** The agent's closing message, its reasoning and
 anything else that does not leave the session are working state, not output.

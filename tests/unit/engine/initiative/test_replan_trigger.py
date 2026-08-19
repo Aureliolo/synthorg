@@ -6,8 +6,10 @@ from uuid import UUID
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
@@ -18,10 +20,15 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
-from synthorg.engine.initiative.replan_trigger import ACTOR, ReplanTriggerService
+from synthorg.engine.initiative.replan_trigger import (
+    _DEFAULT_MAX_GENERATIONS,
+    ACTOR,
+    ReplanTriggerService,
+)
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared import FakeClock, as_uuid, mock_of, role_holder, sid
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
@@ -153,12 +160,68 @@ def _decomposition(*subtask_ids: str) -> DecompositionResult:
     )
 
 
+def _identity(label: str, role: str) -> AgentIdentity:
+    """Build one roster agent holding *role*.
+
+    Returns:
+        The identity, through the shared builder so the model can change once.
+    """
+    return role_holder(label, role=role)
+
+
+def _project(*, lead: str | None) -> Project:
+    """Build the plan's project, optionally naming its durable lead.
+
+    Returns:
+        The project row the trigger reads the successor's owner from.
+    """
+    return Project(
+        id=as_uuid(_PROJECT),
+        name=NotBlankStr("Platform"),
+        plan_id=as_uuid(_PLAN_ID),
+        lead=None if lead is None else NotBlankStr(lead),
+    )
+
+
+def _registry(
+    *, lead: AgentIdentity | None, active: tuple[AgentIdentity, ...]
+) -> AgentRegistryProtocol:
+    """Build a registry answering *lead* by id and *active* as the roster.
+
+    Returns:
+        The registry double.
+    """
+    built: AgentRegistryProtocol = mock_of[AgentRegistryProtocol](
+        get=AsyncMock(return_value=lead),
+        list_active=AsyncMock(return_value=list(active)),
+    )
+    return built
+
+
+def _failing_resolver() -> ConfigResolver:
+    """Build a resolver whose every read fails, as a degraded store does.
+
+    Returns:
+        The resolver double.
+    """
+    outage = RuntimeError("settings unavailable")
+    built: ConfigResolver = mock_of[ConfigResolver](
+        get_bool=AsyncMock(side_effect=outage),
+        get_int=AsyncMock(side_effect=outage),
+        get_float=AsyncMock(side_effect=outage),
+    )
+    return built
+
+
 async def _seed(
     plan: Plan,
     *tasks: Task,
     decomposition: DecompositionResult | None = None,
     objective_missing: bool = False,
     settings: dict[str, object] | None = None,
+    failing_settings: bool = False,
+    project: Project | None = None,
+    registry: AgentRegistryProtocol | None = None,
 ) -> tuple[ReplanTriggerService, _RecordingReplan, AsyncMock]:
     """Build the trigger over a seeded backend.
 
@@ -168,11 +231,22 @@ async def _seed(
     objective = None if objective_missing else _objective()
     backend = FakePersistenceBackend()
     await backend.plans.save(plan)
+    if project is not None:
+        await backend.projects.save(project)
     for task in tasks:
         await backend.tasks.save(task)
     decompose = AsyncMock(return_value=decomposition or _decomposition("sub-1"))
     replan = _RecordingReplan()
     values = settings or {}
+    resolver = (
+        _failing_resolver()
+        if failing_settings
+        else mock_of[ConfigResolver](
+            get_bool=AsyncMock(return_value=values.get("enabled", True)),
+            get_int=AsyncMock(return_value=values.get("max_generations", 2)),
+            get_float=AsyncMock(return_value=values.get("timeout", 30.0)),
+        )
+    )
     service = ReplanTriggerService(
         persistence=backend,
         task_engine=mock_of[TaskEngine](
@@ -180,14 +254,29 @@ async def _seed(
         ),
         decomposition_service=mock_of[DecompositionService](decompose_task=decompose),
         replan=replan,
-        config_resolver=mock_of[ConfigResolver](
-            get_bool=AsyncMock(return_value=values.get("enabled", True)),
-            get_int=AsyncMock(return_value=values.get("max_generations", 2)),
-            get_float=AsyncMock(return_value=values.get("timeout", 30.0)),
-        ),
+        config_resolver=resolver,
+        agent_registry=registry,
         clock=FakeClock(),
     )
+    _BACKENDS[service] = backend
     return service, replan, decompose
+
+
+#: The backend each built trigger reads through, so a test can move the row
+#: underneath a caller's snapshot the way a concurrent write does. Keyed on the
+#: service itself rather than its id, which a later object can be handed once
+#: the first is collected.
+_BACKENDS: dict[ReplanTriggerService, FakePersistenceBackend] = {}
+
+
+async def _persist(service: ReplanTriggerService, plan: Plan) -> None:
+    """Write *plan* into the backend *service* reads, leaving the caller's copy.
+
+    The pre-check reads the snapshot the caller passed; the detached task
+    re-reads the row. Handing the same object to both makes them agree by
+    construction, which is exactly what the re-read exists to catch.
+    """
+    await _BACKENDS[service].plans.save(plan)
 
 
 async def _fire(
@@ -464,3 +553,188 @@ class TestGuards:
         await _fire(service, plan)
 
         assert replan.calls == []
+
+    async def test_a_grant_in_flight_collapses_a_second_grant(self) -> None:
+        """One person's decision opens one successor, not one per click."""
+        plan = _plan(_item(_ITEM_A))
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.FAILED))
+
+        first = await service.grant(
+            plan=plan, reason=StallReason.ALL_FAILED, requested_by="operator"
+        )
+        second = await service.grant(
+            plan=plan, reason=StallReason.ALL_FAILED, requested_by="operator"
+        )
+        await service.drain(timeout_sec=5.0)
+
+        assert first is True
+        assert second is False
+        assert len(replan.calls) == 1
+
+    async def test_a_replan_in_flight_is_answered_before_either_refusal(
+        self,
+    ) -> None:
+        """A grant applies neither bound, so asking them first misreports it.
+
+        The rollup escalates on DISABLED, so answering it for a plan already
+        being replanned on the operator's own authority raises a second
+        decision for an initiative that is moving.
+        """
+        plan = _plan(_item(_ITEM_A), generation=2)
+        service, _, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"enabled": False, "max_generations": 2},
+        )
+
+        await service.grant(
+            plan=plan, reason=StallReason.ALL_FAILED, requested_by="operator"
+        )
+        disposition = await service.consider(plan=plan, reason=StallReason.ALL_FAILED)
+        await service.drain(timeout_sec=5.0)
+
+        assert disposition is ReplanDisposition.ALREADY_RUNNING
+
+
+class TestTheSuccessorsPlanner:
+    """Who plans the successor, and against which roles."""
+
+    async def test_the_projects_lead_plans_the_successor(self) -> None:
+        """A successor planned by nobody falls back to a different mechanism."""
+        plan = _plan(_item(_ITEM_A))
+        lead = _identity("agent-lead", "Lead")
+        service, _, decompose = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            project=_project(lead=sid("agent-lead")),
+            registry=_registry(lead=lead, active=(lead,)),
+        )
+
+        await _fire(service, plan)
+
+        assert decompose.await_args is not None
+        assert decompose.await_args.args[1].owner_identity == lead
+
+    async def test_the_live_roster_is_what_the_successor_is_planned_against(
+        self,
+    ) -> None:
+        """Staffed between the stall and the replan still counts."""
+        plan = _plan(_item(_ITEM_A))
+        lead = _identity("agent-lead", "Lead")
+        other = _identity("agent-dev", "Developer")
+        service, _, decompose = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            project=_project(lead=sid("agent-lead")),
+            registry=_registry(lead=lead, active=(lead, other)),
+        )
+
+        await _fire(service, plan)
+
+        assert decompose.await_args is not None
+        roles = decompose.await_args.args[1].available_roles
+        assert set(roles) == {"Lead", "Developer"}
+
+    async def test_a_project_with_no_lead_leaves_the_owner_unset(self) -> None:
+        plan = _plan(_item(_ITEM_A))
+        service, _, decompose = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            project=_project(lead=None),
+            registry=_registry(lead=None, active=()),
+        )
+
+        await _fire(service, plan)
+
+        assert decompose.await_args is not None
+        assert decompose.await_args.args[1].owner_identity is None
+
+
+class TestADegradedSettingsStore:
+    """A settings outage must not stop the org unsticking itself."""
+
+    async def test_the_kill_switch_falls_back_to_on(self) -> None:
+        plan = _plan(_item(_ITEM_A))
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            failing_settings=True,
+        )
+
+        disposition = await _fire(service, plan)
+
+        assert disposition is ReplanDisposition.SCHEDULED
+        assert len(replan.calls) == 1
+
+    async def test_the_cap_falls_back_to_its_default(self) -> None:
+        """Past the default the fallback still refuses, on the same value."""
+        plan = _plan(_item(_ITEM_A), generation=_DEFAULT_MAX_GENERATIONS)
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            failing_settings=True,
+        )
+
+        disposition = await _fire(service, plan)
+
+        assert disposition is ReplanDisposition.BUDGET_EXHAUSTED
+        assert replan.calls == []
+
+    async def test_a_nonsense_timeout_falls_back_to_its_default(self) -> None:
+        """Zero or negative would bound the replan to nothing at all."""
+        plan = _plan(_item(_ITEM_A))
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"timeout": 0.0},
+        )
+
+        await _fire(service, plan)
+
+        assert len(replan.calls) == 1
+
+
+class TestTheStalenessRecheck:
+    """The plan is re-read inside the detached task, and re-judged on it."""
+
+    async def test_a_plan_that_left_its_stage_between_ask_and_run_is_dropped(
+        self,
+    ) -> None:
+        """The pre-check reads the caller's snapshot; this reads the row."""
+        plan = _plan(_item(_ITEM_A), status=PlanStatus.INTEGRATING)
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.COMPLETED))
+        await _persist(service, plan.model_copy(update={"status": PlanStatus.FAILED}))
+
+        await _fire(service, plan, StallReason.INTEGRATION_FAILED)
+
+        assert replan.calls == []
+
+    async def test_a_generation_that_advanced_between_ask_and_run_is_dropped(
+        self,
+    ) -> None:
+        """``consider`` passed on the snapshot; the row says the budget is spent."""
+        plan = _plan(_item(_ITEM_A), generation=0)
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"max_generations": 2},
+        )
+        await _persist(service, plan.model_copy(update={"replan_generation": 2}))
+
+        await _fire(service, plan)
+
+        assert replan.calls == []
+
+    async def test_a_grant_ignores_the_generation_the_row_advanced_to(self) -> None:
+        """The operator's authority is not the budget, on either read."""
+        plan = _plan(_item(_ITEM_A), generation=0)
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"max_generations": 2},
+        )
+        await _persist(service, plan.model_copy(update={"replan_generation": 2}))
+
+        await _grant(service, plan)
+
+        assert len(replan.calls) == 1

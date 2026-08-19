@@ -75,25 +75,17 @@ def _guard_email_text(*, subject: str, body: str) -> _EmailGuard:
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
         OutputContext,
-        evaluate_output_policy,
+        approve_texts,
     )
 
-    ctx = OutputContext(channel=OutputChannel.MESSAGE)
-    approved: list[str] = []
-    for text in (subject, body):
-        if not text:
-            approved.append(text)
-            continue
-        verdict = evaluate_output_policy(text, ctx)
-        if verdict is not None and verdict.blocked:
-            return _EmailGuard(
-                ToolExecutionResult(content=verdict.summary, is_error=True), "", ""
-            )
-        if verdict is not None and verdict.rewritten_text is not None:
-            approved.append(verdict.rewritten_text)
-        else:
-            approved.append(text)
-    return _EmailGuard(None, approved[0], approved[1])
+    approval = approve_texts(
+        (subject, body), OutputContext(channel=OutputChannel.MESSAGE)
+    )
+    if approval.refusal is not None:
+        return _EmailGuard(
+            ToolExecutionResult(content=approval.refusal, is_error=True), "", ""
+        )
+    return _EmailGuard(None, approval.texts[0], approval.texts[1])
 
 
 class EmailSenderTool(BaseCommunicationTool):

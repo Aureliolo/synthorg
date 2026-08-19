@@ -1,11 +1,11 @@
 """Tests for the output-boundary reachability gate.
 
-The gate answers two questions that used to be one. An ENFORCING boundary must
-still call a guard, which is the original lock. An OBSERVING boundary must also
-NOT call the raising door: the post-session backstop decides nothing on
-purpose, and regaining ``enforce_output_policy`` there would restore the shipped
-defect (a task failed over punctuation in narration, after its peer review had
-already approved the work) with nothing else in the tree to notice.
+The gate answers a different question per boundary kind. An ENFORCING boundary
+must call a guard. An OBSERVING boundary must call one AND must not call the
+raising door: the post-session backstop decides nothing on purpose, and a
+``enforce_output_policy`` there fails a task over punctuation in narration
+after its peer review has already approved the work, with nothing else in the
+tree to notice.
 
 Every case is built under ``tmp_path``. Planting a file under the real ``src/``
 would race the whole-tree scanners running on other xdist workers.

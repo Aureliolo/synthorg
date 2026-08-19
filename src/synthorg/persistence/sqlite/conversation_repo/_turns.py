@@ -6,7 +6,6 @@ from datetime import datetime
 import aiosqlite
 
 from synthorg.core.persistence_errors import (
-    ConstraintViolationError,
     QueryError,
     TurnSequenceConflictError,
 )
@@ -18,18 +17,19 @@ from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_QUERIED,
 )
 from synthorg.persistence._conversation_marshalling import row_to_turn
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from synthorg.persistence._shared import (
     TURN_APPEND_MAX_RETRIES,
     format_iso_utc,
     validate_pagination_args,
 )
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
-from synthorg.persistence.sqlite._shared import WriteContext
-from synthorg.persistence.sqlite.conversation_repo._base import (
-    _MAX_PAGE_LIMIT,
-    _safe_rollback,
+from synthorg.persistence.sqlite._integrity import (
+    classify_sqlite_integrity,
+    raise_constraint_violation,
 )
+from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite.conversation_repo._base import _safe_rollback
 
 logger = get_logger(__name__)
 
@@ -177,8 +177,9 @@ class SQLiteConversationTurnRepository:
                             error_type=type(exc).__name__,
                             error=safe_error_description(exc),
                         )
+                        constraint, sqlstate = classify_sqlite_integrity(exc)
                         raise TurnSequenceConflictError(
-                            msg, constraint=str(exc)
+                            msg, constraint=constraint, sqlstate=sqlstate
                         ) from exc
                     msg = (
                         "Constraint violation appending turn "
@@ -192,7 +193,7 @@ class SQLiteConversationTurnRepository:
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
-                    raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                    raise_constraint_violation(exc, msg)
                 except (sqlite3.Error, aiosqlite.Error) as exc:
                     await _safe_rollback(
                         self._db,
@@ -236,7 +237,7 @@ class SQLiteConversationTurnRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
         )
-        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
+        effective_limit = min(effective_limit, MAX_PAGE_SIZE)
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.conversation_id is not None:

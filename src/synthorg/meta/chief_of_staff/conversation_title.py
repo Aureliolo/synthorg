@@ -1,10 +1,10 @@
 # module-kind: code
 """Name a conversation by the sentence that opened it.
 
-The history drawer used to label every row from its ``ConversationKind``
-alone, so a session that filed twenty work requests showed twenty rows reading
-"Request work", separated only by a relative timestamp: no row could be told
-from any other, and the drawer's whole purpose is picking one out.
+A row's ``ConversationKind`` names a category, not a conversation: a session
+that files twenty work requests has twenty rows in the same category, and a
+drawer whose whole purpose is picking one out has to say what makes each one
+different. Only its own opening sentence does.
 
 The title is DERIVED, never stored. A stored title is a second copy of
 something the transcript already holds, and the two disagree the moment the
@@ -25,7 +25,8 @@ from typing import Final
 _MAX_TITLE_CHARS: Final[int] = 80
 
 #: Appended when the sentence was cut, so a trimmed title is visibly trimmed
-#: rather than reading as a short message.
+#: rather than reading as a short message. Its own length comes off the budget,
+#: so the bound holds for what is rendered rather than for what was kept.
 _ELLIPSIS: Final[str] = "…"
 
 #: Leading Markdown structure an agent-facing composer may have added. Stripped
@@ -57,7 +58,7 @@ def derive_conversation_title(content: str) -> str | None:
     # Cut at the last word boundary inside the budget so a title never ends
     # mid-word. A single word longer than the whole budget has no boundary to
     # cut at, and is trimmed hard rather than rendered whole.
-    head = collapsed[:_MAX_TITLE_CHARS]
+    head = collapsed[: _MAX_TITLE_CHARS - len(_ELLIPSIS)]
     boundary = head.rfind(" ")
     trimmed = head[:boundary] if boundary > 0 else head
     return f"{trimmed.rstrip()}{_ELLIPSIS}"

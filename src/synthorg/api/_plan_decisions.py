@@ -18,6 +18,7 @@ board waiting on a decision that was taken.
 """
 
 from collections.abc import Iterable
+from typing import Final
 
 from synthorg.api.dto_named_rows import PlanPendingDecision
 from synthorg.api.state import AppState
@@ -37,19 +38,24 @@ logger = get_logger(__name__)
 #: The first line of a decision's description, which is what a row shows. The
 #: whole description is the operator's briefing and belongs on the approval
 #: itself; a row that carried all of it would be unreadable.
-_MAX_REASON_CHARS: int = 240
+_MAX_REASON_CHARS: Final[int] = 240
+
+#: Marks a reason the row had to cut. Its own length comes off the budget, so
+#: the bound holds for what is rendered rather than for what was kept.
+_ELLIPSIS: Final[str] = "..."
 
 
 def _reason_of(description: str) -> str:
     """Reduce a decision's description to the sentence a row can show.
 
     Returns:
-        Its first sentence, bounded.
+        Its first sentence, at most ``_MAX_REASON_CHARS`` long.
     """
     first = description.strip().split("\n", 1)[0].strip()
     if len(first) <= _MAX_REASON_CHARS:
         return first
-    return f"{first[: _MAX_REASON_CHARS - 1].rstrip()}..."
+    kept = first[: _MAX_REASON_CHARS - len(_ELLIPSIS)].rstrip()
+    return f"{kept}{_ELLIPSIS}"
 
 
 async def pending_plan_decisions(
@@ -100,6 +106,7 @@ async def pending_plan_decisions(
             action_type=item.action_type,
             title=item.title,
             reason=NotBlankStr(_reason_of(str(item.description))),
+            requested_by=item.requested_by,
         )
     return waiting
 

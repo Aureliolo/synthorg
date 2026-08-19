@@ -97,26 +97,16 @@ def _guard_forge_text(*, title: str, body: str, is_commit: bool = False) -> _For
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
         OutputContext,
-        evaluate_output_policy,
+        approve_texts,
     )
 
     channel = OutputChannel.COMMIT_MESSAGE if is_commit else OutputChannel.PR_BODY
-    ctx = OutputContext(channel=channel)
-    approved: list[str] = []
-    for text in (title, body):
-        if not text:
-            approved.append(text)
-            continue
-        verdict = evaluate_output_policy(text, ctx)
-        if verdict is not None and verdict.blocked:
-            return _ForgeGuard(
-                ToolExecutionResult(content=verdict.summary, is_error=True), "", ""
-            )
-        if verdict is not None and verdict.rewritten_text is not None:
-            approved.append(verdict.rewritten_text)
-        else:
-            approved.append(text)
-    return _ForgeGuard(None, approved[0], approved[1])
+    approval = approve_texts((title, body), OutputContext(channel=channel))
+    if approval.refusal is not None:
+        return _ForgeGuard(
+            ToolExecutionResult(content=approval.refusal, is_error=True), "", ""
+        )
+    return _ForgeGuard(None, approval.texts[0], approval.texts[1])
 
 
 class ForgeRepoTool(_BaseForgeTool):

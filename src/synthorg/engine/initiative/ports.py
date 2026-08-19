@@ -208,6 +208,27 @@ class PlanReconcilePort(Protocol):
         """Re-derive and persist the status graph behind *plan_id*."""
         ...
 
+    async def report_stage_stall(
+        self,
+        plan_id: UUID,
+        reason: StallReason,
+        disposition: ReplanDisposition | None,
+    ) -> None:
+        """Escalate a stall the stage saw and no derivation over items can.
+
+        ``recompute`` finds an item-derived stall on its own. A tail-stage
+        verdict is invisible to it, because every item IS done when
+        integration fails or the objective goes unmet, so a stage that keeps
+        its verdict to itself leaves the initiative parked with nobody asked.
+
+        Args:
+            plan_id: The initiative that cannot advance.
+            reason: The stage's verdict.
+            disposition: What the trigger already answered the stage, or
+                ``None`` when the stage found no trigger at all.
+        """
+        ...
+
 
 @runtime_checkable
 class RetroCapturePort(Protocol):

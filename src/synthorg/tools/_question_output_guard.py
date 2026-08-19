@@ -33,23 +33,13 @@ def guard_question_text(*texts: str) -> tuple[ToolExecutionResult | None, list[s
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
         OutputContext,
-        evaluate_output_policy,
+        approve_texts,
     )
 
-    ctx = OutputContext(channel=OutputChannel.MESSAGE)
-    approved: list[str] = []
-    for text in texts:
-        if not text:
-            approved.append(text)
-            continue
-        verdict = evaluate_output_policy(text, ctx)
-        if verdict is not None and verdict.blocked:
-            return ToolExecutionResult(content=verdict.summary, is_error=True), []
-        if verdict is not None and verdict.rewritten_text is not None:
-            approved.append(verdict.rewritten_text)
-        else:
-            approved.append(text)
-    return None, approved
+    approval = approve_texts(texts, OutputContext(channel=OutputChannel.MESSAGE))
+    if approval.refusal is not None:
+        return ToolExecutionResult(content=approval.refusal, is_error=True), []
+    return None, list(approval.texts)
 
 
 __all__ = ["guard_question_text"]

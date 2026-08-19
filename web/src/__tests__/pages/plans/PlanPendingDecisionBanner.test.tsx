@@ -11,6 +11,7 @@ const DECISION = {
   action_type: 'initiative:stalled',
   title: 'Initiative stopped: Ship the Tetris game',
   reason: 'This initiative can no longer advance: all failed.',
+  requested_by: 'initiative-rollup',
 } as const
 
 function renderBanner(plan: ReturnType<typeof makePlan>) {
@@ -30,11 +31,27 @@ describe('PlanPendingDecisionBanner', () => {
     )
 
     expect(screen.getByText(DECISION.title)).toBeInTheDocument()
-    expect(screen.getByText(DECISION.reason)).toBeInTheDocument()
+    expect(
+      screen.getByText(`${DECISION.reason} Raised by ${DECISION.requested_by}.`),
+    ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Answer it' })).toHaveAttribute(
       'href',
-      '/approvals',
+      '/approvals?selected=approval-1',
     )
+  })
+
+  it('names who raised the decision', () => {
+    // Title and reason are prose the raiser chose, and the queue accepts an
+    // item from anything with write access, so the requester is the one field
+    // that tells a decision the organisation raised from one it did not.
+    renderBanner(
+      makePlan('plan-3', {
+        status: 'executing',
+        pending_decision: { ...DECISION, requested_by: 'someone-else' },
+      }),
+    )
+
+    expect(screen.getByText(/Raised by someone-else\./)).toBeInTheDocument()
   })
 
   it('renders nothing for a plan with no decision waiting', () => {

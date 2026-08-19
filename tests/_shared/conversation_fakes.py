@@ -123,7 +123,10 @@ class FakeTurnRepo:
     ) -> tuple[ConversationTurn, ...]:
         self.queries.append(filter_spec)
         rows = [t for t in self.turns if _matches(t, filter_spec)]
-        rows.sort(key=lambda t: t.sequence, reverse=True)
+        # ``(sequence DESC, id DESC)``, which is what both backends order by.
+        # Sorting on the sequence alone leaves ties in insertion order, so a
+        # test asserting an order would pass here and fail against a database.
+        rows.sort(key=lambda t: (t.sequence, str(t.id)), reverse=True)
         return tuple(rows[offset : offset + limit])
 
     async def purge_before(self, threshold: datetime) -> int:
