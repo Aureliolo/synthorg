@@ -184,9 +184,9 @@ So the entry point that owns the server registers it as the chain
 flag, and **absent a chain the handlers are not installed** and uvicorn's own
 are left intact. That is why `api/server.py` builds `uvicorn.Server` itself for
 the single-process topology rather than calling `uvicorn.run`, which keeps the
-server object internal and leaves nothing to chain to. A reloader or worker
-pool registers no chain: the supervisor owns signals there and forwards them to
-its children.
+server object internal and leaves nothing to chain to. A reload supervisor or
+worker pool registers no chain: the supervisor owns signals there and forwards
+them to its children.
 
 ### No operator-triggered restart
 
@@ -213,9 +213,9 @@ permanently.
 
 `RunRecoveryReconciler` (`engine/run_recovery/`) answers that on the same
 shape the subsystem reconciler uses for wiring: boot is the first pass, the
-cadence (`engine.run_recovery_resync_interval_seconds`, pausable via
-`engine.run_recovery_sweep_paused`) repeats the same idempotent question, and
-every plan status gets an answer.
+cadence (`engine.run_recovery_resync_interval_seconds`, which
+`engine.run_recovery_sweep_paused` halts) repeats the same idempotent
+question, and every plan status gets an answer.
 
 | plan status | what recovery does |
 | --- | --- |

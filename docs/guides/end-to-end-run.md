@@ -113,7 +113,8 @@ SELECT
 Through the dashboard chat, in ordinary language, with the vagueness a real
 brief has. This is the wording, verbatim, and it is the same for both arms:
 
-> I want a tetris game I can play in the browser, with a shared leaderboard.
+> I want a falling-blocks puzzle game I can play in the browser, with a shared
+> leaderboard.
 
 Everything else is left for the org to ask: single or multiplayer, how many
 modes, the timeline, where it runs and how it is hosted, how the leaderboard

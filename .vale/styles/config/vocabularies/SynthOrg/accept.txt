@@ -232,6 +232,7 @@ Rollup
 SBOMs
 SDKs
 SHAs
+SIGKILLed
 SIGKILLs
 SQLAlchemy
 SSNs
@@ -647,6 +648,7 @@ onboarded
 onboarding
 openblas
 optionless
+orchestrator's
 orgs
 overridable
 parallel_branch
@@ -733,6 +735,10 @@ reporting_lines
 repos
 reputational
 request_id
+requeue
+requeued
+requeueing
+requeues
 rerank
 rescan
 research_autonomous
@@ -887,6 +893,7 @@ underperforming
 underspecified
 undispatched
 unencrypted
+unfillable
 ungated
 unheadered
 unimported

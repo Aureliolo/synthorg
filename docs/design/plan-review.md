@@ -124,8 +124,8 @@ finding, then re-reviews, until the panel stops objecting or
 whatever verdict carries it, since an endorsement that still notes a gap has
 still noted one. Each round is its own `plan_review_panel_revision_N` phase, so
 how many panels ran is readable rather than inferred, and each round briefs from
-the ORIGINAL objective plus the LATEST review: findings describe the plan they
-were raised against, so carrying a superseded round's forward asks the planner
+the ORIGINAL objective plus the MOST RECENT review: findings describe the plan
+they were raised against, so carrying a superseded round's forward asks the planner
 to fix a plan that no longer exists. Reaching the cap is not a failure. The plan
 is parked for the operator carrying whatever is still outstanding, which is
 exactly what happened before anything read the findings, and
@@ -276,7 +276,7 @@ there is no running work to retire and no successor to point a project at. A
 change request that parked the plan in `DRAFT` instead is what left one sitting
 with nobody assigned to revise it, since the org has no trigger on `DRAFT` and
 the operator's only remaining route was to hand-author the item list through
-`/plans/{id}/replan`. The prior revision is snapshotted into `version_history`
+`/plans/{id}/replan`. A snapshot of the prior revision reaches `version_history`
 either way, so a reviewer can diff what changed, and `Plan.review` is cleared:
 the panel's findings referenced items that no longer exist.
 
