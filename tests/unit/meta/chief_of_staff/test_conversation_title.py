@@ -38,6 +38,27 @@ class TestShortMessages:
     def test_a_bullet_marker_is_structure_too(self) -> None:
         assert derive_conversation_title("- Build me a clone") == "Build me a clone"
 
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "1. Build me a clone",
+            "1) Build me a clone",
+            "+ Build me a clone",
+            "12. Build me a clone",
+        ],
+    )
+    def test_a_list_marker_is_structure_in_every_spelling(self, content: str) -> None:
+        assert derive_conversation_title(content) == "Build me a clone"
+
+    @pytest.mark.parametrize(
+        "content",
+        ["1.5 million users please", "3 things I want from the dashboard"],
+    )
+    def test_a_leading_number_that_is_a_word_survives(self, content: str) -> None:
+        # The delimiter and the space after it are what make a list; a number
+        # the operator meant as part of their sentence keeps every character.
+        assert derive_conversation_title(content) == content
+
 
 class TestNothingToNameItBy:
     @pytest.mark.parametrize("content", ["", "   ", "\n\t ", "###", "> "])

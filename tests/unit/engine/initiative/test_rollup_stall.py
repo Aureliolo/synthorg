@@ -1,5 +1,6 @@
 """What the rollup does with an initiative that can no longer advance."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -7,16 +8,18 @@ from structlog.testing import capture_logs
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.services.plan_service_factory import build_plan_service
-from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.initiative_stall import (
     DISPOSITION_METADATA_KEY,
     ESCALATION_ACTOR,
     INITIATIVE_STALL_ACTION_TYPE,
+    PLAN_ID_METADATA_KEY,
     REASON_METADATA_KEY,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import (
@@ -46,11 +49,13 @@ from tests.unit.engine.initiative._rollup_fixtures import (
     ITEM_A,
     ITEM_B,
     PLAN_ID,
+    PROJECT,
     decided_plan_ids,
     item,
     open_decisions,
     plan_of,
     seed,
+    statuses,
     task_of,
 )
 
@@ -257,6 +262,43 @@ class TestStallEscalation:
 
         assert len(trigger.fired) == 1
 
+    async def test_a_decision_raised_by_someone_else_does_not_silence_this(
+        self,
+    ) -> None:
+        """A pending item is a reason to stay silent, so it needs provenance.
+
+        ``POST /approvals`` takes an action type and a metadata blob from any
+        caller holding write access. Matching on the plan alone would let one
+        such row suppress the escalation for as long as it stayed pending, and
+        the initiative would sit stalled with nobody ever asked: the deadlock
+        the decision exists to end, reached by writing a row.
+        """
+        store = ApprovalStore()
+        await store.add(
+            ApprovalItem(
+                action_type=NotBlankStr(INITIATIVE_STALL_ACTION_TYPE),
+                title=NotBlankStr("Initiative stopped: something else"),
+                description=NotBlankStr("Raised by something that is not us"),
+                requested_by=NotBlankStr("pair-programmer-3"),
+                risk_level=ApprovalRiskLevel.HIGH,
+                status=ApprovalStatus.PENDING,
+                created_at=datetime(2026, 7, 19, tzinfo=UTC),
+                metadata={PLAN_ID_METADATA_KEY: sid(PLAN_ID)},
+            )
+        )
+        service, _ = await _stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=store
+        )
+
+        await service.recompute(as_uuid(PLAN_ID))
+
+        ours = [
+            i
+            for i in await open_decisions(store)
+            if str(i.requested_by) == ESCALATION_ACTOR
+        ]
+        assert len(ours) == 1
+
     async def test_with_nothing_able_to_ask_the_plan_fails(self) -> None:
         """A plan nobody can decide is worse than one that says it stopped."""
         service, backend = await _stalled(
@@ -269,6 +311,71 @@ class TestStallEscalation:
         assert plan is not None
         assert plan.status is PlanStatus.FAILED
         assert plan.failure_reason == "initiative stalled: all_failed"
+
+
+class TestATailStageReport:
+    """A stall only the tail could see arrives by report, not by derivation."""
+
+    async def test_a_reported_stall_reaches_the_operator(self) -> None:
+        store = ApprovalStore()
+        service, backend = await _stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=store
+        )
+
+        await service.report_stage_stall(
+            as_uuid(PLAN_ID),
+            StallReason.EVALUATION_UNMET,
+            ReplanDisposition.BUDGET_EXHAUSTED,
+        )
+
+        assert await decided_plan_ids(store) == (sid(PLAN_ID),)
+        plan = await backend.plans.get(NotBlankStr(sid(PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.EXECUTING
+
+    async def test_with_nothing_able_to_ask_a_reported_stall_ends_the_plan(
+        self,
+    ) -> None:
+        """The tail's own verdict reaches the same fail-closed answer.
+
+        The project deliberately does not follow: ``ProjectStatus`` carries no
+        FAILED member and the plan-to-project mirror maps no such status, so a
+        project behind a failed plan keeps its own. That gap is one decision
+        above this PR rather than something this path forgot, and pinning it
+        here means changing it has to be deliberate.
+        """
+        service, backend = await _stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=None
+        )
+
+        await service.report_stage_stall(
+            as_uuid(PLAN_ID),
+            StallReason.EVALUATION_UNMET,
+            ReplanDisposition.BUDGET_EXHAUSTED,
+        )
+
+        plan_status, project_status = await statuses(backend)
+        assert plan_status is PlanStatus.FAILED
+        assert project_status is ProjectStatus.ACTIVE
+
+    async def test_a_plan_deleted_under_the_report_is_skipped(self) -> None:
+        """The stage reports by id, so the plan can be gone by the time it lands."""
+        store = ApprovalStore()
+        service, backend = await _stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=store
+        )
+        await backend.plans.delete(NotBlankStr(sid(PLAN_ID)))
+
+        await service.report_stage_stall(
+            as_uuid(PLAN_ID),
+            StallReason.EVALUATION_UNMET,
+            ReplanDisposition.BUDGET_EXHAUSTED,
+        )
+
+        assert await open_decisions(store) == ()
+        project = await backend.projects.get(NotBlankStr(sid(PROJECT)))
+        assert project is not None
+        assert project.status is ProjectStatus.ACTIVE
 
 
 class TestTheDecisionItself:

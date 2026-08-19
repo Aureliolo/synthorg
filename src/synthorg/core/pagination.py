@@ -78,9 +78,20 @@ async def paginate[PageItemT](
 
     Centralises the offset-paging sweep that several services need when
     a single capped read would silently drop rows past the backend page
-    cap. The sweep is bounded: iteration stops as soon as a backend
-    returns a short (fewer than ``page_size``) or empty page, so a
-    caller cannot accidentally spin forever.
+    cap. The sweep is bounded: iteration stops on the first EMPTY page,
+    and each step advances by the rows the backend actually returned, so
+    the offset stays correct however small a page comes back and a
+    non-empty page always moves it forward.
+
+    A short page is not the end of the data. Deciding it was assumed
+    every repository honours a request up to one ceiling this module
+    knows, and repositories clamp their own pages: ``query`` on the
+    conversation-turn repositories stops at ``MAX_PAGE_SIZE`` while
+    ``MAX_LIST_LIMIT`` bounds an unfiltered ``list_*`` drain. Under the
+    old rule a caller asking for more than a method's own clamp got that
+    method's first page and silently lost the rest. Terminating on
+    emptiness needs no such knowledge, so no ceiling has to be repeated
+    here to be kept in step with the ones actually applied.
 
     Implemented with ``itertools.count`` (a ``for`` iterator) rather
     than ``while True``. The long-running-loop kill-switch gate only
@@ -110,19 +121,14 @@ async def paginate[PageItemT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    # Repository read methods clamp ``limit`` to ``MAX_LIST_LIMIT``, so a
-    # requested page larger than the cap comes back short of ``page_size``
-    # even when more rows remain. Drain at the effective (clamped) size so
-    # the short-page termination check reflects what the backend can
-    # actually return, instead of stopping early and dropping rows.
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
-    for offset in count(0, effective_page_size):
+    offset = 0
+    for _ in count():
         page = await fetch(effective_page_size, offset)
         if not page:
             return
         yield page
-        if len(page) < effective_page_size:
-            return
+        offset += len(page)
 
 
 async def collect_all[PageItemT](
@@ -173,10 +179,11 @@ async def collect_all_mapping[KeyT, ValT](
     stops on the first short page exactly like :func:`paginate`.
 
     Caller invariant: the wrapped repo method MUST return disjoint
-    pages over a stable key order. Overlapping keys across pages are
-    silently last-write-wins (``dict.update``); this helper does not
-    detect page overlap. An empty first page legitimately yields an
-    empty dict (a valid result, not an error).
+    pages over a stable key order, and its ``offset`` must count the
+    entries it returns. Overlapping keys across pages are silently
+    last-write-wins (``dict.update``); this helper does not detect page
+    overlap. An empty first page legitimately yields an empty dict (a
+    valid result, not an error).
 
     Cancellation: if the awaiting task is cancelled mid-page the
     ``CancelledError`` from the in-flight ``fetch`` propagates
@@ -200,18 +207,19 @@ async def collect_all_mapping[KeyT, ValT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    # Drain at the backend-clamped size (see :func:`paginate`) so a
-    # ``page_size`` above ``MAX_LIST_LIMIT`` does not read short and
-    # terminate early, silently dropping entries past the cap.
+    # Terminates on emptiness and advances by the entries returned, for
+    # the reason :func:`paginate` gives: a short page means a repository
+    # applied its own clamp at least as often as it means the data ran
+    # out, and this module cannot tell the two apart from the count.
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
     merged: dict[KeyT, ValT] = {}
-    for offset in count(0, effective_page_size):
+    offset = 0
+    for _ in count():
         page = await fetch(effective_page_size, offset)
         if not page:
             return merged
         merged.update(page)
-        if len(page) < effective_page_size:
-            return merged
+        offset += len(page)
     return merged  # unreachable; count() is infinite
 
 

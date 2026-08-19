@@ -117,7 +117,7 @@ class ConfirmedStall(BaseModel):
         default=None,
         description="What the scheduling stage observed",
     )
-    granted_by: str | None = Field(
+    granted_by: NotBlankStr | None = Field(
         default=None,
         description="Who authorised this replan, when a person did",
     )
@@ -526,13 +526,14 @@ class ReplanTriggerService:
         # No empty-successor guard: DecompositionPlan rejects an empty subtask
         # tree, so a decomposition that produced nothing raised above.
         revised = items_from_decomposition(result)
+        # Read once: who authorised the replan and whether the budget resets
+        # are the SAME fact, so two reads of it are two chances to disagree.
+        granter = stall.granted_by
         successor = await self._replan.replan(
             plan,
             items=revised,
-            requested_by=stall.granted_by or ACTOR,
-            replan_generation=(
-                0 if stall.granted_by is not None else plan.replan_generation + 1
-            ),
+            requested_by=granter or ACTOR,
+            replan_generation=0 if granter else plan.replan_generation + 1,
         )
         logger.info(
             INITIATIVE_REPLAN_COMPLETED,

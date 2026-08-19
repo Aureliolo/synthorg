@@ -32,7 +32,14 @@ _ELLIPSIS: Final[str] = "…"
 #: Leading Markdown structure an agent-facing composer may have added. Stripped
 #: because it is formatting rather than words: a row reading "## Build me a
 #: dashboard" shows the operator punctuation they did not intend as a title.
-_LEADING_MARKUP: Final[re.Pattern[str]] = re.compile(r"^[#>*\-\s]+")
+#:
+#: Ordered-list markers count, and need their own alternative because a digit
+#: is otherwise a word: the delimiter and the space after it are what make
+#: "1. Build a dashboard" a list rather than a sentence starting with a number,
+#: so "1.5 million users" and "3 things I want" keep every character.
+_LEADING_MARKUP: Final[re.Pattern[str]] = re.compile(
+    r"^\s*(?:[#>*+\-]+[ \t]*|\d+[.)][ \t]+)+"
+)
 
 _WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
 

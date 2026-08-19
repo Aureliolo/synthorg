@@ -228,7 +228,11 @@ class TestProvenance:
         """``POST /approvals`` copies an action type and metadata verbatim.
 
         Acting on one would let anything holding write access aim a plan
-        failure, or a budget-lifting replan, at any initiative it can name.
+        failure, or a budget-lifting replan, at any initiative it can name. It
+        is claimed rather than declined, because an unclaimed item carrying the
+        objective task's id reaches the review-gate flow next and is read there
+        as a completion review: declining would hand the forger a path one flow
+        further down.
         """
         app_state, backend, trigger = await _seed(
             decision=_decision(requested_by="pair-programmer-3")
@@ -238,7 +242,7 @@ class TestProvenance:
             app_state, sid(_APPROVAL), approved=False, decided_by=_DECIDER
         )
 
-        assert owned is False
+        assert owned is True
         assert trigger is not None
         assert trigger.granted == []
         plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))

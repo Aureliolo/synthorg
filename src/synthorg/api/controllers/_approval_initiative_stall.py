@@ -156,12 +156,18 @@ async def try_initiative_stall_resume(
         # organisation raised. Acting on it would let a writer aim a plan
         # failure, or a budget-lifting replan, at any initiative they name, and
         # dress it in words of their own on the operator's plan page.
+        #
+        # Claimed rather than declined, on the same argument the two refusals
+        # below make: an unclaimed item carrying the objective task's id
+        # reaches the review-gate flow, which reads it as a completion review
+        # and acts on it there. Declining here would hand the forger the very
+        # path this check exists to close, one flow further down.
         logger.warning(
             INITIATIVE_STALL_FOREIGN,
             approval_id=approval_id,
             requested_by=str(item.requested_by),
         )
-        return False
+        return True
     expected = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
     if item.status is not expected:
         # The answer being acted on and the answer on the row disagree, so one

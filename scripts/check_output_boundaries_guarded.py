@@ -40,12 +40,19 @@ See CLAUDE.md "Output-Style Policy (MANDATORY)".
 import ast
 import sys
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, Literal, NamedTuple
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-_ENFORCING: Final[str] = "enforcing"
-_OBSERVING: Final[str] = "observing"
+#: The two kinds, as a closed type rather than a pair of strings. A misspelt
+#: kind belongs to neither branch, so the boundary would be checked for its
+#: guard and never for the raising door: the gate would keep passing while the
+#: one property it exists to hold went unchecked. Spelling it as a literal
+#: union makes that typo a type error instead.
+_BoundaryKind = Literal["enforcing", "observing"]
+
+_ENFORCING: Final[_BoundaryKind] = "enforcing"
+_OBSERVING: Final[_BoundaryKind] = "observing"
 
 #: The raising door. An observing boundary calling this has become a deciding
 #: one, which is the regression the kind split exists to catch.
@@ -62,7 +69,7 @@ class _Boundary(NamedTuple):
     """
 
     label: str
-    kind: str
+    kind: _BoundaryKind
     accepted: frozenset[str]
 
 

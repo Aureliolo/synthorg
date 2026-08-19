@@ -274,7 +274,16 @@ class StallEscalationService:
             action_type=NotBlankStr(INITIATIVE_STALL_ACTION_TYPE),
         )
         for item in pending:
-            if item.metadata.get(PLAN_ID_METADATA_KEY) == plan_id:
+            # Provenance as well as subject, the same pair the resume flow
+            # checks. A pending item is a REASON TO STAY SILENT, so anything
+            # able to mint one under this action type could otherwise suppress
+            # the escalation for as long as it left the item pending, and the
+            # initiative would stay stalled with nobody asked: the exact
+            # deadlock the decision exists to end, reached by writing a row.
+            if (
+                str(item.requested_by) == ACTOR
+                and item.metadata.get(PLAN_ID_METADATA_KEY) == plan_id
+            ):
                 logger.debug(
                     INITIATIVE_STALL_ALREADY_OPEN,
                     plan_id=plan_id,

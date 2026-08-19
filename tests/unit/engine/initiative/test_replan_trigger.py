@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import Plan, PlanItem
@@ -23,6 +24,7 @@ from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 from synthorg.engine.initiative.replan_trigger import (
     _DEFAULT_MAX_GENERATIONS,
     ACTOR,
+    ConfirmedStall,
     ReplanTriggerService,
 )
 from synthorg.engine.task_engine import TaskEngine
@@ -738,3 +740,28 @@ class TestTheStalenessRecheck:
         await _grant(service, plan)
 
         assert len(replan.calls) == 1
+
+
+class TestWhoAuthorisedTheReplan:
+    """Attribution and the budget reset are one fact, so they read one value."""
+
+    def test_a_blank_granter_cannot_be_constructed(self) -> None:
+        """A person is somebody, so the absent case is None and only None.
+
+        Blank is the value that reads as present to one consumer and absent to
+        another: the successor would be attributed to the org while carrying
+        the generation reset that only a human decision earns. Refusing it at
+        the type means no consumer has to agree about what it meant.
+
+        The unset form is constructed first, so the refusal below cannot be
+        the shared validator objecting to something else about the shape.
+        """
+        shape = {
+            "plan": _plan(_item(_ITEM_A), status=PlanStatus.EVALUATING),
+            "reason": StallReason.EVALUATION_UNMET,
+            "items": (),
+        }
+        assert ConfirmedStall(**shape, granted_by=None).granted_by is None
+
+        with pytest.raises(ValidationError):
+            ConfirmedStall(**shape, granted_by="")
