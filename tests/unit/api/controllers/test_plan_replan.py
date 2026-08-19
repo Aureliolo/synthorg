@@ -1,5 +1,6 @@
 """Tests for re-planning a dispatched initiative."""
 
+import asyncio
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -631,6 +632,64 @@ class TestReplan:
         assert project is not None
         assert project.plan_id is not None
         assert project.plan_id != as_uuid(_PLAN_ID)
+
+    async def test_a_cancellation_never_undoes_a_retire_that_committed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The retire is shielded, so our cancellation is not its cancellation.
+
+        ``asyncio.shield`` raises in the AWAITER while the shielded task
+        carries on and can still succeed, so compensating on the raise alone
+        rolls back a write that landed: the project would point at the plan
+        just superseded and the only live plan would be deleted. The automatic
+        replan trigger runs this under a wall-clock deadline, so the
+        cancellation is an ordinary event rather than an exotic one.
+        """
+        state, backend, _ = await _seed(PlanStatus.EXECUTING)
+        reached = asyncio.Event()
+        release = asyncio.Event()
+        real_update = backend.plans.update
+        gated = {"done": False}
+
+        async def _gated_update(
+            plan: Plan, *, expected_version: int | None = None
+        ) -> None:
+            # Only the FIRST plan write is held: that is the supersede inside
+            # the shielded retire, and gating the rest would stall the tail
+            # the cancellation is supposed to let through.
+            if not gated["done"]:
+                gated["done"] = True
+                reached.set()
+                await release.wait()
+            await real_update(plan, expected_version=expected_version)
+
+        monkeypatch.setattr(
+            backend.plans,
+            "update",
+            AsyncMock(spec=backend.plans.update, side_effect=_gated_update),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+        replan = asyncio.ensure_future(
+            replan_initiative(state, existing, revision=_REVISION, requested_by="admin")
+        )
+
+        # Events rather than sleeps: the race is deterministic, so the test is
+        # too. Cancel while the shielded retire is mid-write, then let it land.
+        await reached.wait()
+        replan.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await replan
+
+        # The retire committed, so it stands: the predecessor is superseded and
+        # the successor it was replaced by still exists.
+        retired = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert retired is not None
+        assert retired.status is PlanStatus.SUPERSEDED
+        await self._assert_project_points_at_live_plan(backend)
+        # And the tail ran under its own shield, so the successor is decidable
+        # rather than a PENDING_REVIEW plan with no approval behind it.
+        _parked_store(state).add.assert_awaited()
 
     @staticmethod
     async def _assert_one_live_executing_plan(
