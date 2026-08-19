@@ -683,3 +683,9 @@ class TestEditFileExecution:
         )
         assert result.is_error
         assert "VIOL_A" in result.content
+        # The refusal has to reach disk as well as the agent: a guard that
+        # wrote first and reported afterwards would satisfy every assertion
+        # above while the violation it refused sat in the tree.
+        assert (workspace / "launder.py").read_text(encoding="utf-8") == (
+            "x = 1  # VIOL_A\ny = 2  # VIOL_A\nkeep = 3\nz = 4\n"
+        )
