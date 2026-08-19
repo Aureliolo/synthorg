@@ -102,9 +102,11 @@ async def gate_wave(
         nothing because every subtask already delivered records a successful
         phase, because the level IS delivered.
 
-        A wave held back on an input somebody still owes an answer on records
-        a NON-failed phase, and that is the whole difference between the two
-        empty waves. ``CoordinationResult.is_success`` is ``all(p.success)``,
+        A wave held back ENTIRELY on inputs somebody still owes an answer on
+        records a NON-failed phase, and that is the whole difference between
+        the two empty waves. A wave that empties both ways at once still
+        fails, because the subtask whose input died did not deliver and never
+        will. ``CoordinationResult.is_success`` is ``all(p.success)``,
         and a coordination that reports failure fails the plan exactly as a
         raise does, so a failed phase here would destroy the initiative over a
         question a person has not answered yet. The rows are deliberately left
@@ -133,14 +135,20 @@ async def gate_wave(
             group=gated, settled=settled, delivered=delivered, awaiting=awaiting
         )
 
-    parked = bool(awaiting)
-    failed = not delivered and not parked
+    # Counted, not inferred from the absence of a hold: a wave empties more
+    # than one way at once, and one subtask parked on a dependency that died
+    # beside another held on a person is both. The first of those did not
+    # deliver and never will, so the level failed however many of its
+    # siblings are merely waiting.
+    undeliverable = len(unsettled.assignments) - awaiting
     phases.append(
         CoordinationPhaseResult(
             phase=phase_name(wave_idx),
-            success=not failed,
+            success=not undeliverable,
             duration_seconds=clock.monotonic() - start,
-            error=_empty_wave_error(wave_idx) if failed else None,
+            error=_empty_wave_error(wave_idx, awaiting=awaiting)
+            if undeliverable
+            else None,
         )
     )
     return GatedWave(
@@ -148,15 +156,23 @@ async def gate_wave(
     )
 
 
-def _empty_wave_error(wave_idx: int) -> str:
+def _empty_wave_error(wave_idx: int, *, awaiting: int) -> str:
     """Say why a wave that failed had nothing left to dispatch.
 
     Args:
         wave_idx: Which wave this is.
+        awaiting: How many of its subtasks are merely held on a person, which
+            a replan reading this must not mistake for work that died.
 
     Returns:
-        The phase error for the one empty wave that IS a failure.
+        The phase error for an empty wave that carries at least one subtask
+        whose declared inputs will not arrive.
     """
+    if awaiting:
+        return (
+            f"Wave {wave_idx}: some subtasks parked on work that did not "
+            f"deliver, and {awaiting} more are waiting on a decision"
+        )
     return f"Wave {wave_idx}: every subtask parked on work that did not deliver"
 
 

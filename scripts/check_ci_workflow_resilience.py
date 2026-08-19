@@ -1557,19 +1557,49 @@ def _attempts_for_line(line: str, from_env: int) -> int:
     binds to the one command it precedes. Reading only the step's ``env:``
     would report a single-attempt inline call as a ladder.
 
+    Bound to the helper's OWN command segment, because a prefix binds to the
+    command it precedes and nothing after the next separator. Searching the
+    whole line reads ``RETRY_CMD_ATTEMPTS=1 echo x; retry_cmd.sh sudo ...`` as
+    a single attempt when the helper inherits five, which is the fail-open
+    this rule exists to close.
+
     Args:
-        line: The stripped invocation line.
-        from_env: What the step's ``env:`` declared, used when the line does
-            not override it.
+        line: The logical invocation line.
+        from_env: What the step's ``env:`` declared, used when the segment
+            does not override it.
 
     Returns:
         The count that applies to this invocation.
     """
+    segment = _helper_segment(line)
     prefix = f"{_ATTEMPTS_VAR}="
-    if prefix not in line:
+    if prefix not in segment:
         return from_env
-    digits = line.split(prefix, 1)[1].split(maxsplit=1)[0].strip("\"'")
+    digits = segment.split(prefix, 1)[1].split(maxsplit=1)[0].strip("\"'")
     return int(digits) if digits.isdigit() else _DEFAULT_ATTEMPTS
+
+
+def _helper_segment(line: str) -> str:
+    """Return the command segment of *line* that invokes the retry helper.
+
+    Split on the shell separators that end one command and start another, so
+    an assignment in an earlier segment is not read as this command's prefix.
+
+    Args:
+        line: The logical invocation line.
+
+    Returns:
+        The last segment naming the helper, or the whole line when the split
+        loses it (a separator inside a quoted argument), which is the
+        fail-closed reading: the whole line at worst reports a violation to
+        look at rather than hiding one.
+    """
+    segment = line
+    for separator in (";", "&&", "||", "|"):
+        parts = [part for part in segment.split(separator) if _RETRY_HELPER in part]
+        if parts:
+            segment = parts[-1]
+    return segment if _RETRY_HELPER in segment else line
 
 
 def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:

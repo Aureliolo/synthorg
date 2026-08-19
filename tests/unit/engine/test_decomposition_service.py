@@ -8,6 +8,7 @@ import pytest
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
+from synthorg.engine.decomposition import service as service_module
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (
@@ -530,17 +531,45 @@ class TestOneDecompositionCannotRunForever:
         assert resolver.get_float.await_count == 2
 
     @pytest.mark.unit
-    async def test_an_unreadable_ceiling_still_bounds_the_call(self) -> None:
+    async def test_an_unreadable_ceiling_still_bounds_the_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # The failure this exists to prevent is an unbounded wait, so a
-        # settings read that failed is no reason to grant one.
+        # settings read that failed is no reason to grant one. Driven by the
+        # strategy that never answers: against one that returns immediately
+        # the assertion holds whether the fallback bounds anything or removes
+        # the ceiling altogether, which is no test of the fallback at all.
+        monkeypatch.setattr(
+            service_module,
+            "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
+            _A_SHORT_CEILING,
+        )
         resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
         resolver.get_float.side_effect = RuntimeError("settings unreadable")
         service = DecompositionService(
-            ManualDecompositionStrategy(_make_plan()),
+            _NeverAnsweringStrategy(),
             TaskStructureClassifier(),
             config_resolver=resolver,
         )
 
-        result = await service.decompose_task(_make_task(), DecompositionContext())
+        with pytest.raises(DecompositionError):
+            await service.decompose_task(_make_task(), DecompositionContext())
 
-        assert len(result.created_tasks) == 3
+    @pytest.mark.unit
+    async def test_no_resolver_at_all_still_bounds_the_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The other way the read can be absent: a harness runs with no
+        # settings, and the bound has to stand there too.
+        monkeypatch.setattr(
+            service_module,
+            "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
+            _A_SHORT_CEILING,
+        )
+        service = DecompositionService(
+            _NeverAnsweringStrategy(),
+            TaskStructureClassifier(),
+        )
+
+        with pytest.raises(DecompositionError):
+            await service.decompose_task(_make_task(), DecompositionContext())

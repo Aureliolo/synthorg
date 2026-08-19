@@ -561,6 +561,23 @@ class TestRetryEscalation:
         )
         assert _scan(tmp_path, content) == []
 
+    def test_a_prefix_on_an_earlier_command_does_not_bind_here(
+        self, tmp_path: Path
+    ) -> None:
+        # An inline prefix binds to the command it precedes and nothing past
+        # the next separator, so reading the whole line let an assignment on
+        # an unrelated command certify the helper as single-attempt while it
+        # inherited the default of five.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: RETRY_CMD_ATTEMPTS=1 echo ignored;"
+            " .github/scripts/retry_cmd.sh 'apt' sudo apt-get install -y jq\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
     def test_an_unnamed_attempt_count_is_still_a_ladder(self, tmp_path: Path) -> None:
         # The helper defaults to five, so a call site that names no count is
         # the most retried shape there is, not an exempt one.

@@ -27,14 +27,16 @@ the same, but bash-specific syntax needs PowerShell equivalents. The revision
 check the skill requires before anything is filed becomes:
 
 ```powershell
-docker image inspect <backend-image> --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}'
+docker image inspect <backend-image> --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
 git rev-parse HEAD
 ```
 
-The inner double quotes are escaped because PowerShell parses the argument
-before Docker sees it; the bash form passes them through single quotes intact.
-Compare the two outputs yourself: they must be equal, or the running artefact
-is not the code under test and the whole run measures something else.
+Unchanged from the bash form: a PowerShell single-quoted string is literal, so
+the inner double quotes reach Docker as themselves and the Go template parses.
+Do not escape them; PowerShell would pass the backslashes through and Docker
+would reject the template. Compare the two outputs yourself: they must be
+equal, or the running artefact is not the code under test and the whole run
+measures something else.
 
 Elsewhere in the skill, translate as needed:
 

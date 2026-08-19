@@ -230,6 +230,49 @@ class TestGateWaveSkipsSettledWork:
         assert phases[0].success
         assert phases[0].error is None
 
+    async def test_a_wave_that_empties_both_ways_still_fails(self) -> None:
+        """One subtask waiting does not excuse another whose input died.
+
+        A wave empties more than one way at once, so reading "anything is
+        waiting" as "nothing failed" hands the run a successful phase for a
+        level carrying a subtask that cannot deliver and never will. The
+        failure is counted, not inferred from the absence of a hold.
+        """
+        waiting = _assignment("waiting")
+        doomed = _assignment("doomed")
+        parked = _task("parked", status=TaskStatus.BLOCKED)
+        rows = {
+            str(waiting.task.id): _task("waiting"),
+            str(doomed.task.id): _task("doomed"),
+            str(parked.id): parked.model_copy(
+                update={"blocked_reason": BlockedReason.ORACLE_ESCALATED}
+            ),
+        }
+        phases: list[CoordinationPhaseResult] = []
+        clock: Clock = FakeClock()
+
+        outcome = await gate_wave(
+            _group(waiting, doomed),
+            wave_idx=0,
+            assignment_writer=AssignmentWriter(_engine(rows)),
+            dependencies={
+                str(waiting.task.id): (str(parked.id),),
+                str(doomed.task.id): ("missing-dependency",),
+            },
+            clock=clock,
+            start=clock.monotonic(),
+            phases=phases,
+        )
+
+        assert outcome.group is None
+        assert outcome.awaiting == 1
+        assert len(phases) == 1
+        assert not phases[0].success
+        assert phases[0].error is not None
+        # Named as the mix it is, because a replan reads this and a wave
+        # reported as wholly dead sends it looking for work to redo.
+        assert "waiting on a decision" in phases[0].error
+
     async def test_a_fresh_wave_is_unchanged(self) -> None:
         # Every subtask of a plan dispatched for the first time sits at
         # CREATED, so the narrowing must be invisible on a fresh run.
