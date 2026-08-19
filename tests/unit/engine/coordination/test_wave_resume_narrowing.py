@@ -230,6 +230,51 @@ class TestGateWaveSkipsSettledWork:
         assert phases[0].success
         assert phases[0].error is None
 
+    async def test_awaiting_counts_subtasks_not_the_inputs_they_wait_on(
+        self,
+    ) -> None:
+        """The empty-wave verdict subtracts assignments, so `awaiting` is too.
+
+        `undeliverable = len(assignments) - awaiting` is only a count of what
+        cannot deliver while both sides measure the same thing. Were
+        `awaiting` to count parked DEPENDENCIES, one subtask waiting on two
+        of them would drive it negative and report a wave that is merely
+        waiting as one that failed, which sends a replan after work nothing
+        lost. The unit is what this pins.
+        """
+        waiting = _assignment("waiting")
+        first = _task("first-input", status=TaskStatus.BLOCKED)
+        second = _task("second-input", status=TaskStatus.BLOCKED)
+        rows = {
+            str(waiting.task.id): _task("waiting"),
+            str(first.id): first.model_copy(
+                update={"blocked_reason": BlockedReason.ORACLE_ESCALATED}
+            ),
+            str(second.id): second.model_copy(
+                update={"blocked_reason": BlockedReason.REVIEWER_UNSTAFFED}
+            ),
+        }
+        phases: list[CoordinationPhaseResult] = []
+        clock: Clock = FakeClock()
+
+        outcome = await gate_wave(
+            _group(waiting),
+            wave_idx=0,
+            assignment_writer=AssignmentWriter(_engine(rows)),
+            dependencies={
+                str(waiting.task.id): (str(first.id), str(second.id)),
+            },
+            clock=clock,
+            start=clock.monotonic(),
+            phases=phases,
+        )
+
+        assert outcome.group is None
+        assert outcome.awaiting == 1
+        assert len(phases) == 1
+        assert phases[0].success
+        assert phases[0].error is None
+
     async def test_a_wave_that_empties_both_ways_still_fails(self) -> None:
         """One subtask waiting does not excuse another whose input died.
 

@@ -57,10 +57,16 @@ async def resolve_hire_model(
     model, or have runtime tool-call failures downgrade it out of eligibility.
     Every one of those produces the same roster entry as the placeholder this
     already refuses, so this asks the catalogue the same question the
-    proposal asked and refuses the same way. With no catalogue wired there is
-    nothing to ask, and the absent-binding refusal above already covers that
-    pipeline: it can propose nothing, so nothing reaches here bound except a
-    pair an operator named outright.
+    proposal asked and refuses the same way.
+
+    With no catalogue there is nothing to ask, and that is a refusal too
+    rather than a pass: a provider is a registered CONNECTION, so a pair
+    nothing can confirm is one is exactly the unverified binding above. The
+    reasoning that it cannot happen (a pipeline with no catalogue proposes
+    nothing, so a bound request should be unreachable) is true of the
+    proposal path alone, and ``bind_model`` takes any syntactically valid
+    ``MODEL_REF`` from a caller of its own. Nothing legitimate is lost:
+    wiring declines the whole hiring subsystem without a catalogue.
 
     Args:
         request: The approved request, carrying the pair it was approved on.
@@ -70,7 +76,7 @@ async def resolve_hire_model(
     Raises:
         HiringError: When the request carries no pair, which means nothing
             was proposable when the approval was raised, or when the pair it
-            carries is no longer one the operator has.
+            carries is not one the operator's live catalogue offers.
 
     Returns:
         The pair the new agent runs on.
@@ -89,8 +95,21 @@ async def resolve_hire_model(
             error=msg,
         )
         raise HiringError(msg)
-    if catalogue is not None:
-        await _require_still_offerable(request, ref.provider, ref.model_id, catalogue)
+    if catalogue is None:
+        msg = (
+            f"Hiring request {request.id!s} names {ref.provider}/{ref.model_id}, "
+            "but no provider catalogue is wired, so nothing can confirm that is "
+            "a connection this organisation has. Refusing rather than "
+            "registering an agent whose every dispatch would fail."
+        )
+        logger.warning(
+            HR_HIRING_MODEL_UNSET,
+            request_id=str(request.id),
+            role=str(request.role),
+            error=msg,
+        )
+        raise HiringError(msg)
+    await _require_still_offerable(request, ref.provider, ref.model_id, catalogue)
     return ModelConfig(
         provider=NotBlankStr(ref.provider),
         model_id=NotBlankStr(ref.model_id),

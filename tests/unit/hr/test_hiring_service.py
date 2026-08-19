@@ -777,3 +777,31 @@ class TestHiringServiceModelBinding:
         with pytest.raises(HiringError, match=expected):
             await service.instantiate_agent(approved)
         assert await registry.list_active() == ()
+
+    async def test_a_bound_pair_with_no_catalogue_refuses(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Unverifiable is refused, not waved through.
+
+        `bind_model` takes any syntactically valid `MODEL_REF` from a caller
+        of its own, so "a pipeline with no catalogue can propose nothing"
+        does not make a bound request unreachable here. A provider is a
+        registered connection, and nothing here can confirm this one is.
+        """
+        service = HiringService(registry=registry)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Unverifiable pair test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        bound = await service.bind_model(str(approved.id), bound_ref())
+
+        with pytest.raises(HiringError, match="no provider catalogue is wired"):
+            await service.instantiate_agent(bound)
+        assert await registry.list_active() == ()

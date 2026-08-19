@@ -144,6 +144,7 @@ async def abandon_filed_children(
         doomed = await _filed_children(app_state, plan_id)
         engine = task_engine_of(app_state)
         abandoned = 0
+        refused = 0
         for task in doomed:
             if str(task.id) == parent_task_id:
                 continue
@@ -157,12 +158,27 @@ async def abandon_filed_children(
             )
             if reached is not None:
                 abandoned += 1
+            else:
+                refused += 1
         if abandoned:
             logger.info(
                 APPROVAL_GATE_PLAN_DISPATCH_FAILED,
                 plan_id=plan_id,
                 abandoned=abandoned,
                 note="terminated the child rows the failed dispatch had filed",
+            )
+        if refused:
+            # Counted and reported separately, because a refusal IS the harm
+            # this function exists to prevent: those rows keep a status
+            # nothing watches under a plan about to go terminal, and a
+            # success-only log would leave the one outcome worth acting on
+            # as silence.
+            logger.error(
+                APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+                plan_id=plan_id,
+                refused=refused,
+                note="child rows refused termination and stay unwatched under "
+                "a terminal plan",
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

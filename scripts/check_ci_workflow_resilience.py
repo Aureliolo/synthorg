@@ -247,7 +247,6 @@ Usage::
 """
 
 import argparse
-import itertools
 import re
 import shlex
 import sys
@@ -274,6 +273,10 @@ _DEFAULT_ATTEMPTS: Final[int] = 5
 # A command that escalates by some other spelling is not recognised, so this
 # names the paths the tree uses rather than claiming to decide the question.
 _ESCALATION_MARKERS: Final[tuple[str, ...]] = ("sudo ", "--with-deps")
+
+#: A shell word that assigns rather than names a command. Only these, and
+#: only before the executable, are environment the shell applies to it.
+_ASSIGNMENT_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 _CHECKOUT_ACTION: Final[str] = "actions/checkout"
 _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
@@ -1493,27 +1496,17 @@ def _retry_lines_missing_deadline(run: str) -> list[str]:
     instead of via step ``env:``, so each invocation is inspected
     separately: one prefixed call does not cover an unprefixed sibling.
 
-    Read as LOGICAL lines, for the same reason the escalation rule is: an
-    invocation is one command however many source lines it spans, so a
-    prefix written above its own helper call is set on that call and a
-    physical read would report it as missing.
-
-    Then narrowed to the helper's own command SEGMENT, for the same reason
-    again: a prefix binds to the command it precedes and nothing past the
-    next separator, so ``RETRY_CMD_DEADLINE=240 echo x; retry_cmd.sh ...``
-    leaves the helper on its zero-second default while the whole-line read
-    certifies it as bounded.
-
     Args:
         run: The step's shell body.
 
     Returns:
-        The offending invocations, in source order.
+        The line each offending invocation sits on, in source order.
     """
     return [
         line
         for line in _logical_lines(run)
-        if _RETRY_HELPER in line and _DEADLINE_VAR not in _helper_segment(line)
+        for call in _helper_calls(line)
+        if _DEADLINE_VAR not in call.assignments
     ]
 
 
@@ -1564,57 +1557,115 @@ def _attempts_from_env(step: dict[str, object]) -> int:
     return int(text) if text.isdigit() else _DEFAULT_ATTEMPTS
 
 
-def _attempts_for_line(line: str, from_env: int) -> int:
-    """Return the attempt count in force for one invocation line.
+def _attempts_for_call(call: _HelperCall, from_env: int) -> int:
+    """Return the attempt count in force for one invocation.
 
     A call site may set the count as an inline ``VAR=n cmd`` prefix instead of
-    via step ``env:``, exactly as it may set the deadline, and an inline prefix
-    binds to the one command it precedes. Reading only the step's ``env:``
-    would report a single-attempt inline call as a ladder.
-
-    Bound to the helper's OWN command segment, because a prefix binds to the
-    command it precedes and nothing after the next separator. Searching the
-    whole line reads ``RETRY_CMD_ATTEMPTS=1 echo x; retry_cmd.sh sudo ...`` as
-    a single attempt when the helper inherits five, which is the fail-open
-    this rule exists to close.
+    via step ``env:``, exactly as it may set the deadline. Reading only the
+    step's ``env:`` would report a single-attempt inline call as a ladder.
 
     Args:
-        line: The logical invocation line.
-        from_env: What the step's ``env:`` declared, used when the segment
-            does not override it.
+        call: The parsed invocation.
+        from_env: What the step's ``env:`` declared, used when the call sets
+            no prefix of its own.
 
     Returns:
         The count that applies to this invocation.
     """
-    segment = _helper_segment(line)
-    prefix = f"{_ATTEMPTS_VAR}="
-    if prefix not in segment:
+    declared = call.assignments.get(_ATTEMPTS_VAR)
+    if declared is None:
         return from_env
-    digits = segment.split(prefix, 1)[1].split(maxsplit=1)[0].strip("\"'")
-    return int(digits) if digits.isdigit() else _DEFAULT_ATTEMPTS
+    return int(declared) if declared.isdigit() else _DEFAULT_ATTEMPTS
 
 
-def _helper_segment(line: str) -> str:
-    """Return the command segment of *line* that invokes the retry helper.
+class _HelperCall(NamedTuple):
+    """One ``retry_cmd.sh`` invocation, split into the parts the rules read.
 
-    Split on the shell separators that end one command and start another, so
-    an assignment in an earlier segment is not read as this command's prefix.
+    Attributes:
+        assignments: The ``VAR=value`` words written BEFORE the helper
+            executable, which are the only ones the shell applies to it. A
+            value written after it is an argument to the wrapped command, so
+            reading those too let a ladder certify itself as bounded while
+            the helper ran on its zero-second default.
+        command: The words after the helper's mandatory label, which are the
+            command it actually retries.
+        text: The invocation rejoined, for the marker search: a wrapped
+            command that arrived quoted is one word, so a marker inside it is
+            findable only as a substring.
+    """
+
+    assignments: dict[str, str]
+    command: tuple[str, ...]
+    text: str
+
+
+def _helper_calls(line: str) -> list[_HelperCall]:
+    """Return every retry-helper invocation on one logical line.
+
+    EVERY one, not the last: a line may chain two calls, and reading only the
+    final one let an unbounded or nested first call hide behind a compliant
+    second. Each is then judged on its own.
+
+    Tokenised rather than string-split, because both questions the rules ask
+    are about word positions. A separator inside a quoted argument does not
+    end a command, and a `VAR=n` word only assigns when it precedes the
+    executable.
 
     Args:
         line: The logical invocation line.
 
     Returns:
-        The last segment naming the helper, or the whole line when the split
-        loses it (a separator inside a quoted argument), which is the
-        fail-closed reading: the whole line at worst reports a violation to
-        look at rather than hiding one.
+        One entry per invocation, in source order. A line that cannot be
+        tokenised yields a single entry carrying no assignments and no
+        command, which is the fail-closed reading: every rule then reports it
+        for a human to look at rather than passing it unread.
     """
-    segment = line
-    for separator in (";", "&&", "||", "|"):
-        parts = [part for part in segment.split(separator) if _RETRY_HELPER in part]
-        if parts:
-            segment = parts[-1]
-    return segment if _RETRY_HELPER in segment else line
+    if _RETRY_HELPER not in line:
+        return []
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return [_HelperCall(assignments={}, command=(), text=line)]
+    calls: list[_HelperCall] = []
+    for words in _shell_commands(tokens):
+        assignments: dict[str, str] = {}
+        rest = list(words)
+        while rest and _ASSIGNMENT_RE.match(rest[0]):
+            name, _, value = rest.pop(0).partition("=")
+            assignments[name] = value.strip("\"'")
+        if not rest or _RETRY_HELPER not in rest[0]:
+            continue
+        # rest[0] is the helper, rest[1] its mandatory label; the command it
+        # retries is everything after that.
+        calls.append(
+            _HelperCall(
+                assignments=assignments,
+                command=tuple(rest[2:]),
+                text=" ".join(words),
+            )
+        )
+    return calls
+
+
+def _shell_commands(tokens: list[str]) -> list[list[str]]:
+    """Split a token stream on the separators that end one command.
+
+    Args:
+        tokens: Words as the lexer produced them, with punctuation runs
+            grouped into their own tokens.
+
+    Returns:
+        One word list per command, empty ones dropped.
+    """
+    commands: list[list[str]] = [[]]
+    for token in tokens:
+        if token and not token.strip(";|&"):
+            commands.append([])
+        else:
+            commands[-1].append(token)
+    return [words for words in commands if words]
 
 
 def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
@@ -1658,43 +1709,32 @@ def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
             " command to the helper directly."
         )
         for line in _logical_lines(run)
-        if _RETRY_HELPER in line
-        and _escalation_is_nested(line)
-        and _attempts_for_line(line, from_env) > 1
+        for call in _helper_calls(line)
+        if _escalation_is_nested(call) and _attempts_for_call(call, from_env) > 1
     ]
 
 
-def _escalation_is_nested(line: str) -> bool:
-    """Return True when *line* buries an escalation inside a wrapper.
+def _escalation_is_nested(call: _HelperCall) -> bool:
+    """Return True when *call* buries an escalation inside a wrapper.
 
-    The retried command is everything after the helper and its label, so its
-    head word is what a per-attempt kill is aimed at. An escalating head is
-    reached by the kill; an escalation anywhere further along is behind a
-    program the kill stops at instead.
+    The retried command's head word is what a per-attempt kill is aimed at.
+    An escalating head is reached by the kill; an escalation anywhere further
+    along is behind a program the kill stops at instead.
 
     Args:
-        line: One logical line naming the retry helper.
+        call: One parsed retry-helper invocation.
 
     Returns:
-        True when the line escalates but its retried command does not lead
-        with the escalating word. Fail-closed on a line that cannot be
-        tokenised: an unparseable command reports for a human to look at
-        rather than passing unread.
+        True when the call escalates but its retried command does not lead
+        with the escalating word. An invocation the lexer could not split
+        carries no command and reads as nested, which is the fail-closed
+        answer: it reports for a human to look at rather than passing unread.
     """
-    if not any(marker in line for marker in _ESCALATION_MARKERS):
+    if not any(marker in f"{call.text} " for marker in _ESCALATION_MARKERS):
         return False
-    try:
-        tokens = shlex.split(_helper_segment(line))
-    except ValueError:
+    if not call.command:
         return True
-    after_helper = list(
-        itertools.dropwhile(lambda token: _RETRY_HELPER not in token, tokens)
-    )
-    # The helper itself, then its mandatory label, then the command.
-    command = after_helper[2:]
-    if not command:
-        return True
-    return not any(marker.strip() == command[0] for marker in _ESCALATION_MARKERS)
+    return not any(marker.strip() == call.command[0] for marker in _ESCALATION_MARKERS)
 
 
 def _logical_lines(run: str) -> list[str]:

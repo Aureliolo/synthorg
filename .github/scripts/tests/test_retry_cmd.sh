@@ -239,16 +239,19 @@ fi
 # The regression this exists to hold: with the deadline free to shorten an
 # attempt, the last one ran with a fraction of the time the caller said it
 # needed, died mid-work, and its 124 was reported as the command's verdict.
-# Here attempt one burns 2s of a 5s deadline and exits 9; a second 3s attempt
-# no longer fits, so the ladder must report the deadline and bubble 9 rather
-# than start a 2s stub of an attempt and bubble timeout's 124.
+# Here attempt one burns 1s of a 4s deadline and exits 9; a second 3s attempt
+# plus its 1s backoff no longer fits, so the ladder must report the deadline
+# and bubble 9 rather than start a stub of an attempt and bubble timeout's
+# 124. The stub gets 3x the time it needs so a loaded runner cannot turn the
+# assertion into a race, and the verdict holds for any elapsed reading the
+# attempt can produce.
 if command -v timeout >/dev/null 2>&1; then
   rc=0
   out="$(RETRY_CMD_ATTEMPTS=3 RETRY_CMD_BASE_DELAY=1 RETRY_CMD_MAX_DELAY=1 \
-    RETRY_CMD_ATTEMPT_TIMEOUT=3 RETRY_CMD_DEADLINE=5 \
+    RETRY_CMD_ATTEMPT_TIMEOUT=3 RETRY_CMD_DEADLINE=4 \
     bash "$HELPER" "selftest-no-truncated-attempt" \
-    bash -c 'sleep 2; exit 9' 2>&1)" || rc=$?
-  if [ "$rc" -eq 9 ] && grep -q 'exhausted its 5s deadline' <<<"$out"; then
+    bash -c 'sleep 1; exit 9' 2>&1)" || rc=$?
+  if [ "$rc" -eq 9 ] && grep -q 'exhausted its 4s deadline' <<<"$out"; then
     pass "retry_cmd refuses an attempt the deadline cannot afford whole"
   else
     fail "retry_cmd truncated a sized attempt (rc=${rc}, expected 9)"

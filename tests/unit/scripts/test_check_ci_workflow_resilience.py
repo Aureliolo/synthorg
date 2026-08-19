@@ -471,6 +471,51 @@ class TestRetryDeadline:
         assert len(violations) == 1
         assert _NO_DEADLINE in violations[0]
 
+    def test_a_deadline_after_the_helper_is_an_argument(self, tmp_path: Path) -> None:
+        """A `VAR=n` word past the executable assigns nothing to it.
+
+        The shell applies an assignment only where it PREFIXES a command, so
+        this one is an argument handed to `env`, and the helper's own ladder
+        still runs on its zero-second default. Searching the whole command
+        for the variable name read it as set and passed an unbounded ladder.
+        """
+        content = _job(
+            "      - run: .github/scripts/retry_cmd.sh 'x'"
+            " env RETRY_CMD_DEADLINE=240 true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_a_bounded_second_call_does_not_cover_an_unbounded_first(
+        self, tmp_path: Path
+    ) -> None:
+        """Every invocation on a line is judged, not just the last one.
+
+        Reading only the final segment naming the helper let a compliant
+        second call stand in for an unbounded first, which is a fail-open on
+        exactly the shape a chained `a && b` produces.
+        """
+        content = _job(
+            "      - run: .github/scripts/retry_cmd.sh 'first' true &&"
+            " RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh 'second' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_a_separator_inside_a_quoted_argument_does_not_end_the_command(
+        self, tmp_path: Path
+    ) -> None:
+        # The reason the split is tokenised rather than textual: a `;` inside
+        # the retried command's own body is that body's, so a string split
+        # would tear the invocation in half and lose its prefix.
+        content = _job(
+            "      - run: RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh"
+            " 'x' bash -c 'echo one; echo two'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
         # Composite actions host most call sites, so they are scanned too.
         content = _composite(
@@ -683,6 +728,39 @@ class TestRetryEscalation:
             "            sudo apt-get install -y jq\n"
         )
         assert _scan(tmp_path, content) == []
+
+    def test_an_attempt_count_after_the_helper_is_an_argument(
+        self, tmp_path: Path
+    ) -> None:
+        # The attempts half of the same fail-open: a `VAR=n` word past the
+        # executable is an argument, so the helper still inherits five and
+        # the ladder over a nested escalation is real.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " env RETRY_CMD_ATTEMPTS=1 bash -c 'sudo apt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_a_clean_second_call_does_not_cover_a_nested_first(
+        self, tmp_path: Path
+    ) -> None:
+        # The escalation twin of the deadline case: judged per invocation, so
+        # a compliant call later on the line cannot vouch for an earlier one.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo apt-get update' &&"
+            " .github/scripts/retry_cmd.sh 'fetch' curl -fsSL https://example.test\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
 
     def test_an_untokenisable_command_is_reported(self, tmp_path: Path) -> None:
         # A command the reader cannot split cannot be certified as handing

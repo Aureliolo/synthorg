@@ -74,8 +74,8 @@
     },
     "src/synthorg/api/controllers/_plan_resume_writes.py": {
       "cap": 500,
-      "loc": 401,
-      "ratio": 0.802,
+      "loc": 412,
+      "ratio": 0.824,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_plan_review_resume.py": {
