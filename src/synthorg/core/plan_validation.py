@@ -17,6 +17,7 @@ against while the operator edit path makes it a validation failure.
 from collections.abc import Sequence
 from typing import Final, Protocol
 
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.types import NotBlankStr
 
@@ -359,7 +360,9 @@ def _artifact_filename(artifact: str) -> str | None:
     Returns:
         The lowercased basename when the artifact names a file, else ``None``.
     """
-    basename = artifact.replace("\\", "/").rsplit("/", maxsplit=1)[-1].strip().lower()
+    basename = normalize_identifier(
+        artifact.replace("\\", "/").rsplit("/", maxsplit=1)[-1]
+    )
     stem, dot, extension = basename.rpartition(".")
     if not dot or not stem or " " in basename:
         return None
@@ -375,12 +378,17 @@ def _criterion_tokens(unit: GatedPlanUnit) -> frozenset[str]:
     yields ``index.html`` rather than ``index`` and ``html``.
 
     Returns:
-        Lowercased tokens from every acceptance criterion.
+        Case-folded tokens from every acceptance criterion.
     """
-    text = " ".join(unit.acceptance_criteria).lower()
+    text = " ".join(unit.acceptance_criteria)
     kept = "".join(c if (c.isalnum() or c in "./\\-_") else " " for c in text)
     return frozenset(
-        token.replace("\\", "/").rsplit("/", maxsplit=1)[-1].strip(".")
+        # The same folding the artifact side uses, so the two can be compared
+        # at all: one lowercased and the other case-folded would agree on
+        # every ASCII filename and disagree on the rest.
+        normalize_identifier(
+            token.replace("\\", "/").rsplit("/", maxsplit=1)[-1]
+        ).strip(".")
         for token in kept.split()
     )
 

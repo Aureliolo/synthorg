@@ -426,6 +426,12 @@
       "ratio": 0.92,
       "tier": "code"
     },
+    "src/synthorg/core/plan_validation.py": {
+      "cap": 500,
+      "loc": 404,
+      "ratio": 0.808,
+      "tier": "code"
+    },
     "src/synthorg/docs_engine/service.py": {
       "cap": 600,
       "loc": 542,
@@ -512,8 +518,8 @@
     },
     "src/synthorg/engine/decomposition/llm_parse.py": {
       "cap": 500,
-      "loc": 452,
-      "ratio": 0.904,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -1592,8 +1598,8 @@
     },
     "src/synthorg/tools/factory.py": {
       "cap": 1100,
-      "loc": 1066,
-      "ratio": 0.969,
+      "loc": 1063,
+      "ratio": 0.966,
       "tier": "complex_service"
     },
     "src/synthorg/tools/git_url_validator.py": {
@@ -1646,8 +1652,8 @@
     },
     "src/synthorg/workers/_engine_assembly.py": {
       "cap": 600,
-      "loc": 565,
-      "ratio": 0.942,
+      "loc": 568,
+      "ratio": 0.947,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/claim.py": {
@@ -1693,7 +1699,7 @@
     "synthorg.api.pagination": 67,
     "synthorg.api.path_params": 90,
     "synthorg.api.rate_limits": 100,
-    "synthorg.api.state": 401,
+    "synthorg.api.state": 402,
     "synthorg.api.state_slices": 36,
     "synthorg.api.subsystems.errors": 50,
     "synthorg.api.ws_models": 24,
@@ -1706,7 +1712,7 @@
     "synthorg.budget.cost_record": 28,
     "synthorg.budget.currency": 76,
     "synthorg.budget.errors": 27,
-    "synthorg.budget.state": 48,
+    "synthorg.budget.state": 49,
     "synthorg.budget.tracker_protocol": 119,
     "synthorg.client.models": 43,
     "synthorg.communication.bus_protocol": 35,
@@ -1725,14 +1731,14 @@
     "synthorg.core.boundary": 73,
     "synthorg.core.clock": 287,
     "synthorg.core.completion_enums": 26,
-    "synthorg.core.critical_errors": 793,
+    "synthorg.core.critical_errors": 794,
     "synthorg.core.domain_errors": 288,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 77,
     "synthorg.core.iso_datetime": 28,
     "synthorg.core.lifecycle_constants": 21,
     "synthorg.core.memory_enums": 57,
-    "synthorg.core.normalization": 127,
+    "synthorg.core.normalization": 128,
     "synthorg.core.pagination": 37,
     "synthorg.core.persistence_errors": 281,
     "synthorg.core.plan": 47,
@@ -1807,9 +1813,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 25,
     "synthorg.notifications.models": 28,
-    "synthorg.observability": 2123,
+    "synthorg.observability": 2124,
     "synthorg.observability.background_tasks": 33,
-    "synthorg.observability.events.api": 274,
+    "synthorg.observability.events.api": 275,
     "synthorg.observability.events.approval_gate": 34,
     "synthorg.observability.events.budget": 22,
     "synthorg.observability.events.chief_of_staff": 42,
@@ -1872,7 +1878,7 @@
     "synthorg.settings.resolver": 78,
     "synthorg.settings.resolver_protocol": 50,
     "synthorg.settings.service": 55,
-    "synthorg.settings.state": 172,
+    "synthorg.settings.state": 173,
     "synthorg.settings.subscriber": 24,
     "synthorg.tools.base": 106,
     "synthorg.tools.errors": 25,
