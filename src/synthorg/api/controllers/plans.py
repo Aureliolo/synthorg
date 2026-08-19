@@ -32,6 +32,7 @@ from synthorg.api.controllers._plan_replan import (
     replan_initiative,
 )
 from synthorg.api.controllers._plan_rework import replan_for_change_request
+from synthorg.api.controllers._plan_rows import plan_page, plan_row
 from synthorg.api.controllers._plan_translation import (
     item_from_payload,
     parse_status,
@@ -39,7 +40,7 @@ from synthorg.api.controllers._plan_translation import (
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.dto_named_rows import LifecycleTransitionRow, PlanRow, plan_rows
+from synthorg.api.dto_named_rows import LifecycleTransitionRow, PlanRow
 from synthorg.api.dto_plans import (
     EditPlanRequest,
     PlanEvaluationAttempt,
@@ -178,9 +179,8 @@ class PlanController(Controller):
             limit=limit,
             secret=secret,
         )
-        names = await agent_name_map(state.app_state)
         return PaginatedResponse[PlanRow](
-            data=plan_rows(plans[:limit], names), pagination=meta
+            data=await plan_page(state.app_state, plans[:limit]), pagination=meta
         )
 
     @get("/{plan_id:str}", guards=[require_read_access])
@@ -206,9 +206,7 @@ class PlanController(Controller):
             operation="read",
         )
         return Response(
-            content=ApiResponse[PlanRow](
-                data=PlanRow.of(plan, await agent_name_map(state.app_state))
-            ),
+            content=ApiResponse[PlanRow](data=await plan_row(state.app_state, plan)),
             status_code=200,
         )
 
@@ -354,9 +352,7 @@ class PlanController(Controller):
             plan_updated_payload(revised),
         )
         return Response(
-            content=ApiResponse[PlanRow](
-                data=PlanRow.of(revised, await agent_name_map(state.app_state))
-            ),
+            content=ApiResponse[PlanRow](data=await plan_row(state.app_state, revised)),
             status_code=200,
         )
 
@@ -416,7 +412,7 @@ class PlanController(Controller):
         )
         return Response(
             content=ApiResponse[PlanRow](
-                data=PlanRow.of(successor, await agent_name_map(state.app_state))
+                data=await plan_row(state.app_state, successor)
             ),
             status_code=201,
         )
@@ -481,9 +477,7 @@ class PlanController(Controller):
             },
         )
         return Response(
-            content=ApiResponse[PlanRow](
-                data=PlanRow.of(drafted, await agent_name_map(state.app_state))
-            ),
+            content=ApiResponse[PlanRow](data=await plan_row(state.app_state, drafted)),
             status_code=200,
         )
 

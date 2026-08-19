@@ -34,6 +34,7 @@ import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
 import { PlanHistoryPanel } from './plans/PlanHistoryPanel'
 import { PlanOpenQuestionsPanel } from './plans/PlanOpenQuestionsPanel'
+import { PlanPendingDecisionBanner } from './plans/PlanPendingDecisionBanner'
 import { PlanStaffingPanel } from './plans/PlanStaffingPanel'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
 import { PlanReviewPanel } from './plans/PlanReviewPanel'
@@ -222,6 +223,7 @@ function PlanReviewView({ plan, roles, setMode }: {
         onEdit={() => setMode('edit')}
         onRequestChanges={() => setMode('request-changes')}
       />
+      <PlanPendingDecisionBanner plan={plan} />
       <PlanFailureBanner plan={plan} />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanEvaluationPanel planId={plan.id} />

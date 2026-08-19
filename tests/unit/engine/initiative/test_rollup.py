@@ -6,7 +6,11 @@ from uuid import UUID
 
 import pytest
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.services.plan_service_factory import build_plan_service
+from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.initiative_stall import INITIATIVE_STALL_ACTION_TYPE
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
@@ -15,7 +19,7 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.completion import StallReason
+from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.initiative.ports import (
     IntegrationPort,
@@ -24,6 +28,10 @@ from synthorg.engine.initiative.ports import (
     RetroCapturePort,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.engine.initiative.stall_escalation import (
+    PLAN_ID_METADATA_KEY,
+    StallEscalationService,
+)
 from synthorg.engine.initiative.tail_stages import integration_task_id
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult, TaskStateChanged
@@ -116,6 +124,7 @@ async def _seed(
     replan_trigger: ReplanTriggerPort | None = None,
     integration: IntegrationPort | None = None,
     task_engine: TaskEngine | None = None,
+    approvals: ApprovalStoreProtocol | None = None,
 ) -> tuple[ProjectRollupService, FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.plans.save(plan)
@@ -139,6 +148,15 @@ async def _seed(
         replan_trigger=replan_trigger,
         integration=integration,
     )
+    if approvals is not None:
+        service.attach_tail(
+            stall_escalation=StallEscalationService(
+                persistence=backend,
+                plan_status_writer=build_plan_service(backend, clock=clock),
+                approvals=approvals,
+                clock=clock,
+            )
+        )
     return service, backend
 
 
@@ -794,17 +812,15 @@ class TestIntegrationStage:
         await service.recompute(as_uuid(_PLAN_ID))
 
         # A failed integration task counted as an item would regress the plan
-        # to EXECUTING; it must not. With no replan trigger to route the failed
-        # assembly, the plan fails rather than parking at INTEGRATING forever.
+        # to EXECUTING; it must not. With nothing able to route or escalate the
+        # failed assembly, the plan fails rather than parking at INTEGRATING.
         plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
         assert plan is not None
         assert plan.status is PlanStatus.FAILED
         # The reason, not merely the status: an item-derived stall also lands
         # on FAILED here, so asserting the status alone would still pass if
         # the assembly job started counting as a plan item.
-        assert plan.failure_reason == (
-            "integration failed and no replan trigger is wired"
-        )
+        assert plan.failure_reason == "initiative stalled: integration_failed"
 
     async def test_a_failed_assembly_replans_when_a_trigger_is_wired(self) -> None:
         trigger = _RecordingReplanTrigger()
@@ -906,6 +922,126 @@ class TestReplanTrigger:
         )
 
         await service.drain_replan_trigger(timeout_sec=5.0)
+
+
+class TestStallEscalation:
+    """An initiative with no automatic route left reaches the operator."""
+
+    @staticmethod
+    async def _stalled(
+        *,
+        disposition: ReplanDisposition | None,
+        approvals: ApprovalStoreProtocol | None,
+    ) -> tuple[ProjectRollupService, FakePersistenceBackend]:
+        """Seed a plan whose every outstanding item is dead.
+
+        Returns:
+            The rollup and its backend.
+        """
+        trigger = (
+            None
+            if disposition is None
+            else _RecordingReplanTrigger(disposition=disposition)
+        )
+        return await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _task(_ITEM_B, TaskStatus.FAILED),
+            replan_trigger=trigger,
+            approvals=approvals,
+        )
+
+    @staticmethod
+    async def _open_decisions(store: ApprovalStoreProtocol) -> tuple[str, ...]:
+        """Return the plan ids with a stall decision waiting.
+
+        Returns:
+            One entry per pending ``initiative:stalled`` item.
+        """
+        items = await store.list_items(
+            status=ApprovalStatus.PENDING,
+            action_type=NotBlankStr(INITIATIVE_STALL_ACTION_TYPE),
+        )
+        return tuple(str(i.metadata[PLAN_ID_METADATA_KEY]) for i in items)
+
+    async def test_an_exhausted_budget_raises_one_decision(self) -> None:
+        """The refusal the trigger returns is what the operator is told about.
+
+        Before this, the refusal was decided inside a detached task and the
+        rollup re-scheduled a replan that could never run, on every pass, with
+        a rewritten warning as the only trace.
+        """
+        store = ApprovalStore()
+        service, backend = await self._stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=store
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await self._open_decisions(store) == (sid(_PLAN_ID),)
+        # The plan is left alone: it is still replannable by hand while the
+        # operator decides, and ending it is their call rather than the org's.
+        plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.EXECUTING
+
+    async def test_a_disabled_trigger_raises_the_same_decision(self) -> None:
+        """Switching auto-replan off hung an initiative just as silently."""
+        store = ApprovalStore()
+        service, _ = await self._stalled(
+            disposition=ReplanDisposition.DISABLED, approvals=store
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await self._open_decisions(store) == (sid(_PLAN_ID),)
+
+    async def test_no_trigger_at_all_raises_the_same_decision(self) -> None:
+        store = ApprovalStore()
+        service, backend = await self._stalled(disposition=None, approvals=store)
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await self._open_decisions(store) == (sid(_PLAN_ID),)
+        plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.EXECUTING
+
+    async def test_a_scheduled_replan_raises_nothing(self) -> None:
+        store = ApprovalStore()
+        service, _ = await self._stalled(
+            disposition=ReplanDisposition.SCHEDULED, approvals=store
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await self._open_decisions(store) == ()
+
+    async def test_later_passes_do_not_raise_a_second_decision(self) -> None:
+        """The rollup asks on every recompute; the operator is told once."""
+        store = ApprovalStore()
+        service, _ = await self._stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=store
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+        await service.recompute(as_uuid(_PLAN_ID))
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await self._open_decisions(store) == (sid(_PLAN_ID),)
+
+    async def test_with_nothing_able_to_ask_the_plan_fails(self) -> None:
+        """A plan nobody can decide is worse than one that says it stopped."""
+        service, backend = await self._stalled(
+            disposition=ReplanDisposition.BUDGET_EXHAUSTED, approvals=None
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.FAILED
+        assert plan.failure_reason == "initiative stalled: all_failed"
 
 
 class TestRetroTrigger:

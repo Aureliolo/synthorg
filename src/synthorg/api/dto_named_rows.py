@@ -20,7 +20,7 @@ import copy
 from collections.abc import Iterable, Mapping
 from typing import Self
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api._read_names import resolved_actor_name
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
@@ -214,27 +214,78 @@ class PlanItemRow(PlanItem):
         )
 
 
+class PlanPendingDecision(BaseModel):
+    """A decision waiting on the operator about one plan.
+
+    Resolved beside the row rather than looked up by the browser, for the
+    reason every other reference on these rows is: a client-side lookup of a
+    key the row does not carry renders nothing on the first paint and nothing
+    at all for a decision the fetched page did not cover.
+
+    Attributes:
+        approval_id: The item to navigate to. The link is LABELLED by the
+            title and navigates by this.
+        action_type: Which decision it is, so a surface can tell one kind from
+            another without matching on prose.
+        title: What the decision is called, as the operator reads it.
+        reason: Why it was raised, in words rather than an enum value.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approval_id: NotBlankStr = Field(description="The approval to navigate to")
+    action_type: NotBlankStr = Field(description="Which decision this is")
+    title: NotBlankStr = Field(description="What the decision is called")
+    reason: NotBlankStr = Field(description="Why it was raised")
+
+
 class PlanRow(Plan):
     """A plan whose items each name their owner.
 
     ``items`` narrows the base field to the row type. Read-only on the wire,
     so the narrowing is safe in the direction that matters: a caller is handed
     rows, and nothing writes a bare item back through this shape.
+
+    ``pending_decision`` is derived rather than stored. The plan's status says
+    what the organisation last did with it; it cannot say that the initiative
+    has stopped and is waiting on a person, and an operator reading
+    ``executing`` on a plan whose every item is dead is the surface lying to
+    them. The open approval already holds that fact, so it is resolved here
+    instead of duplicated onto the row.
     """
 
     items: tuple[PlanItemRow, ...] = Field(  # pyright: ignore[reportIncompatibleVariableOverride] -- frozen, so the narrowing is read-only
         description="Ordered plan items"
     )
+    pending_decision: PlanPendingDecision | None = Field(
+        default=None,
+        description="The decision waiting on the operator about this plan",
+    )
 
     @classmethod
-    def of(cls, plan: Plan, names: Mapping[str, str]) -> Self:
+    def of(
+        cls,
+        plan: Plan,
+        names: Mapping[str, str],
+        decisions: Mapping[str, PlanPendingDecision] | None = None,
+    ) -> Self:
         """Build the row for *plan*.
+
+        Args:
+            plan: The plan to name the references of.
+            names: Agent id to display name, from :func:`agent_name_map`.
+            decisions: Plan id to the decision waiting on it, from
+                :func:`pending_plan_decisions`. May cover a whole page,
+                because the list read resolves once across every row; the row
+                keeps only its own, so the field means the same thing on every
+                surface that carries it.
 
         Returns:
             The plan with every item's owner resolved.
         """
         rows = [PlanItemRow.of(item, names) for item in plan.items]
-        return cls(**(dict(plan) | {"items": rows}))
+        waiting = None if decisions is None else decisions.get(str(plan.id))
+        return cls(**(dict(plan) | {"items": rows, "pending_decision": waiting}))
 
 
 class TaskRow(Task):
@@ -321,13 +372,17 @@ def audit_rows(
     return tuple(AuditEntryRow.of(entry, names) for entry in entries)
 
 
-def plan_rows(plans: Iterable[Plan], names: Mapping[str, str]) -> tuple[PlanRow, ...]:
-    """Name every item's owner across *plans*.
+def plan_rows(
+    plans: Iterable[Plan],
+    names: Mapping[str, str],
+    decisions: Mapping[str, PlanPendingDecision] | None = None,
+) -> tuple[PlanRow, ...]:
+    """Name every item's owner across *plans*, and say which are waiting.
 
     Returns:
         The rows, in order.
     """
-    return tuple(PlanRow.of(plan, names) for plan in plans)
+    return tuple(PlanRow.of(plan, names, decisions) for plan in plans)
 
 
 def project_rows(
@@ -365,6 +420,7 @@ __all__ = [
     "LifecycleTransitionRow",
     "LivingDocumentRow",
     "PlanItemRow",
+    "PlanPendingDecision",
     "PlanRow",
     "ProjectRow",
     "TaskRow",

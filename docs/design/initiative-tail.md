@@ -213,12 +213,54 @@ DECISION at parse time, so the unanswerable shape stops being producible.
 `Plan.replan_generation` counts how many times an initiative has replanned
 itself. A successor opened automatically carries its predecessor's generation
 plus one; a human replan resets it to zero, because a human decision is not a
-runaway. Past `engine.auto_replan_max_generations` the initiative is **parked,
-not failed**: it keeps its status and its stall stays visible for an operator.
+runaway. Past `engine.auto_replan_max_generations` the trigger refuses.
 
 Every fire re-reads the plan and re-confirms the stall before doing anything,
 which is what makes a redelivered rollup event harmless: the first replan
 supersedes the plan, and every later attempt reads a superseded plan and stops.
+
+### A refusal is an answer
+
+The trigger owns two refusals nobody else can see: the generation cap and the
+`engine.auto_replan_enabled` master switch. Both used to be evaluated inside
+the detached task, where the rollup could not learn of either, so it read "a
+trigger is attached" as "a replan will happen" and asked again on every
+recompute. A live run scheduled a replan that was refused three times in twelve
+minutes and kept going, while its plan read `executing` with four of seven
+items dead and a warning rewritten in the log as the only trace.
+
+So the rollup **asks**, and the trigger **answers** with a
+`ReplanDisposition`. `SCHEDULED`, `ALREADY_RUNNING` and `UNAVAILABLE` all mean
+something is or will be happening; `DISABLED` and `BUDGET_EXHAUSTED` mean no
+automatic route remains, and so does no trigger being attached at all. Those
+three are one outcome with three reasons.
+
+### No automatic route left
+
+An initiative in that state needs a person, and the loop's own rule for
+reaching one is by exception: a question needing an answer. So
+`engine/initiative/stall_escalation.py` raises exactly one `initiative:stalled`
+approval per plan, sends one notification on the edge that opens it, and leaves
+the plan where it is, still replannable by hand while the operator thinks.
+Later passes find the decision open and say nothing, because an alert repeated
+every cadence is an alert nobody reads.
+
+Failing the plan there was the tempting answer and is the wrong one twice over.
+It is the system deciding whether an initiative the operator may still want
+should end, which is a de-escalation of a decision the human owns; and it does
+not even fix the surface it looks like it fixes, because the objective task is
+held at `IN_PROGRESS` until the plan COMPLETES, so the initiative's own board
+row would not move either. What moves instead is the plan's own surface: the
+open decision is resolved beside the plan row (`api/_plan_decisions.py`) and
+rendered as "Awaiting your decision", so `executing` stops being the whole
+story.
+
+Both answers act. Approving replans the initiative once on the operator's
+authority through `ReplanTriggerService.grant`, which applies neither the cap
+nor the switch (both bound what the org does unasked, and somebody has just
+asked) and stamps generation zero on the successor. Rejecting fails the plan
+with the stall reason. A plan that recovered in between is re-confirmed and
+left alone either way.
 
 ## Degraded boots
 
@@ -229,7 +271,8 @@ completion:
 | --- | --- |
 | integrate stage (no work pipeline) | plan parks at `INTEGRATING`, WARNING per recompute |
 | evaluate stage (no provider) | plan parks at `EVALUATING`, WARNING per recompute |
-| replan trigger (no coordinator) | a derived stall fails the plan with its reason; parking it silently is what left a dead initiative reading `EXECUTING` |
+| replan trigger (no coordinator) | a derived stall escalates to the operator as a decision, exactly as an exhausted budget does |
+| stall escalation (no approval store) | a derived stall fails the plan with its reason; parking it silently is what left a dead initiative reading `EXECUTING` |
 | retro capture (no memory layer) | finished work does not feed a retrospective back |
 
 Parking is the honest outcome **while something can still move it**: an
@@ -239,14 +282,16 @@ operator's remedy is one the product already has: replan (legal from both tail
 stages) or cancel.
 
 Parking a plan nothing can move is a different thing, and it is a deadlock. A
-derived stall with no replan trigger attached has no remaining actor: the items
-are all dead, the stages cannot fire, and no later event changes either fact. So
-the rollup fails the plan with the stall reason rather than parking it, and an
-unsuccessful `coordinate(...)` fails the plan exactly as a raised one does.
-Both were the same collapse in a live run: five tasks died in 1.85s and the plan
-sat at `EXECUTING` for ever, because only a raise had been treated as failure.
+derived stall that no automatic route can clear has no remaining actor of its
+own: the items are all dead, the stages cannot fire, and no later event changes
+either fact. The remaining actor is a person, so it escalates; only where
+nothing in the deployment can ask one does the rollup fail the plan with the
+stall reason rather than parking it. An unsuccessful `coordinate(...)` fails
+the plan exactly as a raised one does. Both were the same collapse in a live
+run: five tasks died in 1.85s and the plan sat at `EXECUTING` for ever, because
+only a raise had been treated as failure.
 
-**Independently means one subsystem each**, four of them, all separate from the
+**Independently means one subsystem each**, five of them, all separate from the
 rollup. The rollup activates once persistence and the task engine exist,
 which is before setup has configured a provider, so a first boot legitimately
 produces a rollup with no tail; each `initiative_*` spec waits on what that one
@@ -254,9 +299,13 @@ collaborator actually needs and activates on a later reconciler pass, attaching
 onto the already-wired rollup without re-registering the observer, so each comes
 online with no restart.
 
-Declaring the four as one subsystem would make the *union* of their
+Declaring the five as one subsystem would make the *union* of their
 requirements a precondition for any of them, and the table above would be a
-lie: a boot with no coordinator would get no integrate stage either. Their
+lie: a boot with no coordinator would get no integrate stage either. The stall
+escalation is its own subsystem for the sharper version of that reason: it is
+needed exactly when the replan trigger is absent or refusing, so folding it
+into the trigger's spec would leave a boot with one reading as covered for the
+other.  Their
 liveness is read one probe per collaborator for the same reason: a shared probe
 let a tail whose retro capture never resolved (memory blocked because no
 embedder was chosen) read as converged, and the reconciler never revisits that.
@@ -311,6 +360,7 @@ function of persisted `code_execution_record` rows.
 | no passing test evidence backs it | `code_execution_record` rows for the project |
 | the plan did not advance out of `integrating` | `GET /plans/{id}`, `GET /plans/{id}/transitions` |
 | the stall was named, not swallowed | `plans.replan_generation`, the `initiative.integration.failed` event |
+| the stall reached a person once it could go no further | the `initiative:stalled` row in `GET /approvals`, `PlanRow.pending_decision` |
 | no evaluation report was written | `GET /plans/{id}/evaluation` is empty |
 
 **A passing wave marked the objective complete.**

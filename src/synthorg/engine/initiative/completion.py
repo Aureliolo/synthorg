@@ -271,6 +271,47 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
 )
 
 
+class ReplanDisposition(StrEnum):
+    """What the replan trigger did with a stall it was asked to consider.
+
+    "Does this initiative have a way forward" is one decision, and the trigger
+    is its owner: it holds the master switch and the generation cap, so a
+    caller deciding from the trigger's mere presence is a second authority
+    that cannot see either refusal. This is the answer travelling back, so the
+    caller routes on what happened rather than on what it assumed.
+
+    ``SCHEDULED``: a detached replan started. ``ALREADY_RUNNING``: one is in
+    flight for this plan, so this ask collapses into it. ``UNAVAILABLE``: the
+    trigger could not start work at this moment (the process is stopping, or
+    the spawn failed); transient, and the next pass asks again.
+
+    The last two are refusals with nothing behind them, and they are why this
+    enum exists: ``DISABLED`` (the operator switched auto-replan off) and
+    ``BUDGET_EXHAUSTED`` (the lineage is at ``auto_replan_max_generations``).
+    Both mean no automatic route remains, and an initiative in that state
+    needs a person rather than another pass.
+    """
+
+    SCHEDULED = "scheduled"
+    ALREADY_RUNNING = "already_running"
+    UNAVAILABLE = "unavailable"
+    DISABLED = "disabled"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+
+
+#: Dispositions where something is happening or will happen without anyone
+#: being asked. Their complement is what escalates, so a member added to the
+#: enum and to neither set is a mypy error at the routing site rather than a
+#: silent pass-through.
+REPLAN_IN_PROGRESS_DISPOSITIONS: Final[frozenset[ReplanDisposition]] = frozenset(
+    {
+        ReplanDisposition.SCHEDULED,
+        ReplanDisposition.ALREADY_RUNNING,
+        ReplanDisposition.UNAVAILABLE,
+    }
+)
+
+
 def _work_item_is_dead(item: ItemProgress) -> bool:
     """Whether an outstanding WORK item can no longer move on its own.
 

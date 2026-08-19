@@ -11,6 +11,9 @@ Exposes:
 - :func:`signal_resume_intent` -- orchestrates both flows.
 """
 
+from synthorg.api.controllers._approval_initiative_stall import (
+    try_initiative_stall_resume,
+)
 from synthorg.api.controllers._approval_org_hire import try_org_hire_resume
 from synthorg.api.controllers._conversational_resume import (
     _reread_approval_item,
@@ -367,6 +370,8 @@ async def signal_resume_intent(
        add / decline an agent-initiated invite on consent.
     0.7. **Plan approval** (:func:`try_plan_review_resume`):
        dispatch the parked plan on approval, or cancel the parent task.
+    0.75. **Stalled initiative** (:func:`try_initiative_stall_resume`):
+       replan it on the operator's authority, or fail it with the stall reason.
     0.8. **Project decision** (:func:`record_project_decision`):
        record a project-shaping decision, then fall through.
     0.9. **Org hire** (:func:`try_org_hire_resume`):
@@ -425,6 +430,19 @@ async def signal_resume_intent(
         approved=approved,
         decided_by=decided_by,
         decision_reason=decision_reason,
+    ):
+        return
+
+    # Flow 0.75: a stalled initiative the operator was asked about. Inert for
+    # everything else. It has to claim the item HERE rather than lower down:
+    # the decision carries the objective task's id, and an unclaimed item with
+    # a task_id reaches the review gate below, which reads it as a completion
+    # review and refuses it.
+    if await try_initiative_stall_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
     ):
         return
 

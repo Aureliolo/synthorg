@@ -17,7 +17,7 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.completion import StallReason
+from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 
 
 @runtime_checkable
@@ -83,22 +83,58 @@ class ReplanTriggerPort(Protocol):
 
     Structurally satisfied by
     ``engine.initiative.replan_trigger.ReplanTriggerService``. The rollup calls
-    this on the edge a plan first reads as stalled. Like the retro trigger it
-    must not block or raise: the call schedules detached work and returns.
+    it while a plan reads as stalled. Like the retro trigger it must not block
+    or raise: the call starts detached work and returns.
+
+    It answers rather than merely acting, because the two refusals it owns (the
+    master switch and the generation cap) are invisible to every caller. A
+    caller reading "a trigger is attached" as "a replan will happen" schedules
+    against a refusal for ever, which is exactly what left one initiative
+    reading ``executing`` with every item dead.
     """
 
-    def schedule(
+    async def consider(
         self,
         *,
         plan: Plan,
         reason: StallReason,
         detail: str | None = None,
-    ) -> None:
-        """Schedule a replan for a plan that can no longer advance.
+    ) -> ReplanDisposition:
+        """Replan *plan* if the org may still do so unasked, and say which.
+
+        Applies the master switch and the generation cap, because this is the
+        automatic authority: it answers "may the organisation replan this
+        without being asked". A refusal is returned, never swallowed.
 
         *detail* carries whatever the caller knows that the item statuses do
         not: the evaluate stage passes its unmet criteria and their evidence,
         which is the only account of what the delivered whole failed at.
+
+        Returns:
+            What became of the ask.
+        """
+        ...
+
+    async def grant(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        requested_by: str,
+        detail: str | None = None,
+    ) -> bool:
+        """Replan *plan* once on a person's authority, cap and switch aside.
+
+        The other door on the same owner. ``consider`` asks whether the org
+        may act unasked; this is the answer to a person who has just asked, so
+        neither ``auto_replan_enabled`` nor the generation cap applies and the
+        successor carries generation zero, on the shipped rule that a human
+        decision is not a runaway. The stall is still re-confirmed, because a
+        decision taken hours after it was raised may be answering a plan that
+        has since recovered or been replanned by hand.
+
+        Returns:
+            Whether the detached replan started.
         """
         ...
 

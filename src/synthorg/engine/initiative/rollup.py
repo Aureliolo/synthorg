@@ -41,7 +41,9 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import (
+    REPLAN_IN_PROGRESS_DISPOSITIONS,
     ItemProgress,
+    ReplanDisposition,
     StallReason,
     derive_plan_status,
     derive_project_status,
@@ -58,6 +60,7 @@ from synthorg.engine.initiative.ports import (
 from synthorg.engine.initiative.project_writes import advance_project_status
 from synthorg.engine.initiative.rollup_parent_task import advance_objective_task
 from synthorg.engine.initiative.rollup_plan_advance import advance_plan
+from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.tail_stages import (
     IntegrationOutcome,
     read_integration_state,
@@ -94,17 +97,23 @@ class ProjectRollupService:
         ship_retro_capture: Optional trigger fired once, on the edge a project
             first reaches COMPLETED, so finished work feeds a retrospective back
             into memory. ``None`` leaves the loop's consuming tail unwired.
-        replan_trigger: Optional trigger fired while a plan reads as stalled, so
+        replan_trigger: Optional trigger asked while a plan reads as stalled, so
             an initiative that can no longer advance replans instead of hanging.
-            ``None`` fails the plan with the stall reason instead: a stall
-            nothing can route is a dead initiative, and parking it silently is
-            the deadlock the visible-park discipline exists to prevent.
+            It answers with a disposition rather than acting silently, and its
+            two refusals (the master switch, the generation cap) route to the
+            escalation exactly as its absence does.
         integration: Optional INTEGRATE stage. ``None`` parks a plan that has
             built everything at INTEGRATING rather than completing it: an
             initiative whose pieces were never assembled has not delivered.
         evaluation: Optional EVALUATE stage, which owns the only transition
             that completes a plan. ``None`` parks a plan at EVALUATING: an
             initiative nobody scored has not been shown to meet its objective.
+
+    The stall escalation, the owner of "this initiative has no automatic route
+    left", is attached later through :meth:`attach_tail` because it needs the
+    approval store. Unattached, a stall fails the plan with its reason, which
+    is the fail-closed answer for a deployment where nothing can ask a human:
+    parking it silently is the deadlock the visible-park discipline prevents.
     """
 
     __slots__ = (
@@ -116,6 +125,7 @@ class ProjectRollupService:
         "_plan_writer",
         "_replan_trigger",
         "_ship_retro_capture",
+        "_stall_escalation",
         "_task_engine",
     )
 
@@ -139,6 +149,9 @@ class ProjectRollupService:
         self._replan_trigger = replan_trigger
         self._integration = integration
         self._evaluation = evaluation
+        # Attached only through ``attach_tail``: it needs the approval store,
+        # which the boot phase that builds this service has not reached.
+        self._stall_escalation: StallEscalationService | None = None
         # The observer dispatch is sequential, so events alone cannot overlap
         # two recomputes for one plan. The tail stages can: each calls back in
         # once its verdict lands, from its own detached task. Cross-process
@@ -152,6 +165,7 @@ class ProjectRollupService:
         integration: IntegrationPort | None = None,
         evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
+        stall_escalation: StallEscalationService | None = None,
     ) -> None:
         """Fill in tail collaborators that a later boot phase resolved.
 
@@ -179,6 +193,8 @@ class ProjectRollupService:
             self._evaluation = evaluation
         if self._ship_retro_capture is None:
             self._ship_retro_capture = ship_retro_capture
+        if self._stall_escalation is None:
+            self._stall_escalation = stall_escalation
 
     async def detach_retro_capture(self, *, timeout_sec: float) -> None:
         """Drain and drop the retrospective capture, so a pass can rebuild it.
@@ -242,6 +258,20 @@ class ProjectRollupService:
             ``True`` once the stage is present.
         """
         return self._evaluation is not None
+
+    def has_stall_escalation(self) -> bool:
+        """Whether the stalled-initiative escalation is attached.
+
+        Its own liveness rather than the replan trigger's: the two answer
+        different questions and converge separately, and an initiative whose
+        trigger refuses still needs somebody to raise the decision. Folding
+        them into one probe would let a boot with a trigger read as covered
+        while nothing could ask a human at all.
+
+        Returns:
+            ``True`` once the escalation collaborator is present.
+        """
+        return self._stall_escalation is not None
 
     def has_retro_capture(self) -> bool:
         """Whether the SHIP-time retrospective capture is attached.
@@ -444,38 +474,12 @@ class ProjectRollupService:
             return plan
         if state.outcome is IntegrationOutcome.PASSED:
             return await self._advance_plan(plan, PlanStatus.EVALUATING) or plan
-        if (
-            state.outcome is IntegrationOutcome.FAILED
-            and self._replan_trigger is not None
-        ):
-            # The pieces work and the whole does not, which no derivation over
-            # items can see: every item is COMPLETED here.
-            self._replan_trigger.schedule(
-                plan=plan, reason=StallReason.INTEGRATION_FAILED
-            )
-            return plan
         if state.outcome is IntegrationOutcome.FAILED:
-            # A failed assembly with no trigger to route it cannot auto-replan,
-            # and parking it left a plan that had built everything sitting in
-            # INTEGRATING with nothing that would ever move it. Failing it says
-            # what happened, keeps the reason on the row for Plan Review, and
-            # leaves the initiative replannable by hand.
-            logger.warning(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="integration_failed_no_replan_trigger",
-                note="failing the plan; assembly failed and cannot auto-replan",
-            )
-            return (
-                await self._advance_plan(
-                    plan,
-                    PlanStatus.FAILED,
-                    failure_reason=NotBlankStr(
-                        "integration failed and no replan trigger is wired"
-                    ),
-                )
-                or plan
-            )
+            # The pieces work and the whole does not, which no derivation over
+            # items can see: every item is COMPLETED here. Asked rather than
+            # assumed, so a refusal reaches the operator instead of being
+            # rescheduled on every recompute for the life of the process.
+            return await self._route_stall(plan, StallReason.INTEGRATION_FAILED)
         if state.outcome is IntegrationOutcome.RUNNING:
             # Logged rather than passed over in silence: an assembly job that
             # is genuinely working and one that died without terminalising its
@@ -511,41 +515,75 @@ class ProjectRollupService:
         plan: Plan,
         items: tuple[ItemProgress, ...],
     ) -> Plan:
-        """Route a stalled plan to a replan, or out of its dispatch status.
+        """Route a stalled plan to a replan, or to the operator.
 
         A stall means every outstanding item is dead: the initiative cannot
-        advance and nothing will move it. With a trigger wired that becomes a
-        replan. Without one the plan is driven out of its dispatch status
-        instead of parked, because a plan whose every task failed sitting in
-        EXECUTING with no work left to execute is a state no later event can
-        repair.
+        advance and nothing will move it.
 
-        Firing the trigger is deliberately not edge-gated. A stall has no
-        persisted marker to compare against, and the honest guard is the one
-        the trigger already needs: it re-reads the plan, refuses anything no
-        longer replannable, and collapses a duplicate while one is in flight.
-        A successful replan supersedes the plan, so the next recompute finds
-        nothing to do. The trigger schedules detached work and never raises,
-        so it is safe on this best-effort path.
+        Asking is deliberately not edge-gated. A stall has no persisted marker
+        to compare against, and the honest guards are the ones the collaborators
+        already need: the trigger re-reads the plan and collapses a duplicate
+        while one is in flight, and the escalation refuses to raise a second
+        decision while the first is open. A successful replan supersedes the
+        plan, so the next recompute finds nothing to do.
 
         Returns:
-            The plan, failed when it was stalled with no trigger to route it.
+            The plan, as the route left it.
         """
         if plan.status in TERMINAL_STATUSES:
             return plan
         reason = stall_reason(items)
         if reason is None:
             return plan
+        return await self._route_stall(plan, reason, items=items)
+
+    async def _route_stall(
+        self,
+        plan: Plan,
+        reason: StallReason,
+        *,
+        items: tuple[ItemProgress, ...] | None = None,
+    ) -> Plan:
+        """Ask whether an automatic route remains, and act on the answer.
+
+        The single site that turns "this initiative cannot advance" into
+        something happening. Whether the org may replan unasked is the
+        trigger's decision, so it is asked rather than inferred from its
+        presence: reading an attached trigger as a replan that will happen is
+        what left one initiative scheduling a refused replan on every pass
+        while its plan read ``executing`` with every item dead.
+
+        Three answers mean no automatic route remains and they escalate
+        identically, differing only in the reason the operator is given: no
+        trigger is attached, the operator switched auto-replan off, or the
+        lineage has spent its generation budget.
+
+        Returns:
+            The plan, as the route left it.
+        """
+        disposition: ReplanDisposition | None = None
         if self._replan_trigger is not None:
-            self._replan_trigger.schedule(plan=plan, reason=reason)
-            return plan
-        return (
-            await self._advance_plan(
-                plan,
-                PlanStatus.FAILED,
-                failure_reason=NotBlankStr(f"initiative stalled: {reason.value}"),
+            disposition = await self._replan_trigger.consider(plan=plan, reason=reason)
+            if disposition in REPLAN_IN_PROGRESS_DISPOSITIONS:
+                return plan
+        if self._stall_escalation is None:
+            # Nothing owns the escalation in this deployment, so the plan is
+            # driven out of its dispatch status rather than parked: a plan
+            # whose every task failed sitting in EXECUTING with no work left
+            # to execute is a state no later event can repair.
+            return (
+                await self._advance_plan(
+                    plan,
+                    PlanStatus.FAILED,
+                    failure_reason=NotBlankStr(f"initiative stalled: {reason.value}"),
+                )
+                or plan
             )
-            or plan
+        return await self._stall_escalation.escalate(
+            plan,
+            reason_text=reason.value.replace("_", " "),
+            disposition=disposition,
+            items=items if items is not None else (),
         )
 
     def _maybe_capture_retro(

@@ -48,12 +48,26 @@ export function PlanListItem({ plan, roster, className }: PlanListItemProps) {
             {headline}
           </span>
           <PlanStatusBadge status={plan.status} />
+          {/* The status says what the org last did; it cannot say the
+              initiative has stopped and is waiting on this operator, and a
+              row reading "executing" with every item dead is the board
+              telling them work is in flight when none is. */}
+          {plan.pending_decision !== null && (
+            <StatusPill tone="warning" className="shrink-0">
+              Awaiting your decision
+            </StatusPill>
+          )}
           {stats.flaggedItems > 0 && (
             <StatusPill tone="warning" className="shrink-0">
               {stats.flaggedItems} to review
             </StatusPill>
           )}
         </div>
+        {plan.pending_decision !== null && (
+          <p className="mt-0.5 truncate text-xs text-text-secondary">
+            {plan.pending_decision.reason}
+          </p>
+        )}
         <div className="mt-0.5 flex items-center gap-2 text-xs text-text-secondary">
           <span>{plan.project_name}</span>
           <span aria-hidden="true">·</span>

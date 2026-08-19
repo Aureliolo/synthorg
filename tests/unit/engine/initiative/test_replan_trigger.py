@@ -17,7 +17,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.initiative.completion import StallReason
+from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 from synthorg.engine.initiative.replan_trigger import ACTOR, ReplanTriggerService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.settings.resolver import ConfigResolver
@@ -195,10 +195,31 @@ async def _fire(
     plan: Plan,
     reason: StallReason = StallReason.ALL_FAILED,
     detail: str | None = None,
-) -> None:
-    """Schedule a replan and wait for the detached task to finish."""
-    service.schedule(plan=plan, reason=reason, detail=detail)
+) -> ReplanDisposition:
+    """Ask for a replan and wait for the detached task to finish.
+
+    Returns:
+        The disposition the trigger answered with.
+    """
+    disposition = await service.consider(plan=plan, reason=reason, detail=detail)
     await service.drain(timeout_sec=5.0)
+    return disposition
+
+
+async def _grant(
+    service: ReplanTriggerService,
+    plan: Plan,
+    reason: StallReason = StallReason.ALL_FAILED,
+    requested_by: str = "operator",
+) -> bool:
+    """Authorise one replan as a person and wait for it to finish.
+
+    Returns:
+        Whether the detached replan started.
+    """
+    started = await service.grant(plan=plan, reason=reason, requested_by=requested_by)
+    await service.drain(timeout_sec=5.0)
+    return started
 
 
 class TestTailStageVerdicts:
@@ -322,19 +343,29 @@ class TestGuards:
 
         assert replan.calls == []
 
-    async def test_the_generation_cap_parks_the_initiative(self) -> None:
+    async def test_the_generation_cap_refuses_and_says_so(self) -> None:
+        """The refusal is the answer, not a silence inside a detached task.
+
+        Deciding it after the work was scheduled is what let the rollup read
+        an attached trigger as a replan that would happen, and re-schedule a
+        refused one on every recompute for the life of the process.
+        """
         plan = _plan(_item(_ITEM_A), generation=2)
-        service, replan, _ = await _seed(
+        service, replan, decompose = await _seed(
             plan,
             _task(_ITEM_A, TaskStatus.FAILED),
             settings={"max_generations": 2},
         )
 
-        await _fire(service, plan)
+        disposition = await _fire(service, plan)
 
+        assert disposition is ReplanDisposition.BUDGET_EXHAUSTED
         assert replan.calls == []
+        # Nothing ran at all: the refusal happened before the spawn, so the
+        # caller acts on it rather than waiting for a task that will not.
+        decompose.assert_not_awaited()
 
-    async def test_the_kill_switch_stops_the_trigger(self) -> None:
+    async def test_the_kill_switch_refuses_and_says_so(self) -> None:
         plan = _plan(_item(_ITEM_A))
         service, replan, _ = await _seed(
             plan,
@@ -342,7 +373,59 @@ class TestGuards:
             settings={"enabled": False},
         )
 
-        await _fire(service, plan)
+        disposition = await _fire(service, plan)
+
+        assert disposition is ReplanDisposition.DISABLED
+        assert replan.calls == []
+
+    async def test_a_grant_replans_past_the_cap(self) -> None:
+        """A person asking is a different authority from the org acting."""
+        plan = _plan(_item(_ITEM_A), generation=2)
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"max_generations": 2},
+        )
+
+        started = await _grant(service, plan)
+
+        assert started is True
+        assert len(replan.calls) == 1
+
+    async def test_a_grant_replans_with_the_switch_off(self) -> None:
+        plan = _plan(_item(_ITEM_A))
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"enabled": False},
+        )
+
+        started = await _grant(service, plan)
+
+        assert started is True
+        assert len(replan.calls) == 1
+
+    async def test_a_granted_successor_starts_the_budget_afresh(self) -> None:
+        """A human decision is not a runaway, so it resets the lineage."""
+        plan = _plan(_item(_ITEM_A), generation=2)
+        service, replan, _ = await _seed(
+            plan,
+            _task(_ITEM_A, TaskStatus.FAILED),
+            settings={"max_generations": 2},
+        )
+
+        await _grant(service, plan, requested_by="operator")
+
+        _plan_id, _items, requested_by, generation = replan.calls[0]
+        assert generation == 0
+        assert requested_by == "operator"
+
+    async def test_a_grant_still_refuses_a_plan_that_recovered(self) -> None:
+        """The decision may be hours old; the stall is re-confirmed regardless."""
+        plan = _plan(_item(_ITEM_A))
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.IN_PROGRESS))
+
+        await _grant(service, plan)
 
         assert replan.calls == []
 
@@ -357,15 +440,17 @@ class TestGuards:
 
         assert replan.calls == []
 
-    async def test_a_second_schedule_while_one_is_in_flight_is_dropped(self) -> None:
-        """The rollup fires on every stalled recompute, not on an edge."""
+    async def test_a_second_ask_while_one_is_in_flight_is_collapsed(self) -> None:
+        """The rollup asks on every stalled recompute, not on an edge."""
         plan = _plan(_item(_ITEM_A))
         service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.FAILED))
 
-        service.schedule(plan=plan, reason=StallReason.ALL_FAILED)
-        service.schedule(plan=plan, reason=StallReason.ALL_FAILED)
+        first = await service.consider(plan=plan, reason=StallReason.ALL_FAILED)
+        second = await service.consider(plan=plan, reason=StallReason.ALL_FAILED)
         await service.drain(timeout_sec=5.0)
 
+        assert first is ReplanDisposition.SCHEDULED
+        assert second is ReplanDisposition.ALREADY_RUNNING
         assert len(replan.calls) == 1
 
     async def test_a_decomposition_failure_never_escapes(self) -> None:

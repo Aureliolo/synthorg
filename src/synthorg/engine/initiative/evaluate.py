@@ -29,7 +29,10 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.completion import StallReason
+from synthorg.engine.initiative.completion import (
+    REPLAN_IN_PROGRESS_DISPOSITIONS,
+    StallReason,
+)
 from synthorg.engine.initiative.evaluate_brief import (
     build_evaluation_material,
     unmet_verdict_detail,
@@ -420,11 +423,23 @@ class EvaluationStageService:
         # The judged evidence is the best account of what went wrong that this
         # initiative will ever produce. Handing the trigger only the enum would
         # leave the successor's planner with generic boilerplate instead.
-        trigger.schedule(
+        disposition = await trigger.consider(
             plan=plan,
             reason=StallReason.EVALUATION_UNMET,
             detail=unmet_verdict_detail(unmet),
         )
+        if disposition not in REPLAN_IN_PROGRESS_DISPOSITIONS:
+            # The trigger refused and said why. Reported here rather than
+            # dropped: this stage is the only place that knows the objective
+            # went unmet, and the rollup's next recompute is what raises the
+            # decision for the operator.
+            logger.warning(
+                INITIATIVE_EVALUATION_SKIPPED,
+                plan_id=str(plan.id),
+                reason="replan_refused",
+                disposition=disposition.value,
+                note="objective unmet and no automatic replan remains",
+            )
 
     async def _complete(self, plan: Plan, report: EvaluationReport) -> None:
         """Write the one status only this stage may write, then reconcile.

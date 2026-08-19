@@ -13,12 +13,26 @@ the rollup is an idempotent best-effort observer, so the trigger must not block
 it and must not raise into it.
 
 Two guards keep an unattended chain from running away. The generation cap
-refuses a lineage past ``engine.auto_replan_max_generations``, so a plan that
-keeps stalling ends up parked for a human rather than replanning forever. The
-re-check on entry refuses a plan that is no longer replannable or no longer
-stalled, which is what makes a redelivered rollup event harmless: the first
-replan supersedes the plan, and every later attempt reads a superseded plan and
-stops.
+refuses a lineage past ``engine.auto_replan_max_generations``, and the master
+switch ``engine.auto_replan_enabled`` refuses everything. The re-check on entry
+refuses a plan that is no longer replannable or no longer stalled, which is what
+makes a redelivered rollup event harmless: the first replan supersedes the plan,
+and every later attempt reads a superseded plan and stops.
+
+**A refusal is an answer, not a silence.** Both guards used to be evaluated
+inside the detached task, where nothing could see them: the rollup read "a
+trigger is attached" as "a replan will happen" and asked again on every pass,
+for ever, while one live initiative sat at ``executing`` with every item dead
+and a warning rewritten in the log as the only trace. ``consider`` therefore
+decides both BEFORE starting anything and hands back a
+:class:`~synthorg.engine.initiative.completion.ReplanDisposition`, which its
+caller routes on.
+
+There are two doors, and the difference between them is whose authority
+applies. ``consider`` is the organisation acting unasked, so the switch and the
+cap bound it. ``grant`` answers a person who has just decided this initiative
+should continue, so neither does, and the successor carries generation zero on
+the same rule a hand-authored re-plan already follows.
 """
 
 from typing import Final, Self
@@ -41,6 +55,7 @@ from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import (
     ITEM_DERIVED_STALLS,
     ItemProgress,
+    ReplanDisposition,
     StallReason,
     stall_reason,
 )
@@ -54,6 +69,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
+    INITIATIVE_REPLAN_GRANTED,
+    INITIATIVE_REPLAN_REFUSED,
     INITIATIVE_REPLAN_SCHEDULED,
     INITIATIVE_REPLAN_SETTINGS_DEGRADED,
     INITIATIVE_REPLAN_SKIPPED,
@@ -94,6 +111,9 @@ class ConfirmedStall(BaseModel):
             the same read the verdict came from.
         detail: What the scheduling stage observed, when it knows something the
             item statuses do not.
+        granted_by: Who authorised this replan, when a person did. Present
+            means the successor is a human decision rather than the org acting
+            unasked, which is what decides its generation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -104,6 +124,10 @@ class ConfirmedStall(BaseModel):
     detail: str | None = Field(
         default=None,
         description="What the scheduling stage observed",
+    )
+    granted_by: str | None = Field(
+        default=None,
+        description="Who authorised this replan, when a person did",
     )
 
     @model_validator(mode="after")
@@ -183,20 +207,35 @@ class ReplanTriggerService:
             failed_event=INITIATIVE_REPLAN_FAILED,
         )
 
-    def schedule(
+    async def consider(
         self,
         *,
         plan: Plan,
         reason: StallReason,
         detail: str | None = None,
-    ) -> None:
-        """Schedule a re-plan for a stalled initiative.
+    ) -> ReplanDisposition:
+        """Re-plan a stalled initiative if the org may still do so unasked.
 
-        Returns immediately; the work runs detached on a tracked task so the
-        rollup observer is never blocked. Safe to call from a best-effort
-        observer: it never raises.
+        Both refusals this owns are decided HERE, before any work is started,
+        so the caller learns of them. Deciding them inside the detached task
+        left every refusal invisible: the rollup read "a trigger is attached"
+        as "a replan will happen" and scheduled one that was refused on every
+        pass, for ever.
+
+        Returns immediately once the work is started; the replan itself runs
+        detached on a tracked task so the rollup observer is never blocked.
+        Safe to call from a best-effort observer: it never raises.
+
+        Returns:
+            What became of the ask.
         """
         plan_id = str(plan.id)
+        if not await self._enabled():
+            return self._refuse(plan, reason, ReplanDisposition.DISABLED)
+        if await self._budget_exhausted(plan):
+            return self._refuse(plan, reason, ReplanDisposition.BUDGET_EXHAUSTED)
+        if plan_id in self._runner.inflight:
+            return ReplanDisposition.ALREADY_RUNNING
         started = self._runner.start(
             key=plan_id,
             work=self._run(plan, reason, detail),
@@ -204,30 +243,105 @@ class ReplanTriggerService:
             fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
             fields={"plan_id": plan_id, "stall_reason": reason.value},
         )
+        if not started:
+            return ReplanDisposition.UNAVAILABLE
+        logger.info(
+            INITIATIVE_REPLAN_SCHEDULED,
+            plan_id=plan_id,
+            stall_reason=reason.value,
+        )
+        return ReplanDisposition.SCHEDULED
+
+    async def grant(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        requested_by: str,
+        detail: str | None = None,
+    ) -> bool:
+        """Re-plan *plan* once on a person's authority.
+
+        Neither the master switch nor the generation cap applies: both bound
+        what the organisation may do UNASKED, and somebody has just asked. The
+        successor carries generation zero for the reason a hand-authored
+        re-plan already does, that a human decision is not a runaway.
+
+        Returns:
+            Whether the detached replan started.
+        """
+        plan_id = str(plan.id)
+        if plan_id in self._runner.inflight:
+            logger.info(
+                INITIATIVE_REPLAN_SKIPPED,
+                plan_id=plan_id,
+                reason="already_inflight",
+                requested_by=requested_by,
+            )
+            return False
+        started = self._runner.start(
+            key=plan_id,
+            work=self._run(plan, reason, detail, granted_by=requested_by),
+            deadline=self._timeout_seconds,
+            fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
+            fields={"plan_id": plan_id, "stall_reason": reason.value},
+        )
         if started:
             logger.info(
-                INITIATIVE_REPLAN_SCHEDULED,
+                INITIATIVE_REPLAN_GRANTED,
                 plan_id=plan_id,
                 stall_reason=reason.value,
+                requested_by=requested_by,
             )
+        return started
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Wait for outstanding replans at shutdown, then bound them."""
         await self._runner.drain(timeout_sec=timeout_sec)
+
+    def _refuse(
+        self,
+        plan: Plan,
+        reason: StallReason,
+        disposition: ReplanDisposition,
+    ) -> ReplanDisposition:
+        """Log a refusal at WARNING and hand it back to the caller.
+
+        Warning rather than debug because both refusals mean the initiative
+        has no automatic route left; the caller escalates on this answer, and
+        the log line is the trace of why.
+
+        Returns:
+            *disposition*, unchanged, so the caller reads one expression.
+        """
+        logger.warning(
+            INITIATIVE_REPLAN_REFUSED,
+            plan_id=str(plan.id),
+            project=str(plan.project),
+            stall_reason=reason.value,
+            disposition=disposition.value,
+            generation=plan.replan_generation,
+        )
+        return disposition
 
     async def _run(
         self,
         plan: Plan,
         reason: StallReason,
         detail: str | None = None,
+        *,
+        granted_by: str | None = None,
     ) -> None:
-        """Re-check the stall, then plan and open the successor."""
-        if not await self._enabled():
-            logger.debug(
-                INITIATIVE_REPLAN_SKIPPED, plan_id=str(plan.id), reason="disabled"
-            )
-            return
-        confirmed = await self._confirm_stalled(plan, reason, detail)
+        """Re-check the stall, then plan and open the successor.
+
+        *granted_by* names the person who authorised this one, which makes the
+        cap re-check below inapplicable: the staleness guard exists to stop a
+        second automatic replan racing the first past the cap, and a granted
+        replan was never bounded by it.
+        """
+        confirmed = await self._confirm_stalled(
+            plan, reason, detail, granted_by=granted_by
+        )
         if confirmed is None:
             return
         parent = await self._task_engine.get_task(confirmed.plan.parent_task_id)
@@ -247,11 +361,29 @@ class ReplanTriggerService:
         )
         await self._open_successor(confirmed, parent)
 
+    async def _budget_exhausted(self, plan: Plan) -> bool:
+        """Whether *plan*'s lineage has used its automatic replan budget.
+
+        The single owner of the cap question. ``consider`` asks it before
+        starting anything, so the answer reaches the caller; ``_run`` asks it
+        again against the freshly read row, which is a staleness re-check on
+        the same shape as the plan re-read around it rather than a second
+        authority. That re-check can only turn a scheduled attempt into a
+        no-op, and the next level-triggered pass then reports the refusal
+        through ``consider``.
+
+        Returns:
+            ``True`` when the generation is at or past the live cap.
+        """
+        return plan.replan_generation >= await self._max_generations()
+
     async def _confirm_stalled(
         self,
         plan: Plan,
         reason: StallReason,
         detail: str | None = None,
+        *,
+        granted_by: str | None = None,
     ) -> ConfirmedStall | None:
         """Re-read *plan* and confirm it is still a replan candidate.
 
@@ -266,6 +398,11 @@ class ReplanTriggerService:
         stops here. A tail-stage verdict is invisible to that derivation (every
         item is done when integration fails), so it is re-confirmed by the plan
         still sitting in the stage that produced it.
+
+        *granted_by* names the person who authorised this attempt, and its
+        presence lifts the cap re-check: the cap bounds what the org does
+        unasked, so re-imposing it here would refuse the very ask that was
+        raised because the cap had been reached.
 
         Returns:
             The confirmed stall, or ``None`` when the plan is no longer
@@ -285,17 +422,17 @@ class ReplanTriggerService:
                 status=fresh.status.value,
             )
             return None
-        max_generations = await self._max_generations()
-        if fresh.replan_generation >= max_generations:
-            # Parked, not failed: the plan keeps its status and its stall stays
-            # visible on the board for an operator to act on.
-            logger.warning(
+        if granted_by is None and await self._budget_exhausted(fresh):
+            # Not a park: ``consider`` already refused on this and its caller
+            # escalated. Reaching it here means the generation advanced after
+            # this attempt was started, so the attempt is simply dropped and
+            # the next pass re-asks.
+            logger.info(
                 INITIATIVE_REPLAN_SKIPPED,
                 plan_id=str(fresh.id),
                 project=str(fresh.project),
                 reason="generation_cap_reached",
                 generation=fresh.replan_generation,
-                cap=max_generations,
             )
             return None
         items = await collect_item_progress(self._persistence, fresh)
@@ -309,7 +446,13 @@ class ReplanTriggerService:
                     stall_reason=reason.value,
                 )
                 return None
-            return ConfirmedStall(plan=fresh, reason=reason, items=items, detail=detail)
+            return ConfirmedStall(
+                plan=fresh,
+                reason=reason,
+                items=items,
+                detail=detail,
+                granted_by=granted_by,
+            )
         live_reason = stall_reason(items)
         if live_reason is None:
             logger.info(
@@ -319,7 +462,11 @@ class ReplanTriggerService:
             )
             return None
         return ConfirmedStall(
-            plan=fresh, reason=live_reason, items=items, detail=detail
+            plan=fresh,
+            reason=live_reason,
+            items=items,
+            detail=detail,
+            granted_by=granted_by,
         )
 
     async def _roster(self) -> tuple[NotBlankStr, ...]:
@@ -356,7 +503,13 @@ class ReplanTriggerService:
         return await self._agent_registry.get(project.lead)
 
     async def _open_successor(self, stall: ConfirmedStall, parent: Task) -> None:
-        """Decompose the objective afresh and open the successor plan."""
+        """Decompose the objective afresh and open the successor plan.
+
+        A granted replan carries generation zero and the granter's name: it is
+        a human decision, and the shipped rule is that a human decision is not
+        a runaway, so the successor starts the automatic budget afresh rather
+        than inheriting a lineage that had already spent it.
+        """
         plan = stall.plan
         brief = build_replan_brief(plan, stall.items, stall.reason, detail=stall.detail)
         # The brief rides on a copy of the objective task, never the persisted
@@ -378,8 +531,10 @@ class ReplanTriggerService:
         successor = await self._replan.replan(
             plan,
             items=revised,
-            requested_by=ACTOR,
-            replan_generation=plan.replan_generation + 1,
+            requested_by=stall.granted_by or ACTOR,
+            replan_generation=(
+                0 if stall.granted_by is not None else plan.replan_generation + 1
+            ),
         )
         logger.info(
             INITIATIVE_REPLAN_COMPLETED,
