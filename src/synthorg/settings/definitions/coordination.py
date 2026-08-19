@@ -394,6 +394,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Wall-clock ceiling on one decomposition, covering the planning"
+            " session and every parse retry inside it. Without it a planner"
+            " waiting on a provider that never answers holds whatever called"
+            " it, which for the two request-path callers is an HTTP worker."
+            " Resolved live per decomposition, so a change takes effect on the"
+            " next one without a restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="leaf_subtask_threshold",
         type=SettingType.INTEGER,
         default="1",

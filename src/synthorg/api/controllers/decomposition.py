@@ -46,6 +46,7 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -291,6 +292,7 @@ class DecompositionController(Controller):
         service = DecompositionService(
             ManualDecompositionStrategy(plan),
             TaskStructureClassifier(),
+            config_resolver=config_resolver_of(app_state),
         )
         result = await service.decompose_task(
             task,

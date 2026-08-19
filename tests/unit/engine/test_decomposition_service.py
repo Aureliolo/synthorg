@@ -1,5 +1,8 @@
 """Tests for decomposition service."""
 
+import asyncio
+from unittest.mock import MagicMock, create_autospec
+
 import pytest
 
 from synthorg.core.artifact import ArtifactType
@@ -14,7 +17,33 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionCycleError, DecompositionError
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, sid
+
+#: Short enough that a strategy which never answers trips it immediately.
+_A_SHORT_CEILING = 0.01
+
+#: Long enough that an ordinary decomposition finishes well inside it.
+_A_GENEROUS_CEILING = 60.0
+
+
+class _NeverAnsweringStrategy:
+    """A planner whose provider never returns, which is the case being bound.
+
+    Waits on an event nothing sets rather than sleeping, so the test measures
+    the ceiling instead of racing a duration.
+    """
+
+    async def decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        await asyncio.Event().wait()
+        raise AssertionError  # pragma: no cover -- unreachable past the wait
+
+    def get_strategy_name(self) -> str:
+        return "never-answering"
 
 
 def _make_task(
@@ -456,3 +485,62 @@ class TestDecompositionService:
             ),
         )
         assert rollup.derived_parent_status == TaskStatus.COMPLETED
+
+
+class TestOneDecompositionCannotRunForever:
+    """A planner waiting on a provider that never answers holds its caller.
+
+    Two of the four callers are request handlers, so an unbounded call
+    occupies an HTTP worker for as long as the provider stalls. The ceiling
+    lives on the service because that is the one place every caller comes
+    through, and a per-caller answer is a second owner of the same number.
+    """
+
+    @pytest.mark.unit
+    async def test_a_planner_that_never_answers_is_abandoned(self) -> None:
+        never = _NeverAnsweringStrategy()
+        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver.get_float.return_value = _A_SHORT_CEILING
+        service = DecompositionService(
+            never,
+            TaskStructureClassifier(),
+            config_resolver=resolver,
+        )
+
+        with pytest.raises(DecompositionError):
+            await service.decompose_task(_make_task(), DecompositionContext())
+
+    @pytest.mark.unit
+    async def test_the_ceiling_is_read_per_decomposition(self) -> None:
+        # Captured at construction it would take a restart to apply, which
+        # for a ceiling an operator raises because their provider is slow is
+        # the moment it is least available to them.
+        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver.get_float.return_value = _A_GENEROUS_CEILING
+        service = DecompositionService(
+            ManualDecompositionStrategy(_make_plan()),
+            TaskStructureClassifier(),
+            config_resolver=resolver,
+        )
+        ctx = DecompositionContext()
+
+        await service.decompose_task(_make_task(), ctx)
+        await service.decompose_task(_make_task(), ctx)
+
+        assert resolver.get_float.await_count == 2
+
+    @pytest.mark.unit
+    async def test_an_unreadable_ceiling_still_bounds_the_call(self) -> None:
+        # The failure this exists to prevent is an unbounded wait, so a
+        # settings read that failed is no reason to grant one.
+        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver.get_float.side_effect = RuntimeError("settings unreadable")
+        service = DecompositionService(
+            ManualDecompositionStrategy(_make_plan()),
+            TaskStructureClassifier(),
+            config_resolver=resolver,
+        )
+
+        result = await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert len(result.created_tasks) == 3

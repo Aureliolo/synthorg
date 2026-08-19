@@ -460,6 +460,11 @@ async def _build_runtime_coordinator(
         ),
         shutdown_manager=app_state.shutdown_manager,
     )
+    # Handed over here rather than through the factory, which is already at
+    # its approved argument count. Before anything can decompose, so the
+    # wall-clock ceiling is the operator's from the first plan rather than
+    # from the first restart after they set it.
+    coordinator.decomposition_service.set_config_resolver(config_resolver_of(app_state))
     logger.info(
         API_APP_STARTUP,
         service="coordinator",
