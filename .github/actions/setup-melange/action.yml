@@ -29,25 +29,28 @@ runs:
     - name: Install melange runner dependencies
       shell: bash
       env:
+        # Sized from what the mirror actually delivers on a bad day, not from
+        # a guess. A run measured 11.4 MB of indices at 220 kB/s (the same
+        # fetch had run at 8 MB/s an hour earlier), which puts the 14.7 MB
+        # qemu-user-static .deb at over a minute on its own and the update
+        # that precedes it at just under one. The 90s and then 120s budgets
+        # this step carried were simply under that, so a degraded-but-working
+        # mirror read as a hang. These are ceilings on a slow transfer, not
+        # targets: a healthy mirror finishes the pair in seconds.
         RETRY_CMD_ATTEMPTS: "1"
-        RETRY_CMD_ATTEMPT_TIMEOUT: "120"
-        RETRY_CMD_DEADLINE: "150"
+        RETRY_CMD_ATTEMPT_TIMEOUT: "300"
+        RETRY_CMD_DEADLINE: "330"
       run: |
-        # apt's acquisition timeout bounds a connection that never answers,
-        # not one that answers and then trickles, and there is no
-        # minimum-rate option to express the second. That is the fault this
-        # step actually hits: a run fetched 11.4 MB of indices at 8 MB/s and
-        # then spent every remaining second of its budget on the single
-        # 14.7 MB qemu-user-static .deb from the same mirror without
-        # finishing it or erroring. Bounding the whole command cannot fix a
-        # transfer nothing bounds, and retrying re-enters the same stall.
+        # apt bounds a connection that never answers (Acquire::*::Timeout)
+        # and retries an item that errors (Acquire::Retries). It has no
+        # minimum-rate bound, so a mirror that answers and then trickles is
+        # bounded only by the attempt timeout above, which is why that number
+        # has to come from measurement rather than from what feels generous.
         #
-        # So the large artefact is fetched with curl, which HAS the bound
-        # apt lacks: --speed-limit / --speed-time abandon a transfer that
-        # falls under 100 kB/s for 20s, and --retry then genuinely gets a
-        # fresh connection (to a healthy mirror, since the mirrorlist DNS
-        # rotates) rather than resuming the stalled one. The same shape the
-        # melange and d2 downloads in this repo already use.
+        # Fetching the .debs with curl instead was tried and does not work
+        # here: this runner's sources use a mirrorlist, so apt reports its
+        # URIs as `mirror+file:/etc/apt/apt-mirrors.txt/...`, a scheme only
+        # apt resolves and libcurl refuses outright.
         APT_ACQUIRE_OPTS=(
           -o Acquire::http::Timeout=15
           -o Acquire::https::Timeout=15
@@ -55,32 +58,9 @@ runs:
         )
         .github/scripts/retry_cmd.sh "apt-get update (melange deps)" \
           sudo apt-get "${APT_ACQUIRE_OPTS[@]}" update
-
-        # apt resolves the exact version and URL; curl moves the bytes.
-        mkdir -p /tmp/melange-debs
-        # Resolution and extraction kept as two plain statements: the first
-        # asks apt what it would fetch, the second reduces that to URLs.
-        # --print-uris emits `'<url>' <file> <size> <hash>`, quotes included,
-        # so the first field is taken and its quotes dropped.
-        DEB_LINES=$(apt-get install --reinstall --print-uris -qq -y qemu-user-static bubblewrap)
-        mapfile -t DEB_URIS < <(printf '%s\n' "$DEB_LINES" | awk '{print $1}' | tr -d "'")
-        if [ "${#DEB_URIS[@]}" -eq 0 ]; then
-          echo "::error::apt resolved no download URIs for the melange deps"
-          exit 1
-        fi
-        for uri in "${DEB_URIS[@]}"; do
-          curl -fsSL --connect-timeout 30 --max-time 180 \
-            --speed-limit 102400 --speed-time 20 \
-            --retry 5 --retry-all-errors --retry-max-time 240 \
-            "${uri}" -o "/tmp/melange-debs/$(basename "${uri}")"
-        done
-        # Local files, so this reaches no mirror: it unpacks what curl
-        # already has and resolves any residual dependency from the indices
-        # the update above refreshed.
-        .github/scripts/retry_cmd.sh "dpkg install melange deps" \
+        .github/scripts/retry_cmd.sh "apt-get install melange deps" \
           sudo apt-get "${APT_ACQUIRE_OPTS[@]}" install -y \
-            /tmp/melange-debs/*.deb
-        rm -rf /tmp/melange-debs
+            qemu-user-static bubblewrap
 
     # Ubuntu 24.04 confines unprivileged user namespaces under AppArmor, so
     # `bwrap --unshare-user` dies with "setting up uid map: Permission
