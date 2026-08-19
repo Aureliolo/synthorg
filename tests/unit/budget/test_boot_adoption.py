@@ -24,9 +24,11 @@ from synthorg.budget.adoption import (
     adopt_resolved_budget_config,
     resolved_budget_config,
 )
+from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.optimizer import CostOptimizer
+from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
@@ -56,6 +58,10 @@ def _booted(resolver: MagicMock) -> tuple[AppState, CostTracker, CostOptimizer]:
         cost_tracker=tracker,
         cost_optimizer=optimizer,
         budget_enforcer=BudgetEnforcer(budget_config=boot, cost_tracker=tracker),
+        report_service=AutomatedReportService(
+            report_generator=ReportGenerator(cost_tracker=tracker, budget_config=boot),
+            cost_tracker=tracker,
+        ),
     )
     return app_state, tracker, optimizer
 
@@ -84,6 +90,12 @@ async def test_boot_adopts_the_stored_config_on_every_holder() -> None:
     assert enforcer.budget_config is configured
     assert tracker.budget_config is configured
     assert optimizer._budget_config is configured
+    # The reports surface is a holder like the rest: constructed at assembly
+    # with the boot config, it would go on serving the operator numbers
+    # measured against a ceiling they had already changed.
+    reports = budget_slice.report_service
+    assert reports is not None
+    assert reports.budget_config is configured
 
 
 async def test_a_resolve_failure_leaves_the_boot_config_standing() -> None:

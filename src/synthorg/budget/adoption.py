@@ -65,6 +65,9 @@ def adopt_budget_config(app_state: AppState, resolved: BudgetConfig) -> None:
         app_state: Application state owning the budget slice.
         resolved: The configuration every holder must now measure against.
     """
+    from synthorg.budget.automated_reports import (  # noqa: PLC0415
+        AutomatedReportService,
+    )
     from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
     from synthorg.budget.optimizer import CostOptimizer  # noqa: PLC0415
     from synthorg.budget.tracker import CostTracker  # noqa: PLC0415
@@ -80,6 +83,9 @@ def adopt_budget_config(app_state: AppState, resolved: BudgetConfig) -> None:
     optimizer = budget_slice.cost_optimizer
     if isinstance(optimizer, CostOptimizer):
         optimizer.set_budget_config(resolved)
+    reports = budget_slice.report_service
+    if isinstance(reports, AutomatedReportService):
+        reports.set_budget_config(resolved)
 
 
 async def adopt_resolved_budget_config(app_state: AppState) -> BudgetConfig | None:
