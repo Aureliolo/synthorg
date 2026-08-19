@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusPill } from '@/components/ui/status-pill'
+import { DECISION_TEXT_MAX } from '@/utils/approvals'
 import { answeredQuestions, type QuestionAnswer } from '@/utils/plans'
 import { usePlanQuestions, type PlanQuestionsController } from './usePlanQuestions'
 
 // Mirrors ApproveRequest.comment's server bound, so an over-long answer is
 // capped here rather than rejected after a round trip.
-const ANSWER_MAX = 4096
+const ANSWER_MAX = DECISION_TEXT_MAX
 
 /** The answer box for one question the plan has parked for a person. */
 function QuestionAnswerForm({
@@ -23,7 +24,7 @@ function QuestionAnswerForm({
   questions: PlanQuestionsController
 }) {
   const [draft, setDraft] = useState('')
-  const submitting = questions.submittingId === approvalId
+  const submitting = questions.isSubmitting(approvalId)
   const answer = draft.trim()
   return (
     <form
@@ -61,12 +62,14 @@ function QuestionAnswerForm({
  */
 function OpenQuestion({
   question,
+  occurrence,
   questions,
 }: {
   question: string
+  occurrence: number
   questions: PlanQuestionsController
 }) {
-  const approvalId = questions.approvalFor(question)
+  const approvalId = questions.approvalFor(question, occurrence)
   return (
     <li className="space-y-1">
       <div className="flex items-start gap-1.5 text-sm text-foreground">
@@ -86,6 +89,22 @@ function OpenQuestion({
   )
 }
 
+/**
+ * How many times this question has already appeared above *index*.
+ *
+ * The parked approvals for one repeated question are queued in order, so the
+ * n-th rendering of it takes the n-th queued approval and each row answers
+ * its own.
+ */
+function occurrenceOf(questions: readonly QuestionAnswer[], index: number): number {
+  const text = questions[index]?.question
+  let seen = 0
+  for (let i = 0; i < index; i += 1) {
+    if (questions[i]?.question === text) seen += 1
+  }
+  return seen
+}
+
 function OpenQuestions({
   questions,
   controller,
@@ -99,8 +118,16 @@ function OpenQuestions({
         Open questions
       </span>
       <ul className="space-y-2">
-        {questions.map(({ question }) => (
-          <OpenQuestion key={question} question={question} questions={controller} />
+        {/* Keyed and resolved by position, not by text: the same question may
+            legitimately appear twice, and keying on the text alone gives React
+            duplicate keys and points both rows at one approval. */}
+        {questions.map(({ question }, index) => (
+          <OpenQuestion
+            key={`${question}#${String(index)}`}
+            question={question}
+            occurrence={occurrenceOf(questions, index)}
+            questions={controller}
+          />
         ))}
       </ul>
       {controller.lookupFailed && (
@@ -123,8 +150,11 @@ function SettledQuestions({ questions }: { questions: readonly QuestionAnswer[] 
         Already answered by the plan
       </span>
       <ul className="space-y-1.5">
-        {questions.map(({ question, settledBy }) => (
-          <li key={question} className="flex items-start gap-1.5 text-xs text-text-secondary">
+        {questions.map(({ question, settledBy }, index) => (
+          <li
+            key={`${question}#${String(index)}`}
+            className="flex items-start gap-1.5 text-xs text-text-secondary"
+          >
             <CheckCircle2
               className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
               aria-hidden="true"
@@ -177,7 +207,7 @@ function Assumptions({ assumptions }: { assumptions: readonly string[] }) {
  */
 export function PlanOpenQuestionsPanel({ plan }: { plan: Plan }) {
   const { open_questions: questions, assumptions } = plan
-  const controller = usePlanQuestions(plan.id)
+  const controller = usePlanQuestions(plan.id, questions)
   const paired = answeredQuestions(questions, plan.items)
   const open = paired.filter((entry) => entry.settledBy === null)
   const settled = paired.filter((entry) => entry.settledBy !== null)

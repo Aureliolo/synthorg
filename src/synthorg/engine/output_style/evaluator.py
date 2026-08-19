@@ -52,6 +52,12 @@ _MATCH_SNIPPET_LIMIT: Final[int] = 200
 #: enough that a handful of them stay a reason rather than a transcript.
 _CONTEXT_RADIUS: Final[int] = 60
 
+#: Longest match the window quotes whole, before its middle is elided. The
+#: radius either side plus this has to stay inside the bound on
+#: ``OutputPolicyFinding.context``, or building the finding raises and takes
+#: the whole verdict with it.
+_MAX_QUOTED_MATCH: Final[int] = 200
+
 
 def _context_window(text: str, start: int, end: int) -> str:
     """Return the match with the words around it, on one line.
@@ -70,12 +76,40 @@ def _context_window(text: str, start: int, end: int) -> str:
     """
     left = max(0, start - _CONTEXT_RADIUS)
     right = min(len(text), end + _CONTEXT_RADIUS)
-    window = " ".join(text[left:right].split())
+    window = " ".join(_bounded_span(text, start, end, left, right).split())
     if not window:
         return ""
     opening = "..." if left > 0 else ""
     closing = "..." if right < len(text) else ""
     return f"{opening}{window}{closing}"
+
+
+def _bounded_span(text: str, start: int, end: int, left: int, right: int) -> str:
+    """Return the window's raw text with an over-long match elided.
+
+    A regex rule may match an arbitrarily long run, and the window is built
+    AROUND the match, so an unbounded one renders a string longer than
+    ``OutputPolicyFinding.context`` accepts and evaluation raises rather
+    than returning a verdict. Both ends of the match are kept, because what
+    locates it in a deliverable is where it starts and where it stops.
+
+    Args:
+        text: The segment the match was found in.
+        start: Inclusive start offset of the match.
+        end: Exclusive end offset of the match.
+        left: Inclusive start offset of the window.
+        right: Exclusive end offset of the window.
+
+    Returns:
+        The window text, with the middle of a long match replaced.
+    """
+    if end - start <= _MAX_QUOTED_MATCH:
+        return text[left:right]
+    half = _MAX_QUOTED_MATCH // 2
+    return (
+        f"{text[left:start]}{text[start : start + half]}"
+        f" ... {text[end - half : end]}{text[end:right]}"
+    )
 
 
 class OutputPolicyEvaluator:

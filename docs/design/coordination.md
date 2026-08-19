@@ -222,16 +222,25 @@ question, and every plan status gets an answer.
 | `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
 | `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
 | `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
-| `APPROVED` / `EXECUTING` | requeues the orphaned rows, then hands the remaining waves back to the coordinator |
+| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator |
 | `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
 
-Three properties are load-bearing:
+Four properties are load-bearing:
+
+**A review nobody is waiting on is re-judged, not left.** `IN_REVIEW` is the
+one status a plan-level sweep cannot fix by re-driving waves: the row is not
+awaiting dispatch and not dead, it is waiting on a judging session that no
+longer exists. `_rejudge_stranded_reviews` re-invokes the gates for exactly
+those rows, and only those: a task with an open human decision against it is
+waiting correctly and is left alone, because re-judging it would decide a
+question somebody was asked.
 
 **A resumed wave dispatches what is left, not what the plan wanted.** Waves are
 rebuilt from the plan's items, which record the goal rather than the history,
 so a resumed run re-proposes every level including the finished ones.
-`gate_wave` therefore narrows on two grounds rather than one: what can deliver
-(its dependencies arrived) and what still awaits dispatch (no outcome yet). A
+`gate_wave` therefore narrows on three grounds rather than one: what can deliver
+(its dependencies arrived), what still awaits dispatch (no outcome yet), and
+what is held back without being parked (an input someone will still release). A
 wave left with nothing because everything already delivered records a
 **successful** phase; only a wave emptied by inputs that died records the
 failed one. Confusing the two fails a plan for having made progress.
@@ -773,9 +782,23 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    (`_dependency_gate.py`, reached through `gate_wave`). Every wave is
    narrowed to the subtasks whose dependencies actually delivered, and each
    one dropped parks `BLOCKED` under `dependency_failed`, naming what it
-   waited on. A wave left with nothing records a FAILED phase rather than
-   vanishing: a phase list that omits the level lets the rollup read the run
-   as still working. Without this, a plan whose first real wave died end to
+   waited on.
+
+   A dependency parked on a reason a **person or a sweep** will still end is
+   the third outcome, not the second. `ATTENDED_BLOCKED_REASONS`
+   (`core/task_enums.py`) names them: an escalated completion review, an
+   unstaffed reviewer or red-team role, no capable agent. Such an input has
+   not failed, so its dependent is left at `CREATED` and simply not proposed
+   this pass, counted in `GatedWave.awaiting` rather than parked. Parking it
+   would record `dependency_failed` against work that delivered and is
+   waiting on a verdict, and a replan reads that reason and goes looking for
+   work to redo that nobody said was wrong.
+
+   A wave left with nothing therefore empties three ways that must not be
+   confused, and only one of them is a failure. Everything already delivered
+   is a **successful** phase; everything held on a person is **awaiting**;
+   only inputs that died record the FAILED phase. A phase list that omits
+   the level entirely lets the rollup read the run as still working. Without this, a plan whose first real wave died end to
    end still marched through every later wave, paying for each one, with
    every task failing on its own against inputs nobody wrote.
 

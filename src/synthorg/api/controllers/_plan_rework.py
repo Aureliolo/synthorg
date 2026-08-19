@@ -24,7 +24,10 @@ that the human is overriding.
 
 from typing import NamedTuple
 
-from synthorg.api.controllers._plan_replan import reject_unroutable_owners
+from synthorg.api.controllers._plan_input_validation import (
+    reject_undecidable_graph,
+    reject_unroutable_owners,
+)
 from synthorg.api.services._plan_revision import require_reworkable
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
@@ -130,6 +133,7 @@ async def replan_for_change_request(
     )
     items = items_from_decomposition(result)
     await reject_unroutable_owners(app_state, items)
+    reject_undecidable_graph(items, task_structure=result.plan.task_structure)
     logger.info(
         API_PLAN_CHANGES_REPLANNED,
         plan_id=str(existing.id),

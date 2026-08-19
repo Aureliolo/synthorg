@@ -20,7 +20,6 @@ change outranks a panel opinion.
 
 from synthorg.core.plan_enums import PlanReviewVerdict
 from synthorg.core.plan_review import PlanReview
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
 _HEADER = "## Revision requested: this plan was reviewed and must be re-planned"
 
@@ -93,10 +92,17 @@ def build_revision_brief(*, review: PlanReview | None, note: str | None) -> str:
         ValueError: Neither source carries anything, so there is nothing to
             re-plan against and a pass would spend a round for no reason.
     """
+    # Deliberately NOT fenced here. This brief is appended to the objective
+    # task's description, and the LLM boundary fences that whole description
+    # under the same tag. A second wrap does not add a second boundary: the
+    # outer pass escapes every closing tag it finds in its input, including
+    # this one's own, so the fence it produced arrives opened and never
+    # closed, and the model has to reason through markup that says something
+    # untrue about where the untrusted region ends.
     sections: list[str] = [_HEADER]
     if note is not None and note.strip():
         sections.append("\nThe operator asked for this specifically:")
-        sections.append(wrap_untrusted(TAG_TASK_DATA, note.strip()))
+        sections.append(note.strip())
     if review is not None:
         sections.extend(_review_section(review))
     if len(sections) == 1:

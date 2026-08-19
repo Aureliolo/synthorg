@@ -132,6 +132,34 @@ class TestUndecidableCriterion:
     criterion named a file two waves downstream.
     """
 
+    def test_a_reachable_producer_settles_it_whatever_else_declares_the_file(
+        self,
+    ) -> None:
+        """One filename can be declared twice, and reachability decides.
+
+        The check is looking for a criterion nothing DELIVERS in time. A
+        sibling outside the closure declaring the same filename says nothing
+        about that, so refusing on it rejects a plan whose dependency does
+        deliver the file, and the order the units happen to arrive in
+        decides whether the plan is accepted.
+        """
+        checks = _Unit(
+            id="checks",
+            title="Smoke checks",
+            dependencies=("ui",),
+            expected_artifacts=("checks.js",),
+            acceptance_criteria=("index.html renders the board",),
+        )
+        others = [
+            # The decoy comes FIRST, so a first-match loop hits it before it
+            # ever reaches the dependency that settles the question.
+            _Unit(id="decoy", title="Spike", expected_artifacts=("index.html",)),
+            _Unit(id="ui", title="Game page", expected_artifacts=("index.html",)),
+            checks,
+        ]
+
+        assert describe_undecidable_criterion(unit=checks, others=others) is None
+
     def test_a_criterion_naming_a_later_item_artefact_is_rejected(self) -> None:
         server = _Unit(
             id="server",

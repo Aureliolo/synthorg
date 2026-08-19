@@ -11,7 +11,7 @@ import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 import { isStaleDetailRequest, nextDetailRequestToken } from './_state'
-import type { PlansSet } from './types'
+import type { PlansGet, PlansSet } from './types'
 
 const log = createLogger('plans')
 
@@ -30,9 +30,24 @@ function upsertPlan(set: PlansSet, plan: Plan): void {
   }))
 }
 
-async function fetchPlanDetailImpl(set: PlansSet, id: string): Promise<void> {
+async function fetchPlanDetailImpl(
+  set: PlansSet,
+  get: PlansGet,
+  id: string,
+): Promise<void> {
   const token = nextDetailRequestToken()
-  set({ detailLoading: true, detailError: null, selectedPlan: null })
+  // Clearing the plan is right when moving to a DIFFERENT one, whose data
+  // this is not, and wrong when re-reading the same one: the page renders a
+  // full-height skeleton whenever it has no plan, so every refresh of the
+  // open plan blanks what the operator is reading and brings it back. That
+  // is one flash per answered question on the review page.
+  const showing = get().selectedPlan
+  const staying = showing?.id === id
+  set({
+    detailLoading: true,
+    detailError: null,
+    ...(staying ? {} : { selectedPlan: null }),
+  })
   try {
     const plan = await getPlan(id)
     if (isStaleDetailRequest(token)) return
@@ -117,9 +132,9 @@ async function deletePlanImpl(set: PlansSet, id: string): Promise<boolean> {
   }
 }
 
-export function createDetailActions(set: PlansSet) {
+export function createDetailActions(set: PlansSet, get: PlansGet) {
   return {
-    fetchPlanDetail: (id: string) => fetchPlanDetailImpl(set, id),
+    fetchPlanDetail: (id: string) => fetchPlanDetailImpl(set, get, id),
     editPlan: (id: string, data: EditPlanRequest) => editPlanImpl(set, id, data),
     deletePlan: (id: string) => deletePlanImpl(set, id),
     requestPlanChanges: (id: string, note: string) =>

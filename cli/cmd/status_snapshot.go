@@ -182,11 +182,22 @@ func (v *statusVerdict) absorbContainerVerdict(snap statusSnapshot) {
 // constraint it violated. The line goes in as its own issue rather than
 // replacing the count, because the count says how much is broken and the
 // line says why.
+// A named cause also ESCALATES, because the OK banner prints no issues at
+// all: it collapses to one green line and returns. The counts come from
+// countContainerStates, which escalates on unhealthy and restarting only,
+// so a service that simply exited (a restart policy of "no", or one that
+// gave up retrying) leaves the level OK and every line computed here is
+// discarded unread. Whatever else is true of a stack, one of its services
+// stating why it aborted is not an OK stack.
 func (v *statusVerdict) absorbBootFailures(snap statusSnapshot) {
 	for _, service := range sortedServices(snap.bootFailures) {
 		v.issues = append(
 			v.issues, fmt.Sprintf("%s aborted on: %s", service, snap.bootFailures[service]),
 		)
+		if v.level < statusLevelDegraded {
+			v.level = statusLevelDegraded
+		}
+		v.hints = append(v.hints, "Read the full log: synthorg logs "+service)
 	}
 }
 

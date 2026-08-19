@@ -1,5 +1,6 @@
 """Tests for re-planning a dispatched initiative."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -222,6 +223,75 @@ class TestASuccessorCanActuallyBeDecided:
         persisted = await backend.plans.get(NotBlankStr(str(successor.id)))
         assert persisted is not None
         assert persisted.status is PlanStatus.FAILED
+
+    async def test_a_park_that_fails_partway_leaves_no_decidable_row(self) -> None:
+        """Half a park is worse than none: the rows left behind still act.
+
+        The store has no batch, so the approval can land and a question then
+        fail. What survives is an approve/reject card against a plan that is
+        about to be FAILED, and answering it writes back onto that plan.
+        """
+        state, backend, _ = await _seed()
+        store = _parked_store(state)
+        asking = _plan(PlanStatus.EXECUTING).model_copy(
+            update={"open_questions": (NotBlankStr("Which datastore?"),)}
+        )
+        added: list[object] = []
+
+        down = "approval store down"
+
+        async def _add_then_fail(item: object) -> None:
+            if added:
+                raise QueryError(down)
+            added.append(item)
+
+        store.add = AsyncMock(side_effect=_add_then_fail)
+
+        successor = await replan_initiative(
+            state, asking, revision=_REVISION, requested_by="admin"
+        )
+
+        assert store.delete.await_count == 1, (
+            "the approval written before the failure was left decidable"
+        )
+        persisted = await backend.plans.get(NotBlankStr(str(successor.id)))
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+
+
+class TestTheOperatorPathAsksTheSameGraphQuestions:
+    """A hand-authored revision is held to what decomposition is held to.
+
+    The three graph checks each state that an operator edit path renders
+    them as a validation failure, and only the LLM path asked them. A gate
+    demanding a file that only a non-dependency produces is unjudgeable when
+    the item is reviewed and stays unjudgeable through every rework, so a
+    plan can be written by hand into a state no review can ever clear.
+    """
+
+    async def test_a_criterion_no_dependency_delivers_is_refused(self) -> None:
+        state, _, _ = await _seed()
+        revision = RevisionInputs(
+            items=(
+                _item(sid("checks"), "Smoke checks").model_copy(
+                    update={
+                        "acceptance_criteria": (NotBlankStr("index.html renders"),),
+                        "expected_artifacts": (NotBlankStr("checks.js"),),
+                    }
+                ),
+                _item(sid("ui"), "Game page").model_copy(
+                    update={"expected_artifacts": (NotBlankStr("index.html"),)}
+                ),
+            ),
+        )
+
+        with pytest.raises(ValidationError, match=re.escape("index.html")):
+            await replan_initiative(
+                state,
+                _plan(PlanStatus.EXECUTING),
+                revision=revision,
+                requested_by="admin",
+            )
 
 
 class TestReplan:

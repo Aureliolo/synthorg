@@ -348,7 +348,7 @@ async def _wire_signals_service(
     from datetime import datetime  # noqa: PLC0415
 
     from synthorg.budget.adoption import (  # noqa: PLC0415
-        adopt_resolved_budget_config,
+        resolved_budget_config,
     )
     from synthorg.budget.cost_record import CostRecord  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
@@ -377,13 +377,11 @@ async def _wire_signals_service(
             return await collect_all_records(tracker, start=since, end=until)
 
         cost_record_provider = _provider
-        # Boot is the first adoption pass, not a reader of its own.
-        # Construction builds the tracker, enforcer and cost optimiser from
-        # the code defaults because no setting can be read yet, and until this
-        # runs the ceiling every gauge measures against is one nobody chose.
-        budget_cfg = await adopt_resolved_budget_config(app_state)
-        if budget_cfg is not None:
-            budget_total_monthly = budget_cfg.total_monthly
+        # Reads what boot adopted; does not adopt. Doing the adopting here
+        # tied it to this subsystem's own preconditions, none of which are
+        # about budget, so a boot that declined this facade left every
+        # ceiling on the code default. The gauge is a reader like any other.
+        budget_total_monthly = resolved_budget_config(app_state).total_monthly
     # The evolution-outcome store is built earlier (``wire_evolution_outcomes``)
     # when persistence is available; the engine evolution loop writes through
     # it as its durable outcome sink. The aggregator shares that same store so

@@ -55,6 +55,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
     INITIATIVE_REPLAN_SCHEDULED,
+    INITIATIVE_REPLAN_SETTINGS_DEGRADED,
     INITIATIVE_REPLAN_SKIPPED,
     INITIATIVE_REPLAN_STARTED,
 )
@@ -448,7 +449,7 @@ class ReplanTriggerService:
     def _log_settings_degraded(self, key: str, exc: Exception) -> None:
         """Warn that a best-effort ``engine.<key>`` read fell back to a default."""
         logger.warning(
-            INITIATIVE_REPLAN_SKIPPED,
+            INITIATIVE_REPLAN_SETTINGS_DEGRADED,
             key=key,
             reason="settings_read_degraded",
             error_type=type(exc).__name__,

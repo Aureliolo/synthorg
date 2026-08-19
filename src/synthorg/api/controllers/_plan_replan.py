@@ -34,11 +34,14 @@ plan, so approval and re-approval share one path.
 
 import asyncio
 from collections import Counter
-from collections.abc import Sequence
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.controllers._plan_input_validation import (
+    reject_undecidable_graph,
+    reject_unroutable_owners,
+)
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.lifecycle_helpers._plan_pending_review_park import (
     review_approvals_for,
@@ -48,12 +51,11 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -62,11 +64,9 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import roster_from_agents
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
-from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PLAN_REPLAN_PARK_FAILED,
@@ -113,54 +113,6 @@ class RevisionInputs(BaseModel):
     )
 
 
-async def reject_unroutable_owners(
-    app_state: AppState, items: Sequence[PlanItem]
-) -> None:
-    """Refuse a revision that owns an item to a role the org does not staff.
-
-    Every path that hands the plan service new items runs this, because the
-    payload validator is a pure model and cannot see who the org employs: an
-    invented owner otherwise reaches review as an item nothing can be
-    dispatched to.
-
-    Args:
-        app_state: Application state carrying the HR slice.
-        items: The revised items.
-
-    Raises:
-        ServiceUnavailableError: The agent registry is not wired, so no
-            roster exists to check against. Refused rather than passed:
-            accepting the revision would assert that its owners route,
-            which is exactly what could not be established, and the empty
-            roster an unwired registry stands in for would equally reject
-            every owner. The error names the wiring gap so an operator is
-            not sent looking at their own input for the cause.
-        ValidationError: One or more items name a role no agent holds. Every
-            offending item is reported together: a revision is edited as a
-            whole, so surfacing one owner per attempt would cost the operator
-            a round trip per invented name.
-    """
-    registry = app_state.slice(HrStateSlice).agent_registry
-    if registry is None:
-        msg = "Owner validation is unavailable: the agent registry is not wired."
-        raise ServiceUnavailableError(msg)
-    roster = roster_from_agents(await registry.list_active())
-    details = [
-        detail
-        for item in items
-        if (
-            detail := describe_unroutable_role(
-                entity_id=item.id,
-                required_role=item.owner,
-                available_roles=roster,
-            )
-        )
-        is not None
-    ]
-    if details:
-        raise ValidationError("; ".join(details))
-
-
 async def replan_initiative(
     app_state: AppState,
     existing: Plan,
@@ -199,6 +151,7 @@ async def replan_initiative(
     # function too, with items no human reviewed.
     require_replannable(existing)
     await reject_unroutable_owners(app_state, revision.items)
+    reject_undecidable_graph(revision.items, task_structure=revision.task_structure)
     service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
     # Persist the successor before retiring anything. A failed insert here
     # leaves *existing* EXECUTING and its work running, so the operator retries
@@ -245,10 +198,26 @@ async def replan_initiative(
         # ``asyncio.wait`` does not cancel the task; shielding it stops our own
         # cancellation from skipping the wait.
         await asyncio.shield(asyncio.wait({retire}))
-        await asyncio.shield(_rollback_successor(app_state, existing, successor))
+        if _did_not_commit(retire):
+            await asyncio.shield(_rollback_successor(app_state, existing, successor))
+            raise
+        # Our own cancellation raised out of the shield while the retire it
+        # was protecting committed. Rolling back here would undo a write that
+        # landed: the project would point at the plan just superseded and the
+        # only live one would be deleted. The replan stands, so finish it and
+        # let the cancellation through afterwards.
+        await asyncio.shield(
+            _finish_replan(app_state, existing, successor, requested_by=requested_by)
+        )
         raise
-    await _cancel_retired_work(app_state, existing, requested_by=requested_by)
-    await _park_for_review(app_state, successor, requested_by=requested_by)
+    # Shielded for the same reason the tail above is: past this point the
+    # supersede is durable and the project already names the successor, so a
+    # cancellation landing mid-tail would leave a PENDING_REVIEW plan with no
+    # approval parked against it, which nothing re-drives (the recovery sweep
+    # reads awaiting-human statuses as parked correctly).
+    await asyncio.shield(
+        _finish_replan(app_state, existing, successor, requested_by=requested_by)
+    )
     logger.info(
         API_PLAN_REPLANNED,
         plan_id=str(successor.id),
@@ -257,6 +226,106 @@ async def replan_initiative(
         requested_by=requested_by,
     )
     return successor
+
+
+async def _abandon_park(
+    app_state: AppState,
+    service: PlanService,
+    successor: Plan,
+    written: list[ApprovalItem],
+    requested_by: str,
+) -> None:
+    """Retract a half-written park, then fail the plan it was raised for.
+
+    The store has no batch, so a park that fails partway has already put
+    decidable rows in front of an operator: the plan approval still offers
+    approve and reject, and answering a question writes back onto a plan
+    that is about to be FAILED. Removing them is what makes the failure the
+    whole outcome rather than half of one.
+
+    Every step is best-effort and independently guarded. This is the
+    compensation, so a failure inside it must not replace the failure that
+    caused it, and the FAILED write is attempted even when the retraction
+    could not finish: a plan that says it failed is the one thing an
+    operator can actually see.
+
+    Args:
+        app_state: Application state owning the approval store.
+        service: Plan service used for the failing transition.
+        successor: The plan whose park could not be raised.
+        written: The approval rows that did land, in write order.
+        requested_by: Actor recorded on the transition.
+    """
+    store = app_state.slice(ApprovalStateSlice).store
+    for item in written:
+        if store is None:
+            break
+        try:
+            await store.delete(NotBlankStr(str(item.id)))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_PLAN_REPLAN_PARK_FAILED,
+                plan_id=str(successor.id),
+                note="could not retract an approval written before the park failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+    try:
+        await service.sync_status(
+            successor,
+            PlanStatus.FAILED,
+            requested_by=requested_by,
+            failure_reason=NotBlankStr(_PARK_FAILED_REASON),
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.error(
+            API_PLAN_REPLAN_PARK_FAILED,
+            plan_id=str(successor.id),
+            note=(
+                "the park AND the failing write both failed; the successor is "
+                "stranded at pending_review with nothing to decide it"
+            ),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+def _did_not_commit(retire: asyncio.Future[None]) -> bool:
+    """Report whether the retire failed to land.
+
+    Asked before compensating, because ``asyncio.shield`` raises in the
+    AWAITER when the awaiter is cancelled while the shielded task carries on
+    and can still succeed. Compensating on the raise alone therefore rolls
+    back writes that committed.
+
+    Args:
+        retire: The settled retire task.
+
+    Returns:
+        ``True`` when the retire was cancelled or raised.
+    """
+    return retire.cancelled() or retire.exception() is not None
+
+
+async def _finish_replan(
+    app_state: AppState,
+    existing: Plan,
+    successor: Plan,
+    *,
+    requested_by: str,
+) -> None:
+    """Run the tail every committed replan owes, whatever ended the caller.
+
+    Args:
+        app_state: Application state.
+        existing: The plan just superseded.
+        successor: The plan now live.
+        requested_by: Actor recorded on the writes.
+    """
+    await _cancel_retired_work(app_state, existing, requested_by=requested_by)
+    await _park_for_review(app_state, successor, requested_by=requested_by)
 
 
 async def _park_for_review(
@@ -291,23 +360,32 @@ async def _park_for_review(
         requested_by=NotBlankStr(requested_by),
         now=app_state.clock.now(),
     )
+    written: list[ApprovalItem] = []
     try:
         for item in parked:
             await store.add(item)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            written.append(item)
+    except BaseException as exc:
         reraise_critical(exc)
         logger.warning(
             API_PLAN_REPLAN_PARK_FAILED,
             plan_id=str(successor.id),
+            written=len(written),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        await service.sync_status(
-            successor,
-            PlanStatus.FAILED,
-            requested_by=requested_by,
-            failure_reason=NotBlankStr(_PARK_FAILED_REASON),
+        # Shielded: the automatic trigger runs this under a wall-clock
+        # deadline, and a cancellation reaching here would otherwise skip the
+        # whole compensation and leave exactly the undecidable plan the
+        # compensation exists to replace with a visible failure.
+        await asyncio.shield(
+            _abandon_park(app_state, service, successor, written, requested_by)
         )
+        # A failed park is an outcome the plan now carries, so an ordinary
+        # failure returns. A cancellation is not an outcome and is never
+        # swallowed: the caller is being torn down and has to hear it.
+        if not isinstance(exc, Exception):
+            raise
         return
     logger.info(
         API_PLAN_REPLAN_PARKED,

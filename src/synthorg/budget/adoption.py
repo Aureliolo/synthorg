@@ -5,8 +5,11 @@ Four components carry their own ``BudgetConfig``: the state slice every read
 goes through, the enforcer that refuses spend, the tracker whose copy decides
 which currency a record may be written in and what the summaries and gauges
 are computed against, and the cost optimiser that scores every recommendation.
-All four are built during construction, from the code defaults, because
-persistence is not connected there and no setting can be read.
+The tracker, the optimiser and the slice are built during construction,
+from the code defaults, because persistence is not connected there and no
+setting can be read; the enforcer is built later, with the cost dial, once
+persistence is up. Both points are before the operator's stored config can
+reach them, which is what adoption is for.
 
 Adoption lives here rather than in the settings subscriber because it has two
 triggers and must have one implementation: boot is the first pass, and a
@@ -24,7 +27,31 @@ from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
 
-__all__ = ["adopt_budget_config", "adopt_resolved_budget_config"]
+__all__ = [
+    "adopt_budget_config",
+    "adopt_resolved_budget_config",
+    "resolved_budget_config",
+]
+
+
+def resolved_budget_config(app_state: AppState) -> BudgetConfig:
+    """Return the config already in force, or the code default.
+
+    Every boot step that runs AFTER adoption and needs a ``BudgetConfig``
+    reads it through here rather than constructing one. Minting a fresh
+    ``BudgetConfig()`` downstream is a second answer to a question adoption
+    has already settled, and the later writer wins silently: the cost dial
+    did exactly that, wiring the default back onto the slice and onto a
+    rebuilt enforcer while the gauge captured at adoption went on showing
+    the operator's number.
+
+    Args:
+        app_state: Application state owning the budget slice.
+
+    Returns:
+        The adopted configuration when one is in force, else the defaults.
+    """
+    return app_state.slice(BudgetStateSlice).budget_config or BudgetConfig()
 
 
 def adopt_budget_config(app_state: AppState, resolved: BudgetConfig) -> None:

@@ -1,5 +1,6 @@
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { InputField } from '@/components/ui/input-field'
+import { DECISION_TEXT_MAX } from '@/utils/approvals'
 import type { ApprovalDecision } from './useApprovalDrawer'
 
 export interface ApprovalRejectDialogProps {
@@ -44,7 +45,7 @@ export function ApprovalRejectDialog({ decision, isFailed }: ApprovalRejectDialo
         }}
         placeholder="Give the requester enough context to iterate."
         rows={3}
-        maxLength={2000}
+        maxLength={DECISION_TEXT_MAX}
         required
         autoFocus
         error={decision.reasonError}

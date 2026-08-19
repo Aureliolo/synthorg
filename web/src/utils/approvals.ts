@@ -19,6 +19,16 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+/**
+ * Longest decision text the API accepts, mirroring the server bound on
+ * ``ApproveRequest.comment`` and ``RejectRequest.reason``.
+ *
+ * One constant because five inputs carried their own: three capped at 2000
+ * and silently truncated what the operator wrote, which is the half of a
+ * rejection that says what to change.
+ */
+export const DECISION_TEXT_MAX = 4096
+
 /** Action type stamped on the review approval created for a failed run. */
 const FAILED_RUN_ACTION_TYPE = 'review:task_failed'
 

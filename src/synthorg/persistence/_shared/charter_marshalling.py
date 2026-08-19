@@ -312,13 +312,41 @@ def build_charter_where(
     return where, params
 
 
+def _assert_cas_covers_columns(assignments: str, placeholder: str) -> None:
+    """Hold the conditional-edit SET list to ``CHARTER_COLUMNS``.
+
+    A column added to ``CHARTER_COLUMNS`` and to ``charter_save_params`` but
+    not here shipped once: the statement bound 28 placeholders against 29
+    params and every charter edit raised at the driver on both backends,
+    which only the conformance tier binds parameters to see.
+
+    Raises:
+        RuntimeError: If the SET list is not the column set minus ``id``,
+            in the same order.
+    """
+    written = [
+        part.split("=")[0].strip() for part in assignments.split(f"{placeholder},")
+    ]
+    expected = [c.strip() for c in CHARTER_COLUMNS.split(",") if c.strip() != "id"]
+    if written != expected:
+        msg = (
+            "the charter conditional-edit SET list has drifted from "
+            f"CHARTER_COLUMNS: wrote {written}, expected {expected}"
+        )
+        raise RuntimeError(msg)
+
+
 def _cas_update_sql(placeholder: LiteralString) -> LiteralString:
     """Assemble the conditional-edit UPDATE for one placeholder token.
 
-    Built from the ``CHARTER_COLUMNS`` LiteralString (minus ``id``) so the
-    SET list cannot drift from the upsert column set; the f-string stays
-    ``LiteralString`` because every interpolated part is itself a
-    compile-time constant.
+    The SET list is spelled out rather than derived, because splitting
+    ``CHARTER_COLUMNS`` yields ``list[str]`` and the statement would stop
+    being a ``LiteralString``. What keeps it honest is
+    :func:`_assert_cas_covers_columns`, which holds the written list to
+    ``CHARTER_COLUMNS`` at import: the params arrive POSITIONALLY from
+    ``charter_save_params``, so a column missing from here makes the
+    statement unexecutable and one out of order writes each value into its
+    neighbour's column.
 
     Returns:
         The full ``UPDATE ... SET ... WHERE`` statement.
@@ -331,7 +359,8 @@ def _cas_update_sql(placeholder: LiteralString) -> LiteralString:
         f"success_criteria = {placeholder}, in_scope = {placeholder}, "
         f"out_of_scope = {placeholder}, envelope_amount = {placeholder}, "
         f"envelope_currency = {placeholder}, envelope_deadline = {placeholder}, "
-        f"envelope_time_horizon = {placeholder}, project_id = {placeholder}, "
+        f"envelope_time_horizon = {placeholder}, assumed_facets = {placeholder}, "
+        f"project_id = {placeholder}, "
         f"proposed_project_name = {placeholder}, "
         f"proposed_project_description = {placeholder}, "
         f"created_at = {placeholder}, updated_at = {placeholder}, "
@@ -339,6 +368,7 @@ def _cas_update_sql(placeholder: LiteralString) -> LiteralString:
         f"forecast_id = {placeholder}, correlation_id = {placeholder}, "
         f"task_id = {placeholder}"
     )
+    _assert_cas_covers_columns(assignments, placeholder)
     return (
         f"UPDATE project_charters SET {assignments} "  # noqa: S608 -- constants only
         f"WHERE id = {placeholder} AND version = {placeholder} "

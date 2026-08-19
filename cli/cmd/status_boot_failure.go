@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 )
@@ -17,6 +18,11 @@ const bootFailureTailLines = "80"
 // maxBootFailureLen bounds the quoted line: a structured log line carries
 // the whole error, which can be a paragraph, and the banner has to stay a
 // banner.
+//
+// This bounds the DATA, not the display width: a real migration refusal
+// names the constraint AND the relation it was violated on, and cutting to
+// a terminal width would drop the half that says what to fix. The banner
+// keeps its shape by wrapping instead (see wrapBannerIssue).
 const maxBootFailureLen = 240
 
 // ansiEscape matches the colour codes structlog writes to a terminal. The
@@ -91,6 +97,20 @@ func lastFailureBefore(lines []string, limit int) string {
 	return ""
 }
 
+// levelMarker matches a structlog level marker, which is the padded level
+// name inside brackets ("[error    ]") once the colours are stripped.
+//
+// Anchored to the whole bracketed token rather than matched as the bare
+// substring "[error": a line whose MESSAGE quotes one reads as a cause
+// otherwise, and the message is attacker-influenced text an agent can write.
+var levelMarker = regexp.MustCompile(`(?i)\[(error|critical)\s*\]`)
+
+// plainLevelPrefix matches the level format an ASGI server writes, which
+// carries no brackets at all ("ERROR:    Application startup failed"). It is
+// the shape of the very marker this file keys on, so a reader that only knew
+// structlog's format could not name the cause of the commonest abort there is.
+var plainLevelPrefix = regexp.MustCompile(`^(ERROR|CRITICAL):`)
+
 // namesAFailure reports whether a line states a failure rather than
 // counting one.
 //
@@ -98,9 +118,8 @@ func lastFailureBefore(lines []string, limit int) string {
 // "failed=0" on every reconciliation pass and every dispatcher start, and
 // reading one of those as a cause would put a success in a CRITICAL banner.
 func namesAFailure(line string) bool {
-	lower := strings.ToLower(line)
-	return strings.Contains(lower, "[error") ||
-		strings.Contains(lower, "[critical") ||
+	return levelMarker.MatchString(line) ||
+		plainLevelPrefix.MatchString(line) ||
 		strings.HasPrefix(line, "Traceback (most recent call last)")
 }
 
@@ -108,11 +127,17 @@ func namesAFailure(line string) bool {
 // so the bound means the width the banner gets. Runes rather than bytes, so
 // a multi-byte character is never cut in half.
 func truncateRunes(line string, limit int) string {
+	const elision = "..."
 	runes := []rune(line)
 	if len(runes) <= limit {
 		return line
 	}
-	const elision = "..."
+	// A limit too small to hold the marker would slice below zero. Cutting
+	// without the marker is the honest answer at that width; panicking in
+	// the middle of reporting somebody else's failure is not.
+	if limit <= len(elision) {
+		return string(runes[:max(limit, 0)])
+	}
 	return string(runes[:limit-len(elision)]) + elision
 }
 
@@ -124,6 +149,28 @@ func truncateRunes(line string, limit int) string {
 // whose log cannot be read simply contributes nothing, because the banner
 // it feeds is already reporting the failure and must not be blocked by a
 // second one.
+// readServiceTail reads one service's recent log, bounded.
+//
+// Every other Docker call the status command makes is bounded by
+// StatusDockerTimeout so an unresponsive daemon cannot hang it. This one is
+// reached precisely when the stack is already failing, which is when the
+// socket is most likely to be slow, so it needs the bound more than they do
+// and not less.
+func readServiceTail(
+	ctx context.Context,
+	info docker.Info,
+	safeDir string,
+	service string,
+	timeout time.Duration,
+) (string, error) {
+	logCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return docker.ComposeExecOutput(
+		logCtx, info, safeDir,
+		"logs", "--tail", bootFailureTailLines, "--no-log-prefix", service,
+	)
+}
+
 func gatherBootFailures(
 	ctx context.Context,
 	info docker.Info,
@@ -131,11 +178,9 @@ func gatherBootFailures(
 	services []string,
 ) map[string]string {
 	failures := make(map[string]string, len(services))
+	timeout := GetGlobalOpts(ctx).Tunables.StatusDockerTimeout
 	for _, service := range services {
-		out, err := docker.ComposeExecOutput(
-			ctx, info, safeDir,
-			"logs", "--tail", bootFailureTailLines, "--no-log-prefix", service,
-		)
+		out, err := readServiceTail(ctx, info, safeDir, service, timeout)
 		if err != nil {
 			continue
 		}

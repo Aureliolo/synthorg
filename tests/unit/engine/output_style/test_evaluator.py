@@ -9,6 +9,7 @@ from synthorg.engine.output_style.models import (
     EnforcementMode,
     ExemptionScopeKind,
     OutputChannel,
+    OutputPolicyFinding,
     OutputStyleRule,
     RuleType,
     SanctionedExemption,
@@ -17,6 +18,9 @@ from synthorg.engine.output_style.models import (
 
 #: Built at runtime so no literal U+2014 lands in committed test source.
 _EM_DASH = chr(0x2014)
+
+#: Read off the model so the bound cannot be asserted against a stale copy.
+_CONTEXT_FIELD_MAX = OutputPolicyFinding.model_fields["context"].metadata[0].max_length
 
 
 def _emdash_rule(
@@ -32,6 +36,52 @@ def _emdash_rule(
         scan_code=True,
         case_insensitive=False,
     )
+
+
+def _long_match_rule() -> OutputStyleRule:
+    """A rule whose pattern can match an unbounded span, as a regex may."""
+    return OutputStyleRule(
+        id="long_span",
+        type=RuleType.REGEX_BAN,
+        patterns=(r"BEGIN.*END",),
+        message="Long span banned",
+        mode=EnforcementMode.REJECT_REWORK,
+        scan_code=True,
+        case_insensitive=False,
+    )
+
+
+class TestQuotedContextStaysWithinItsField:
+    """The window is built around the match, so the match must be bounded.
+
+    ``match_text`` is truncated before it is stored; the context window was
+    not, and it is built from the raw span plus a radius either side. A rule
+    matching a long unbroken run therefore produced a string longer than
+    ``OutputPolicyFinding.context`` accepts, and evaluation raised instead
+    of returning the verdict it was asked for, which fails the output
+    boundary open on an operator-authored rule pack.
+    """
+
+    @pytest.mark.unit
+    def test_a_long_match_still_returns_a_verdict(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_long_match_rule(),))
+        text = "BEGIN " + ("filler " * 200) + "END"
+
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+
+        assert verdict.blocked is True
+        assert verdict.findings
+        assert verdict.findings[0].context
+
+    @pytest.mark.unit
+    def test_the_window_never_outgrows_the_field(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_long_match_rule(),))
+        text = "BEGIN " + ("x" * 4000) + " END"
+
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+
+        for finding in verdict.findings:
+            assert len(finding.context) <= _CONTEXT_FIELD_MAX
 
 
 class TestHardBan:

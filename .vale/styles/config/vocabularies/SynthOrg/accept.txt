@@ -564,6 +564,7 @@ iptables
 isort
 itemless
 journaling
+judgeable
 jsdom
 kanban
 keyframes
@@ -894,6 +895,7 @@ underspecified
 undispatched
 unencrypted
 unfillable
+unjudgeable
 ungated
 unheadered
 unimported

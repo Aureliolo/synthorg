@@ -14,6 +14,7 @@ from typing import Final
 from pydantic import JsonValue
 
 from synthorg.core.plan_validation import (
+    ORDERED_STRUCTURES,
     describe_structureless_graph,
     describe_undecidable_criterion,
     describe_unroutable_role,
@@ -54,12 +55,6 @@ _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
 _TOPOLOGY_MAP: Final[dict[str, CoordinationTopology]] = {
     t.value: t for t in CoordinationTopology
 }
-
-#: Structures that promise an ordering. Declaring one and then declaring no
-#: dependencies leaves dispatch with a graph that says the opposite.
-_ORDERED_STRUCTURES: Final[frozenset[TaskStructure]] = frozenset(
-    {TaskStructure.SEQUENTIAL, TaskStructure.MIXED}
-)
 
 _MARKDOWN_FENCE_RE = re.compile(
     r"```(?:json)?\s*\n(.*?)\n\s*```",
@@ -157,7 +152,7 @@ def _validate_graph(
             gate demands evidence the plan produces after it.
     """
     detail = describe_structureless_graph(
-        declared_sequential=structure in _ORDERED_STRUCTURES,
+        declared_sequential=structure in ORDERED_STRUCTURES,
         units=subtasks,
     )
     if detail is None:

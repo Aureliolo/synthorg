@@ -101,6 +101,13 @@ boundary before the output escapes:
 | Code file write | `tools/file_system/write_file.py` (whole content) + `edit_file.py` (the replacement text) | `code_file` |
 | Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body` |
 | Completing deliverable | `engine/_review_oracle_gates.py` `apply_output_policy_gate`, run before the adversarial red-team / vision gates | `deliverable` |
+| Plan prose | `engine/decomposition/_plan_output_guard.py` `guard_plan_text` / `guard_plan_texts`, called from `engine/decomposition/llm_parse.py` on every submitted plan's item titles, descriptions, acceptance criteria, assumptions, and open questions | `deliverable` |
+
+Plan prose is a boundary because a plan is read by a person before anything is
+built: the operator approves it, and the wording they approve is the wording
+the org commits to. Refused there it is correctable in-session, which is why
+the guard raises rather than rewriting and the refusal names the places it
+matched.
 
 The message boundaries share one helper so an auto-rewrite is applied
 consistently at both. The code-file and forge boundaries are code-channel

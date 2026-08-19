@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.types import CapabilityLevel
 from synthorg.hr.models import CandidateCard
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_HIRING_MODEL_PROPOSED
@@ -89,7 +90,10 @@ class HireModelOption(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     ref: ModelRef = Field(description="The provider + model pair")
-    capability: str = Field(description="Capability rung of the model")
+    # The closed rung, not a free string. It comes from derive_capability and
+    # the ladder compares it, so widening it to str drops the one thing the
+    # checker could enforce about a value the roster ranks on.
+    capability: CapabilityLevel = Field(description="Capability rung of the model")
     recommended: bool = Field(description="Whether the matcher chose this pair")
 
     @property

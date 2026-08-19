@@ -112,11 +112,11 @@ def hire_decision_brief(
 ) -> str:
     """Say what approving this hire actually commits the organisation to.
 
-    An operator asked to approve one of these could previously read a job
-    title, a sentence saying the role was unstaffed, and two raw UUIDs. Every
-    fact the decision turns on was held somewhere else: which team the agent
-    joins, what it claims to be able to do, what it is expected to cost, and
-    above all what model it would run on.
+    Approving a hire commits real capability and cost, so the brief has to
+    carry every fact the decision turns on: which team the agent joins, what
+    it claims to be able to do, what it is expected to cost, and above all
+    what model it would run on. A job title, a sentence saying the role is
+    unstaffed and two raw UUIDs decide none of that.
 
     That last one is why this is not cosmetic. The pair decides what the agent
     can do and what it costs for as long as it exists, and a hire with no pair

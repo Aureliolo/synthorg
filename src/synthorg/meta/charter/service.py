@@ -51,7 +51,9 @@ from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_FAILED,
     CHARTER_INTERVIEW_QUESTION,
     CHARTER_INTERVIEW_TURN,
-    CHARTER_STATUS_TRANSITIONED,
+)
+from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.charter_protocol import CharterFilterSpec, CharterRepository
 from synthorg.persistence.conversation_protocol import (
@@ -486,7 +488,7 @@ class CharterInterviewService(CharterCrudMixin):
         )
         if transitioned:
             logger.info(
-                CHARTER_STATUS_TRANSITIONED,
+                COS_CONVERSATION_STATUS_TRANSITIONED,
                 conversation_id=str(conversation.id),
                 from_state=conversation.status.value,
                 to_state=ConversationStatus.CLOSED.value,

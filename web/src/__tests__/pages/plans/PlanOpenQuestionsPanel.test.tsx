@@ -134,6 +134,75 @@ describe('PlanOpenQuestionsPanel', () => {
     })
   })
 
+  it('offers a box for a question parked while the page stayed open', async () => {
+    // Rework and replan both park questions onto a plan already on screen,
+    // over the live channel, and the route element is reused rather than
+    // remounted. A lookup keyed on the plan id alone never re-runs, so the
+    // new question renders as unanswerable while the plan waits on it.
+    const asking = makePlan('p', { open_questions: [A_QUESTION] })
+    servingParkedQuestions(parkedQuestion('q-1', A_QUESTION))
+    const { rerender } = renderPanel(asking)
+    await screen.findByLabelText(/your answer/i)
+
+    const later = 'Which runtime is allowed?'
+    servingParkedQuestions(
+      parkedQuestion('q-1', A_QUESTION),
+      parkedQuestion('q-2', later),
+    )
+    rerender(
+      <MemoryRouter>
+        <PlanOpenQuestionsPanel
+          plan={makePlan('p', { open_questions: [A_QUESTION, later] })}
+        />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/your answer/i)).toHaveLength(2)
+    })
+    expect(screen.queryByText(/no longer answerable/i)).not.toBeInTheDocument()
+  })
+
+  it('answers two questions at once without stranding either control', async () => {
+    // One shared "which id is submitting" is reassigned by the second send,
+    // which re-enables the first row mid-request; and a completion guarded on
+    // the lookup generation is dropped whenever a sibling finishes first.
+    const second = 'Is offline play in scope?'
+    const plan = makePlan('p', { open_questions: [A_QUESTION, second] })
+    servingParkedQuestions(
+      parkedQuestion('q-1', A_QUESTION),
+      parkedQuestion('q-2', second),
+    )
+    const settled: string[] = []
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', ({ params }) => {
+        settled.push(String(params['id']))
+        return HttpResponse.json(
+          successFor<() => Promise<unknown>>(
+            parkedQuestion(String(params['id']), A_QUESTION),
+          ),
+        )
+      }),
+    )
+    renderPanel(plan)
+
+    const boxes = await screen.findAllByLabelText(/your answer/i)
+    await userEvent.type(boxes[0]!, 'SQLite')
+    await userEvent.type(boxes[1]!, 'Out of scope')
+    const sends = screen.getAllByRole('button', { name: /send answer/i })
+    await userEvent.click(sends[0]!)
+    await userEvent.click(sends[1]!)
+
+    await waitFor(() => {
+      expect(settled).toContain('q-1')
+      expect(settled).toContain('q-2')
+    })
+    // Neither row is left showing progress for an answer that already landed.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /sending/i })).not.toBeInTheDocument()
+    })
+  })
+
   it('stops asking a question the plan already settles', () => {
     const plan = makePlan('p', {
       open_questions: ['Which persistence backend?', 'Is offline play in scope?'],

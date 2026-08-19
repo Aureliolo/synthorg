@@ -436,6 +436,30 @@ it. Because `plan_required` forces a `SPLITTABLE` routing verdict into the
 (default-on) gate, decomposition parks a `PLAN_REVIEW` approval carrying the
 drafted plan, and the operator reviews that as a whole.
 
+**Deciding it has heard enough is itself a decision.** The interview owns when
+to stop asking, and stopping early costs a charter whose goals, success
+criteria, scope, envelope and project were all supplied by the model and
+rendered beside the one answer the operator actually gave, with nothing to tell
+them apart. So a draft records which facets it supplied itself
+(`CharterFacet`, `assumed_facets` on both `CharterDraft` and `ProjectCharter`,
+persisted with the charter), and `meta/charter/_facet_coverage.py` presses once
+before the draft is presented: here is what I would otherwise decide for you.
+The provenance travels to the approval, because what the operator is approving
+is a proposal from the organisation, not their own brief handed back.
+
+Decomposition is held to three graph questions before a plan reaches review,
+in `core/plan_validation.py`: a declared ordering that no edge expresses
+(`describe_structureless_graph`), an item naming another it declares no
+dependency on (`describe_unstated_reference`), and an item whose own
+acceptance criteria name a file only a non-dependency produces
+(`describe_undecidable_criterion`). The last of those is the one a reviewer
+cannot resolve by trying harder: the gate is unjudgeable at the moment the
+item is reviewed and stays unjudgeable through every rework, so it refuses for
+as long as the plan stands. All three are asked at both boundaries a plan can
+arrive through: the parse that reads a decomposed plan, and the edit or
+replan payload an operator submits. A plan hand-authored into that shape is
+no more judgeable than one a model wrote.
+
 The `propose` capability cannot produce a plan and has no field in which to ask
 for one (`ProposeDecision` is clarify-XOR-steer, `extra="forbid"`). It steers
 work a charter already authorised; its directives park on their own confirmation

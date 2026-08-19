@@ -449,6 +449,14 @@ def build_task_message(
 def build_retry_message(error: str) -> ChatMessage:
     """Build a retry message with the prior error.
 
+    The error is fenced for the same reason the task text above it is. A
+    refusal returning to the model that caused it can quote the model's own
+    plan prose verbatim (the house-style guard names the places it matched),
+    and that prose was written from a title and description an outsider
+    supplied. Unfenced, the retry lifts whatever the model was induced to
+    echo back out of the fence it arrived in and hands it over as the
+    instruction for the next turn.
+
     Args:
         error: Description of the parsing/validation error.
 
@@ -456,8 +464,8 @@ def build_retry_message(error: str) -> ChatMessage:
         A ``ChatMessage`` with ``MessageRole.USER``.
     """
     content = (
-        "Your previous response could not be parsed. "
-        f"Error: {error}\n\n"
+        "Your previous response could not be parsed. Error:\n"
+        f"{wrap_untrusted(TAG_TASK_DATA, error)}\n\n"
         "Please try again using the "
         "submit_decomposition_plan tool with corrected "
         "arguments."

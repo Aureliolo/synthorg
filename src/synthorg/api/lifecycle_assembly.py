@@ -157,6 +157,21 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
         await migrate_embedded_provider_keys(app_state)
 
+    async def _adopt_budget_config() -> None:
+        # Its own step, not a subsystem's side effect. Adoption used to ride
+        # inside the signals facade's activation, which declines on an HR
+        # capability that has nothing to do with budget: a boot where that
+        # declines adopted nothing and every ceiling stayed on the code
+        # default, which is the collapse this exists to close, reached by a
+        # different route. Placed after persistence connects (the setting
+        # cannot be read before) and before runtime services, which build
+        # the enforcer from whatever config is in force by then.
+        from synthorg.budget.adoption import (  # noqa: PLC0415
+            adopt_resolved_budget_config,
+        )
+
+        await adopt_resolved_budget_config(app_state)
+
     async def _wire_agent_workspace_root() -> None:
         # Runs before EVERY other startup hook (see the list below), because
         # "before the first reconcile pass" is not something a position in the
@@ -241,6 +256,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
         _reload_provider_registry,
+        _adopt_budget_config,
         # Memory, org memory and the evolution-outcome store must exist
         # BEFORE runtime services: the engine reads their slices eagerly at
         # construction, so anything wired later never reaches an agent.

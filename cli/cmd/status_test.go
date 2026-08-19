@@ -371,6 +371,27 @@ func TestComputeVerdict(t *testing.T) {
 			wantHasIssue: "backend aborted on: [error    ] persistence.migration.failed",
 		},
 		{
+			// A service that simply exited is the one shape the counts do
+			// not see: countContainerStates escalates on unhealthy and
+			// restarting only, and the OK banner prints no issues at all,
+			// so the cause was computed and then dropped unread.
+			name: "an exited container still reports what it aborted on",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "worker", State: "exited"},
+				},
+				servicesFilterEmpty: true,
+				bootFailures: map[string]string{
+					"worker": "[error    ] boot.failed reason='no broker'",
+				},
+				healthStatusCode: 200,
+				healthEnvelopeOK: true,
+				healthData:       okHealth,
+			},
+			wantLevel:    statusLevelDegraded,
+			wantHasIssue: "worker aborted on: [error    ] boot.failed",
+		},
+		{
 			name: "services filter matches no containers -> OK (no false critical)",
 			snap: statusSnapshot{
 				containers: []containerInfo{
@@ -399,6 +420,15 @@ func TestComputeVerdict(t *testing.T) {
 			}
 			if tc.wantSummaryHas != "" && !stringsContainsCI(got.summary, tc.wantSummaryHas) {
 				t.Errorf("summary=%q, want substring %q", got.summary, tc.wantSummaryHas)
+			}
+			// Every case, not only the ones that name an issue. The OK
+			// banner collapses to one green line and returns without
+			// printing v.issues, so a signal that appends an issue and
+			// forgets to escalate is written, dropped, and never seen. That
+			// is how the exited-container case above shipped; asserting the
+			// pairing here catches the next one for free.
+			if got.level == statusLevelOK && len(got.issues) > 0 {
+				t.Errorf("level=OK but issues=%v would never be printed", got.issues)
 			}
 		})
 	}

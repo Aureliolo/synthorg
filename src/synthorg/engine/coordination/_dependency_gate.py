@@ -93,6 +93,24 @@ class DependencyState:
     status: TaskStatus | None
     blocked_reason: BlockedReason | None = None
 
+    def __post_init__(self) -> None:
+        """Refuse a reason with no park to explain.
+
+        A reason names why a BLOCKED row is parked, so one carried by any
+        other status describes nothing. ``awaited`` reads it against the
+        status and would answer ``False``, making the contradiction silent
+        rather than absent.
+
+        Raises:
+            ValueError: If a reason is set on a status that is not BLOCKED.
+        """
+        if self.blocked_reason is not None and self.status is not TaskStatus.BLOCKED:
+            msg = (
+                f"blocked_reason {self.blocked_reason.value!r} was given with "
+                f"status {self.status!r}, which is not a park it can explain"
+            )
+            raise ValueError(msg)
+
     @property
     def awaited(self) -> bool:
         """Whether somebody is holding this dependency's exit.

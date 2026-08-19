@@ -23,9 +23,12 @@ from synthorg.api.channels import (
 )
 from synthorg.api.controllers._approval_retire import retiring_plan_approvals
 from synthorg.api.controllers._deletion_record import record_deletion
+from synthorg.api.controllers._plan_input_validation import (
+    reject_undecidable_graph,
+    reject_unroutable_owners,
+)
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
-    reject_unroutable_owners,
     replan_initiative,
 )
 from synthorg.api.controllers._plan_rework import replan_for_change_request
@@ -337,6 +340,7 @@ class PlanController(Controller):
         )
         items = tuple(item_from_payload(item) for item in data.items)
         await reject_unroutable_owners(state.app_state, items)
+        reject_undecidable_graph(items, task_structure=data.task_structure)
         revised = await service.edit(
             existing,
             items=items,

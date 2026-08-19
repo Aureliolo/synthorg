@@ -19,6 +19,7 @@ from typing import Final, Protocol
 
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.task_enums import TaskStructure
 from synthorg.core.types import NotBlankStr
 
 
@@ -198,6 +199,18 @@ _MAX_DISTINCTIVE_SHARE: Final[float] = 0.5
 
 #: A plan of one item has no graph to contradict.
 _MIN_ORDERED_UNITS: Final[int] = 2
+
+
+#: Structures that promise an ordering. Declaring one and then declaring no
+#: dependencies leaves dispatch with a graph that says the opposite.
+#:
+#: Lives beside the check that reads it, because both boundaries that ask the
+#: question (decomposition and the operator's own edit) have to agree on what
+#: "ordered" means, and two copies of that answer is one rename from
+#: disagreeing.
+ORDERED_STRUCTURES: Final[frozenset[TaskStructure]] = frozenset(
+    {TaskStructure.SEQUENTIAL, TaskStructure.MIXED}
+)
 
 
 def describe_structureless_graph(
@@ -417,6 +430,22 @@ def _dependency_closure(
     return frozenset(seen)
 
 
+def _filenames_of(unit: GatedPlanUnit) -> set[str]:
+    """Return the artifact filenames *unit* declares it produces.
+
+    Args:
+        unit: The unit whose declared artifacts are read.
+
+    Returns:
+        Every declared artifact that reads as a filename.
+    """
+    return {
+        filename
+        for artifact in unit.expected_artifacts
+        if (filename := _artifact_filename(artifact)) is not None
+    }
+
+
 def describe_undecidable_criterion(
     *,
     unit: GatedPlanUnit,
@@ -447,20 +476,25 @@ def describe_undecidable_criterion(
     named = _criterion_tokens(unit)
     if not named:
         return None
-    own = {
-        filename
-        for artifact in unit.expected_artifacts
-        if (filename := _artifact_filename(artifact)) is not None
-    }
     by_id = {one.id: one for one in others}
     by_id[unit.id] = unit
     reachable = _dependency_closure(unit, by_id)
+    # What arrives in time, gathered BEFORE anything is refused. The question
+    # is whether the plan delivers the file by the moment this gate runs, so
+    # one unreachable sibling declaring the same filename settles nothing:
+    # judging on the first match instead makes the answer depend on the order
+    # the units happen to arrive in, and refuses plans whose own dependency
+    # produces exactly what the criterion names.
+    delivered = _filenames_of(unit)
+    for one in others:
+        if one.id in reachable and one.id != unit.id:
+            delivered |= _filenames_of(one)
     for other in others:
         if other.id == unit.id or other.id in reachable:
             continue
         for artifact in other.expected_artifacts:
             filename = _artifact_filename(artifact)
-            if filename is None or filename in own or filename not in named:
+            if filename is None or filename in delivered or filename not in named:
                 continue
             return (
                 f"{unit.id!r} has an acceptance criterion naming {filename!r}, "

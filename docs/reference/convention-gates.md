@@ -37,6 +37,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_enum_check_constraint_parity.py` | push | `src/synthorg/` + both `schema.sql` | full | no | none | add |
 | `check_wave_dispatch_gated.py` | push | `engine/coordination/` | full | no | none | add |
+| `check_run_recovery_covers_plan_statuses.py` | push | `core/plan_enums.py` + `engine/run_recovery/` | full | no | none | add |
 | `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |

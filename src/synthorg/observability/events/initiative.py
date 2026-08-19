@@ -14,6 +14,11 @@ INITIATIVE_REPLAN_STARTED: Final[str] = "initiative.replan.started"
 INITIATIVE_REPLAN_COMPLETED: Final[str] = "initiative.replan.completed"
 INITIATIVE_REPLAN_SKIPPED: Final[str] = "initiative.replan.skipped"
 INITIATIVE_REPLAN_FAILED: Final[str] = "initiative.replan.failed"
+#: A settings read fell back to its hardcoded default. Its own name because
+#: nothing was skipped: the pass continues, on a value no operator chose.
+#: Riding on the skipped event made "no replan was needed" and "the settings
+#: store is degraded and every replan now runs on defaults" the same signal.
+INITIATIVE_REPLAN_SETTINGS_DEGRADED: Final[str] = "initiative.replan.settings_degraded"
 
 INITIATIVE_INTEGRATION_SCHEDULED: Final[str] = "initiative.integration.scheduled"
 INITIATIVE_INTEGRATION_STARTED: Final[str] = "initiative.integration.started"

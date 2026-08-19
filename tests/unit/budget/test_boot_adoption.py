@@ -1,13 +1,18 @@
 """The budget every surface measures against is the configured one, from boot.
 
-Three components hold their own ``BudgetConfig``, and all three are built
-during construction, before persistence is connected and before any setting
-can be read.
-The settings subscriber hands a write to all three, so a config CHANGED while
-the process runs lands everywhere. A config that was already stored when the
-process started changes nothing, so it landed nowhere: a live deployment with
-a configured monthly budget of 500 reported its remaining budget as 100, the
-code default, for the whole life of the process.
+Four components hold their own ``BudgetConfig``, each built before any
+setting can be read. The settings subscriber hands a write to all of them,
+so a config CHANGED while the process runs lands everywhere. A config that
+was already stored when the process started changes nothing, so it landed
+nowhere: a deployment with a configured monthly budget of 500 reports its
+remaining budget as 100, the code default, for the whole life of the
+process.
+
+The second half is that adoption has to be the LAST answer as well as the
+first. A later boot step minting its own ``BudgetConfig()`` puts the slice
+and the enforcer back on the default while the gauge captured at adoption
+still shows the operator's number, which reads as fixed and enforces as
+though it never was.
 """
 
 from unittest.mock import MagicMock, create_autospec
@@ -15,7 +20,10 @@ from unittest.mock import MagicMock, create_autospec
 import pytest
 
 from synthorg.api.state import AppState
-from synthorg.budget.adoption import adopt_resolved_budget_config
+from synthorg.budget.adoption import (
+    adopt_resolved_budget_config,
+    resolved_budget_config,
+)
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.optimizer import CostOptimizer
@@ -102,3 +110,28 @@ async def test_no_resolver_adopts_nothing() -> None:
     app_state.wire(BudgetStateSlice, budget_config=boot)
 
     assert await adopt_resolved_budget_config(app_state) is None
+
+
+def test_later_boot_wiring_does_not_mint_a_config_over_the_adopted_one() -> None:
+    """Nothing downstream of adoption may re-answer which ceiling applies.
+
+    Adoption runs in the first subsystem-reconcile pass; the cost dial is
+    wired after it, and a fresh ``BudgetConfig()`` built there would land on
+    the slice and on a rebuilt enforcer, putting both back on the code
+    default while the gauge captured at adoption still reads the operator's
+    number. The slice holds the answer, so the later step reads it.
+    """
+    configured = BudgetConfig(total_monthly=_CONFIGURED_TOTAL)
+    app_state = make_app_state(config=RootConfig(company_name="test"))
+    app_state.wire(BudgetStateSlice, budget_config=configured)
+
+    assert resolved_budget_config(app_state) is configured
+
+
+def test_a_boot_with_nothing_adopted_falls_back_to_the_default() -> None:
+    """A persistence-less boot has no adopted config and must still wire."""
+    app_state = make_app_state(config=RootConfig(company_name="test"))
+
+    assert (
+        resolved_budget_config(app_state).total_monthly == BudgetConfig().total_monthly
+    )

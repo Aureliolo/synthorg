@@ -100,11 +100,19 @@ class TestBuildRevisionBrief:
         review = _review(PlanReviewVerdict.CONCERNS, _finding("budget unvalidated"))
         assert "CTO" in build_revision_brief(review=review, note=None)
 
-    def test_an_operator_note_is_carried_and_fenced(self) -> None:
-        """The operator's own words are untrusted input at the LLM boundary."""
+    def test_an_operator_note_is_carried_for_the_boundary_to_fence(self) -> None:
+        """Carried verbatim; fenced once, where the prompt is built.
+
+        The brief is appended to the objective task's description, and the
+        LLM boundary fences that whole description under ``task-data``. A
+        second fence here is not a second boundary: the outer pass escapes
+        every closing tag in its input, its own included, so the inner fence
+        arrives opened and never closed.
+        """
         brief = build_revision_brief(review=None, note="the workspace is empty")
+
         assert "the workspace is empty" in brief
-        assert "<task-data>" in brief
+        assert "<task-data>" not in brief
 
     def test_the_operator_note_leads(self) -> None:
         """A human asking for a change outranks a panel opinion."""
