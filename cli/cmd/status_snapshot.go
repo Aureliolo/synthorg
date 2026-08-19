@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -62,6 +63,11 @@ type statusSnapshot struct {
 	parseFailures       int
 	servicesFilterEmpty bool
 
+	// What each failing service aborted on, keyed by service. Read only
+	// for services already known to be restarting or unhealthy, so a
+	// healthy stack never pays for it.
+	bootFailures map[string]string
+
 	healthErr        error
 	healthStatusCode int
 	healthBody       []byte
@@ -103,6 +109,7 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 		containers, failures := parseContainerJSON(psOut)
 		snap.containers = containers
 		snap.parseFailures = failures
+		snap.bootFailures = gatherBootFailures(ctx, info, safeDir, failingServices(containers))
 	}
 
 	body, code, fetchErr := fetchHealth(ctx, state.BackendPort)
@@ -164,6 +171,70 @@ func (v *statusVerdict) absorbContainerVerdict(snap statusSnapshot) {
 		v.issues = append(v.issues, fmt.Sprintf("%d container(s) restarting", restarting))
 		v.hints = append(v.hints, "Tail restart-loop logs: synthorg logs <service> --follow")
 	}
+	v.absorbBootFailures(snap)
+}
+
+// absorbBootFailures names what each failing service aborted on.
+//
+// A count and a pointer to the logs is what the operator already knew: a
+// failed migration crash-looped a deployment, and status reported "1
+// container(s) restarting" while the log held the revision id and the
+// constraint it violated. The line goes in as its own issue rather than
+// replacing the count, because the count says how much is broken and the
+// line says why.
+// A named cause also ESCALATES, because the OK banner prints no issues at
+// all: it collapses to one green line and returns. The counts come from
+// countContainerStates, which escalates on unhealthy and restarting only,
+// so a service that simply exited (a restart policy of "no", or one that
+// gave up retrying) leaves the level OK and every line computed here is
+// discarded unread. Whatever else is true of a stack, one of its services
+// stating why it aborted is not an OK stack.
+func (v *statusVerdict) absorbBootFailures(snap statusSnapshot) {
+	for _, service := range sortedServices(snap.bootFailures) {
+		v.issues = append(
+			v.issues, fmt.Sprintf("%s aborted on: %s", service, snap.bootFailures[service]),
+		)
+		if v.level < statusLevelDegraded {
+			v.level = statusLevelDegraded
+		}
+		v.hints = append(v.hints, "Read the full log: synthorg logs "+service)
+	}
+}
+
+// sortedServices returns the keys of failures in a stable order, so two
+// runs of status against one wedged stack print the same banner.
+func sortedServices(failures map[string]string) []string {
+	services := make([]string, 0, len(failures))
+	for service := range failures {
+		services = append(services, service)
+	}
+	sort.Strings(services)
+	return services
+}
+
+// failingServices returns the services whose logs are worth reading for a
+// cause: the ones that are restarting, unhealthy, or have exited.
+//
+// Deliberately not filtered by --services: a narrowed status still needs to
+// name why the stack around it is down, and reading a log is what the
+// operator would do next anyway.
+// Each service is named once, because a service scaled to several replicas
+// is several containers under one name: the caller reads that service's log
+// per entry, at one Docker round trip each, and keeps only the last result.
+func failingServices(containers []containerInfo) []string {
+	var failing []string
+	seen := make(map[string]struct{}, len(containers))
+	for _, c := range containers {
+		if c.Health != "unhealthy" && c.State != "restarting" && c.State != "exited" {
+			continue
+		}
+		if _, dup := seen[c.Service]; dup {
+			continue
+		}
+		seen[c.Service] = struct{}{}
+		failing = append(failing, c.Service)
+	}
+	return failing
 }
 
 // countContainerStates returns (unhealthy, restarting, total) honouring

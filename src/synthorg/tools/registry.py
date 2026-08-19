@@ -70,7 +70,13 @@ class ToolRegistry:
         # nameable tools changes, and a deployment with no scraper attached
         # never reaches a scrape at all.
         register_agent_tool_names(self._tools)
-        logger.info(
+        # DEBUG, because a registry is immutable and every wiring step builds
+        # a NEW one from the last plus its own tools: assembling one agent's
+        # surface constructs a dozen of them, and at INFO that was a dozen
+        # lines each repeating the whole list as it grew by one. The set that
+        # matters is the final one, and the assembly logs that at INFO where
+        # it hands the registry to the invoker.
+        logger.debug(
             TOOL_REGISTRY_BUILT,
             tool_count=len(self._tools),
             tools=sorted(self._tools),

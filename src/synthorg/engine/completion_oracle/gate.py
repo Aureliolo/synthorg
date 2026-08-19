@@ -84,6 +84,15 @@ _ESCALATE_MISSING_SUMMARY: Final[str] = (
     "Completion-reviewer filed no verdict; the gate escalated to a human "
     "decision rather than passing the deliverable unreviewed."
 )
+#: A verdict WAS filed; its pinned identities did not match. Distinct from
+#: the missing-verdict text because the two send an operator to different
+#: places: nothing ran, versus something ran and cannot be tied to this
+#: review, which is what a stale resubmission or a spoof would look like.
+_ESCALATE_MISMATCH_SUMMARY: Final[str] = (
+    "Completion-reviewer filed a verdict whose pinned identities do not match "
+    "this review; the gate escalated to a human decision rather than trusting "
+    "a report it cannot attribute."
+)
 _ESCALATE_NO_REVIEWER_SUMMARY: Final[str] = (
     "No reviewer identity distinct from the executor was resolvable; the gate "
     "escalated to a human decision so the work is not self-reviewed."
@@ -481,7 +490,7 @@ class CompletionOracleGateService:
             return self._escalate_report(
                 review_input,
                 reviewer_agent_id=reviewer_agent_id,
-                summary=_ESCALATE_MISSING_SUMMARY,
+                summary=_ESCALATE_MISMATCH_SUMMARY,
             )
         logger.info(
             COMPLETION_ORACLE_VERDICT_RECEIVED,

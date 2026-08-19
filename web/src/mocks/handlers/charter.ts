@@ -25,6 +25,7 @@ export function buildCharter(
     constraints: ['self-hostable'],
     success_criteria: ['recall beats baseline by 10%'],
     scope: { in_scope: ['retrieval'], out_of_scope: ['billing'] },
+    assumed_facets: [],
     envelope: {
       amount: 5000,
       currency: DEFAULT_CURRENCY,

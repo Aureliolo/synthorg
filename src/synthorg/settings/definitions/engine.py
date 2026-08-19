@@ -1511,6 +1511,49 @@ _r.register(
     )
 )
 
+# ── Run recovery sweep ───────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="run_recovery_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Cadence of the run-recovery sweep, which resumes initiatives"
+            " whose dispatch no longer has anything driving it and requeues"
+            " the tasks that dispatch left mid-flight. A restart runs the"
+            " sweep immediately, so this cadence covers the other case: a"
+            " dispatch lost without its process. Re-read per tick, so a change"
+            " applies with no restart."
+        ),
+        group="Run Recovery",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="run_recovery_sweep_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the run-recovery sweep. When True the scheduler"
+            " stays resident but every tick short-circuits, so no stranded"
+            " initiative is resumed and no orphaned task is requeued. Resuming"
+            " starts agents, which spends, so this is the switch that stops it"
+            " during an incident without taking the process down. It does not"
+            " affect the pass a restart runs. Read per tick, so it applies"
+            " with no restart."
+        ),
+        group="Run Recovery",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Capability policy ───────────────────────────────────────────
 # What each stakes level demands of whoever takes the work. Selection walks a
 # ladder toward the required rung (exact match, else the nearest above, else

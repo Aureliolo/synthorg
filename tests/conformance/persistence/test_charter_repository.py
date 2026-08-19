@@ -27,7 +27,7 @@ import pytest
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.charter.enums import CharterStatus
+from synthorg.meta.charter.enums import CharterFacet, CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     ProjectCharter,
@@ -131,6 +131,43 @@ class TestCharterRepository:
         assert fetched.envelope.deadline is not None
         assert fetched.proposed_project_name == "memory-layer"
         assert fetched.project_id is None
+
+    async def test_assumed_facets_round_trip(self, backend: PersistenceBackend) -> None:
+        # What the human settled and what the org filled in are the same
+        # rendered lines, so the distinction only exists while the column
+        # carries it. Both backends store the array differently (TEXT JSON
+        # against native JSONB), which is exactly where it can be lost.
+        repo = _repo(backend)
+        # Copied rather than parameterised: the helper already carries the
+        # charter field set at the argument cap, and one test needing a
+        # non-default is not a reason to widen it for every other.
+        await repo.save(
+            _make_charter().model_copy(
+                update={
+                    "assumed_facets": (
+                        CharterFacet.SUCCESS_CRITERIA,
+                        CharterFacet.ENVELOPE,
+                    )
+                }
+            )
+        )
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.assumed_facets == (
+            CharterFacet.SUCCESS_CRITERIA,
+            CharterFacet.ENVELOPE,
+        )
+
+    async def test_a_charter_that_assumed_nothing_reads_back_empty(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_charter())
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.assumed_facets == ()
 
     async def test_get_returns_none_when_absent(
         self, backend: PersistenceBackend

@@ -67,12 +67,41 @@ func printVersionInfo(out *ui.UI, state config.State) {
 
 // imageTag extracts the tag from an image string like "ghcr.io/foo/bar:v1.0".
 // Handles registry ports correctly (e.g. "registry:5000/image" has no tag).
+//
+// A container started from a locally built image carries no named reference,
+// so Docker reports its image id instead. That is a key, not a name: 64 hex
+// characters under a column headed IMAGE answer nothing about which version is
+// running and push every other column off the terminal. Such a value is
+// shortened and labelled as untagged, which is the fact the reader needs.
 func imageTag(image string) string {
+	if id, ok := bareImageID(image); ok {
+		return "untagged (" + id + ")"
+	}
 	i := strings.LastIndex(image, ":")
 	if i < 0 || i < strings.LastIndex(image, "/") {
 		return image
 	}
 	return image[i+1:]
+}
+
+// shortImageIDLen is how much of an image id identifies it in practice, and
+// is what `docker images` shows.
+const shortImageIDLen = 12
+
+// bareImageID reports whether image is an unnamed image id (optionally
+// "sha256:"-prefixed) and returns its short form. A hex TAG on a named image
+// is not one: the name is what makes it a reference.
+func bareImageID(image string) (string, bool) {
+	digest := strings.TrimPrefix(image, "sha256:")
+	if strings.ContainsAny(digest, "/:") || len(digest) < shortImageIDLen {
+		return "", false
+	}
+	for _, r := range digest {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return "", false
+		}
+	}
+	return digest[:shortImageIDLen], true
 }
 
 // healthIcon returns a status icon for a container's health/state.
@@ -138,6 +167,51 @@ func renderContainerTable(out *ui.UI, containers []containerInfo, wide, noTrunc 
 	out.Table(headers, rows)
 }
 
+// bannerIssueWidth is how wide a banner issue line may run before it wraps.
+//
+// ui.Box sizes itself to its longest line and never wraps, so an unwrapped
+// issue decides the width of the whole box: a long one soft-wraps in the
+// terminal, where the box drawing does not, and the banner stops looking
+// like a banner. This is the content width, so the box lands a few columns
+// wider and still fits the narrow end of what people actually run.
+const bannerIssueWidth = 96
+
+// wrapBannerIssue renders one issue as its bulleted line plus any
+// continuation lines, breaking on spaces where it can.
+//
+// Wrapping rather than truncating, because the issue text is the diagnostic
+// itself: a migration refusal names the constraint AND the relation, and a
+// cut that keeps the box tidy costs the operator the half that says what to
+// fix.
+func wrapBannerIssue(issue string) []string {
+	const bullet, indent = "  - ", "    "
+	var lines []string
+	prefix, remaining := bullet, issue
+	for len([]rune(remaining)) > bannerIssueWidth {
+		runes := []rune(remaining)
+		cut := bannerIssueWidth
+		if space := lastSpaceBefore(runes, cut); space > 0 {
+			cut = space
+		}
+		lines = append(lines, prefix+strings.TrimRight(string(runes[:cut]), " "))
+		remaining = strings.TrimLeft(string(runes[cut:]), " ")
+		prefix = indent
+	}
+	return append(lines, prefix+remaining)
+}
+
+// lastSpaceBefore returns the index of the last space at or before limit, or
+// 0 when the run has none to break on (a single unbroken token, which is cut
+// mid-word rather than allowed to set the box width).
+func lastSpaceBefore(runes []rune, limit int) int {
+	for i := limit; i > 0; i-- {
+		if runes[i] == ' ' {
+			return i
+		}
+	}
+	return 0
+}
+
 // renderTopBanner prints the headline status box. Critical fires a red
 // box, degraded fires amber, OK collapses to a single green line so the
 // happy path stays compact (the user does not need a banner to tell
@@ -153,7 +227,7 @@ func renderTopBanner(out *ui.UI, snap statusSnapshot) {
 	lines := make([]string, 0, len(v.issues)+len(v.hints)+1)
 	lines = append(lines, "  "+v.summary)
 	for _, issue := range v.issues {
-		lines = append(lines, "  - "+issue)
+		lines = append(lines, wrapBannerIssue(issue)...)
 	}
 	if len(v.hints) > 0 {
 		lines = append(lines, "")
@@ -251,11 +325,21 @@ func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) {
 // single well-formed JSON document: a container query failure survives
 // into the `error` field instead of rendering as an indistinguishable
 // empty array.
-func renderContainersSectionJSON(out *ui.UI, containers []containerInfo, containerErr error) {
+// bootFailures rides the JSON container section because the scan runs
+// whatever the output format, so a scripted consumer already pays for it.
+// Reporting a restart count and withholding the reason for it is the
+// operator-facing half of the same defect the human banner had.
+func renderContainersSectionJSON(
+	out *ui.UI,
+	containers []containerInfo,
+	containerErr error,
+	bootFailures map[string]string,
+) {
 	section := struct {
-		Containers []containerInfo `json:"containers"`
-		Error      string          `json:"error,omitempty"`
-	}{Containers: containers}
+		Containers   []containerInfo   `json:"containers"`
+		BootFailures map[string]string `json:"boot_failures,omitempty"`
+		Error        string            `json:"error,omitempty"`
+	}{Containers: containers, BootFailures: bootFailures}
 	if containerErr != nil {
 		section.Error = containerErr.Error()
 	}
@@ -277,7 +361,7 @@ func renderContainersSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 
 	w := out.Writer()
 	if jsonOut {
-		renderContainersSectionJSON(out, containers, snap.containerErr)
+		renderContainersSectionJSON(out, containers, snap.containerErr, snap.bootFailures)
 		return
 	}
 	if snap.containerErr != nil {

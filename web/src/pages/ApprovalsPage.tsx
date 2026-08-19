@@ -7,6 +7,7 @@ import { InputField } from '@/components/ui/input-field'
 import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DECISION_TEXT_MAX } from '@/utils/approvals'
 import { formatNumber } from '@/utils/format'
 import type { ApprovalRiskLevel } from '@/api/types/enums'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
@@ -201,7 +202,7 @@ function ApprovalBatchSection({ ctrl }: { ctrl: ApprovalsPageController }) {
           onValueChange={batch.setBatchComment}
           placeholder="Add context that applies to every approved item..."
           rows={3}
-          maxLength={2000}
+          maxLength={DECISION_TEXT_MAX}
           className="mt-2"
         />
       </ConfirmDialog>
@@ -226,7 +227,7 @@ function ApprovalBatchSection({ ctrl }: { ctrl: ApprovalsPageController }) {
           onValueChange={batch.setBatchReason}
           placeholder="Give the requester enough context to iterate."
           rows={3}
-          maxLength={2000}
+          maxLength={DECISION_TEXT_MAX}
           required
           autoFocus
           className="mt-2"
@@ -281,7 +282,12 @@ export default function ApprovalsPage() {
         onToggle={ctrl.handleRiskToggle}
       />
 
-      {ctrl.emptyStateProps && <EmptyState {...ctrl.emptyStateProps} />}
+      {/* Not while the load failed: "no approvals" is a claim about the org,
+          and a read that never returned cannot make it. Saying it under the
+          error banner reads as the reassuring half of a contradiction. */}
+      {ctrl.emptyStateProps && data.error === null && (
+        <EmptyState {...ctrl.emptyStateProps} />
+      )}
 
       <ApprovalGroups ctrl={ctrl} />
       <ApprovalDrawerHost ctrl={ctrl} />

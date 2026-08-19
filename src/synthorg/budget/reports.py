@@ -70,6 +70,28 @@ class ReportGenerator:
             has_budget_config=True,
         )
 
+    @property
+    def budget_config(self) -> BudgetConfig:
+        """The configuration reports are measured against.
+
+        Returns:
+            The configuration in force.
+        """
+        return self._budget_config
+
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config for subsequent reports.
+
+        Built once during assembly, before the stored configuration can be
+        read, so without this the reports surface goes on measuring against a
+        ceiling the operator had already changed while every other holder
+        moved.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._budget_config = budget_config
+
     async def generate_report(
         self,
         *,

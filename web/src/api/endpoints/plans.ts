@@ -1,5 +1,6 @@
 import {
   apiClient,
+  LLM_BOUND_TIMEOUT_MS,
   type PaginatedResult,
   unwrap,
   unwrapPaginated,
@@ -101,7 +102,13 @@ export async function deletePlan(planId: string): Promise<void> {
   unwrapVoid(response)
 }
 
-/** Send a plan back to the org for revision, with a note. */
+/**
+ * Send a plan back to the org for revision, with a note.
+ *
+ * The org re-plans against the note before responding, so this is LLM-bound:
+ * on the default budget it reports a network error while the backend is still
+ * planning, and the operator is told their request failed when it did not.
+ */
 export async function requestPlanChanges(
   planId: string,
   data: RequestPlanChangesRequest,
@@ -109,6 +116,7 @@ export async function requestPlanChanges(
   const response = await apiClient.post<ApiResponse<Plan>>(
     `/plans/${encodeURIComponent(planId)}/request-changes`,
     data,
+    { timeout: LLM_BOUND_TIMEOUT_MS },
   )
   return unwrap(response)
 }

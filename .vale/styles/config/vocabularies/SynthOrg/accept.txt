@@ -36,6 +36,7 @@ otel
 otp
 polyfactory
 pre-empt
+pre-empts
 pre-emptive
 pre-selected
 pydantic
@@ -130,8 +131,6 @@ Dockerfile
 Dockerfiles
 Docstring
 Docstrings
-Dogfood
-Dogfooding
 ECharts
 EPBench
 ETag
@@ -234,6 +233,7 @@ Rollup
 SBOMs
 SDKs
 SHAs
+SIGKILLed
 SIGKILLs
 SQLAlchemy
 SSNs
@@ -565,6 +565,7 @@ iptables
 isort
 itemless
 journaling
+judgeable
 jsdom
 kanban
 keyframes
@@ -649,6 +650,7 @@ onboarded
 onboarding
 openblas
 optionless
+orchestrator's
 orgs
 overridable
 parallel_branch
@@ -735,6 +737,10 @@ reporting_lines
 repos
 reputational
 request_id
+requeue
+requeued
+requeueing
+requeues
 rerank
 rescan
 research_autonomous
@@ -888,7 +894,10 @@ undercounted
 underperforming
 underspecified
 undispatched
+undrivable
 unencrypted
+unfillable
+unjudgeable
 ungated
 unheadered
 unimported

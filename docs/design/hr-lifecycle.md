@@ -125,9 +125,45 @@ The HR system manages the agent workforce dynamically:
    silently did not land is indistinguishable from one nobody approved
 5. Onboarding includes: company context, project briefing, team introductions, learned from seniors (training mode)
 
-A new hire's `(provider, model)` pair is read live from `hr.new_hire_model`, a
-`MODEL_REF` with no default: unset means hiring fails loud naming the setting,
-rather than registering an agent on a placeholder pair nobody chose.
+### What model a new hire runs on
+
+The pair is part of what the operator approves, not a standing setting the
+hire reads afterwards. It decides what the agent can do and what it costs for
+as long as the agent exists, and it depends on the role being filled and on
+what the operator has actually configured, so one org-wide value cannot answer
+it: it gave every hire the same answer, and gave every hire NO answer whenever
+it was unset, which is how an approval came to be raised for a hire the system
+would then refuse.
+
+`hr/hire_model_proposal.py` proposes the pair instead, running the same
+capability matcher the setup wizard runs when a template roster is filled out
+(`templates/model_matcher.py`), scored against the operator's own configured
+providers and biased by the company's `model_spend_profile`.
+
+The **alternatives** are the operator's own catalogue rather than a second
+opinion derived from it: every tool-capable configured model is offered,
+cheapest first behind the recommendation, capped at eight. Re-running the
+matcher under different optimisation axes looked like the richer answer and is
+not, because the axes routinely converge on one model: an operator who wanted a
+different one would be shown several labels for the same pair and no way to
+change it. Tool capability is the only filter, because it is the one hard
+property an agent's model must have; everything else is preference, and the
+preference is the operator's to exercise here.
+
+The approval carries that fork as its evidence package's `options`, so the
+operator overrides the recommendation on the approval itself, in the drawer,
+without leaving it. Each option's id IS the serialised pair, so the pick
+decodes straight back to the binding with no lookup table between them. The
+recommendation is stamped onto the request when the approval is raised, so an
+approval taken without touching the options still has a binding;
+`_approval_org_hire.py` replaces it with the operator's pick before the
+approve transition, since the pick is part of the decision rather than an edit
+to a decided request.
+
+Nothing auto-picks a provider: every option names both halves, every option
+came from the operator's own catalogue, and a hire whose request carries no
+pair is refused at instantiation rather than registering an agent that joins
+the roster looking staffed and fails every dispatch.
 
 ### Hiring for an unstaffed gate role
 

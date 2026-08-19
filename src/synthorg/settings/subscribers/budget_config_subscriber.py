@@ -16,7 +16,6 @@ that decides whether a run may continue.
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
-from synthorg.budget.config import BudgetConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -83,24 +82,20 @@ class BudgetConfigSettingsSubscriber:
         Args:
             changes: The watched writes this rebuild carries.
         """
-        from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
+        from synthorg.budget.adoption import adopt_budget_config  # noqa: PLC0415
         from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
         from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
-        budget_slice = self._app_state.slice(BudgetStateSlice)
-        enforcer = budget_slice.budget_enforcer
-        prior_config = budget_slice.budget_config
+        prior_config = self._app_state.slice(BudgetStateSlice).budget_config
         try:
             resolved = await config_resolver_of(self._app_state).get_budget_config()
-            self._app_state.wire(BudgetStateSlice, budget_config=resolved)
-            if isinstance(enforcer, BudgetEnforcer):
-                enforcer.set_budget_config(resolved)
-            # The enforcer is not the only holder. The tracker's copy decides
-            # which currency it accepts records in and is what the summaries
-            # and budget gauges are computed from; the optimizer scores every
+            # Every holder, through the one implementation boot also uses: the
+            # enforcer is not the only one. The tracker's copy decides which
+            # currency it accepts records in and is what the summaries and
+            # budget gauges are computed from; the optimizer scores every
             # recommendation against its own. A write adopted by one of the
             # three leaves the other two enforcing the boot config.
-            self._adopt_on_budget_readers(resolved)
+            adopt_budget_config(self._app_state, resolved)
         except Exception as exc:
             reraise_critical(exc)
             # Restore the slice so no reader observes a config the
@@ -115,25 +110,3 @@ class BudgetConfigSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-
-    def _adopt_on_budget_readers(self, resolved: BudgetConfig) -> None:
-        """Hand *resolved* to the tracker and optimizer, when wired.
-
-        Both are optional on the slice (a harness runs without them), and
-        both are protocol-typed there, so each is offered the setter and
-        skipped when its implementation does not carry one.
-
-        Args:
-            resolved: The freshly resolved configuration.
-        """
-        from synthorg.budget.optimizer import CostOptimizer  # noqa: PLC0415
-        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-        from synthorg.budget.tracker import CostTracker  # noqa: PLC0415
-
-        budget_slice = self._app_state.slice(BudgetStateSlice)
-        tracker = budget_slice.cost_tracker
-        if isinstance(tracker, CostTracker):
-            tracker.set_budget_config(resolved)
-        optimizer = budget_slice.cost_optimizer
-        if isinstance(optimizer, CostOptimizer):
-            optimizer.set_budget_config(resolved)

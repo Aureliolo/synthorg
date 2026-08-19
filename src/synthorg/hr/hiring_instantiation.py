@@ -8,6 +8,7 @@ keeps the decision flow and the durable request state, and this module keeps
 the part that touches the roster.
 """
 
+from synthorg.config.model_metadata import is_tool_capable
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
@@ -15,6 +16,7 @@ from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     HiringError,
 )
+from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
@@ -25,48 +27,140 @@ from synthorg.observability.events.hr import (
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_MODEL_UNSET,
 )
-from synthorg.settings.bound_model import resolve_bound_model_live
-from synthorg.settings.kill_switch import require_configured_model
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.settings.model_ref import parse_model_ref
 
 logger = get_logger(__name__)
 
 
-async def resolve_new_hire_model(
-    config_resolver: ConfigResolverProtocol | None,
+async def resolve_hire_model(
+    request: HiringRequest,
+    *,
+    catalogue: ProviderCatalogue | None,
 ) -> ModelConfig:
-    """Read the pair a new hire is bound to, refusing an unset one.
+    """Read the pair THIS hire was approved on, refusing one that is not real.
 
-    Read live per instantiation rather than captured at wiring, so an
-    operator who binds the pair after boot can approve a hire without a
-    restart. There is deliberately nothing to fall back to: an agent
-    registered against a placeholder provider joins the roster looking
-    staffed and fails every dispatch it is ever given.
+    The pair travels with the request rather than being read from a standing
+    org-wide setting, because it is part of what the operator approved: the
+    approval proposes pairs from the models they actually have and records
+    the one they picked. A setting could only ever give every hire the same
+    answer, and gave every hire NO answer whenever it was unset, which is how
+    an approval came to be raised for a hire the system would then refuse.
+
+    There is deliberately nothing to fall back to: an agent registered
+    against a placeholder provider joins the roster looking staffed and fails
+    every dispatch it is ever given.
+
+    A pair recorded at proposal time and a pair that still exists are
+    different claims, and only the second is the one that matters here.
+    Approval is a human step, so an arbitrary interval separates the two, and
+    the catalogue is live: the operator can delete the connection, drop the
+    model, or have runtime tool-call failures downgrade it out of eligibility.
+    Every one of those produces the same roster entry as the placeholder this
+    already refuses, so this asks the catalogue the same question the
+    proposal asked and refuses the same way.
+
+    With no catalogue there is nothing to ask, and that is a refusal too
+    rather than a pass: a provider is a registered CONNECTION, so a pair
+    nothing can confirm is one is exactly the unverified binding above. The
+    reasoning that it cannot happen (a pipeline with no catalogue proposes
+    nothing, so a bound request should be unreachable) is true of the
+    proposal path alone, and ``bind_model`` takes any syntactically valid
+    ``MODEL_REF`` from a caller of its own. Nothing legitimate is lost:
+    wiring declines the whole hiring subsystem without a catalogue.
 
     Args:
-        config_resolver: Reads the live ``hr.new_hire_model`` setting.
-
-    Returns:
-        The bound pair the new agent runs on.
+        request: The approved request, carrying the pair it was approved on.
+        catalogue: The operator's configured providers, read live, or ``None``
+            when the pipeline was built without one.
 
     Raises:
-        ServiceUnavailableError: When no pair is bound.
+        HiringError: When the request carries no pair, which means nothing
+            was proposable when the approval was raised, or when the pair it
+            carries is not one the operator's live catalogue offers.
+
+    Returns:
+        The pair the new agent runs on.
     """
-    ref = require_configured_model(
-        await resolve_bound_model_live(
-            config_resolver,
-            namespace="hr",
-            key="new_hire_model",
-            unset_event=HR_HIRING_MODEL_UNSET,
-        ),
-        namespace="hr",
-        key="new_hire_model",
-        feature_label="hiring",
-    )
+    ref = parse_model_ref(request.bound_model_ref or "")
+    if not ref.is_bound:
+        msg = (
+            f"Hiring request {request.id!s} carries no model binding, so there "
+            "is nothing to register this agent against. No configured model "
+            "was proposable when the approval was raised."
+        )
+        logger.warning(
+            HR_HIRING_MODEL_UNSET,
+            request_id=str(request.id),
+            role=str(request.role),
+            error=msg,
+        )
+        raise HiringError(msg)
+    if catalogue is None:
+        msg = (
+            f"Hiring request {request.id!s} names {ref.provider}/{ref.model_id}, "
+            "but no provider catalogue is wired, so nothing can confirm that is "
+            "a connection this organisation has. Refusing rather than "
+            "registering an agent whose every dispatch would fail."
+        )
+        logger.warning(
+            HR_HIRING_MODEL_UNSET,
+            request_id=str(request.id),
+            role=str(request.role),
+            error=msg,
+        )
+        raise HiringError(msg)
+    await _require_still_offerable(request, ref.provider, ref.model_id, catalogue)
     return ModelConfig(
         provider=NotBlankStr(ref.provider),
         model_id=NotBlankStr(ref.model_id),
     )
+
+
+async def _require_still_offerable(
+    request: HiringRequest,
+    provider: str,
+    model_id: str,
+    catalogue: ProviderCatalogue,
+) -> None:
+    """Refuse a binding the operator's live catalogue no longer offers.
+
+    Args:
+        request: The request being instantiated, for the message and the log.
+        provider: The connection half of the recorded pair.
+        model_id: The model half of the recorded pair.
+        catalogue: The operator's configured providers, read live.
+
+    Raises:
+        HiringError: When the connection is gone, the model is gone from it,
+            or the model can no longer call a tool.
+    """
+    providers = await catalogue.list_providers()
+    config = providers.get(provider)
+    if config is None:
+        reason = f"connection {provider!r} is no longer configured"
+    else:
+        model = next((m for m in config.models if str(m.id) == model_id), None)
+        if model is None:
+            reason = f"connection {provider!r} no longer carries model {model_id!r}"
+        elif not is_tool_capable(model.metadata):
+            reason = (
+                f"model {model_id!r} on {provider!r} can no longer call a tool, "
+                "which every agent needs"
+            )
+        else:
+            return
+    msg = (
+        f"Hiring request {request.id!s} was approved on {provider}/{model_id}, "
+        f"but {reason}. Re-approve it on a pair you still have rather than "
+        "registering an agent that cannot run."
+    )
+    logger.warning(
+        HR_HIRING_MODEL_UNSET,
+        request_id=str(request.id),
+        role=str(request.role),
+        error=msg,
+    )
+    raise HiringError(msg)
 
 
 async def register_agent(
@@ -147,4 +241,4 @@ async def try_onboard(
         )
 
 
-__all__ = ["register_agent", "resolve_new_hire_model", "try_onboard"]
+__all__ = ["register_agent", "resolve_hire_model", "try_onboard"]

@@ -14,9 +14,12 @@ from synthorg.meta.charter.models import (
     ScopeBoundaries,
 )
 from synthorg.persistence._shared.charter_marshalling import (
+    CHARTER_CAS_UPDATE_SQL_PCT,
+    CHARTER_CAS_UPDATE_SQL_QMARK,
     CHARTER_COLUMNS,
     as_iso,
     build_charter_where,
+    charter_cas_params,
     charter_save_params,
     row_to_charter,
     validate_charter_update_keys,
@@ -148,6 +151,47 @@ class TestValidateCharterUpdateKeys:
     def test_unknown_key_raises(self) -> None:
         with pytest.raises(QueryError):
             validate_charter_update_keys({"status": "approved"})
+
+
+@pytest.mark.unit
+class TestCasUpdateCoversEveryColumn:
+    """The conditional-edit UPDATE stays in step with ``CHARTER_COLUMNS``.
+
+    A column added to the upsert set and to the params builder but not to the
+    SET clause makes the statement unexecutable on both backends, and the
+    only tier that binds real parameters is the conformance one, which runs
+    in CI. These assert the same thing without a database.
+    """
+
+    def test_set_clause_names_every_non_id_column_in_order(self) -> None:
+        """Order is the invariant, not just membership.
+
+        ``charter_cas_params`` supplies the SET values positionally from
+        ``charter_save_params``, so a column out of order writes each value
+        into its neighbour's column, which a membership check cannot see.
+        """
+        expected = [c.strip() for c in CHARTER_COLUMNS.split(",") if c.strip() != "id"]
+        set_clause = CHARTER_CAS_UPDATE_SQL_QMARK.split(" WHERE ")[0].removeprefix(
+            "UPDATE project_charters SET "
+        )
+
+        written = [part.split("=")[0].strip() for part in set_clause.split("?,")]
+
+        assert written == expected
+
+    @pytest.mark.parametrize(
+        ("statement", "placeholder"),
+        [
+            (CHARTER_CAS_UPDATE_SQL_QMARK, "?"),
+            (CHARTER_CAS_UPDATE_SQL_PCT, "%s"),
+        ],
+    )
+    def test_placeholder_count_matches_the_params_supplied(
+        self, statement: str, placeholder: str
+    ) -> None:
+        params = charter_cas_params(_make_charter(), expected_version=3)
+
+        assert statement.count(placeholder) == len(params)
 
 
 @pytest.mark.unit

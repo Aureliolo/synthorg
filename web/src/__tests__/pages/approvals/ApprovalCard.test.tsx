@@ -40,7 +40,23 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Deploy API')).toBeInTheDocument()
     // Only the human step label is rendered; the raw action_type string is not.
     expect(screen.queryByText('deploy:production')).not.toBeInTheDocument()
+    // A production deploy is not a review of finished work, whatever gate
+    // parked it, so the label states the decision rather than borrowing the
+    // review gate's wording.
+    expect(screen.getByText('Approve to continue')).toBeInTheDocument()
+  })
+
+  it('calls a completed review a completed review', () => {
+    renderCard({ action_type: 'review:task_completion' })
     expect(screen.getByText('Review completed work')).toBeInTheDocument()
+  })
+
+  it('badges a failed run even when no run context resolved', () => {
+    // The badge is the danger signal on the card. Reading only the optional
+    // run enrichment dropped it from a row that had failed, so that card was
+    // the one thing in the queue not marked as a failure.
+    renderCard({ action_type: 'review:task_failed', run: null })
+    expect(screen.getByText('Run failed')).toBeInTheDocument()
   })
 
   it('says the agent is unknown rather than printing the requester', () => {

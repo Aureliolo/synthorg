@@ -7,10 +7,13 @@ constantly -- the canonical ``MODEL_REF`` string for a bound pair, and a
 live here so a test does not hand-roll either.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Final
 from unittest.mock import AsyncMock
 
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.providers.protocol import CompletionProvider, ConnectionSelector
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -124,3 +127,142 @@ def model_ref_resolver(
         get_str=AsyncMock(side_effect=_get_str),
     )
     return resolver
+
+
+#: Price step between the models a test catalogue offers, so a cost-biased
+#: selection has something to bias ON. Identically-priced models score
+#: identically, and every spend profile then lands on the same one.
+_CATALOGUE_COST_STEP: Final[float] = 1.0
+
+#: Context step, paid for by the price step. Cost alone is not a spread: with
+#: every model otherwise identical the cheapest dominates outright and no
+#: profile can prefer anything else, so a catalogue meant to offer a choice
+#: has to make the dearer models actually better at something.
+_CATALOGUE_CONTEXT_STEP: Final[int] = 100_000
+
+
+def provider_catalogue(
+    models: Sequence[str] = (TEST_MODEL_ID,),
+    *,
+    provider: str = TEST_PROVIDER,
+) -> ProviderCatalogue:
+    """Return a catalogue serving one provider carrying *models*.
+
+    The proposal path scores a candidate against the operator's configured
+    models, so a test that expects a hire to be bindable has to give it
+    something to bind to. Each model costs more than the one before it, in the
+    order given, so a catalogue of several offers a genuine cost-to-capability
+    spread rather than N indistinguishable rows.
+
+    Args:
+        models: Model ids the provider offers, cheapest first.
+        provider: The connection name they sit under.
+
+    Returns:
+        A ``ProviderCatalogue`` double.
+    """
+    return _catalogue_of(_configs(models, provider))
+
+
+def _configs(models: Sequence[str], provider: str) -> Mapping[str, ProviderConfig]:
+    """Return the configured-provider mapping a catalogue serves.
+
+    Args:
+        models: Model ids the provider offers, cheapest first.
+        provider: The connection name they sit under.
+
+    Returns:
+        One provider carrying *models*. An empty *models* is a configured
+        connection offering nothing, which the proposal says something
+        different about from having no connection at all.
+    """
+    return {
+        provider: ProviderConfig(
+            # API-key auth is the default and requires a catalog entry to
+            # resolve its credentials from; the proposal never dispatches, but
+            # the config still has to be a valid one.
+            connection_name=NotBlankStr(provider),
+            models=tuple(
+                ProviderModelConfig(
+                    id=NotBlankStr(model_id),
+                    cost_per_1k_input=(index + 1) * _CATALOGUE_COST_STEP,
+                    cost_per_1k_output=(index + 1) * _CATALOGUE_COST_STEP,
+                    max_context=(index + 1) * _CATALOGUE_CONTEXT_STEP,
+                )
+                for index, model_id in enumerate(models)
+            ),
+        )
+    }
+
+
+class MutableProviderCatalogue:
+    """A catalogue whose contents change between two reads.
+
+    The proposal reads it when the approval is raised and the instantiation
+    reads it again when the hire is finished, and a human decision sits
+    between the two. A test about that interval needs a catalogue that can
+    differ across it, which a fixed double cannot express.
+    """
+
+    def __init__(
+        self,
+        models: Sequence[str] = (TEST_MODEL_ID,),
+        *,
+        provider: str = TEST_PROVIDER,
+    ) -> None:
+        """Serve one provider carrying *models*, cheapest first.
+
+        Args:
+            models: Model ids the provider offers.
+            provider: The connection name they sit under.
+        """
+        self._provider = provider
+        self._configs = _configs(models, provider)
+
+    def serve(self, models: Sequence[str]) -> None:
+        """Replace the models the connection offers, from the next read on.
+
+        Args:
+            models: Model ids the provider now offers.
+        """
+        self._configs = _configs(models, self._provider)
+
+    def delete_connection(self) -> None:
+        """Drop the connection itself, as deleting it in the dashboard does.
+
+        Kept apart from serving no models, which is a connection that still
+        exists: the two are different operator actions and the hire refuses
+        them for different reasons.
+        """
+        self._configs = {}
+
+    async def list_providers(self) -> Mapping[str, ProviderConfig]:
+        """Return every configured provider, keyed by connection name.
+
+        Returns:
+            Whatever was last served.
+        """
+        return self._configs
+
+
+def no_provider_catalogue() -> ProviderCatalogue:
+    """Return a catalogue for an org that has configured no provider at all.
+
+    Distinct from a provider carrying no models: one is "you have not
+    connected anything", the other is "nothing you connected fits", and the
+    proposal says different things about them.
+
+    Returns:
+        A ``ProviderCatalogue`` double serving nothing.
+    """
+    return _catalogue_of({})
+
+
+def _catalogue_of(configs: Mapping[str, ProviderConfig]) -> ProviderCatalogue:
+    async def _list() -> Mapping[str, ProviderConfig]:
+        return configs
+
+    catalogue: ProviderCatalogue = mock_of[ProviderCatalogue](
+        list_providers=AsyncMock(side_effect=_list),
+    )
+    return catalogue

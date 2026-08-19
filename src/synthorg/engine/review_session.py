@@ -26,14 +26,30 @@ from typing import Final
 from synthorg.core.agent import AgentIdentity, ToolPermissions
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.engine.completion_oracle.tool_names import (
+    SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
+)
 
 #: Tool surface a judging session runs with. STANDARD covers reading the
 #: deliverable and running the build and test commands a verdict rests on.
 #: ``mcp_capabilities`` is empty on purpose: the internal MCP surface is how
 #: an agent reaches the rest of the org, and nothing about judging one
 #: deliverable needs it.
+#:
+#: The verdict tool is allowed BY NAME because it is the one thing a judging
+#: session exists to do and STANDARD does not reach it: the tool is
+#: ``ToolCategory.OTHER``, which only ELEVATED admits. Without this the
+#: reviewer is handed the tool in its registry and refused at the invoke
+#: boundary, which is what a live run produced: two attempts at
+#: ``submit_completion_oracle_verdict``, both
+#: ``Category 'other' is not permitted at access level 'standard'``, then the
+#: session flailing through ``list_tools`` and ``shell_command`` looking for
+#: another way to file. Naming the one tool keeps the narrowing honest;
+#: raising the level to ELEVATED would hand a reviewer every other category
+#: too, which is exactly what the narrowing exists to prevent.
 REVIEW_TOOL_PERMISSIONS: Final[ToolPermissions] = ToolPermissions(
     access_level=ToolAccessLevel.STANDARD,
+    allowed=(SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,),
     mcp_capabilities=(),
 )
 

@@ -10,8 +10,10 @@ shadow and auto-rewrite modes at a boundary, not just at the evaluator.
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.communication._output_guard import guard_message_output
 from synthorg.communication.bus_protocol import MessageBus
@@ -31,6 +33,9 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
+from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
+from synthorg.engine.decomposition.models import DecompositionPlan
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.initiative.evaluate_session import (
     SubmitEvaluationTool,
     _EvaluationCapture,
@@ -449,6 +454,156 @@ def _submit_args(summary: str, evidence: str) -> dict[str, object]:
             }
         ],
     }
+
+
+def _args(**overrides: object) -> dict[str, JsonValue]:
+    """One submitted subtask, in the shape the submit tool receives.
+
+    Returns:
+        The subtask arguments.
+    """
+    subtask: dict[str, JsonValue] = {
+        "id": "sub-1",
+        "title": "Build the core loop",
+        "description": "Blocks fall, move, rotate, and lines clear",
+        "acceptance_criteria": ["the core loop is playable"],
+        "expected_artifacts": ["src/engine.js"],
+    }
+    subtask.update(cast("dict[str, JsonValue]", overrides))
+    return subtask
+
+
+def _submit(
+    subtask: dict[str, JsonValue],
+    *,
+    assumptions: list[JsonValue] | None = None,
+    open_questions: list[JsonValue] | None = None,
+) -> DecompositionPlan:
+    """Submit one plan the way both planning strategies do.
+
+    Returns:
+        The accepted plan.
+
+    Raises:
+        DecompositionError: When the submission is refused.
+    """
+    args: dict[str, JsonValue] = {
+        "subtasks": [subtask],
+        "task_structure": "sequential",
+        "assumptions": assumptions or [],
+        "open_questions": open_questions or [],
+    }
+    return args_to_decomposition_plan(args, "root")
+
+
+@pytest.mark.usefixtures("_wired_service")
+class TestPlanProseBoundary:
+    """A plan is agent output the operator reads, so it is guarded like one.
+
+    Every item title, description and done-when criterion, and every
+    plan-level assumption and open question, is written by a model and
+    rendered on the plan page the operator approves. The run that found this
+    gap produced a plan whose title and four item titles carried the one
+    punctuation mark the policy ships a hard rule against.
+
+    Guarded on the SUBMIT path, which both planning strategies come through
+    and where the producer can still be asked for a better plan: the tool
+    turns the refusal into a correctable error, the tool-less fallback into
+    a retry. That placement is the point, so these drive the submit entry.
+    """
+
+    def test_an_item_title_blocks(self) -> None:
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(title=f"Build the core loop {_EM_DASH} v1"))
+
+    def test_an_item_description_blocks(self) -> None:
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(description=f"Blocks fall {_EM_DASH} and lines clear"))
+
+    def test_a_done_when_criterion_blocks(self) -> None:
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(_args(acceptance_criteria=[f"playable {_EM_DASH} end to end"]))
+
+    def test_a_plan_assumption_blocks(self) -> None:
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(
+                _args(),
+                assumptions=[f"the workspace is empty {_EM_DASH} for now"],
+            )
+
+    def test_an_open_question_blocks(self) -> None:
+        with pytest.raises(DecompositionError, match="house style"):
+            _submit(
+                _args(),
+                open_questions=[f"which runtime {_EM_DASH} node or python"],
+            )
+
+    def test_an_artifact_path_is_not_prose(self) -> None:
+        # A file name is read by a tool before a person, so rewriting one
+        # renames the deliverable. The carve-out is deliberate and stated
+        # here so it cannot be closed by accident.
+        plan = _submit(_args(expected_artifacts=[f"src/a{_EM_DASH}b.js"]))
+        assert plan.subtasks[0].expected_artifacts[0].endswith("b.js")
+
+    def test_a_clean_plan_is_accepted(self) -> None:
+        plan = _submit(_args())
+        assert plan.subtasks[0].title == "Build the core loop"
+
+    def test_the_refusal_tells_the_producer_what_to_fix(self) -> None:
+        # It reaches the planning agent as a tool error and the single-shot
+        # strategy as a retry reason, so it has to name the rule rather than
+        # say the plan was rejected.
+        with pytest.raises(DecompositionError) as raised:
+            _submit(_args(title=f"Build {_EM_DASH} it"))
+        assert "wording" in str(raised.value)
+
+
+class TestARewriteIsJudgedOnTheTextItProduced:
+    """The guard applies its rewrite through a route that validates nothing.
+
+    ``model_copy(update=...)`` skips validation, and ``NotBlankStr`` is an
+    annotation that only runs inside a model, so wrapping the rewritten string
+    checks nothing either. A rule whose replacement empties the span therefore
+    lands blank prose on the plan an operator is shown and approves.
+    """
+
+    @pytest.mark.unit
+    def test_a_rewrite_that_empties_a_title_is_refused(self) -> None:
+        _wire(
+            OutputStyleRule(
+                id="empty_title",
+                type=RuleType.LITERAL_BAN,
+                patterns=("Build the core loop",),
+                message="no working titles",
+                mode=EnforcementMode.AUTO_REWRITE,
+                rewrite="",
+            )
+        )
+        try:
+            with pytest.raises(DecompositionError):
+                _submit(_args())
+        finally:
+            set_output_policy_service(None)
+
+    @pytest.mark.unit
+    def test_a_rewrite_that_leaves_the_plan_valid_still_passes(self) -> None:
+        # The complement: revalidating must not refuse an ordinary rewrite,
+        # or every auto-rewrite rule becomes a rejection with extra steps.
+        _wire(
+            OutputStyleRule(
+                id="retitle",
+                type=RuleType.LITERAL_BAN,
+                patterns=("core loop",),
+                message="say what it does",
+                mode=EnforcementMode.AUTO_REWRITE,
+                rewrite="falling-blocks loop",
+            )
+        )
+        try:
+            plan = _submit(_args())
+        finally:
+            set_output_policy_service(None)
+        assert plan.subtasks[0].title == "Build the falling-blocks loop"
 
 
 class TestEvaluationVerdictBoundary:

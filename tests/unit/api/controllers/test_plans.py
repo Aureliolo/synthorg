@@ -682,9 +682,14 @@ class TestPlanController:
         )
         assert resp.status_code == 404
 
-    async def test_request_changes_drafts_plan(
+    async def test_request_changes_refuses_when_nothing_can_re_plan(
         self, async_test_client: LoopAsyncClient
     ) -> None:
+        """A change request no planner can honour is refused, never parked.
+
+        Parking it is the defect: the plan flipped to draft, the note went to
+        an audit event, and nothing on any surface would ever revise it.
+        """
         await _seed(async_test_client, _plan())
         plan_id = str(as_uuid("plan-001"))
 
@@ -693,8 +698,25 @@ class TestPlanController:
             json={"note": "Split the movement item into drop and rotate"},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 200
-        assert resp.json()["data"]["status"] == "draft"
+        assert resp.status_code == 503
+
+    async def test_a_refused_change_request_leaves_the_plan_untouched(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Refusing before any write keeps the operator's plan reviewable."""
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        await async_test_client.post(
+            f"/api/v1/plans/{plan_id}/request-changes",
+            json={"note": "Split the movement item into drop and rotate"},
+            headers=make_auth_headers("ceo"),
+        )
+
+        after = await async_test_client.get(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+        assert after.json()["data"]["status"] == "pending_review"
 
     async def test_request_changes_rejects_terminal_plan(
         self, async_test_client: LoopAsyncClient

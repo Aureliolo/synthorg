@@ -21,6 +21,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta._ids import new_opaque_id
 from synthorg.meta.charter._charter_crud import CharterCrudMixin
+from synthorg.meta.charter._facet_coverage import (
+    coverage_question,
+    press_already_made,
+)
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
@@ -41,12 +45,15 @@ from synthorg.observability.events.charter import (
     CHARTER_CONFIG_RESOLVE_FAILED,
     CHARTER_CONVERSATION_CLOSED,
     CHARTER_CONVERSATION_NOT_FOUND,
+    CHARTER_INTERVIEW_ASSUMPTIONS_PRESSED,
     CHARTER_INTERVIEW_CAP_REACHED,
     CHARTER_INTERVIEW_DRAFTED,
     CHARTER_INTERVIEW_FAILED,
     CHARTER_INTERVIEW_QUESTION,
     CHARTER_INTERVIEW_TURN,
-    CHARTER_STATUS_TRANSITIONED,
+)
+from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.charter_protocol import CharterFilterSpec, CharterRepository
 from synthorg.persistence.conversation_protocol import (
@@ -206,9 +213,20 @@ class CharterInterviewService(CharterCrudMixin):
                 conversation, decision.next_question, next_sequence + 1, now
             )
         assert decision.draft is not None  # noqa: S101 -- validator-guaranteed
-        return await self._record_draft(
-            conversation, decision.draft, next_sequence + 1, now
-        )
+        draft = decision.draft
+        if draft.assumed_facets and not press_already_made(prior_turns):
+            logger.info(
+                CHARTER_INTERVIEW_ASSUMPTIONS_PRESSED,
+                conversation_id=str(conversation.id),
+                assumed=[facet.value for facet in draft.assumed_facets],
+            )
+            return await self._record_question(
+                conversation,
+                coverage_question(draft.assumed_facets),
+                next_sequence + 1,
+                now,
+            )
+        return await self._record_draft(conversation, draft, next_sequence + 1, now)
 
     async def _live_config(self) -> CharterConfig:
         """Resolve the live charter config for this turn.
@@ -436,6 +454,7 @@ class CharterInterviewService(CharterCrudMixin):
             success_criteria=draft.success_criteria,
             scope=draft.scope,
             envelope=draft.envelope,
+            assumed_facets=draft.assumed_facets,
             project_id=draft.project_id,
             proposed_project_name=draft.proposed_project_name,
             proposed_project_description=draft.proposed_project_description,
@@ -469,7 +488,7 @@ class CharterInterviewService(CharterCrudMixin):
         )
         if transitioned:
             logger.info(
-                CHARTER_STATUS_TRANSITIONED,
+                COS_CONVERSATION_STATUS_TRANSITIONED,
                 conversation_id=str(conversation.id),
                 from_state=conversation.status.value,
                 to_state=ConversationStatus.CLOSED.value,

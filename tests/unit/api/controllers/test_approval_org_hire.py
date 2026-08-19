@@ -4,6 +4,7 @@ A human saying yes is only half the hire; these cover the other half, where
 the approved request becomes a registered agent.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -13,7 +14,6 @@ from synthorg.api.controllers._approval_org_hire import try_org_hire_resume
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -26,8 +26,7 @@ from tests._shared import as_uuid, make_app_state, sid
 from tests._shared.model_binding import (
     TEST_MODEL_ID,
     TEST_PROVIDER,
-    bound_ref,
-    model_ref_resolver,
+    provider_catalogue,
 )
 
 pytestmark = pytest.mark.unit
@@ -59,7 +58,7 @@ def _approval(
 
 async def _seed(
     *,
-    new_hire_model: str = bound_ref(),
+    catalogue_models: Sequence[str] | None = (TEST_MODEL_ID,),
     decision_reason: str | None = None,
 ) -> tuple[AppState, HiringService, AgentRegistryService, HiringRequest, str]:
     """Stand up an approvals state around one submitted hiring request.
@@ -69,7 +68,9 @@ async def _seed(
     link the production path never makes.
 
     Args:
-        new_hire_model: Stored ``hr.new_hire_model`` value.
+        catalogue_models: Models the operator has configured, which is what
+            the approval proposes from. ``None`` for an org with no provider
+            catalogue at all, where nothing is proposable.
         decision_reason: Reason recorded on the approval item.
 
     Returns:
@@ -81,7 +82,11 @@ async def _seed(
     hiring = HiringService(
         registry=registry,
         approval_store=store,
-        config_resolver=model_ref_resolver(default=new_hire_model),
+        provider_catalogue=(
+            provider_catalogue(catalogue_models)
+            if catalogue_models is not None
+            else None
+        ),
     )
     request = await hiring.create_request(
         requested_by=NotBlankStr("staffing"),
@@ -205,15 +210,46 @@ class TestOrgHireResume:
 
         assert await registry.list_active() == ()
 
-    async def test_an_unbound_new_hire_pair_refuses_rather_than_inventing_one(
+    async def test_an_unproposable_pair_refuses_rather_than_inventing_one(
         self,
     ) -> None:
-        state, hiring, registry, submitted, approval_id = await _seed(new_hire_model="")
-        with pytest.raises(ServiceUnavailableError, match="new_hire_model"):
+        state, hiring, registry, submitted, approval_id = await _seed(
+            catalogue_models=None
+        )
+        with pytest.raises(HiringError, match="no model binding"):
             await try_org_hire_resume(
                 state, approval_id, approved=True, decided_by=_DECIDER
             )
         assert await registry.list_active() == ()
         # The decision itself stands, so the reconciler can finish the hire
-        # once the operator binds a pair. It is not silently re-openable.
+        # once the operator configures a model. It is not silently re-openable.
+        assert _status(hiring, submitted) is HiringRequestStatus.APPROVED
+
+    async def test_a_retry_after_a_failed_instantiation_settles(self) -> None:
+        """A landed decision is not re-decided, whoever presses the button.
+
+        The failure above rolls the approval item back to PENDING, which is
+        what makes the operator's retry reachable, but the request is already
+        APPROVED and `approve_request` refuses one that is not awaiting a
+        decision. Reading APPROVED as unsettled therefore turned every retry
+        into a 500 until the staffing reconciler happened to finish the hire.
+        The decision landing and the agent existing are separately owned, and
+        this is the first of the two.
+        """
+        state, hiring, registry, submitted, approval_id = await _seed(
+            catalogue_models=None
+        )
+        with pytest.raises(HiringError):
+            await try_org_hire_resume(
+                state, approval_id, approved=True, decided_by=_DECIDER
+            )
+
+        handled = await try_org_hire_resume(
+            state, approval_id, approved=True, decided_by=_DECIDER
+        )
+
+        assert handled is True
+        # Settling the approval must not invent the agent the hire still owes:
+        # the reconciler instantiates it once a model is configured.
+        assert await registry.list_active() == ()
         assert _status(hiring, submitted) is HiringRequestStatus.APPROVED

@@ -635,6 +635,36 @@ _r.register(
     )
 )
 
+# ── Shell command timeout (overall execution bound) ──────────────
+# The ceiling on ONE agent shell command. It was a code default of 30s that no
+# operator surface exposed, and 30s is less than a dependency install takes: a
+# live run watched an agent time out on `npm install` four times in a row,
+# write its tests anyway, and fail them for want of the packages. A command
+# that cannot finish is not a slow command, it is a capability the deployment
+# does not have, so the number that decides it belongs where an operator can
+# see and change it.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="shell_command_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="120.0",
+        description=(
+            "Maximum wall-clock time one agent shell command may run before"
+            " it is cancelled, when the call does not name its own timeout."
+            " Covers ordinary dependency installs and build steps; an agent"
+            " may still ask for longer per call, up to ten minutes. Raising"
+            " it lets slower work finish and lets a hung command hold its"
+            " sandbox slot for longer."
+        ),
+        group="Terminal",
+        level=SettingLevel.ADVANCED,
+        min_value=10.0,
+        max_value=600.0,
+    )
+)
+
 # ── Git command timeout (overall execution bound) ────────────────
 # Distinct from ``git_kill_grace_timeout_seconds`` (post-SIGTERM grace);
 # this caps total git subprocess wall-clock.

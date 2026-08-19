@@ -69,52 +69,63 @@ def _status_engine(  # type: ignore[explicit-any]  # mock_of returns Any
     The rollup phase reads persisted status rather than the dispatch outcome,
     so a coordination test states what the store holds for each subtask.
 
-    A subtask is read twice with different answers, because two different
-    moments ask. The wave reads it before dispatching, when the row is
-    freshly CREATED (that read is what makes the ``CREATED -> ASSIGNED``
-    write, so the persisted row cannot lag the local context); the rollup
-    reads it after the run, when the agent's own sync has moved it to the
-    declared status. Serving the declared status to both would ask the wave
-    to assign an already-completed task.
+    A subtask answers differently before and after it is dispatched, because
+    two different moments ask. Everything up to the wave's assignment write
+    reads a freshly CREATED row (the filing check, the resume narrowing, the
+    dependency gate), and the rollup reads it afterwards, when the agent's own
+    sync has moved it to the status the test declared. Serving the declared
+    status to the earlier readers would ask the wave to assign an
+    already-completed task.
+
+    Which moment it is, is decided by the assignment write itself rather than
+    by how many times the row has been read. A read count is a proxy for
+    dispatch that a new read anywhere earlier in the pipeline silently
+    invalidates, and it did: adding the resume narrowing put a third read in
+    front of the rollup's, and five tests began asserting against a wave that
+    had narrowed its own work away.
 
     Returns:
         A task-engine double whose ``get_task`` serves those rows.
     """
-    settled = {
-        coerce_id(label): make_assignment_task(
-            id=label,
-            status=status,
-            assigned_to="alice" if status is not TaskStatus.CREATED else None,
-        )
-        for label, status in statuses.items()
-    }
-    dispatch_time = {
+    declared = {coerce_id(label): status for label, status in statuses.items()}
+    rows: dict[str, object] = {
         task_id: make_assignment_task(id=str(task_id), status=TaskStatus.CREATED)
-        for task_id in settled
+        for task_id in declared
     }
-    settled[coerce_id(parent_id)] = make_assignment_task(id=parent_id)
-    read_counts: dict[str, int] = {}
+    rows[coerce_id(parent_id)] = make_assignment_task(id=parent_id)
 
     def _get(task_id: str) -> object | None:
-        seen = read_counts.get(task_id, 0)
-        read_counts[task_id] = seen + 1
-        if seen == 0 and task_id in dispatch_time:
-            return dispatch_time[task_id]
-        return settled.get(task_id)
+        return rows.get(task_id)
 
     def _submit(mutation: object) -> TaskMutationResult:
         # The assignment writer reads the row back off the result, so a
         # double that accepts the mutation must also return what it wrote.
         task_id = str(getattr(mutation, "task_id", ""))
         overrides = getattr(mutation, "overrides", {}) or {}
+        target = getattr(mutation, "target_status", TaskStatus.ASSIGNED)
+        assigned_to = overrides.get("assigned_to", "alice")
+        written = make_assignment_task(
+            id=task_id,
+            status=target,
+            assigned_to=assigned_to,
+        )
+        # A dispatched subtask lands on the status the test declared for it:
+        # the agent's own sync happens between the wave's write and the
+        # rollup's read, and that sync is what this double stands in for.
+        if target is TaskStatus.ASSIGNED and task_id in declared:
+            rows[task_id] = make_assignment_task(
+                id=task_id,
+                status=declared[task_id],
+                assigned_to=(
+                    None if declared[task_id] is TaskStatus.CREATED else assigned_to
+                ),
+            )
+        else:
+            rows[task_id] = written
         return TaskMutationResult(
             request_id="r",
             success=True,
-            task=make_assignment_task(
-                id=task_id,
-                status=getattr(mutation, "target_status", TaskStatus.ASSIGNED),
-                assigned_to=overrides.get("assigned_to", "alice"),
-            ),
+            task=written,
             version=1,
         )
 

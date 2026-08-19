@@ -7,6 +7,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+
+# The app resolves its budget config at boot, so a record has to be written in
+# the currency that config carries or the tracker refuses it. Named rather
+# than hardcoded, so the test privileges no currency and follows the default
+# wherever it moves.
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
@@ -79,7 +85,7 @@ def _make_task_metric(
         is_success=is_success,
         duration_seconds=10.0,
         cost=0.01,
-        currency="EUR",
+        currency=DEFAULT_CURRENCY,
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
@@ -289,7 +295,7 @@ class TestActivityFeed:
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
-            currency="EUR",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW - timedelta(hours=1),
         )
         await cost_tracker.record(record)
@@ -315,7 +321,7 @@ class TestActivityFeed:
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
-            currency="EUR",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW - timedelta(hours=2),
         )
         await cost_tracker.record(record)
@@ -497,7 +503,7 @@ def _make_cost_record(
         input_tokens=500,
         output_tokens=100,
         cost=0.005,
-        currency="EUR",
+        currency=DEFAULT_CURRENCY,
         timestamp=timestamp or _NOW - timedelta(hours=1),
     )
 

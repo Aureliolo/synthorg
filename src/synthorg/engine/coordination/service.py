@@ -26,6 +26,7 @@ from synthorg.engine.coordination._completion import (
     aggregate_wave_cost,
     record_contributions,
 )
+from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination._middleware_relay import (
     CoordinationMiddlewareRelay,
 )
@@ -798,12 +799,24 @@ class MultiAgentCoordinator:
         for child in decomp_result.created_tasks:
             if str(child.id) not in unroutable:
                 continue
+            # Only a row still awaiting dispatch, decided by the coordination
+            # gate's own rule and read from the engine, which is the one owner
+            # of status: the decomposition's copy is what the plan WANTED and
+            # a re-drive rebuilds it from the plan, so it says CREATED for a
+            # row that has been parked for hours. Routing re-runs over every
+            # subtask on every pass, so without this a re-driven plan re-parks
+            # rows that are ALREADY parked: the engine refuses
+            # BLOCKED -> BLOCKED and the refusal surfaced as a raw ValueError
+            # at WARNING every cadence, for ever, against a row that was in
+            # exactly the state this park wanted.
+            if not awaits_dispatch(await self._live_status(engine, str(child.id))):
+                continue
             required_role = role_by_task.get(str(child.id))
             metadata = dict(child.metadata)
             if required_role is not None:
                 metadata[UNROUTABLE_ROLE_KEY] = str(required_role)
             try:
-                await engine.submit(
+                result = await engine.submit(
                     TransitionTaskMutation(
                         request_id=uuid4().hex,
                         requested_by=_UNROUTABLE_ACTOR,
@@ -830,6 +843,49 @@ class MultiAgentCoordinator:
                         "reason; nothing sweeps it and no rollup reads it"
                     ),
                 )
+            else:
+                # A refused mutation is a RESULT here, not a raise, so the
+                # handler above never sees it: without this the one failure
+                # mode the engine actually produces was the one nobody was
+                # told about, and the promise that a failed park is named
+                # held only for the failures that could not happen.
+                if not result.success:
+                    logger.error(
+                        COORDINATION_UNROUTABLE_PARK_FAILED,
+                        subtask_id=str(child.id),
+                        error_type="TaskMutationRejected",
+                        error=result.error or "park rejected with no error detail",
+                        note=(
+                            "This subtask stays where it was with no reason on "
+                            "the row; nothing sweeps it and no rollup reads it"
+                        ),
+                    )
+
+    @staticmethod
+    async def _live_status(engine: TaskEngine, task_id: str) -> TaskStatus | None:
+        """Read one subtask's status from the engine that owns it.
+
+        Returns:
+            The status the engine holds, or ``None`` when it holds no row and
+            when the read itself fails. Both mean the same thing here: this
+            pass has no evidence the row is already settled, so the park is
+            attempted and its own verdict decides.
+        """
+        try:
+            live = await engine.get_task(task_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- an unreadable row must not cost the
+            # siblings this pass is about to dispatch their whole run.
+            reraise_critical(exc)
+            logger.warning(
+                COORDINATION_UNROUTABLE_PARK_FAILED,
+                subtask_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="could not read the row before parking it; parking anyway",
+            )
+            return None
+        return None if live is None else live.status
 
     def _validate_routing(
         self,

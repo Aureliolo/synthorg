@@ -56,6 +56,7 @@ from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.base import BaseTool
+from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
@@ -180,8 +181,14 @@ async def _build_tool_registry(
         workspace=workspace_root,
         config=app_state.config,
         sandbox_backends=sandbox_backends,
-        git_log_max_count=git_log_max_count,
-        code_runner_output_tail_limit=code_runner_output_tail_limit,
+        ceilings=ToolCeilings(
+            git_log_max_count=git_log_max_count,
+            code_runner_output_tail_limit=code_runner_output_tail_limit,
+        ),
+        # Handed the resolver rather than a resolved number: the command
+        # ceiling is read per command, so an operator raising it applies to
+        # the next command an agent runs rather than to the next rebuild.
+        config_resolver=resolver,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),

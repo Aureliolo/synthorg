@@ -76,6 +76,18 @@ The `OutputPolicyEvaluator` (`evaluator.py`) compiles the patterns once and
 returns an `OutputPolicyVerdict` with per-match findings, an optional rewritten
 text, and a summary.
 
+**A block names its places, not just its rule.** The rework loop hands the
+summary back as the agent's next turn with "address that specifically", so the
+summary carries the clause around each match as well as the rule's message.
+A literal ban matches a single character: told only that the character is
+banned, an author has to re-read a whole deliverable to find it and is as
+likely to rewrite around it as to remove it. A live run failed a deliverable
+its peer reviewer had already approved, after three rework rounds that never
+located the four em-dashes in it. Each finding therefore carries a `context`
+window, which only the evaluator can produce because only it knows where the
+match landed, and the verdict quotes up to `MAX_QUOTED_PLACES` of them before
+it starts counting the rest.
+
 ### Output boundaries
 
 The `interceptor.py` helpers (`enforce_output_policy` raises on a block;
@@ -89,6 +101,13 @@ boundary before the output escapes:
 | Code file write | `tools/file_system/write_file.py` (whole content) + `edit_file.py` (the replacement text) | `code_file` |
 | Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body` |
 | Completing deliverable | `engine/_review_oracle_gates.py` `apply_output_policy_gate`, run before the adversarial red-team / vision gates | `deliverable` |
+| Plan prose | `engine/decomposition/_plan_output_guard.py` `guard_plan_text` / `guard_plan_texts`, called from `engine/decomposition/llm_parse.py` on every submitted plan's item titles, descriptions, acceptance criteria, assumptions, and open questions | `deliverable` |
+
+Plan prose is a boundary because a plan is read by a person before anything is
+built: the operator approves it, and the wording they approve is the wording
+the org commits to. Refused there it is correctable in-session, which is why
+the guard raises rather than rewriting and the refusal names the places it
+matched.
 
 The message boundaries share one helper so an auto-rewrite is applied
 consistently at both. The code-file and forge boundaries are code-channel

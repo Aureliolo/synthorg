@@ -14,6 +14,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.report_config import AutomatedReportingConfig, ReportPeriod
@@ -82,6 +83,26 @@ class AutomatedReportService:
             has_risk_tracker=risk_tracker is not None,
             has_performance_tracker=performance_tracker is not None,
         )
+
+    @property
+    def budget_config(self) -> BudgetConfig:
+        """The configuration this service's reports are measured against.
+
+        Returns:
+            The configuration in force on the generator it composes.
+        """
+        return self._report_generator.budget_config
+
+    def set_budget_config(self, budget_config: BudgetConfig) -> None:
+        """Adopt a re-resolved budget config, for the generator underneath.
+
+        This service is what boot adoption finds on the slice, so it is where
+        the offer arrives; the generator is what actually measures.
+
+        Args:
+            budget_config: The freshly resolved configuration.
+        """
+        self._report_generator.set_budget_config(budget_config)
 
     async def generate_spending_report(
         self,

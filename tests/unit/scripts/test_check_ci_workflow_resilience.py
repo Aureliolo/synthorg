@@ -220,6 +220,7 @@ _LADDER = _enforced(guard=True) + _enforced(guard=True) + _enforced(guard=False)
 _UNGUARDED = "has an unguarded step"
 _SOFT_ONLY = "no fail-closed final attempt"
 _NO_DEADLINE = "without RETRY_CMD_DEADLINE"
+_ESCALATES = "retries a command that escalates privilege"
 _NEVER_CHECKS_OUT = "the job never checks out"
 _SPARSE_EXCLUDES = "sparse checkout excludes that path"
 _BYPASSES_WRAPPER = "so the retry ladder cannot be bypassed"
@@ -456,6 +457,65 @@ class TestRetryDeadline:
         assert len(violations) == 1
         assert "'b'" in violations[0]
 
+    def test_a_deadline_on_an_earlier_command_does_not_bind_here(
+        self, tmp_path: Path
+    ) -> None:
+        # The same rule one separator along: the assignment prefixes `echo`,
+        # not the helper, which then runs on its zero-second default while a
+        # whole-line read certified it as bounded.
+        content = _job(
+            "      - run: RETRY_CMD_DEADLINE=240 echo ignored;"
+            " .github/scripts/retry_cmd.sh 'x' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_a_deadline_after_the_helper_is_an_argument(self, tmp_path: Path) -> None:
+        """A `VAR=n` word past the executable assigns nothing to it.
+
+        The shell applies an assignment only where it PREFIXES a command, so
+        this one is an argument handed to `env`, and the helper's own ladder
+        still runs on its zero-second default. Searching the whole command
+        for the variable name read it as set and passed an unbounded ladder.
+        """
+        content = _job(
+            "      - run: .github/scripts/retry_cmd.sh 'x'"
+            " env RETRY_CMD_DEADLINE=240 true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_a_bounded_second_call_does_not_cover_an_unbounded_first(
+        self, tmp_path: Path
+    ) -> None:
+        """Every invocation on a line is judged, not just the last one.
+
+        Reading only the final segment naming the helper let a compliant
+        second call stand in for an unbounded first, which is a fail-open on
+        exactly the shape a chained `a && b` produces.
+        """
+        content = _job(
+            "      - run: .github/scripts/retry_cmd.sh 'first' true &&"
+            " RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh 'second' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_a_separator_inside_a_quoted_argument_does_not_end_the_command(
+        self, tmp_path: Path
+    ) -> None:
+        # The reason the split is tokenised rather than textual: a `;` inside
+        # the retried command's own body is that body's, so a string split
+        # would tear the invocation in half and lose its prefix.
+        content = _job(
+            "      - run: RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh"
+            " 'x' bash -c 'echo one; echo two'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
         # Composite actions host most call sites, so they are scanned too.
         content = _composite(
@@ -465,6 +525,319 @@ class TestRetryDeadline:
         assert len(violations) == 1
         assert _NO_DEADLINE in violations[0]
         assert "'fetch'" in violations[0]
+
+
+class TestRetryEscalation:
+    """A retried unit must be one whose per-attempt kill leaves nothing.
+
+    Every call site is deadline-bounded, so every attempt can be killed, and
+    where the escalation sits decides what the kill reaches. Handed the
+    escalating command directly the kill lands and the next attempt starts
+    clean; buried inside a wrapper it stops at the wrapper, and the root
+    child survives holding what it held.
+    """
+
+    def test_retried_with_deps_install_flagged(self, tmp_path: Path) -> None:
+        # The shape that shipped: three attempts over playwright's own
+        # escalating path, nested under node. Attempt one timed out on a
+        # stalled apt mirror and left apt-get holding the lists lock, so
+        # attempts two and three died in under a second on "Could not get
+        # lock".
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'npx playwright install --with-deps chromium'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_retried_nested_sudo_flagged(self, tmp_path: Path) -> None:
+        # The same shape spelled with sudo: the kill is aimed at `bash`, and
+        # what it needs to reach is two words further in.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo apt-get install -y jq'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_retried_direct_sudo_clean(self, tmp_path: Path) -> None:
+        """A ladder over a directly-handed escalation is the correct shape.
+
+        Measured, not assumed: a run of this exact call site took three
+        attempts against a mirror stalling mid-item, each re-reading the
+        package lists with no lock to wait on and each re-fetching the
+        archive the previous one had not finished, and the third completed
+        the install. Refusing the ladder here left the step with one attempt
+        and no recovery from the one fault it actually hits.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " sudo apt-get install -y jq\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_continuation_split_invocation_is_one_command(
+        self, tmp_path: Path
+    ) -> None:
+        """The unit the rule is about is the command, not the source line.
+
+        The shape that shipped past this check: the helper on one line, the
+        wrapper and the escalating word on the next after a backslash. Read
+        as physical lines neither string carries both halves, so the step
+        passed while spending its whole budget on attempts that all exited
+        124 against an apt-get the kill never reached.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "240"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
+            "            bash -c 'sudo apt-get install -y \\\n"
+            "              qemu-user-static bubblewrap'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_an_inline_prefix_above_its_own_call_is_set_on_it(
+        self, tmp_path: Path
+    ) -> None:
+        # Both rules read the same logical lines, so a prefix written above
+        # the helper it applies to is read as set on that call: the deadline
+        # rule must not report it missing, and the escalation rule must read
+        # the attempt count from it.
+        content = _job(
+            "        run: |\n"
+            "          RETRY_CMD_ATTEMPTS=1 RETRY_CMD_DEADLINE=240 \\\n"
+            "            .github/scripts/retry_cmd.sh 'apt' \\\n"
+            "            bash -c 'sudo apt-get install -y jq'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_continuation_split_single_attempt_stays_clean(
+        self, tmp_path: Path
+    ) -> None:
+        # The complement: joining lines must not start reporting the correct
+        # shape, or the fix trades a blind spot for a false positive.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "150"\n'
+            '          RETRY_CMD_ATTEMPTS: "1"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'melange deps' \\\n"
+            "            bash -c 'sudo apt-get install -y qemu-user-static'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_prefix_on_an_earlier_command_does_not_bind_here(
+        self, tmp_path: Path
+    ) -> None:
+        # An inline prefix binds to the command it precedes and nothing past
+        # the next separator, so reading the whole line let an assignment on
+        # an unrelated command certify the helper as single-attempt while it
+        # inherited the default of five.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: RETRY_CMD_ATTEMPTS=1 echo ignored;"
+            " .github/scripts/retry_cmd.sh 'apt'"
+            ' bash -c "sudo apt-get install -y jq"\n'
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_an_unnamed_attempt_count_is_still_a_ladder(self, tmp_path: Path) -> None:
+        # The helper defaults to five, so a call site that names no count is
+        # the most retried shape there is, not an exempt one.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo apt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_an_inline_single_attempt_prefix_is_read(self, tmp_path: Path) -> None:
+        # An inline prefix binds to the one command it precedes, exactly as it
+        # does for the deadline, so reading only the step's env: would report a
+        # single-attempt call as a ladder and block a correct call site.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            "        run: RETRY_CMD_ATTEMPTS=1 .github/scripts/retry_cmd.sh"
+            " 'apt' bash -c 'sudo apt-get update'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_single_attempt_escalation_clean(self, tmp_path: Path) -> None:
+        # One attempt cannot be poisoned by a previous one, and the deadline
+        # still bounds it, so the single failure names the real fault.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "1"\n'
+            "        run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'npx playwright install-deps chromium'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_retried_unprivileged_download_clean(self, tmp_path: Path) -> None:
+        # The complement, and the reason the ladder exists: a download running
+        # as the runner user IS killed by the timeout and simply re-fetched.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "480"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'chromium'"
+            " bash -c 'npx playwright install chromium'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_comment_apostrophe_does_not_glue_the_script(
+        self, tmp_path: Path
+    ) -> None:
+        """Prose above a call site is prose, not an unterminated quote.
+
+        A single `runner's` in a comment left the quote count odd, so every
+        line below it accumulated into one logical command whose head word
+        was `#`. That both hid the correctly-shaped invocations underneath
+        and reported the `#` as a wrapper around their sudo.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "420"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          # the runner's mirror answers and then trickles\n"
+            "          .github/scripts/retry_cmd.sh 'apt' \\\n"
+            "            sudo apt-get install -y jq\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_an_attempt_count_after_the_helper_is_an_argument(
+        self, tmp_path: Path
+    ) -> None:
+        # The attempts half of the same fail-open: a `VAR=n` word past the
+        # executable is an argument, so the helper still inherits five and
+        # the ladder over a nested escalation is real.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " env RETRY_CMD_ATTEMPTS=1 bash -c 'sudo apt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_a_clean_second_call_does_not_cover_a_nested_first(
+        self, tmp_path: Path
+    ) -> None:
+        # The escalation twin of the deadline case: judged per invocation, so
+        # a compliant call later on the line cannot vouch for an earlier one.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo apt-get update' &&"
+            " .github/scripts/retry_cmd.sh 'fetch' curl -fsSL https://example.test\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_a_label_naming_sudo_is_not_an_escalation(self, tmp_path: Path) -> None:
+        """The label is prose the helper prints, not part of the command.
+
+        Searching the whole invocation for the marker read the label as the
+        thing being retried, so a step that escalates nothing was reported
+        for the words somebody chose to describe it.
+        """
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'sudo diagnostics'"
+            " echo ok\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_sudo_separated_by_a_tab_is_still_an_escalation(
+        self, tmp_path: Path
+    ) -> None:
+        # A literal `"sudo "` marker recognised exactly one of the whitespace
+        # characters a shell accepts, so a nested escalation written with a
+        # tab read as no escalation at all. Written as a block scalar because
+        # a plain one refuses the tab outright.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: |\n"
+            "          .github/scripts/retry_cmd.sh 'apt'"
+            " bash -c 'sudo\tapt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_a_word_ending_in_sudo_is_not_an_escalation(self, tmp_path: Path) -> None:
+        # The complement of matching on word boundaries: the marker names a
+        # command, not a substring, so a program whose name merely contains
+        # it must not be reported.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'tty'"
+            " bash -c 'pseudo-tty --check'\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_an_untokenisable_command_is_reported(self, tmp_path: Path) -> None:
+        # A command the reader cannot split cannot be certified as handing
+        # its escalation over directly, and the fail-closed reading is the
+        # one that puts it in front of a human.
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "600"\n'
+            '          RETRY_CMD_ATTEMPTS: "3"\n'
+            "        run: .github/scripts/retry_cmd.sh 'apt'"
+            ' sudo apt-get install -y "jq\n'
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+
+    def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
+        content = _composite(
+            "    - name: deps\n"
+            "      env:\n"
+            '        RETRY_CMD_DEADLINE: "600"\n'
+            '        RETRY_CMD_ATTEMPTS: "3"\n'
+            "      run: .github/scripts/retry_cmd.sh 'deps'"
+            " bash -c 'sudo apt-get update'\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _ESCALATES in violations[0]
+        assert "'deps'" in violations[0]
 
 
 class TestLocalActionResolution:

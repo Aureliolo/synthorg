@@ -14,14 +14,28 @@ and returns, so the app still boots.
 
 Shutdown window (operator reference): on ``SIGTERM`` the handler here
 sets ``AppState.shutdown_requested`` and closes the cooperative drain
-gate (new parallel agent tasks are rejected immediately), then uvicorn
-triggers the ASGI lifespan shutdown, which runs the ordered on-shutdown
-teardown (``api/lifecycle_runner_shutdown``: drain in-flight work, stop
-background services, then ``_safe_shutdown`` -> persistence disconnect).
-uvicorn's ``timeout_graceful_shutdown`` (75s, configured in
-``api/server.py``) bounds that teardown; if it overruns, uvicorn escalates
-to ``SIGKILL``. Every per-service stop step is therefore individually
-bounded so the aggregate stays inside that 75s window.
+gate (new parallel agent tasks are rejected immediately), then hands the
+signal on to uvicorn, which triggers the ASGI lifespan shutdown and runs
+the ordered on-shutdown teardown (``api/lifecycle_runner_shutdown``:
+drain in-flight work, stop background services, then ``_safe_shutdown``
+-> persistence disconnect). uvicorn's ``timeout_graceful_shutdown`` (75s,
+configured in ``api/server.py``) bounds that teardown; if it overruns,
+uvicorn escalates to ``SIGKILL``. Every per-service stop step is
+therefore individually bounded so the aggregate stays inside that 75s
+window.
+
+**Handing the signal on is not optional, and is why the chain exists.**
+``loop.add_signal_handler`` REPLACES whatever is registered for a signal,
+and uvicorn registers its own ``handle_exit`` before it runs the app,
+whose lifespan startup is what installs these. Ours therefore lands
+second and uvicorn's is gone. Registering without a chain meant uvicorn
+never learned the signal had arrived: a live ``docker stop -t 60``
+logged ``api.shutdown.signal.received``, went on running the subsystem
+reconciler twenty seconds later, and exited 137 at the grace deadline
+with no teardown at all, stranding every in-flight task at
+``in_progress``. So the entry point registers the server's own exit via
+:func:`set_shutdown_chain`, and **absent a chain these handlers are not
+installed**, leaving uvicorn's intact rather than silently disarming it.
 """
 
 import asyncio
@@ -43,6 +57,29 @@ logger = get_logger(__name__)
 
 _POSIX_SIGNALS: tuple[signal.Signals, ...] = (signal.SIGTERM, signal.SIGINT)
 
+#: What to hand the signal on to once the early flag is set: the running
+#: server's own exit. Process-global because there is exactly one server per
+#: process, and the entry point that owns it cannot reach the lifespan startup
+#: that installs the handlers.
+_shutdown_chain: Callable[[signal.Signals], None] | None = None
+
+
+def set_shutdown_chain(chain: Callable[[signal.Signals], None] | None) -> None:
+    """Register what the signal handlers hand the signal on to.
+
+    Called by the entry point with the running server's ``handle_exit``
+    before the app starts, so the handlers installed during lifespan
+    startup have somewhere to pass the signal. Passing ``None`` clears it,
+    which suppresses handler installation entirely rather than leaving
+    uvicorn's handler replaced by one that only logs.
+
+    Args:
+        chain: Receives the signal after the early flag is set, or ``None``
+            to leave signal handling wholly to whoever already owns it.
+    """
+    global _shutdown_chain  # noqa: PLW0603 -- one server per process
+    _shutdown_chain = chain
+
 
 def install_shutdown_handlers(app_state: AppState) -> None:
     """Register POSIX ``SIGTERM``/``SIGINT`` handlers on the running loop.
@@ -60,6 +97,17 @@ def install_shutdown_handlers(app_state: AppState) -> None:
     # if the prior lifespan observed SIGTERM.  Safe before any handler
     # is registered and a no-op when already clear.
     app_state.shutdown_requested.clear()
+
+    # No chain means somebody else's handler is the only thing that will
+    # ever stop this process (uvicorn's supervisor topologies, the test
+    # portal). Installing ours would replace theirs with one that logs and
+    # returns, which is how the process came to ignore SIGTERM entirely.
+    if _shutdown_chain is None:
+        logger.debug(
+            API_SHUTDOWN_HANDLER_SKIPPED,
+            reason="no-shutdown-chain",
+        )
+        return
 
     # ``sys.platform`` narrows to a literal on the current host, so
     # mypy would flag the POSIX branch as unreachable on a Windows
@@ -212,12 +260,12 @@ def _make_win32_handler(
 
 
 def _on_signal(sig: signal.Signals, app_state: AppState) -> None:
-    """Flag the app for shutdown and log the signal.
+    """Flag the app for shutdown, then hand the signal on to the server.
 
-    Does NOT call ``loop.stop()`` -- uvicorn's own handler triggers the
-    ASGI lifespan shutdown, which runs our ``on_shutdown`` hooks in
-    order. Our job here is to make the signal observable to subsystems
-    that want to stop early.
+    Does NOT call ``loop.stop()``: stopping is the server's job, reached
+    through the chain. Our own job is to make the signal observable to
+    subsystems that want to stop early, which is the whole reason for
+    taking the signal ahead of uvicorn rather than leaving it alone.
     """
     logger.info(
         API_SHUTDOWN_SIGNAL_RECEIVED,
@@ -231,3 +279,10 @@ def _on_signal(sig: signal.Signals, app_state: AppState) -> None:
     # arrives; the bounded grace-then-cancel of in-flight tasks runs
     # later from the on-shutdown hook via ``initiate_shutdown``.
     app_state.shutdown_manager.request_shutdown()
+    # Hand it on. Without this the process observes the signal and keeps
+    # running until the orchestrator's grace period expires and SIGKILL
+    # lands mid-work, which is the one outcome the whole bounded-teardown
+    # design exists to avoid.
+    chain = _shutdown_chain
+    if chain is not None:
+        chain(sig)

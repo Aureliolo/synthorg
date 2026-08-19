@@ -10,6 +10,9 @@
 #   3. A command that succeeds first try is not retried (no wasted budget).
 #   4. A ladder given a deadline stops inside it, still fail-closed, and
 #      clamps an otherwise-unbounded attempt to the time left.
+#   5. A deadline decides whether an attempt starts, never how long a sized
+#      one gets: it stops the ladder rather than running a truncated attempt
+#      and reporting the 124 that truncation caused.
 # Backoff-free cases run with RETRY_CMD_BASE_DELAY=0; the deadline cases
 # need real elapsed time, so they use small non-zero delays.
 set -uo pipefail
@@ -229,6 +232,47 @@ if [ "$rc" -eq 5 ] && grep -q 'failed after 3 attempts' <<<"$out" \
   pass "retry_cmd leaves the ladder unchanged when no deadline is set"
 else
   fail "retry_cmd changed behaviour without a deadline (rc=${rc}, expected 5)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 15. a sized attempt is never truncated by the remaining budget -----
+# The regression this exists to hold: with the deadline free to shorten an
+# attempt, the last one ran with a fraction of the time the caller said it
+# needed, died mid-work, and its 124 was reported as the command's verdict.
+# Here attempt one burns 1s of a 4s deadline and exits 9; a second 3s attempt
+# plus its 1s backoff no longer fits, so the ladder must report the deadline
+# and bubble 9 rather than start a stub of an attempt and bubble timeout's
+# 124. The stub gets 3x the time it needs so a loaded runner cannot turn the
+# assertion into a race, and the verdict holds for any elapsed reading the
+# attempt can produce.
+if command -v timeout >/dev/null 2>&1; then
+  rc=0
+  out="$(RETRY_CMD_ATTEMPTS=3 RETRY_CMD_BASE_DELAY=1 RETRY_CMD_MAX_DELAY=1 \
+    RETRY_CMD_ATTEMPT_TIMEOUT=3 RETRY_CMD_DEADLINE=4 \
+    bash "$HELPER" "selftest-no-truncated-attempt" \
+    bash -c 'sleep 1; exit 9' 2>&1)" || rc=$?
+  if [ "$rc" -eq 9 ] && grep -q 'exhausted its 4s deadline' <<<"$out"; then
+    pass "retry_cmd refuses an attempt the deadline cannot afford whole"
+  else
+    fail "retry_cmd truncated a sized attempt (rc=${rc}, expected 9)"
+    printf '%s\n' "$out" | tail -n 3 >&2 || true
+  fi
+else
+  printf 'SKIP: timeout(1) unavailable; no-truncated-attempt case not run\n'
+fi
+
+# --- 16. a deadline below one attempt is a configuration error ----------
+# The complement of case 15: if no whole attempt fits, every attempt would be
+# a truncated one, so the ladder refuses to start rather than reporting a
+# fault it manufactured.
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=3 RETRY_CMD_BASE_DELAY=0 \
+  RETRY_CMD_ATTEMPT_TIMEOUT=120 RETRY_CMD_DEADLINE=60 \
+  bash "$HELPER" "selftest-deadline-below-attempt" true 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'no room for a single whole attempt' <<<"$out"; then
+  pass "retry_cmd rejects a deadline smaller than one attempt with exit 2"
+else
+  fail "retry_cmd accepted a deadline below its attempt timeout (rc=${rc})"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

@@ -25,7 +25,11 @@ from synthorg.observability.events.persistence.project import (
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp
+from synthorg.persistence._shared import (
+    canonical_deadline,
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 
@@ -44,6 +48,13 @@ def _row_to_project(row: DictRow) -> Project:
     data["status"] = ProjectStatus(data["status"])
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
+    # The third timestamp column, and the one the model does NOT hold as a
+    # datetime: ``Project.deadline`` is an ISO 8601 string. Postgres hands
+    # back a ``datetime`` for its ``TIMESTAMPTZ``, which the field rejects, so
+    # a project saved with a deadline was written successfully and could never
+    # be read again. SQLite stores the string as a string and hid it.
+    if data.get("deadline") is not None:
+        data["deadline"] = format_iso_utc(coerce_row_timestamp(data["deadline"]))
     return Project.model_validate(data)
 
 
@@ -70,7 +81,7 @@ class PostgresProjectRepository:
             project.description,
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
-            project.deadline,
+            canonical_deadline(project.deadline),
             project.budget,
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
@@ -139,7 +150,7 @@ class PostgresProjectRepository:
             project.description,
             project.lead,
             str(project.plan_id) if project.plan_id is not None else None,
-            project.deadline,
+            canonical_deadline(project.deadline),
             project.budget,
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,

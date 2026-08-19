@@ -171,6 +171,7 @@ async def apply_plan_question_answer(
     plan_id = item.metadata.get(PLAN_ID_METADATA_KEY)
     if plan_id is None:
         return
+    # See docs/reference/retry-patterns.md: Pattern C/CAS.
     for _attempt in range(_WRITE_BACK_MAX_ATTEMPTS):
         if await _settle_once(plans, item, answer=answer, clock=clock):
             return

@@ -15,6 +15,7 @@ from synthorg.api.signals import (
     _make_win32_handler,
     _on_signal,
     install_shutdown_handlers,
+    set_shutdown_chain,
 )
 from synthorg.api.state import AppState
 from synthorg.engine.shutdown import ShutdownManager
@@ -44,6 +45,15 @@ def _restore_signal_handlers() -> Iterator[None]:
                 signal.signal(sig, handler)
 
 
+@pytest.fixture(autouse=True)
+def _clear_shutdown_chain() -> Iterator[None]:
+    """Leave the process-global chain as each test found it."""
+    try:
+        yield
+    finally:
+        set_shutdown_chain(None)
+
+
 def _fake_app_state() -> AppState:
     """AppState double exposing a real shutdown event + manager."""
     app_state: AppState = mock_of[AppState](
@@ -51,6 +61,11 @@ def _fake_app_state() -> AppState:
         shutdown_manager=ShutdownManager(),
     )
     return app_state
+
+
+def _chained(seen: list[signal.Signals]) -> None:
+    """Register a chain that records the signals handed to it."""
+    set_shutdown_chain(seen.append)
 
 
 class TestInstallShutdownHandlers:
@@ -67,8 +82,35 @@ class TestInstallShutdownHandlers:
     async def test_idempotent_registration(self) -> None:
         """Calling twice on the same AppState must not raise."""
         app_state = _fake_app_state()
+        _chained([])
         install_shutdown_handlers(app_state)
         install_shutdown_handlers(app_state)
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only code path")
+    async def test_without_a_chain_the_existing_handler_is_left_alone(self) -> None:
+        """Registering with nowhere to hand the signal on DISARMS shutdown.
+
+        ``add_signal_handler`` replaces uvicorn's handler, so installing
+        ours without a chain leaves a handler that logs and returns while
+        uvicorn waits for a shutdown nobody asked it to start. A live
+        ``docker stop`` then exits 137 at the grace deadline having torn
+        nothing down.
+        """
+        app_state = _fake_app_state()
+        set_shutdown_chain(None)
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "add_signal_handler") as add_handler:
+            install_shutdown_handlers(app_state)
+        add_handler.assert_not_called()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only code path")
+    async def test_with_a_chain_the_handlers_are_registered(self) -> None:
+        app_state = _fake_app_state()
+        _chained([])
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "add_signal_handler") as add_handler:
+            install_shutdown_handlers(app_state)
+        assert add_handler.call_count == 2
 
     async def test_skips_on_windows(self) -> None:
         """On Windows we fall back to uvicorn's handler and skip."""
@@ -86,6 +128,7 @@ class TestInstallShutdownHandlers:
     async def test_survives_add_signal_handler_not_implemented(self) -> None:
         """Proactor loops raising NotImplementedError are logged + ignored."""
         app_state = _fake_app_state()
+        _chained([])
         loop = asyncio.get_running_loop()
         with patch.object(loop, "add_signal_handler", side_effect=NotImplementedError):
             # Must not raise; the skip is logged at DEBUG instead.
@@ -107,6 +150,7 @@ class TestInstallShutdownHandlers:
         TestClient lifespan does not need them.
         """
         app_state = _fake_app_state()
+        _chained([])
         loop = asyncio.get_running_loop()
         with patch.object(
             loop,
@@ -124,6 +168,7 @@ class TestInstallShutdownHandlers:
     async def test_survives_add_signal_handler_runtime_error(self) -> None:
         """Closed-loop or loop-state refusal is degraded, not fatal."""
         app_state = _fake_app_state()
+        _chained([])
         loop = asyncio.get_running_loop()
         with patch.object(
             loop,
@@ -192,6 +237,34 @@ class TestOnSignal:
         _on_signal(signal.SIGTERM, app_state)
         _on_signal(signal.SIGTERM, app_state)
         assert app_state.shutdown_requested.is_set()
+
+    def test_hands_the_signal_on_to_the_chain(self) -> None:
+        """Taking the signal ahead of the server obliges us to pass it on.
+
+        ``loop.add_signal_handler`` replaces uvicorn's ``handle_exit``, so a
+        handler that only flags shutdown leaves the server running until the
+        orchestrator's grace period expires and SIGKILL lands mid-work.
+        """
+        app_state = _fake_app_state()
+        seen: list[signal.Signals] = []
+        _chained(seen)
+        _on_signal(signal.SIGTERM, app_state)
+        assert seen == [signal.SIGTERM]
+
+    def test_flags_shutdown_before_handing_on(self) -> None:
+        """The early flag must be set by the time the server is told.
+
+        The whole reason for taking the signal first is that subsystems get
+        to observe it before the ASGI lifespan starts cancelling; a chain
+        called ahead of the flag would give them nothing to observe.
+        """
+        app_state = _fake_app_state()
+        observed: list[bool] = []
+        set_shutdown_chain(
+            lambda _sig: observed.append(app_state.shutdown_requested.is_set()),
+        )
+        _on_signal(signal.SIGTERM, app_state)
+        assert observed == [True]
 
     def test_closes_cooperative_drain_gate(self) -> None:
         # The signal must also close the cooperative drain gate so the

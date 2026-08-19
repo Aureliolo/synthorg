@@ -37,6 +37,29 @@ hardening they carry cannot silently regress:
    bound, so this gate requires every call site to set it, via step
    ``env:`` or an inline ``VAR=n`` prefix.
 
+   The bound has a consequence: every attempt can now be KILLED, and a
+   retried unit must be one whose kill leaves nothing that defeats the next
+   attempt. Whether an escalating command satisfies that is decided by where
+   the escalation sits, and both halves were measured. Handed ``sudo
+   apt-get install`` DIRECTLY, the kill lands: a run took three attempts,
+   each re-reading the package lists with no lock to wait on and each
+   re-fetching the archive the previous one had not finished, and the third
+   completed the install. NESTED inside another program it does not:
+   ``playwright install --with-deps`` sudo'd to apt from under node, the
+   kill reached node, ``apt-get`` outlived it on
+   ``/var/lib/apt/lists/lock``, and both remaining attempts died in under a
+   second on "Could not get lock" while the ladder reported that instead of
+   the stalled mirror.
+
+   So the rule is about nesting, not about the word: a multi-attempt call
+   site may hand the helper an escalating command as the command itself,
+   and may not bury one inside a wrapper the kill would stop short at.
+   Give a nested escalation one attempt, or split the escalating half out.
+   Escalation is recognised from the command text (``sudo``, and
+   playwright's ``--with-deps``, whose sudo is internal and unwritten),
+   which names the paths this tree uses rather than deciding the general
+   question.
+
 4. **A local action resolves where it is used, and a wrapped action is
    reached only through its wrapper.** Two halves of one rule.
 
@@ -225,6 +248,7 @@ Usage::
 
 import argparse
 import re
+import shlex
 import sys
 from collections.abc import Iterable, Sequence
 from functools import cache
@@ -239,6 +263,32 @@ _ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 
 _RETRY_HELPER: Final[str] = "retry_cmd.sh"
 _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
+_ATTEMPTS_VAR: Final[str] = "RETRY_CMD_ATTEMPTS"
+# The helper's own default when a call site names no count.
+_DEFAULT_ATTEMPTS: Final[int] = 5
+# Command fragments that put the real work behind sudo. `--with-deps` is
+# playwright's own escalating path ("Switching to root user to install
+# dependencies..."), which is why it is named beside the verb: the command
+# line never says sudo, and that is exactly what made the ladder look sound.
+# A command that escalates by some other spelling is not recognised, so this
+# names the paths the tree uses rather than claiming to decide the question.
+#: Words that escalate when they LEAD the retried command, where the kill
+#: reaches them. Compared against the head word, so anything spelled here is
+#: also a direct escalation the ladder may retry.
+_ESCALATING_HEADS: Final[frozenset[str]] = frozenset({"sudo"})
+
+#: Where an escalation can be spelled at all, matched on shell-word
+#: boundaries rather than as ``"sudo "``: a literal trailing space misses
+#: every other whitespace a shell accepts, so ``sudo\tapt-get`` inside a
+#: quoted body read as no escalation. ``--with-deps`` is playwright's, whose
+#: sudo is internal and unwritten, and can never be a head word.
+_ESCALATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w-])(?:sudo|--with-deps)(?![\w-])"
+)
+
+#: A shell word that assigns rather than names a command. Only these, and
+#: only before the executable, are environment the shell applies to it.
+_ASSIGNMENT_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 _CHECKOUT_ACTION: Final[str] = "actions/checkout"
 _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
@@ -1455,19 +1505,20 @@ def _retry_lines_missing_deadline(run: str) -> list[str]:
     """Return the ``retry_cmd.sh`` invocations lacking an inline deadline.
 
     A call site may set the deadline as an inline ``VAR=n cmd`` prefix
-    instead of via step ``env:``, so each invocation line is inspected
-    separately: one prefixed line does not cover an unprefixed sibling.
+    instead of via step ``env:``, so each invocation is inspected
+    separately: one prefixed call does not cover an unprefixed sibling.
 
     Args:
         run: The step's shell body.
 
     Returns:
-        The offending lines, stripped, in source order.
+        The line each offending invocation sits on, in source order.
     """
     return [
-        line.strip()
-        for line in run.splitlines()
-        if _RETRY_HELPER in line and _DEADLINE_VAR not in line
+        line
+        for line in _logical_lines(run)
+        for call in _helper_calls(line)
+        if _DEADLINE_VAR not in call.assignments
     ]
 
 
@@ -1494,6 +1545,274 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
         )
         for line in _retry_lines_missing_deadline(run)
     ]
+
+
+def _attempts_from_env(step: dict[str, object]) -> int:
+    """Return the attempt count the step's ``env:`` declares, or the default.
+
+    Args:
+        step: The step mapping.
+
+    Returns:
+        The count, falling back to the helper's own default when the step
+        names none, because an unnamed count is still a multi-attempt ladder.
+        A value this cannot read (a ``${{ }}`` expression) falls back the same
+        way, so an unreadable count is judged as the ladder it might be.
+    """
+    env = step.get("env")
+    if not isinstance(env, dict):
+        return _DEFAULT_ATTEMPTS
+    declared = env.get(_ATTEMPTS_VAR)
+    if declared is None:
+        return _DEFAULT_ATTEMPTS
+    text = str(declared).strip()
+    return int(text) if text.isdigit() else _DEFAULT_ATTEMPTS
+
+
+def _attempts_for_call(call: _HelperCall, from_env: int) -> int:
+    """Return the attempt count in force for one invocation.
+
+    A call site may set the count as an inline ``VAR=n cmd`` prefix instead of
+    via step ``env:``, exactly as it may set the deadline. Reading only the
+    step's ``env:`` would report a single-attempt inline call as a ladder.
+
+    Args:
+        call: The parsed invocation.
+        from_env: What the step's ``env:`` declared, used when the call sets
+            no prefix of its own.
+
+    Returns:
+        The count that applies to this invocation.
+    """
+    declared = call.assignments.get(_ATTEMPTS_VAR)
+    if declared is None:
+        return from_env
+    return int(declared) if declared.isdigit() else _DEFAULT_ATTEMPTS
+
+
+class _HelperCall(NamedTuple):
+    """One ``retry_cmd.sh`` invocation, split into the parts the rules read.
+
+    Attributes:
+        assignments: The ``VAR=value`` words written BEFORE the helper
+            executable, which are the only ones the shell applies to it. A
+            value written after it is an argument to the wrapped command, so
+            reading those too let a ladder certify itself as bounded while
+            the helper ran on its zero-second default.
+        command: The words after the helper's mandatory label, which are the
+            command it actually retries.
+        command_text: Those same words rejoined, for the marker search: a
+            wrapped command that arrived quoted is one word, so a marker
+            inside it is findable only as a substring. The LABEL is excluded,
+            because it is prose the helper prints and a label reading
+            ``'sudo diagnostics'`` otherwise reported a command that
+            escalates nothing.
+        parsed: Whether the lexer could split the invocation at all. An
+            unparseable one keeps the whole line as its ``command_text`` so
+            the escalation search still reports it, which is the fail-closed
+            reading.
+    """
+
+    assignments: dict[str, str]
+    command: tuple[str, ...]
+    command_text: str
+    parsed: bool
+
+
+def _helper_calls(line: str) -> list[_HelperCall]:
+    """Return every retry-helper invocation on one logical line.
+
+    EVERY one, not the last: a line may chain two calls, and reading only the
+    final one let an unbounded or nested first call hide behind a compliant
+    second. Each is then judged on its own.
+
+    Tokenised rather than string-split, because both questions the rules ask
+    are about word positions. A separator inside a quoted argument does not
+    end a command, and a `VAR=n` word only assigns when it precedes the
+    executable.
+
+    Args:
+        line: The logical invocation line.
+
+    Returns:
+        One entry per invocation, in source order. A line that cannot be
+        tokenised yields a single entry carrying no assignments and no
+        command, which is the fail-closed reading: every rule then reports it
+        for a human to look at rather than passing it unread.
+    """
+    if _RETRY_HELPER not in line:
+        return []
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return [
+            _HelperCall(assignments={}, command=(), command_text=line, parsed=False)
+        ]
+    calls: list[_HelperCall] = []
+    for words in _shell_commands(tokens):
+        assignments: dict[str, str] = {}
+        rest = list(words)
+        while rest and _ASSIGNMENT_RE.match(rest[0]):
+            name, _, value = rest.pop(0).partition("=")
+            assignments[name] = value.strip("\"'")
+        if not rest or _RETRY_HELPER not in rest[0]:
+            continue
+        # rest[0] is the helper, rest[1] its mandatory label; the command it
+        # retries is everything after that.
+        command = tuple(rest[2:])
+        calls.append(
+            _HelperCall(
+                assignments=assignments,
+                command=command,
+                command_text=" ".join(command),
+                parsed=True,
+            )
+        )
+    return calls
+
+
+def _shell_commands(tokens: list[str]) -> list[list[str]]:
+    """Split a token stream on the separators that end one command.
+
+    Args:
+        tokens: Words as the lexer produced them, with punctuation runs
+            grouped into their own tokens.
+
+    Returns:
+        One word list per command, empty ones dropped.
+    """
+    commands: list[list[str]] = [[]]
+    for token in tokens:
+        if token and not token.strip(";|&"):
+            commands.append([])
+        else:
+            commands[-1].append(token)
+    return [words for words in commands if words]
+
+
+def _check_retry_escalation(context: str, step: dict[str, object]) -> list[str]:
+    """Return violations for a multi-attempt ladder over a NESTED escalation.
+
+    Every call site is deadline-bounded by the rule above, so every attempt
+    can be killed, and a retried unit must be one whose kill leaves nothing
+    that defeats the next attempt. Where the escalation sits decides that,
+    and both halves were measured. `sudo apt-get install` handed to the
+    helper directly dies with its attempt: a run took three, each re-reading
+    the package lists with no lock to wait on, and the third completed the
+    install. `playwright install --with-deps` sudo'd to apt from under node,
+    the kill reached node, apt-get outlived it holding
+    /var/lib/apt/lists/lock, and both remaining attempts died in under a
+    second on "Could not get lock" -- the ladder reporting the wreckage
+    rather than the mirror stall that caused it.
+
+    So the offending shape is an escalation the kill would stop short of: one
+    buried inside a wrapper rather than being the retried command itself. It
+    gets one attempt (the deadline still bounds it, and the single failure
+    names the real fault), or the escalating half is split out.
+
+    Args:
+        context: Human-readable location (job or composite-action step).
+        step: The step mapping.
+
+    Returns:
+        One message per offending invocation.
+    """
+    run = step.get("run")
+    if not isinstance(run, str) or _RETRY_HELPER not in run:
+        return []
+    from_env = _attempts_from_env(step)
+    return [
+        (
+            f"{context}: `{line}` retries a command that escalates privilege"
+            " from inside a wrapper. The per-attempt kill stops at the"
+            " wrapper, so the root child survives holding what it held and"
+            " every later attempt fails on that instead of the original"
+            f" fault. Set {_ATTEMPTS_VAR} to 1, or hand the escalating"
+            " command to the helper directly."
+        )
+        for line in _logical_lines(run)
+        for call in _helper_calls(line)
+        if _escalation_is_nested(call) and _attempts_for_call(call, from_env) > 1
+    ]
+
+
+def _escalation_is_nested(call: _HelperCall) -> bool:
+    """Return True when *call* buries an escalation inside a wrapper.
+
+    The retried command's head word is what a per-attempt kill is aimed at.
+    An escalating head is reached by the kill; an escalation anywhere further
+    along is behind a program the kill stops at instead.
+
+    Args:
+        call: One parsed retry-helper invocation.
+
+    Returns:
+        True when the call escalates but its retried command does not lead
+        with the escalating word. An invocation the lexer could not split has
+        no head to read, so any escalation anywhere in it reads as nested,
+        which is the fail-closed answer: it reports for a human to look at
+        rather than passing unread.
+    """
+    if not _ESCALATION_RE.search(call.command_text):
+        return False
+    if not call.parsed or not call.command:
+        return True
+    return call.command[0] not in _ESCALATING_HEADS
+
+
+def _logical_lines(run: str) -> list[str]:
+    r"""Return *run* with backslash continuations joined into single lines.
+
+    A shell invocation is one command however many source lines it occupies,
+    and the escalating word is routinely on a later one:
+
+        .github/scripts/retry_cmd.sh "install deps" \\
+          sudo apt-get install -y ...
+
+    Reading physical lines put the helper and the ``sudo`` in different
+    strings, so neither line matched both halves of the rule and the check
+    passed a step that then failed in CI exactly as the rule describes:
+    three attempts, exit 124 each, the killed apt-get outliving every one of
+    them. The unit the rule is about is the command, so that is the unit it
+    reads.
+
+    Args:
+        run: The step's whole ``run:`` script.
+
+    Returns:
+        The joined logical lines, each stripped.
+    """
+    joined: list[str] = []
+    pending = ""
+    for raw in run.splitlines():
+        stripped = raw.strip()
+        # A whole-line comment is prose, and its apostrophes are not shell
+        # quoting. Counting them made one `runner's` in a comment glue every
+        # line below it into a single command whose head word was `#`, which
+        # both hid the two real invocations under it and reported that `#` as
+        # a wrapper around their sudo. Only skipped while nothing is pending:
+        # a comment cannot appear mid-continuation, so a `#` there is an
+        # argument.
+        if not pending and stripped.startswith("#"):
+            continue
+        pending = f"{pending} {stripped}".strip() if pending else stripped
+        if pending.endswith("\\"):
+            pending = pending[:-1].strip()
+            continue
+        # An unclosed quote continues too, and for the same reason: a
+        # `bash -c '...'` body spanning several source lines is still one
+        # command, and the escalating word inside it is what the ladder
+        # actually retries. Counting quotes across the accumulated text is
+        # what keeps the two continuation forms from having to agree.
+        if pending.count("'") % 2 or pending.count('"') % 2:
+            continue
+        joined.append(pending)
+        pending = ""
+    if pending:
+        joined.append(pending)
+    return joined
 
 
 def _is_pull_producer(step: dict[str, object]) -> bool:
@@ -1726,6 +2045,7 @@ def _scan_composite_action(
             continue
         label = _step_label(step, index)
         violations.extend(_check_retry_deadlines(f"'{label}'", step))
+        violations.extend(_check_retry_escalation(f"'{label}'", step))
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue
@@ -1767,6 +2087,7 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
     checkout = _CheckoutState()
     for step in steps:
         violations.extend(_check_retry_deadlines(f"job '{job_name}'", step))
+        violations.extend(_check_retry_escalation(f"job '{job_name}'", step))
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue

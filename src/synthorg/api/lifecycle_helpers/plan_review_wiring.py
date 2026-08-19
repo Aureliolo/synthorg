@@ -13,15 +13,17 @@ unless an operator opts in.
 
 import asyncio
 import contextlib
-import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Final
 from uuid import UUID
 
 from synthorg.api.channels import PlanNotifier
+from synthorg.api.lifecycle_helpers._plan_approval_presentation import plan_detail
+from synthorg.api.lifecycle_helpers._plan_pending_review_park import (
+    plan_approval_item,
+)
 from synthorg.api.lifecycle_helpers.plan_questions import (
-    PLAN_ID_METADATA_KEY,
     build_plan_questions,
     log_parked,
 )
@@ -29,8 +31,6 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
-from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
-from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
 from synthorg.budget.session_budget import (
@@ -52,6 +52,7 @@ from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import (
     PlanProvenance,
@@ -76,8 +77,6 @@ from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
-
-_PLAN_ACTION_TYPE = PLAN_APPROVAL_ACTION_TYPE
 
 #: The gate itself, as an actor: on the compensating FAILED write, and as the
 #: requester of every approval it parks.
@@ -109,49 +108,6 @@ _SHELL_NOT_YET_REVIEWED: Final[PlanReviewOutcome] = PlanReviewOutcome(
 # its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
 # than aborting the one write meant to make a failure visible.
 _MAX_FAIL_ATTEMPTS: Final[int] = 3
-
-#: ``ApprovalItem.metadata`` key carrying resume context. The plan itself is
-#: durable (referenced by ``PLAN_ID_METADATA_KEY``, re-exported here because
-#: the resume and retire paths have always imported it from this module); the
-#: approval only points at it.
-PROJECT_METADATA_KEY = "project"
-
-_PREVIEW_SUBTASKS: Final[int] = 3
-
-# Plan-approval risk scales with plan size: a larger plan commits more work and
-# budget in one decision, so it warrants proportionally more scrutiny. (Risk
-# level is otherwise a mostly-decorative label; scaling it with size at least
-# makes it an honest signal here rather than a hardcoded constant.)
-_LOW_RISK_MAX_SUBTASKS: Final[int] = 3
-_MEDIUM_RISK_MAX_SUBTASKS: Final[int] = 8
-
-
-def _plan_risk_level(plan: DecompositionResult) -> ApprovalRiskLevel:
-    """Scale plan-approval risk with the size of the decomposed plan.
-
-    Returns:
-        ``LOW`` for a small plan, ``MEDIUM`` for a mid-sized one, ``HIGH``
-        for a large plan (more subtasks commit more work in one approval).
-    """
-    count = len(plan.plan.subtasks)
-    if count <= _LOW_RISK_MAX_SUBTASKS:
-        return ApprovalRiskLevel.LOW
-    if count <= _MEDIUM_RISK_MAX_SUBTASKS:
-        return ApprovalRiskLevel.MEDIUM
-    return ApprovalRiskLevel.HIGH
-
-
-def _plan_detail(plan: DecompositionResult) -> str:
-    """Human-readable one-line summary of a decomposed plan.
-
-    Returns:
-        A ``"<n> subtask(s): title, title, ..."`` summary.
-    """
-    subtasks = plan.plan.subtasks
-    titles = ", ".join(s.title for s in subtasks[:_PREVIEW_SUBTASKS])
-    suffix = ", ..." if len(subtasks) > _PREVIEW_SUBTASKS else ""
-    head = f"{len(subtasks)} subtask(s)"
-    return f"{head}: {titles}{suffix}" if titles else f"{head} awaiting approval"
 
 
 def _log_detached_compensation(done: asyncio.Future[None], plan_id: UUID) -> None:
@@ -194,6 +150,7 @@ class PlanReviewApprovalGate:
     __slots__ = (
         "_approval_store",
         "_clock",
+        "_ledger",
         "_notifier",
         "_plans",
         "_projects",
@@ -209,6 +166,7 @@ class PlanReviewApprovalGate:
         projects: ProjectRepository,
         clock: Clock,
         notifier: PlanNotifier | None = None,
+        ledger: LiveRunLedger | None = None,
     ) -> None:
         # A service, not the repository: every status this gate writes is a
         # transition the lifecycle ledger has to carry, and a gate holding the
@@ -219,6 +177,13 @@ class PlanReviewApprovalGate:
         self._projects = projects
         self._clock = clock
         self._notifier = notifier
+        # Held from the moment a shell exists until the plan leaves PLANNING.
+        # Writing a plan is a live drive like dispatching one, and recovery
+        # cannot tell "still being written" from "was being written when the
+        # process died" by looking at the row: both read PLANNING. A live run
+        # took 642 seconds over a panel and two revision rounds, and the
+        # recovery sweep failed the plan out from under it at 600.
+        self._ledger = ledger
 
     def _announce(self, plan: Plan) -> None:
         """Tell open viewers the plan moved, if a publisher is wired.
@@ -330,7 +295,20 @@ class PlanReviewApprovalGate:
                 review=_SHELL_NOT_YET_REVIEWED,
             )
         )
-        await self._plans.create(shell)
+        # Claimed BEFORE the row exists, so no sweep can see a PLANNING shell
+        # this process is about to fill without also seeing the claim. The
+        # other order leaves an await between the two, and a sweep scheduled
+        # in that window reads an unclaimed shell and fails the decomposition
+        # that is writing it. Released again if the row never lands, since a
+        # claim over a plan that does not exist blinds the sweep to nothing
+        # and never clears.
+        if self._ledger is not None:
+            self._ledger.try_claim(str(shell.id))
+        try:
+            await self._plans.create(shell)
+        except BaseException:
+            self.release_plan(shell.id)
+            raise
         logger.info(
             PIPELINE_PLAN_SHELL_OPENED,
             plan_id=str(shell.id),
@@ -338,6 +316,19 @@ class PlanReviewApprovalGate:
             task_id=str(task.id),
         )
         return shell.id
+
+    def release_plan(self, plan_id: UUID) -> None:
+        """Stop claiming *plan_id* as being written in this process.
+
+        Called on every route out of decomposition, so the claim covers
+        exactly the window in which the row says PLANNING and this process is
+        the reason. Idempotent, and safe to call for a plan never claimed.
+
+        Args:
+            plan_id: The plan whose writing has finished, however it finished.
+        """
+        if self._ledger is not None:
+            self._ledger.release(str(plan_id))
 
     async def request_plan_approval(
         self,
@@ -366,8 +357,7 @@ class PlanReviewApprovalGate:
                 nothing an operator can still act on.
         """
         await self._require_parent(task, plan_id)
-        approval_id = uuid.uuid4()
-        detail = _plan_detail(plan)
+        detail = plan_detail([s.title for s in plan.plan.subtasks])
         now = self._clock.now()
         shell = await self._plans.get(NotBlankStr(str(plan_id)))
         filled = plan_from_decomposition(
@@ -388,22 +378,25 @@ class PlanReviewApprovalGate:
         # filled plan fresh so the approval still references a durable plan
         # rather than dangling; the service owns that fork.
         await self._plans.record_decomposed(durable_plan, shell=shell)
-        approval = ApprovalItem(
-            id=approval_id,
-            action_type=NotBlankStr(_PLAN_ACTION_TYPE),
-            title=NotBlankStr(f"Approve plan for: {task.title}"),
-            description=NotBlankStr(detail),
-            requested_by=NotBlankStr(_GATE_ACTOR),
-            risk_level=_plan_risk_level(plan),
-            source=ApprovalSource.PLAN_REVIEW,
-            status=ApprovalStatus.PENDING,
-            created_at=now,
+        # Released HERE, not before the awaits above: the plan stops being one
+        # this process is writing the moment the row actually says
+        # PENDING_REVIEW, which recovery reads as awaiting a human and skips.
+        # Releasing any earlier hands the sweep a shell that still says
+        # PLANNING and that nobody claims, which it fails as abandoned while
+        # this coroutine is two awaits from filling it. Whatever happens to
+        # the parking below is not a reason to hold it: the row is durable and
+        # the failure paths release on their own.
+        self.release_plan(plan_id)
+        approval = plan_approval_item(
+            plan_id=str(durable_plan.id),
+            titles=[s.title for s in plan.plan.subtasks],
+            objective_title=str(task.title),
+            project=str(work_item.project),
             task_id=NotBlankStr(str(task.id)),
-            metadata={
-                PLAN_ID_METADATA_KEY: str(durable_plan.id),
-                PROJECT_METADATA_KEY: work_item.project,
-            },
+            requested_by=NotBlankStr(_GATE_ACTOR),
+            now=now,
         )
+        approval_id = approval.id
         parked: list[ApprovalItem] = []
         try:
             await self._approval_store.add(approval)
@@ -541,6 +534,10 @@ class PlanReviewApprovalGate:
         the failed handoff `_plan_review` returns) nor turn a handled failure
         into a 500 -- which is exactly what an unguarded write here would do.
         """
+        # Released first: this is the last thing that happens to a plan whose
+        # writing did not work out, and holding the claim past it would leave
+        # recovery skipping a row nobody is driving.
+        self.release_plan(plan_id)
         key = NotBlankStr(str(plan_id))
         marked_reason = NotBlankStr(reason or "decomposition failed")
 
@@ -642,6 +639,9 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
         raise SubsystemDeclinedError(msg)
     from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
+        live_run_ledger_of,
+    )
 
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
@@ -650,6 +650,9 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
         projects=backend.projects,
         clock=app_state.clock,
         notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
+        # The same ledger recovery reads, so a plan this process is writing is
+        # one recovery can see it must not touch.
+        ledger=live_run_ledger_of(app_state),
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)
     logger.info(API_APP_STARTUP, service="plan_review_gate", note="wired")
@@ -710,6 +713,9 @@ async def wire_plan_review_panel(
     config = PlanReviewPanelConfig(
         panel_size=await resolver.get_int("coordination", "plan_review_panel_size"),
         max_turns=await resolver.get_int("coordination", "plan_review_panel_max_turns"),
+        max_revision_rounds=await resolver.get_int(
+            "coordination", "plan_review_max_revision_rounds"
+        ),
         ceilings=SessionCeilings.of(
             cost_ceiling=await resolver.get_float(
                 "coordination", "plan_review_panel_cost_ceiling"

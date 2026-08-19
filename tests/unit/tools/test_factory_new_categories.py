@@ -8,6 +8,7 @@ from synthorg.tools.database.config import DatabaseConfig, DatabaseConnectionCon
 from synthorg.tools.factory import build_default_tools
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.terminal.config import TerminalConfig
+from synthorg.tools.terminal.wiring import TerminalWiring
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
 
@@ -130,7 +131,7 @@ class TestFactoryTerminalTools:
         tools = build_default_tools(
             workspace=workspace,
             web=DEFAULT_TEST_WEB_WIRING,
-            terminal_config=config,
+            terminal=TerminalWiring(config=config),
         )
         shell_tool = next(t for t in tools if t.name == "shell_command")
         from synthorg.tools.terminal.shell_command import ShellCommandTool

@@ -495,6 +495,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         ),
     ),
     Capability(
+        id=CapabilityId.RUN_RECOVERY,
+        present=lambda s: s.slice(EngineStateSlice).run_recovery_scheduler is not None,
+    ),
+    Capability(
         id=CapabilityId.QUOTA_POLLER,
         present=lambda s: s.slice(BudgetStateSlice).quota_poller is not None,
     ),

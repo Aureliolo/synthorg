@@ -10,6 +10,7 @@ import { useFlash } from '@/hooks/useFlash'
 import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
+import { getBlockedReasonLabel } from '@/utils/tasks'
 import type { DashboardTask } from '@/api/types/tasks'
 
 export interface TaskCardProps {
@@ -75,6 +76,7 @@ export const TaskCard = memo(function TaskCard({
       {...props}
     >
       <TaskCardHeader title={task.title} status={task.status} />
+      <TaskCardBlockedReason reason={task.blocked_reason} />
       {task.description && (
         <p className="mt-1 line-clamp-2 text-xs text-text-secondary">{task.description}</p>
       )}
@@ -94,6 +96,29 @@ function TaskCardHeader({ title, status }: TaskCardHeaderProps) {
       <h3 className="line-clamp-2 text-[13px] font-semibold text-foreground">{title}</h3>
       <TaskStatusIndicator status={status} className="mt-0.5" />
     </div>
+  )
+}
+
+interface TaskCardBlockedReasonProps {
+  reason: DashboardTask['blocked_reason']
+}
+
+/**
+ * What a blocked card is waiting on, on the card itself.
+ *
+ * The drawer has carried this since the field existed, but the BOARD is where
+ * an operator finds out something stopped, and there the status dot said only
+ * that. The reasons want different actions from different people, so reading
+ * which one it is has to be possible without opening anything.
+ */
+function TaskCardBlockedReason({ reason }: TaskCardBlockedReasonProps) {
+  if (reason == null) {
+    return null
+  }
+  return (
+    <p className="mt-1 line-clamp-2 text-[11px] text-warning">
+      {getBlockedReasonLabel(reason)}
+    </p>
   )
 }
 

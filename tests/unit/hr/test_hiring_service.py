@@ -1,11 +1,11 @@
 """Tests for HiringService."""
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus, HiringRequestStatus
@@ -21,7 +21,12 @@ from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import sid
-from tests._shared.model_binding import TEST_PROVIDER, bound_ref, model_ref_resolver
+from tests._shared.model_binding import (
+    TEST_PROVIDER,
+    MutableProviderCatalogue,
+    bound_ref,
+    provider_catalogue,
+)
 from tests.unit.hr.conftest import make_hiring_request
 
 
@@ -387,7 +392,7 @@ class TestHiringServiceInstantiateAgent:
         service = HiringService(
             registry=registry,
             onboarding_service=onboarding_service,
-            config_resolver=model_ref_resolver(),
+            provider_catalogue=provider_catalogue(),
         )
         req = await service.create_request(
             requested_by="cto",
@@ -656,16 +661,16 @@ class TestHiringServiceDecisions:
 
 @pytest.mark.unit
 class TestHiringServiceModelBinding:
-    """A hire runs on the operator's declared pair or it does not happen."""
+    """A hire runs on the pair its own approval carried, or not at all."""
 
-    async def test_an_unbound_pair_refuses_instantiation(
+    async def test_nothing_proposable_refuses_instantiation(
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(
-            registry=registry,
-            config_resolver=model_ref_resolver(default=""),
-        )
+        # No catalogue, so the approval had no pair to offer and the request
+        # carries none. Registering anyway would put an agent on the roster
+        # that fails every dispatch it is ever given.
+        service = HiringService(registry=registry)
         req = await service.create_request(
             requested_by="cto",
             department="engineering",
@@ -676,20 +681,17 @@ class TestHiringServiceModelBinding:
         approved = await service.submit_for_approval(
             updated, str(updated.candidates[0].id)
         )
-        with pytest.raises(ServiceUnavailableError, match="new_hire_model"):
+        with pytest.raises(HiringError, match="no model binding"):
             await service.instantiate_agent(approved)
         assert await registry.list_active() == ()
 
-    async def test_the_hire_carries_the_configured_pair(
+    async def test_the_hire_carries_the_pair_its_approval_proposed(
         self,
         registry: AgentRegistryService,
     ) -> None:
         service = HiringService(
             registry=registry,
-            config_resolver=model_ref_resolver(
-                {("hr", "new_hire_model"): bound_ref("example-expert-001")},
-                default="",
-            ),
+            provider_catalogue=provider_catalogue(["example-expert-001"]),
         )
         req = await service.create_request(
             requested_by="cto",
@@ -704,3 +706,102 @@ class TestHiringServiceModelBinding:
         identity = await service.instantiate_agent(approved)
         assert str(identity.model.provider) == TEST_PROVIDER
         assert str(identity.model.model_id) == "example-expert-001"
+
+    async def test_an_operator_pick_replaces_the_recommendation(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        # The override half: the approval offered several pairs, and the one
+        # the operator chose is what the agent is registered on.
+        service = HiringService(
+            registry=registry,
+            provider_catalogue=provider_catalogue(
+                ["example-basic-001", "example-expert-001"]
+            ),
+        )
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Override test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        chosen = bound_ref("example-basic-001")
+        rebound = await service.bind_model(str(approved.id), chosen)
+        assert rebound.bound_model_ref == chosen
+        identity = await service.instantiate_agent(rebound)
+        assert str(identity.model.model_id) == "example-basic-001"
+
+    @pytest.mark.parametrize(
+        ("drift", "expected"),
+        [
+            (MutableProviderCatalogue.delete_connection, "no longer configured"),
+            (
+                lambda catalogue: catalogue.serve(["example-expert-001"]),
+                "no longer carries model",
+            ),
+        ],
+        ids=["connection-deleted", "model-dropped"],
+    )
+    async def test_a_binding_the_operator_no_longer_has_refuses(
+        self,
+        registry: AgentRegistryService,
+        drift: Callable[[MutableProviderCatalogue], None],
+        expected: str,
+    ) -> None:
+        """The pair is re-asked of the live catalogue, not trusted as recorded.
+
+        Approval is a human step, so the recorded pair and the pair that still
+        exists are separated by an arbitrary interval. An agent registered on
+        a connection the operator has since deleted joins the roster looking
+        staffed and fails every dispatch, which is the same harm the absent
+        binding above already refuses.
+        """
+        catalogue = MutableProviderCatalogue(["example-basic-001"])
+        service = HiringService(registry=registry, provider_catalogue=catalogue)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Stale binding test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        drift(catalogue)
+
+        with pytest.raises(HiringError, match=expected):
+            await service.instantiate_agent(approved)
+        assert await registry.list_active() == ()
+
+    async def test_a_bound_pair_with_no_catalogue_refuses(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Unverifiable is refused, not waved through.
+
+        `bind_model` takes any syntactically valid `MODEL_REF` from a caller
+        of its own, so "a pipeline with no catalogue can propose nothing"
+        does not make a bound request unreachable here. A provider is a
+        registered connection, and nothing here can confirm this one is.
+        """
+        service = HiringService(registry=registry)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Unverifiable pair test",
+        )
+        updated = await service.generate_candidate(req)
+        approved = await service.submit_for_approval(
+            updated, str(updated.candidates[0].id)
+        )
+        bound = await service.bind_model(str(approved.id), bound_ref())
+
+        with pytest.raises(HiringError, match="no provider catalogue is wired"):
+            await service.instantiate_agent(bound)
+        assert await registry.list_active() == ()

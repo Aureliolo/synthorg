@@ -318,10 +318,13 @@ API_PLAN_UPDATED: Final[str] = "api.plan.updated"
 API_PLAN_UPDATE_FAILED: Final[str] = "api.plan.update_failed"
 API_PLAN_CHANGES_REQUESTED: Final[str] = "api.plan.changes_requested"
 API_PLAN_CHANGES_REQUEST_FAILED: Final[str] = "api.plan.changes_request_failed"
+API_PLAN_CHANGES_REPLANNED: Final[str] = "api.plan.changes_replanned"
 API_PLAN_STATUS_TRANSITIONED: Final[str] = "api.plan.status_transitioned"
 API_PLAN_SUCCESSOR_OPENED: Final[str] = "api.plan.successor_opened"
 API_PLAN_REPLANNED: Final[str] = "api.plan.replanned"
 API_PLAN_REPLAN_WORK_TERMINATED: Final[str] = "api.plan.replan_work_terminated"
+API_PLAN_REPLAN_PARKED: Final[str] = "api.plan.replan_parked"
+API_PLAN_REPLAN_PARK_FAILED: Final[str] = "api.plan.replan_park_failed"
 API_PLAN_REPLAN_ROLLBACK_RELINK_FAILED: Final[str] = (
     "api.plan.replan_rollback_relink_failed"
 )

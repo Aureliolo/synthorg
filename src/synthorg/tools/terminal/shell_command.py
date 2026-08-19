@@ -23,12 +23,14 @@ from synthorg.observability.events.terminal import (
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools._shell_invocation import shell_invocation
 from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.terminal._settings import resolve_shell_command_timeout
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
 
@@ -88,6 +90,7 @@ class ShellCommandTool(BaseTerminalTool):
         *,
         sandbox: SandboxBackend | None = None,
         config: TerminalConfig | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
         output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
@@ -98,6 +101,9 @@ class ShellCommandTool(BaseTerminalTool):
             sandbox: Sandboxed execution backend.
             config: Terminal-tool configuration with allowlist /
                 blocklist and timeouts.
+            config_resolver: Live settings resolver, read per command for
+                the ceilings an operator can change. ``None`` keeps
+                *config*'s own values for the life of the tool.
             code_execution_records: Optional repository the deliverable
                 receipt reads. A suite run here is the same evidence as one
                 run through ``code_runner``, so which tool the agent
@@ -121,6 +127,7 @@ class ShellCommandTool(BaseTerminalTool):
             parameters_schema=ShellCommandArgs.model_json_schema(),
             sandbox=sandbox,
             config=config,
+            config_resolver=config_resolver,
         )
         self._code_execution_records = code_execution_records
         self._clock: Clock = clock or SystemClock()
@@ -206,8 +213,17 @@ class ShellCommandTool(BaseTerminalTool):
             )
         command = args.command
         working_dir = args.working_directory
+        # The call's own timeout wins; otherwise the ceiling in force RIGHT
+        # NOW, read live, so an operator who raises it after watching an
+        # install time out does not have to restart anything to find out
+        # whether the new value is enough.
         timeout: float = (
-            args.timeout if args.timeout is not None else self._config.default_timeout
+            args.timeout
+            if args.timeout is not None
+            else await resolve_shell_command_timeout(
+                self._config_resolver,
+                fallback=self._config.default_timeout,
+            )
         )
 
         if not command.strip():

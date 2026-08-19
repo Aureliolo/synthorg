@@ -65,7 +65,9 @@ runs:
     # 300s, so 240s is the ceiling worth setting, and each per-attempt timeout
     # is sized so a SECOND full attempt plus its backoff still fits inside it
     # -- a ladder whose retry cannot be reached is the very defect the
-    # deadline exists to remove.
+    # deadline exists to remove, and the helper refuses to start an attempt
+    # the remaining budget cannot afford whole rather than running a stub of
+    # one and reporting its 124.
     #
     # A per-attempt timeout has a second bound the rule above does not state,
     # and ``uv python install`` is where it bites: the fetch does not resume,
@@ -76,10 +78,14 @@ runs:
     # ladder converts slow-but-progressing into a guaranteed failure -- three
     # attempts, 240s spent, nothing downloaded. The timeout therefore has to
     # clear the download at the WORST throughput worth completing, not the
-    # healthy one: 180s puts that floor near 0.19 MB/s, and 180 + 15 still
-    # leaves a clamped second attempt inside the deadline for the fast-fail
-    # case the ladder exists to catch. The cache above is what keeps this
-    # path rare; the timeout is what keeps it survivable when it is hit.
+    # healthy one: 180s puts that floor near 0.19 MB/s. The fast-fail case
+    # the ladder exists to catch still gets its retry, and gets it whole: an
+    # attempt that dies on DNS or a 5xx ends in seconds, so the second one
+    # starts with the deadline almost untouched. An attempt that instead
+    # spends the full 180s leaves no room for another, and the ladder says so
+    # rather than restarting a non-resuming 34 MiB fetch it cannot finish.
+    # The cache above is what keeps this path rare; the timeout is what keeps
+    # it survivable when it is hit.
     #
     # ``uv sync`` sets no per-attempt timeout of its own, because a cold
     # cross-platform resolve has no honest fixed duration to pick. Its

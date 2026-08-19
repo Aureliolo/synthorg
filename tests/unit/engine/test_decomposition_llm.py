@@ -1,6 +1,7 @@
 """Tests for LLM decomposition strategy."""
 
 import json
+import re
 from typing import cast
 
 import pytest
@@ -294,6 +295,37 @@ class TestLlmDecompositionStrategy:
         cast("list[dict[str, object]]", args["subtasks"])[2]["dependencies"] = []
 
         with pytest.raises(DecompositionError, match="Renderer pipeline"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
+    def test_an_item_judged_on_a_later_item_artefact_is_refused(self) -> None:
+        """A gate that cannot pass when it runs cannot pass on rework either.
+
+        The server item's own criterion named the page item's ``index.html``,
+        two waves downstream and depending on the server on nothing. The
+        reviewer refused, the rework reran, the file still did not exist, and
+        the second refusal cost as much as the first.
+        """
+        server = _subtask_args("sub-server", "HTTP server", "Serve the app")
+        server["expected_artifacts"] = ["server.js"]
+        page = _subtask_args(
+            "sub-page", "Game page", "Lay the board out", dependencies=["sub-server"]
+        )
+        page["expected_artifacts"] = ["public/index.html"]
+        args: dict[str, object] = {
+            "task_structure": "mixed",
+            "coordination_topology": "auto",
+            "subtasks": [server, page],
+        }
+        # Sanity: the plan stands until the criterion reaches downstream, so
+        # the failure below is the criterion and not the pair of items.
+        args_to_decomposition_plan(cast("dict[str, JsonValue]", args), "task-parent-1")
+
+        server["acceptance_criteria"] = ["node server.js serves index.html with a 200"]
+
+        with pytest.raises(DecompositionError, match=re.escape("index.html")):
             args_to_decomposition_plan(
                 cast("dict[str, JsonValue]", args), "task-parent-1"
             )

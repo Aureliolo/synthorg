@@ -16,6 +16,18 @@ function planReviewApproval() {
   return makeApproval('appr-1', {
     source: 'plan_review',
     status: 'pending',
+    action_type: 'plan:approve',
+    metadata: { plan_id: 'plan-1' },
+  })
+}
+
+// The gate parks one of these per unresolved plan question, under the SAME
+// source and the SAME plan_id as the plan approval itself.
+function planQuestionApproval(id: string) {
+  return makeApproval(id, {
+    source: 'plan_review',
+    status: 'pending',
+    action_type: 'clarify:question',
     metadata: { plan_id: 'plan-1' },
   })
 }
@@ -49,6 +61,59 @@ describe('PlanApprovalActions', () => {
     await userEvent.click(approveBtn)
     await waitFor(() => {
       expect(approveSpy).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('approves the plan, never a question parked on the same plan', async () => {
+    // A live run clicked "Approve plan" and settled a parked clarify question:
+    // the lookup matched on plan_id alone, and the questions carry the same
+    // source and the same plan_id, so whichever the API ordered first won. The
+    // plan stayed pending and the audit recorded the operator as having
+    // decided a question they were never shown.
+    const approved: string[] = []
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(
+          paginatedFor<typeof listApprovals>({
+            ...emptyPage(),
+            // Questions first, exactly as the live API ordered them.
+            data: [
+              planQuestionApproval('question-1'),
+              planQuestionApproval('question-2'),
+              planReviewApproval(),
+            ],
+          }),
+        ),
+      ),
+      http.post('/api/v1/approvals/:id/approve', ({ params }) => {
+        approved.push(String(params['id']))
+        return HttpResponse.json(
+          successFor<() => Promise<unknown>>(planReviewApproval()),
+        )
+      }),
+    )
+    render(<PlanApprovalActions plan={PLAN} />)
+    await userEvent.click(await screen.findByRole('button', { name: /approve plan/i }))
+    await waitFor(() => {
+      expect(approved).toEqual(['appr-1'])
+    })
+  })
+
+  it('offers no approve control when only questions are parked', async () => {
+    // Better to show nothing than a control wired to the wrong decision.
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(
+          paginatedFor<typeof listApprovals>({
+            ...emptyPage(),
+            data: [planQuestionApproval('question-1')],
+          }),
+        ),
+      ),
+    )
+    render(<PlanApprovalActions plan={PLAN} />)
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /approve plan/i })).toBeNull()
     })
   })
 

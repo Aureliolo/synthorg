@@ -182,7 +182,7 @@ A **shape, not a duration**: the plan has outstanding work and none of it can
 move without a new decision. There is no threshold to tune and no timer, and the
 derivation is exact the moment the last live item dies.
 
-Three cases are deliberately excluded, each because replanning would destroy
+Several cases are deliberately excluded, each because replanning would destroy
 something:
 
 | not a stall | why |
@@ -191,6 +191,7 @@ something:
 | a human wait (`AWAITING_INPUT`, `AUTH_REQUIRED`) | the org is waiting on the operator; a replan would discard the question rather than answer it |
 | a WORK item whose task row does not exist yet | dispatch writes the plan's `EXECUTING` status *before* it creates the task rows, so treating this as dead would replan every initiative during its own dispatch window |
 | an undecided DECISION item that carries options | a human wait like the row above: somebody can still answer it, and the parked question is how they are asked |
+| a `BLOCKED` task parked on a reason someone will still end (`oracle_escalated`, `reviewer_unstaffed`, `red_team_unstaffed`, `no_capable_agent`) | the same shape of wait as the two rows above, expressed through `BLOCKED` instead of its own status. `BLOCKED` is otherwise dead by default, so this one reads the REASON rather than the status (`ATTENDED_BLOCKED_REASONS`): without it, asking a human to decide a review is itself what makes the initiative look stalled, and the replan supersedes the plan the question was about |
 
 The two tail stages produce verdicts no derivation over items can see (every
 item is `COMPLETED` when integration fails), so `INTEGRATION_FAILED` and
@@ -328,8 +329,8 @@ query rather than an inference. That is load-bearing for the second table: a
 reached the status by a path this design forbids, and the row is the only place
 that shows it.
 
-[Dogfooding the loop](../guides/dogfood-the-loop.md) walks a run end to end and
-reads each row back.
+[The end-to-end run](../guides/end-to-end-run.md) walks a run through the
+dashboard and reads each row back.
 
 ## Enforcement
 

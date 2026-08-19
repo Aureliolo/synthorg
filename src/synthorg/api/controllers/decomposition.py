@@ -46,6 +46,7 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -291,6 +292,12 @@ class DecompositionController(Controller):
         service = DecompositionService(
             ManualDecompositionStrategy(plan),
             TaskStructureClassifier(),
+            # Read off the slice rather than through the raising accessor:
+            # the resolver decides only how long this may run, and the
+            # service already bounds itself on the definition's default
+            # without one. Refusing the whole request over a ceiling that
+            # has an answer either way would be the wrong trade.
+            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
         )
         result = await service.decompose_task(
             task,

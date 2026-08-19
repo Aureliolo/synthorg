@@ -149,7 +149,13 @@ _SUBTASK_PROPERTIES: Final[dict[str, JsonValue]] = {
     "acceptance_criteria": {
         "type": "array",
         "items": {"type": "string"},
-        "description": "Verifiable criteria that define done for this subtask",
+        "description": (
+            "Verifiable criteria that define done for this subtask, each "
+            "decidable from this item's own expected_artifacts plus those "
+            "of the items it depends on. Naming a file a later item "
+            "produces makes the criterion unjudgeable and the plan is "
+            "rejected at parse time."
+        ),
     },
     "satisfies": {
         "type": "array",
@@ -365,6 +371,11 @@ def build_system_message(
         "artifact: an item that builds nothing cannot be checked, so if you "
         "cannot name a deliverable the item is either a decision or it does "
         "not belong in the plan. A decision item lists no artifacts.\n"
+        "- Each item is judged the moment IT finishes, so its "
+        "acceptance_criteria must be decidable from its own artifacts plus "
+        "those of the items it depends on. A criterion naming a file another "
+        "item produces later can never pass, and the plan is REJECTED for it: "
+        "either declare that dependency or judge the item on what it builds.\n"
         "- Tag each item with the objective acceptance criteria it advances "
         "(satisfies, copied verbatim) so coverage is checkable. Between them, "
         "the items must cover every objective criterion.\n"
@@ -377,6 +388,13 @@ def build_system_message(
         "- Surface any open_questions you could not resolve and the load-bearing "
         "assumptions the plan rests on, so the human can answer or correct them "
         "before approving rather than discovering them mid-build.\n"
+        "- Never assume a file, module or service already exists. Recall spans "
+        "every project this organisation has run, so a remembered artefact is "
+        "very likely to belong to another project. Only this project's "
+        "workspace says what this project has: check it with list_directory "
+        "and read_file before writing any such claim into assumptions, and "
+        "when those tools are absent or the workspace is empty, plan the work "
+        "that builds the thing rather than the work that integrates it.\n"
         "- Before submitting, self-review: is it genuinely parallel where it "
         "can be, is every item owned, are stakes calibrated (not all high), and "
         "does every item define done?\n"
@@ -431,6 +449,14 @@ def build_task_message(
 def build_retry_message(error: str) -> ChatMessage:
     """Build a retry message with the prior error.
 
+    The error is fenced for the same reason the task text above it is. A
+    refusal returning to the model that caused it can quote the model's own
+    plan prose verbatim (the house-style guard names the places it matched),
+    and that prose was written from a title and description an outsider
+    supplied. Unfenced, the retry lifts whatever the model was induced to
+    echo back out of the fence it arrived in and hands it over as the
+    instruction for the next turn.
+
     Args:
         error: Description of the parsing/validation error.
 
@@ -438,8 +464,8 @@ def build_retry_message(error: str) -> ChatMessage:
         A ``ChatMessage`` with ``MessageRole.USER``.
     """
     content = (
-        "Your previous response could not be parsed. "
-        f"Error: {error}\n\n"
+        "Your previous response could not be parsed. Error:\n"
+        f"{wrap_untrusted(TAG_TASK_DATA, error)}\n\n"
         "Please try again using the "
         "submit_decomposition_plan tool with corrected "
         "arguments."

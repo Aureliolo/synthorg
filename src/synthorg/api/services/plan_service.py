@@ -28,7 +28,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanPremises
 from synthorg.core.plan_enums import (
     PlanStatus,
 )
@@ -163,6 +163,8 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         items: tuple[PlanItem, ...],
         task_structure: TaskStructure | None = None,
         coordination_topology: CoordinationTopology | None = None,
+        failure_event: str = API_PLAN_UPDATE_FAILED,
+        premises: PlanPremises | None = None,
     ) -> Plan:
         """Apply an operator rework, producing a new revision under review.
 
@@ -176,6 +178,14 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             items: The revised domain items.
             task_structure: Optional override of the classified structure.
             coordination_topology: Optional override of the topology.
+            failure_event: Audit event a write failure logs under, so a change
+                request that fails is not recorded as a failed operator edit.
+            premises: The assumptions and open questions the revision rests
+                on. ``None`` carries the existing plan's forward, which is
+                right for an operator editing items by hand: they revised the
+                work, not the premises. A re-plan must pass its own, because
+                the planner derived fresh ones and keeping the superseded set
+                leaves the plan contradicting itself.
 
         Returns:
             The persisted, reworked plan.
@@ -211,8 +221,14 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
                 # reference the pre-edit items); the plan re-enters review with
                 # no stale verdict shown against the new version.
                 review=None,
-                open_questions=existing.open_questions,
-                assumptions=existing.assumptions,
+                open_questions=(
+                    existing.open_questions
+                    if premises is None
+                    else premises.open_questions
+                ),
+                assumptions=(
+                    existing.assumptions if premises is None else premises.assumptions
+                ),
                 objective_criteria=existing.objective_criteria,
                 version_history=history,
                 version=existing.version + 1,
@@ -221,7 +237,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             )
         except PydanticValidationError as exc:
             logger.warning(
-                API_PLAN_UPDATE_FAILED,
+                failure_event,
                 plan_id=str(existing.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -231,7 +247,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         await self._persist_update(
             revised,
             expected_version=existing.version,
-            failure_event=API_PLAN_UPDATE_FAILED,
+            failure_event=failure_event,
         )
         logger.info(
             API_PLAN_UPDATED,
@@ -242,43 +258,55 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         await self._log_transition(existing.status, revised)
         return revised
 
-    async def request_changes(self, existing: Plan, *, note: str | None = None) -> Plan:
-        """Send a plan back for revision (status -> draft).
+    async def request_changes(
+        self,
+        existing: Plan,
+        *,
+        items: tuple[PlanItem, ...],
+        premises: PlanPremises,
+        note: str | None = None,
+    ) -> Plan:
+        """Record an operator change request against the plan it re-planned.
 
-        The operator's *note* is recorded on the durable audit event so the
-        rationale outlives the transient WebSocket notification; turning it
-        into a concrete replan is the wiring layer's concern.
+        *items* are what the org produced when it re-planned against the
+        operator's *note*; the caller owns that pass because decomposing is an
+        engine concern. This method is the audited write: it applies the
+        revision through the same validated path an operator edit takes, and
+        records the rationale beside it so why the plan changed outlives the
+        transient WebSocket notification.
 
         Args:
             existing: The plan being sent back (already fetched by the caller).
+            items: The re-planned items replacing the reviewed ones.
+            premises: The assumptions and open questions the re-plan derived,
+                which replace the reviewed plan's: the items rest on these,
+                not on the ones the superseded plan carried.
             note: The operator's rationale for the change request, recorded on
                 the ``API_PLAN_CHANGES_REQUESTED`` audit event.
 
         Returns:
-            The persisted, drafted plan.
+            The persisted, re-planned plan, back under review.
 
         Raises:
             ConflictError: The plan is terminal (already decided).
+            ValidationError: The re-planned items violate a plan invariant.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
-        require_reworkable(existing)
-        drafted = existing.model_copy(
-            update={
-                "status": PlanStatus.DRAFT,
-                "version": existing.version + 1,
-                "updated_at": self._clock.now(),
-            }
-        )
-        await self._persist_update(
-            drafted,
-            expected_version=existing.version,
+        revised = await self.edit(
+            existing,
+            items=items,
             failure_event=API_PLAN_CHANGES_REQUEST_FAILED,
+            premises=premises,
         )
-        logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id), note=note)
-        await self._log_transition(existing.status, drafted)
-        return drafted
+        logger.info(
+            API_PLAN_CHANGES_REQUESTED,
+            plan_id=str(revised.id),
+            version=revised.version,
+            note=note,
+        )
+        return revised
 
     async def sync_status(
         self,

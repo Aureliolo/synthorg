@@ -156,7 +156,7 @@ nav:
       - REST API Examples: guides/rest-api-examples.md
       - Human Interaction & API: guides/human-interaction.md
       - Persistence Migrations: guides/persistence-migrations.md
-      - Dogfooding the Loop: guides/dogfood-the-loop.md
+      - End-to-End Run: guides/end-to-end-run.md
       - Contributing: guides/contributing.md
       - Fork Setup: guides/fork-setup.md
   - Design:

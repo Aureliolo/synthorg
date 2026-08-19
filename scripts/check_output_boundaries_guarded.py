@@ -68,6 +68,14 @@ _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
         "initiative evaluation verdict",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),
     ),
+    "src/synthorg/engine/decomposition/_plan_output_guard.py": (
+        "shared plan-prose guard",
+        frozenset({"enforce_output_policy"}),
+    ),
+    "src/synthorg/engine/decomposition/llm_parse.py": (
+        "plan item titles, descriptions, criteria, assumptions, questions",
+        frozenset({"guard_plan_text", "guard_plan_texts"}),
+    ),
     "src/synthorg/tools/file_system/write_file.py": (
         "agent code-file write",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),

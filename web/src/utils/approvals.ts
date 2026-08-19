@@ -19,8 +19,31 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+/**
+ * Longest decision text the API accepts, mirroring the server bound on
+ * ``ApproveRequest.comment`` and ``RejectRequest.reason``.
+ *
+ * One constant because five inputs carried their own: three capped at 2000
+ * and silently truncated what the operator wrote, which is the half of a
+ * rejection that says what to change.
+ */
+export const DECISION_TEXT_MAX = 4096
+
 /** Action type stamped on the review approval created for a failed run. */
 const FAILED_RUN_ACTION_TYPE = 'review:task_failed'
+
+/** Action type stamped on the review approval created for finished work. */
+const COMPLETED_RUN_ACTION_TYPE = 'review:task_completion'
+
+/**
+ * Whether the approval asks for a verdict on a task's own work.
+ *
+ * The review gate parks other things too (the staffing reconciler's hire),
+ * and those are not reviews of anything.
+ */
+function isTaskReview(actionType: string): boolean {
+  return actionType === COMPLETED_RUN_ACTION_TYPE || actionType === FAILED_RUN_ACTION_TYPE
+}
 
 /** Deep-link to an approval, pre-selected in the queue. */
 export function approvalDetailPath(approvalId: string): string {
@@ -108,6 +131,18 @@ export function isFailedApproval(approval: ApprovalResponse): boolean {
   return approval.run?.outcome === 'failed' || approval.action_type === FAILED_RUN_ACTION_TYPE
 }
 
+/**
+ * The run outcome to show for an approval, or null when there is none.
+ *
+ * The resolved run when the response carries one, and otherwise whatever the
+ * action type alone establishes. A card that skipped the badge for want of
+ * the optional half was the only failure in the queue not marked as one.
+ */
+export function resolvedRunOutcome(approval: ApprovalResponse): RunOutcome | null {
+  if (approval.run) return approval.run.outcome
+  return isFailedApproval(approval) ? 'failed' : null
+}
+
 // ── Approval step label (proposal-time vs review-gate) ──────
 
 const APPROVAL_SOURCE_STEP_LABELS: Record<ApprovalSource, string> = {
@@ -122,11 +157,23 @@ const APPROVAL_SOURCE_STEP_LABELS: Record<ApprovalSource, string> = {
  * Human label for which step of the propose then execute then review flow
  * this approval represents, so proposal-time and completion gates are never
  * confused. Failed/empty completions get their own truthful label.
+ *
+ * The failed case goes through `isFailedApproval` rather than reading the run
+ * outcome again: the enrichment is optional and the action type is not, so
+ * reading only the first put "Review completed work" over a task that failed,
+ * beside that same card's Acknowledge/Retry buttons, which read the second.
+ * One card, two answers, and the visible one was the wrong one.
+ *
+ * A `review_gate` approval that reviews no task borrows nothing from that
+ * label either: the staffing reconciler parks a hire there, and a hire is a
+ * decision to take, not work to look over.
  */
 export function getApprovalStepLabel(approval: ApprovalResponse): string {
-  const outcome = approval.run?.outcome
-  if (outcome === 'failed') return 'Review failed run'
-  if (outcome === 'empty') return 'Review empty run'
+  if (isFailedApproval(approval)) return 'Review failed run'
+  if (approval.run?.outcome === 'empty') return 'Review empty run'
+  if (approval.source === 'review_gate' && !isTaskReview(approval.action_type)) {
+    return APPROVAL_SOURCE_STEP_LABELS.parked_context
+  }
   return APPROVAL_SOURCE_STEP_LABELS[approval.source]
 }
 
@@ -280,6 +327,38 @@ export function isNarrowedStatus(
   status: ApprovalStatusFilter | undefined,
 ): boolean {
   return status != null && status !== DEFAULT_APPROVAL_STATUS
+}
+
+/**
+ * Reference-shaped metadata keys, by the shape of the name rather than a list.
+ * A key added by the backend next year is hidden until somebody writes down
+ * why it is a word a person reads, which is the opposite default from an
+ * allowlist. Mirrors the suffix rule `check_no_raw_id_in_ui.py` applies.
+ */
+const ID_SUFFIXES = ['_id', 'Id'] as const
+
+/** References that ARE the word a person reads, so they stay visible. */
+const ID_EXEMPT_SUFFIXES = ['model_id', 'modelId', 'correlation_id', 'correlationId'] as const
+
+function isReferenceKey(key: string): boolean {
+  if (ID_EXEMPT_SUFFIXES.some((suffix) => key.endsWith(suffix))) return false
+  return ID_SUFFIXES.some((suffix) => key.endsWith(suffix))
+}
+
+/**
+ * The approval metadata an operator surface may print.
+ *
+ * The map is backend-controlled and open-ended, so rendering it whole prints
+ * whatever keys the producing feature happened to stamp: a hire approval
+ * carries `request_id` and `candidate_id`, and both reached the drawer as raw
+ * UUIDs under a "Metadata" heading. The ids still travel with the approval and
+ * still drive the deep links; they are just not the thing a person is asked to
+ * read.
+ */
+export function visibleMetadataEntries(
+  metadata: Readonly<Record<string, unknown>>,
+): [string, unknown][] {
+  return Object.entries(metadata).filter(([key]) => !isReferenceKey(key))
 }
 
 export function filterApprovals(

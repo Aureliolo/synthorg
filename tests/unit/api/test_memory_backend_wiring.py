@@ -16,6 +16,7 @@ from structlog.testing import capture_logs
 
 from synthorg.api.lifecycle_helpers.memory_backend_wiring import wire_memory_backend
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.memory.backends.inmemory import InMemoryBackend
@@ -95,6 +96,23 @@ def _app_state(**overrides: Any) -> AppState:  # type: ignore[explicit-any]  # m
     return make_app_state(**overrides)
 
 
+async def _declines(app_state: AppState) -> str:
+    """Run a pass that must decline, and return the condition it named.
+
+    Returns:
+        The reason handed to the reconciler, which every caller then
+        compares against the slice: one condition, two readers.
+    """
+    with pytest.raises(SubsystemDeclinedError) as raised:
+        await wire_memory_backend(app_state)
+    reason = raised.value.reason
+    assert reason == app_state.slice(MemoryStateSlice).wiring_failure, (
+        "the subsystem surface and the health dialog must quote the same "
+        "condition; they disagreed for as long as declining meant returning"
+    )
+    return reason
+
+
 def _ephemeral_app_state() -> AppState:
     """App state configured for the discouraged ephemeral backend."""
     return _app_state(
@@ -155,7 +173,7 @@ class TestFailLoud:
             settings_service=_settings("", "", 0),
         )
 
-        await wire_memory_backend(app_state)
+        await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
 
@@ -168,7 +186,7 @@ class TestFailLoud:
             settings_service=_settings("", "", 0),
         )
 
-        await wire_memory_backend(app_state)
+        await _declines(app_state)
 
         assert not isinstance(
             app_state.slice(MemoryStateSlice).backend, InMemoryBackend
@@ -179,9 +197,12 @@ class TestFailLoud:
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
 
-        await wire_memory_backend(app_state)
+        reason = await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
+        # The database, not the embedder: a pass declining on the store must
+        # not send the operator to re-pick a model that resolved fine.
+        assert "not connected" in reason
 
     async def test_a_probe_failure_wires_no_backend_and_reports_it(self) -> None:
         """The real boot path, driven through an actual probe failure.
@@ -208,7 +229,7 @@ class TestFailLoud:
             ),
             capture_logs() as logs,
         ):
-            await wire_memory_backend(app_state)
+            await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
         unresolved = [e for e in logs if e["event"] == MEMORY_EMBEDDER_UNRESOLVED]
@@ -240,7 +261,7 @@ class TestFailLoud:
             "synthorg.memory.embedding.resolve.probe_embedder_dims",
             _unreachable,
         ):
-            await wire_memory_backend(app_state)
+            await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
         assert app_state.slice(MemoryStateSlice).embedder_ref is None
@@ -255,7 +276,7 @@ class TestFailLoud:
             settings_service=settings,
         )
 
-        await wire_memory_backend(app_state)
+        await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
 
@@ -277,7 +298,7 @@ class TestFailLoud:
             settings_service=settings,
         )
 
-        await wire_memory_backend(app_state)
+        await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
 
@@ -295,7 +316,7 @@ class TestFailLoud:
         )
 
         with capture_logs() as logs:
-            await wire_memory_backend(app_state)
+            await _declines(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
         failures = [e for e in logs if e["event"] == MEMORY_BACKEND_WIRE_FAILED]
@@ -321,11 +342,9 @@ class TestFailLoud:
         )
         app_state.wire(MemoryStateSlice, wiring_failure="a stale embedder reason")
 
-        await wire_memory_backend(app_state)
+        reason = await _declines(app_state)
 
-        recorded = app_state.slice(MemoryStateSlice).wiring_failure
-        assert recorded is not None
-        assert "a stale embedder reason" not in recorded
+        assert "a stale embedder reason" not in reason
 
 
 class TestConsolidationSchedulerWiring:

@@ -25,7 +25,7 @@ from pydantic import (
 
 from synthorg.budget.currency import CurrencyCode
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.charter.enums import CharterStatus
+from synthorg.meta.charter.enums import CharterFacet, CharterStatus
 
 # ── Charter content building blocks ───────────────────────────────
 
@@ -111,6 +111,11 @@ class CharterDraft(BaseModel):
         project_id: Existing project to file the run under (XOR).
         proposed_project_name: Name of a new project to create (XOR).
         proposed_project_description: Description for the new project.
+        assumed_facets: The facets this draft fills from the org's own
+            judgement rather than from what the human said. A charter
+            authorises a body of work and a budget, so a facet the human
+            never spoke to is the org's proposal to them, not their brief
+            back to it, and the difference has to survive to the approval.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -125,6 +130,13 @@ class CharterDraft(BaseModel):
     project_id: NotBlankStr | None = None
     proposed_project_name: NotBlankStr | None = None
     proposed_project_description: str = ""
+    # Required, with no default, because this model is parsed from LLM output
+    # and the coverage press fires on a non-empty value: a default would let a
+    # draft that simply omitted the key read as "assumed nothing", skip the
+    # press, and put the org's own proposals in front of an operator as though
+    # they were the operator's answers. Omitting it is a parse error the
+    # planner is asked to correct, which is the whole point of the field.
+    assumed_facets: tuple[CharterFacet, ...]
 
     @model_validator(mode="after")
     def _validate_binding(self) -> Self:
@@ -202,17 +214,33 @@ class ProjectCharter(BaseModel):
         created_by: User id that ran the interview.
         version: Monotonic edit version (starts at 1).
         status: Lifecycle state.
-        title, brief, goals, constraints, success_criteria, scope,
-            envelope: Charter content (see :class:`CharterDraft`).
-        project_id / proposed_project_name / proposed_project_description:
-            Project binding (existing-vs-new XOR).
-        created_at, updated_at: Row timestamps.
-        approved_at, approved_by, forecast_id, correlation_id: The
-            operator's decision. Set iff ``status`` is ``APPROVED``.
+        title: Charter content, as :class:`CharterDraft` describes it.
+        brief: Charter content, as :class:`CharterDraft` describes it.
+        goals: Charter content, as :class:`CharterDraft` describes it.
+        constraints: Charter content, as :class:`CharterDraft` describes it.
+        success_criteria: Charter content, per :class:`CharterDraft`.
+        scope: Charter content, as :class:`CharterDraft` describes it.
+        envelope: Charter content, as :class:`CharterDraft` describes it.
+        project_id: Project binding (existing-vs-new XOR).
+        proposed_project_name: Project binding (existing-vs-new XOR).
+        proposed_project_description: Project binding (existing-vs-new XOR).
+        created_at: Row timestamp.
+        updated_at: Row timestamp.
+        approved_at: The operator's decision. Set iff ``status`` is
+            ``APPROVED``.
+        approved_by: The operator's decision. Set iff ``status`` is
+            ``APPROVED``.
+        forecast_id: The operator's decision. Set iff ``status`` is
+            ``APPROVED``.
+        correlation_id: The operator's decision. Set iff ``status`` is
+            ``APPROVED``.
         task_id: The run their decision authorised, set once the spine
             minted it. Only an APPROVED charter may carry one, and an
             APPROVED charter without one is authorised work that has not
             been dispatched.
+        assumed_facets: The facets the interview supplied itself after
+            asking, so the operator approving them knows which lines are
+            their answer and which are the org's proposal.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -230,6 +258,7 @@ class ProjectCharter(BaseModel):
     success_criteria: tuple[NotBlankStr, ...] = ()
     scope: ScopeBoundaries = Field(default_factory=ScopeBoundaries)
     envelope: BudgetEnvelope
+    assumed_facets: tuple[CharterFacet, ...] = ()
 
     project_id: NotBlankStr | None = None
     proposed_project_name: NotBlankStr | None = None

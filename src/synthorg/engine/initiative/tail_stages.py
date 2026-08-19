@@ -70,6 +70,16 @@ _FAILED_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.FAILED, TaskStatus.REJECTED, TaskStatus.CANCELLED}
 )
 
+#: Statuses in which an assembly attempt exists but nothing is driving it, so
+#: the stage should hand it out again rather than wait. ``CREATED`` means the
+#: dispatch died between persisting the row and handing it to the pipeline;
+#: ``INTERRUPTED`` means it reached the pipeline and the process running it
+#: stopped, which run recovery records on the row. Neither is a verdict, and
+#: reading either as RUNNING parks the initiative for ever.
+_REDISPATCHABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.CREATED, TaskStatus.INTERRUPTED}
+)
+
 
 class IntegrationState(BaseModel):
     """Which assembly attempt a plan is on, and where that attempt got to.
@@ -185,10 +195,11 @@ async def read_integration_state(
                 outcome=IntegrationOutcome.FAILED,
                 task_id=task_id,
             )
-        if task.status is TaskStatus.CREATED:
-            # Persisted, then never handed to the pipeline: the dispatch died
-            # between the two. Re-dispatchable, and reporting it as RUNNING
-            # would park the initiative on a row nothing is driving.
+        if task.status in _REDISPATCHABLE_STATUSES:
+            # Never handed to the pipeline, or handed to one that stopped
+            # before reaching a verdict. Either way the row is
+            # re-dispatchable, and reporting it as RUNNING would park the
+            # initiative on a row nothing is driving.
             return IntegrationState(
                 attempt=attempt,
                 outcome=IntegrationOutcome.PENDING,

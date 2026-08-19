@@ -19,8 +19,16 @@ Detection
 The population is DERIVED, never listed: any module under
 ``src/synthorg/engine/coordination/`` that imports ``build_execution_waves``
 is a wave loop, because that call is what turns a decomposition into ordered
-waves. Each one must also reach ``gate_wave``, either directly or through
-``execute_waves`` (which calls it for its callers).
+waves. Each one must also reach ``gate_wave``, ``abandon_after``,
+``abandon_stranded`` and ``abandon_unreachable``, either directly or through
+``execute_waves`` (which calls each for its callers).
+
+The fourth is the one no wave can see. The builder DROPS a subtask it cannot
+place with an agent, and then everything transitively standing on it, into a
+set local to the build: those rows appear in no group, so the three faces
+that reason about waves never meet them. A live run left two such rows at
+CREATED while a recovery sweep re-drove the plan every cadence and changed
+nothing, for ever.
 
 Deriving rather than listing is the point. A hand-written list of dispatchers
 is one new file away from disagreeing with the set of things that dispatch,
@@ -111,6 +119,15 @@ _STRANDED_NAMES: Final[frozenset[str]] = frozenset(
     {"abandon_stranded", "execute_waves"}
 )
 
+#: The gate's fourth face, and the one no wave can see: the BUILDER drops a
+#: subtask it cannot place with an agent and everything transitively standing
+#: on it, so those rows appear in no group at all. Three faces reason about
+#: waves that exist; without this one the dropped rows sit at CREATED for
+#: ever, the rollup reads none of them, and the plan never concludes.
+_UNREACHABLE_NAMES: Final[frozenset[str]] = frozenset(
+    {"abandon_unreachable", "execute_waves"}
+)
+
 #: The module that defines the gate does not have to call it.
 _GATE_OWNER_REL: Final[str] = "src/synthorg/engine/coordination/_wave_parking.py"
 
@@ -127,6 +144,7 @@ class _WaveLoop:
     gates: bool
     abandons: bool
     parks_stranded: bool
+    parks_unreachable: bool
 
 
 def _resolve_project_root(repo_root: Path | None) -> Path:
@@ -378,6 +396,7 @@ def _collect_wave_loops(project_root: Path) -> list[_WaveLoop]:
                 gates=bool(reached & _GATE_NAMES),
                 abandons=bool(reached & _ABANDON_NAMES),
                 parks_stranded=bool(reached & _STRANDED_NAMES),
+                parks_unreachable=bool(reached & _UNREACHABLE_NAMES),
             )
         )
     return loops
@@ -423,7 +442,8 @@ def main(argv: list[str] | None = None) -> int:
     ungated = sorted(loop.rel for loop in loops if not loop.gates)
     unabandoned = sorted(loop.rel for loop in loops if not loop.abandons)
     unstranded = sorted(loop.rel for loop in loops if not loop.parks_stranded)
-    if not ungated and not unabandoned and not unstranded:
+    unreachable = sorted(loop.rel for loop in loops if not loop.parks_unreachable)
+    if not ungated and not unabandoned and not unstranded and not unreachable:
         return 0
     for rel in ungated:
         print(
@@ -448,9 +468,18 @@ def main(argv: list[str] | None = None) -> int:
             "as still on their way. Call `abandon_stranded` on the failing "
             "wave (or route the loop through `execute_waves`)."
         )
+    for rel in unreachable:
+        print(
+            f"{rel}: builds execution waves but never reaches "
+            f"{'/'.join(sorted(_UNREACHABLE_NAMES))}, so a subtask the BUILDER "
+            "dropped for standing on an unplaceable prerequisite appears in no "
+            "wave at all, and sits at CREATED with nothing watching it. Call "
+            "`abandon_unreachable` over the plan's subtask ids (or route the "
+            "loop through `execute_waves`)."
+        )
     print(
-        f"\n{len(set(ungated) | set(unabandoned) | set(unstranded))} wave "
-        "loop(s) leave subtasks "
+        f"\n{len(set(ungated) | set(unabandoned) | set(unstranded) | set(unreachable))}"
+        " wave loop(s) leave subtasks "
         "with no owner. A wave scheduled on work that died runs anyway and "
         "fails on inputs nobody wrote; a wave never reached leaves rows that "
         "no dispatcher will run, no gate will park and no rollup can conclude "

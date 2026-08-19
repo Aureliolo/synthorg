@@ -16,6 +16,7 @@ import {
   getRiskLevelLabel,
   getUrgencyColor,
   isFailedApproval,
+  resolvedRunOutcome,
 } from '@/utils/approvals'
 import type { ApprovalResponse } from '@/api/types/approvals'
 
@@ -174,6 +175,7 @@ interface ApprovalCardHeaderProps {
 
 function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
   const { approval, selected, isPending, countdown, riskColor, urgencyColor } = props
+  const runOutcome = resolvedRunOutcome(approval)
   return (
     <div className="flex items-start gap-3">
       {isPending && (
@@ -207,7 +209,7 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {approval.run && <RunOutcomeBadge outcome={approval.run.outcome} />}
+        {runOutcome && <RunOutcomeBadge outcome={runOutcome} />}
         <ApprovalBadges
           isPending={isPending}
           countdown={countdown}

@@ -65,4 +65,45 @@ def coerce_row_timestamp(value: object) -> datetime:
     raise TypeError(msg)
 
 
-__all__ = ("coerce_row_timestamp", "format_iso_utc", "parse_iso_utc")
+def canonical_deadline(value: str | None) -> str | None:
+    """Canonicalise a deadline string so both backends store one form.
+
+    ``Project.deadline`` and ``Task.deadline`` are ISO 8601 STRINGS, not
+    datetimes, and the model accepts every ISO shape a person might type: a
+    UTC instant, an offset-bearing one, or a bare date. SQLite stores the text
+    verbatim and hands it back unchanged; Postgres round-trips it through
+    ``TIMESTAMPTZ`` and its reader formats the result as UTC. So the same
+    project saved with ``2026-08-19T12:00:00+02:00`` reads back as itself on
+    one backend and as ``2026-08-19T10:00:00Z`` on the other, and a
+    conformance test comparing instants cannot see it.
+
+    Applied on the WRITE path of both backends, so what is stored is what is
+    read on either. A bare date has no instant of its own and is taken as
+    midnight UTC, which is the reading Postgres already imposed.
+
+    Args:
+        value: The deadline as the model holds it, or ``None``.
+
+    Returns:
+        The canonical UTC ISO 8601 string, or ``None``.
+
+    Raises:
+        ValueError: If *value* is not parseable as ISO 8601. The model
+            validates it first, so reaching this means the row was built
+            around the model rather than through it.
+    """
+    if value is None:
+        return None
+    # Local import: ``normalize_utc`` lives in the package ``__init__``, which
+    # imports from this module.
+    from synthorg.persistence._shared import normalize_utc  # noqa: PLC0415
+
+    return format_iso_utc(normalize_utc(datetime.fromisoformat(value)))
+
+
+__all__ = (
+    "canonical_deadline",
+    "coerce_row_timestamp",
+    "format_iso_utc",
+    "parse_iso_utc",
+)

@@ -23,11 +23,15 @@ from synthorg.api.channels import (
 )
 from synthorg.api.controllers._approval_retire import retiring_plan_approvals
 from synthorg.api.controllers._deletion_record import record_deletion
+from synthorg.api.controllers._plan_input_validation import (
+    reject_undecidable_graph,
+    reject_unroutable_owners,
+)
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
-    reject_unroutable_owners,
     replan_initiative,
 )
+from synthorg.api.controllers._plan_rework import replan_for_change_request
 from synthorg.api.controllers._plan_translation import (
     item_from_payload,
     parse_status,
@@ -336,6 +340,7 @@ class PlanController(Controller):
         )
         items = tuple(item_from_payload(item) for item in data.items)
         await reject_unroutable_owners(state.app_state, items)
+        reject_undecidable_graph(items, task_structure=data.task_structure)
         revised = await service.edit(
             existing,
             items=items,
@@ -432,6 +437,10 @@ class PlanController(Controller):
     ) -> Response[ApiResponse[PlanRow]]:
         """Send a plan back to the org for revision, with a note.
 
+        The org re-plans against the note before this returns, so the operator
+        gets the corrected plan rather than a parked one nobody will revise.
+        LLM-bound, like any other turn that asks the org to think.
+
         Args:
             request: The incoming request.
             state: Application state.
@@ -439,7 +448,7 @@ class PlanController(Controller):
             data: The requested-changes note.
 
         Returns:
-            The plan, now back in draft.
+            The re-planned plan, back under review.
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
@@ -452,7 +461,15 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        drafted = await service.request_changes(existing, note=data.note)
+        replanned = await replan_for_change_request(
+            state.app_state, existing, note=data.note
+        )
+        drafted = await service.request_changes(
+            existing,
+            items=replanned.items,
+            premises=replanned.premises,
+            note=data.note,
+        )
         publish_ws_event(
             request,
             WsEventType.PLAN_CHANGES_REQUESTED,

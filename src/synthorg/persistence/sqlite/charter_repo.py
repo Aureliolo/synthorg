@@ -52,7 +52,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 _UPSERT_SQL = f"""
     INSERT INTO project_charters ({CHARTER_COLUMNS})
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?)
+            ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         created_by = excluded.created_by,
@@ -69,6 +69,7 @@ _UPSERT_SQL = f"""
         envelope_currency = excluded.envelope_currency,
         envelope_deadline = excluded.envelope_deadline,
         envelope_time_horizon = excluded.envelope_time_horizon,
+        assumed_facets = excluded.assumed_facets,
         project_id = excluded.project_id,
         proposed_project_name = excluded.proposed_project_name,
         proposed_project_description = excluded.proposed_project_description,

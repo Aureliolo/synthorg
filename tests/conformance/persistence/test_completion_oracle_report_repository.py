@@ -11,6 +11,7 @@ import pytest
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleFinding,
     CompletionOracleReport,
     CompletionOracleReportRecord,
     CompletionOracleVerdict,
@@ -19,6 +20,7 @@ from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportFilterSpec,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.redteam.models import RedTeamSeverity
 
 pytestmark = pytest.mark.integration
 
@@ -50,6 +52,15 @@ def _optional(value: str | None) -> NotBlankStr | None:
     return None if value is None else NotBlankStr(value)
 
 
+#: The one finding a rejecting fixture carries. Its content is irrelevant to
+#: every assertion here (these tests are about the archive, not the verdict);
+#: what matters is that a REJECT is constructible at all.
+_A_FINDING = CompletionOracleFinding(
+    severity=RedTeamSeverity.MEDIUM,
+    description=NotBlankStr("The acceptance criterion is not evidenced."),
+)
+
+
 def _record(
     *,
     execution_id: str = "exec-001",
@@ -66,6 +77,10 @@ def _record(
         executor_agent_id=NotBlankStr(reviewer.executor_id),
         verdict=verdict,
         summary=NotBlankStr(summary),
+        # A REJECT names what has to be fixed. The archive stores whatever
+        # the gate produced, so a fixture that rejects while naming nothing
+        # is not a shape the gate can hand it.
+        findings=((_A_FINDING,) if verdict is CompletionOracleVerdict.REJECT else ()),
     )
     return CompletionOracleReportRecord(
         execution_id=NotBlankStr(execution_id),

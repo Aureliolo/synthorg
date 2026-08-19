@@ -22,6 +22,11 @@ from synthorg.observability.events.tool import (
     TOOL_FACTORY_ERROR,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.ceilings import (
+    DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
+    DEFAULT_GIT_LOG_MAX_COUNT,
+    ToolCeilings,
+)
 from synthorg.tools.file_system import (
     DeleteFileTool,
     EditFileTool,
@@ -42,6 +47,7 @@ from synthorg.tools.sandbox.factory import (
     merge_secure_backend_defaults,
     resolve_sandbox_for_category,
 )
+from synthorg.tools.terminal.wiring import TerminalWiring
 from synthorg.tools.web.fetch_types import RenderedPageSource, WebToolsWiring
 from synthorg.tools.web.html_parser import HtmlParserTool
 from synthorg.tools.web.http_request import HttpRequestTool
@@ -62,6 +68,7 @@ if TYPE_CHECKING:
         CodeExecutionRecordRepository,
     )
     from synthorg.persistence.memory_protocol import OrgFactRepository
+    from synthorg.settings.resolver_protocol import ConfigResolverProtocol
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
     from synthorg.tools.analytics.metric_collector import MetricSink
@@ -79,7 +86,6 @@ if TYPE_CHECKING:
     from synthorg.tools.network_validator import NetworkPolicy
     from synthorg.tools.sandbox.protocol import SandboxBackend
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
-    from synthorg.tools.terminal.config import TerminalConfig
     from synthorg.tools.web.fetch_types import WebFetchRungs
 
 logger = get_logger(__name__)
@@ -154,8 +160,10 @@ def _build_file_system_tools(
     )
 
 
-_DEFAULT_GIT_LOG_MAX_COUNT: Final[int] = 100
-_DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT: Final[int] = 2000
+_DEFAULT_GIT_LOG_MAX_COUNT: Final[int] = DEFAULT_GIT_LOG_MAX_COUNT
+_DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT: Final[int] = (
+    DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT
+)
 
 
 def _build_git_tools(
@@ -316,8 +324,7 @@ def _build_database_tools(
 
 def _build_terminal_tools(
     *,
-    sandbox: SandboxBackend | None = None,
-    config: TerminalConfig | None = None,
+    terminal: TerminalWiring,
     code_execution_records: CodeExecutionRecordRepository | None = None,
     output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
 ) -> tuple[BaseTool, ...]:
@@ -330,6 +337,11 @@ def _build_terminal_tools(
     reason: both tools write the same record, so a limit applied to one
     producer and not the other means the retune half-lands.
 
+    The settings resolver is passed rather than a resolved value because the
+    command ceiling is read per command: it decides whether a dependency
+    install can finish at all, and an operator who raises it should not have
+    to restart anything to learn whether the new value was enough.
+
     Returns:
         Tuple of ``BaseTool``.
     """
@@ -337,8 +349,9 @@ def _build_terminal_tools(
 
     return (
         ShellCommandTool(
-            sandbox=sandbox,
-            config=config,
+            sandbox=terminal.sandbox,
+            config=terminal.config,
+            config_resolver=terminal.config_resolver,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
         ),
@@ -653,8 +666,7 @@ def _build_workspace_cohort(
 def _build_execution_cohort(
     *,
     workspace: Path,
-    terminal_sandbox: SandboxBackend | None,
-    terminal_config: TerminalConfig | None,
+    terminal: TerminalWiring,
     code_execution_sandbox: SandboxBackend | None,
     code_execution_records: CodeExecutionRecordRepository | None,
     output_tail_limit: int,
@@ -668,8 +680,7 @@ def _build_execution_cohort(
     """
     return (
         *_build_terminal_tools(
-            sandbox=terminal_sandbox,
-            config=terminal_config,
+            terminal=terminal,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
         ),
@@ -758,13 +769,11 @@ def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
     web: WebToolsWiring,
-    git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
-    code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
+    ceilings: ToolCeilings | None = None,
+    terminal: TerminalWiring | None = None,
     git_clone_policy: GitCloneNetworkPolicy | None = None,
     sandbox: SandboxBackend | None = None,
     database_config: DatabaseConfig | None = None,
-    terminal_config: TerminalConfig | None = None,
-    terminal_sandbox: SandboxBackend | None = None,
     design_config: DesignToolsConfig | None = None,
     image_provider: ImageProvider | None = None,
     communication_config: CommunicationToolsConfig | None = None,
@@ -800,13 +809,15 @@ def build_default_tools(  # noqa: PLR0913
             DB > env > YAML > default precedence (and the
             ``settings.value.resolved`` audit log) fire on the real
             read instead of being papered over by a local default.
-        git_log_max_count: Upper bound on commits the ``git_log`` tool
-            returns; resolve via ``tools.git_log_max_count`` and pass so
-            the clamp tracks the operator-tuned setting.
-        code_runner_output_tail_limit: Maximum characters of captured
-            stdout/stderr kept on a test record, by ``code_runner`` and
-            ``shell_command`` alike since both write one; resolve via
-            ``tools.code_runner_output_tail_limit``.
+        ceilings: What bounds the tools: the resolved ``git_log`` commit cap
+            and captured-output limit, plus the live resolver for the ones a
+            tool re-reads per call. Resolve the settings and pass them so the
+            clamps track what the operator tuned; ``None`` takes the shipped
+            defaults, which is what a caller with no settings backend has.
+        terminal: What the terminal tools are built over: their sandbox,
+            their configuration, and the resolver their command ceiling is
+            re-read through. ``None`` leaves them unsandboxed, which the
+            secure-defaults merge forbids for a real deployment.
         git_clone_policy: Network policy for git clone SSRF
             prevention.  ``None`` uses the default (block all
             private IPs, empty hostname allowlist).
@@ -814,8 +825,6 @@ def build_default_tools(  # noqa: PLR0913
             isolation (passed to git tools).
         database_config: Database configuration.  ``None`` skips
             database tool creation.
-        terminal_config: Terminal tool configuration.
-        terminal_sandbox: Sandbox backend for terminal tools.
         design_config: Design tool configuration.  ``None`` skips
             design tool creation.
         image_provider: Image generation provider for design tools.
@@ -883,16 +892,16 @@ def build_default_tools(  # noqa: PLR0913
         workspace=workspace,
         web_request_timeout=web.request_timeout,
     )
+    bounds = ceilings if ceilings is not None else ToolCeilings()
     # Built before the workspace cohort so the browser tool it contains can
     # back the web_fetch render rung, rather than a second BrowserTool being
     # constructed for the same sandbox with its own container lifecycle.
     execution_cohort = _build_execution_cohort(
         workspace=workspace,
-        terminal_sandbox=terminal_sandbox,
-        terminal_config=terminal_config,
+        terminal=terminal if terminal is not None else TerminalWiring(),
         code_execution_sandbox=code_execution_sandbox,
         code_execution_records=code_execution_records,
-        output_tail_limit=code_runner_output_tail_limit,
+        output_tail_limit=bounds.code_runner_output_tail_limit,
         browser_sandbox=browser_sandbox,
         browser_settings=browser_settings,
     )
@@ -901,7 +910,7 @@ def build_default_tools(  # noqa: PLR0913
             workspace=workspace,
             git_clone_policy=git_clone_policy,
             sandbox=sandbox,
-            git_log_max_count=git_log_max_count,
+            git_log_max_count=bounds.git_log_max_count,
             web=web.model_copy(
                 update={"render_source": _browser_tool_in(execution_cohort)}
             ),
@@ -1029,8 +1038,8 @@ def build_default_tools_from_config(  # noqa: PLR0913
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
-    git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
-    code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
+    ceilings: ToolCeilings | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
     browser_settings: BrowserSettings | None = None,
     desktop_settings: DesktopSettings | None = None,
     code_execution_records: CodeExecutionRecordRepository | None = None,
@@ -1080,11 +1089,14 @@ def build_default_tools_from_config(  # noqa: PLR0913
             review; ``FULL`` blocks writes entirely.
         architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
             Ignored unless ``architect_autonomy_level`` is ``SEMI``.
-        git_log_max_count: Resolved ``tools.git_log_max_count`` registry
-            value bounding the commits the ``git_log`` tool returns.
-        code_runner_output_tail_limit: Resolved
-            ``tools.code_runner_output_tail_limit`` registry value
-            capping the captured stdout/stderr kept on a test record.
+        ceilings: Resolved registry values bounding the tools at
+            construction: the ``git_log`` commit cap and the captured
+            stdout/stderr kept on a test record. ``None`` takes the shipped
+            defaults.
+        config_resolver: Live settings resolver handed to the tools whose
+            ceilings an operator can change while the system runs. Passed
+            here rather than on *ceilings* because it keeps a bound live
+            rather than being one.
         browser_settings: Operator-resolved ``BrowserSettings``.  When
             ``None`` the BrowserTool uses model defaults (mirroring
             the constants in ``tools.browser._constants``).
@@ -1187,13 +1199,15 @@ def build_default_tools_from_config(  # noqa: PLR0913
         # wiring, because reading it from the config IS what this entry point
         # is for; every other web field passes through untouched.
         web=web.model_copy(update={"network_policy": web_policy}),
-        git_log_max_count=git_log_max_count,
-        code_runner_output_tail_limit=code_runner_output_tail_limit,
+        ceilings=ceilings,
+        terminal=TerminalWiring(
+            sandbox=terminal_sandbox,
+            config=config.terminal,
+            config_resolver=config_resolver,
+        ),
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
         database_config=config.database,
-        terminal_config=config.terminal,
-        terminal_sandbox=terminal_sandbox,
         design_config=config.design_tools,
         image_provider=image_provider,
         communication_config=config.communication_tools,

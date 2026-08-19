@@ -14,6 +14,7 @@ import pytest
 from litestar import Litestar
 
 from synthorg.api.auth.service import AuthService
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
@@ -70,7 +71,16 @@ async def build_runtime_app(
     rejected at the controller. ``coordinator`` injects an explicit
     coordinator so the injection-over-autowire convention can be tested.
     """
-    root_config = RootConfig(company_name=company_name)
+    # This stack cannot serve a required pre-flight forecast: the cost dial
+    # needs a real database and the fake backend has none, so the forecaster
+    # and its repository never wire, and boot refuses to dispatch work past a
+    # gate the operator mandated but the deployment cannot run. Declared
+    # rather than left to an absent budget config: the absence used to mask
+    # the refusal, which is what kept that guard from ever firing.
+    root_config = RootConfig(
+        company_name=company_name,
+        budget=BudgetConfig(forecast_required=False),
+    )
     auth_service = AuthService(
         root_config.api.auth.model_copy(update={"jwt_secret": TEST_JWT_SECRET}),
     )
@@ -89,6 +99,14 @@ async def build_runtime_app(
         if with_provider
         else None
     )
+    # This stack cannot serve a required pre-flight forecast: the cost dial
+    # needs a real database and the fake backend has none, so the forecaster
+    # and its repository never wire. Boot refuses to dispatch work past a
+    # gate the operator mandated but the deployment cannot run, which is
+    # correct and is what these tests would otherwise trip. Declared here,
+    # beside the decomposition binding below, rather than left to the
+    # absence of a resolved budget config: an absent config used to mask
+    # the refusal, and that is precisely what stopped the guard ever firing.
     if with_provider:
         # The provider-present switch builds the coordinator eagerly, which
         # needs an explicit coordination.decomposition_model binding.

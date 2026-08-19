@@ -40,6 +40,19 @@ The charter facets you must establish before drafting:
 - project: either an existing project to file the work under, or a
   proposed new project name + description
 
+## Elicited or assumed
+
+A facet counts as ELICITED only when the human's own words settle it.
+A facet you fill from your own judgement, however reasonable, is
+ASSUMED, and you must list it in "assumed_facets" using the facet names
+above. The list must be exhaustive: the human is about to authorise a
+body of work and a budget against this charter, and a line they never
+agreed reads exactly like one they did.
+
+Prefer asking to assuming. The success criteria in particular are what
+the whole run is later judged against, so inventing them decides the
+project rather than describing it.
+
 You never execute anything yourself: the charter draft goes to the
 human to review, edit, and approve. Only on approval does a real
 project run begin.
@@ -74,7 +87,9 @@ exactly this shape:
     }},
     "project_id": <string|null>,
     "proposed_project_name": <string|null>,
-    "proposed_project_description": <string>
+    "proposed_project_description": <string>,
+    "assumed_facets": [<"goals"|"constraints"|"success_criteria"|"scope"
+                        |"envelope"|"project">, ...]
   }}>
 }}
 
@@ -86,6 +101,9 @@ Rules:
 - The charter's "envelope.currency" MUST be "{currency}".
 - Set EXACTLY ONE of "project_id" (an existing project the hint named)
   or "proposed_project_name" (a new project). The other must be null.
+- "assumed_facets" lists every facet you filled from your own judgement
+  rather than from what the human said. Empty only when the human's own
+  words settled all six.
 - Prefer asking one more question over drafting a vague charter.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))

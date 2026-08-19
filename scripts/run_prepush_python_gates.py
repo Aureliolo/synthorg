@@ -136,6 +136,7 @@ _GATES: tuple[str, ...] = (
     "check_subsystem_decline_reason",
     "check_autonomy_auto_approve_confined",
     "check_lifecycle_exit_reachable",
+    "check_run_recovery_covers_plan_statuses",
     "check_long_running_loops_have_kill_switch",
     "check_domain_error_hierarchy",
     "check_error_code_uniqueness",

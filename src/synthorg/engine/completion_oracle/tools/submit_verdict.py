@@ -29,6 +29,9 @@ from synthorg.engine.completion_oracle.runtime_context import (
     CompletionOracleRuntimeContext,
     get_completion_oracle_runtime_context,
 )
+from synthorg.engine.completion_oracle.tool_names import (
+    SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
+)
 from synthorg.engine.completion_oracle.tools._args import (
     SubmitCompletionOracleVerdictArgs,
 )
@@ -43,10 +46,10 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
 
-SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME: Final[str] = (
-    "submit_completion_oracle_verdict"
-)
-"""Canonical tool name. Used by the gate prompt and by tests."""
+__all__ = [
+    "SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME",
+    "SubmitCompletionOracleVerdictTool",
+]
 
 _TOOL_DESCRIPTION: Final[str] = (
     "Submit your independent completion-review verdict for the deliverable "
@@ -54,13 +57,10 @@ _TOOL_DESCRIPTION: Final[str] = (
     "summary and a verdict: approve, approve_with_notes, reject, or escalate. "
     "For a code deliverable you MUST build it and run its tests before "
     "approving; set ran_build / ran_tests and test_command accordingly. High "
-    "and critical findings must carry at least one evidence quote."
+    "and critical findings must carry at least one evidence quote. A reject "
+    "MUST carry at least one finding: the rework brief is built from the "
+    "findings, so a rejection without them sends the work back naming nothing."
 )
-
-_TOOL_ACTION_TYPE: Final[str] = "comms:internal"
-"""Filing a structured verdict is an internal communication artefact; the
-existing ``comms:internal`` bucket gives SecOps a known category without a
-new action-type for a single tool."""
 
 
 class SubmitCompletionOracleVerdictTool(BaseTool):
@@ -85,8 +85,18 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
         super().__init__(
             name=SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
             description=_TOOL_DESCRIPTION,
+            # No declared action type, so the category's own default applies,
+            # which is what the other two terminal submit tools take
+            # (``submit_decomposition_plan``, ``submit_evaluation``). Naming
+            # ``comms:internal`` here for want of a SecOps bucket put the one
+            # act a judging session exists to perform behind the approval
+            # SUPERVISED demands of anything leaving the sandbox. A verdict
+            # leaves nothing: it is written to the archive the gate then
+            # reads. The session is bounded, so the approval it was told to
+            # wait for could never arrive inside it, and a live run spent 63
+            # seconds proving that before the gate reported the reviewer had
+            # filed nothing.
             category=ToolCategory.OTHER,
-            action_type=_TOOL_ACTION_TYPE,
             parameters_schema=SubmitCompletionOracleVerdictArgs.model_json_schema(),
         )
         self._report_repo = report_repo
@@ -253,5 +263,11 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = "submit_completion_oracle_verdict report construction failed"
+            # The reviewer sees this string as the tool's error observation and
+            # can file again inside the same bounded session, so it carries the
+            # rule that refused the report rather than the fact of refusal.
+            msg = (
+                "submit_completion_oracle_verdict report construction failed: "
+                f"{safe_error_description(exc)}"
+            )
             raise CompletionOracleVerdictValidationError(msg) from exc

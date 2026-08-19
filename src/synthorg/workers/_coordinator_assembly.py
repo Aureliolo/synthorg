@@ -418,15 +418,15 @@ async def _build_runtime_coordinator(
 
     # Real research data beats guessing, so grant live web search when a
     # provider is configured; fail open (no provider -> no tool), matching the
-    # research subsystem's web source.
-    planning_tool_provider = (
-        PlanningToolProvider(
-            search_provider=search_provider,
-            memory_backend=planning.memory_backend,
-            org_backend=planning.org_backend,
-        )
-        if search_provider is not None or planning.memory_backend is not None
-        else None
+    # research subsystem's web source. The workspace root is always passed:
+    # reading the tree of the project being planned is what makes a recalled
+    # claim about that project checkable, and recall alone spans every project
+    # the org has run.
+    planning_tool_provider = PlanningToolProvider(
+        search_provider=search_provider,
+        memory_backend=planning.memory_backend,
+        org_backend=planning.org_backend,
+        workspace_root=agent_workspace_root_of(app_state),
     )
 
     coordinator = build_coordinator(
@@ -460,6 +460,11 @@ async def _build_runtime_coordinator(
         ),
         shutdown_manager=app_state.shutdown_manager,
     )
+    # Handed over here rather than through the factory, which is already at
+    # its approved argument count. Before anything can decompose, so the
+    # wall-clock ceiling is the operator's from the first plan rather than
+    # from the first restart after they set it.
+    coordinator.decomposition_service.set_config_resolver(config_resolver_of(app_state))
     logger.info(
         API_APP_STARTUP,
         service="coordinator",

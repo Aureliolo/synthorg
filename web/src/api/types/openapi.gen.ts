@@ -9753,6 +9753,27 @@ export type components = {
             readonly title?: string | null;
         };
         /**
+         * CharterFacet
+         * @description A part of a charter the interview has to settle before drafting.
+         *
+         *     The interview declares, per facet, whether the human's own words settled
+         *     it or the draft supplies the org's judgement instead. That declaration is
+         *     what lets the interview be held to asking rather than assuming, and what
+         *     lets the operator see which lines they actually agreed.
+         *
+         *     Attributes:
+         *         GOALS: What success looks like in concrete terms.
+         *         CONSTRAINTS: Hard limits the work must respect.
+         *         SUCCESS_CRITERIA: How completion is judged. The initiative's whole
+         *             tail scores against these, so a charter that invents them
+         *             decides the run.
+         *         SCOPE: What is explicitly in and out.
+         *         ENVELOPE: The budget ceiling and the time horizon.
+         *         PROJECT: Which project the work is filed under.
+         * @enum {string}
+         */
+        readonly CharterFacet: "goals" | "constraints" | "success_criteria" | "scope" | "envelope" | "project";
+        /**
          * CharterStatus
          * @description Lifecycle state of a project charter produced by a deep interview.
          *
@@ -16214,6 +16235,8 @@ export type components = {
              */
             readonly approved_at: string | null;
             readonly approved_by: string | null;
+            /** @default [] */
+            readonly assumed_facets: readonly components["schemas"]["CharterFacet"][];
             readonly brief: string;
             /** @default [] */
             readonly constraints: readonly string[];

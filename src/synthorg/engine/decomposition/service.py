@@ -4,6 +4,9 @@ Orchestrates strategy, classifier, DAG validation, and task creation
 to decompose a parent task into executable subtasks.
 """
 
+import asyncio
+from typing import Final
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
@@ -20,6 +23,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.rollup import StatusRollup
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
@@ -29,8 +33,13 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+#: Mirrors ``coordination.decomposition_timeout_seconds``. Held here because a
+#: harness runs with no settings at all, and the bound has to stand there too.
+_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS: Final[float] = 600.0
 
 
 class DecompositionService:
@@ -40,17 +49,20 @@ class DecompositionService:
     DAG validator, and task factory to produce executable subtasks.
     """
 
-    __slots__ = ("_classifier", "_stakes_assessor", "_strategy")
+    __slots__ = ("_classifier", "_config_resolver", "_stakes_assessor", "_strategy")
 
     def __init__(
         self,
         strategy: DecompositionStrategy,
         classifier: TaskStructureClassifier,
         stakes_assessor: StakesAssessor | None = None,
+        *,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._strategy = strategy
         self._classifier = classifier
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
+        self._config_resolver = config_resolver
 
     async def decompose_task(
         self,
@@ -73,6 +85,10 @@ class DecompositionService:
 
         Returns:
             Decomposition result with created tasks and dependency edges.
+
+        Raises:
+            DecompositionError: When the whole operation outruns
+                ``coordination.decomposition_timeout_seconds``.
         """
         logger.info(
             DECOMPOSITION_STARTED,
@@ -82,7 +98,24 @@ class DecompositionService:
         )
 
         try:
-            return await self._do_decompose(task, context)
+            # Bounded here rather than per caller: a planning session waiting
+            # on a provider that never answers holds whatever called it, and
+            # two of the four callers are request handlers, so an unbounded
+            # call occupies an HTTP worker for as long as the provider stalls.
+            # One ceiling at the one place every caller comes through, so the
+            # answer cannot differ by entry point.
+            async with asyncio.timeout(await self._timeout_seconds()):
+                return await self._do_decompose(task, context)
+        except TimeoutError as exc:
+            msg = "Decomposition outran its wall-clock ceiling"
+            logger.warning(
+                DECOMPOSITION_FAILED,
+                task_id=str(task.id),
+                strategy=self._strategy.get_strategy_name(),
+                error_type=type(exc).__name__,
+                error=msg,
+            )
+            raise DecompositionError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -93,6 +126,54 @@ class DecompositionService:
                 error=safe_error_description(exc),
             )
             raise
+
+    def set_config_resolver(self, resolver: ConfigResolverProtocol) -> None:
+        """Adopt the resolver the ceiling is read through.
+
+        A setter rather than a constructor argument because the coordinator
+        factory that builds this service is already at its approved argument
+        count, and threading one more through it would widen a signature the
+        repository pins. The resolver is handed over right after the
+        coordinator is assembled, before anything can decompose.
+
+        Args:
+            resolver: The live settings resolver.
+        """
+        self._config_resolver = resolver
+
+    async def _timeout_seconds(self) -> float:
+        """Read the wall-clock ceiling in force for this decomposition.
+
+        Read per call rather than captured at construction, so an operator
+        raising the ceiling for a slow provider applies to the next
+        decomposition instead of the next restart.
+
+        Returns:
+            The configured ceiling, or the definition's default when there is
+            no resolver (a harness) or it cannot answer. Falling back to the
+            default keeps a bound in force: the failure this exists to prevent
+            is an unbounded wait, and a settings read that failed is no reason
+            to grant one.
+        """
+        resolver = self._config_resolver
+        if resolver is None:
+            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+        try:
+            return await resolver.get_float(
+                "coordination", "decomposition_timeout_seconds"
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort settings read; the bound
+            # still stands on the definition's own default, so the failure
+            # this method exists to prevent cannot happen either way
+            reraise_critical(exc)
+            logger.warning(
+                DECOMPOSITION_FAILED,
+                note="decomposition timeout unreadable; the default ceiling stands",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
 
     async def _do_decompose(
         self,

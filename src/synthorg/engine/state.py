@@ -21,6 +21,7 @@ from synthorg.engine.brownfield.models import CodebaseImportSubmission
 from synthorg.engine.classification.taxonomy_store_protocol import (
     ErrorTaxonomyStore,
 )
+from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.engine.flight_recording.sink import LiveFlightRecorderSink
 from synthorg.engine.initiative.rollup import ProjectRollupService
@@ -38,6 +39,7 @@ from synthorg.engine.quality.mcp_services import (
 )
 from synthorg.engine.review_staffing.scheduler import ReviewStaffingScheduler
 from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.engine.run_recovery.scheduler import RunRecoveryScheduler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import (
     CeremonyScheduler,
@@ -85,6 +87,12 @@ class EngineStateSlice(BaseFeatureStateSlice):
     plan_item_reply_service: PlanItemReplyService | None = None
     flight_recorder_sink: LiveFlightRecorderSink | None = None
     review_staffing_scheduler: ReviewStaffingScheduler | None = None
+    run_recovery_scheduler: RunRecoveryScheduler | None = None
+    #: The one owner of "is this plan's dispatch being driven in this
+    #: process". Held on the slice rather than built per caller, because two
+    #: callers with their own ledger would each believe they were the only
+    #: driver, which is the state the ledger exists to make impossible.
+    live_run_ledger: LiveRunLedger | None = None
     #: The one capability policy every consumer judges against. Held here so
     #: the settings subscriber can re-point all of them with a single
     #: ``set_config`` call rather than rebuilding five collaborators.

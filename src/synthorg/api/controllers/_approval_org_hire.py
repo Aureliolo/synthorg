@@ -10,14 +10,18 @@ from typing import Final
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.state import AppState
+from synthorg.core.approval import ApprovalItem
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import HiringError
+from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.models import HiringRequest
 from synthorg.hr.state import hiring_service_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_HIRING_ALREADY_REGISTERED,
     HR_HIRING_APPROVED,
     HR_HIRING_INSTANTIATION_FAILED,
+    HR_HIRING_MODEL_CHOSEN,
     HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_NOT_FOUND,
 )
@@ -26,9 +30,20 @@ from synthorg.security.autonomy.enums import ActionType
 logger = get_logger(__name__)
 
 #: Statuses a decision has already been applied to, so re-applying one is
-#: not a retry but a refusal.
+#: not a retry but a refusal. APPROVED belongs here even though no agent
+#: exists yet: `approve_request` persists it before instantiation runs, so an
+#: instantiation that fails leaves the decision landed and the hire queued for
+#: the staffing reconciler. Without it, the decision rollback that failure
+#: triggers put the approval back to PENDING while the request stayed
+#: APPROVED, and every operator retry then fell through to `approve_request`,
+#: which refuses a request that is not awaiting a decision: a 500 on each
+#: press until the reconciler happened to finish the hire.
 _SETTLED_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
-    {HiringRequestStatus.INSTANTIATED, HiringRequestStatus.REJECTED}
+    {
+        HiringRequestStatus.APPROVED,
+        HiringRequestStatus.INSTANTIATED,
+        HiringRequestStatus.REJECTED,
+    }
 )
 
 
@@ -98,6 +113,10 @@ async def try_org_hire_resume(
         )
         return True
 
+    # Before the approval transition, so the request the approve path
+    # validates is already carrying the binding the operator chose: the pick
+    # is part of the decision, not an edit applied to a decided request.
+    request = await _apply_chosen_model(hiring, request, item)
     approved_request = await hiring.approve_request(
         str(request.id), decided_by=decided_by
     )
@@ -125,6 +144,44 @@ async def try_org_hire_resume(
         role=str(request.role),
     )
     return True
+
+
+async def _apply_chosen_model(
+    hiring: HiringService,
+    request: HiringRequest,
+    item: ApprovalItem,
+) -> HiringRequest:
+    """Bind the hire to the pair the operator picked on the approval.
+
+    The override half of the model proposal. The approval offers one option
+    per spend profile and the request already carries the recommended pair, so
+    an approval taken without touching the options needs nothing here; a pick
+    replaces it.
+
+    The option id IS the serialised pair, so nothing maps between them and
+    there is no table to fall out of step with the options it describes.
+
+    Args:
+        hiring: The pipeline holding the in-flight request.
+        request: The request this approval decides.
+        item: The decided approval item, carrying the operator's pick.
+
+    Returns:
+        The request carrying the chosen binding, or unchanged when the
+        operator made no pick.
+    """
+    evidence = item.evidence_package
+    chosen = evidence.chosen_option_id if evidence is not None else None
+    if chosen is None or chosen == request.bound_model_ref:
+        return request
+    logger.info(
+        HR_HIRING_MODEL_CHOSEN,
+        approval_id=str(item.id),
+        request_id=str(request.id),
+        chosen=chosen,
+        proposed=request.bound_model_ref,
+    )
+    return await hiring.bind_model(str(request.id), chosen)
 
 
 __all__ = ["try_org_hire_resume"]

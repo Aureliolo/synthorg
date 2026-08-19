@@ -115,7 +115,8 @@ def _build_budget_enforcer(
 def _wire_cost_dial_services(app_state: AppState) -> None:
     """Wire the cost-dial services onto AppState behind a persistence guard.
 
-    Builds the BudgetConfig, the per-backend CostForecastRepository +
+    Reads the BudgetConfig already in force, builds the per-backend
+    CostForecastRepository +
     BenchmarkScoreRepository, the benchmark-score provider selected by the
     ``budget.benchmark_provider`` discriminator (``measured`` only; a
     model with no measured score renders as explicitly absent, never
@@ -124,7 +125,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     lock-protected ``swap_*`` methods so an in-flight controller read
     cannot race the boot wiring.
     """
-    from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
+    from synthorg.budget.adoption import resolved_budget_config  # noqa: PLC0415
     from synthorg.budget.forecast_service import (  # noqa: PLC0415
         BudgetForecastService,
     )
@@ -133,7 +134,10 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
 
-    budget_config = BudgetConfig()
+    # Read, never mint. This runs after the reconcile pass that adopts the
+    # stored config, so constructing a fresh one here puts the slice and the
+    # enforcer rebuilt below back on the code default the operator replaced.
+    budget_config = resolved_budget_config(app_state)
     forecast_repo = _build_cost_forecast_repo(app_state, budget_config)
     benchmark_score_repo = build_benchmark_score_repo(app_state)
     capability_map = ModelCapabilityMap(

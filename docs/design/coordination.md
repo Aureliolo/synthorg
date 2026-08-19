@@ -163,6 +163,31 @@ when an agent waits for human approval; see
 [Approval Timeout Policy](security.md#approval-timeout-policy) for the
 agent-driven parking mechanism.
 
+### Who owns the signal
+
+Stopping the process has exactly one owner: the ASGI server. Observing the
+signal early has another: `api/signals.py`, which flags
+`AppState.shutdown_requested` and closes the cooperative drain gate the moment
+SIGTERM arrives, so subsystems can leave at a turn boundary instead of being
+cancelled mid-call.
+
+Those two cannot both hold the handler. `loop.add_signal_handler` **replaces**
+whatever is registered, uvicorn registers its `handle_exit` before it runs the
+app, and the app's lifespan startup is what installs ours, so ours lands second
+and uvicorn's is gone. An early-observation handler that does not pass the
+signal on therefore silently becomes the only owner of a job it does not do:
+the process logs the signal, keeps working, and is SIGKILLed when the
+orchestrator's grace period expires, with no teardown at all.
+
+So the entry point that owns the server registers it as the chain
+(`set_shutdown_chain`), the handler hands the signal on after setting the early
+flag, and **absent a chain the handlers are not installed** and uvicorn's own
+are left intact. That is why `api/server.py` builds `uvicorn.Server` itself for
+the single-process topology rather than calling `uvicorn.run`, which keeps the
+server object internal and leaves nothing to chain to. A reload supervisor or
+worker pool registers no chain: the supervisor owns signals there and forwards
+them to its children.
+
 ### No operator-triggered restart
 
 There is no restart endpoint, and no "saved but not in effect" state for one to
@@ -175,6 +200,81 @@ Shutdown still matters, because the container runtime performs one: a
 `docker stop` or an image update raises `SIGTERM` and the cooperative drain
 below runs. The compose file's `restart: unless-stopped` is what brings a
 crashed process back, and nothing inside the product asks for that.
+
+### Resuming what a stop interrupted
+
+Shutting down cleanly is half the promise. The other half is that the work
+comes back, and until run recovery existed it did not: a plan's waves are
+driven by a background task created when an operator approves the plan, so
+once that task was gone nothing anywhere asked again whether the plan still
+needed driving. A restart left subtasks at `in_progress`, the plan at
+`executing`, and the board showing work in flight with nothing behind it,
+permanently.
+
+`RunRecoveryReconciler` (`engine/run_recovery/`) answers that on the same
+shape the subsystem reconciler uses for wiring: boot is the first pass, the
+cadence (`engine.run_recovery_resync_interval_seconds`, which
+`engine.run_recovery_sweep_paused` halts) repeats the same idempotent
+question, and every plan status gets an answer.
+
+| plan status | what recovery does |
+| --- | --- |
+| `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
+| `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
+| `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
+| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator |
+| `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
+
+Five properties are load-bearing:
+
+**A review nobody is waiting on is re-judged, not left.** `IN_REVIEW` is the
+one status a plan-level sweep cannot fix by re-driving waves: the row is not
+awaiting dispatch and not dead, it is waiting on a judging session that no
+longer exists. `_rejudge_stranded_reviews` re-invokes the gates for exactly
+those rows, and only those: a task with an open human decision against it is
+waiting correctly and is left alone, because re-judging it would decide a
+question somebody was asked.
+
+**A resumed wave dispatches what is left, not what the plan wanted.** Waves are
+rebuilt from the plan's items, which record the goal rather than the history,
+so a resumed run re-proposes every level including the finished ones.
+`gate_wave` therefore narrows on three grounds rather than one: what can deliver
+(its dependencies arrived), what still awaits dispatch (no outcome yet), and
+what is held back without being parked (an input someone will still release). A
+wave left with nothing because everything already delivered records a
+**successful** phase; only a wave emptied by inputs that died records the
+failed one. Confusing the two fails a plan for having made progress.
+
+**Requeueing writes `INTERRUPTED`**, which is the status that says what
+happened and the one the lifecycle already documented as eligible for
+reassignment on restart. The objective task is left alone (the rollup derives
+its status from the items, and a second author of one value is its own defect);
+the assembly task is requeued, because nothing else would move it and the tail
+would read it as `RUNNING` for ever.
+
+**One driver per plan.** `LiveRunLedger` is claimed by the approval path and by
+the sweep alike, so neither can start a second driver on a plan the other is
+already building; two drivers assign the same subtasks, the engine refuses the
+second, and the wave that lost fails the plan it was helping. The ledger is
+in-process by construction and claims nothing about another process, so a
+deployment running distributed workers requeues nothing at all: JetStream
+redelivery of an unacknowledged claim already owns recovering a dead runner
+there, and a second answer could move a row a live worker still holds.
+
+**Whether a plan was resumed is the driver's answer, not the sweep's.** The
+driver declines whenever it cannot start one: no coordinator is wired yet, or
+the objective task the plan hangs off no longer exists. The first is transient
+and the next pass picks it up; the second never resolves, so a sweep that
+counted the call as a resume reported one every cadence, for ever, while
+nothing touched the plan. `PlanDriver` returns whether a drive now owns the
+plan and the sweep reports a skip when it does not, which is what makes a
+permanently undrivable run visible instead of continuously rescued.
+
+Because recovery exists, a dispatch cancelled by a **stopping process** is left
+exactly as it is rather than failed: the next boot pass finds it and resumes
+it. Any other cancellation keeps the old compensation, since nothing is coming
+for it. The signal separating them is `AppState.shutdown_requested`, set by the
+handler above before the server is told.
 
 ### Strategy 1: Cooperative with Timeout (Default / MVP)
 
@@ -691,9 +791,34 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    (`_dependency_gate.py`, reached through `gate_wave`). Every wave is
    narrowed to the subtasks whose dependencies actually delivered, and each
    one dropped parks `BLOCKED` under `dependency_failed`, naming what it
-   waited on. A wave left with nothing records a FAILED phase rather than
-   vanishing: a phase list that omits the level lets the rollup read the run
-   as still working. Without this, a plan whose first real wave died end to
+   waited on.
+
+   A dependency parked on a reason a **person or a sweep** will still end is
+   the third outcome, not the second. `ATTENDED_BLOCKED_REASONS`
+   (`core/task_enums.py`) names them: an escalated completion review, an
+   unstaffed reviewer or red-team role, no capable agent. Such an input has
+   not failed, so its dependent is left at `CREATED` and simply not proposed
+   this pass, counted in `GatedWave.awaiting` rather than parked. Parking it
+   would record `dependency_failed` against work that delivered and is
+   waiting on a verdict, and a replan reads that reason and goes looking for
+   work to redo that nobody said was wrong.
+
+   A wave left with nothing therefore empties three ways that must not be
+   confused, and only one of them is a failure. Everything already delivered
+   is a **successful** phase; everything held on a person is **awaiting**;
+   only inputs that died record the FAILED phase.
+
+   The phase itself is two-valued, and answers only whether the level
+   failed, because that is the whole question its consumers ask:
+   `CoordinationResult.is_success` is `all(p.success)`, and a coordination
+   reporting failure fails the plan exactly as a raise does. So an awaiting
+   wave records a non-failed phase, or an initiative is destroyed over a
+   question nobody has answered yet. What separates awaiting from delivered
+   lives where something reads it: the count on `GatedWave.awaiting` and the
+   `awaiting` field of `COORDINATION_WAVE_STARTED`, and the rows themselves,
+   which are `CREATED` rather than `COMPLETED` and are what the recovery
+   sweep re-drives once the answer lands. A phase list that omits
+   the level entirely lets the rollup read the run as still working. Without this, a plan whose first real wave died end to
    end still marched through every later wave, paying for each one, with
    every task failing on its own against inputs nobody wrote.
 
@@ -706,6 +831,26 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    not one level of the DAG, so the groups after a stop include siblings of
    it whose inputs are untouched. Those park under `run_stopped`; only work
    genuinely below the stop is a `dependency_failed`.
+
+   The fourth shape is the one no wave can see. `build_execution_waves` DROPS
+   a subtask routing could not place with any agent, and then everything
+   transitively standing on it, into a set local to the build: those rows
+   appear in no group, so none of the three shapes above ever meets them.
+   `abandon_unreachable` parks them under `dependency_failed`, deriving the
+   set as the plan's own subtask ids minus the ids the built groups carry, so
+   nothing new is reported out of the builder and no second list can disagree
+   with what was actually built. Without it a live run left two rows at
+   `created` while the recovery reconciler re-drove the plan every cadence and
+   changed nothing, for ever: the plan could not conclude, and its project
+   could not be deleted.
+
+   Parking is level-triggered, not edge-triggered, and that matters because
+   routing re-runs over every subtask on every pass. A row that already
+   carries an outcome is left alone by all four shapes: the state machine has
+   no `blocked -> blocked` hop, so re-asserting a park is refused, and the row
+   already carries a reason naming its actual dependency, which is more
+   specific than any of these. A refused park is reported, because the engine
+   answers a refusal with an unsuccessful result rather than an exception.
 6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
 7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 

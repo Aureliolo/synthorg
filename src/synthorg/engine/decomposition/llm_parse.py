@@ -12,14 +12,22 @@ import re
 from typing import Final
 
 from pydantic import JsonValue
+from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.plan_validation import (
+    ORDERED_STRUCTURES,
     describe_structureless_graph,
+    describe_undecidable_criterion,
     describe_unroutable_role,
     describe_unstated_reference,
 )
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._plan_output_guard import (
+    guard_plan_text,
+    guard_plan_texts,
+    plan_style_refusal,
+)
 from synthorg.engine.decomposition.llm_parse_subtask import (
     enum_or_default,
     parse_subtask,
@@ -32,6 +40,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.errors import DecompositionError
+from synthorg.engine.output_style.errors import OutputPolicyViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_LLM_PARSE_ERROR,
@@ -47,12 +56,6 @@ _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
 _TOPOLOGY_MAP: Final[dict[str, CoordinationTopology]] = {
     t.value: t for t in CoordinationTopology
 }
-
-#: Structures that promise an ordering. Declaring one and then declaring no
-#: dependencies leaves dispatch with a graph that says the opposite.
-_ORDERED_STRUCTURES: Final[frozenset[TaskStructure]] = frozenset(
-    {TaskStructure.SEQUENTIAL, TaskStructure.MIXED}
-)
 
 _MARKDOWN_FENCE_RE = re.compile(
     r"```(?:json)?\s*\n(.*?)\n\s*```",
@@ -145,16 +148,22 @@ def _validate_graph(
         structure: The structure the planner declared.
 
     Raises:
-        DecompositionError: When an ordered structure carries no edges, or an
-            item names another it declares no dependency on.
+        DecompositionError: When an ordered structure carries no edges, an
+            item names another it declares no dependency on, or an item's own
+            gate demands evidence the plan produces after it.
     """
     detail = describe_structureless_graph(
-        declared_sequential=structure in _ORDERED_STRUCTURES,
+        declared_sequential=structure in ORDERED_STRUCTURES,
         units=subtasks,
     )
     if detail is None:
         for subtask in subtasks:
             detail = describe_unstated_reference(unit=subtask, others=subtasks)
+            if detail is not None:
+                break
+    if detail is None:
+        for subtask in subtasks:
+            detail = describe_undecidable_criterion(unit=subtask, others=subtasks)
             if detail is not None:
                 break
     if detail is None:
@@ -219,6 +228,113 @@ def _args_to_plan(
     )
 
 
+def _guarded_plan(
+    args: dict[str, JsonValue],
+    parent_task_id: str,
+    available_roles: tuple[NotBlankStr, ...] = (),
+) -> DecompositionPlan:
+    """Parse *args* into a plan whose prose passes the output-style policy.
+
+    Every plan the product accepts comes through here, from the submit tool
+    and from the tool-less fallback alike, and both callers can still ask the
+    producer for a better one: the tool turns the refusal into a correctable
+    error, the fallback into a retry. That is why the check lives here rather
+    than at the mapping to the durable plan, where the producer has gone and
+    the only thing left to refuse is a finished decomposition.
+
+    Args:
+        args: Parsed tool call arguments or JSON content.
+        parent_task_id: ID of the parent task.
+        available_roles: The roles the org staffs.
+
+    Returns:
+        A validated ``DecompositionPlan`` fit to render.
+
+    Raises:
+        DecompositionError: If the arguments are invalid, or the plan's
+            wording breaks a hard output-style rule.
+    """
+    plan = _args_to_plan(args, parent_task_id, available_roles)
+    try:
+        return _revalidated(_style_checked(plan))
+    except OutputPolicyViolationError as exc:
+        detail = plan_style_refusal(exc)
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            error=detail,
+            parent_task_id=parent_task_id,
+        )
+        raise DecompositionError(detail) from exc
+
+
+def _revalidated(plan: DecompositionPlan) -> DecompositionPlan:
+    """Re-judge a style-rewritten plan on the text it now carries.
+
+    An AUTO_REWRITE rule substitutes a span, and the guard applies it through
+    ``model_copy(update=...)``, which does not validate; ``NotBlankStr`` is an
+    annotation that only runs inside a model, so wrapping the result validates
+    nothing either. A rule whose replacement empties the span therefore lands
+    blank prose on a plan an operator is then shown.
+
+    The graph checks have the same problem one level up: they ran inside
+    ``_args_to_plan``, before the rewrite, and one of them reads artefact names
+    out of the acceptance criteria, so a rewritten token leaves the plan judged
+    decidable on text it no longer carries.
+
+    Args:
+        plan: The plan as the style guard left it.
+
+    Returns:
+        The same plan, re-validated field by field.
+
+    Raises:
+        DecompositionError: When the rewritten plan no longer validates, or its
+            graph no longer holds.
+    """
+    try:
+        revalidated = DecompositionPlan.model_validate(plan.model_dump())
+    except PydanticValidationError as exc:
+        detail = (
+            "The house style rewrite left the plan invalid: "
+            f"{safe_error_description(exc)}"
+        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
+        raise DecompositionError(detail) from exc
+    _validate_graph(revalidated.subtasks, revalidated.task_structure)
+    return revalidated
+
+
+def _style_checked(plan: DecompositionPlan) -> DecompositionPlan:
+    """Return *plan* with its prose passed through the output-style guard.
+
+    Artefact paths are deliberately not prose: a file name is read by a tool
+    before a person reads it, so rewriting one renames the deliverable.
+
+    Returns:
+        The plan, carrying any auto-rewrite a rule resolved.
+
+    Raises:
+        OutputPolicyViolationError: When a non-exempt hard rule blocks.
+    """
+    subtasks = tuple(
+        subtask.model_copy(
+            update={
+                "title": guard_plan_text(subtask.title),
+                "description": guard_plan_text(subtask.description),
+                "acceptance_criteria": guard_plan_texts(subtask.acceptance_criteria),
+            }
+        )
+        for subtask in plan.subtasks
+    )
+    return plan.model_copy(
+        update={
+            "subtasks": subtasks,
+            "open_questions": guard_plan_texts(plan.open_questions),
+            "assumptions": guard_plan_texts(plan.assumptions),
+        }
+    )
+
+
 def args_to_decomposition_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
@@ -247,7 +363,7 @@ def args_to_decomposition_plan(
         DecompositionError: If the arguments are invalid.
     """
     try:
-        return _args_to_plan(args, parent_task_id, available_roles)
+        return _guarded_plan(args, parent_task_id, available_roles)
     except DecompositionError:
         raise
     except Exception as exc:
@@ -288,7 +404,7 @@ def parse_tool_call_response(
     for tc in response.tool_calls:
         if tc.name == TOOL_NAME:
             try:
-                return _args_to_plan(tc.arguments, parent_task_id, available_roles)
+                return _guarded_plan(tc.arguments, parent_task_id, available_roles)
             except DecompositionError as exc:
                 # Re-raise without wrapping to preserve the original error
                 logger.warning(
@@ -316,6 +432,65 @@ def parse_tool_call_response(
         parent_task_id=parent_task_id,
     )
     raise DecompositionError(msg)
+
+
+def _embedded_json_object(text: str) -> dict[str, JsonValue] | None:
+    """Return the first complete JSON object embedded in *text*.
+
+    Scanned rather than matched with a regular expression, because braces
+    nest: a plan carries subtask objects and option objects, so the first
+    closing brace is nowhere near the end of the object that opened.
+
+    String literals are tracked so a brace inside a description ("clear a
+    line {sic}") does not end the scan, and an escape inside a string is
+    skipped so a trailing backslash before a quote cannot close it early.
+
+    Args:
+        text: The model's content, already stripped of any fence.
+
+    Returns:
+        The decoded object, or ``None`` when the text holds no complete one
+        or holds something that is not an object.
+    """
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return _decoded_object(text[start : index + 1])
+    return None
+
+
+def _decoded_object(candidate: str) -> dict[str, JsonValue] | None:
+    """Decode *candidate* when it is a JSON object.
+
+    Returns:
+        The object, or ``None`` when it does not decode or decodes to
+        something else (a bare array of subtasks is not a plan).
+    """
+    try:
+        decoded: JsonValue = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None
 
 
 def parse_content_response(
@@ -350,25 +525,60 @@ def parse_content_response(
         )
         raise DecompositionError(msg)
 
-    text = response.content.strip()
+    raw = response.content.strip()
+    text = raw
 
     match = _MARKDOWN_FENCE_RE.search(text)
+    fenced = match is not None
     if match:
         text = match.group(1).strip()
 
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        msg = f"Failed to parse JSON from content: {safe_error_description(exc)}"
+        # The prompt asks for "a JSON object" when a tool call is not
+        # possible, and a model answering in prose puts one INSIDE a
+        # sentence: "Here is the plan: {...}". Refusing that reads as the
+        # model having produced nothing, when it produced the plan and a
+        # greeting. Retrying cannot fix it either: the same prompt to the
+        # same model returns the same shape, so three attempts buy latency
+        # and nothing else.
+        embedded = _embedded_json_object(text)
+        if embedded is None:
+            # What it looked like, never what it said: the content is model
+            # output over attacker-influenced input, so its shape is
+            # diagnosable and its text is not.
+            msg = f"Failed to parse JSON from content: {safe_error_description(exc)}"
+            logger.warning(
+                DECOMPOSITION_LLM_PARSE_ERROR,
+                error=msg,
+                parent_task_id=parent_task_id,
+                content_length=len(raw),
+                fenced=fenced,
+                starts_with_brace=text.startswith("{"),
+            )
+            raise DecompositionError(msg) from exc
+        data = embedded
+
+    if not isinstance(data, dict):
+        # The embedded path refuses a non-object; the direct decode did not,
+        # so a payload that parsed cleanly to a list, a string or a number
+        # went on under an annotation that had stopped describing it, and the
+        # refusal surfaced two frames down as an AttributeError the broad
+        # handler swallowed into a message about parsing.
+        msg = "Failed to parse plan from content: the JSON is not an object"
         logger.warning(
             DECOMPOSITION_LLM_PARSE_ERROR,
             error=msg,
             parent_task_id=parent_task_id,
+            content_length=len(raw),
+            fenced=fenced,
+            decoded_type=type(data).__name__,
         )
-        raise DecompositionError(msg) from exc
+        raise DecompositionError(msg)
 
     try:
-        return _args_to_plan(data, parent_task_id, available_roles)
+        return _guarded_plan(data, parent_task_id, available_roles)
     except DecompositionError as exc:
         # Re-raise without wrapping to preserve the original error
         logger.warning(

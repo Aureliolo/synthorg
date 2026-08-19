@@ -27,6 +27,11 @@ pytestmark = pytest.mark.unit
 _CLOCK = FakeClock()
 
 
+_A_FINDING = CompletionOracleFinding(
+    severity=RedTeamSeverity.MEDIUM, description="the suite does not run"
+)
+
+
 def _report(
     *,
     reviewer: str = "reviewer-1",
@@ -35,12 +40,14 @@ def _report(
     ran_tests: bool = False,
     test_command: str | None = None,
 ) -> CompletionOracleReport:
+    rejecting = verdict is CompletionOracleVerdict.REJECT
     return CompletionOracleReport(
         execution_id="exec-1",
         task_id="task-1",
         reviewer_agent_id=reviewer,
         executor_agent_id=executor,
         verdict=verdict,
+        findings=(_A_FINDING,) if rejecting else (),
         summary="reviewed",
         ran_tests=ran_tests,
         test_command=test_command,
@@ -59,6 +66,52 @@ class TestReportInvariants:
     def test_test_command_with_ran_tests_allowed(self) -> None:
         report = _report(ran_tests=True, test_command="pytest -x")
         assert report.test_command == "pytest -x"
+
+    def test_rejection_with_no_findings_rejected(self) -> None:
+        """A verdict that sends work back must name what is wrong with it.
+
+        The rework brief and every later surface read the structured
+        findings; the summary is prose the reviewer chose to write. A
+        rejection carrying neither leaves the assignee nothing to act on.
+        """
+        with pytest.raises(ValidationError, match="at least one finding"):
+            CompletionOracleReport(
+                execution_id="exec-1",
+                task_id="task-1",
+                reviewer_agent_id="reviewer-1",
+                executor_agent_id="executor-1",
+                verdict=CompletionOracleVerdict.REJECT,
+                findings=(),
+                summary="does not meet the criteria",
+            )
+
+    @pytest.mark.parametrize(
+        "verdict",
+        [
+            CompletionOracleVerdict.APPROVE,
+            CompletionOracleVerdict.APPROVE_WITH_NOTES,
+            CompletionOracleVerdict.ESCALATE,
+        ],
+    )
+    def test_every_other_verdict_may_carry_no_findings(
+        self, verdict: CompletionOracleVerdict
+    ) -> None:
+        """Only a rejection routes rework, so only a rejection owes findings.
+
+        An escalation in particular must stay constructible empty: the gate
+        synthesises one for the fail-closed paths, including the case where
+        no reviewer ran at all and there is nothing to have found.
+        """
+        report = CompletionOracleReport(
+            execution_id="exec-1",
+            task_id="task-1",
+            reviewer_agent_id="reviewer-1",
+            executor_agent_id="executor-1",
+            verdict=verdict,
+            findings=(),
+            summary="reviewed",
+        )
+        assert report.findings == ()
 
     def test_findings_over_cap_rejected(self) -> None:
         one = CompletionOracleFinding(severity=RedTeamSeverity.LOW, description="minor")

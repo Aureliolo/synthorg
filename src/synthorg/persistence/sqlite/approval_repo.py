@@ -43,6 +43,10 @@ from synthorg.persistence._shared import (
     validate_pagination_args,
 )
 from synthorg.persistence._shared.approval_transition import approval_decision_values
+from synthorg.persistence._shared.computed_fields import (
+    dump_stored_json,
+    load_stored_json,
+)
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite._integrity import classify_sqlite_integrity
 from synthorg.persistence.sqlite._shared import WriteContext
@@ -204,7 +208,9 @@ def _row_to_item(row: Row) -> ApprovalItem:
                 else None
             ),
             evidence_package=(
-                EvidencePackage.model_validate_json(str(row["evidence_package"]))
+                load_stored_json(
+                    EvidencePackage, json.loads(str(row["evidence_package"]))
+                )
                 if row["evidence_package"] is not None
                 else None
             ),
@@ -268,7 +274,7 @@ class SQLiteApprovalRepository:
             QueryError: On other database errors.
         """
         evidence_json = (
-            item.evidence_package.model_dump_json()
+            json.dumps(dump_stored_json(item.evidence_package))
             if item.evidence_package is not None
             else None
         )
@@ -344,7 +350,7 @@ class SQLiteApprovalRepository:
         param_rows = []
         for item in items:
             evidence_json = (
-                item.evidence_package.model_dump_json()
+                json.dumps(dump_stored_json(item.evidence_package))
                 if item.evidence_package is not None
                 else None
             )

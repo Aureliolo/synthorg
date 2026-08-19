@@ -323,10 +323,18 @@ class StateMachine[S: HasStateValue]:
                 target_state=target.value,
                 allowed=allowed_values,
             )
+            # A refusal reaches an operator as the failure detail of whatever
+            # was refused, so an empty allowed set has to read as a sentence:
+            # rendering it as a list states a fact about the transition table
+            # and answers nothing the person asking can act on.
+            why = (
+                f"{current.value!r} is final, so nothing moves out of it."
+                if not allowed_values
+                else f"Allowed from {current.value!r}: {allowed_values}"
+            )
             msg = (
                 f"Invalid {display} transition: {current.value!r} -> "
-                f"{target.value!r}. Allowed from {current.value!r}: "
-                f"{allowed_values}"
+                f"{target.value!r}. {why}"
             )
             raise ValueError(msg)
         if self._transition_event is not None:

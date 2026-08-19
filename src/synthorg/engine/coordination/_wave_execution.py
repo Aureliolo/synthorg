@@ -20,6 +20,7 @@ from synthorg.engine.coordination._wave_outcome import (
 from synthorg.engine.coordination._wave_parking import (
     abandon_after,
     abandon_stranded,
+    abandon_unreachable,
     gate_wave,
 )
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
@@ -172,6 +173,14 @@ async def execute_waves(
         resources=resources,
     )
 
+    # Before the first wave, because a row no wave carries is unreachable
+    # whatever this run goes on to do, and because the plan's own subtask ids
+    # are exactly the keys of the dependency map: derived from what was built
+    # rather than reported by the builder, so no second list can disagree.
+    await abandon_unreachable(
+        groups, subtask_ids=dependencies.keys(), writer=assignment_writer
+    )
+
     for wave_idx, group in enumerate(groups):
         start = clock.monotonic()
         try:
@@ -216,7 +225,7 @@ async def _run_one_wave(
     Returns:
         ``True`` when the run must not proceed to the next wave.
     """
-    gated = await gate_wave(
+    outcome = await gate_wave(
         group,
         wave_idx=wave_idx,
         assignment_writer=run.assignment_writer,
@@ -225,8 +234,18 @@ async def _run_one_wave(
         start=start,
         phases=run.phases,
     )
+    gated = outcome.group
     if gated is None:
-        return run.fail_fast
+        # A wave with nothing left because every subtask already delivered is
+        # a level a previous run finished, so this run walks on. Stopping
+        # there would fail a resumed plan for the work it had already done,
+        # and ``fail_fast`` is about a level that did NOT deliver.
+        #
+        # Waiting is the third case and it walks on too, because stopping
+        # would park every level below under a reason a replan believes, and
+        # the rows held back here are still at CREATED, which is what the
+        # recovery sweep re-drives once the decision lands.
+        return False if outcome.delivered or outcome.awaiting else run.fail_fast
     if run.resources is None:
         stop, _ = await _dispatch_gated_wave(
             gated, wave_idx=wave_idx, start=start, run=run

@@ -24,6 +24,7 @@ from synthorg.engine.loop_selector import (
     build_execution_loop,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.tool import TOOL_REGISTRY_BUILT
 from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
@@ -540,6 +541,16 @@ class AgentEngineFactoriesMixin:
 
         checker = ToolPermissionChecker.from_permissions(agent_tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
+        # The one place an agent's tool surface is final. Every step above
+        # rebuilt the registry, so this is the only count and list an operator
+        # can act on: what this agent could actually reach for this task.
+        logger.info(
+            TOOL_REGISTRY_BUILT,
+            agent_id=str(identity.id),
+            task_id=task_id,
+            tool_count=len(registry.all_tools()),
+            tools=sorted(tool.name for tool in registry.all_tools()),
+        )
         invoker = ToolInvoker(
             registry,
             permission_checker=checker,

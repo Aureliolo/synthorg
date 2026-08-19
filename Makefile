@@ -146,7 +146,7 @@ build-openhands-image:
 # Runs the backend where it ships (the Linux image, from this worktree's
 # source) instead of natively, and swaps it into the stack the operator is
 # already running. Postgres, NATS, web and every secret are untouched, so the
-# organisation you dogfood against comes along.
+# organisation you run against comes along.
 #
 # Native execution cannot run a single agent tool on Windows: psycopg's async
 # pool requires the SelectorEventLoop, and both `create_subprocess_exec` and
@@ -256,7 +256,7 @@ DEV_COMPOSE = SYNTHORG_REPO_ROOT='$(DEV_REPO_ROOT)' \
 	$(DEV_COMPOSE_ARGS) -f '$(DEV_OVERLAY_FILE)'
 
 # Fails loudly rather than inventing a stack: without a running one there is no
-# database, no secrets and no organisation to dogfood against, and standing a
+# database, no secrets and no organisation to run against, and standing a
 # second one up would silently be a different deployment.
 define require_stack
 	@test -n "$(DEV_COMPOSE_ARGS)" -a -n "$(SYNTHORG_STACK_PROJECT)" || { \

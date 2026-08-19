@@ -17,6 +17,7 @@ from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -42,16 +43,27 @@ async def wire_hiring(app_state: AppState) -> None:
         raise SubsystemDeclinedError(msg)
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        msg = "no settings resolver; a new hire's model pair is read from settings"
+        msg = (
+            "no settings resolver; the model-spend profile that ranks a hire's "
+            "proposed pairs is read from settings"
+        )
+        raise SubsystemDeclinedError(msg)
+    catalogue = app_state.slice(ProvidersStateSlice).management
+    if catalogue is None:
+        msg = (
+            "no provider management; a hire's model pair is proposed from the "
+            "operator's configured providers"
+        )
         raise SubsystemDeclinedError(msg)
 
     hiring = HiringService(
         registry=agent_registry_of(app_state),
         approval_store=app_state.slice(ApprovalStateSlice).store,
-        # The resolver, not a resolved pair: the hire reads it per
-        # instantiation, so an operator who binds ``hr.new_hire_model`` after
-        # boot can approve a hire without a restart.
+        # The resolver and the catalogue, not resolved values: both are read
+        # when an approval is raised, so an operator who configures a provider
+        # after boot gets it offered on the next hire with no restart.
         config_resolver=resolver,
+        provider_catalogue=catalogue,
     )
     # Attachment is a hard prerequisite: without it the service is
     # non-durable, so a failure aborts wiring rather than publishing a

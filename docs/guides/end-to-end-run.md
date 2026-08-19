@@ -1,7 +1,7 @@
-# Dogfooding the loop
+# The end-to-end run
 
 Run a real objective through the whole loop, as an operator, and read back what
-happened from the database rather than from the log. This is the procedure that
+happened from the surfaces an operator actually has. This is the procedure that
 settles whether the completion oracle actually blocks and actually completes:
 see [the evidence contract](../design/initiative-tail.md#what-proves-the-tail-ran)
 for the rows each claim needs.
@@ -111,23 +111,41 @@ SELECT
 ## File the objective as a person would
 
 Through the dashboard chat, in ordinary language, with the vagueness a real
-brief has:
+brief has. This is the wording, verbatim, and it is the same for both arms:
 
-> I want a falling-blocks puzzle game, single player, one mode to start,
-> playable in the browser. Nothing fancy. Would like something working this
-> week.
+> I want a falling-blocks puzzle game I can play in the browser, with a shared
+> leaderboard.
 
-The chat path is the one to use, not `POST /objectives`: several failures are
-only visible from the operator's seat, and the objective route leaves
-`plan_required` at its default so whether a plan is built at all is decided by
-the solo-versus-team router rather than guaranteed. If the message routes to a
-single agent instead of producing a plan, that divergence is itself a finding;
-the charter route (`POST /meta/chat/turn` with a `CHARTER` intent, then
-`POST /meta/charters/{id}/approve`) sets `plan_required` explicitly.
+Everything else is left for the org to ask: single or multiplayer, how many
+modes, the timeline, where it runs and how it is hosted, how the leaderboard
+persists and who can see it, and what "done" means. Do not add "nothing fancy"
+and do not add "working this week"; each pre-empts a question the interview is
+supposed to ask, and the timeline is the one it is most often caught not asking.
 
-Answer the clarifying questions. Approve the forecast when it appears
-(`budget.forecast_required` defaults true, so entry gates on one). Then review
-the plan and approve it through the same surface.
+**The charter route is the only intake path.** Chat, a `CHARTER` intent, the
+interview, then the operator approves the charter. Approval is what sets
+`plan_required` and names the `charter_id` that authorises it, and the product
+enforces both halves: `WorkItem` refuses `plan_required` with no `charter_id`,
+and `check_charter_authorised_initiative.py` fences `meta/charter/dispatch.py`
+as the only module that may set the flag. Never `POST /objectives`: it leaves
+`plan_required` at its default, so whether a plan is built at all falls to the
+solo-versus-team router rather than to a decision anybody took.
+
+Answer the interview the way the person who filed the brief would: honestly,
+minimally, and without volunteering what was not asked.
+
+There is no separate forecast step on this route. Charter approval **is** the
+budget approval: `CharterDispatcher.approve` builds an already-`APPROVED`
+forecast before it dispatches, so no forecast card appears and none should be
+waited for. Then review the plan and approve it through the same surface.
+
+The two arms diverge on exactly one answer, given when the interview asks how
+we will know it is done:
+
+| arm | the answer you give |
+| --- | --- |
+| the blocked-build control (runs first) | the finished game must pass an automated end-to-end test that drives it in a real browser |
+| the honest run | the game logic has an automated test suite that passes, with no network install |
 
 ## Watch three channels, not one
 

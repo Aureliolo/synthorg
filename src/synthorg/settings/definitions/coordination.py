@@ -266,6 +266,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_review_max_revision_rounds",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many times a reviewed plan may be sent back to be re-planned"
+            " before it is parked for the operator regardless. Each round costs"
+            " a fresh decomposition and a fresh panel, so the cap is what stops"
+            " a panel and a planner that disagree from arguing indefinitely."
+            " Set 0 to make the panel advisory: its findings are still recorded"
+            " and shown, but nothing acts on them. The panel bakes this in when"
+            " it is built, and its subsystem rebuilds on a write, so a change"
+            " applies from the next reconcile pass."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=5,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="plan_review_panel_cost_ceiling",
         type=SettingType.FLOAT,
         default="1.0",
@@ -365,6 +388,27 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Wall-clock ceiling on one decomposition, covering the planning"
+            " session and every parse retry inside it. Without it a planner"
+            " waiting on a provider that never answers holds whatever called"
+            " it, which for the two request-path callers is an HTTP worker."
+            " Resolved live per decomposition, so a change takes effect on the"
+            " next one without a restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
     )
 )
 

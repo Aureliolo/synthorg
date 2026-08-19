@@ -181,20 +181,34 @@ class CompletionOracleReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_report(self) -> Self:
-        """Enforce distinct reviewer identity and the findings bound.
+        """Enforce distinct reviewer identity, findings bound and rework grounds.
 
         Returns:
             The validated report.
 
         Raises:
-            ValueError: If the reviewer is the executor, or the report
-                carries more than ``MAX_ORACLE_FINDINGS_PER_REPORT`` findings.
+            ValueError: If the reviewer is the executor, the report carries
+                more than ``MAX_ORACLE_FINDINGS_PER_REPORT`` findings, or a
+                REJECT names nothing to fix.
         """
         _forbid_self_review(self.reviewer_agent_id, self.executor_agent_id)
         if len(self.findings) > MAX_ORACLE_FINDINGS_PER_REPORT:
             msg = (
                 f"CompletionOracleReport carries {len(self.findings)} findings; "
                 f"the maximum is {MAX_ORACLE_FINDINGS_PER_REPORT}."
+            )
+            raise ValueError(msg)
+        if self.verdict is CompletionOracleVerdict.REJECT and not self.findings:
+            # The rework brief, the dashboard and every later analysis read the
+            # structured findings; the summary is prose the reviewer chose to
+            # write, and a one-word one is as admissible as a good one. Only
+            # REJECT is held to this: it is the verdict that sends work back,
+            # and the ESCALATE the gate synthesises for a fail-closed path has
+            # nothing to have found.
+            msg = (
+                "CompletionOracleReport with verdict 'reject' must carry at "
+                "least one finding naming what the assignee has to fix; the "
+                "summary alone is not what the rework brief reads."
             )
             raise ValueError(msg)
         if self.test_command is not None and not self.ran_tests:

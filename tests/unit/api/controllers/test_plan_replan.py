@@ -1,5 +1,7 @@
 """Tests for re-planning a dispatched initiative."""
 
+import asyncio
+import re
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -7,7 +9,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
+from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
@@ -93,6 +100,18 @@ def _task(
     )
 
 
+def _parked_store(state: AppState) -> _Configured:
+    """The approval store *state* was seeded with.
+
+    Returns:
+        The double, typed as the configured mock so its recorded calls stay
+        readable: ``await_args_list`` is not on the Protocol it satisfies.
+    """
+    store = state.slice(ApprovalStateSlice).store
+    assert store is not None
+    return store
+
+
 async def _seed(
     status: PlanStatus = PlanStatus.EXECUTING,
     *tasks: Task,
@@ -126,12 +145,154 @@ async def _seed(
     # owner, so an empty roster is enough to get past the check.
     registry = mock_of[AgentRegistryProtocol](list_active=AsyncMock(return_value=()))
     state = make_app_state(
-        persistence=backend, task_engine=engine, agent_registry=registry
+        persistence=backend,
+        task_engine=engine,
+        agent_registry=registry,
+        approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
     )
     return state, backend, engine
 
 
 _REVISION = RevisionInputs(items=(_item(_ITEM_B, "Revised B"),))
+
+
+class TestASuccessorCanActuallyBeDecided:
+    """PENDING_REVIEW means a person must approve it, so one must be able to.
+
+    A live run replanned a stalled initiative and left the successor at
+    PENDING_REVIEW with no ``plan:approve`` row anywhere: the plan page offers
+    Rework, Request changes and Delete but no Approve, the approvals queue had
+    nothing naming it, and there is no approve route on the plans controller.
+    The initiative could not proceed and nothing said so.
+
+    The gate that parks a first-time plan states this rule in its own
+    compensation ("without an approval there is no route to approve or reject
+    it, so mark the durable plan FAILED"). The replan path opened exactly that
+    state and nothing noticed, because the status and the approval were
+    written by different owners.
+    """
+
+    async def test_the_successor_is_parked_as_an_approval(self) -> None:
+        state, _, _ = await _seed()
+        store = _parked_store(state)
+        existing = _plan(PlanStatus.EXECUTING)
+
+        successor = await replan_initiative(
+            state, existing, revision=_REVISION, requested_by="admin"
+        )
+
+        parked = [call.args[0] for call in store.add.await_args_list]
+        approvals = [
+            item for item in parked if item.action_type == PLAN_APPROVAL_ACTION_TYPE
+        ]
+        assert len(approvals) == 1, (
+            "a plan at PENDING_REVIEW with no plan:approve row cannot be "
+            "approved from any surface the product has"
+        )
+        assert approvals[0].status is ApprovalStatus.PENDING
+        assert approvals[0].metadata[PLAN_ID_METADATA_KEY] == str(successor.id)
+
+    async def test_the_successor_open_questions_are_parked_too(self) -> None:
+        # The predecessor's questions were answered against a plan that no
+        # longer exists, so an unparked successor question reaches nobody:
+        # the same defect one level down.
+        state, _, _ = await _seed()
+        store = _parked_store(state)
+        asking = _plan(PlanStatus.EXECUTING).model_copy(
+            update={"open_questions": (NotBlankStr("Which runtime is allowed?"),)}
+        )
+
+        await replan_initiative(state, asking, revision=_REVISION, requested_by="admin")
+
+        parked = [call.args[0] for call in store.add.await_args_list]
+        assert any(item.action_type != PLAN_APPROVAL_ACTION_TYPE for item in parked), (
+            "the successor's open question was raised for nobody"
+        )
+
+    async def test_a_failed_park_fails_the_successor(self) -> None:
+        # The gate's own rule, applied to this path: a PENDING_REVIEW plan
+        # nobody can decide is worse than a plan that says it failed.
+        state, backend, _ = await _seed()
+        # Configure the existing autospec'd mock rather than replacing it.
+        _parked_store(state).add.side_effect = QueryError("approval store down")
+
+        successor = await replan_initiative(
+            state, _plan(PlanStatus.EXECUTING), revision=_REVISION, requested_by="admin"
+        )
+
+        persisted = await backend.plans.get(NotBlankStr(str(successor.id)))
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+
+    async def test_a_park_that_fails_partway_leaves_no_decidable_row(self) -> None:
+        """Half a park is worse than none: the rows left behind still act.
+
+        The store has no batch, so the approval can land and a question then
+        fail. What survives is an approve/reject card against a plan that is
+        about to be FAILED, and answering it writes back onto that plan.
+        """
+        state, backend, _ = await _seed()
+        store = _parked_store(state)
+        asking = _plan(PlanStatus.EXECUTING).model_copy(
+            update={"open_questions": (NotBlankStr("Which datastore?"),)}
+        )
+        added: list[object] = []
+
+        down = "approval store down"
+
+        async def _add_then_fail(item: object) -> None:
+            if added:
+                raise QueryError(down)
+            added.append(item)
+
+        # Configure the existing autospec'd mock rather than replacing it.
+        store.add.side_effect = _add_then_fail
+
+        successor = await replan_initiative(
+            state, asking, revision=_REVISION, requested_by="admin"
+        )
+
+        assert store.delete.await_count == 1, (
+            "the approval written before the failure was left decidable"
+        )
+        persisted = await backend.plans.get(NotBlankStr(str(successor.id)))
+        assert persisted is not None
+        assert persisted.status is PlanStatus.FAILED
+
+
+class TestTheOperatorPathAsksTheSameGraphQuestions:
+    """A hand-authored revision is held to what decomposition is held to.
+
+    The three graph checks each state that an operator edit path renders
+    them as a validation failure, and only the LLM path asked them. A gate
+    demanding a file that only a non-dependency produces is unjudgeable when
+    the item is reviewed and stays unjudgeable through every rework, so a
+    plan can be written by hand into a state no review can ever clear.
+    """
+
+    async def test_a_criterion_no_dependency_delivers_is_refused(self) -> None:
+        state, _, _ = await _seed()
+        revision = RevisionInputs(
+            items=(
+                _item(sid("checks"), "Smoke checks").model_copy(
+                    update={
+                        "acceptance_criteria": (NotBlankStr("index.html renders"),),
+                        "expected_artifacts": (NotBlankStr("checks.js"),),
+                    }
+                ),
+                _item(sid("ui"), "Game page").model_copy(
+                    update={"expected_artifacts": (NotBlankStr("index.html"),)}
+                ),
+            ),
+        )
+
+        with pytest.raises(ValidationError, match=re.escape("index.html")):
+            await replan_initiative(
+                state,
+                _plan(PlanStatus.EXECUTING),
+                revision=revision,
+                requested_by="admin",
+            )
 
 
 class TestReplan:
@@ -471,6 +632,93 @@ class TestReplan:
         assert project is not None
         assert project.plan_id is not None
         assert project.plan_id != as_uuid(_PLAN_ID)
+
+    async def test_a_failed_cancellation_still_leaves_a_decidable_successor(
+        self,
+    ) -> None:
+        """Whatever became of the retired work, the successor must be askable.
+
+        Cancelling the predecessor's in-flight tasks runs after the retirement
+        has committed, so a failure there cannot undo the replan: the
+        successor is live and PENDING_REVIEW. Recovery reads that status as
+        parked on a human, correctly, so a successor with no approval row is
+        an initiative that stops for good, which is the state a live run
+        already left one in.
+        """
+        state, _, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.IN_PROGRESS),
+        )
+        engine.transition_task.side_effect = QueryError("cancellation failed")
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        parked = [call.args[0] for call in _parked_store(state).add.await_args_list]
+        assert [
+            item for item in parked if item.action_type == PLAN_APPROVAL_ACTION_TYPE
+        ], "the successor is live and PENDING_REVIEW with nothing to decide it"
+
+    async def test_a_cancellation_never_undoes_a_retire_that_committed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The retire is shielded, so our cancellation is not its cancellation.
+
+        ``asyncio.shield`` raises in the AWAITER while the shielded task
+        carries on and can still succeed, so compensating on the raise alone
+        rolls back a write that landed: the project would point at the plan
+        just superseded and the only live plan would be deleted. The automatic
+        replan trigger runs this under a wall-clock deadline, so the
+        cancellation is an ordinary event rather than an exotic one.
+        """
+        state, backend, _ = await _seed(PlanStatus.EXECUTING)
+        reached = asyncio.Event()
+        release = asyncio.Event()
+        real_update = backend.plans.update
+        gated = {"done": False}
+
+        async def _gated_update(
+            plan: Plan, *, expected_version: int | None = None
+        ) -> None:
+            # Only the FIRST plan write is held: that is the supersede inside
+            # the shielded retire, and gating the rest would stall the tail
+            # the cancellation is supposed to let through.
+            if not gated["done"]:
+                gated["done"] = True
+                reached.set()
+                await release.wait()
+            await real_update(plan, expected_version=expected_version)
+
+        monkeypatch.setattr(
+            backend.plans,
+            "update",
+            AsyncMock(spec=backend.plans.update, side_effect=_gated_update),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+        replan = asyncio.ensure_future(
+            replan_initiative(state, existing, revision=_REVISION, requested_by="admin")
+        )
+
+        # Events rather than sleeps: the race is deterministic, so the test is
+        # too. Cancel while the shielded retire is mid-write, then let it land.
+        await reached.wait()
+        replan.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await replan
+
+        # The retire committed, so it stands: the predecessor is superseded and
+        # the successor it was replaced by still exists.
+        retired = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert retired is not None
+        assert retired.status is PlanStatus.SUPERSEDED
+        await self._assert_project_points_at_live_plan(backend)
+        # And the tail ran under its own shield, so the successor is decidable
+        # rather than a PENDING_REVIEW plan with no approval behind it.
+        _parked_store(state).add.assert_awaited()
 
     @staticmethod
     async def _assert_one_live_executing_plan(

@@ -25,6 +25,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
@@ -54,6 +55,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
     INITIATIVE_REPLAN_SCHEDULED,
+    INITIATIVE_REPLAN_SETTINGS_DEGRADED,
     INITIATIVE_REPLAN_SKIPPED,
     INITIATIVE_REPLAN_STARTED,
 )
@@ -332,6 +334,27 @@ class ReplanTriggerService:
             return ()
         return roster_from_agents(await self._agent_registry.list_active())
 
+    async def _owner(self, plan: Plan) -> AgentIdentity | None:
+        """Resolve the agent already accountable for *plan*'s initiative.
+
+        Without an identity the agent-session strategy declines to the
+        single-shot fallback decomposer, so a successor would be planned by a
+        different mechanism than the plan it replaces. Read from the project's
+        durable lead rather than staffed afresh: the initiative already has an
+        owner, and picking a second one would plan the successor as somebody
+        who does not own the work.
+
+        Returns:
+            The lead's identity, or ``None`` when no registry is wired, the
+            project names no lead, or the lead no longer resolves.
+        """
+        if self._agent_registry is None:
+            return None
+        project = await self._persistence.projects.get(plan.project)
+        if project is None or project.lead is None:
+            return None
+        return await self._agent_registry.get(project.lead)
+
     async def _open_successor(self, stall: ConfirmedStall, parent: Task) -> None:
         """Decompose the objective afresh and open the successor plan."""
         plan = stall.plan
@@ -344,7 +367,10 @@ class ReplanTriggerService:
         )
         result = await self._decomposition.decompose_task(
             briefed,
-            DecompositionContext(available_roles=await self._roster()),
+            DecompositionContext(
+                owner_identity=await self._owner(plan),
+                available_roles=await self._roster(),
+            ),
         )
         # No empty-successor guard: DecompositionPlan rejects an empty subtask
         # tree, so a decomposition that produced nothing raised above.
@@ -423,7 +449,7 @@ class ReplanTriggerService:
     def _log_settings_degraded(self, key: str, exc: Exception) -> None:
         """Warn that a best-effort ``engine.<key>`` read fell back to a default."""
         logger.warning(
-            INITIATIVE_REPLAN_SKIPPED,
+            INITIATIVE_REPLAN_SETTINGS_DEGRADED,
             key=key,
             reason="settings_read_degraded",
             error_type=type(exc).__name__,
