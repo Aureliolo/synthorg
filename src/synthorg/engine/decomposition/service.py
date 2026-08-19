@@ -163,6 +163,9 @@ class DecompositionService:
                 "coordination", "decomposition_timeout_seconds"
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort settings read; the bound
+            # still stands on the definition's own default, so the failure
+            # this method exists to prevent cannot happen either way
             reraise_critical(exc)
             logger.warning(
                 DECOMPOSITION_FAILED,
