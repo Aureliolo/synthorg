@@ -242,6 +242,19 @@ class SQLiteConversationTurnRepository:
         if filter_spec.conversation_id is not None:
             clauses.append("conversation_id = ?")
             params.append(filter_spec.conversation_id)
+        if filter_spec.conversation_ids is not None:
+            # An empty set is written as a false predicate: ``IN ()`` is a
+            # syntax error, and dropping the clause would return every turn
+            # in the table for a caller that asked about no conversation.
+            if filter_spec.conversation_ids:
+                placeholders = ", ".join("?" * len(filter_spec.conversation_ids))
+                clauses.append(f"conversation_id IN ({placeholders})")
+                params.extend(filter_spec.conversation_ids)
+            else:
+                clauses.append("1=0")
+        if filter_spec.sequence is not None:
+            clauses.append("sequence = ?")
+            params.append(filter_spec.sequence)
         where = " AND ".join(clauses) if clauses else "1=1"
         params.extend([effective_limit, offset])
         sql = f"""

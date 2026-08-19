@@ -380,6 +380,63 @@ class TestConversationTurnRepository:
         rows = await repo.query(ConversationTurnFilterSpec(conversation_id=sid("c-a")))
         assert {r.id for r in rows} == {as_uuid("qa")}
 
+    async def test_query_spans_several_conversations_in_one_call(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # What the history drawer needs: a page of conversations named from
+        # their own opening turns, at one query rather than one per row.
+        conv_repo = _conversation_repo(backend)
+        repo = _turn_repo(backend)
+        for label in ("m-a", "m-b", "m-c"):
+            await conv_repo.save(_make_conversation(conversation_id=label))
+            await repo.append(
+                _make_turn(turn_id=f"t-{label}", conversation_id=label, sequence=0)
+            )
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=(sid("m-a"), sid("m-c")),
+            )
+        )
+        assert {r.conversation_id for r in rows} == {sid("m-a"), sid("m-c")}
+
+    async def test_sequence_selects_the_opening_turn_of_each(
+        self, backend: PersistenceBackend
+    ) -> None:
+        conv_repo = _conversation_repo(backend)
+        repo = _turn_repo(backend)
+        for label in ("s-a", "s-b"):
+            await conv_repo.save(_make_conversation(conversation_id=label))
+            for position in range(3):
+                await repo.append(
+                    _make_turn(
+                        turn_id=f"t-{label}-{position}",
+                        conversation_id=label,
+                        sequence=position,
+                    )
+                )
+
+        rows = await repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=(sid("s-a"), sid("s-b")), sequence=0
+            )
+        )
+        assert {r.id for r in rows} == {as_uuid("t-s-a-0"), as_uuid("t-s-b-0")}
+
+    async def test_an_empty_id_set_matches_nothing(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # "These ones" with none of them is nothing, not everything. Dropping
+        # the clause instead would page the whole table for a caller that
+        # asked about no conversation at all.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="e-a"))
+        repo = _turn_repo(backend)
+        await repo.append(_make_turn(turn_id="e-t", conversation_id="e-a", sequence=0))
+
+        rows = await repo.query(ConversationTurnFilterSpec(conversation_ids=()))
+        assert rows == ()
+
     async def test_purge_before_removes_old_turns(
         self, backend: PersistenceBackend
     ) -> None:

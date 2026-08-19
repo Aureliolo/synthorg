@@ -31,10 +31,6 @@ src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConv
 src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save::diag::1
 src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save_many::constraint_name::1
 src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save_many::diag::1
-src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationRepository.save::constraint_name::1
-src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationRepository.save::diag::1
-src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationTurnRepository.append::constraint_name::1
-src/synthorg/persistence/postgres/conversation_repo.py::PostgresConversationTurnRepository.append::diag::1
 src/synthorg/persistence/postgres/custom_rule_repo.py::PostgresCustomRuleRepository.save::constraint_name::1
 src/synthorg/persistence/postgres/decision/_cas.py::_CasMixin._execute_insert::constraint_name::1
 src/synthorg/persistence/postgres/escalation_repo.py::PostgresEscalationRepository.create::constraint_name::1

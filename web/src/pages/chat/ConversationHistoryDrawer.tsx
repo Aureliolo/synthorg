@@ -159,22 +159,31 @@ function ConversationHistoryBody({
           {resumeError}
         </li>
       )}
-      {conversations.map((conversation) => (
-        <li key={conversation.id}>
-          <Button
-            variant="outline"
-            className="w-full justify-between"
-            disabled={resumingId !== null}
-            aria-busy={resumingId === conversation.id}
-            onClick={() => onResume(conversation)}
-          >
-            <span>{KIND_LABEL[conversation.kind]}</span>
-            <span className="text-xs text-muted-foreground">
-              {formatRelativeTime(conversation.updated_at)}
-            </span>
-          </Button>
-        </li>
-      ))}
+      {conversations.map((conversation) => {
+        const kindLabel = KIND_LABEL[conversation.kind]
+        const when = formatRelativeTime(conversation.updated_at)
+        return (
+          <li key={conversation.id}>
+            <Button
+              variant="outline"
+              className="h-auto w-full justify-between gap-3 py-2 text-left"
+              disabled={resumingId !== null}
+              aria-busy={resumingId === conversation.id}
+              onClick={() => onResume(conversation)}
+            >
+              {/* The opening sentence names the row; the kind is what every
+                  row shared, so it moves to the secondary line where it
+                  informs instead of making every row identical. */}
+              <span className="min-w-0 flex-1 truncate">
+                {conversation.title ?? kindLabel}
+              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {conversation.title === null ? when : `${kindLabel} · ${when}`}
+              </span>
+            </Button>
+          </li>
+        )
+      })}
     </ul>
   )
 }

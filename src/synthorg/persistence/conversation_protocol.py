@@ -16,9 +16,9 @@ All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
 from datetime import datetime
-from typing import Protocol, override, runtime_checkable
+from typing import Protocol, Self, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.conversation.enums import ConversationStatus
 from synthorg.core.types import NotBlankStr
@@ -33,13 +33,47 @@ from synthorg.persistence._generics import (
 class ConversationTurnFilterSpec(BaseModel):
     """Filter spec for ``ConversationTurnRepository.query`` (ADR-0001).
 
-    ``conversation_id`` is the only predicate; an empty spec matches
-    every turn (used only by retention sweeps, never by the service).
+    An empty spec matches every turn (used only by retention sweeps, never
+    by the service).
+
+    ``conversation_id`` and ``conversation_ids`` ask the same question of the
+    same column and are mutually exclusive, refused at construction: a spec
+    carrying both is two different questions about one column, and whichever
+    the backend happened to translate first would silently be the answer.
+    The plural form exists so a page of conversations costs one query rather
+    than one per row.
+
+    Attributes:
+        conversation_id: A single conversation.
+        conversation_ids: A set of conversations. An empty tuple matches
+            nothing, which is the honest reading of "these ones" when there
+            are none, and is written as a false predicate rather than an
+            ``IN ()`` neither driver parses.
+        sequence: An exact position within a conversation. ``0`` is the turn
+            that opened it, which every intake path writes before anything
+            else.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     conversation_id: NotBlankStr | None = Field(default=None)
+    conversation_ids: tuple[NotBlankStr, ...] | None = Field(default=None)
+    sequence: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _reject_two_questions(self) -> Self:
+        """Refuse a spec naming the conversation column twice.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When both id predicates are set.
+        """
+        if self.conversation_id is not None and self.conversation_ids is not None:
+            msg = "conversation_id and conversation_ids are mutually exclusive"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

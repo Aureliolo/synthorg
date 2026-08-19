@@ -22,6 +22,9 @@ modules these protocols depend on, which would otherwise trip the
 cold-import cycle gate.
 """
 
+from collections.abc import Mapping
+from typing import Final
+
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
@@ -56,6 +59,11 @@ from synthorg.persistence.conversation_protocol import (
 )
 
 logger = get_logger(__name__)
+
+#: The turn that opened a conversation. Every intake path appends the human's
+#: own message first, at ``len(prior_turns)``, so a conversation's first row is
+#: both position zero and the operator's own words.
+_OPENING_SEQUENCE: Final[int] = 0
 
 
 class ConversationalResumeService:
@@ -127,6 +135,36 @@ class ConversationalResumeService:
             limit=limit,
             offset=offset,
         )
+
+    async def opening_turns(
+        self,
+        conversation_ids: tuple[NotBlankStr, ...],
+    ) -> Mapping[str, ConversationTurn]:
+        """Fetch the turn that opened each of ``conversation_ids``.
+
+        One query for the whole page. The drawer names every row from its own
+        opening sentence, so a per-row read would put the page's cost on how
+        many conversations the operator has had.
+
+        Sequence ``0`` is the operator's own words: every intake path appends
+        the human turn before anything else, at ``len(prior_turns)``, which is
+        zero for a conversation that is being opened.
+
+        Returns:
+            The opening turn per conversation id. A conversation whose opening
+            turn a retention purge removed is simply absent, which the caller
+            reads as "nothing names this one".
+        """
+        if not conversation_ids:
+            return {}
+        turns = await self._turn_repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=conversation_ids,
+                sequence=_OPENING_SEQUENCE,
+            ),
+            limit=len(conversation_ids),
+        )
+        return {turn.conversation_id: turn for turn in turns}
 
     async def invites_for_approval(
         self,

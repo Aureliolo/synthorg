@@ -67,6 +67,24 @@ def _conversation(*, owner: str) -> Conversation:
     )
 
 
+def _opening(conversation: Conversation, content: str) -> ConversationTurn:
+    """Build the human turn that opens *conversation*.
+
+    Sequence zero, because every intake path appends the operator's own
+    message before anything else.
+
+    Returns:
+        The opening turn.
+    """
+    return ConversationTurn(
+        conversation_id=NotBlankStr(str(conversation.id)),
+        sequence=0,
+        role=ConversationRole.USER,
+        content=NotBlankStr(content),
+        created_at=_NOW,
+    )
+
+
 def _service(
     conv_repo: FakeConversationRepo, turn_repo: FakeTurnRepo
 ) -> ConversationalResumeService:
@@ -183,3 +201,72 @@ class TestListConversationsOwnerScoping:
             page = await _list_conversations(controller, state=state)
         assert len(page.data) == 1
         assert page.data[0]["created_by"] == "alice"
+
+
+class TestListConversationTitles:
+    """Each row is named by its own opening sentence, resolved beside it."""
+
+    async def test_a_row_is_named_by_the_message_that_opened_it(self) -> None:
+        conv_repo = FakeConversationRepo()
+        turn_repo = FakeTurnRepo()
+        conversation = _conversation(owner="alice")
+        await conv_repo.save(conversation)
+        await turn_repo.append(
+            _opening(conversation, "Build me a dashboard for agent activity")
+        )
+        state = _state(_service(conv_repo, turn_repo))
+        controller = _controller()
+        with actor_scope(_human("alice")):
+            page = await _list_conversations(controller, state=state)
+        assert page.data[0]["title"] == "Build me a dashboard for agent activity"
+
+    async def test_rows_are_told_apart(self) -> None:
+        # The defect: twenty intakes rendered twenty rows reading the same
+        # kind label, distinguishable only by a relative timestamp.
+        conv_repo = FakeConversationRepo()
+        turn_repo = FakeTurnRepo()
+        for text in ("Build me a dashboard", "Draft the Q3 hiring plan"):
+            conversation = _conversation(owner="alice")
+            await conv_repo.save(conversation)
+            await turn_repo.append(_opening(conversation, text))
+        state = _state(_service(conv_repo, turn_repo))
+        controller = _controller()
+        with actor_scope(_human("alice")):
+            page = await _list_conversations(controller, state=state)
+        titles = {row["title"] for row in page.data}
+        assert titles == {"Build me a dashboard", "Draft the Q3 hiring plan"}
+
+    async def test_a_conversation_whose_opening_turn_is_gone_has_no_title(
+        self,
+    ) -> None:
+        # A retention purge takes the turn; the client falls back to the kind
+        # label it already renders, which is what it did for every row before.
+        conv_repo = FakeConversationRepo()
+        await conv_repo.save(_conversation(owner="alice"))
+        state = _state(_service(conv_repo, FakeTurnRepo()))
+        controller = _controller()
+        with actor_scope(_human("alice")):
+            page = await _list_conversations(controller, state=state)
+        assert page.data[0]["title"] is None
+
+    async def test_the_page_costs_one_turn_query_whatever_its_size(self) -> None:
+        conv_repo = FakeConversationRepo()
+        turn_repo = FakeTurnRepo()
+        for index in range(5):
+            conversation = _conversation(owner="alice")
+            await conv_repo.save(conversation)
+            await turn_repo.append(_opening(conversation, f"Request {index}"))
+        state = _state(_service(conv_repo, turn_repo))
+        controller = _controller()
+        with actor_scope(_human("alice")):
+            await _list_conversations(controller, state=state)
+        assert len(turn_repo.queries) == 1
+
+    async def test_an_empty_page_asks_nothing(self) -> None:
+        turn_repo = FakeTurnRepo()
+        state = _state(_service(FakeConversationRepo(), turn_repo))
+        controller = _controller()
+        with actor_scope(_human("alice")):
+            page = await _list_conversations(controller, state=state)
+        assert page.data == ()
+        assert turn_repo.queries == []
