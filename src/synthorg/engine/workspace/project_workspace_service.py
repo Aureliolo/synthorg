@@ -1,3 +1,4 @@
+# module-kind: service
 """Persistent per-project workspace provisioning service.
 
 Resolves (and lazily provisions, once) the 1:1 persistent git-backed
@@ -14,8 +15,6 @@ the new backend reports).
 
 import asyncio
 import shutil
-import stat
-from collections.abc import Callable
 from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
@@ -25,10 +24,12 @@ from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.core.workspace_sharing import ensure_shared_dir
 from synthorg.engine.errors import GitBackendConfigError, WorkspaceSetupError
+from synthorg.engine.workspace.discard import force_writable_then_retry
 from synthorg.engine.workspace.git_backend import (
     GitBackend,
     GitBackendConfig,
 )
+from synthorg.engine.workspace.inventory import describe_project_workspace
 from synthorg.engine.workspace.paths import PROJECTS_SUBDIR, project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
@@ -45,36 +46,6 @@ from synthorg.persistence.project_workspace_protocol import (
 logger = get_logger(__name__)
 
 _DEFAULT_BRANCH: NotBlankStr = NotBlankStr("main")
-
-
-def _force_writable_then_retry(
-    func: Callable[[str], object],
-    path: str,
-    exc: BaseException,
-) -> None:
-    """``shutil.rmtree`` ``onexc`` handler: strip read-only, retry once.
-
-    Git pack-object files under ``.git/objects`` are written read-only
-    on Windows. ``shutil.rmtree`` raises ``PermissionError`` rather than
-    stripping the attribute, which would leave an orphan ``.git`` tree
-    behind after a backend kind switch. The next backend's
-    ``is_git_repo`` short-circuit would then keep the old layout alive
-    despite the persisted row claiming the new kind.
-
-    The chmod ORs the write bit into the existing mode (rather than
-    replacing it) so read + execute bits are preserved; without them a
-    directory entry would lose traversability mid-walk. ``lstat`` +
-    ``follow_symlinks=False`` keep the operation pinned to the named
-    entry instead of any symlink target a third-party repo planted.
-    """
-    if not isinstance(exc, PermissionError):
-        raise exc
-    try:
-        current_mode = Path(path).lstat().st_mode
-        Path(path).chmod(current_mode | stat.S_IWRITE, follow_symlinks=False)
-    except OSError:
-        raise exc from None
-    func(path)
 
 
 class ProjectWorkspaceService:
@@ -159,7 +130,7 @@ class ProjectWorkspaceService:
             return
         try:
             await asyncio.to_thread(
-                shutil.rmtree, git_dir, onexc=_force_writable_then_retry
+                shutil.rmtree, git_dir, onexc=force_writable_then_retry
             )
         except OSError as exc:
             # Best-effort: surface the failure but let the new
@@ -178,6 +149,23 @@ class ProjectWorkspaceService:
             project_id=project_id,
             git_dir=str(git_dir),
             success=True,
+        )
+
+    async def describe_inventory(self, project_id: NotBlankStr) -> str:
+        """Describe what *project_id*'s workspace holds, for a planning brief.
+
+        Deliberately read-only and provision-free: a planner asking what exists
+        must not bring a workspace into being as a side effect of the question.
+
+        Args:
+            project_id: The project being planned for.
+
+        Returns:
+            A phrase naming the workspace's top-level entries, or wording that
+            says plainly that no file has been written yet.
+        """
+        return await describe_project_workspace(
+            base_root=self._base_root, project_id=project_id
         )
 
     async def get_or_provision(

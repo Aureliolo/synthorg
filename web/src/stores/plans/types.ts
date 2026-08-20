@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 
 import type { EditPlanRequest, Plan, PlanStatus } from '@/api/types/plans'
 import type { WsEvent } from '@/api/types/websocket'
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 
 export interface PlansState {
   // List page. The review inbox filters across the whole set, so every
@@ -24,6 +25,14 @@ export interface PlansState {
   fetchPlanDetail: (id: string) => Promise<void>
   editPlan: (id: string, data: EditPlanRequest) => Promise<Plan | null>
   deletePlan: (id: string) => Promise<boolean>
+  /**
+   * Delete a selection in one request.
+   *
+   * `false` means the call settled nothing: either the request itself failed,
+   * or it returned with every row refused. A partial result is an outcome, not
+   * the sentinel, and names the rows that went.
+   */
+  batchDeletePlans: (ids: readonly string[]) => Promise<BulkDeleteOutcome | false>
   requestPlanChanges: (id: string, note: string) => Promise<Plan | null>
   setStatusFilter: (status: PlanStatus | null) => void
   clearDetail: () => void

@@ -144,8 +144,14 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={handleOpenChange}>
       <AlertDialog.Portal>
+        {/* Heavier than the ordinary dialog backdrop, and deliberately. This
+            one asks the operator to confirm something the copy usually says
+            cannot be undone, and at 80% over a dense list the rows behind it
+            stayed legible and competed with the question being asked. The
+            popup body was never translucent; the backdrop was the only layer
+            letting anything through. */}
         <AlertDialog.Backdrop
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
+          className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
         />
         <AlertDialog.Popup
           className={cn(

@@ -222,6 +222,52 @@ const GLOBAL_SHORTCUTS = [
   { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
 ] as const
 
+export interface AppShellBodyProps {
+  /** Whether the nav column's width is known yet. */
+  layoutReady: boolean
+  pathname: string
+  sidebarOverlayOpen: boolean
+  onSidebarOverlayClose: () => void
+}
+
+/** The nav column and the content column beside it. */
+export function AppShellBody({
+  layoutReady,
+  pathname,
+  sidebarOverlayOpen,
+  onSidebarOverlayClose,
+}: AppShellBodyProps) {
+  if (!layoutReady) {
+    return (
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-card">
+          <PageLoadingFallback />
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={onSidebarOverlayClose} />
+      {/* Padding lives on the animated wrapper (which is ``h-full``), NOT on
+          ``<main>``: an ``h-full`` child plus padding on the scroll parent
+          overflows by the padding amount and yields scrollable dead space
+          below the content. Inside the border-box ``h-full`` wrapper the
+          padding is absorbed, and the Org Chart's concrete-height need (it
+          relies on ``h-full``) is preserved. */}
+      <main id="main-content" tabIndex={-1} aria-label="Main content" className="flex-1 overflow-y-auto">
+        <RouteBoundary key={pathname}>
+          <Suspense fallback={<PageLoadingFallback />}>
+            <AnimatedPresence routeKey={pathname} className="p-card">
+              <Outlet />
+            </AnimatedPresence>
+          </Suspense>
+        </RouteBoundary>
+      </main>
+    </div>
+  )
+}
+
 export default function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -244,6 +290,19 @@ export default function AppLayout() {
     void useNotificationsStore.getState().hydrate()
     void useDashboardPrefs.getState().hydrate()
   }, [])
+
+  // Both of these decide the nav column's width, and both arrive from the
+  // backend after the shell mounts. Painting the defaults and then correcting
+  // them slides the content column sideways a beat into the session, under
+  // whatever the operator is already reaching for, and a live run lost clicks
+  // to irreversible controls that way. The column waits
+  // until its width is known. The chrome above it does not depend on it, so
+  // that paints at once. Both hydrations settle their flag even when the read
+  // fails, so a backend that cannot answer falls through to the defaults
+  // rather than holding the shell.
+  const prefsHydrated = useDashboardPrefs((s) => s.hydrated)
+  const appearanceHydrated = useThemeStore((s) => s.hydrated)
+  const layoutReady = prefsHydrated && appearanceHydrated
 
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
@@ -296,24 +355,12 @@ export default function AppLayout() {
         <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
         <WebResearchBanner />
       </header>
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
-        {/* Padding lives on the animated wrapper (which is ``h-full``), NOT on
-            ``<main>``: an ``h-full`` child plus padding on the scroll parent
-            overflows by the padding amount and yields scrollable dead space
-            below the content. Inside the border-box ``h-full`` wrapper the
-            padding is absorbed, and the Org Chart's concrete-height need (it
-            relies on ``h-full``) is preserved. */}
-        <main id="main-content" tabIndex={-1} aria-label="Main content" className="flex-1 overflow-y-auto">
-          <RouteBoundary key={location.pathname}>
-            <Suspense fallback={<PageLoadingFallback />}>
-              <AnimatedPresence routeKey={location.pathname} className="p-card">
-                <Outlet />
-              </AnimatedPresence>
-            </Suspense>
-          </RouteBoundary>
-        </main>
-      </div>
+      <AppShellBody
+        layoutReady={layoutReady}
+        pathname={location.pathname}
+        sidebarOverlayOpen={sidebarOverlayOpen}
+        onSidebarOverlayClose={closeSidebarOverlay}
+      />
       <NotificationDrawer
         open={notificationDrawerOpen}
         onClose={() => setNotificationDrawerOpen(false)}

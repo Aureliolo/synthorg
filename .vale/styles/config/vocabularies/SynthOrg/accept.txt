@@ -54,6 +54,7 @@ sqlfluff
 structlog
 synthorg
 tarjan
+tetris
 typeguard
 unparseable
 vale

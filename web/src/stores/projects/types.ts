@@ -7,12 +7,7 @@ import type {
 } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
-
-export interface BatchDeleteOutcome {
-  succeeded: number
-  failed: number
-  failedReasons: string[]
-}
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 
 export interface ProjectsState {
   // List page
@@ -59,7 +54,7 @@ export interface ProjectsState {
   deleteProject: (id: string) => Promise<boolean>
   batchDeleteProjects: (
     ids: readonly string[],
-  ) => Promise<BatchDeleteOutcome | false>
+  ) => Promise<BulkDeleteOutcome | false>
   setSearchQuery: (q: string) => void
   setStatusFilter: (s: ProjectStatus | null) => void
   setLeadFilter: (l: string | null) => void

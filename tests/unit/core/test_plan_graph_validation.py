@@ -11,9 +11,12 @@ from dataclasses import dataclass, field
 import pytest
 
 from synthorg.core.plan_validation import (
+    combine_graph_violations,
     describe_structureless_graph,
+    describe_undecidable_criteria,
     describe_undecidable_criterion,
     describe_unstated_reference,
+    describe_unstated_references,
 )
 
 pytestmark = pytest.mark.unit
@@ -247,3 +250,88 @@ class TestUndecidableCriterion:
         ]
 
         assert describe_undecidable_criterion(unit=first, others=others) is None
+
+
+class TestEveryViolationIsReportedAtOnce:
+    """One violation per attempt is a repair loop that cannot converge.
+
+    A live run watched a planning session burn all twelve of its turns: seven
+    submissions, seven rejections, each naming a different pair and all of them
+    the same rule. The session regenerates the whole plan on each rejection, so
+    resolving the one pair it was told about manufactures another elsewhere.
+    Telling it everything that is wrong is what lets one repair pass finish.
+    """
+
+    def test_every_unstated_reference_is_reported_not_just_the_first(self) -> None:
+        units = [
+            _Unit(
+                id="int",
+                title="Integrate game loop",
+                description="Tie the collision engine and the sprite renderer together",
+            ),
+            _Unit(
+                id="doc",
+                title="Write the manual",
+                description="Document the collision engine for players",
+            ),
+            _Unit(id="eng", title="Collision engine"),
+            _Unit(id="ren", title="Sprite renderer"),
+        ]
+
+        messages = describe_unstated_references(units)
+
+        assert len(messages) == 2
+        assert any("'int'" in message for message in messages)
+        assert any("'doc'" in message for message in messages)
+
+    def test_a_clean_plan_reports_nothing(self) -> None:
+        units = [
+            _Unit(id="eng", title="Collision engine"),
+            _Unit(id="ren", title="Sprite renderer"),
+        ]
+
+        assert describe_unstated_references(units) == ()
+        assert describe_undecidable_criteria(units) == ()
+
+    def test_every_undecidable_criterion_is_reported(self) -> None:
+        units = [
+            _Unit(
+                id="a",
+                title="Alpha",
+                acceptance_criteria=("engine.js passes its suite",),
+            ),
+            _Unit(
+                id="b",
+                title="Beta",
+                acceptance_criteria=("renderer.js draws the board",),
+            ),
+            _Unit(id="eng", title="Engine", expected_artifacts=("engine.js",)),
+            _Unit(id="ren", title="Renderer", expected_artifacts=("renderer.js",)),
+        ]
+
+        messages = describe_undecidable_criteria(units)
+
+        assert len(messages) == 2
+        assert any("'a'" in message for message in messages)
+        assert any("'b'" in message for message in messages)
+
+    def test_one_violation_reads_exactly_as_it_did_alone(self) -> None:
+        """The single-violation wording is what every existing caller asserts."""
+        message = "'int' names 'eng' and declares no dependency on it"
+
+        assert combine_graph_violations((message,)) == message
+
+    def test_no_violations_combine_to_nothing(self) -> None:
+        assert combine_graph_violations(()) is None
+
+    def test_several_violations_are_numbered_and_all_present(self) -> None:
+        combined = combine_graph_violations(("first problem", "second problem"))
+
+        assert combined is not None
+        assert "first problem" in combined
+        assert "second problem" in combined
+        assert "(1)" in combined
+        assert "(2)" in combined
+        # The planner has to know that fixing only the one it reads first is
+        # not enough, which is the whole failure this reporting exists to end.
+        assert "all" in combined

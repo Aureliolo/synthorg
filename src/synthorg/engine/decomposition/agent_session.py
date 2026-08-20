@@ -29,7 +29,10 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
-from synthorg.engine.decomposition.agent_session_brief import planning_brief
+from synthorg.engine.decomposition.agent_session_brief import (
+    PLANNING_SESSION_FENCES,
+    planning_brief,
+)
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import (
@@ -646,7 +649,12 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.SYSTEM,
-                content=render_agent_system_prompt(owner),
+                # The brief fences the workspace listing as well as the
+                # objective, so the directive has to name both tags or the
+                # model is never told to distrust the one an agent authored.
+                content=render_agent_system_prompt(
+                    owner, fences=PLANNING_SESSION_FENCES
+                ),
             ),
         )
         for message in await self._recall_digest(task, owner):

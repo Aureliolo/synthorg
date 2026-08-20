@@ -11,6 +11,7 @@ because approving then refuses the hire.
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.hr.errors import HiringError
 from synthorg.hr.hire_model_proposal import HireModelOption, HireModelProposal
 from synthorg.hr.hiring_candidates import build_hire_approval_item, hire_decision_brief
 from synthorg.hr.hiring_service import HiringService
@@ -161,10 +162,16 @@ class TestHireApprovalItemCarriesTheFork:
 class TestSubmittedApprovalRecordsTheRecommendation:
     """The request carries a binding, so approving without a pick still hires."""
 
-    async def test_no_catalogue_leaves_the_request_unbound_and_says_why(
+    async def test_no_catalogue_opens_no_approval_at_all(
         self,
         registry: AgentRegistryService,
     ) -> None:
+        """A card an operator can read but not act on is not a decision.
+
+        The brief still renders "NONE AVAILABLE" for a proposal with no
+        options, which is what an already-open card falls back to; what may
+        not happen is minting a fresh one nobody can approve.
+        """
         store = ApprovalStore()
         service = HiringService(registry=registry, approval_store=store)
         request = await service.create_request(
@@ -174,12 +181,10 @@ class TestSubmittedApprovalRecordsTheRecommendation:
             reason="Need capacity",
         )
         with_candidate = await service.generate_candidate(request)
-        submitted = await service.submit_for_approval(
-            with_candidate,
-            str(with_candidate.candidates[0].id),
-        )
-        assert submitted.bound_model_ref is None
-        assert submitted.approval_id is not None
-        item = await store.get(submitted.approval_id)
-        assert item is not None
-        assert "NONE AVAILABLE" in item.description
+
+        with pytest.raises(HiringError, match="Cannot open a hire"):
+            await service.submit_for_approval(
+                with_candidate,
+                str(with_candidate.candidates[0].id),
+            )
+        assert await store.list_items() == ()

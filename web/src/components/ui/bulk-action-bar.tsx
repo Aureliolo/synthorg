@@ -33,6 +33,14 @@ const BAR_VARIANTS = {
  * list view. Mirrors the approvals BatchActionBar layout so the dashboard
  * has a single idiom for bulk operations (Workflows, Projects, and any
  * future list page wire into the same primitive).
+ *
+ * `sticky`, not `fixed`. A fixed bar is out of normal flow, so it floated over
+ * whatever sat at the bottom of the page and covered the controls on the last
+ * row: the operator had to scroll past the end of the list to reach a row the
+ * bar itself had hidden. Sticky pins it to the viewport exactly the same way
+ * while still occupying its own height at the end of the container, so the
+ * space is reserved by construction rather than by a measured spacer that a
+ * change to the bar's own padding would silently invalidate.
  */
 export function BulkActionBar({
   selectedCount,
@@ -43,7 +51,7 @@ export function BulkActionBar({
 }: BulkActionBarProps) {
   return (
     <motion.div
-      className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-center px-4 pb-4"
+      className="sticky bottom-0 z-30 flex items-center justify-center px-4 pb-4"
       variants={BAR_VARIANTS}
       initial="initial"
       animate="animate"

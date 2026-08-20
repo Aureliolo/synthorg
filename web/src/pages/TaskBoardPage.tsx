@@ -1,14 +1,17 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
 import { KanbanSquare, Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BulkDeleteControls } from '@/components/ui/bulk-delete-controls'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { ToggleField } from '@/components/ui/toggle-field'
+import { useBulkSelection, type BulkSelection } from '@/hooks/use-bulk-selection'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
+import { useTasksStore } from '@/stores/tasks'
 import { formatNumber } from '@/utils/format'
 import { KANBAN_COLUMNS, type TaskBoardFilters } from '@/utils/tasks'
 import { TaskBoardSkeleton } from './tasks/TaskBoardSkeleton'
@@ -31,6 +34,17 @@ const TaskDependencyGraph = lazy(() =>
 export default function TaskBoardPage() {
   const ctrl = useTaskBoardController()
   const [objectiveOpen, setObjectiveOpen] = useState(false)
+  const visibleIds = useMemo(
+    () => ctrl.filteredTasks.map((task) => task.id),
+    [ctrl.filteredTasks],
+  )
+  const selection = useBulkSelection(
+    visibleIds,
+    useCallback(
+      (ids: readonly string[]) => useTasksStore.getState().batchDeleteTasks(ids),
+      [],
+    ),
+  )
   if (ctrl.data.loading && ctrl.data.tasks.length === 0) return <TaskBoardSkeleton />
 
   return (
@@ -68,8 +82,19 @@ export default function TaskBoardPage() {
         </ErrorBoundary>
       )}
       <ErrorBoundary level="section">
-        <TaskBoardContent ctrl={ctrl} />
+        <TaskBoardContent ctrl={ctrl} selection={selection} />
       </ErrorBoundary>
+      {/* The list view is where a selection is made: the board's cards are
+          drag handles, and a checkbox on one competes with the drag it is
+          sitting on. */}
+      {ctrl.viewMode === 'list' && (
+        <BulkDeleteControls
+          selection={selection}
+          noun={{ one: 'Task', many: 'tasks' }}
+          description="This permanently removes the selected tasks and retires the approvals parked against them. A task a plan still names as its objective is refused and stays; the rest go. This action cannot be undone."
+          ariaLabel="Task bulk actions"
+        />
+      )}
       <TaskDetailPanelOverlay ctrl={ctrl} />
       <TaskCreateDialog
         open={ctrl.createOpen}
@@ -210,11 +235,19 @@ function TaskBoardKanbanEmptyState({ ctrl }: TaskBoardCtrlProps) {
   return props !== null ? <EmptyState {...props} /> : null
 }
 
-function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
+function TaskBoardContent({
+  ctrl,
+  selection,
+}: TaskBoardCtrlProps & { selection: BulkSelection }) {
   const boardPolicy = ctrl.boardPolicy
   if (ctrl.viewMode === 'list') {
     return (
-      <TaskListView tasks={ctrl.filteredTasks} onSelectTask={ctrl.handleSelectTask} />
+      <TaskListView
+        tasks={ctrl.filteredTasks}
+        onSelectTask={ctrl.handleSelectTask}
+        onToggleSelect={selection.toggle}
+        selectedIds={selection.visibleSelected}
+      />
     )
   }
   if (ctrl.filteredTasks.length === 0) {

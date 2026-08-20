@@ -1,6 +1,6 @@
 """Direct unit tests for infrastructure facade services.
 
-Covers :class:`ProjectFacadeService`, :class:`RequestsFacadeService`,
+Covers :class:`RequestsFacadeService`,
 :class:`TemplatePackFacadeService`, :class:`SetupFacadeService`, and
 :class:`SimulationFacadeService` (happy-path + error-path per method).
 
@@ -21,7 +21,6 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.idempotency import IdempotencyService
 from synthorg.infrastructure.services import (
-    ProjectFacadeService,
     RequestsFacadeService,
     SetupFacadeService,
     SimulationFacadeService,
@@ -35,113 +34,6 @@ from synthorg.persistence.idempotency_protocol import IdempotencyRepository
 from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
-
-
-# ── ProjectFacadeService ───────────────────────────────────────────
-
-
-class TestProjectFacadeService:
-    async def test_create_then_get_round_trip(self) -> None:
-        service = ProjectFacadeService()
-        created = await service.create_project(
-            name=NotBlankStr("alpha"),
-            description=NotBlankStr("alpha project"),
-            actor_id=NotBlankStr("alice"),
-        )
-        fetched = await service.get_project(NotBlankStr(str(created.id)))
-        assert fetched is not None
-        assert fetched.name == "alpha"
-
-    async def test_list_returns_newest_first(self) -> None:
-        service = ProjectFacadeService()
-        first = await service.create_project(
-            name=NotBlankStr("first"),
-            description=NotBlankStr("d1"),
-            actor_id=NotBlankStr("alice"),
-        )
-        second = await service.create_project(
-            name=NotBlankStr("second"),
-            description=NotBlankStr("d2"),
-            actor_id=NotBlankStr("alice"),
-        )
-        page, total = await service.list_projects()
-        assert total == 2
-        assert page[0].id == second.id
-        assert page[1].id == first.id
-
-    async def test_update_patches_fields(self) -> None:
-        service = ProjectFacadeService()
-        created = await service.create_project(
-            name=NotBlankStr("original"),
-            description=NotBlankStr("d"),
-            actor_id=NotBlankStr("alice"),
-        )
-        updated = await service.update_project(
-            project_id=NotBlankStr(str(created.id)),
-            actor_id=NotBlankStr("bob"),
-            name=NotBlankStr("patched"),
-            metadata={"stage": "beta"},
-        )
-        assert updated is not None
-        assert updated.name == "patched"
-        assert updated.metadata == {"stage": "beta"}
-
-    async def test_update_invalid_uuid_returns_none(self) -> None:
-        service = ProjectFacadeService()
-        assert (
-            await service.update_project(
-                project_id=NotBlankStr("bad"),
-                actor_id=NotBlankStr("alice"),
-            )
-            is None
-        )
-
-    async def test_update_missing_returns_none(self) -> None:
-        service = ProjectFacadeService()
-        assert (
-            await service.update_project(
-                project_id=NotBlankStr(str(uuid4())),
-                actor_id=NotBlankStr("alice"),
-            )
-            is None
-        )
-
-    async def test_delete_present(self) -> None:
-        service = ProjectFacadeService()
-        created = await service.create_project(
-            name=NotBlankStr("doomed"),
-            description=NotBlankStr("d"),
-            actor_id=NotBlankStr("alice"),
-        )
-        removed = await service.delete_project(
-            project_id=NotBlankStr(str(created.id)),
-            actor_id=NotBlankStr("alice"),
-            reason=NotBlankStr("cleanup"),
-        )
-        assert removed is True
-        assert await service.get_project(NotBlankStr(str(created.id))) is None
-
-    async def test_delete_absent_returns_false(self) -> None:
-        service = ProjectFacadeService()
-        removed = await service.delete_project(
-            project_id=NotBlankStr(str(uuid4())),
-            actor_id=NotBlankStr("alice"),
-            reason=NotBlankStr("cleanup"),
-        )
-        assert removed is False
-
-    async def test_delete_invalid_uuid_returns_false(self) -> None:
-        service = ProjectFacadeService()
-        removed = await service.delete_project(
-            project_id=NotBlankStr("bad"),
-            actor_id=NotBlankStr("alice"),
-            reason=NotBlankStr("cleanup"),
-        )
-        assert removed is False
-
-    async def test_get_invalid_uuid_returns_none(self) -> None:
-        service = ProjectFacadeService()
-        assert await service.get_project(NotBlankStr("bad")) is None
 
 
 # ── RequestsFacadeService ──────────────────────────────────────────

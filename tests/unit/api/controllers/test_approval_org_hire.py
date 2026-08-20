@@ -26,6 +26,7 @@ from tests._shared import as_uuid, make_app_state, sid
 from tests._shared.model_binding import (
     TEST_MODEL_ID,
     TEST_PROVIDER,
+    MutableProviderCatalogue,
     provider_catalogue,
 )
 
@@ -60,6 +61,7 @@ async def _seed(
     *,
     catalogue_models: Sequence[str] | None = (TEST_MODEL_ID,),
     decision_reason: str | None = None,
+    catalogue: MutableProviderCatalogue | None = None,
 ) -> tuple[AppState, HiringService, AgentRegistryService, HiringRequest, str]:
     """Stand up an approvals state around one submitted hiring request.
 
@@ -72,6 +74,10 @@ async def _seed(
             the approval proposes from. ``None`` for an org with no provider
             catalogue at all, where nothing is proposable.
         decision_reason: Reason recorded on the approval item.
+        catalogue: A catalogue the caller can change after seeding, for the
+            interval between approving a hire and finishing it. Approval is a
+            human step, so an arbitrary time passes and the operator may have
+            deleted the very connection the pair names.
 
     Returns:
         The app state, the hiring service, the registry, the submitted
@@ -83,9 +89,13 @@ async def _seed(
         registry=registry,
         approval_store=store,
         provider_catalogue=(
-            provider_catalogue(catalogue_models)
-            if catalogue_models is not None
-            else None
+            catalogue
+            if catalogue is not None
+            else (
+                provider_catalogue(catalogue_models)
+                if catalogue_models is not None
+                else None
+            )
         ),
     )
     request = await hiring.create_request(
@@ -210,19 +220,28 @@ class TestOrgHireResume:
 
         assert await registry.list_active() == ()
 
-    async def test_an_unproposable_pair_refuses_rather_than_inventing_one(
+    async def test_a_pair_the_catalogue_no_longer_offers_refuses(
         self,
     ) -> None:
+        """Approving is a human step, and the catalogue is live underneath it.
+
+        Submission no longer opens a hire nothing could be proposed for, so
+        the way a pair goes missing is the operator dropping the connection
+        between approving and finishing.
+        """
+        catalogue = MutableProviderCatalogue()
         state, hiring, registry, submitted, approval_id = await _seed(
-            catalogue_models=None
+            catalogue=catalogue
         )
-        with pytest.raises(HiringError, match="no model binding"):
+        catalogue.delete_connection()
+
+        with pytest.raises(HiringError, match="no longer configured"):
             await try_org_hire_resume(
                 state, approval_id, approved=True, decided_by=_DECIDER
             )
         assert await registry.list_active() == ()
         # The decision itself stands, so the reconciler can finish the hire
-        # once the operator configures a model. It is not silently re-openable.
+        # once the operator restores the connection. Not silently re-openable.
         assert _status(hiring, submitted) is HiringRequestStatus.APPROVED
 
     async def test_a_retry_after_a_failed_instantiation_settles(self) -> None:
@@ -236,9 +255,11 @@ class TestOrgHireResume:
         The decision landing and the agent existing are separately owned, and
         this is the first of the two.
         """
+        catalogue = MutableProviderCatalogue()
         state, hiring, registry, submitted, approval_id = await _seed(
-            catalogue_models=None
+            catalogue=catalogue
         )
+        catalogue.delete_connection()
         with pytest.raises(HiringError):
             await try_org_hire_resume(
                 state, approval_id, approved=True, decided_by=_DECIDER
@@ -250,6 +271,6 @@ class TestOrgHireResume:
 
         assert handled is True
         # Settling the approval must not invent the agent the hire still owes:
-        # the reconciler instantiates it once a model is configured.
+        # the reconciler instantiates it once the connection is back.
         assert await registry.list_active() == ()
         assert _status(hiring, submitted) is HiringRequestStatus.APPROVED

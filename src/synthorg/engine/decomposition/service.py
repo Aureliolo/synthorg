@@ -21,7 +21,10 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.decomposition.plan_context import with_plan_context
-from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.protocol import (
+    DecompositionStrategy,
+    WorkspaceInventory,
+)
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
@@ -49,7 +52,13 @@ class DecompositionService:
     DAG validator, and task factory to produce executable subtasks.
     """
 
-    __slots__ = ("_classifier", "_config_resolver", "_stakes_assessor", "_strategy")
+    __slots__ = (
+        "_classifier",
+        "_config_resolver",
+        "_stakes_assessor",
+        "_strategy",
+        "_workspace_inventory",
+    )
 
     def __init__(
         self,
@@ -58,11 +67,36 @@ class DecompositionService:
         stakes_assessor: StakesAssessor | None = None,
         *,
         config_resolver: ConfigResolverProtocol | None = None,
+        workspace_inventory: WorkspaceInventory | None = None,
     ) -> None:
         self._strategy = strategy
         self._classifier = classifier
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
         self._config_resolver = config_resolver
+        self._workspace_inventory = workspace_inventory
+
+    async def _grounded(
+        self, task: Task, context: DecompositionContext
+    ) -> DecompositionContext:
+        """Return *context* carrying what the project's workspace holds.
+
+        Resolved here, at the one seam every decomposition path comes through,
+        rather than at each construction site: two of the five build their
+        context deep inside the engine with no access to a workspace root, and
+        the charter route is one of them, so a per-caller answer leaves the
+        main intake path ungrounded.
+
+        A caller that already knows the inventory keeps its own answer, which
+        is what lets a harness plan against a workspace no disk holds.
+
+        Returns:
+            The context, with ``workspace_summary`` filled when an inventory is
+            wired and the caller did not already supply one.
+        """
+        if self._workspace_inventory is None or context.workspace_summary is not None:
+            return context
+        summary = await self._workspace_inventory.describe_inventory(task.project)
+        return context.model_copy(update={"workspace_summary": summary})
 
     async def decompose_task(
         self,
@@ -105,7 +139,9 @@ class DecompositionService:
             # One ceiling at the one place every caller comes through, so the
             # answer cannot differ by entry point.
             async with asyncio.timeout(await self._timeout_seconds()):
-                return await self._do_decompose(task, context)
+                return await self._do_decompose(
+                    task, await self._grounded(task, context)
+                )
         except TimeoutError as exc:
             msg = "Decomposition outran its wall-clock ceiling"
             logger.warning(

@@ -201,9 +201,15 @@ def build_conversational_actor(
         msg = "chief_of_staff.direct_mcp_enabled is off"
         raise SubsystemDeclinedError(msg)
     if not engine.has_mcp_self_consumer:
+        # Names the OTHER half's setting. This opt-in is one of a pair and the
+        # bridge ships off, so an operator who flips only this one is left
+        # reading that an internal component is missing, with nothing in the
+        # sentence they can act on.
         msg = (
             "direct MCP acting is on but the boot engine has no MCP "
-            "self-consumer, so there are no tools for an agent to act with"
+            "self-consumer, so there are no tools for an agent to act with. "
+            "Set security.mcp_self_consumer_mode to 'trust_scoped' to open "
+            "the bridge; it ships disabled."
         )
         raise SubsystemDeclinedError(msg)
     if not engine.has_security_governance:
@@ -263,7 +269,9 @@ def build_operator_console(
     if not engine.has_mcp_self_consumer:
         msg = (
             "the operator console is on but the boot engine has no MCP "
-            "self-consumer, so there are no control-plane tools to call"
+            "self-consumer, so there are no control-plane tools to call. "
+            "Set security.mcp_self_consumer_mode to 'trust_scoped' to open "
+            "the bridge; it ships disabled."
         )
         raise SubsystemDeclinedError(msg)
     if not engine.has_security_governance:

@@ -10,6 +10,7 @@ import type {
   UpdateTaskRequest,
 } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 
 export interface TasksState {
   // Data
@@ -44,6 +45,14 @@ export interface TasksState {
     data: CancelTaskRequest,
   ) => Promise<DashboardTask | null>
   deleteTask: (taskId: string) => Promise<boolean>
+  /**
+   * Delete a selection in one request.
+   *
+   * `false` means the call settled nothing: either the request itself failed,
+   * or it returned with every row refused. A partial result is an outcome, not
+   * the sentinel, and names the rows that went.
+   */
+  batchDeleteTasks: (ids: readonly string[]) => Promise<BulkDeleteOutcome | false>
 
   // Real-time
   handleWsEvent: (event: WsEvent) => void

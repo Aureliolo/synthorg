@@ -19,6 +19,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.meta.charter._charter_output_guard import approved_decision
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.models import InterviewDecision
 from synthorg.meta.charter.prompts import (
@@ -54,15 +55,17 @@ _NO_PROJECT_HINT: str = "No existing project was supplied; propose a new project
 _INTERVIEW_ATTEMPTS: Final[int] = 2
 
 #: What the repair turn tells the model. Its own output goes back verbatim
-#: because the shape of the mistake is the thing to correct, and the reason
-#: is the validator's, so a caller never has to guess which field was wrong.
+#: because the mistake is in what it sent, and the reason comes from whichever
+#: check refused it, so a caller never has to guess which field was wrong. It
+#: asks for a corrected reply rather than the same content re-shaped: a reply
+#: refused on its wording has to change, and telling the model to re-send what
+#: it wrote would get the same characters back.
 _REPAIR_INSTRUCTION: Final[str] = (
-    "Your previous reply did not match the required structure and was "
-    "rejected:\n{refusal}\n\nHere is what you sent:\n{raw}\n\nSend the same "
-    "content again as a single JSON object matching the schema exactly. Every "
-    "required field must be present at the top level, and no field outside "
-    "the schema may appear. Nest the charter fields inside the charter object "
-    "rather than at the top level."
+    "Your previous reply was rejected:\n{refusal}\n\nHere is what you sent:\n"
+    "{raw}\n\nSend a corrected reply as a single JSON object matching the "
+    "schema exactly. Every required field must be present at the top level, "
+    "and no field outside the schema may appear. Nest the charter fields "
+    "inside the charter object rather than at the top level."
 )
 
 
@@ -92,7 +95,7 @@ def _decide(raw: str, *, attempt: int) -> tuple[InterviewDecision | None, str]:
         )
         return None, "The reply was not valid JSON."
     try:
-        return InterviewDecision.model_validate(parsed), ""
+        decision = InterviewDecision.model_validate(parsed)
     except ValidationError as exc:
         logger.warning(
             CHARTER_INTERVIEW_RESPONSE_INVALID,
@@ -102,6 +105,15 @@ def _decide(raw: str, *, attempt: int) -> tuple[InterviewDecision | None, str]:
             error=safe_error_description(exc),
         )
         return None, safe_error_description(exc)
+    approved, refusal = approved_decision(decision)
+    if approved is None:
+        logger.warning(
+            CHARTER_INTERVIEW_RESPONSE_INVALID,
+            detail="output_style_rejected",
+            attempt=attempt,
+        )
+        return None, refusal
+    return approved, ""
 
 
 def _repair_turn(raw: str, refusal: str) -> list[ChatMessage]:

@@ -8,6 +8,7 @@ import { useProvidersStore } from '@/stores/providers'
 import { useHealthStore } from '@/stores/health'
 import type { DerivedSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
+import type { SubsystemReport } from '@/api/types/subsystems'
 
 const INITIAL_PROVIDERS = useProvidersStore.getState()
 const INITIAL_HEALTH = useHealthStore.getState()
@@ -58,9 +59,15 @@ const LOAD_STATE: LoadState = {
   fetchedAt: FETCHED_AT,
 }
 
+interface ContentOverrides {
+  subsystems?: readonly SubsystemReport[]
+  subsystemsError?: string | null
+}
+
 function renderContent(
   overrides: Partial<DerivedSubsystemStates> = {},
   onDismiss: () => void = () => undefined,
+  { subsystems = [], subsystemsError = null }: ContentOverrides = {},
 ) {
   const element = (
     <Dialog.Root open>
@@ -69,6 +76,8 @@ function renderContent(
           <HealthPopoverContent
             loadState={LOAD_STATE}
             states={{ ...HEALTHY_STATES, ...overrides }}
+            subsystems={subsystems}
+            subsystemsError={subsystemsError}
             fetchedAtLabel="10:00 (just now)"
             onRefresh={() => undefined}
             onDismiss={onDismiss}
@@ -264,5 +273,54 @@ describe('HealthPopoverContent remediation links', () => {
     const link = screen.getByRole('link', { name: 'Choose an embedding model' })
     expect(link.tagName).toBe('A')
     expect(link).not.toHaveAttribute('role')
+  })
+})
+
+describe('the declared-subsystem list', () => {
+  const REPORTS: readonly SubsystemReport[] = [
+    { name: 'charter_engine', phase: 'active', detail: null, waiting_on: [] },
+    {
+      name: 'conversational_actor',
+      phase: 'waiting',
+      detail: null,
+      waiting_on: ['mcp_self_consumer'],
+    },
+  ]
+
+  beforeEach(() => {
+    useProvidersStore.setState(INITIAL_PROVIDERS, true)
+    useHealthStore.setState(INITIAL_HEALTH, true)
+  })
+
+  it('lists a subsystem that IS up, not only the ones that are not', () => {
+    // The blockers panel answers "what is stopping the org", so it lists only
+    // what is not up. Which subsystems this build declared at all was readable
+    // nowhere but `GET /subsystems`, and an operator could not tell one that
+    // activated from one that was never wired.
+    renderContent({}, () => undefined, { subsystems: REPORTS })
+
+    expect(screen.getByText('Charter Engine')).toBeInTheDocument()
+    expect(screen.getByText('active')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 active')).toBeInTheDocument()
+  })
+
+  it('names what a waiting subsystem is waiting on', () => {
+    renderContent({}, () => undefined, { subsystems: REPORTS })
+
+    expect(screen.getByText('waiting on Mcp Self Consumer')).toBeInTheDocument()
+  })
+
+  it('does not read a failed list as an org with no subsystems', () => {
+    // An empty list after a failed read is the more confident of the two wrong
+    // answers, so it says which happened.
+    renderContent({}, () => undefined, {
+      subsystems: [],
+      subsystemsError: 'Request failed with status code 503',
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read the subsystem list',
+    )
+    expect(screen.queryByText(/of 0 active/)).toBeNull()
   })
 })

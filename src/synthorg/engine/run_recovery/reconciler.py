@@ -38,6 +38,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
@@ -53,6 +54,7 @@ from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.initiative.tail_stages import is_integration_task
+from synthorg.engine.run_recovery.orphan_approvals import retire_orphaned_approvals
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger, safe_error_description
@@ -168,6 +170,8 @@ class RunRecoveryReport(BaseModel):
         failed: Unfillable shells failed with a reason.
         skipped: Plans left alone: parked on a human, already being driven,
             or handed to a driver that declined.
+        approvals_retired: Pending approvals closed because the task they
+            decide about no longer exists.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -179,6 +183,9 @@ class RunRecoveryReport(BaseModel):
     rejudged: int = Field(ge=0, description="Reviews asked for again")
     failed: int = Field(ge=0, description="Unfillable shells failed")
     skipped: int = Field(ge=0, description="Plans deliberately left alone")
+    approvals_retired: int = Field(
+        default=0, ge=0, description="Approvals closed with no subject left"
+    )
 
 
 class RunRecoveryReconciler:
@@ -208,6 +215,7 @@ class RunRecoveryReconciler:
     """
 
     __slots__ = (
+        "_approval_store",
         "_defers_to_queue",
         "_drive_plan",
         "_ledger",
@@ -238,6 +246,32 @@ class RunRecoveryReconciler:
         self._rejudge_task = rejudge_task
         self._open_decisions = open_decisions
         self._defers_to_queue = defers_to_queue
+        self._approval_store: ApprovalStoreProtocol | None = None
+
+    def set_approval_store(self, store: ApprovalStoreProtocol) -> None:
+        """Adopt the queue whose orphaned questions each pass closes.
+
+        A setter rather than a constructor argument because this class is
+        already at its approved argument count, and widening the signature
+        would cost a fresh approval for a dependency the sweep can do without:
+        unset, the pass skips the orphan check rather than failing.
+
+        Args:
+            store: The approval store to sweep.
+        """
+        self._approval_store = store
+
+    async def _retire_orphaned_approvals(self) -> int:
+        """Close pending approvals whose task has gone.
+
+        Returns:
+            How many this pass closed, or zero when no store is wired.
+        """
+        if self._approval_store is None:
+            return 0
+        return await retire_orphaned_approvals(
+            store=self._approval_store, persistence=self._persistence
+        )
 
     async def reconcile(self, *, trigger: str) -> RunRecoveryReport:
         """Run one pass over every unfinished plan.
@@ -277,6 +311,10 @@ class RunRecoveryReconciler:
             rejudged += outcome.rejudged
             failed += outcome.failed
             skipped += outcome.skipped
+        # Not per plan: an orphaned approval names a task whose plan may itself
+        # be gone, so it belongs to no plan the loop above walks. That is
+        # exactly the case nothing else covers.
+        approvals_retired = await self._retire_orphaned_approvals()
         report = RunRecoveryReport(
             plans_seen=len(plans),
             resumed=resumed,
@@ -285,8 +323,11 @@ class RunRecoveryReconciler:
             rejudged=rejudged,
             failed=failed,
             skipped=skipped,
+            approvals_retired=approvals_retired,
         )
-        acted = resumed or recomputed or requeued or rejudged or failed
+        acted = (
+            resumed or recomputed or requeued or rejudged or failed or approvals_retired
+        )
         emit = logger.info if acted else logger.debug
         emit(
             RUN_RECOVERY_SWEEP_COMPLETE,
@@ -298,6 +339,7 @@ class RunRecoveryReconciler:
             rejudged=report.rejudged,
             failed=report.failed,
             skipped=report.skipped,
+            approvals_retired=report.approvals_retired,
         )
         return report
 

@@ -107,10 +107,23 @@ const OK_PAYLOAD = {
   uptime_seconds: 847_200,
 }
 
+const DECLARED_SUBSYSTEMS = [
+  { name: 'charter_engine', phase: 'active' as const, detail: null, waiting_on: [] },
+  { name: 'initiative_evaluate', phase: 'active' as const, detail: null, waiting_on: [] },
+  {
+    name: 'conversational_actor',
+    phase: 'waiting' as const,
+    detail: null,
+    waiting_on: ['mcp_self_consumer'],
+  },
+]
+
 export const Default: Story = {
   args: {
     loadState: { state: 'ok', data: OK_PAYLOAD, fetchedAt: STORY_FETCHED_AT },
     states: okStates,
+    subsystems: DECLARED_SUBSYSTEMS,
+    subsystemsError: null,
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
     onDismiss: () => undefined,
@@ -166,6 +179,8 @@ export const Loading: Story = {
   args: {
     loadState: { state: 'loading', previous: null },
     states: loadingStates,
+    subsystems: [],
+    subsystemsError: null,
     fetchedAtLabel: null,
     onRefresh: () => undefined,
     onDismiss: () => undefined,
@@ -180,6 +195,8 @@ export const LoadError: Story = {
       fetchedAt: STORY_FETCHED_AT,
     },
     states: { ...okStates, apiState: 'down', withWebSocketState: 'down', backendOnlyState: 'down' },
+    subsystems: [],
+    subsystemsError: 'Request failed with status code 503',
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
     onDismiss: () => undefined,

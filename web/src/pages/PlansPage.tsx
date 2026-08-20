@@ -1,15 +1,18 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { ListChecks } from 'lucide-react'
 
 import type { Plan, PlanStatus } from '@/api/types/plans'
+import { BulkDeleteControls } from '@/components/ui/bulk-delete-controls'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { judgedRoles, useOrgRoster } from '@/hooks/useOrgRoster'
 import { usePlansData } from '@/hooks/usePlansData'
+import { usePlansStore } from '@/stores/plans'
 
 import { PlanListItem } from './plans/PlanListItem'
 import { PlansSkeleton } from './plans/PlansSkeleton'
@@ -57,6 +60,21 @@ export default function PlansPage() {
   const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
     useListPagination({ items: ordered, namespace: 'plans' })
 
+  // The rendered page, not the whole ordered set: selection is held against
+  // what is on screen, so feeding it every match would let the count and the
+  // confirm dialog cover rows on other pages the operator cannot see.
+  const visibleIds = useMemo(
+    () => paginatedItems.map((plan) => plan.id),
+    [paginatedItems],
+  )
+  const selection = useBulkSelection(
+    visibleIds,
+    useCallback(
+      (ids: readonly string[]) => usePlansStore.getState().batchDeletePlans(ids),
+      [],
+    ),
+  )
+
   if (loading && totalPlans === 0) {
     return <PlansSkeleton />
   }
@@ -94,7 +112,13 @@ export default function PlansPage() {
         <>
           <div className="flex flex-col gap-2">
             {paginatedItems.map((plan) => (
-              <PlanListItem key={plan.id} plan={plan} roster={roster} />
+              <PlanListItem
+                key={plan.id}
+                plan={plan}
+                roster={roster}
+                onToggleSelect={selection.toggle}
+                selected={selection.visibleSelected.has(plan.id)}
+              />
             ))}
           </div>
           <Pagination
@@ -103,6 +127,12 @@ export default function PlansPage() {
             total={totalItems}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
+          />
+          <BulkDeleteControls
+            selection={selection}
+            noun={{ one: 'Plan', many: 'plans' }}
+            description="This permanently removes the selected plans and retires the approvals parked against them. A plan whose items are still building is refused and stays; the rest go. This action cannot be undone."
+            ariaLabel="Plan bulk actions"
           />
         </>
       )}

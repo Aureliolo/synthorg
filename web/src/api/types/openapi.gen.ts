@@ -3752,6 +3752,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/bulk-delete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** BulkDeletePlans */
+        readonly post: operations["ApiV1PlansBulkDeleteBulkDeletePlans"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects": {
         readonly parameters: {
             readonly query?: never;
@@ -4054,6 +4071,23 @@ export type paths = {
         readonly get: operations["ApiV1ProjectsProjectIdProgressGetProjectProgress"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/bulk-delete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** BulkDeleteProjects */
+        readonly post: operations["ApiV1ProjectsBulkDeleteBulkDeleteProjects"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6042,6 +6076,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tasks/bulk-delete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** BulkDeleteTasks */
+        readonly post: operations["ApiV1TasksBulkDeleteBulkDeleteTasks"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/template-packs": {
         readonly parameters: {
             readonly query?: never;
@@ -7214,6 +7265,14 @@ export type components = {
         /** ApiResponse[BudgetConfig] */
         readonly ApiResponse_BudgetConfig_: {
             readonly data: components["schemas"]["BudgetConfig"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[BulkDeleteResult] */
+        readonly ApiResponse_BulkDeleteResult_: {
+            readonly data: components["schemas"]["BulkDeleteResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9397,6 +9456,31 @@ export type components = {
              */
             readonly deadline: string | null;
             readonly time_horizon: string | null;
+        };
+        /** BulkDeleteFailure */
+        readonly BulkDeleteFailure: {
+            /** @description Identifier of the row that remains. */
+            readonly id: string;
+            /** @description Why this row could not be deleted. */
+            readonly reason: string;
+        };
+        /** BulkDeleteRequest */
+        readonly BulkDeleteRequest: {
+            /** @description Identifiers of the rows to delete. */
+            readonly ids: readonly string[];
+        };
+        /** BulkDeleteResult */
+        readonly BulkDeleteResult: {
+            /**
+             * @description Identifiers that were removed.
+             * @default []
+             */
+            readonly deleted: readonly string[];
+            /**
+             * @description Rows that remain, each with the reason it does.
+             * @default []
+             */
+            readonly failed: readonly components["schemas"]["BulkDeleteFailure"][];
         };
         /** BulletListBlock */
         readonly BulletListBlock: {
@@ -29177,6 +29261,37 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1PlansBulkDeleteBulkDeletePlans: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_BulkDeleteResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ProjectsListProjects: {
         readonly parameters: {
             readonly query?: {
@@ -29852,6 +29967,37 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsBulkDeleteBulkDeleteProjects: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_BulkDeleteResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -34088,6 +34234,37 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1TasksBulkDeleteBulkDeleteTasks: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_BulkDeleteResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

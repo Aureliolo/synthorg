@@ -124,6 +124,13 @@ rulesets:
           required_reviewers: []
           require_code_owner_review: true
           require_last_push_approval: true
+          # An unattributed change is one GitHub cannot tie to a known account,
+          # which on this repo means it did not come from the owner it claims
+          # to. Declared rather than left to the default: the live ruleset
+          # already carries it, and an undeclared field is drift whichever way
+          # it points, so the spec states the posture instead of inheriting
+          # whatever GitHub ships next.
+          require_extra_approval_for_unattributed_changes: true
           required_review_thread_resolution: false
           allowed_merge_methods:
             - merge

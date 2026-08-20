@@ -238,10 +238,6 @@ class ProjectsCreateArgs(_ArgsBase):
     description: NotBlankStr | None = Field(
         default=None, description="Project description"
     )
-    metadata: dict[str, str] | None = Field(
-        default=None,
-        description="Free-form project metadata",
-    )
 
 
 class ProjectsUpdateArgs(_ProjectIdArgs):
@@ -251,10 +247,6 @@ class ProjectsUpdateArgs(_ProjectIdArgs):
     description: NotBlankStr | None = Field(
         default=None,
         description="New description",
-    )
-    metadata: dict[str, str] | None = Field(
-        default=None,
-        description="Free-form project metadata",
     )
 
 

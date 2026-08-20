@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 
 import type {
+  bulkDeletePlans,
   editPlan,
   getPlan,
   getPlanEvaluation,
@@ -123,6 +124,12 @@ export const plansHandlers = [
     )
   }),
   http.delete('/api/v1/plans/:id', () => HttpResponse.json(voidSuccess())),
+  http.post('/api/v1/plans/bulk-delete', async ({ request }) => {
+    const body = (await request.json()) as { ids: string[] }
+    return HttpResponse.json(
+      successFor<typeof bulkDeletePlans>({ deleted: body.ids, failed: [] }),
+    )
+  }),
   http.post('/api/v1/plans/:id/replan', async ({ request }) => {
     // Validate rather than cast: a null body would throw on property access,
     // and a bare string would satisfy a `.length` check the backend rejects.

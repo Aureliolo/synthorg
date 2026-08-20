@@ -127,7 +127,6 @@ class TestConstructionWiringPopulatesSlices:
         facades = built_app_state.slice(FacadesStateSlice)
         assert facades.review_facade_service is not None
         assert facades.setup_facade_service is not None
-        assert facades.project_facade_service is not None
         assert facades.requests_facade_service is not None
         assert facades.template_pack_facade_service is not None
         assert facades.client_facade_service is not None

@@ -2794,6 +2794,11 @@ CREATE TABLE hiring_requests (
     payload TEXT NOT NULL CHECK (JSON_VALID(payload))
 );
 CREATE INDEX idx_hiring_requests_status ON hiring_requests (status);
+-- One hire under way per role, structurally. The staffing sweep checks first,
+-- but it checks an in-memory map, which holds only while one process owns it.
+CREATE UNIQUE INDEX idx_hiring_requests_one_open_per_role
+ON hiring_requests (role)
+WHERE status IN ('pending', 'approved');
 CREATE TABLE agent_contributions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),

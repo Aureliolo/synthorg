@@ -25,10 +25,8 @@ from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
 from synthorg.hr.activity import ActivityEvent, CareerEvent
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
-from synthorg.infrastructure.services._registries import _ProjectRecord
 from synthorg.meta.reports.models import Report
 from synthorg.providers.models import ZERO_TOKEN_USAGE, CompletionResponse
-from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -147,18 +145,3 @@ def test_adaptation_proposal_changes_deepcopied() -> None:
     )
     src["prompt"] = {"tone": "tampered"}
     assert proposal.changes == {"prompt": {"tone": "warm"}}
-
-
-def test_project_record_metadata_is_isolated_and_read_only() -> None:
-    src = {"team": "platform"}
-    record = _ProjectRecord(
-        id=as_uuid("proj"),
-        name="proj",
-        description="",
-        created_at=datetime.now(UTC),
-        metadata=src,
-    )
-    src["team"] = "tampered"
-    assert record.metadata["team"] == "platform"
-    with pytest.raises(TypeError):
-        record.metadata["team"] = "blocked"  # type: ignore[index]

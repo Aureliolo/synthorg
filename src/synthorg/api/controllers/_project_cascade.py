@@ -30,6 +30,7 @@ from synthorg.api.state import AppState
 from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -37,6 +38,8 @@ from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
+from synthorg.engine.workspace.discard import discard_project_workspace
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_PROJECT_CASCADE_COMPLETED,
@@ -116,6 +119,14 @@ async def _supersede_plan(
                 reason=_CASCADE_REASON,
                 failure_reason=failure_reason,
             )
+        except RecordNotFoundError:
+            # The row went between the paginated read that produced it and this
+            # write, which is what two concurrent project deletes do to each
+            # other. Same verdict as a conflict whose refresh finds nothing:
+            # the winner already resolved it and nothing is left orphaned. The
+            # alternative is a bare "plan not found" answering an operator who
+            # asked to delete a project.
+            return
         except VersionConflictError:
             refreshed = await repository.get(NotBlankStr(str(current.id)))
             if refreshed is None or refreshed.status in TERMINAL_STATUSES:
@@ -292,6 +303,20 @@ async def cascade_supersede_children(
         app_state, task_engine, project_id, requested_by=requested_by
     )
 
+    # The workspace row cascades on the foreign key; the tree on disk does not,
+    # and a live run finished holding 24 of them, two belonging to projects
+    # deleted during that same run. They are not merely wasted space: planning
+    # recall spans every project the org has run, so a tree that outlives its
+    # project stays available as evidence for a plan that should never see it.
+    #
+    # Removed HERE rather than after the row delete so a removal that fails
+    # takes the delete down with it, leaving a project the operator can retry.
+    # The reverse order would report success over files that are still there.
+    workspace_removed = await discard_project_workspace(
+        base_root=agent_workspace_root_of(app_state),
+        project_id=project_id,
+    )
+
     # The one record of how much a delete actually took with it. Without it a
     # cascade over dozens of children is indistinguishable from one over none,
     # and the delete that follows looks like the whole operation.
@@ -302,6 +327,7 @@ async def cascade_supersede_children(
         tasks_cancelled=tasks_cancelled,
         plans_deleted=plans_deleted,
         tasks_deleted=tasks_deleted,
+        workspace_removed=workspace_removed,
         requested_by=requested_by,
     )
 

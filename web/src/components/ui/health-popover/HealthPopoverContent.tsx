@@ -26,7 +26,9 @@ import { ROUTES } from '@/router/routes'
 import { Button } from '@/components/ui/button'
 import { HealthStatusIcon } from './HealthStatusIcon'
 import { HealthStatusRow } from './HealthStatusRow'
+import { SubsystemPhaseList } from './SubsystemPhaseList'
 import type { LoadState } from '@/stores/health'
+import type { SubsystemReport } from '@/api/types/subsystems'
 import {
   STATE_META,
   formatRelative,
@@ -345,6 +347,10 @@ function HealthSubsystemGrid({
 export interface HealthPopoverContentProps {
   loadState: LoadState
   states: DerivedSubsystemStates
+  /** Every declared subsystem, for the phase list below the cards. */
+  subsystems: readonly SubsystemReport[]
+  /** Why the subsystem list could not be read, when it could not. */
+  subsystemsError: string | null
   fetchedAtLabel: string | null
   onRefresh: () => void
   /** Closes the dialog when a card's remedy is followed. */
@@ -354,6 +360,8 @@ export interface HealthPopoverContentProps {
 export function HealthPopoverContent({
   loadState,
   states,
+  subsystems,
+  subsystemsError,
   fetchedAtLabel,
   onRefresh,
   onDismiss,
@@ -418,6 +426,7 @@ export function HealthPopoverContent({
         </div>
       )}
       <HealthSubsystemGrid states={states} onDismiss={onDismiss} />
+      <SubsystemPhaseList subsystems={subsystems} error={subsystemsError} />
       <div className="mt-6 grid grid-cols-1 gap-grid-gap border-t border-border pt-4 sm:grid-cols-3">
         <HealthMetadataRow icon={Tag} label="Backend version" value={backendVersion} />
         <HealthMetadataRow icon={Clock} label="Uptime" value={uptime} />

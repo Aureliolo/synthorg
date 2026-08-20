@@ -16,6 +16,7 @@ from synthorg.hr.errors import (
     HiringRejectedError,
     InvalidCandidateError,
 )
+from synthorg.hr.hiring_instantiation import resolve_hire_model
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
@@ -27,7 +28,7 @@ from tests._shared.model_binding import (
     bound_ref,
     provider_catalogue,
 )
-from tests.unit.hr.conftest import make_hiring_request
+from tests.unit.hr.conftest import make_candidate_card, make_hiring_request
 
 
 @pytest.mark.unit
@@ -161,7 +162,9 @@ class TestHiringServiceCreateRequest:
     ) -> None:
         """The operator answered a question, not the role's future."""
         hiring_service = HiringService(
-            registry=registry, approval_store=ApprovalStore()
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
         )
         first = await hiring_service.create_request(
             requested_by="staffing",
@@ -244,7 +247,11 @@ class TestHiringServiceSubmitForApproval:
         registry: AgentRegistryService,
     ) -> None:
         store = ApprovalStore()
-        service = HiringService(registry=registry, approval_store=store)
+        service = HiringService(
+            registry=registry,
+            approval_store=store,
+            provider_catalogue=provider_catalogue(),
+        )
         req = await service.create_request(
             requested_by="cto",
             department="engineering",
@@ -379,7 +386,9 @@ class TestHiringServiceInstantiateAgent:
         await hiring_service.instantiate_agent(approved)
         # The terminal request stays cached as INSTANTIATED; only its lock
         # auto-evicts once the instantiate step releases it (no holders left).
-        assert str(approved.id) in hiring_service._requests
+        assert hiring_service.get_request(str(approved.id)) is not None
+        # No public surface reports lock residency, and a lock that outlives
+        # its request is a leak nothing else would show.
         assert len(hiring_service._request_locks) == 0
         with pytest.raises(HiringError, match="already instantiated"):
             await hiring_service.instantiate_agent(approved)
@@ -461,7 +470,11 @@ class TestHiringRequestStatusTransitionedLogs:
         )
 
         store = ApprovalStore()
-        service = HiringService(registry=registry, approval_store=store)
+        service = HiringService(
+            registry=registry,
+            approval_store=store,
+            provider_catalogue=provider_catalogue(),
+        )
         req = await service.create_request(
             requested_by="cto",
             department="engineering",
@@ -554,7 +567,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, approval_id = await self._submitted(service)
         found = service.find_by_approval_id(approval_id)
         assert found is not None
@@ -569,7 +586,11 @@ class TestHiringServiceDecisions:
         Every approval decision walks this lookup, so raising here would
         turn each unrelated decision into a failure.
         """
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         await self._submitted(service)
         assert service.find_by_approval_id(sid("some-other-approval")) is None
 
@@ -577,7 +598,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service, role="Completion Reviewer")
         found = service.find_in_flight_request_for_role("Completion Reviewer")
         assert found is not None
@@ -589,7 +614,11 @@ class TestHiringServiceDecisions:
         registry: AgentRegistryService,
     ) -> None:
         """A declined request must not suppress the next ask for that role."""
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service, role="Completion Reviewer")
         await service.reject_request(
             request_id, decided_by="operator", reason="not now"
@@ -606,7 +635,11 @@ class TestHiringServiceDecisions:
         between them is the answer to "is a hire already open for this role".
         Reading it as closed opens a duplicate approval every sweep.
         """
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service, role="Completion Reviewer")
         await service.approve_request(request_id, decided_by="operator")
         found = service.find_in_flight_request_for_role("Completion Reviewer")
@@ -618,7 +651,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service)
         found = service.get_request(request_id)
         assert found is not None
@@ -629,7 +666,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service)
         approved = await service.approve_request(request_id, decided_by="operator")
         assert approved.status is HiringRequestStatus.APPROVED
@@ -639,7 +680,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service)
         rejected = await service.reject_request(
             request_id, decided_by="operator", reason="Budget frozen"
@@ -650,7 +695,11 @@ class TestHiringServiceDecisions:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        service = HiringService(registry=registry, approval_store=ApprovalStore())
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
         request_id, _ = await self._submitted(service)
         await service.approve_request(request_id, decided_by="operator")
         with pytest.raises(HiringError, match="not awaiting a decision"):
@@ -659,17 +708,35 @@ class TestHiringServiceDecisions:
             await service.reject_request(request_id, decided_by="operator")
 
 
+def _approved_request() -> HiringRequest:
+    """An APPROVED request as a restart rehydrates one, bound to nothing.
+
+    Returns:
+        The request, valid but carrying no pair.
+    """
+    candidate = make_candidate_card()
+    return make_hiring_request(
+        role="developer",
+        status=HiringRequestStatus.APPROVED,
+        candidates=(candidate,),
+        selected_candidate_id=str(candidate.id),
+    )
+
+
 @pytest.mark.unit
 class TestHiringServiceModelBinding:
     """A hire runs on the pair its own approval carried, or not at all."""
 
-    async def test_nothing_proposable_refuses_instantiation(
+    async def test_nothing_proposable_refuses_to_open_the_hire_at_all(
         self,
         registry: AgentRegistryService,
     ) -> None:
-        # No catalogue, so the approval had no pair to offer and the request
-        # carries none. Registering anyway would put an agent on the roster
-        # that fails every dispatch it is ever given.
+        """A hire with no pair is refused before anything durable is written.
+
+        Opening it instead is what a live run produced: an approval the
+        operator could see, could not approve, and which nothing re-raised
+        once a model became configurable.
+        """
         service = HiringService(registry=registry)
         req = await service.create_request(
             requested_by="cto",
@@ -678,12 +745,48 @@ class TestHiringServiceModelBinding:
             reason="Unbound pair test",
         )
         updated = await service.generate_candidate(req)
-        approved = await service.submit_for_approval(
-            updated, str(updated.candidates[0].id)
-        )
-        with pytest.raises(HiringError, match="no model binding"):
-            await service.instantiate_agent(approved)
+
+        with pytest.raises(HiringError, match="Cannot open a hire"):
+            await service.submit_for_approval(updated, str(updated.candidates[0].id))
         assert await registry.list_active() == ()
+
+    async def test_the_refusal_names_the_role_not_a_database_key(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """The message reaches an operator, who cannot act on a request id."""
+        service = HiringService(registry=registry)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Unbound pair test",
+        )
+        updated = await service.generate_candidate(req)
+
+        with pytest.raises(HiringError) as caught:
+            await service.submit_for_approval(updated, str(updated.candidates[0].id))
+        assert "developer" in str(caught.value)
+        assert str(req.id) not in str(caught.value)
+
+    async def test_no_approval_item_is_left_behind_by_the_refusal(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """An unapprovable row in the operator's queue is the whole defect."""
+        store = ApprovalStore()
+        service = HiringService(registry=registry, approval_store=store)
+        req = await service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            reason="Unbound pair test",
+        )
+        updated = await service.generate_candidate(req)
+
+        with pytest.raises(HiringError, match="Cannot open a hire"):
+            await service.submit_for_approval(updated, str(updated.candidates[0].id))
+        assert await store.list_items() == ()
 
     async def test_the_hire_carries_the_pair_its_approval_proposed(
         self,
@@ -778,30 +881,38 @@ class TestHiringServiceModelBinding:
             await service.instantiate_agent(approved)
         assert await registry.list_active() == ()
 
-    async def test_a_bound_pair_with_no_catalogue_refuses(
+    async def test_a_pair_with_no_catalogue_to_confirm_it_refuses(
         self,
         registry: AgentRegistryService,
     ) -> None:
         """Unverifiable is refused, not waved through.
 
         `bind_model` takes any syntactically valid `MODEL_REF` from a caller
-        of its own, so "a pipeline with no catalogue can propose nothing"
-        does not make a bound request unreachable here. A provider is a
-        registered connection, and nothing here can confirm this one is.
+        of its own, and a persisted request outlives the wiring that made it,
+        so a bound request reaching a catalogue-less pipeline is a state this
+        has to answer. A provider is a registered connection, and nothing here
+        can confirm this one is.
         """
-        service = HiringService(registry=registry)
-        req = await service.create_request(
-            requested_by="cto",
-            department="engineering",
-            role="developer",
-            reason="Unverifiable pair test",
+        request = _approved_request().model_copy(
+            update={"bound_model_ref": bound_ref()}
         )
-        updated = await service.generate_candidate(req)
-        approved = await service.submit_for_approval(
-            updated, str(updated.candidates[0].id)
-        )
-        bound = await service.bind_model(str(approved.id), bound_ref())
 
         with pytest.raises(HiringError, match="no provider catalogue is wired"):
-            await service.instantiate_agent(bound)
+            await resolve_hire_model(request, catalogue=None)
+        assert await registry.list_active() == ()
+
+    async def test_an_approved_request_carrying_no_pair_refuses(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """The fail-closed floor under the submit-time refusal.
+
+        Submission no longer opens an unbindable hire, so this state arrives
+        only from a row persisted before that held, which a restart rehydrates
+        straight into the instantiation path.
+        """
+        request = _approved_request()
+
+        with pytest.raises(HiringError, match="no model binding"):
+            await resolve_hire_model(request, catalogue=provider_catalogue())
         assert await registry.list_active() == ()

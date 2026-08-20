@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.discard import force_writable_then_retry
 from synthorg.engine.workspace.git_backend import (
     GitBackend,
     GitBackendConfig,
@@ -16,7 +17,6 @@ from synthorg.engine.workspace.git_backend import (
 )
 from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
-    _force_writable_then_retry,
 )
 from tests._shared import FakeClock, mock_of
 
@@ -151,7 +151,7 @@ class TestForceWritableThenRetry:
             calls.append(path)
             Path(path).unlink()
 
-        _force_writable_then_retry(_retry, str(target), PermissionError("WinError 5"))
+        force_writable_then_retry(_retry, str(target), PermissionError("WinError 5"))
 
         assert calls == [str(target)]
         assert not target.exists()
@@ -164,7 +164,7 @@ class TestForceWritableThenRetry:
 
         original = OSError("not a permission failure")
         with pytest.raises(OSError, match="not a permission failure"):
-            _force_writable_then_retry(_never_called, str(target), original)
+            force_writable_then_retry(_never_called, str(target), original)
 
     def test_re_raises_when_chmod_itself_fails(self, tmp_path: Path) -> None:
         missing = tmp_path / "does-not-exist"
@@ -174,7 +174,7 @@ class TestForceWritableThenRetry:
 
         original = PermissionError("WinError 5")
         with pytest.raises(PermissionError, match="WinError 5"):
-            _force_writable_then_retry(_never_called, str(missing), original)
+            force_writable_then_retry(_never_called, str(missing), original)
 
     def test_func_exception_propagates_after_chmod_success(
         self, tmp_path: Path
@@ -187,6 +187,6 @@ class TestForceWritableThenRetry:
             raise FileNotFoundError(path)
 
         with pytest.raises(FileNotFoundError):
-            _force_writable_then_retry(
+            force_writable_then_retry(
                 _retry_raises, str(target), PermissionError("WinError 5")
             )

@@ -1,17 +1,38 @@
-"""Autonomy-mode request DTO, opt-in guard, and audit for the projects API.
+"""Setting an initiative's operator-chosen oversight mode.
 
-The per-initiative operator-set autonomy mode carries a CEO-only deliberate
-opt-in for the gate-disabling ``full`` transition plus a dedicated audit
-event, kept beside the controller so the handler stays a thin seam.
+The per-initiative autonomy mode carries a CEO-only deliberate opt-in for the
+gate-disabling ``full`` transition plus a dedicated audit event, and the write
+itself lives here too: turning an initiative to ``full`` turns the approval
+gate OFF for every agent working it, which is not a field write dressed as one.
 """
 
+from litestar import Request, Response
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api._read_names import agent_name_map
+from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
+from synthorg.api.controllers._requester import extract_requester
+from synthorg.api.dto import ApiResponse
+from synthorg.api.dto_named_rows import ProjectRow
+from synthorg.api.guards import role_of
+from synthorg.api.responses import require_resource_or_404
+from synthorg.api.services.project_service import ProjectService
+from synthorg.api.ws_models import WsEventType
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.domain_errors import ForbiddenError, ValidationError
+from synthorg.core.domain_errors import (
+    ForbiddenError,
+    ValidationError,
+    VersionConflictError,
+)
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_PROJECT_AUTONOMY_MODE_CHANGED
+from synthorg.observability.events.api import (
+    API_PROJECT_AUTONOMY_MODE_CHANGED,
+    API_RESOURCE_NOT_FOUND,
+)
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -142,4 +163,94 @@ def audit_autonomy_mode_change(
         effective_mode=transition.effective_new.value,
         requested_by=requested_by,
         gate_disabled=transition.gate_disabled,
+    )
+
+
+async def apply_autonomy_mode(
+    request: Request[object, object, State],
+    state: State,
+    service: ProjectService,
+    project_id: str,
+    data: ProjectAutonomyModeRequest,
+) -> Response[ApiResponse[ProjectRow]]:
+    """Set (or clear) *project_id*'s operator-set autonomy mode.
+
+    Args:
+        request: The incoming request (carries the acting role + user).
+        state: Application state.
+        service: The project service the route already built.
+        project_id: Project identifier.
+        data: Autonomy-mode payload.
+
+    Returns:
+        The updated project.
+
+    Raises:
+        ForbiddenError: A non-CEO attempted the transition to full.
+        ValidationError: The transition to full lacked confirmation.
+        VersionConflictError: A concurrent write moved the version.
+    """
+    project = require_resource_or_404(
+        await service.get(project_id),
+        resource_type="Project",
+        identifier=project_id,
+        log_event=API_RESOURCE_NOT_FOUND,
+        operation="update",
+    )
+    previous_mode = project.autonomy_mode
+    # Clearing an override (mode=None) inherits the company default, which
+    # can itself be full (gate-off). Guard and audit the EFFECTIVE resolved
+    # mode so a clear-into-inherited-full can neither bypass the CEO opt-in
+    # nor be mislabelled as gate-on. Department overrides are not yet a
+    # resolution input, so the effective fallback is the company default.
+    company_default = await config_resolver_of(state.app_state).get_enum(
+        "company", "autonomy_level", AutonomyLevel
+    )
+    transition = AutonomyModeTransition(
+        previous=previous_mode,
+        new=data.mode,
+        effective_previous=(
+            previous_mode if previous_mode is not None else company_default
+        ),
+        effective_new=data.mode if data.mode is not None else company_default,
+    )
+    guard_full_autonomy_optin(
+        role=role_of(request),
+        transition=transition,
+        confirm=data.confirm,
+    )
+    updated = project.model_copy(
+        update={"autonomy_mode": data.mode, "version": project.version + 1},
+    )
+    expected = (
+        data.expected_version if data.expected_version is not None else project.version
+    )
+    try:
+        await service.update(updated, expected_version=expected)
+    except PersistenceVersionConflictError as exc:
+        msg = f"Project {project_id!r} was modified concurrently"
+        raise VersionConflictError(msg) from exc
+    audit_autonomy_mode_change(
+        project_id=project_id,
+        transition=transition,
+        requested_by=extract_requester(),
+    )
+    publish_ws_event(
+        request,
+        WsEventType.PROJECT_AUTONOMY_MODE_CHANGED,
+        CHANNEL_PROJECTS,
+        {
+            "project_id": project_id,
+            "new_mode": data.mode.value if data.mode is not None else None,
+            "previous_mode": (
+                previous_mode.value if previous_mode is not None else None
+            ),
+            "new_version": updated.version,
+        },
+    )
+    return Response(
+        content=ApiResponse[ProjectRow](
+            data=ProjectRow.of(updated, await agent_name_map(state.app_state))
+        ),
+        status_code=200,
     )

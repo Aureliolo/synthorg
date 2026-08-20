@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  bulkDeleteProjects,
   createProject,
   getProject,
   getProjectProgress,
@@ -103,4 +104,10 @@ export const projectsHandlers = [
     )
   }),
   http.delete('/api/v1/projects/:id', () => HttpResponse.json(voidSuccess())),
+  http.post('/api/v1/projects/bulk-delete', async ({ request }) => {
+    const body = (await request.json()) as { ids: string[] }
+    return HttpResponse.json(
+      successFor<typeof bulkDeleteProjects>({ deleted: body.ids, failed: [] }),
+    )
+  }),
 ]

@@ -346,6 +346,12 @@ async def wire_run_recovery(app_state: AppState) -> None:
             app_state.slice(RuntimeStateSlice).distributed_task_queue is not None
         ),
     )
+    if approvals is not None:
+        # A question about a row that no longer exists is unanswerable, and the
+        # queue still offers approve and reject on it. Delete-time retirement
+        # covers the deletes that know to; this is the pass that covers the
+        # rest, including an approval whose plan went with its task.
+        reconciler.set_approval_store(approvals)
     # Before the cadence starts, because a restart is exactly when runs are
     # stranded and waiting out an interval first would leave the board showing
     # work in flight with nothing behind it for that whole interval.

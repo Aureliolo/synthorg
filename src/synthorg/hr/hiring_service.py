@@ -7,7 +7,6 @@ generation, approval submission, and agent instantiation.
 
 import asyncio
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
@@ -22,9 +21,11 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.hire_model_proposal import HireModelProposal, ProviderCatalogue
 from synthorg.hr.hiring_approval_submission import (
-    build_approval,
     propose_models,
     recommended_ref,
+    require_proposable,
+    retire_unbacked_approval,
+    submit_approval_item,
 )
 from synthorg.hr.hiring_candidates import (
     build_agent_identity,
@@ -57,6 +58,7 @@ from synthorg.observability.events.hr import (
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_CREATED,
+    HR_HIRING_REQUEST_DISCARDED,
     HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
     HR_HIRING_REQUESTS_HYDRATED,
@@ -355,6 +357,8 @@ class HiringService:
 
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
+            HiringError: When no configured model can run this role, so the
+                hire has nothing to be bound to.
         """
         async with self._request_locks.acquire(str(request.id)):
             request = self._get_request(str(request.id))
@@ -372,17 +376,22 @@ class HiringService:
                 )
                 raise InvalidCandidateError(msg)
 
+            # An agent is a fixed (role, personality, model) unit, so a hire
+            # with no pair is not a hire. Refused HERE, before anything durable
+            # is written, because the alternative is what a live run produced:
+            # an approval an operator could see, could not approve (instantiation
+            # refuses an unbound request), and which nothing ever re-raised once
+            # a model became configurable. Enterable, no exit, nothing watching.
+            # Refusing instead leaves the staffing reconciler's next pass free
+            # to open a real hire the moment one becomes proposable.
+            proposal = await self._propose_models(candidate)
+            require_proposable(request, proposal)
+
             previous_status = request.status
             if self._approval_store is None:
                 # Auto-approve when no approval store: no external side effect,
                 # so a swallowed persist failure only loses an in-memory status
                 # flip a restart would discard cleanly.
-                #
-                # The pair is still proposed. Nobody is here to override it,
-                # but the binding travels with the request either way, and an
-                # auto-approved hire with none would fail at instantiation for
-                # a decision that was never put to anybody.
-                proposal = await self._propose_models(candidate)
                 updated = request.model_copy(
                     update={
                         "status": HiringRequestStatus.APPROVED,
@@ -396,10 +405,28 @@ class HiringService:
                 # require the request transition to persist: a swallowed save
                 # would let a restart rehydrate the pre-approval request while
                 # the approval item already exists, wedging retries.
-                updated = await self._submit_approval_item(
-                    request, candidate, candidate_id
+                updated = await submit_approval_item(
+                    self._approval_store,
+                    request,
+                    candidate,
+                    candidate_id=candidate_id,
+                    proposal=proposal,
                 )
-                await self._store(updated, require_persist=True)
+                try:
+                    await self._store(updated, require_persist=True)
+                except Exception:
+                    # The item is already in the store and the request
+                    # explaining it never landed, so leaving it there parks a
+                    # decision naming a hire no surviving row describes. The
+                    # caller's compensation cannot reach it either: it discards
+                    # only a request carrying no approval, and ``_store`` seats
+                    # the approval-stamped copy in the cache before it raises.
+                    # Undo both, then surface the original failure.
+                    self._requests[str(request.id)] = request
+                    await retire_unbacked_approval(
+                        self._approval_store, request=updated
+                    )
+                    raise
 
         # Emit the status-transition log only when the status actually
         # flipped: the auto-approve branch goes PENDING -> APPROVED,
@@ -422,47 +449,6 @@ class HiringService:
             auto_approved=self._approval_store is None,
         )
         return updated
-
-    async def _submit_approval_item(
-        self,
-        request: HiringRequest,
-        candidate: CandidateCard,
-        candidate_id: str,
-    ) -> HiringRequest:
-        """Create and store an approval item for a candidate.
-
-        The pair the hire would run on is proposed here rather than read from
-        a standing setting, and the recommendation is stamped onto the request
-        so an approval taken without an explicit pick still has a binding to
-        instantiate.
-
-        Args:
-            request: The hiring request.
-            candidate: The candidate to approve.
-            candidate_id: ID of the candidate.
-
-        Returns:
-            Updated request with approval metadata.
-        """
-        assert self._approval_store is not None  # noqa: S101
-        approval_id = str(uuid4())
-        proposal = await self._propose_models(candidate)
-        await self._approval_store.add(
-            build_approval(
-                request,
-                candidate,
-                candidate_id=candidate_id,
-                approval_id=approval_id,
-                proposal=proposal,
-            )
-        )
-        return request.model_copy(
-            update={
-                "selected_candidate_id": candidate_id,
-                "approval_id": approval_id,
-                "bound_model_ref": recommended_ref(proposal),
-            },
-        )
 
     async def _propose_models(self, candidate: CandidateCard) -> HireModelProposal:
         """Offer the pairs this candidate could be hired onto.
@@ -519,6 +505,52 @@ class HiringService:
             )
             await self._store(updated, require_persist=True)
             return updated
+
+    async def discard_undecided_request(self, request_id: str, *, reason: str) -> bool:
+        """Drop a request that was never put to anybody.
+
+        Opening a hire is create-then-submit, so a submission refused part-way
+        leaves a PENDING row nobody ever saw. That row counts as in flight, and
+        the level-triggered staffing sweep reads it as "a hire is already under
+        way for this role" on every later pass, so the role can never be
+        staffed again: enterable, no exit, nothing watching.
+
+        Removal rather than rejection, and guarded on carrying no
+        ``approval_id``, because REJECTED means an operator answered. Writing
+        that over a request no operator ever saw puts a decision nobody took
+        into the audit trail. The attempt itself is not lost: the sweep logs
+        each refusal, and being level-triggered it logs again next pass while
+        the condition holds.
+
+        Args:
+            request_id: The half-opened request.
+            reason: Why the open could not be completed, for the audit log.
+
+        Returns:
+            Whether a request was removed.
+        """
+        async with self._request_locks.acquire(request_id):
+            request = self._requests.get(request_id)
+            if (
+                request is None
+                or request.status is not HiringRequestStatus.PENDING
+                or request.approval_id is not None
+            ):
+                return False
+            # The durable row goes first and the cache only reflects that it
+            # went. The other order drops the cache entry and then raises, so
+            # this process stops seeing a request that is still on disk and
+            # comes back at the next boot.
+            if self._request_repo is not None:
+                await self._request_repo.delete(NotBlankStr(request_id))
+            del self._requests[request_id]
+        logger.info(
+            HR_HIRING_REQUEST_DISCARDED,
+            request_id=request_id,
+            role=str(request.role),
+            reason=reason,
+        )
+        return True
 
     def find_by_approval_id(self, approval_id: str) -> HiringRequest | None:
         """Find the in-flight request an approval item decides.

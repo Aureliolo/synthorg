@@ -22,7 +22,6 @@ from synthorg.infrastructure.services._read_facades import (
     UserFacadeService,
 )
 from synthorg.infrastructure.services._registries import (
-    ProjectFacadeService,
     RequestsFacadeService,
     TemplatePackFacadeService,
 )
@@ -39,7 +38,6 @@ __all__ = [
     "BackupFacadeService",
     "EventsReadService",
     "IntegrationHealthFacadeService",
-    "ProjectFacadeService",
     "ProviderReadService",
     "RequestsFacadeService",
     "SettingsReadService",

@@ -8,8 +8,51 @@ import type {
   MemoryState,
   ProviderReachability,
 } from '@/api/types/system'
+import type { SubsystemPhase, SubsystemReport } from '@/api/types/subsystems'
 import type { HealthSnapshot, LoadState } from '@/stores/health'
 import type { SubsystemState } from './health-popover.utils'
+
+/**
+ * How a declared subsystem's phase reads on the health roll-up.
+ *
+ * `/health` reports the infrastructure a process needs; `/subsystems` reports
+ * the capabilities the reconciler has managed to install. They are different
+ * questions, and reading only the first is how a status pill came to say "all
+ * systems normal", and a dialog to headline "Every tracked component is
+ * reporting healthy", over five subsystems the dashboard's own blockers panel
+ * was listing as not up.
+ *
+ * `disabled` is the one phase that contributes nothing: an operator turned it
+ * off, so the deployment is behaving exactly as configured. It is still listed
+ * by the blockers panel, which answers "what stands between the org and
+ * progress" rather than "is anything wrong", and those genuinely differ.
+ */
+const _SUBSYSTEM_PHASE_STATES: Record<SubsystemPhase, SubsystemState | null> = {
+  active: null,
+  disabled: null,
+  failed: 'down',
+  unreachable: 'down',
+  degraded: 'degraded',
+  waiting: 'degraded',
+  rebuilding: 'degraded',
+  blocked: 'degraded',
+}
+
+/**
+ * The roll-up contribution of every declared subsystem, worst first.
+ *
+ * Returns an empty list when nothing has been read yet, which is the honest
+ * answer: not knowing is not the same as knowing everything is fine, but it is
+ * also not evidence of a fault, so it leaves the verdict to the health probe.
+ */
+function _subsystemPhaseStates(
+  reports: readonly SubsystemReport[] | null,
+): readonly SubsystemState[] {
+  if (reports === null) return []
+  return reports
+    .map((report) => _SUBSYSTEM_PHASE_STATES[report.phase])
+    .filter((state) => state !== null)
+}
 
 export interface DerivedSubsystemStates {
   readonly apiState: SubsystemState
@@ -267,6 +310,7 @@ export function deriveHealthSubsystemStates(
   wsConnected: boolean,
   wsReconnectExhausted: boolean,
   sseFallbackActive: boolean,
+  subsystems: readonly SubsystemReport[] | null = null,
 ): DerivedSubsystemStates {
   const snapshot = renderedSnapshot(loadState)
   const backend = _backendStatesOf(loadState, snapshot)
@@ -279,6 +323,7 @@ export function deriveHealthSubsystemStates(
     backend.memoryState,
     backend.backupState,
     backend.costRecordingState,
+    ..._subsystemPhaseStates(subsystems),
   ]
   return {
     ...backend,

@@ -35,6 +35,7 @@ from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.deleted_entity import DeletedEntity, DeletedEntityKind
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
@@ -146,6 +147,38 @@ class TestSupersedeUnderContention:
         await _supersede_plan(service, repository, live, requested_by="admin")
 
         assert service.sync_status.await_count == 1
+
+    async def test_a_row_that_went_before_the_write_stops(self) -> None:
+        """The other way a plan disappears, and the one nothing handled.
+
+        The conflict branch above covers a row deleted after a lost race. This
+        is the row deleted between the paginated read that produced it and this
+        write, which is what a second issue of the same project delete does.
+        The write raises ``RecordNotFoundError`` rather than a conflict, and
+        uncaught it surfaces to an operator who asked to delete a PROJECT as a
+        bare "plan not found".
+        """
+        live = _plan(status=PlanStatus.PENDING_REVIEW, filled=True)
+        service: _Configured = mock_of[PlanService](
+            sync_status=AsyncMock(side_effect=RecordNotFoundError("gone"))
+        )
+        repository: _Configured = mock_of[PlanRepository](get=AsyncMock())
+
+        await _supersede_plan(service, repository, live, requested_by="admin")
+
+        assert service.sync_status.await_count == 1
+
+    async def test_a_row_that_went_is_not_retried(self) -> None:
+        """Deletion is terminal, so re-reading and re-writing finds nothing."""
+        live = _plan(status=PlanStatus.PENDING_REVIEW, filled=True)
+        service: _Configured = mock_of[PlanService](
+            sync_status=AsyncMock(side_effect=RecordNotFoundError("gone"))
+        )
+        repository: _Configured = mock_of[PlanRepository](get=AsyncMock())
+
+        await _supersede_plan(service, repository, live, requested_by="admin")
+
+        assert repository.get.await_count == 0
 
     async def test_an_exhausted_budget_aborts_the_delete(self) -> None:
         """Returning quietly would let the caller delete over a live plan.

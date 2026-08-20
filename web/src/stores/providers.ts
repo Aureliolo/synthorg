@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ProvidersState } from './providers/types'
-import { createListActions } from './providers/list-actions'
+import { createListActions, resetProviderHydration } from './providers/list-actions'
 import { createDetailActions } from './providers/detail-actions'
 import { createCrudActions } from './providers/crud-actions'
 import { createModelMutationActions } from './providers/model-mutations'
@@ -87,4 +87,8 @@ const INITIAL_STATE: ProvidersState = useProvidersStore.getState()
  */
 export function resetProvidersStore(): void {
   useProvidersStore.setState(INITIAL_STATE, true)
+  // Module-level, so `setState` cannot reach it: a coalesced hydration left
+  // open by one test would otherwise be joined by the next, which would then
+  // see the previous test's catalogue.
+  resetProviderHydration()
 }

@@ -1,4 +1,5 @@
 import {
+  bulkDeletePlans as bulkDeletePlansApi,
   deletePlan as deletePlanApi,
   editPlan as editPlanApi,
   getPlan,
@@ -6,6 +7,7 @@ import {
 } from '@/api/endpoints/plans'
 import type { EditPlanRequest, Plan } from '@/api/types/plans'
 import { createLogger } from '@/lib/logger'
+import { runBulkDelete, type BulkDeleteOutcome } from '@/stores/_bulk-delete'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -132,11 +134,38 @@ async function deletePlanImpl(set: PlansSet, id: string): Promise<boolean> {
   }
 }
 
+function batchDeletePlansImpl(
+  set: PlansSet,
+  ids: readonly string[],
+): Promise<BulkDeleteOutcome | false> {
+  return runBulkDelete({
+    ids,
+    call: bulkDeletePlansApi,
+    removeRows: (deleted) => {
+      const removed = new Set(deleted)
+      // The open detail view drops too when its own plan was in the
+      // selection: leaving it up over a deleted row is the state the single
+      // delete already avoids.
+      nextDetailRequestToken()
+      set((state) => ({
+        plans: state.plans.filter((plan) => !removed.has(plan.id)),
+        selectedPlan:
+          state.selectedPlan !== null && removed.has(state.selectedPlan.id)
+            ? null
+            : state.selectedPlan,
+        detailLoading: false,
+      }))
+    },
+    noun: { one: 'Plan', many: 'plans' },
+  })
+}
+
 export function createDetailActions(set: PlansSet, get: PlansGet) {
   return {
     fetchPlanDetail: (id: string) => fetchPlanDetailImpl(set, get, id),
     editPlan: (id: string, data: EditPlanRequest) => editPlanImpl(set, id, data),
     deletePlan: (id: string) => deletePlanImpl(set, id),
+    batchDeletePlans: (ids: readonly string[]) => batchDeletePlansImpl(set, ids),
     requestPlanChanges: (id: string, note: string) =>
       requestPlanChangesImpl(set, id, note),
   }

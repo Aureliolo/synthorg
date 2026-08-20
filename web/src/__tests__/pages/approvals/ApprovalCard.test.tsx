@@ -195,6 +195,26 @@ describe('ApprovalCard', () => {
     expect(defaultHandlers.onToggleSelect).toHaveBeenCalledWith('test-1')
   })
 
+  it.each([
+    ['rejected' as const, 'Rejected'],
+    ['approved' as const, 'Approved'],
+    ['expired' as const, 'Expired'],
+  ])('says a %s row is %s', (status, label) => {
+    // On the default filter every row is pending, so a decided row saying
+    // what it was only through the absence of its action buttons never
+    // showed. On "All statuses" a rejected approval and a pending one read
+    // alike, and two rows differing solely in which controls they offered
+    // had nothing on them explaining why.
+    renderCard({ status })
+    expect(screen.getByText(label)).toBeInTheDocument()
+  })
+
+  it('leaves a pending row to say so through its own actions', () => {
+    renderCard({ status: 'pending' })
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
+  })
+
   it('marks checkbox as checked when selected', () => {
     renderCard({}, true)
     expect(screen.getByRole('checkbox')).toBeChecked()

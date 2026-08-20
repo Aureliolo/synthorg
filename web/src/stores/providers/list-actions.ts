@@ -17,6 +17,32 @@ const log = createLogger('providers')
 let _listRequestId = 0
 
 /**
+ * The hydration read currently open, so concurrent askers join it.
+ *
+ * The settings page renders one `MODEL_REF` widget per bound model, and each
+ * one hydrated the catalogue itself with `if (providers.length === 0 &&
+ * !listLoading) void fetchProviders()`. Every widget mounts in the same commit,
+ * so all of them run that check before any of their state updates land: a live
+ * run fired `GET /providers` thirty times on one page load, discarded
+ * twenty-nine of the responses, and did the same again on every remount.
+ *
+ * A check-then-act across a render commit needs the guard where the act
+ * happens, not in each caller.
+ */
+let _openHydration: Promise<void> | null = null
+
+/** Drop any coalesced hydration, so a reset store re-reads rather than joins. */
+export function resetProviderHydration(): void {
+  // The in-flight read is invalidated first. Clearing the slot alone only
+  // stops the NEXT caller joining it; a fetch already awaiting the network
+  // still passes its own ``isLatest()`` check and writes the catalogue and
+  // health map into the store that was just reset, so the reset silently
+  // undoes itself a moment later.
+  _listRequestId++
+  _openHydration = null
+}
+
+/**
  * Read each provider's recorded health, best-effort and per provider.
  *
  * @returns The map to apply, or `null` when a recheck landed while the
@@ -49,6 +75,36 @@ async function readHealthMap(
 
 export function createListActions(set: ProvidersSet, get: ProvidersGet) {
   return {
+    /**
+     * Load the catalogue once, for a consumer that only needs it present.
+     *
+     * Distinct from `fetchProviders`, and the distinction is load-bearing: a
+     * refresh issued after a mutation must re-read, so it cannot be allowed to
+     * join a read that started before the write. This one means "make sure it
+     * is loaded", so it returns immediately when it is and otherwise joins
+     * whatever read is already open.
+     */
+    ensureProvidersLoaded: async () => {
+      if (get().providers.length > 0) return
+      const open = _openHydration
+      if (open !== null) {
+        await open
+        return
+      }
+      // The slot is cleared only by the read that owns it. An unconditional
+      // clear belongs to whichever read settles first, so a reset between two
+      // hydrations has the older one wipe the newer one's slot: the next
+      // caller finds an empty slot, opens a third read, and that read's id
+      // invalidates the second, whose response is then discarded.
+      const hydration = get()
+        .fetchProviders()
+        .finally(() => {
+          if (_openHydration === hydration) _openHydration = null
+        })
+      _openHydration = hydration
+      await hydration
+    },
+
     fetchProviders: async () => {
       const requestId = ++_listRequestId
       set({ listLoading: true, listError: null })

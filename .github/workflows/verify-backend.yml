@@ -527,6 +527,15 @@ jobs:
       - name: Run pyright
         # Exit code discarded: findings are the expected steady state, and the
         # baseline gate below is what decides pass or fail.
+        #
+        # The heap is raised because pyright's memory scales with the size of
+        # the type graph it builds, and this tree crossed node's default
+        # old-space cap (~4 GB): the analyser died mid-run with an OOM, wrote a
+        # truncated report, and the baseline gate then failed on unparseable
+        # JSON rather than on any finding. A dead analyser must not read as a
+        # type error, and the runner has 16 GB.
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: uv run pyright --outputjson > pyright-report.json || true
 
       - name: Enforce shrink-only baseline

@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Clock, Scale, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
@@ -11,6 +12,8 @@ import {
   DOT_COLOR_CLASSES,
   URGENCY_BADGE_CLASSES,
   formatUrgency,
+  getApprovalStatusColor,
+  getApprovalStatusLabel,
   getApprovalStepLabel,
   getRiskLevelColor,
   getRiskLevelLabel,
@@ -179,11 +182,10 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
   return (
     <div className="flex items-start gap-3">
       {isPending && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selected}
-          onChange={() => props.onToggleSelect(approval.id)}
-          className="mt-1 size-4 shrink-0 accent-accent"
+          onCheckedChange={() => props.onToggleSelect(approval.id)}
+          className="mt-1 shrink-0"
           aria-label={`Select ${approval.title}`}
         />
       )}
@@ -209,6 +211,17 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {/* A decided row said what it was only through the absence of its
+            action buttons. On the default filter every row is pending so the
+            omission never showed, but on "All statuses" a rejected approval
+            and a pending one read alike, and two rows differing solely in
+            which controls they offered had nothing on them explaining why.
+            A pending row still says so through its own actions. */}
+        {!isPending && (
+          <StatusPill tone={getApprovalStatusColor(approval.status)}>
+            {getApprovalStatusLabel(approval.status)}
+          </StatusPill>
+        )}
         {runOutcome && <RunOutcomeBadge outcome={runOutcome} />}
         <ApprovalBadges
           isPending={isPending}

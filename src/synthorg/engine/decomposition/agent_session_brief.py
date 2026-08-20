@@ -7,9 +7,15 @@ a good plan looks like are three halves of the same instruction, and a
 change to one usually wants a look at the others.
 """
 
+from typing import Final
+
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.llm_prompt import safe_roles
+from synthorg.engine.decomposition.llm_prompt import (
+    DECOMPOSITION_FENCES,
+    foundation_lines,
+    safe_roles,
+)
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
@@ -66,6 +72,11 @@ def roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
     )
 
 
+#: Every fence tag :func:`planning_brief` can emit, which is the same set the
+#: single-shot decomposer emits because both share :func:`foundation_lines`.
+PLANNING_SESSION_FENCES: Final[tuple[str, ...]] = DECOMPOSITION_FENCES
+
+
 def planning_brief(
     task: Task,
     context: DecompositionContext,
@@ -106,6 +117,7 @@ def planning_brief(
             "  critical for irreversible or high-blast-radius work.",
             "- Give every item concrete expected_artifacts and verifiable",
             "  acceptance_criteria (never empty).",
+            *foundation_lines(context.workspace_summary),
             "- Where the plan hinges on a real choice (stack, architecture),",
             "  surface a decision item (kind 'decision') with 2-4 options and",
             "  one recommended, rather than silently deciding.",

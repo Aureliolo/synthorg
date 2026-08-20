@@ -337,6 +337,23 @@ def describe_unstated_reference(
     return None
 
 
+def describe_unstated_references(units: Sequence[PlanUnit]) -> tuple[str, ...]:
+    """Describe every item naming another it does not depend on.
+
+    One message per offending unit, because the plural caller's job is to hand
+    the planner a complete list rather than the first thing that went wrong.
+
+    Returns:
+        A message per offending unit, in plan order; empty when the graph is
+        clean.
+    """
+    return tuple(
+        message
+        for unit in units
+        if (message := describe_unstated_reference(unit=unit, others=units)) is not None
+    )
+
+
 class GatedPlanUnit(PlanUnit, Protocol):
     """A plan unit plus the two fields its own gate is judged from.
 
@@ -505,6 +522,48 @@ def describe_undecidable_criterion(
                 "produces itself"
             )
     return None
+
+
+def describe_undecidable_criteria(units: Sequence[GatedPlanUnit]) -> tuple[str, ...]:
+    """Describe every gate demanding evidence its plan produces later.
+
+    Returns:
+        A message per offending unit, in plan order; empty when every gate is
+        judgeable where it stands.
+    """
+    return tuple(
+        message
+        for unit in units
+        if (message := describe_undecidable_criterion(unit=unit, others=units))
+        is not None
+    )
+
+
+def combine_graph_violations(messages: Sequence[str]) -> str | None:
+    """Fold every graph violation into the one detail a caller raises.
+
+    A planning session that regenerates its whole plan on each rejection cannot
+    converge while it is told about one violation at a time: it resolves the
+    pair it was given and manufactures another. So the count leads, and the
+    wording says plainly that fixing one is not enough. A lone violation reads
+    exactly as it did before there was a plural form, because every existing
+    caller and test asserts that wording.
+
+    Returns:
+        The single message unchanged, a numbered list when there are several,
+        or ``None`` when the graph is clean.
+    """
+    if not messages:
+        return None
+    if len(messages) == 1:
+        return messages[0]
+    numbered = " ".join(
+        f"({index}) {message}." for index, message in enumerate(messages, start=1)
+    )
+    return (
+        f"The plan has {len(messages)} problems and they must all be fixed in "
+        f"the next submission, not one at a time: {numbered}"
+    )
 
 
 def validate_expected_artifacts(

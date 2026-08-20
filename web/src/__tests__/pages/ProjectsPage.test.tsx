@@ -10,8 +10,12 @@ vi.mock('@/pages/projects/ProjectsSkeleton', () => ({
 vi.mock('@/pages/projects/ProjectFilters', () => ({
   ProjectFilters: () => <div data-testid="project-filters" />,
 }))
+const recordGridIds = vi.fn<(ids: readonly string[]) => void>()
 vi.mock('@/pages/projects/ProjectGridView', () => ({
-  ProjectGridView: () => <div data-testid="project-grid-view" />,
+  ProjectGridView: ({ projects }: { projects: readonly { id: string }[] }) => {
+    recordGridIds(projects.map((project) => project.id))
+    return <div data-testid="project-grid-view" />
+  },
 }))
 vi.mock('@/pages/projects/ProjectCreateDrawer', () => ({
   ProjectCreateDrawer: () => <div data-testid="project-create-drawer" />,
@@ -36,6 +40,24 @@ vi.mock('@/hooks/useProjectsData', () => {
   return { [hookName]: () => getProjectsData() }
 })
 
+const recordSelectionIds = vi.fn<(ids: readonly string[]) => void>()
+vi.mock('@/hooks/use-bulk-selection', () => ({
+  useBulkSelection: (visibleIds: readonly string[]) => {
+    recordSelectionIds(visibleIds)
+    return {
+      visibleSelected: new Set<string>(),
+      selectedCount: 0,
+      toggle: () => undefined,
+      clear: () => undefined,
+      confirmOpen: false,
+      openConfirm: () => undefined,
+      closeConfirm: () => undefined,
+      deleting: false,
+      runDelete: () => Promise.resolve(),
+    }
+  },
+}))
+
 import ProjectsPage from '@/pages/ProjectsPage'
 
 function renderPage() {
@@ -49,6 +71,36 @@ function renderPage() {
 describe('ProjectsPage', () => {
   beforeEach(() => {
     hookReturn = { ...defaultHookReturn }
+    recordSelectionIds.mockClear()
+    recordGridIds.mockClear()
+  })
+
+  it('offers for deletion only the rows on the current page', () => {
+    // Selection is held against what is on screen. Fed the whole filtered set
+    // instead, a tick survives a page change, and the bulk bar's count and the
+    // confirm dialog then cover rows the operator cannot see while agreeing to
+    // delete them.
+    const many = Array.from({ length: 60 }, (_, index) =>
+      makeProject(`proj-${String(index).padStart(3, '0')}`),
+    )
+    hookReturn = {
+      ...defaultHookReturn,
+      projects: many,
+      filteredProjects: many,
+      totalProjects: many.length,
+    }
+
+    renderPage()
+
+    // Pinned to the rows the grid actually rendered, not merely to "fewer than
+    // all of them": a shorter list passes that check just as well when it is
+    // empty, or when it is a different page than the one on screen.
+    const offered = recordSelectionIds.mock.calls.at(-1)?.[0]
+    const onScreen = recordGridIds.mock.calls.at(-1)?.[0]
+    expect(onScreen).toBeDefined()
+    expect(onScreen?.length).toBeGreaterThan(0)
+    expect(onScreen?.length).toBeLessThan(many.length)
+    expect(offered).toEqual(onScreen)
   })
 
   it('renders page heading', () => {

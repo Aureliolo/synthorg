@@ -168,6 +168,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="bulk_delete_budget_seconds",
+        type=SettingType.FLOAT,
+        default="20.0",
+        description=(
+            "Wall-clock ceiling for one bulk-delete request. Each selected row"
+            " cascades through its plans, tasks and workspace tree, so a large"
+            " selection can outrun the browser's own timeout: the rows would be"
+            " deleted while the operator is told the action failed. The loop"
+            " checks this between rows and stops before starting one it cannot"
+            " finish, reporting the untouched rows as refused so the answer"
+            " covers the whole selection. Kept under the dashboard's request"
+            " timeout so the reply arrives while the browser is still waiting."
+            " Read per request, so a change applies without a restart."
+        ),
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="subsystem_resync_interval_seconds",
         type=SettingType.FLOAT,
         default="60.0",

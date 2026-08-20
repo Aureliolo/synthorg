@@ -52,7 +52,19 @@ module.exports = [
     // the pure-API-consumer store layer, and the Plan Review workspace
     // (plans list / detail / editor + stores). Headroom absorbs routine
     // dependency churn; raise only for real shipping UI, never a CI red.
-    limit: '1250 KB',
+    //
+    // Raised from 1250 KB for the operator-exit surfaces: project delete,
+    // multi-select bulk delete shared across projects / plans / tasks (a
+    // selection hook, a shared confirm-and-report control and one store
+    // helper the three stores route through), and the subsystem phase list
+    // that puts every subsystem's phase and unmet capabilities on screen
+    // rather than leaving them API-only. Each one is an exit from a state an
+    // operator would otherwise be stuck in, or a fact they could otherwise
+    // only read from the API, so the JS is the feature rather than churn.
+    // Ceiling = 1252.9 KB * 1.10, measured on a clean CI install; a local
+    // ``dist`` is not comparable, because it is built against whatever
+    // ``node_modules`` currently holds rather than against the lockfile.
+    limit: '1380 KB',
     gzip: true,
   },
   // Initial entry chunk -- everything that blocks first paint.

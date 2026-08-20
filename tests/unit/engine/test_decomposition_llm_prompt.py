@@ -335,19 +335,19 @@ class TestBuildSystemMessage:
         assert len(msg.content) > 0
 
     def test_system_includes_canonical_untrusted_directive(self) -> None:
-        """System message carries the canonical directive for <task-data>.
+        """The directive names every fence this prompt pair can emit.
 
-        The directive is sourced from :func:`untrusted_content_directive`
-        so a single edit to the helper keeps every call site in sync.
+        Sourced from :func:`untrusted_content_directive` over the shared
+        tuple, so the system message and the user message cannot come to name
+        different sets: a tag emitted but not declared is content nothing told
+        the model to distrust.
         """
-        from synthorg.engine.prompt_safety import (
-            TAG_TASK_DATA,
-            untrusted_content_directive,
-        )
+        from synthorg.engine.decomposition.llm_prompt import DECOMPOSITION_FENCES
+        from synthorg.engine.prompt_safety import untrusted_content_directive
 
         msg = build_system_message()
         assert msg.content is not None
-        expected = untrusted_content_directive((TAG_TASK_DATA,))
+        expected = untrusted_content_directive(DECOMPOSITION_FENCES)
         assert expected in msg.content
 
 

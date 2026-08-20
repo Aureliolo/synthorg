@@ -289,11 +289,6 @@ describe('useProjectsStore', () => {
           makeProject('proj-003'),
         ],
       })
-      server.use(
-        http.delete('/api/v1/projects/:id', () =>
-          new HttpResponse(null, { status: 204 }),
-        ),
-      )
 
       const result = await useProjectsStore
         .getState()
@@ -310,16 +305,22 @@ describe('useProjectsStore', () => {
     })
 
     it('keeps failed ids in the list and surfaces their reasons', async () => {
+      // One call, and the backend answers per row: the endpoint is rate
+      // limited per user, so a selection sent as one DELETE per row loses its
+      // tail past that budget for a reason that has nothing to do with the
+      // rows.
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
       })
       server.use(
-        http.delete('/api/v1/projects/:id', ({ params }) => {
-          if (params['id'] === 'proj-001') {
-            return new HttpResponse(null, { status: 204 })
-          }
-          return HttpResponse.json(apiError('boom'), { status: 500 })
-        }),
+        http.post('/api/v1/projects/bulk-delete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              deleted: ['proj-001'],
+              failed: [{ id: 'proj-002', reason: 'boom' }],
+            }),
+          ),
+        ),
       )
 
       const result = await useProjectsStore
@@ -332,15 +333,97 @@ describe('useProjectsStore', () => {
       if (result === false) throw new Error('expected counts, not sentinel')
       expect(result.succeeded).toBe(1)
       expect(result.failed).toBe(1)
-      // failedReasons holds only the human-readable reason so the
-      // batch-toast helper can group identical reasons across the
-      // failures; per-id context is logged separately via the
-      // failedDetails channel inside the store.
-      expect(result.failedReasons).toHaveLength(1)
-      // 5xx now surfaces the backend's real (secret-redacted) error.
-      expect(result.failedReasons[0]).toContain('boom')
+      expect(result.failedReasons).toEqual(['boom'])
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+    })
+
+    it('sends one request for the whole selection', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+      })
+      let calls = 0
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', async ({ request }) => {
+          calls += 1
+          const body = (await request.json()) as { ids: string[] }
+          return HttpResponse.json(apiSuccess({ deleted: body.ids, failed: [] }))
+        }),
+      )
+
+      await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      expect(calls).toBe(1)
+    })
+
+    it('returns the sentinel when every row refused', async () => {
+      // The branch between "some went" and "the call failed": every row
+      // refusing settled nothing, so the caller must read it as a failure
+      // rather than as a partial success it can move on from.
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+      })
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              deleted: [],
+              failed: [
+                { id: 'proj-001', reason: 'still building' },
+                { id: 'proj-002', reason: 'still building' },
+              ],
+            }),
+          ),
+        ),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      expect(result).toBe(false)
+      expect(useProjectsStore.getState().projects.map((p) => p.id)).toEqual([
+        'proj-001',
+        'proj-002',
+      ])
+    })
+
+    it('never throws when the request itself fails', async () => {
+      // The store owns mutation error UX, so a throw escaping here would
+      // reach a caller forbidden from catching it, and the confirm dialog
+      // driving this refuses to close while a delete is in flight.
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', () => HttpResponse.error()),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001'])
+
+      expect(result).toBe(false)
+    })
+
+    it('never throws when removing the rows does', async () => {
+      // The guard covers the whole body, not just the network call: an
+      // earlier version wrapped only the request, so a throw from the row
+      // removal or the toast escaped and left the dialog unclosable.
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      const { useToastStore } = await import('@/stores/toast')
+      const addSpy = vi
+        .spyOn(useToastStore.getState(), 'add')
+        .mockImplementationOnce(() => {
+          throw new Error('toast store exploded')
+        })
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001'])
+
+      expect(result).toBe(false)
+      addSpy.mockRestore()
     })
   })
 

@@ -1,11 +1,13 @@
 import {
   apiClient,
+  BULK_DELETE_TIMEOUT_MS,
   LLM_BOUND_TIMEOUT_MS,
   type PaginatedResult,
   unwrap,
   unwrapPaginated,
   unwrapVoid,
 } from '../client'
+import type { BulkDeleteResult } from '../types/bulk-delete'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   EditPlanRequest,
@@ -100,6 +102,23 @@ export async function deletePlan(planId: string): Promise<void> {
     `/plans/${encodeURIComponent(planId)}`,
   )
   unwrapVoid(response)
+}
+
+/**
+ * Delete a selection in one request.
+ *
+ * A plan refuses on its own terms often enough that a mixed selection is the
+ * normal case, so the result reports each row rather than the first refusal.
+ */
+export async function bulkDeletePlans(
+  ids: readonly string[],
+): Promise<BulkDeleteResult> {
+  const response = await apiClient.post<ApiResponse<BulkDeleteResult>>(
+    '/plans/bulk-delete',
+    { ids },
+    { timeout: BULK_DELETE_TIMEOUT_MS },
+  )
+  return unwrap(response)
 }
 
 /**

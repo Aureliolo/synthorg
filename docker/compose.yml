@@ -121,6 +121,12 @@ services:
       # Local docker-network postgres runs plaintext inside the bridge.
       # For production, override to `verify-full` with proper certs.
       SYNTHORG_POSTGRES_SSL_MODE: "disable"
+      # The artefact this stack is running, which source cannot tell it:
+      # `synthorg.__version__` is the last RELEASED version, so a pre-release
+      # stack reports the previous release's number as its own. This file
+      # builds the backend from the worktree, so an unset tag reads as the
+      # source version, which is then the true answer.
+      SYNTHORG_IMAGE_TAG: "${SYNTHORG_IMAGE_TAG:-}"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "postgres"
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"

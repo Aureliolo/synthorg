@@ -916,3 +916,100 @@ describe('batchReject', () => {
     ).toBe('pending')
   })
 })
+
+describe('what a partly-settled batch tells the operator', () => {
+  /** Settle the first id and refuse the second, for either verb. */
+  function halfWorking(
+    path: string,
+    settledStatus: ApprovalResponse['status'],
+  ): void {
+    server.use(
+      http.post(path, ({ params }) => {
+        if (params['id'] === '1') {
+          return HttpResponse.json(
+            apiSuccess(makeApproval('1', { status: settledStatus })),
+          )
+        }
+        return HttpResponse.json(apiError('Server error'))
+      }),
+    )
+  }
+
+  function seedTwo(): void {
+    useApprovalsStore.setState({
+      approvals: [makeApproval('1'), makeApproval('2')],
+      selectedIds: new Set(['1', '2']),
+    })
+  }
+
+  it('says how many rejections landed, not only that one failed', async () => {
+    // `Reject 2` settled one and failed the other, and the only signal was a
+    // single error toast about the failure. An operator reading it concludes
+    // nothing happened, on an action the modal calls irreversible.
+    seedTwo()
+    halfWorking('/api/v1/approvals/:id/reject', 'rejected')
+
+    await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Rejected 1 of 2')
+  })
+
+  it('does not call a partly-settled batch a failure', async () => {
+    seedTwo()
+    halfWorking('/api/v1/approvals/:id/reject', 'rejected')
+
+    await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    expect(useToastStore.getState().toasts[0]!.variant).toBe('warning')
+  })
+
+  it('still names what went wrong', async () => {
+    seedTwo()
+    halfWorking('/api/v1/approvals/:id/reject', 'rejected')
+
+    await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    expect(useToastStore.getState().toasts[0]!.description).toContain('Server error')
+  })
+
+  it('reports a partly-settled approval the same way', async () => {
+    seedTwo()
+    halfWorking('/api/v1/approvals/:id/approve', 'approved')
+
+    await useApprovalsStore.getState().batchApprove(['1', '2'])
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.title).toBe('Granted 1 of 2')
+    expect(toasts[0]!.variant).toBe('warning')
+  })
+
+  it('keeps a wholly-failed batch an error', async () => {
+    seedTwo()
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', () =>
+        HttpResponse.json(apiError('Server error')),
+      ),
+    )
+
+    await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    expect(useToastStore.getState().toasts[0]!.variant).toBe('error')
+  })
+
+  it('keeps a wholly-settled batch a success', async () => {
+    seedTwo()
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', ({ params }) =>
+        HttpResponse.json(
+          apiSuccess(makeApproval(String(params['id']), { status: 'rejected' })),
+        ),
+      ),
+    )
+
+    await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    expect(useToastStore.getState().toasts[0]!.variant).toBe('success')
+  })
+})

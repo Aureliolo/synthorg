@@ -1,6 +1,5 @@
 """Task controller: CRUD + board entry into the live pipeline spine."""
 
-import asyncio
 from typing import Annotated, Final
 
 from litestar import Controller, delete, get, patch, post
@@ -12,11 +11,13 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
+from synthorg.api.controllers._bulk_delete import BulkDeleteRequest, BulkDeleteResult
 from synthorg.api.controllers._deletion_record import deleted_task_error
 from synthorg.api.controllers._requester import extract_requester
+from synthorg.api.controllers._task_board_pipeline import spawn_task_board_pipeline
 from synthorg.api.controllers._task_money_ceiling import guard_task_money_ceiling
 from synthorg.api.controllers._task_names import names_and_titles
-from synthorg.api.controllers._task_removal import remove_task
+from synthorg.api.controllers._task_removal import remove_task, remove_tasks
 from synthorg.api.dto import (
     ApiResponse,
     CancelTaskRequest,
@@ -38,19 +39,15 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.entry.task_board_adapter import (
-    TaskBoardEntryAdapter,
     TaskBoardFiling,
 )
-from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.state import (
     EngineStateSlice,
@@ -58,12 +55,8 @@ from synthorg.engine.state import (
 )
 from synthorg.observability import (
     get_logger,
-    log_exception_redacted,
-    safe_error_description,
 )
-from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
-    API_TASK_BOARD_PIPELINE_FAILED,
     API_TASK_BOARD_REJECTED_NO_ADAPTER,
     API_TASK_BOARD_SUBMITTED,
     API_TASK_CANCELLED,
@@ -76,81 +69,6 @@ from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-
-
-async def process_task_board_pipeline(
-    *,
-    adapter: TaskBoardEntryAdapter,
-    filing: TaskBoardFiling,
-) -> None:
-    """Drive a board filing through the work pipeline spine.
-
-    Runs in a detached background task; the HTTP handler already
-    returned ``202``. Failures are logged at WARNING (intake-rejection)
-    or ERROR (any other pipeline failure) keyed by ``correlation_id``;
-    ``MemoryError`` and ``RecursionError`` propagate. ``CancelledError``
-    propagates so app shutdown does not convert a cancellation into a
-    spurious error log.
-
-    Raises:
-        CancelledError: Raised on the corresponding failure path.
-    """
-    try:
-        await adapter.submit(filing)
-    except asyncio.CancelledError:
-        raise
-    except WorkIntakeRejectedError as exc:
-        # Intake declining the work is a normal outcome, not a defect.
-        logger.warning(
-            API_TASK_BOARD_PIPELINE_FAILED,
-            correlation_id=filing.correlation_id,
-            project=filing.project,
-            outcome="intake_rejected",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        log_exception_redacted(
-            logger,
-            API_TASK_BOARD_PIPELINE_FAILED,
-            exc,
-            correlation_id=filing.correlation_id,
-            project=filing.project,
-            outcome="pipeline_error",
-        )
-
-
-def _spawn_task_board_pipeline(
-    *,
-    sim_state: ClientSimulationState,
-    adapter: TaskBoardEntryAdapter,
-    filing: TaskBoardFiling,
-) -> None:
-    """Spawn + track the background board-pipeline run.
-
-    A detached task (not a ``TaskGroup``) is correct here: the create
-    handler returns ``202`` immediately and the pipeline run outlives
-    that scope by design. Lifecycle mirrors ``_spawn_intake_pipeline``
-    in ``controllers/requests.py``: a strong reference in
-    ``sim_state.background_tasks`` keeps the task from being GC'd
-    mid-flight, the exception logger is attached before the
-    set-discard so a fast-completing failure still surfaces, and the
-    reference is added synchronously here (no ``await`` between
-    ``create_task`` and ``add``).
-    """
-    task = asyncio.create_task(
-        process_task_board_pipeline(adapter=adapter, filing=filing),
-    )
-    task.add_done_callback(
-        log_task_exceptions(
-            logger,
-            API_TASK_BOARD_PIPELINE_FAILED,
-            correlation_id=filing.correlation_id,
-        ),
-    )
-    task.add_done_callback(sim_state.background_tasks.discard)
-    sim_state.background_tasks.add(task)
 
 
 async def _named(app_state: AppState, task: Task) -> TaskRow:
@@ -326,7 +244,7 @@ class TaskController(Controller):
             estimated_complexity=data.estimated_complexity,
         )
         sim_state = client_simulation_state_of(app_state)
-        _spawn_task_board_pipeline(
+        spawn_task_board_pipeline(
             sim_state=sim_state,
             adapter=adapter,
             filing=filing,
@@ -473,6 +391,38 @@ class TaskController(Controller):
         requested_by = extract_requester()
         await remove_task(app_state, task_id, requested_by=requested_by)
         logger.info(API_TASK_DELETED, task_id=task_id)
+
+    @post(
+        "/bulk-delete",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("tasks.bulk_delete", key="user"),
+        ],
+        # POST defaults to 201, which promises a created resource and a
+        # Location to find it at. This creates nothing: it removes rows and
+        # answers with a report of what went.
+        status_code=HTTP_200_OK,
+    )
+    async def bulk_delete_tasks(
+        self,
+        state: State,
+        data: BulkDeleteRequest,
+    ) -> ApiResponse[BulkDeleteResult]:
+        """Delete every selected task, reporting each row's outcome.
+
+        A task a plan still names as its objective refuses, and clearing a
+        board is exactly the selection that mixes those in, so each refusal is
+        collected against its own row.
+
+        Returns:
+            What was removed and what remains.
+        """
+        result = await remove_tasks(
+            state.app_state,
+            data.ids,
+            requested_by=extract_requester(),
+        )
+        return ApiResponse(data=result)
 
     @post(
         "/{task_id:str}/execute",

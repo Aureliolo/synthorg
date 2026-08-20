@@ -1,7 +1,7 @@
 """Tests for decomposition service."""
 
 import asyncio
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,7 +19,9 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, mock_of, sid
+
+pytestmark = pytest.mark.unit
 
 #: Short enough that a strategy which never answers trips it immediately.
 _A_SHORT_CEILING = 0.01
@@ -102,7 +104,6 @@ def _make_plan(
 class TestDecompositionService:
     """Tests for DecompositionService."""
 
-    @pytest.mark.unit
     async def test_decompose_creates_tasks(self) -> None:
         """Service creates Task objects from subtask definitions."""
         task = _make_task()
@@ -122,7 +123,6 @@ class TestDecompositionService:
             assert child_task.project == task.project
             assert child_task.created_by == task.created_by
 
-    @pytest.mark.unit
     async def test_decompose_arms_guard_with_artifacts_and_criteria(self) -> None:
         """Child tasks carry the subtask artifacts + criteria, arming the guard.
 
@@ -161,7 +161,6 @@ class TestDecompositionService:
             "grid renders",
         )
 
-    @pytest.mark.unit
     async def test_decompose_non_uuid_subtask_id_raises(self) -> None:
         """A plan with a non-UUID subtask id raises a clear domain error.
 
@@ -187,7 +186,6 @@ class TestDecompositionService:
         with pytest.raises(DecompositionError, match="not a valid UUID"):
             await service.decompose_task(task, DecompositionContext())
 
-    @pytest.mark.unit
     async def test_decompose_non_canonical_subtask_id_raises(self) -> None:
         """A parseable but non-canonical UUID subtask id is rejected.
 
@@ -215,7 +213,6 @@ class TestDecompositionService:
         with pytest.raises(DecompositionError, match="canonical UUID form"):
             await service.decompose_task(task, DecompositionContext())
 
-    @pytest.mark.unit
     async def test_decompose_builds_edges(self) -> None:
         """Service builds dependency edges from subtask definitions."""
         task = _make_task()
@@ -232,7 +229,6 @@ class TestDecompositionService:
         assert (sid("sub-2"), sid("sub-3")) in result.dependency_edges
         assert len(result.dependency_edges) == 2
 
-    @pytest.mark.unit
     async def test_decompose_preserves_delegation_chain(self) -> None:
         """Subtasks inherit parent's delegation chain."""
         task = Task(
@@ -268,7 +264,6 @@ class TestDecompositionService:
             "agent-b",
         )
 
-    @pytest.mark.unit
     async def test_undeclared_structure_falls_to_the_classifier(self) -> None:
         """A plan that declared nothing takes the classifier's verdict.
 
@@ -287,7 +282,6 @@ class TestDecompositionService:
 
         assert result.plan.task_structure == TaskStructure.PARALLEL
 
-    @pytest.mark.unit
     async def test_undeclared_structure_falls_to_the_keyword_heuristic(self) -> None:
         """With nothing declared anywhere, the regex heuristic decides."""
         task = Task(
@@ -320,7 +314,6 @@ class TestDecompositionService:
 
         assert result.plan.task_structure == TaskStructure.SEQUENTIAL
 
-    @pytest.mark.unit
     async def test_declared_structure_survives_contrary_keywords(self) -> None:
         """The planner's declaration is not overruled by a keyword regex.
 
@@ -361,7 +354,6 @@ class TestDecompositionService:
 
         assert result.plan.task_structure == TaskStructure.PARALLEL
 
-    @pytest.mark.unit
     async def test_decompose_dag_cycle_raises(self) -> None:
         """Service raises DecompositionCycleError for cyclic plans."""
         task = _make_task()
@@ -393,7 +385,6 @@ class TestDecompositionService:
         with pytest.raises(DecompositionCycleError, match="cycle"):
             await service.decompose_task(task, ctx)
 
-    @pytest.mark.unit
     async def test_decompose_uses_subtask_complexity(self) -> None:
         """Child tasks use subtask's estimated_complexity, not parent's."""
         from synthorg.core.task_enums import Complexity
@@ -429,7 +420,6 @@ class TestDecompositionService:
 
         assert result.created_tasks[0].estimated_complexity == Complexity.SIMPLE
 
-    @pytest.mark.unit
     async def test_decompose_exception_propagates(self) -> None:
         """Unexpected exceptions are logged and re-raised."""
 
@@ -452,7 +442,6 @@ class TestDecompositionService:
         with pytest.raises(RuntimeError, match="strategy boom"):
             await service.decompose_task(task, ctx)
 
-    @pytest.mark.unit
     async def test_decompose_propagates_dependencies(self) -> None:
         """Subtask dependencies propagate to created Task objects."""
         task = _make_task()
@@ -469,7 +458,6 @@ class TestDecompositionService:
         assert tasks_by_id[as_uuid("sub-2")].dependencies == (sid("sub-1"),)
         assert tasks_by_id[as_uuid("sub-3")].dependencies == (sid("sub-2"),)
 
-    @pytest.mark.unit
     def test_rollup_status_delegates(self) -> None:
         """rollup_status delegates to StatusRollup.compute."""
         plan = _make_plan()
@@ -497,10 +485,9 @@ class TestOneDecompositionCannotRunForever:
     through, and a per-caller answer is a second owner of the same number.
     """
 
-    @pytest.mark.unit
     async def test_a_planner_that_never_answers_is_abandoned(self) -> None:
         never = _NeverAnsweringStrategy()
-        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_SHORT_CEILING
         service = DecompositionService(
             never,
@@ -511,12 +498,11 @@ class TestOneDecompositionCannotRunForever:
         with pytest.raises(DecompositionError):
             await service.decompose_task(_make_task(), DecompositionContext())
 
-    @pytest.mark.unit
     async def test_the_ceiling_is_read_per_decomposition(self) -> None:
         # Captured at construction it would take a restart to apply, which
         # for a ceiling an operator raises because their provider is slow is
         # the moment it is least available to them.
-        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_GENEROUS_CEILING
         service = DecompositionService(
             ManualDecompositionStrategy(_make_plan()),
@@ -530,7 +516,6 @@ class TestOneDecompositionCannotRunForever:
 
         assert resolver.get_float.await_count == 2
 
-    @pytest.mark.unit
     async def test_an_unreadable_ceiling_still_bounds_the_call(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -544,7 +529,7 @@ class TestOneDecompositionCannotRunForever:
             "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
             _A_SHORT_CEILING,
         )
-        resolver: MagicMock = create_autospec(ConfigResolverProtocol, instance=True)
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.side_effect = RuntimeError("settings unreadable")
         service = DecompositionService(
             _NeverAnsweringStrategy(),
@@ -555,7 +540,6 @@ class TestOneDecompositionCannotRunForever:
         with pytest.raises(DecompositionError):
             await service.decompose_task(_make_task(), DecompositionContext())
 
-    @pytest.mark.unit
     async def test_no_resolver_at_all_still_bounds_the_call(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -573,3 +557,90 @@ class TestOneDecompositionCannotRunForever:
 
         with pytest.raises(DecompositionError):
             await service.decompose_task(_make_task(), DecompositionContext())
+
+
+class _ContextRecordingStrategy:
+    """Captures the context the service actually hands the planner."""
+
+    def __init__(self) -> None:
+        self.seen: DecompositionContext | None = None
+
+    async def decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        self.seen = context
+        return _make_plan(parent_task_id=str(task.id))
+
+    def get_strategy_name(self) -> str:
+        return "context-recording"
+
+
+class _StubInventory:
+    """A workspace inventory that answers without touching a disk."""
+
+    def __init__(self, answer: str = "server.js, index.html") -> None:
+        self.answer = answer
+        self.asked_for: list[str] = []
+
+    async def describe_inventory(self, project_id: str) -> str:
+        self.asked_for.append(project_id)
+        return self.answer
+
+
+class TestPlanningIsGroundedInTheRealWorkspace:
+    """Every decomposition path must be told what the project actually holds.
+
+    Two of the five context-construction sites live deep in the engine with no
+    workspace root to read, and the charter route is one of them, so the fact
+    is resolved at the single seam they all pass through instead.
+    """
+
+    async def test_the_planner_is_told_what_the_workspace_holds(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary == "server.js, index.html"
+
+    async def test_the_inventory_is_asked_about_this_task_s_project(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert inventory.asked_for == ["proj-1"]
+
+    async def test_a_caller_supplied_summary_is_not_overwritten(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(
+            _make_task(), DecompositionContext(workspace_summary="a known answer")
+        )
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary == "a known answer"
+        assert inventory.asked_for == []
+
+    async def test_no_inventory_wired_leaves_the_context_alone(self) -> None:
+        """A harness builds this service with no workspace at all."""
+        strategy = _ContextRecordingStrategy()
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary is None

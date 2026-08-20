@@ -19,7 +19,6 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg import __version__
 from synthorg._core.features import require_service
 from synthorg.api.controllers._backup_health import (
     BackupHealth,
@@ -47,6 +46,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.core.build_identity import running_version
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -212,7 +212,7 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         # touch, so it stays reportable.
         backup=resolve_backup_health(app_state),
         cost_recording=resolve_cost_recording_health(),
-        version=__version__,
+        version=running_version(),
         uptime_seconds=uptime,
     )
 
@@ -473,7 +473,7 @@ def _readiness_from_probes(
         memory=memory_health,
         backup=resolve_backup_health(app_state),
         cost_recording=resolve_cost_recording_health(),
-        version=__version__,
+        version=running_version(),
         uptime_seconds=round(app_state.clock.monotonic() - app_state.startup_time, 2),
     )
 

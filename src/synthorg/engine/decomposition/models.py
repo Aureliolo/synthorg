@@ -423,6 +423,10 @@ class DecompositionContext(BaseModel):
         max_subtasks: Maximum number of subtasks allowed.
         max_depth: Maximum nesting depth for recursive decomposition.
         current_depth: Current nesting depth.
+        workspace_summary: What the project workspace actually holds, for the
+            planner to plan against. ``None`` when the caller cannot resolve
+            it, which leaves the brief's unconditional rule to carry the
+            point: a planner that is told nothing must assume nothing.
         owner_identity: The accountable owner staffed for this initiative,
             or ``None`` when the initiative is unowned. An agent-session
             decomposition strategy plans AS this owner (its persona, tools,
@@ -454,6 +458,11 @@ class DecompositionContext(BaseModel):
         default=0,
         ge=0,
         description="Current nesting depth",
+    )
+    workspace_summary: str | None = Field(
+        default=None,
+        description="What the project workspace actually contains, or None "
+        "when the caller cannot resolve it",
     )
     owner_identity: AgentIdentity | None = Field(
         default=None,

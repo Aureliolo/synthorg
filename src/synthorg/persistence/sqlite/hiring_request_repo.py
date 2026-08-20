@@ -31,11 +31,24 @@ from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
+# Conflict target is the primary key alone, deliberately. ``INSERT OR REPLACE``
+# resolves a conflict on ANY unique index by DELETING the row it collided with,
+# so under the one-open-hire-per-role index a second open request for a role
+# would silently destroy the first rather than being refused. Postgres targets
+# ``id`` for the same reason; matching it keeps the two backends answering the
+# same way instead of one raising while the other loses a row.
 _UPSERT_SQL = """
-INSERT OR REPLACE INTO hiring_requests (
+INSERT INTO hiring_requests (
     id, status, requested_by, department, role, created_at, payload
 )
 VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET
+    status = excluded.status,
+    requested_by = excluded.requested_by,
+    department = excluded.department,
+    role = excluded.role,
+    created_at = excluded.created_at,
+    payload = excluded.payload
 """
 _SELECT_SQL = "SELECT payload FROM hiring_requests"
 

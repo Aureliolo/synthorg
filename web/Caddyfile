@@ -10,7 +10,8 @@
 #   - /assets/* immutable year-long cache, no CSP
 #   - /docs/* static CSP, 1h revalidation
 #   - /api/v1/ws WebSocket proxy to backend:3001 (3600s read timeout)
-#   - /api/* REST proxy to backend:3001
+#   - /api/* REST proxy to backend:3001 (1800s read timeout: LLM-bound
+#     endpoints run for minutes)
 #   - shared security headers (X-Content-Type-Options, X-Frame-Options,
 #     Referrer-Policy, Permissions-Policy, HSTS, templated CSP)
 {
@@ -111,8 +112,19 @@
 		}
 	}
 
-	# --- REST API proxy ---
-	handle /api/* {
+	# --- REST API proxy: reads ---
+	# Split from writes by METHOD rather than by a list of slow paths. Every
+	# LLM-bound endpoint is a POST and the high-volume cheap traffic is GET, so
+	# this bounds most of the surface at 30s without anyone maintaining a path
+	# list. A list would be a second answer to "how long may this endpoint
+	# run", and the backend already owns that one: the first LLM-bound route
+	# somebody shipped without editing this file would go back to reporting a
+	# completed call as a connectivity failure, with nothing watching.
+	@api_read {
+		path /api/*
+		method GET HEAD OPTIONS
+	}
+	handle @api_read {
 		import api_security_headers
 		reverse_proxy backend:3001 {
 			header_up Host {host}
@@ -124,6 +136,40 @@
 				write_timeout 30s
 				read_timeout 30s
 				keepalive 30s
+				max_conns_per_host 256
+			}
+		}
+	}
+
+	# --- REST API proxy: writes ---
+	handle /api/* {
+		import api_security_headers
+		reverse_proxy backend:3001 {
+			header_up Host {host}
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+
+			transport http {
+				dial_timeout 5s
+				write_timeout 30s
+				# Several of these are LLM-bound and run for minutes: approving
+				# a charter runs decomposition and the whole review panel
+				# before it answers, and asking the org for plan changes runs a
+				# fresh planning session. At 30s Caddy hung up while the backend
+				# was still working and the operator was told the call had
+				# failed: one live run created a project, a plan and a
+				# decomposition behind a 504 the dashboard reported as nothing
+				# at all, and a five-minute replan failure arrived as
+				# "temporary connectivity issue". The ceiling matches
+				# engine.integration_stage_timeout_seconds, the longest stage
+				# the backend gives itself, so the proxy outlives the work
+				# rather than truncating it.
+				read_timeout 1800s
+				keepalive 30s
+				# The bound that a long read timeout removes on its own: a
+				# request held for half an hour holds a backend worker with it,
+				# and nothing else here caps how many may be in flight.
+				max_conns_per_host 64
 			}
 		}
 	}

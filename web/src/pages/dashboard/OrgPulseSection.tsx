@@ -128,6 +128,19 @@ function CouldNotRead({ what, detail }: { what: string; detail: string }) {
   )
 }
 
+/** A list of activity rows, or nothing at all when there are none. */
+function ActivityRows({ rows }: { rows: readonly AgentActivity[] }) {
+  return (
+    <StaggerGroup className="space-y-1.5">
+      {rows.map((activity) => (
+        <StaggerItem key={activity.agent_id}>
+          <RunningRow activity={activity} />
+        </StaggerItem>
+      ))}
+    </StaggerGroup>
+  )
+}
+
 function RunningNow({
   running,
   queue,
@@ -138,6 +151,14 @@ function RunningNow({
   'running' | 'queue' | 'runningError' | 'runningLoading'
 >) {
   const idle = queue.idleAgents === 1 ? '1 agent idle' : `${queue.idleAgents} agents idle`
+  // The snapshot is every agent holding work, which is not the same list as
+  // the one this heading names. A live run showed ten rows under "Running
+  // now", every one of them `stuck` at `0 turns`, beside a header reading
+  // ACTIVE AGENTS 0: the board said work was in flight while nothing was
+  // moving. Both facts are worth showing, so neither row is dropped; they are
+  // told apart so neither heading has to be untrue.
+  const active = running.filter((activity) => !activity.is_stuck)
+  const stalled = running.filter((activity) => activity.is_stuck)
   return (
     <div className="space-y-2">
       <h4 className="font-mono text-micro uppercase tracking-wide text-text-muted">
@@ -147,16 +168,18 @@ function RunningNow({
         <CouldNotRead what="what is running" detail={runningError} />
       ) : runningLoading && running.length === 0 ? (
         <p className="text-sm text-muted-foreground">Reading the org's state...</p>
-      ) : running.length === 0 ? (
+      ) : active.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing is running.</p>
       ) : (
-        <StaggerGroup className="space-y-1.5">
-          {running.map((activity) => (
-            <StaggerItem key={activity.agent_id}>
-              <RunningRow activity={activity} />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+        <ActivityRows rows={active} />
+      )}
+      {stalled.length > 0 && (
+        <>
+          <h4 className="pt-1 font-mono text-micro uppercase tracking-wide text-warning">
+            Holding work, not progressing
+          </h4>
+          <ActivityRows rows={stalled} />
+        </>
       )}
       <p className="font-mono text-xs text-text-secondary">
         {queue.queued} queued · {idle}

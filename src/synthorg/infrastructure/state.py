@@ -28,7 +28,6 @@ from synthorg.infrastructure.services import (
     BackupFacadeService,
     EventsReadService,
     IntegrationHealthFacadeService,
-    ProjectFacadeService,
     ProviderReadService,
     RequestsFacadeService,
     SetupFacadeService,
@@ -63,7 +62,6 @@ class FacadesStateSlice(BaseFeatureStateSlice):
     mcp_catalog_facade_service: MCPCatalogFacadeService | None = None
     oauth_facade_service: OAuthFacadeService | None = None
     ontology_facade_service: OntologyFacadeService | None = None
-    project_facade_service: ProjectFacadeService | None = None
     project_doc_memory_facade: ProjectAwareMemoryFacade | None = None
     provider_read_service: ProviderReadService | None = None
     quality_facade_service: QualityFacadeService | None = None
@@ -164,18 +162,6 @@ def integration_health_facade_service_of(
     return _facade(
         app_state.slice(FacadesStateSlice).integration_health_facade_service,
         "Integration Health Facade Service",
-    )
-
-
-def project_facade_service_of(app_state: AppStateSliceMixin) -> ProjectFacadeService:
-    """Resolve the project facade service from its slice, or raise 503.
-
-    Returns:
-        The wired project facade service.
-    """
-    return _facade(
-        app_state.slice(FacadesStateSlice).project_facade_service,
-        "Project Facade Service",
     )
 
 
