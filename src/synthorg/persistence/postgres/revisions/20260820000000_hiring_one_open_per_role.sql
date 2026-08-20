@@ -24,18 +24,23 @@
 -- index reads as not having run this one and gets the file again.
 
 UPDATE hiring_requests
-SET status = 'rejected',
+SET
+    status = 'rejected',
     payload = JSONB_SET(payload, '{status}', '"rejected"'::JSONB)
-WHERE status IN ('pending', 'approved')
-  AND id NOT IN (
-    SELECT id FROM (
-      SELECT id, ROW_NUMBER() OVER (
-        PARTITION BY role ORDER BY created_at DESC, id DESC
-      ) AS rn
-      FROM hiring_requests
-      WHERE status IN ('pending', 'approved')
-    ) ranked WHERE rn = 1
-  );
+WHERE
+    status IN ('pending', 'approved')
+    AND id NOT IN (
+        SELECT id FROM (
+            SELECT
+                id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY role ORDER BY created_at DESC, id DESC
+                ) AS rn
+            FROM hiring_requests
+            WHERE status IN ('pending', 'approved')
+        ) AS ranked
+        WHERE rn = 1
+    );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hiring_requests_one_open_per_role
 ON hiring_requests (role)
