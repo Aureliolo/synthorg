@@ -13,17 +13,15 @@ from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
 from synthorg.api.controllers._bulk_delete import (
     BulkDeleteRequest,
     BulkDeleteResult,
-    run_bulk_delete,
 )
-from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._project_autonomy import (
     AutonomyModeTransition,
     ProjectAutonomyModeRequest,
     audit_autonomy_mode_change,
     guard_full_autonomy_optin,
 )
-from synthorg.api.controllers._project_cascade import cascade_supersede_children
 from synthorg.api.controllers._project_progress import ProjectProgressAssembler
+from synthorg.api.controllers._project_removal import remove_project, remove_projects
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
@@ -45,9 +43,7 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import (
-    NotFoundError,
     ValidationError,
     VersionConflictError,
 )
@@ -359,7 +355,13 @@ class ProjectController(Controller):
         Raises:
             NotFoundError: Project with ``project_id`` does not exist.
         """
-        await self._delete_one(request, state, project_id)
+        await remove_project(
+            request,
+            state,
+            _service(state),
+            project_id,
+            requested_by=extract_requester(),
+        )
 
     @post(
         "/bulk-delete",
@@ -384,66 +386,14 @@ class ProjectController(Controller):
         Returns:
             What was removed and what remains.
         """
-        result = await run_bulk_delete(
+        result = await remove_projects(
+            request,
+            state,
+            _service(state),
             data.ids,
-            lambda project_id: self._delete_one(request, state, project_id),
-            entity="project",
+            requested_by=extract_requester(),
         )
         return ApiResponse(data=result)
-
-    async def _delete_one(
-        self,
-        request: Request[object, object, State],
-        state: State,
-        project_id: str,
-    ) -> None:
-        """Remove one project and everything that hangs off it.
-
-        Raises:
-            NotFoundError: Project with ``project_id`` does not exist.
-        """
-        service = _service(state)
-        project = require_resource_or_404(
-            await service.get(project_id),
-            resource_type="Project",
-            identifier=project_id,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="delete",
-            extra_log_kwargs={"project_id": project_id},
-        )
-        requested_by = extract_requester()
-        await cascade_supersede_children(
-            state.app_state,
-            project_id,
-            requested_by=requested_by,
-        )
-        deleted = await service.delete(project_id)
-        if not deleted:
-            # Race: row disappeared between get() and delete(). Log as a
-            # warning so concurrent destructive operations stay in the audit
-            # trail.
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="project",
-                project_id=project_id,
-                operation="delete",
-                note="concurrent_delete",
-            )
-            msg = f"Project {project_id!r} not found"
-            raise NotFoundError(msg)
-        await record_deletion(
-            persistence_of(state.app_state),
-            kind=DeletedEntityKind.PROJECT,
-            entity_id=project_id,
-            display_name=project.name,
-            deleted_by=requested_by,
-        )
-        publish_ws_event(
-            request,
-            WsEventType.PROJECT_DELETED,
-            CHANNEL_PROJECTS,
-            {"project_id": project_id, "name": project.name},
-        )
 
     @post(
         guards=[
