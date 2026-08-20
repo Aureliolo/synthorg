@@ -167,6 +167,20 @@ class TestBuildConversationalActor:
                 autonomy_resolver=None,
             )
 
+    def test_the_decline_names_the_setting_that_opens_the_bridge(self) -> None:
+        # The opt-in is one of a pair, and the bridge ships off. A live run
+        # enabled this half and read that an internal component was missing,
+        # with nothing in the sentence the operator could act on.
+        with pytest.raises(SubsystemDeclinedError) as exc_info:
+            build_conversational_actor(
+                ChiefOfStaffConfig(direct_mcp_enabled=True),
+                engine=_engine(has_mcp=False, has_governance=True),
+                agent_registry=object(),  # type: ignore[arg-type]
+                autonomy_resolver=None,
+            )
+        assert "security.mcp_self_consumer_mode" in str(exc_info.value)
+        assert "trust_scoped" in str(exc_info.value)
+
     def test_declines_naming_inactive_governance(self) -> None:
         # Fail-closed: direct MCP acting without governance would run
         # permitted write/admin actions with no escalate-and-park step.
@@ -208,7 +222,7 @@ class TestBuildOperatorConsole:
             )
 
     def test_declines_naming_the_missing_self_consumer(self) -> None:
-        with pytest.raises(SubsystemDeclinedError, match="no MCP self-consumer"):
+        with pytest.raises(SubsystemDeclinedError) as exc_info:
             build_operator_console(
                 ChiefOfStaffConfig(
                     operator_console_enabled=True,
@@ -218,6 +232,10 @@ class TestBuildOperatorConsole:
                 autonomy_resolver=None,
                 clock=FakeClock(),
             )
+        assert "no MCP self-consumer" in str(exc_info.value)
+        # Same pair, same gap: the console's own switch is not the one that
+        # opens the bridge it needs.
+        assert "security.mcp_self_consumer_mode" in str(exc_info.value)
 
     def test_declines_naming_inactive_governance(self) -> None:
         # Fail-closed: an ungated console would run permitted write/admin
