@@ -75,7 +75,9 @@ class SafeEvidencePackageSignature(BaseModel):
     )
 
 
-class SafeEvidencePackage(EvidencePackage):
+class SafeEvidencePackage(  # lint-allow: frozen-extra-forbid -- own-dump round trip
+    EvidencePackage
+):
     """Client-facing evidence package whose signatures omit the raw bytes.
 
     Narrows :class:`EvidencePackage.signatures` to the redacted
@@ -85,7 +87,7 @@ class SafeEvidencePackage(EvidencePackage):
     ``approver_id`` values, which the safe signature retains).
     """
 
-    # lint-allow: frozen-extra-forbid -- this type is validated from its OWN
+    # Why the opt-out on the class line: this type is validated from its OWN
     # dump. Every approval decision runs under the idempotency guard, which
     # caches `model_dump(mode="json")` and re-validates it into an
     # `ApprovalResponse` so a repeated key replays a typed response. A dump
