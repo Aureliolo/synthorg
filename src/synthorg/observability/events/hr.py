@@ -9,6 +9,9 @@ from typing import Final
 # ── Hiring ────────────────────────────────────────────────────────
 
 HR_HIRING_REQUEST_CREATED: Final[str] = "hr.hiring.request_created"
+#: A half-opened request was removed before anyone saw it. Distinct from
+#: ``HR_HIRING_REJECTED``, which records a decision a person took.
+HR_HIRING_REQUEST_DISCARDED: Final[str] = "hr.hiring.request_discarded"
 HR_HIRING_CANDIDATE_GENERATED: Final[str] = "hr.hiring.candidate_generated"
 HR_HIRING_APPROVAL_SUBMITTED: Final[str] = "hr.hiring.approval_submitted"
 HR_HIRING_APPROVED: Final[str] = "hr.hiring.approved"

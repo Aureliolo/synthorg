@@ -22,6 +22,7 @@ from synthorg.engine.review_staffing.notices import (
 )
 from synthorg.hr.errors import HRError
 from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_ALREADY_OPEN,
@@ -132,6 +133,12 @@ async def ensure_hire_open(
             error="role is not in the built-in catalog; cannot describe the hire",
         )
         return False
+    # Opening a hire is create-then-submit, and every way the second half can
+    # fail leaves the first half's row PENDING. A PENDING row counts as in
+    # flight, so the check at the top of this function reads it as "a hire is
+    # already under way" on every later pass and the role can never be staffed
+    # again. Whatever this function does not complete, it takes back.
+    request: HiringRequest | None = None
     try:
         request = await hiring.create_request(
             requested_by=NotBlankStr(actor),
@@ -145,11 +152,13 @@ async def ensure_hire_open(
             # Nothing to submit, so there is no hire to open. Indexing here
             # would raise IndexError out of a pass whose whole contract is to
             # report a failure and let the next pass retry.
+            no_candidate = "candidate generation produced nobody to put forward"
             logger.warning(
                 REVIEW_STAFFING_HIRE_REQUEST_FAILED,
                 role=role,
-                error="candidate generation produced nobody to put forward",
+                error=no_candidate,
             )
+            await hiring.discard_undecided_request(str(request.id), reason=no_candidate)
             return False
         # The APPENDED one, not the first: generate_candidate re-reads the
         # request from the store before appending, so a stored request already
@@ -170,6 +179,10 @@ async def ensure_hire_open(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        if request is not None:
+            await hiring.discard_undecided_request(
+                str(request.id), reason=safe_error_description(exc)
+            )
         return False
     logger.info(
         REVIEW_STAFFING_HIRE_REQUESTED,
