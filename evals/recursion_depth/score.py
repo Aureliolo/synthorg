@@ -180,23 +180,28 @@ def _curve(
 
 
 def achieved_depth_histogram(cells: Iterable[CellRecord]) -> dict[str, int]:
-    """How many runs at each cap reached each depth.
+    """How many runs at each cap reached each depth, per arm.
 
     The reading the primary curve cannot be interpreted without: a flat right
     half means "gating holds at depth" only if runs went there.
+
+    Split by arm, because each arm plans its own tree. Two arms compared at a
+    depth only one of them reached is two different experiments on one axis,
+    and pooling the counts would hide exactly that.
 
     Args:
         cells: The measured runs.
 
     Returns:
-        ``"cap=<n> reached=<m>"`` mapped to the run count, in a stable order.
+        ``"cap=<n> <arm> reached=<m>"`` mapped to the run count, in a stable
+        order.
     """
     counts: dict[str, int] = defaultdict(int)
     for cell in cells:
         if cell.achieved_depth is None:
             continue
         reached = cell.achieved_depth + _DEPTH_OFFSET
-        counts[f"cap={cell.depth_cap} reached={reached}"] += 1
+        counts[f"cap={cell.depth_cap} {cell.arm.value} reached={reached}"] += 1
     return dict(sorted(counts.items()))
 
 

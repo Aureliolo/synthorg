@@ -35,6 +35,12 @@ LEAF: Final[str] = "leaf"
 #: A unit that assembled the units below it.
 MERGE: Final[str] = "merge"
 
+#: The planning sessions that wrote the tree. Not work and not an assembly, so
+#: it claims nothing and delivers nothing, but a deep sweep pays for one of
+#: these per node and a cost panel that omitted them would understate the deep
+#: end exactly where the question is.
+PLAN: Final[str] = "plan"
+
 
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.
@@ -49,8 +55,12 @@ class UnitRecord(BaseModel):
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
             merge lost.
-        attempts: How many sessions this unit consumed, repair included.
-        turns: Total agent turns across those sessions.
+        attempts: How many sessions this unit consumed, repair and review
+            included, which is the figure the equal-budget check reads.
+        turns: Agent turns across the sessions that BUILT. A review's turns are
+            not observable through the gate's dispatch seam, which answers with
+            the pair it ran on and nothing else; its spend is, and spend is
+            what the confound is about.
         cost: Total spend across those sessions.
         verdict: The gate's verdict on this merge, absent in the ungated arm
             and on every leaf.
@@ -333,6 +343,7 @@ class RecursionDepthReport(BaseModel):
 __all__ = [
     "LEAF",
     "MERGE",
+    "PLAN",
     "RECURSION_DEPTH_SCHEMA_VERSION",
     "CellRecord",
     "DepthPoint",

@@ -24,7 +24,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 #: The shallowest cap worth recording: one level of planning, every unit
 #: dispatched whole, which is what the product did before recursion existed.
@@ -66,17 +66,26 @@ class Independence(StrEnum):
 
 
 class ModelPair(BaseModel):
-    """An explicit ``(provider, model)`` binding.
+    """An explicit ``(provider, model)`` binding and the rung it runs at.
+
+    The rung is declared rather than looked up. The capability registry grades
+    a pair from a catalogue that knows nothing about a placeholder id, and an
+    ungraded pair is refused by selection outright, so a roster built from a
+    manifest that did not say would leave every review unstaffed and the gated
+    arm would record escalations rather than verdicts.
 
     Attributes:
         provider: The registered connection dispatch goes through.
         model_id: The model that connection is asked for.
+        capability: The rung the roster claims for this pair. The catalogue
+            still wins where it grades the pair itself.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     provider: NotBlankStr
     model_id: NotBlankStr
+    capability: CapabilityLevel
 
     @property
     def label(self) -> str:

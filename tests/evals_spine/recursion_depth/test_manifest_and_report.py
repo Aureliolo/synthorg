@@ -44,8 +44,16 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "depths": [1, 2],
         "repetitions": {1: 1, 2: 2},
         "arms": ["gated", "ungated"],
-        "executor": {"provider": "example-provider", "model_id": "example-capable-001"},
-        "reviewer": {"provider": "example-provider", "model_id": "example-expert-001"},
+        "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+        },
+        "reviewer": {
+            "provider": "example-provider",
+            "model_id": "example-expert-001",
+            "capability": "expert",
+        },
         "independence": "same_provider",
         "merge_attempts": 3,
         "unit_max_turns": 40,
@@ -66,7 +74,11 @@ class TestTheJudgeMustBeIndependent:
         assert manifest.reviewer != manifest.executor
 
     def test_an_identical_pair_is_refused(self) -> None:
-        same = {"provider": "example-provider", "model_id": "example-capable-001"}
+        same = {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+        }
 
         with pytest.raises(RecursionDepthJudgeNotIndependentError, match="maximum"):
             RecursionDepthManifest.model_validate(
@@ -91,6 +103,7 @@ class TestTheJudgeMustBeIndependent:
                     reviewer={
                         "provider": "other-provider",
                         "model_id": "example-expert-001",
+                        "capability": "expert",
                     }
                 )
             )
@@ -103,6 +116,7 @@ class TestTheJudgeMustBeIndependent:
                 reviewer={
                     "provider": "other-provider",
                     "model_id": "example-expert-001",
+                    "capability": "expert",
                 },
             )
         )
@@ -158,10 +172,12 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
             executor=ModelPair(
                 provider=NotBlankStr("example-provider"),
                 model_id=NotBlankStr("example-capable-001"),
+                capability="capable",
             ),
             reviewer=ModelPair(
                 provider=NotBlankStr("example-provider"),
                 model_id=NotBlankStr("example-expert-001"),
+                capability="expert",
             ),
             independence=Independence.SAME_PROVIDER,
         ),

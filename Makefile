@@ -5,6 +5,7 @@
 # source of truth: every target maps to a command you can run directly.
 
 .PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
+	recursion-depth recursion-depth-record \
 	typecheck typecheck-warm typecheck-status typecheck-stop \
 	test-durations build-openhands-image \
 	dev-up dev-restart dev-status dev-logs dev-down
@@ -124,6 +125,38 @@ loop-ab:
 # it was measured against, so a stale one is self-evident.
 loop-ab-record:
 	PYTHONPATH=. uv run python scripts/record_loop_ab.py --record $(ARGS)
+
+# Print the recursion-depth matrix and the sessions it would run, without
+# spending anything: this path boots no gateway, opens no port and starts no
+# container. Run it before `recursion-depth-record`. The session figure is a
+# FLOOR, because the real count is a product of branching factors the manifest
+# cannot predict, which is why the sweep also carries a hard ceiling.
+# See `evals/recursion_depth/manifest.yaml`.
+recursion-depth:
+	PYTHONPATH=. uv run python scripts/record_recursion_depth.py $(ARGS)
+
+# Measure the recursion-depth sweep for real (REAL PROVIDER SPEND) and rewrite
+# the committed chart under `evals/recursion_depth/results/`. Like the A/B
+# recorder it hosts its own gateway, so no running API is needed; it does need a
+# Docker daemon and a `--company-config` whose `providers:` block aliases the
+# manifest's example-* ids to real models, one for the executor and a DIFFERENT
+# one for the reviewer (the harness refuses an identical pair, because the gate
+# is the treatment and a judge on the executor's own binding biases toward the
+# null).
+#
+# This is a large bill, so stage it. `--depths` narrows the sweep to a subset of
+# the manifest's caps and `--max-sessions` lowers the ceiling:
+#
+#   make recursion-depth-record ARGS="--company-config my-providers.yaml --depths 1,2"
+#
+# `--keep-workspaces` leaves every unit's tree on disk, which is where the thing
+# the sweep actually built ends up.
+#
+# A sweep runs agent-authored code on this machine: the held-out oracle grades
+# the delivered CLI by running it, and each unit's own tests are run against its
+# own tree.
+recursion-depth-record:
+	PYTHONPATH=. uv run python scripts/record_recursion_depth.py --record $(ARGS)
 
 # Build the OpenHands loop image from the working tree, for a record run that
 # has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to

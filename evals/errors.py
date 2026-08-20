@@ -317,6 +317,29 @@ class RecursionDepthJudgeNotIndependentError(EvalError):
     )
 
 
+class RecursionDepthGateUnbuildableError(EvalError):
+    """Raised when the completion-oracle seed came back without its store.
+
+    The gated arm reads the reviewer's verdict out of that store, so a seed
+    without one is an arm that would review every merge and record nothing, and
+    the run would report the ungated curve twice under two names.
+    """
+
+    default_message: ClassVar[str] = (
+        "The completion-oracle seed built no report repository"
+    )
+
+
+class RecursionDepthCapabilityUnresolvedError(EvalError):
+    """Raised when a sweep cannot resolve the one capability policy.
+
+    Selection and dispatch both read it, so without it the gated arm staffs no
+    reviewer and records escalations where it should record verdicts.
+    """
+
+    default_message: ClassVar[str] = "No capability policy could be built for the sweep"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 

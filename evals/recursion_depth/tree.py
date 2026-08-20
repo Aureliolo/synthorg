@@ -1,0 +1,259 @@
+# module-kind: code
+"""Build the decomposition tree one run is executed from.
+
+The sweep manipulates one variable, ``max_depth``, and the shape below it is
+the planner's own. What the harness fixes is the rule that decides when a
+subtask is oversized, and it fixes it so ONE rule binds: a unit still covering
+more than one spec requirement splits again. Left at the shipped thresholds,
+the artefact and criterion counts would also fire and every unit at every depth
+would be oversized, which reaches the cap every time but says nothing about
+sizing; opened all the way, nothing would ever split and the sweep would have
+no depth to measure. Between them, the requirement floor is what makes "depth
+reached" a property of the specification rather than of a threshold.
+
+The depth a tree ACHIEVES is what the report plots. The cap is what a run was
+allowed, and a planner that stops splitting at three produces identical trees at
+caps four, five and six.
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from evals.errors import OracleUnusableError
+from evals.recursion_depth.oracle import load_index
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionResult,
+    SubtaskDefinition,
+)
+from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_TREE_BUILT
+from synthorg.settings.service import SettingsService
+
+logger = get_logger(__name__)
+
+#: Opened to their ceilings so the requirement floor is the one rule that
+#: decides a split. See the module docstring: this is the manipulation, not a
+#: tuning choice, and it is written down here rather than in a YAML an operator
+#: might read as a recommendation.
+_OPEN_ARTIFACT_THRESHOLD: Final[str] = "20"
+_OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
+
+#: How many subtasks one level may produce. Above the corroborated 11-to-25
+#: coherent-unit ceiling there is no evidence a planner can hold a level
+#: together at all, so a level is bounded well inside it and the sweep buys its
+#: breadth through depth, which is the variable under test.
+_MAX_SUBTASKS: Final[int] = 8
+
+
+@dataclass(frozen=True)
+class SpecBrief:
+    """What the planner is told about the specification.
+
+    Attributes:
+        spec_id: The specification's identifier.
+        title: Its one-line title.
+        prose: The whole brief, verbatim.
+        requirement_ids: Every requirement id, which is the vocabulary a unit
+            claims from.
+        titles: Each requirement id mapped to its one-line title, so a unit's
+            brief can state what it is answerable for without the agent having
+            to find its own claims in forty-odd pages of specification.
+    """
+
+    spec_id: str
+    title: str
+    prose: str
+    requirement_ids: tuple[str, ...]
+    titles: Mapping[str, str]
+
+
+def load_spec_brief(spec_dir: Path) -> SpecBrief:
+    """Read the specification an agent is given.
+
+    The held-out oracle is NOT read here and its node ids never leave
+    :mod:`evals.recursion_depth.oracle`: an agent told which test decides a
+    requirement builds to the test.
+
+    Args:
+        spec_dir: The specification directory.
+
+    Returns:
+        The brief.
+    """
+    index = load_index(spec_dir)
+    entries = index["requirements"]
+    if not isinstance(entries, list):
+        msg = f"{spec_dir}/requirements.yaml declares no requirement list"
+        raise OracleUnusableError(msg)
+    prose = (spec_dir / str(index["brief"])).read_text(encoding="utf-8")
+    return SpecBrief(
+        spec_id=str(index["spec_id"]),
+        title=str(index["title"]),
+        prose=prose,
+        requirement_ids=tuple(str(entry["id"]) for entry in entries),
+        titles={str(entry["id"]): str(entry["title"]) for entry in entries},
+    )
+
+
+async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
+    """Put the decomposition service into the shape this sweep measures.
+
+    Written through the real settings service rather than handed to the
+    decomposition service directly, so the sweep exercises the live read the
+    product does: an operator enabling recursion applies to the next
+    decomposition, and a harness that bypassed that would be measuring a code
+    path the deployment does not take.
+
+    Args:
+        settings: The booted application's settings service.
+        enabled: Whether an oversized subtask is decomposed again.
+    """
+    await settings.set(
+        "coordination",
+        "recursive_decomposition_enabled",
+        "true" if enabled else "false",
+    )
+    await settings.set(
+        "coordination", "leaf_subtask_threshold", _OPEN_ARTIFACT_THRESHOLD
+    )
+    await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
+
+
+def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
+    """Build the root task the whole run is decomposed from.
+
+    Args:
+        brief: The specification.
+        project: The project the run is attributed to.
+        created_by: Who filed it.
+
+    Returns:
+        The root :class:`Task`.
+    """
+    return Task(
+        id=_root_task_id(brief),
+        title=NotBlankStr(brief.title),
+        description=NotBlankStr(brief.prose),
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.HIGH,
+        project=NotBlankStr(project),
+        created_by=NotBlankStr(created_by),
+        status=TaskStatus.CREATED,
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=NotBlankStr(f"{identifier} is satisfied"))
+            for identifier in brief.requirement_ids
+        ),
+    )
+
+
+def _root_task_id(brief: SpecBrief) -> UUID:
+    """Derive the root task id from the specification.
+
+    Returns:
+        A stable UUID, so two runs of one spec are attributable to one root.
+    """
+    return uuid5(NAMESPACE_URL, f"recursion-depth-{brief.spec_id}")
+
+
+async def build_tree(
+    *,
+    service: DecompositionService,
+    task: Task,
+    depth_cap: int,
+    workspace_summary: str,
+    available_roles: tuple[NotBlankStr, ...],
+) -> DecompositionResult:
+    """Decompose *task* down to the cap and return the whole tree.
+
+    Args:
+        service: The decomposition service, with recursion already armed.
+        task: The root objective.
+        depth_cap: The ``max_depth`` this run is allowed.
+        workspace_summary: What the workspace holds, so the planner plans
+            against the tree rather than against an imagined one.
+        available_roles: The roles the roster staffs.
+
+    Returns:
+        The decomposition tree.
+    """
+    result = await service.decompose_task(
+        task,
+        DecompositionContext(
+            max_subtasks=_MAX_SUBTASKS,
+            max_depth=depth_cap,
+            workspace_summary=workspace_summary,
+            available_roles=available_roles,
+        ),
+    )
+    logger.info(
+        EVALS_RECURSION_TREE_BUILT,
+        depth_cap=depth_cap,
+        achieved_depth=result.max_depth_reached,
+        leaf_count=len(result.leaf_tasks),
+        node_count=len(result.all_tasks),
+    )
+    return result
+
+
+def unit_definitions(
+    result: DecompositionResult,
+) -> dict[str, SubtaskDefinition]:
+    """Map every task in the tree to the planner definition it came from.
+
+    The definition is where a unit's ``satisfies`` claims live: they do not
+    travel onto the executable task, and the claims are the survival metric's
+    whole vocabulary.
+
+    Keyed on the id rather than zipped by position. A child task's id IS its
+    definition's id, and :class:`DecompositionResult` refuses a level where the
+    two sets differ, so the id is a guaranteed bijection while the ORDER is
+    only a property of how the service happens to build the list. Pairing by
+    position would attribute one unit's claims to another the day that changes,
+    silently and with nothing to notice.
+
+    Args:
+        result: The decomposition tree.
+
+    Returns:
+        Task id (as a string) to its definition, for every level.
+    """
+    pairs: dict[str, SubtaskDefinition] = {}
+    for node in merge_nodes(result):
+        pairs.update({definition.id: definition for definition in node.plan.subtasks})
+    return pairs
+
+
+def merge_nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
+    """Every level of the tree, deepest first.
+
+    Deepest first because a merge assembles what is already built: a parent
+    cannot be integrated before its children exist, and this order is what
+    makes the run a single pass rather than a scheduler.
+
+    Args:
+        result: The decomposition tree.
+
+    Returns:
+        Each level, children before their parent.
+    """
+    below = tuple(node for child in result.children for node in merge_nodes(child))
+    return (*below, result)
+
+
+__all__ = [
+    "SpecBrief",
+    "arm_recursion",
+    "build_tree",
+    "load_spec_brief",
+    "merge_nodes",
+    "objective_task",
+    "unit_definitions",
+]

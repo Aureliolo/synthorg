@@ -207,8 +207,33 @@ class TestWhatTheAxisMeans:
         )
 
         assert achieved_depth_histogram(cells) == {
-            "cap=4 reached=3": 1,
-            "cap=5 reached=3": 1,
+            "cap=4 gated reached=3": 1,
+            "cap=5 gated reached=3": 1,
+        }
+
+    def test_the_histogram_keeps_the_arms_apart(self) -> None:
+        # Each arm plans its own tree, so two arms compared at a depth only one
+        # of them reached is two experiments on one axis. Pooled counts hide it.
+        cells = (
+            _cell(
+                cap=4,
+                arm=Arm.GATED,
+                achieved=3,
+                units=(_leaf("a", depth=3, claimed=("R01",)),),
+                passing=(),
+            ),
+            _cell(
+                cap=4,
+                arm=Arm.UNGATED,
+                achieved=1,
+                units=(_leaf("b", depth=1, claimed=("R02",)),),
+                passing=(),
+            ),
+        )
+
+        assert achieved_depth_histogram(cells) == {
+            "cap=4 gated reached=4": 1,
+            "cap=4 ungated reached=2": 1,
         }
 
 

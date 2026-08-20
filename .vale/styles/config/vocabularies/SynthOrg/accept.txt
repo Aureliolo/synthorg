@@ -954,6 +954,7 @@ wordmark
 workflow_dispatch
 workflow_run
 workflow_version
+workstream
 workstreams
 worktree
 worktrees

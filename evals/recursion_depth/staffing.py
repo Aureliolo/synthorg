@@ -1,0 +1,154 @@
+# module-kind: code
+"""The roster a sweep runs as: builders, and the peers who judge them.
+
+Two roles, and the second is the point. ``Completion Reviewer`` is an ordinary
+roster role: the gate selects a holder per review, excludes the executor, and
+escalates when nobody holds it. So the harness stands up real holders on the
+reviewer's own binding rather than handing the gate an identity built in place,
+which the product refuses for the same reason a reviewer that is not a peer
+produces verdicts comparable to nothing.
+
+Three reviewers rather than one. Selection excludes the executor and prefers a
+holder who already worked the initiative, and a single-holder roster makes both
+of those unobservable: every selection returns the same agent whatever the rule
+did.
+"""
+
+from dataclasses import dataclass
+from datetime import date
+from typing import Final
+from uuid import UUID, uuid5
+
+from evals.recursion_depth.manifest import ModelPair
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.role_staffing import RoleStaffingService
+
+#: Namespace for the sweep's agent ids, so a re-run reaches the same roster and
+#: two runs of the same cell are attributable to the same actors.
+_ROSTER_NAMESPACE: Final[UUID] = UUID("00000000-0000-4000-8000-00000000d000")
+
+#: Every builder is a plain developer. The unit under test is the merge, so a
+#: role-specific prompt shaping would be a second variable.
+_BUILDER_ROLE: Final[str] = "Developer"
+_DEPARTMENT: Final[str] = "Engineering"
+_HIRING_DATE: Final[date] = date(2026, 1, 1)
+
+#: How many builders the roster carries. One per concurrent unit is not needed
+#: (units run one at a time), but a plan that assigns work to two owners has to
+#: find two, and a single-builder roster would silently collapse every plan to
+#: one owner whatever it asked for.
+BUILDER_COUNT: Final[int] = 3
+
+#: How many holders the reviewer role carries.
+REVIEWER_COUNT: Final[int] = 3
+
+
+@dataclass(frozen=True)
+class SweepRoster:
+    """The agents one sweep runs as.
+
+    Attributes:
+        registry: The live roster the staffing service reads.
+        staffing: Answers which reviewer judges each merge.
+        builders: The agents units are dispatched to.
+        reviewers: The holders of the reviewer role.
+    """
+
+    registry: AgentRegistryService
+    staffing: RoleStaffingService
+    builders: tuple[AgentIdentity, ...]
+    reviewers: tuple[AgentIdentity, ...]
+
+    @property
+    def lead(self) -> AgentIdentity:
+        """The builder that plans, and that owns a merge unless told otherwise.
+
+        Returns:
+            The first builder.
+        """
+        return self.builders[0]
+
+    @property
+    def roles(self) -> tuple[NotBlankStr, ...]:
+        """The roles the planner may assign an owner from.
+
+        Returns:
+            Each staffed role once, sorted.
+        """
+        return tuple(
+            sorted({agent.role for agent in (*self.builders, *self.reviewers)})
+        )
+
+
+def _identity(*, slug: str, name: str, role: str, pair: ModelPair) -> AgentIdentity:
+    """Build one roster agent on an explicit binding.
+
+    Returns:
+        The identity.
+    """
+    return AgentIdentity(
+        id=uuid5(_ROSTER_NAMESPACE, slug),
+        name=NotBlankStr(name),
+        role=NotBlankStr(role),
+        department=NotBlankStr(_DEPARTMENT),
+        model=ModelConfig(
+            provider=pair.provider,
+            model_id=pair.model_id,
+            capability=pair.capability,
+        ),
+        hiring_date=_HIRING_DATE,
+    )
+
+
+async def build_roster(
+    *,
+    executor: ModelPair,
+    reviewer: ModelPair,
+    capability: CapabilityPolicy,
+) -> SweepRoster:
+    """Register the sweep's agents and wire the staffing service over them.
+
+    Args:
+        executor: The pair every builder is bound to.
+        reviewer: The pair every reviewer is bound to.
+        capability: The one capability policy, shared by selection and
+            dispatch so a reviewer is measured against the bar the work
+            itself was measured against.
+
+    Returns:
+        The registered roster.
+    """
+    registry = AgentRegistryService()
+    builders = tuple(
+        _identity(
+            slug=f"builder-{index}",
+            name=f"Builder {index + 1}",
+            role=_BUILDER_ROLE,
+            pair=executor,
+        )
+        for index in range(BUILDER_COUNT)
+    )
+    reviewers = tuple(
+        _identity(
+            slug=f"reviewer-{index}",
+            name=f"Reviewer {index + 1}",
+            role=COMPLETION_REVIEWER_ROLE_NAME,
+            pair=reviewer,
+        )
+        for index in range(REVIEWER_COUNT)
+    )
+    for agent in (*builders, *reviewers):
+        await registry.register(agent)
+    return SweepRoster(
+        registry=registry,
+        staffing=RoleStaffingService(registry=registry, capability=capability),
+        builders=builders,
+        reviewers=reviewers,
+    )
+
+
+__all__ = ["BUILDER_COUNT", "REVIEWER_COUNT", "SweepRoster", "build_roster"]

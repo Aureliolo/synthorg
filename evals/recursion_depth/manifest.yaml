@@ -30,9 +30,15 @@ arms:
 executor:
   provider: example-provider
   model_id: example-capable-001
+  capability: capable
+# Declared, not looked up: the capability registry grades a pair from a
+# catalogue that knows nothing about a placeholder id, and selection refuses an
+# ungraded pair outright, so an undeclared reviewer would leave every review
+# unstaffed and the gated arm would record escalations rather than verdicts.
 reviewer:
   provider: example-provider
   model_id: example-expert-001
+  capability: expert
 independence: same_provider
 # The same number in BOTH arms. Repair only in the gated arm would let it win
 # by spending more attempts rather than by catching anything, so the ungated arm

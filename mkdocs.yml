@@ -181,6 +181,7 @@ nav:
       - Mid-Flight Steering: design/mid-flight-steering.md
       - The Org Asks: design/org-questions.md
       - Coordination & Resilience: design/coordination.md
+      - Recursive Decomposition: design/recursive-decomposition.md
       - Verification & Quality: design/verification-quality.md
       - Output-Style Policy: design/output-style-policy.md
       - Plan Review: design/plan-review.md
