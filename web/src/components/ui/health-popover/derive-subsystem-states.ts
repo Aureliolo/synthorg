@@ -45,7 +45,7 @@ const _SUBSYSTEM_PHASE_STATES: Record<SubsystemPhase, SubsystemState | null> = {
  * answer: not knowing is not the same as knowing everything is fine, but it is
  * also not evidence of a fault, so it leaves the verdict to the health probe.
  */
-export function subsystemPhaseStates(
+function _subsystemPhaseStates(
   reports: readonly SubsystemReport[] | null,
 ): readonly SubsystemState[] {
   if (reports === null) return []
@@ -323,7 +323,7 @@ export function deriveHealthSubsystemStates(
     backend.memoryState,
     backend.backupState,
     backend.costRecordingState,
-    ...subsystemPhaseStates(subsystems),
+    ..._subsystemPhaseStates(subsystems),
   ]
   return {
     ...backend,

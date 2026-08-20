@@ -7,7 +7,6 @@ generation, approval submission, and agent instantiation.
 
 import asyncio
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
@@ -22,9 +21,10 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.hire_model_proposal import HireModelProposal, ProviderCatalogue
 from synthorg.hr.hiring_approval_submission import (
-    build_approval,
     propose_models,
     recommended_ref,
+    require_proposable,
+    submit_approval_item,
 )
 from synthorg.hr.hiring_candidates import (
     build_agent_identity,
@@ -55,7 +55,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_CANDIDATE_NOT_FOUND,
     HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
-    HR_HIRING_MODEL_UNSET,
     HR_HIRING_REJECTED,
     HR_HIRING_REQUEST_CREATED,
     HR_HIRING_REQUEST_DISCARDED,
@@ -385,7 +384,7 @@ class HiringService:
             # Refusing instead leaves the staffing reconciler's next pass free
             # to open a real hire the moment one becomes proposable.
             proposal = await self._propose_models(candidate)
-            self._require_proposable(request, proposal)
+            require_proposable(request, proposal)
 
             previous_status = request.status
             if self._approval_store is None:
@@ -405,8 +404,12 @@ class HiringService:
                 # require the request transition to persist: a swallowed save
                 # would let a restart rehydrate the pre-approval request while
                 # the approval item already exists, wedging retries.
-                updated = await self._submit_approval_item(
-                    request, candidate, candidate_id, proposal
+                updated = await submit_approval_item(
+                    self._approval_store,
+                    request,
+                    candidate,
+                    candidate_id=candidate_id,
+                    proposal=proposal,
                 )
                 await self._store(updated, require_persist=True)
 
@@ -431,82 +434,6 @@ class HiringService:
             auto_approved=self._approval_store is None,
         )
         return updated
-
-    @staticmethod
-    def _require_proposable(
-        request: HiringRequest, proposal: HireModelProposal
-    ) -> None:
-        """Refuse a hire no configured model can run.
-
-        Named by role rather than by request id: this message reaches an
-        operator, and a database key tells them nothing about which hire failed
-        or what to configure.
-
-        Args:
-            request: The hire being submitted.
-            proposal: What the operator's live catalogue could offer it.
-
-        Raises:
-            HiringError: When nothing was proposable, carrying the catalogue's
-                own reason so the operator knows what to change.
-        """
-        if proposal.recommended is not None:
-            return
-        reason = proposal.unmatched_reason or (
-            "no configured provider offers a model this role can run"
-        )
-        msg = (
-            f"Cannot open a hire for {request.role}: {reason}. An agent is a "
-            "fixed (role, personality, model) unit, so there is nothing to "
-            "approve until a model this role can use is configured."
-        )
-        logger.warning(
-            HR_HIRING_MODEL_UNSET,
-            request_id=str(request.id),
-            role=str(request.role),
-            error=msg,
-        )
-        raise HiringError(msg)
-
-    async def _submit_approval_item(
-        self,
-        request: HiringRequest,
-        candidate: CandidateCard,
-        candidate_id: str,
-        proposal: HireModelProposal,
-    ) -> HiringRequest:
-        """Create and store an approval item for a candidate.
-
-        The recommendation is stamped onto the request so an approval taken
-        without an explicit pick still has a binding to instantiate.
-
-        Args:
-            request: The hiring request.
-            candidate: The candidate to approve.
-            candidate_id: ID of the candidate.
-            proposal: The pairs this hire may be bound to.
-
-        Returns:
-            Updated request with approval metadata.
-        """
-        assert self._approval_store is not None  # noqa: S101
-        approval_id = str(uuid4())
-        await self._approval_store.add(
-            build_approval(
-                request,
-                candidate,
-                candidate_id=candidate_id,
-                approval_id=approval_id,
-                proposal=proposal,
-            )
-        )
-        return request.model_copy(
-            update={
-                "selected_candidate_id": candidate_id,
-                "approval_id": approval_id,
-                "bound_model_ref": recommended_ref(proposal),
-            },
-        )
 
     async def _propose_models(self, candidate: CandidateCard) -> HireModelProposal:
         """Offer the pairs this candidate could be hired onto.

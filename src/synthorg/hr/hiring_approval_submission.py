@@ -8,9 +8,13 @@ the hiring service keeps the decision flow and the durable request state, in
 the same shape as ``hiring_instantiation`` keeps the roster-touching half.
 """
 
+from uuid import uuid4
+
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.errors import HiringError
 from synthorg.hr.hire_model_proposal import (
     HireModelProposal,
     ProviderCatalogue,
@@ -19,7 +23,10 @@ from synthorg.hr.hire_model_proposal import (
 from synthorg.hr.hiring_candidates import build_hire_approval_item
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.hr import HR_HIRING_MODEL_PROPOSED
+from synthorg.observability.events.hr import (
+    HR_HIRING_MODEL_PROPOSED,
+    HR_HIRING_MODEL_UNSET,
+)
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -124,4 +131,93 @@ def build_approval(
     )
 
 
-__all__ = ["build_approval", "propose_models", "recommended_ref"]
+def require_proposable(request: HiringRequest, proposal: HireModelProposal) -> None:
+    """Refuse a hire no configured model can run.
+
+    An agent is a fixed (role, personality, model) unit, so a hire with no pair
+    is not a hire. Refused before anything durable is written, because the
+    alternative is what a live run produced: an approval an operator could see,
+    could not approve (instantiation refuses an unbound request), and which
+    nothing ever re-raised once a model became configurable. Enterable, no
+    exit, nothing watching.
+
+    Named by role rather than by request id: this message reaches an operator,
+    and a database key tells them nothing about which hire failed or what to
+    configure.
+
+    Args:
+        request: The hire being submitted.
+        proposal: What the operator's live catalogue could offer it.
+
+    Raises:
+        HiringError: When nothing was proposable, carrying the catalogue's own
+            reason so the operator knows what to change.
+    """
+    if proposal.recommended is not None:
+        return
+    reason = proposal.unmatched_reason or (
+        "no configured provider offers a model this role can run"
+    )
+    msg = (
+        f"Cannot open a hire for {request.role}: {reason}. An agent is a "
+        "fixed (role, personality, model) unit, so there is nothing to "
+        "approve until a model this role can use is configured."
+    )
+    logger.warning(
+        HR_HIRING_MODEL_UNSET,
+        request_id=str(request.id),
+        role=str(request.role),
+        error=msg,
+    )
+    raise HiringError(msg)
+
+
+async def submit_approval_item(
+    store: ApprovalStoreProtocol,
+    request: HiringRequest,
+    candidate: CandidateCard,
+    *,
+    candidate_id: str,
+    proposal: HireModelProposal,
+) -> HiringRequest:
+    """Create and store the approval item for a candidate.
+
+    The recommendation is stamped onto the request so an approval taken without
+    an explicit pick still has a binding to instantiate.
+
+    Args:
+        store: Where the item is written.
+        request: The hiring request.
+        candidate: The candidate to approve.
+        candidate_id: ID of the candidate.
+        proposal: The pairs this hire may be bound to.
+
+    Returns:
+        Updated request with approval metadata.
+    """
+    approval_id = str(uuid4())
+    await store.add(
+        build_approval(
+            request,
+            candidate,
+            candidate_id=candidate_id,
+            approval_id=approval_id,
+            proposal=proposal,
+        )
+    )
+    return request.model_copy(
+        update={
+            "selected_candidate_id": candidate_id,
+            "approval_id": approval_id,
+            "bound_model_ref": recommended_ref(proposal),
+        },
+    )
+
+
+__all__ = [
+    "build_approval",
+    "propose_models",
+    "recommended_ref",
+    "require_proposable",
+    "submit_approval_item",
+]
