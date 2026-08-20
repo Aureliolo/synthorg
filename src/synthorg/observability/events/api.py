@@ -341,6 +341,9 @@ API_PLAN_DELETE_REFUSED: Final[str] = "api.plan.delete_refused"
 
 # Bulk deletion (one operator action over a selected set)
 API_BULK_DELETE_PARTIAL: Final[str] = "api.bulk_delete.partial"
+#: One row of a selection refused. The client is told only the error's own
+#: default message, so this is where the specific cause is kept.
+API_BULK_DELETE_ROW_REFUSED: Final[str] = "api.bulk_delete.row_refused"
 
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"

@@ -50,7 +50,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "QualityFacadeService",
         "ReviewFacadeService",
         "SetupFacadeService",
-        "ProjectFacadeService",
         "RequestsFacadeService",
         "TemplatePackFacadeService",
         "ClientFacadeService",

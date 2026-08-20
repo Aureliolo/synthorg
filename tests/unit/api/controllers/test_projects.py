@@ -370,10 +370,12 @@ class TestProjectController:
         captured: list[JsonDict] = []
 
         def capture(
-            request: object,
+            channels_plugin: object,
             event_type: object,
             channel: str,
             payload: JsonDict,
+            *,
+            clock: object,
         ) -> None:
             captured.append(
                 {
@@ -384,12 +386,12 @@ class TestProjectController:
             )
 
         # String-path form so the module attribute is patched by name; the
-        # underlying channels.publish_ws_event is still exercised on other
-        # endpoints that do not go through this test. Patched on the module
-        # that publishes, which is the removal path both the single delete and
-        # the bulk one take.
+        # underlying channels publisher is still exercised on other endpoints
+        # that do not go through this test. Patched on the module that
+        # publishes, which is the removal path both the single delete and the
+        # bulk one take.
         monkeypatch.setattr(
-            "synthorg.api.controllers._project_removal.publish_ws_event",
+            "synthorg.api.controllers._project_removal.publish_ws_event_with_plugin",
             capture,
         )
 

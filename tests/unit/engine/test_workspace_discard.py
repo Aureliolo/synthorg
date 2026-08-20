@@ -7,11 +7,14 @@ disk, so the trees accumulate for ever and stay available to be recalled from
 by a later plan.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import WorkspaceCleanupError
 from synthorg.engine.workspace.discard import discard_project_workspace
 from synthorg.engine.workspace.paths import project_workspace_dir
 
@@ -102,3 +105,68 @@ class TestDiscardRefusesWhatIsNotItsToRemove:
 
         assert removed is False
         assert path.exists()
+
+
+class TestDiscardFailureIsTypedRatherThanRaw:
+    async def test_a_tree_that_will_not_go_raises_a_domain_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failure here runs inside a per-row bulk cascade.
+
+        A bare ``OSError`` is not a refusal of one row: it escapes the loop
+        that collects refusals, ends the whole request, and takes with it the
+        record of which of the earlier rows were already irreversibly deleted.
+        Typed, the row is collected and the rest of the selection completes.
+        """
+        path = project_workspace_dir(tmp_path, "stuck")
+        path.mkdir(parents=True)
+
+        def _refuse(*_args: object, **_kwargs: object) -> None:
+            msg = "device or resource busy"
+            raise OSError(msg)
+
+        monkeypatch.setattr(shutil, "rmtree", _refuse)
+
+        with pytest.raises(WorkspaceCleanupError):
+            await discard_project_workspace(
+                base_root=tmp_path, project_id=NotBlankStr("stuck")
+            )
+
+    async def test_the_failure_is_a_domain_error_a_bulk_delete_can_collect(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The property the bulk path depends on, asserted where it is decided."""
+        path = project_workspace_dir(tmp_path, "stuck")
+        path.mkdir(parents=True)
+
+        def _refuse(*_args: object, **_kwargs: object) -> None:
+            msg = "device or resource busy"
+            raise OSError(msg)
+
+        monkeypatch.setattr(shutil, "rmtree", _refuse)
+
+        with pytest.raises(DomainError):
+            await discard_project_workspace(
+                base_root=tmp_path, project_id=NotBlankStr("stuck")
+            )
+
+    async def test_the_tree_is_still_there_when_removal_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A refusal reports failure over files that are still present."""
+        path = project_workspace_dir(tmp_path, "stuck")
+        path.mkdir(parents=True)
+        (path / "work.txt").write_text("real work", encoding="utf-8")
+
+        def _refuse(*_args: object, **_kwargs: object) -> None:
+            msg = "device or resource busy"
+            raise OSError(msg)
+
+        monkeypatch.setattr(shutil, "rmtree", _refuse)
+
+        with pytest.raises(WorkspaceCleanupError):
+            await discard_project_workspace(
+                base_root=tmp_path, project_id=NotBlankStr("stuck")
+            )
+
+        assert (path / "work.txt").exists()

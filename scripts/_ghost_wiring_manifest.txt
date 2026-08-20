@@ -168,7 +168,6 @@ ENFORCED build_analytics_collector #2334 -- called in api/lifecycle_helpers/meta
 ENFORCED QualityFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction over the performance tracker; backs the synthorg_quality_* MCP tools
 ENFORCED ReviewFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_reviews_* MCP tools
 ENFORCED SetupFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_setup_* MCP read tools
-ENFORCED ProjectFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_projects_* MCP tools
 ENFORCED RequestsFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_requests_* MCP tools
 ENFORCED TemplatePackFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_template_packs_* MCP tools
 ENFORCED ClientFacadeService #2535 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_clients_* MCP tools

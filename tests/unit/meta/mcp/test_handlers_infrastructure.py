@@ -15,13 +15,13 @@ import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services import (
     AuditReadService,
     BackupFacadeService,
     EventsReadService,
     IntegrationHealthFacadeService,
-    ProjectFacadeService,
     ProviderReadService,
     RequestsFacadeService,
     SettingsReadService,
@@ -41,6 +41,7 @@ from synthorg.persistence.idempotency_protocol import (
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
+from tests.unit.api.fakes import FakeProjectRepository
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -195,8 +196,9 @@ def fake_simulation() -> AsyncMock:
 
 
 @pytest.fixture
-def real_projects() -> ProjectFacadeService:
-    return ProjectFacadeService()
+def real_projects() -> FakeProjectRepository:
+    """The projects the MCP tools now read and write: the persisted ones."""
+    return FakeProjectRepository()
 
 
 @pytest.fixture
@@ -220,7 +222,7 @@ def fake_app_state(  # noqa: PLR0913
     fake_integration_health: AsyncMock,
     fake_setup: AsyncMock,
     fake_simulation: AsyncMock,
-    real_projects: ProjectFacadeService,
+    real_projects: FakeProjectRepository,
     real_requests: RequestsFacadeService,
     real_template_packs: TemplatePackFacadeService,
 ) -> AppState:
@@ -233,6 +235,7 @@ def fake_app_state(  # noqa: PLR0913
         agent_registry=object(),
         persistence=mock_of[PersistenceBackend](
             idempotency_keys=_FakeIdempotencyRepo(),
+            projects=real_projects,
         ),
         slices={
             SettingsStateSlice: {"settings_read_service": fake_settings},
@@ -245,7 +248,6 @@ def fake_app_state(  # noqa: PLR0913
                 "integration_health_facade_service": fake_integration_health,
                 "setup_facade_service": fake_setup,
                 "simulation_facade_service": fake_simulation,
-                "project_facade_service": real_projects,
                 "requests_facade_service": real_requests,
                 "template_pack_facade_service": real_template_packs,
             },
@@ -531,6 +533,41 @@ class TestProjects:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
+
+    async def test_a_created_project_is_persisted_not_held_in_the_tool(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        """The tools read and write the projects an operator sees.
+
+        They used to run against a process-local dict, so a project created
+        here appeared on no dashboard, a list returned none of the
+        organisation's, and a delete removed nothing while reporting success.
+        An agent acts on those answers.
+        """
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_create"]
+
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"name": "Tetris", "description": "A browser game"},
+            actor=make_test_actor(),
+        )
+
+        created_id = json.loads(response)["data"]["id"]
+        stored = await real_projects.get(NotBlankStr(created_id))
+        assert stored is not None
+        assert stored.name == "Tetris"
+
+    async def test_list_reports_projects_the_tool_never_created(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        """The read half of the same defect: an org with projects saw none."""
+        await real_projects.create(Project(name=NotBlankStr("Opened elsewhere")))
+
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_list"]
+        response = await handler(app_state=fake_app_state, arguments={})
+
+        names = [row["name"] for row in json.loads(response)["data"]]
+        assert "Opened elsewhere" in names
 
 
 class TestRequests:

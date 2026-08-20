@@ -627,7 +627,6 @@
         "QualityFacadeService",
         "ReviewFacadeService",
         "SetupFacadeService",
-        "ProjectFacadeService",
         "RequestsFacadeService",
         "TemplatePackFacadeService",
         "ClientFacadeService",
@@ -700,7 +699,6 @@
         "mcp_catalog_facade_service",
         "oauth_facade_service",
         "ontology_facade_service",
-        "project_facade_service",
         "project_doc_memory_facade",
         "provider_read_service",
         "quality_facade_service",
@@ -1551,6 +1549,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-19T12:59:14.766993Z",
+  "generated_at": "2026-08-20T15:59:05.378228Z",
   "schema_version": 1
 }

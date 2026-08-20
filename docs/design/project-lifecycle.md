@@ -410,6 +410,22 @@ delete with a 409 rather than racing the resume path; anything the refused
 attempt already expired is put back. See
 [Plan Review](plan-review.md#deleting-a-plan-under-review).
 
+**The workspace goes too.** The database forgets a deleted project's workspace
+immediately, because the `project_workspaces` row cascades on its foreign key.
+Disk does not, and a live run finished holding 24 trees under the workspace
+root, two of them belonging to projects deleted through the dashboard during
+that same run. They are not merely wasted space: planning recall spans every
+project the organisation has run, so a tree that outlives its project stays
+available as evidence for a plan that should never have seen it, which is
+exactly how one plan came to assert another project's seven files as its own
+foundation. The removal happens BEFORE the row is deleted, so a tree that
+cannot be removed takes the delete down with it and leaves a project the
+operator can retry; the reverse order would report a deletion over files that
+are still there. Only the managed `base_root/projects/<project_id>` directory
+is removed, and a failure is a typed refusal rather than a raw filesystem
+error, so one project in a bulk selection cannot end the whole request after
+its earlier rows are already gone. Emits `PROJECT_WORKSPACE_DISCARDED`.
+
 **Data retention.** A task cannot be pinned by the records that describe it:
 spend, metrics, approvals and decision records all name the task they are
 about, and a foreign key on each makes every one of them a reason the task

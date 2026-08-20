@@ -1,3 +1,4 @@
+# module-kind: service
 """Persistent per-project workspace provisioning service.
 
 Resolves (and lazily provisions, once) the 1:1 persistent git-backed

@@ -357,6 +357,74 @@ describe('useProjectsStore', () => {
 
       expect(calls).toBe(1)
     })
+
+    it('returns the sentinel when every row refused', async () => {
+      // The branch between "some went" and "the call failed": every row
+      // refusing settled nothing, so the caller must read it as a failure
+      // rather than as a partial success it can move on from.
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+      })
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              deleted: [],
+              failed: [
+                { id: 'proj-001', reason: 'still building' },
+                { id: 'proj-002', reason: 'still building' },
+              ],
+            }),
+          ),
+        ),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      expect(result).toBe(false)
+      expect(useProjectsStore.getState().projects.map((p) => p.id)).toEqual([
+        'proj-001',
+        'proj-002',
+      ])
+    })
+
+    it('never throws when the request itself fails', async () => {
+      // The store owns mutation error UX, so a throw escaping here would
+      // reach a caller forbidden from catching it, and the confirm dialog
+      // driving this refuses to close while a delete is in flight.
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', () => HttpResponse.error()),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001'])
+
+      expect(result).toBe(false)
+    })
+
+    it('never throws when removing the rows does', async () => {
+      // The guard covers the whole body, not just the network call: an
+      // earlier version wrapped only the request, so a throw from the row
+      // removal or the toast escaped and left the dialog unclosable.
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      const { useToastStore } = await import('@/stores/toast')
+      const addSpy = vi
+        .spyOn(useToastStore.getState(), 'add')
+        .mockImplementationOnce(() => {
+          throw new Error('toast store exploded')
+        })
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001'])
+
+      expect(result).toBe(false)
+      addSpy.mockRestore()
+    })
   })
 
   describe('setAutonomyMode', () => {

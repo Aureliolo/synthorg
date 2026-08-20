@@ -82,6 +82,10 @@ WORKSPACE_GIT_DIR_CLEARED: Final[str] = "project_workspace.git_dir.cleared"
 #: ``removed``, because "nothing was there" and "it is gone now" are the two
 #: outcomes an operator chasing disk use needs told apart.
 PROJECT_WORKSPACE_DISCARDED: Final[str] = "project_workspace.discarded"
+#: A workspace directory exists but could not be listed. Distinct from an
+#: absent one on purpose: the planner is told a different thing in each case,
+#: and without this line nothing explains why a plan was written blind.
+PROJECT_WORKSPACE_UNREADABLE: Final[str] = "project_workspace.unreadable"
 # A sandboxed command resolved no project, so it runs against the shared
 # workspace root instead of one project's directory. Carries ``reason``,
 # because the two ways that happens need different fixes.

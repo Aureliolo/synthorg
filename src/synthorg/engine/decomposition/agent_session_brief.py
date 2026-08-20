@@ -7,9 +7,15 @@ a good plan looks like are three halves of the same instruction, and a
 change to one usually wants a look at the others.
 """
 
+from typing import Final
+
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.llm_prompt import safe_roles
+from synthorg.engine.decomposition.llm_prompt import (
+    DECOMPOSITION_FENCES,
+    foundation_lines,
+    safe_roles,
+)
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
@@ -66,32 +72,9 @@ def roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
     )
 
 
-def _foundation_lines(workspace_summary: str | None) -> tuple[str, ...]:
-    """State what the project actually has, and forbid inventing the rest.
-
-    The planning session is seeded with an org-wide digest of past work, and a
-    live run turned that into a false premise: seven filenames another project
-    had produced were written into this plan's assumptions as existing code
-    "sound and building the foundation", and every item was scoped to integrate
-    and harden things nobody had written. The workspace did not exist.
-
-    The prohibition is unconditional because not every caller can resolve a
-    workspace, and a planner told nothing must assume nothing. When a caller
-    can resolve one, the inventory follows so the plan is grounded in fact
-    rather than in an absence of contradiction.
-
-    Returns:
-        The brief lines covering what exists and what may not be assumed.
-    """
-    rule = (
-        "- Do not assume any code, file or document already exists. Plan every",
-        "  artifact the objective needs as work THIS plan does. Experience",
-        "  recalled from another project is precedent, never inventory: that a",
-        "  file was produced elsewhere does not make it present here.",
-    )
-    if workspace_summary is None:
-        return rule
-    return (*rule, f"- The project workspace currently holds: {workspace_summary}")
+#: Every fence tag :func:`planning_brief` can emit, which is the same set the
+#: single-shot decomposer emits because both share :func:`foundation_lines`.
+PLANNING_SESSION_FENCES: Final[tuple[str, ...]] = DECOMPOSITION_FENCES
 
 
 def planning_brief(
@@ -134,7 +117,7 @@ def planning_brief(
             "  critical for irreversible or high-blast-radius work.",
             "- Give every item concrete expected_artifacts and verifiable",
             "  acceptance_criteria (never empty).",
-            *_foundation_lines(context.workspace_summary),
+            *foundation_lines(context.workspace_summary),
             "- Where the plan hinges on a real choice (stack, architecture),",
             "  surface a decision item (kind 'decision') with 2-4 options and",
             "  one recommended, rather than silently deciding.",

@@ -1,5 +1,5 @@
 import { ChevronRight, ListTree } from 'lucide-react'
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import { Link } from 'react-router'
 
 import type { Plan } from '@/api/types/plans'
@@ -82,8 +82,7 @@ function PlanRowSummary({
   )
 }
 
-/** A single plan row in the review inbox, linking to its detail workspace. */
-export function PlanListItem({
+function PlanListItemInner({
   plan,
   roster,
   onToggleSelect,
@@ -139,3 +138,8 @@ export function PlanListItem({
     </div>
   )
 }
+
+/** A single plan row in the review inbox, linking to its detail workspace. */
+// Memoised like its two sibling selection rows: the review inbox re-renders on
+// every WS event, and every prop this row takes is referentially stable.
+export const PlanListItem = memo(PlanListItemInner)

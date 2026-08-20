@@ -263,17 +263,25 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # project delete it usually accompanies.
     "plans.delete": (5, 60),
     # A bulk delete is ONE decision the operator took once, so it gets its own
-    # budget rather than spending the per-row one N times: metered per row, a
+    # budget rather than spending the per-row one N times: charged per row, a
     # selection of six refused its own tail for a reason that had nothing to do
-    # with the rows. The per-call cap on the set is what bounds the blast
-    # radius here (see ``MAX_BULK_DELETE_IDS``).
-    "plans.bulk_delete": (5, 60),
+    # with the rows.
+    #
+    # The budget bounds requests and the request carries a set, so the ceiling
+    # is the product of the two, NOT this number: what actually bounds the
+    # blast radius is ``MAX_BULK_DELETE_IDS``, held at the largest page the
+    # dashboard can put on screen, because selection is scoped to the rendered
+    # page and no operator action can produce a larger set. Write access is not
+    # the second bound anyone might assume: it admits every writing role
+    # equally, so a stolen session of the least-privileged one spends this
+    # budget as freely as the CEO would.
+    "plans.bulk_delete": (3, 60),
     "plans.comment": (60, 60),
     # projects
     "projects.create": (10, 60),
     "projects.update": (30, 60),
     "projects.delete": (5, 60),
-    "projects.bulk_delete": (5, 60),
+    "projects.bulk_delete": (3, 60),
     # providers
     "providers.add_model": (20, 60),
     "providers.allowlist_add": (50, 60),
@@ -351,7 +359,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "tasks.coordinate": (10, 60),
     "tasks.create": (50, 60),
     "tasks.delete": (20, 60),
-    "tasks.bulk_delete": (5, 60),
+    "tasks.bulk_delete": (3, 60),
     "tasks.execute": (200, 60),
     "tasks.transition": (100, 60),
     "tasks.update": (100, 60),

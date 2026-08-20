@@ -294,8 +294,8 @@ export default function AppLayout() {
   // Both of these decide the nav column's width, and both arrive from the
   // backend after the shell mounts. Painting the defaults and then correcting
   // them slides the content column sideways a beat into the session, under
-  // whatever the operator is already reaching for; two of this round's
-  // mis-clicks landed on irreversible controls that way. The column waits
+  // whatever the operator is already reaching for, and a live run lost clicks
+  // to irreversible controls that way. The column waits
   // until its width is known. The chrome above it does not depend on it, so
   // that paints at once. Both hydrations settle their flag even when the read
   // fails, so a backend that cannot answer falls through to the defaults

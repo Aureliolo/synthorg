@@ -9,16 +9,18 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api._read_names import agent_name_map
-from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
+from synthorg.api.channels import (
+    CHANNEL_PROJECTS,
+    get_channels_plugin,
+    publish_ws_event,
+)
 from synthorg.api.controllers._bulk_delete import (
     BulkDeleteRequest,
     BulkDeleteResult,
 )
 from synthorg.api.controllers._project_autonomy import (
-    AutonomyModeTransition,
     ProjectAutonomyModeRequest,
-    audit_autonomy_mode_change,
-    guard_full_autonomy_optin,
+    apply_autonomy_mode,
 )
 from synthorg.api.controllers._project_progress import ProjectProgressAssembler
 from synthorg.api.controllers._project_removal import remove_project, remove_projects
@@ -30,7 +32,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.dto_named_rows import ProjectRow, project_rows
 from synthorg.api.dto_project_progress import ProjectProgress
-from synthorg.api.guards import require_read_access, require_write_access, role_of
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
@@ -42,12 +44,9 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import (
     ValidationError,
-    VersionConflictError,
 )
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
@@ -57,7 +56,6 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -259,72 +257,8 @@ class ProjectController(Controller):
             ValidationError: The transition to full lacked confirmation.
             VersionConflictError: A concurrent write moved the version.
         """
-        service = _service(state)
-        project = require_resource_or_404(
-            await service.get(project_id),
-            resource_type="Project",
-            identifier=project_id,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="update",
-        )
-        previous_mode = project.autonomy_mode
-        # Clearing an override (mode=None) inherits the company default, which
-        # can itself be full (gate-off). Guard and audit the EFFECTIVE resolved
-        # mode so a clear-into-inherited-full can neither bypass the CEO opt-in
-        # nor be mislabelled as gate-on. Department overrides are not yet a
-        # resolution input, so the effective fallback is the company default.
-        company_default = await config_resolver_of(state.app_state).get_enum(
-            "company", "autonomy_level", AutonomyLevel
-        )
-        transition = AutonomyModeTransition(
-            previous=previous_mode,
-            new=data.mode,
-            effective_previous=(
-                previous_mode if previous_mode is not None else company_default
-            ),
-            effective_new=data.mode if data.mode is not None else company_default,
-        )
-        guard_full_autonomy_optin(
-            role=role_of(request),
-            transition=transition,
-            confirm=data.confirm,
-        )
-        updated = project.model_copy(
-            update={"autonomy_mode": data.mode, "version": project.version + 1},
-        )
-        expected = (
-            data.expected_version
-            if data.expected_version is not None
-            else project.version
-        )
-        try:
-            await service.update(updated, expected_version=expected)
-        except PersistenceVersionConflictError as exc:
-            msg = f"Project {project_id!r} was modified concurrently"
-            raise VersionConflictError(msg) from exc
-        audit_autonomy_mode_change(
-            project_id=project_id,
-            transition=transition,
-            requested_by=extract_requester(),
-        )
-        publish_ws_event(
-            request,
-            WsEventType.PROJECT_AUTONOMY_MODE_CHANGED,
-            CHANNEL_PROJECTS,
-            {
-                "project_id": project_id,
-                "new_mode": data.mode.value if data.mode is not None else None,
-                "previous_mode": (
-                    previous_mode.value if previous_mode is not None else None
-                ),
-                "new_version": updated.version,
-            },
-        )
-        return Response(
-            content=ApiResponse[ProjectRow](
-                data=ProjectRow.of(updated, await agent_name_map(state.app_state))
-            ),
-            status_code=200,
+        return await apply_autonomy_mode(
+            request, state, _service(state), project_id, data
         )
 
     @delete(
@@ -356,11 +290,11 @@ class ProjectController(Controller):
             NotFoundError: Project with ``project_id`` does not exist.
         """
         await remove_project(
-            request,
-            state,
+            state.app_state,
             _service(state),
             project_id,
             requested_by=extract_requester(),
+            channels_plugin=get_channels_plugin(request),
         )
 
     @post(
@@ -387,11 +321,11 @@ class ProjectController(Controller):
             What was removed and what remains.
         """
         result = await remove_projects(
-            request,
-            state,
+            state.app_state,
             _service(state),
             data.ids,
             requested_by=extract_requester(),
+            channels_plugin=get_channels_plugin(request),
         )
         return ApiResponse(data=result)
 

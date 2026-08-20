@@ -5,12 +5,14 @@ import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatNumber } from '@/utils/format'
 import type { BulkSelection } from '@/hooks/use-bulk-selection'
+import type { BulkDeleteNoun } from '@/stores/_bulk-delete'
 
 export interface BulkDeleteControlsProps {
   /** Selection state and the delete it runs, from `useBulkSelection`. */
   selection: BulkSelection
-  /** What is being deleted, singular and plural. */
-  noun: { readonly one: string; readonly many: string }
+  /** What is being deleted, singular and plural. The same shape the store
+   *  words its toasts from, so the bar and the toast cannot disagree. */
+  noun: BulkDeleteNoun
   /** What deleting these costs, in the operator's terms. */
   description: string
   /** Distinguishes this list's toolbar from another on the same page. */

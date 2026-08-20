@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Clock, Scale, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
@@ -181,11 +182,10 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
   return (
     <div className="flex items-start gap-3">
       {isPending && (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selected}
-          onChange={() => props.onToggleSelect(approval.id)}
-          className="mt-1 size-4 shrink-0 accent-accent"
+          onCheckedChange={() => props.onToggleSelect(approval.id)}
+          className="mt-1 shrink-0"
           aria-label={`Select ${approval.title}`}
         />
       )}

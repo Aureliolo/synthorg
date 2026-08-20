@@ -52,12 +52,18 @@ export function useBulkSelection(
 
   const runDelete = useCallback(async () => {
     setDeleting(true)
-    // The store owns the success / partial / error toast, so the outcome is
-    // deliberately discarded here: this hook drives the dialog and selection.
-    await onDelete([...visibleSelected])
-    setDeleting(false)
-    setConfirmOpen(false)
-    clear()
+    try {
+      // The store owns the success / partial / error toast, so the outcome is
+      // deliberately discarded here: this hook drives the dialog and selection.
+      await onDelete([...visibleSelected])
+    } finally {
+      // In a finally because the dialog refuses to close while a delete is in
+      // flight: a throw that left this flag set would leave the operator
+      // holding a modal over a destructive action with no way out of it.
+      setDeleting(false)
+      setConfirmOpen(false)
+      clear()
+    }
   }, [visibleSelected, onDelete, clear])
 
   return {

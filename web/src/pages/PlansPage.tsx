@@ -60,7 +60,13 @@ export default function PlansPage() {
   const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } =
     useListPagination({ items: ordered, namespace: 'plans' })
 
-  const visibleIds = useMemo(() => ordered.map((plan) => plan.id), [ordered])
+  // The rendered page, not the whole ordered set: selection is held against
+  // what is on screen, so feeding it every match would let the count and the
+  // confirm dialog cover rows on other pages the operator cannot see.
+  const visibleIds = useMemo(
+    () => paginatedItems.map((plan) => plan.id),
+    [paginatedItems],
+  )
   const selection = useBulkSelection(
     visibleIds,
     useCallback(

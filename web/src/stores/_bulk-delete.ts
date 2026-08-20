@@ -92,9 +92,27 @@ export async function runBulkDelete({
   noun,
 }: BulkDeleteArgs): Promise<BulkDeleteOutcome | false> {
   const uniqueIds = Array.from(new Set(ids))
-  let result: BulkDeleteResult
+  // The guard covers the whole body, not just the call. Everything after it is
+  // caller-supplied (the row removal each store passes in) or another store's
+  // (the toast), so a throw there would escape a store mutation, which the
+  // contract forbids, and strand the confirm dialog its caller cannot close
+  // while a delete is in flight.
   try {
-    result = await call(uniqueIds)
+    const result: BulkDeleteResult = await call(uniqueIds)
+    removeRows(result.deleted)
+    const outcome: BulkDeleteOutcome = {
+      succeeded: result.deleted.length,
+      failed: result.failed.length,
+      failedReasons: result.failed.map((failure) => failure.reason),
+    }
+    if (outcome.failed > 0) {
+      log.error(`Bulk delete ${noun.many} partial`, sanitizeForLog({
+        failed: outcome.failed,
+        reasons: outcome.failedReasons,
+      }))
+    }
+    emitToast(outcome, uniqueIds.length, noun)
+    return outcome.succeeded === 0 && outcome.failed > 0 ? false : outcome
   } catch (err) {
     log.error(`Bulk delete ${noun.many} failed`, sanitizeForLog(err))
     useToastStore.getState().add({
@@ -104,18 +122,4 @@ export async function runBulkDelete({
     })
     return false
   }
-  removeRows(result.deleted)
-  const outcome: BulkDeleteOutcome = {
-    succeeded: result.deleted.length,
-    failed: result.failed.length,
-    failedReasons: result.failed.map((failure) => failure.reason),
-  }
-  if (outcome.failed > 0) {
-    log.error(`Bulk delete ${noun.many} partial`, sanitizeForLog({
-      failed: outcome.failed,
-      reasons: outcome.failedReasons,
-    }))
-  }
-  emitToast(outcome, uniqueIds.length, noun)
-  return outcome.succeeded === 0 && outcome.failed > 0 ? false : outcome
 }

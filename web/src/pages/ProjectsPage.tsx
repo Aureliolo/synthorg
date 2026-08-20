@@ -122,9 +122,12 @@ export default function ProjectsPage() {
     setPageSize,
   } = useListPagination({ items: filteredProjects, namespace: 'projects' })
 
+  // The rendered page, not the whole filtered set: selection is held against
+  // what is on screen, so feeding it every match would let the count and the
+  // confirm dialog cover rows on other pages the operator cannot see.
   const visibleIds = useMemo(
-    () => filteredProjects.map((project) => project.id),
-    [filteredProjects],
+    () => pagedProjects.map((project) => project.id),
+    [pagedProjects],
   )
   const selection = useBulkSelection(
     visibleIds,

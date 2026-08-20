@@ -24,9 +24,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import WorkspaceCleanupError
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import PROJECT_WORKSPACE_DISCARDED
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -88,9 +90,13 @@ async def discard_project_workspace(
     Raises:
         WorkspaceSetupError: *project_id* carries a path separator, so the
             resolved directory would sit outside the projects root.
-        OSError: The tree exists and could not be removed. Surfaced rather than
-            swallowed: an operator told a project was deleted while its files
-            remain has been told something untrue.
+        WorkspaceCleanupError: The tree exists and could not be removed.
+            Surfaced rather than swallowed: an operator told a project was
+            deleted while its files remain has been told something untrue.
+            Typed rather than the underlying ``OSError`` because this runs
+            inside a per-row bulk cascade, where an untyped escape aborts the
+            whole request after earlier rows are already irreversibly gone,
+            and takes the manifest of what went with it.
     """
     tree = project_workspace_dir(base_root, project_id)
     if not await asyncio.to_thread(tree.is_dir):
@@ -101,7 +107,22 @@ async def discard_project_workspace(
             removed=False,
         )
         return False
-    await asyncio.to_thread(shutil.rmtree, tree, onexc=force_writable_then_retry)
+    try:
+        await asyncio.to_thread(shutil.rmtree, tree, onexc=force_writable_then_retry)
+    except OSError as exc:
+        logger.warning(
+            PROJECT_WORKSPACE_DISCARDED,
+            project_id=project_id,
+            workspace_path=str(tree),
+            removed=False,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = (
+            f"workspace tree for project {project_id!r} could not be removed; "
+            "the project was not deleted"
+        )
+        raise WorkspaceCleanupError(msg) from exc
     logger.info(
         PROJECT_WORKSPACE_DISCARDED,
         project_id=project_id,

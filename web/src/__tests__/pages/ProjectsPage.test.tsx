@@ -36,6 +36,24 @@ vi.mock('@/hooks/useProjectsData', () => {
   return { [hookName]: () => getProjectsData() }
 })
 
+const recordSelectionIds = vi.fn<(ids: readonly string[]) => void>()
+vi.mock('@/hooks/use-bulk-selection', () => ({
+  useBulkSelection: (visibleIds: readonly string[]) => {
+    recordSelectionIds(visibleIds)
+    return {
+      visibleSelected: new Set<string>(),
+      selectedCount: 0,
+      toggle: () => undefined,
+      clear: () => undefined,
+      confirmOpen: false,
+      openConfirm: () => undefined,
+      closeConfirm: () => undefined,
+      deleting: false,
+      runDelete: () => Promise.resolve(),
+    }
+  },
+}))
+
 import ProjectsPage from '@/pages/ProjectsPage'
 
 function renderPage() {
@@ -49,6 +67,29 @@ function renderPage() {
 describe('ProjectsPage', () => {
   beforeEach(() => {
     hookReturn = { ...defaultHookReturn }
+    recordSelectionIds.mockClear()
+  })
+
+  it('offers for deletion only the rows on the current page', () => {
+    // Selection is held against what is on screen. Fed the whole filtered set
+    // instead, a tick survives a page change, and the bulk bar's count and the
+    // confirm dialog then cover rows the operator cannot see while agreeing to
+    // delete them.
+    const many = Array.from({ length: 60 }, (_, index) =>
+      makeProject(`proj-${String(index).padStart(3, '0')}`),
+    )
+    hookReturn = {
+      ...defaultHookReturn,
+      projects: many,
+      filteredProjects: many,
+      totalProjects: many.length,
+    }
+
+    renderPage()
+
+    const offered = recordSelectionIds.mock.calls.at(-1)?.[0]
+    expect(offered).toBeDefined()
+    expect(offered?.length).toBeLessThan(many.length)
   })
 
   it('renders page heading', () => {

@@ -66,4 +66,27 @@ describe('useBulkSelection', () => {
     expect(result.current.selectedCount).toBe(0)
     expect(result.current.deleting).toBe(false)
   })
+
+  it('lets go of the dialog even when the delete throws', async () => {
+    // The store owns error UX and is not supposed to throw, but the dialog
+    // refuses to close while a delete is in flight, so a throw that left the
+    // flag set would strand an operator inside a modal over a destructive
+    // action with no way out of it.
+    const onDelete = vi.fn(() => Promise.reject(new Error('boom')))
+    const { result } = renderHook(() => useBulkSelection(['a'], onDelete))
+
+    act(() => {
+      result.current.toggle('a')
+      result.current.openConfirm()
+    })
+
+    await act(async () => {
+      await expect(result.current.runDelete()).rejects.toThrow('boom')
+    })
+
+    await waitFor(() => {
+      expect(result.current.deleting).toBe(false)
+    })
+    expect(result.current.confirmOpen).toBe(false)
+  })
 })

@@ -43,7 +43,6 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.state import EngineStateSlice
-from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
@@ -299,9 +298,10 @@ class DecompositionController(Controller):
             # without one. Refusing the whole request over a ceiling that
             # has an answer either way would be the wrong trade.
             config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
-            workspace_inventory=app_state.slice(
-                WorkspaceStateSlice
-            ).project_workspace_service,
+            # No inventory: the plan arrived from the operator already written,
+            # so nothing here consults a model and there is no premise to
+            # ground. Passing one would list the workspace on every call and
+            # throw the answer away.
         )
         result = await service.decompose_task(
             task,

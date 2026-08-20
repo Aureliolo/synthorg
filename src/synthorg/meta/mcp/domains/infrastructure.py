@@ -351,11 +351,6 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         {
             "name": {"type": "string", "description": "Project name"},
             "description": {"type": "string", "description": "Project description"},
-            "metadata": {
-                "type": "object",
-                "description": "Free-form project metadata (string values)",
-                "additionalProperties": {"type": "string"},
-            },
         },
         required=("name",),
         args_model=ProjectsCreateArgs,
@@ -368,11 +363,6 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "project_id": {"type": "string", "description": "Project UUID"},
             "name": {"type": "string", "description": "New name"},
             "description": {"type": "string", "description": "New description"},
-            "metadata": {
-                "type": "object",
-                "description": "Free-form project metadata (string values)",
-                "additionalProperties": {"type": "string"},
-            },
         },
         required=("project_id",),
         args_model=ProjectsUpdateArgs,

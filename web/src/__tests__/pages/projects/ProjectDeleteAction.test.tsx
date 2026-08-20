@@ -1,12 +1,13 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import type { Project } from '@/api/types/projects'
 import { apiError } from '@/mocks/handlers'
 import { ProjectDeleteAction } from '@/pages/projects/ProjectDeleteAction'
+import { ROUTES } from '@/router/routes'
 import { useProjectsStore } from '@/stores/projects'
 import { server } from '@/test-setup'
 
@@ -47,6 +48,35 @@ describe('ProjectDeleteAction', () => {
       expect(deleted).toBe(true)
     })
     expect(useProjectsStore.getState().projects).toEqual([])
+  })
+
+  it('takes the operator off the page it just deleted', async () => {
+    // The other half of giving this page an exit: staying put leaves an
+    // operator looking at a project that no longer exists, and every read the
+    // page makes from here answers 404.
+    server.use(
+      http.delete(
+        '/api/v1/projects/:id',
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    )
+    const project = makeProject('proj-1')
+    useProjectsStore.setState({ projects: [project], selectedProject: project })
+    render(
+      <MemoryRouter initialEntries={[`/projects/${project.id}`]}>
+        <Routes>
+          <Route
+            path="/projects/:projectId"
+            element={<ProjectDeleteAction project={project} />}
+          />
+          <Route path={ROUTES.PROJECTS} element={<div>All projects</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await confirmDelete()
+
+    expect(await screen.findByText('All projects')).toBeInTheDocument()
   })
 
   it('keeps the dialog open when the API refuses', async () => {

@@ -15,6 +15,7 @@ from synthorg.api.controllers._bulk_delete import MAX_BULK_DELETE_IDS
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import WorkspaceCleanupError
 from synthorg.persistence.state import persistence_of
 from tests._shared import JsonDict, LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers, make_task
@@ -109,6 +110,76 @@ class TestBulkDeleteProjects:
         assert failed[0]["id"] == "proj-does-not-exist"
         assert failed[0]["reason"]
 
+    async def test_the_reason_is_for_an_operator_to_read(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """It is rendered in a toast, so it carries neither of the two things
+        an operator surface may not print: an internal exception class name,
+        or the database key the raise interpolated into its message."""
+        missing = str(as_uuid("proj-gone"))
+
+        _, body = await _post_bulk(async_test_client, "projects", [missing])
+
+        reason = body["data"]["failed"][0]["reason"]
+        assert "Error" not in reason
+        assert missing not in reason
+
+    async def test_a_workspace_that_will_not_go_costs_one_row_not_the_request(
+        self, async_test_client: LoopAsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The failure mode a bare filesystem error would produce here.
+
+        The cascade removes the project's workspace tree before the row, and a
+        tree can refuse for reasons nothing in this request controls. Escaping
+        the loop would end the request AFTER earlier rows are already
+        irreversibly deleted, and the response carrying no result means the
+        operator is never told which ones went.
+        """
+        first = await _make_project(async_test_client, "Goes")
+        stuck = await _make_project(async_test_client, "Stuck")
+        last = await _make_project(async_test_client, "Also goes")
+
+        async def _refuse_one(*, base_root: object, project_id: str) -> bool:
+            if project_id == stuck:
+                msg = "workspace tree could not be removed"
+                raise WorkspaceCleanupError(msg)
+            return False
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers._project_cascade.discard_project_workspace",
+            _refuse_one,
+        )
+
+        status, body = await _post_bulk(
+            async_test_client, "projects", [first, stuck, last]
+        )
+
+        assert status == 201
+        assert sorted(body["data"]["deleted"]) == sorted([first, last])
+        assert [row["id"] for row in body["data"]["failed"]] == [stuck]
+
+    async def test_a_project_whose_workspace_refused_is_still_there(
+        self, async_test_client: LoopAsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ordering, asserted from outside: the tree goes before the row, so a
+        refusal leaves a project the operator can see and retry rather than a
+        deleted row whose files remain."""
+        stuck = await _make_project(async_test_client, "Stuck")
+
+        async def _refuse(*, base_root: object, project_id: str) -> bool:
+            msg = "workspace tree could not be removed"
+            raise WorkspaceCleanupError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers._project_cascade.discard_project_workspace",
+            _refuse,
+        )
+
+        await _post_bulk(async_test_client, "projects", [stuck])
+
+        follow_up = await async_test_client.get(f"/api/v1/projects/{stuck}")
+        assert follow_up.status_code == 200
+
     async def test_refuses_a_selection_past_the_cap(
         self, async_test_client: LoopAsyncClient
     ) -> None:
@@ -193,3 +264,21 @@ class TestBulkDeleteTasks:
         assert status == 201
         assert body["data"]["deleted"] == [task_id]
         assert body["data"]["failed"] == []
+
+    async def test_a_task_that_refuses_leaves_the_others_deleted(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # The shared collection is exercised by the sibling classes; what is
+        # asserted here is the tasks route's OWN removal raising a refusal this
+        # path collects rather than a failure that ends the request.
+        backend = persistence_of(async_test_client.app.state.app_state)
+        await backend.tasks.save(make_task(task_id="t-real"))
+        real = str(as_uuid("t-real"))
+
+        status, body = await _post_bulk(
+            async_test_client, "tasks", [real, str(as_uuid("t-never-existed"))]
+        )
+
+        assert status == 201
+        assert body["data"]["deleted"] == [real]
+        assert len(body["data"]["failed"]) == 1

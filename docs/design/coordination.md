@@ -225,6 +225,17 @@ question, and every plan status gets an answer.
 | `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator |
 | `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
 
+Every pass also retires **orphaned approvals**, which the table above cannot
+cover: an approval names a task, and a plan-status walk only ever reaches
+approvals whose plan is still there. A live run ended holding approvals whose
+task, plan and project had all been deleted, so they sat in the operator's
+queue naming work that no longer existed and nothing could ever settle them.
+`retire_orphaned_approvals` (`engine/run_recovery/orphan_approvals.py`) closes
+any pending approval whose `task_id` no longer resolves, as `EXPIRED` rather
+than `REJECTED`: nobody declined it, the thing it was about stopped existing.
+The write is compare-and-set on the pending state, so an operator deciding the
+same approval in that moment wins and the sweep leaves it alone.
+
 Five properties are load-bearing:
 
 **A review nobody is waiting on is re-judged, not left.** `IN_REVIEW` is the
@@ -553,14 +564,37 @@ queue. A conflicted merge resolves the caller future without pushing
 in flight then exits cleanly; `WorkspacePushError` distinguishes a
 forge-rejection push failure from a local `WorkspaceMergeError`.
 
+A workspace outlives its project unless something takes it: the
+`project_workspaces` row cascades on the foreign key, disk does not, and a live
+run finished with 24 trees under the root, two of them belonging to projects
+the operator had deleted during that same run. Deleting a project therefore
+discards its managed tree (`discard.py`), and the tree goes BEFORE the row so a
+removal that fails takes the delete down with it and leaves a project the
+operator can retry; the reverse order would report success over files that are
+still there. Only `base_root/projects/<project_id>` is ever removed: a BYO
+`LOCAL_PATH` tree is the operator's own directory and is never touched here.
+
+The same layout answers a second question, for the planner rather than the
+executor. `inventory.py` renders what a project's workspace actually holds into
+the decomposition brief, because the brief's prohibition on assuming files
+exist can only stop the planner asserting; it cannot tell it what is true. An
+absent workspace and an unlisted one read identically, so absence is stated in
+words, and a workspace that exists but cannot be READ is a third answer rather
+than a fourth way of saying "empty".
+
 Events emitted: `PROJECT_WORKSPACE_PROVISIONED`,
-`PROJECT_WORKSPACE_REUSED`, `WORKSPACE_BACKEND_KIND_CHANGED`,
+`PROJECT_WORKSPACE_REUSED`, `PROJECT_WORKSPACE_DISCARDED`,
+`PROJECT_WORKSPACE_UNREADABLE`, `WORKSPACE_BACKEND_KIND_CHANGED`,
+`WORKSPACE_PATH_TRAVERSAL_REJECTED`,
 `WORKSPACE_PUSH_QUEUE_ENQUEUED`, `WORKSPACE_PUSH_QUEUE_MERGED`,
 `WORKSPACE_PUSH_QUEUE_FAILED`, `WORKSPACE_PUSH_QUEUE_WORKER_FAILED`.
 
 **Modules**:
 
 - `src/synthorg/engine/workspace/project_workspace_service.py`
+- `src/synthorg/engine/workspace/paths.py` (the one definition of the layout)
+- `src/synthorg/engine/workspace/discard.py` (removal on project delete)
+- `src/synthorg/engine/workspace/inventory.py` (what the planner is told it holds)
 - `src/synthorg/engine/workspace/git_backend/` (protocol + 3 strategies + factory)
 - `src/synthorg/engine/workspace/push_queue.py`
 - `src/synthorg/engine/workspace/service.py` (per-project queue cache + `merge_workspace_with_push`)

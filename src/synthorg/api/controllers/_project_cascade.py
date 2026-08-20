@@ -30,6 +30,7 @@ from synthorg.api.state import AppState
 from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -118,6 +119,14 @@ async def _supersede_plan(
                 reason=_CASCADE_REASON,
                 failure_reason=failure_reason,
             )
+        except RecordNotFoundError:
+            # The row went between the paginated read that produced it and this
+            # write, which is what two concurrent project deletes do to each
+            # other. Same verdict as a conflict whose refresh finds nothing:
+            # the winner already resolved it and nothing is left orphaned. The
+            # alternative is a bare "plan not found" answering an operator who
+            # asked to delete a project.
+            return
         except VersionConflictError:
             refreshed = await repository.get(NotBlankStr(str(current.id)))
             if refreshed is None or refreshed.status in TERMINAL_STATUSES:

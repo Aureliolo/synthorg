@@ -29,7 +29,6 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     )
     from synthorg.infrastructure.services import (  # noqa: PLC0415
         EventsReadService,
-        ProjectFacadeService,
         RequestsFacadeService,
         SetupFacadeService,
         TemplatePackFacadeService,
@@ -43,7 +42,6 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
         FacadesStateSlice,
         review_facade_service=ReviewFacadeService(),
         setup_facade_service=SetupFacadeService(),
-        project_facade_service=ProjectFacadeService(),
         requests_facade_service=RequestsFacadeService(),
         template_pack_facade_service=TemplatePackFacadeService(),
         client_facade_service=ClientFacadeService(),

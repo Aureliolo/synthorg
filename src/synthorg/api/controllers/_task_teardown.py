@@ -9,6 +9,7 @@ get there through real transitions so every task keeps its audit row.
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 
@@ -58,10 +59,17 @@ async def terminate_task(
         if current.status is TaskStatus.CREATED
         else TaskStatus.CANCELLED
     )
-    await task_engine.transition_task(
-        str(task.id),
-        target,
-        requested_by=requested_by,
-        reason=reason,
-    )
+    try:
+        await task_engine.transition_task(
+            str(task.id),
+            target,
+            requested_by=requested_by,
+            reason=reason,
+        )
+    except TaskNotFoundError:
+        # The re-read above closes most of the window, not all of it: a second
+        # issue of the same teardown can take the row between that read and
+        # this write. Same answer as finding it already terminal, since either
+        # way nothing is left for this pass to resolve.
+        return None
     return target
