@@ -305,10 +305,10 @@ describe('useProjectsStore', () => {
     })
 
     it('keeps failed ids in the list and surfaces their reasons', async () => {
-      // One call, and the backend answers per row: the whole selection used to
-      // go as one DELETE each, and the endpoint is rate limited per user, so
-      // past the per-row budget the tail failed for a reason that had nothing
-      // to do with the rows.
+      // One call, and the backend answers per row: the endpoint is rate
+      // limited per user, so a selection sent as one DELETE per row loses its
+      // tail past that budget for a reason that has nothing to do with the
+      // rows.
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
       })

@@ -58,8 +58,9 @@ module.exports = [
     // selection hook, a shared confirm-and-report control and one store
     // helper the three stores route through), and the subsystem phase list
     // that puts every subsystem's phase and unmet capabilities on screen
-    // rather than API-only. Those are states an operator previously could
-    // not leave and facts they could not read, so the JS is the feature.
+    // rather than leaving them API-only. Each one is an exit from a state an
+    // operator would otherwise be stuck in, or a fact they could otherwise
+    // only read from the API, so the JS is the feature rather than churn.
     // Ceiling = 1252.9 KB * 1.10, measured on a clean CI install; a local
     // ``dist`` is not comparable, because it is built against whatever
     // ``node_modules`` currently holds rather than against the lockfile.
