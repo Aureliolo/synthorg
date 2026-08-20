@@ -205,14 +205,24 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('Network error. Please check your connection.')
   })
 
-  it('returns transient connectivity hint for 502', () => {
+  // An upstream timeout is not evidence the request failed. The proxy gave up
+  // on waiting; the backend may well have finished. A live run had charter
+  // approval create a project, a plan and a decomposition while the browser
+  // was told "Temporary connectivity issue. Please retry shortly." -- and
+  // retrying an action that already landed is exactly what that copy invites.
+  it('does not claim a 502 means the action failed', () => {
     const error = makeAxiosError(502)
-    expect(getErrorMessage(error)).toContain('connectivity')
+    expect(getErrorMessage(error)).toContain('may still have gone through')
   })
 
-  it('returns transient connectivity hint for 504', () => {
+  it('does not claim a 504 means the action failed', () => {
     const error = makeAxiosError(504)
-    expect(getErrorMessage(error)).toContain('connectivity')
+    expect(getErrorMessage(error)).toContain('may still have gone through')
+  })
+
+  it('does not tell the operator to simply retry', () => {
+    const error = makeAxiosError(504)
+    expect(getErrorMessage(error)).toContain('check its current state')
   })
 
   it('surfaces the curated message on a categorised 502', () => {
@@ -243,9 +253,9 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('upstream refused the connection')
   })
 
-  it('falls back to the connectivity hint for a 502 with no error body', () => {
+  it('falls back to the uncertain-outcome wording for a 502 with no body', () => {
     const error = makeAxiosError(502)
-    expect(getErrorMessage(error)).toContain('connectivity')
+    expect(getErrorMessage(error)).toContain('may still have gone through')
   })
 
   it('mentions setup-completion in 429 toast when the request hit /setup/complete', () => {

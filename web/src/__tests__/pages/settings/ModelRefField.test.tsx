@@ -5,9 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { ModelRefField } from '@/pages/settings/ModelRefField'
 import { useProvidersStore } from '@/stores/providers'
-import { successFor } from '@/mocks/handlers'
+import { paginatedEnvelopeFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { probeEmbedder } from '@/api/endpoints/memory'
+import type { listProviders } from '@/api/endpoints/providers'
 import type { ProviderModelConfig } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
@@ -155,5 +156,50 @@ describe('ModelRefField embedder width', () => {
     await waitFor(() => {
       expect(screen.queryByText(/1024 dimensions: indexed/)).toBeNull()
     })
+  })
+})
+
+describe('ModelRefField catalogue hydration', () => {
+  it('reads the catalogue once however many fields mount together', async () => {
+    // The settings page renders one of these per bound model. Each hydrated
+    // itself behind `providers.length === 0 && !listLoading`, and because they
+    // all mount in the same commit every one of them read that as true: a live
+    // run fired `GET /providers` thirty times on a single page load.
+    let calls = 0
+    server.use(
+      http.get('/api/v1/providers', () => {
+        calls += 1
+        return HttpResponse.json(paginatedEnvelopeFor<typeof listProviders>())
+      }),
+    )
+
+    render(
+      <>
+        <ModelRefField value="" onChange={() => {}} settingKey="engine/a_model" />
+        <ModelRefField value="" onChange={() => {}} settingKey="engine/b_model" />
+        <ModelRefField value="" onChange={() => {}} settingKey="engine/c_model" />
+        <ModelRefField value="" onChange={() => {}} settingKey="engine/d_model" />
+      </>,
+    )
+
+    await waitFor(() => {
+      expect(calls).toBe(1)
+    })
+  })
+
+  it('does not read at all when the catalogue is already loaded', async () => {
+    let calls = 0
+    server.use(
+      http.get('/api/v1/providers', () => {
+        calls += 1
+        return HttpResponse.json(paginatedEnvelopeFor<typeof listProviders>())
+      }),
+    )
+    seedProviders()
+
+    render(<ModelRefField value="" onChange={() => {}} settingKey="engine/a_model" />)
+
+    await screen.findByRole('combobox')
+    expect(calls).toBe(0)
   })
 })

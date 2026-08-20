@@ -135,12 +135,15 @@ export function ModelRefField({
   settingKey,
 }: ModelRefFieldProps) {
   const providers = useProvidersStore((s) => s.providers)
-  const listLoading = useProvidersStore((s) => s.listLoading)
-  const fetchProviders = useProvidersStore((s) => s.fetchProviders)
+  const ensureProvidersLoaded = useProvidersStore((s) => s.ensureProvidersLoaded)
 
+  // The store owns "is a read already open". The settings page renders one of
+  // these per bound model, and every one mounts in the same commit, so a guard
+  // here (`providers.length === 0 && !listLoading`) is read by all of them
+  // before any of their state updates land.
   useEffect(() => {
-    if (providers.length === 0 && !listLoading) void fetchProviders()
-  }, [providers.length, listLoading, fetchProviders])
+    void ensureProvidersLoaded()
+  }, [ensureProvidersLoaded])
 
   const providerMap = useMemo<Readonly<Record<string, ProviderConfig>>>(
     () => Object.fromEntries(providers.map((p) => [p.name, p] as const)),

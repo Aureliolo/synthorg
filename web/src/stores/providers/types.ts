@@ -104,6 +104,13 @@ export interface ProvidersState {
 
   // Actions
   fetchProviders: () => Promise<void>
+  /**
+   * Load the catalogue once for a consumer that only needs it present.
+   *
+   * Coalesces concurrent callers onto one read. Use this from a widget that
+   * hydrates on mount; use `fetchProviders` when the data must be re-read.
+   */
+  ensureProvidersLoaded: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
   /** Call the provider now and adopt the health that call produces. */
   recheckProviderHealth: (name: string) => Promise<void>
