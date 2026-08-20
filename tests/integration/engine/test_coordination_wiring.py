@@ -132,7 +132,7 @@ class TestBuildCoordinatorFactory:
         # Decomposition should fail since no provider was given
         from synthorg.core.task import Task
         from synthorg.core.task_enums import Priority, TaskType
-        from synthorg.engine.decomposition.models import (
+        from synthorg.engine.decomposition.context import (
             DecompositionContext,
         )
 

@@ -18,6 +18,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
     parse_tool_call_response,
@@ -28,10 +29,7 @@ from synthorg.engine.decomposition.llm_prompt import (
     build_system_message,
     build_task_message,
 )
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,

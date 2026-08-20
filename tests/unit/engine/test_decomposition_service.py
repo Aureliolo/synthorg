@@ -10,12 +10,9 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.decomposition import service as service_module
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol

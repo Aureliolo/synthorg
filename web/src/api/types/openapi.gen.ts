@@ -11410,6 +11410,11 @@ export type components = {
         };
         /** DecompositionResult */
         readonly DecompositionResult: {
+            /**
+             * @description Decompositions of the subtasks at this level that split
+             * @default []
+             */
+            readonly children: readonly components["schemas"]["DecompositionResult"][];
             /** @description Task objects created from subtask definitions */
             readonly created_tasks: readonly components["schemas"]["Task"][];
             /**
@@ -11420,6 +11425,11 @@ export type components = {
                 string,
                 string
             ])[];
+            /**
+             * @description Nesting depth of this level, 0 at the root
+             * @default 0
+             */
+            readonly depth: number;
             readonly plan: components["schemas"]["DecompositionPlan"];
         };
         /** DeliverableReceipt */

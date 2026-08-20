@@ -19,7 +19,7 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr, flatten_label
-from synthorg.engine.decomposition.models import DecompositionContext
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,

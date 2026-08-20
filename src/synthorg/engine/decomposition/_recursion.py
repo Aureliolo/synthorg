@@ -16,7 +16,7 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
-from synthorg.engine.decomposition.models import DecompositionContext
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import DECOMPOSITION_FAILED
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol

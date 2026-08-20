@@ -13,11 +13,9 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.config import CoordinationConfig
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionResult,
-    SubtaskStatusRollup,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionResult
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.engine.parallel_models import (
     ParallelExecutionResult,
 )

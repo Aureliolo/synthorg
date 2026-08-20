@@ -11,12 +11,12 @@ from typing import Final
 
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_prompt import (
     DECOMPOSITION_FENCES,
     foundation_lines,
     safe_roles,
 )
-from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
 

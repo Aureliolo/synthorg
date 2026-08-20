@@ -5,11 +5,8 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Stakes, TaskType
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from tests._shared import as_uuid, sid
 

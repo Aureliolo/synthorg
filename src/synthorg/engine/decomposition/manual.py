@@ -6,10 +6,8 @@ from ``decompose()``, validating against context limits.
 
 from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.task import Task
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,

@@ -21,14 +21,16 @@ from tests._shared.scripted_provider import make_e2e_identity
 if TYPE_CHECKING:
     from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import (
+from synthorg.engine.decomposition.context import (
     DecompositionContext,
+    roster_from_agents,
+)
+from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
-    SubtaskStatusRollup,
-    roster_from_agents,
 )
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 
 
 def _sub(

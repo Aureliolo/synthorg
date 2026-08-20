@@ -27,11 +27,8 @@ from evals.recursion_depth.oracle import load_index
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionResult,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_TREE_BUILT

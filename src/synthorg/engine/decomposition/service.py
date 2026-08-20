@@ -19,13 +19,12 @@ from synthorg.engine.decomposition._recursion import (
     resolve_recursion_budget,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import (
-    DecompositionContext,
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
-    SubtaskStatusRollup,
 )
 from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.decomposition.protocol import (
@@ -33,6 +32,7 @@ from synthorg.engine.decomposition.protocol import (
     WorkspaceInventory,
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor

@@ -45,7 +45,7 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import REPLANNABLE_STATUSES
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import (
+from synthorg.engine.decomposition.context import (
     DecompositionContext,
     roster_from_agents,
 )
