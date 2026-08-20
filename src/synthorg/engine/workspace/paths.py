@@ -25,8 +25,11 @@ PROJECTS_SUBDIR: Final[str] = "projects"
 
 #: Characters that would make the id something other than one directory name.
 #: ``:`` is here because a segment carrying a drive resets the whole join on
-#: Windows, which a separator check alone does not see.
-_FORBIDDEN_CHARS: Final[tuple[str, ...]] = ("/", "\\", "..", ":")
+#: Windows, which a separator check alone does not see. ``\x00`` is here
+#: because pathlib accepts it at construction and only refuses it deeper in,
+#: raising a bare ``ValueError`` from inside the containment check below,
+#: which is the one place this seam promises a ``WorkspaceSetupError``.
+_FORBIDDEN_CHARS: Final[tuple[str, ...]] = ("/", "\\", "..", ":", "\x00")
 
 #: Names pathlib resolves to somewhere other than a child of the projects root.
 _DOT_NAMES: Final[frozenset[str]] = frozenset({".", ".."})

@@ -86,12 +86,23 @@ export function createListActions(set: ProvidersSet, get: ProvidersGet) {
      */
     ensureProvidersLoaded: async () => {
       if (get().providers.length > 0) return
-      _openHydration ??= get()
+      const open = _openHydration
+      if (open !== null) {
+        await open
+        return
+      }
+      // The slot is cleared only by the read that owns it. An unconditional
+      // clear belongs to whichever read settles first, so a reset between two
+      // hydrations has the older one wipe the newer one's slot: the next
+      // caller finds an empty slot, opens a third read, and that read's id
+      // invalidates the second, whose response is then discarded.
+      const hydration = get()
         .fetchProviders()
         .finally(() => {
-          _openHydration = null
+          if (_openHydration === hydration) _openHydration = null
         })
-      await _openHydration
+      _openHydration = hydration
+      await hydration
     },
 
     fetchProviders: async () => {

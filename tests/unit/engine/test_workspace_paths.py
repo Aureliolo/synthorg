@@ -35,6 +35,7 @@ class TestProjectWorkspaceDir:
             pytest.param(".", id="dot-resolves-to-the-projects-root"),
             pytest.param("D:", id="drive-resets-the-whole-join"),
             pytest.param("C:evil", id="drive-relative"),
+            pytest.param("a\x00b", id="nul-byte-pathlib-refuses-deeper-in"),
         ],
     )
     def test_anything_that_is_not_one_name_is_refused(self, project_id: str) -> None:
