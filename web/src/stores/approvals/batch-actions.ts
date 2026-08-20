@@ -85,23 +85,74 @@ async function runBatch(
   return { succeeded, failed, failedReasons }
 }
 
+/** What the toast says for each of the three ways a batch can end. */
+interface BatchToastLabels {
+  readonly success: string
+  /** Some landed and some did not; must name both counts. */
+  readonly partial: string
+  readonly failure: string
+}
+
+/** Per-verb wording; `batchLabels` fills in the counts. */
+const BATCH_VERB_WORDING = {
+  approve: {
+    settled: 'granted',
+    settledTitle: 'Granted',
+    refused: 'Could not approve',
+  },
+  reject: {
+    settled: 'rejected',
+    settledTitle: 'Rejected',
+    refused: 'Could not reject',
+  },
+} as const
+
+function batchLabels(
+  verb: keyof typeof BATCH_VERB_WORDING,
+  outcome: BatchOutcome,
+  total: number,
+): BatchToastLabels {
+  const words = BATCH_VERB_WORDING[verb]
+  return {
+    success: outcome.succeeded === 1
+      ? `Approval ${words.settled}`
+      : `${String(outcome.succeeded)} approvals ${words.settled}`,
+    partial: `${words.settledTitle} ${String(outcome.succeeded)} of ${String(total)}`,
+    failure: outcome.failed === 1
+      ? words.refused
+      : `${String(outcome.failed)} approvals failed`,
+  }
+}
+
 function emitBatchOutcomeToast(
   outcome: BatchOutcome,
-  successTitle: string,
-  failureTitle: string,
+  labels: BatchToastLabels,
   sentinelErr: Error,
 ): void {
   if (outcome.failed === 0 && outcome.succeeded > 0) {
-    useToastStore.getState().add({ variant: 'success', title: successTitle })
+    useToastStore.getState().add({ variant: 'success', title: labels.success })
     return
   }
   if (outcome.failed === 0) return
   const description = outcome.failedReasons.length > 0
     ? formatBatchErrors(outcome.failedReasons)
     : undefined
+  // A partial batch is neither outcome, and reporting it as the failure was
+  // the whole of what the operator saw: `Reject 2` settled one and failed the
+  // other, and the single error toast let them conclude nothing had happened
+  // on an action the modal calls irreversible. The projects list already
+  // reports "Deleted N of M"; this is the same answer for this queue.
+  if (outcome.succeeded > 0) {
+    useToastStore.getState().add({
+      variant: 'warning',
+      title: labels.partial,
+      description,
+    })
+    return
+  }
   useToastStore.getState().add({
     variant: 'error',
-    ...getCrudErrorTitle(sentinelErr, failureTitle),
+    ...getCrudErrorTitle(sentinelErr, labels.failure),
     description,
   })
 }
@@ -149,12 +200,7 @@ export function createBatchActions(get: ApprovalsGet) {
       )
       emitBatchOutcomeToast(
         outcome,
-        outcome.succeeded === 1
-          ? 'Approval granted'
-          : `${String(outcome.succeeded)} approvals granted`,
-        outcome.failed === 1
-          ? 'Could not approve'
-          : `${String(outcome.failed)} approvals failed`,
+        batchLabels('approve', outcome, ids.length),
         sentinel,
       )
       return outcome
@@ -186,12 +232,7 @@ export function createBatchActions(get: ApprovalsGet) {
       )
       emitBatchOutcomeToast(
         outcome,
-        outcome.succeeded === 1
-          ? 'Approval rejected'
-          : `${String(outcome.succeeded)} approvals rejected`,
-        outcome.failed === 1
-          ? 'Could not reject'
-          : `${String(outcome.failed)} approvals failed`,
+        batchLabels('reject', outcome, ids.length),
         sentinel,
       )
       return outcome
