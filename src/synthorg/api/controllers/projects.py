@@ -291,7 +291,6 @@ class ProjectController(Controller):
         """
         await remove_project(
             state.app_state,
-            _service(state),
             project_id,
             requested_by=extract_requester(),
             channels_plugin=get_channels_plugin(request),
@@ -322,7 +321,6 @@ class ProjectController(Controller):
         """
         result = await remove_projects(
             state.app_state,
-            _service(state),
             data.ids,
             requested_by=extract_requester(),
             channels_plugin=get_channels_plugin(request),

@@ -11,6 +11,12 @@ answer.
 Delete takes the same path the dashboard's own delete takes, cascade included,
 so the children, the tombstone, the workspace tree and the board's event cannot
 differ by which door the deletion came through.
+
+The reads and the non-destructive writes go to the repository rather than to
+the REST layer's project service. That service's whole value is the endpoint's
+own ``API_PROJECT_*`` audit vocabulary, which names a door this caller did not
+come through; what an MCP write owes instead is the actor, and the
+``*_VIA_MCP`` events below carry one.
 """
 
 from collections.abc import Mapping
@@ -18,8 +24,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from synthorg.api.controllers._project_removal import remove_project
-from synthorg.api.services.project_service import ProjectService
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
@@ -62,7 +66,7 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.project_protocol import ProjectFilterSpec
+from synthorg.persistence.project_protocol import ProjectFilterSpec, ProjectRepository
 from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
@@ -74,13 +78,13 @@ _ARG_PROJECT_ID = "project_id"
 _TY_UUID = "UUID string"
 
 
-def _service(app_state: AppState) -> ProjectService:
-    """Build the project service over the same repository the REST route uses.
+def _repo(app_state: AppState) -> ProjectRepository:
+    """Reach the same persisted projects the REST route reads and writes.
 
     Returns:
-        A service bound to this deployment's persisted projects.
+        This deployment's project repository.
     """
-    return ProjectService(repo=persistence_of(app_state).projects)
+    return persistence_of(app_state).projects
 
 
 def _rendered(project: Project) -> dict[str, object]:
@@ -123,7 +127,7 @@ async def _projects_list(
     try:
         page_args = typed_args(arguments, ProjectsListArgs)
         offset, limit = page_args.offset, page_args.limit
-        repo = persistence_of(app_state).projects
+        repo = _repo(app_state)
         page = await repo.list_items(limit=limit, offset=offset)
         total = await repo.count(ProjectFilterSpec())
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -152,7 +156,7 @@ async def _projects_get(
     tool = "synthorg_projects_get"
     try:
         project_id = _validated_uuid(typed_args(arguments, ProjectsGetArgs).project_id)
-        project = await _service(app_state).get(project_id)
+        project = await _repo(app_state).get(project_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -183,9 +187,8 @@ async def _projects_create(
     try:
         args = typed_args(arguments, ProjectsCreateArgs)
         actor_id = require_actor_id(actor)
-        project = await _service(app_state).create(
-            Project(name=args.name, description=args.description or "")
-        )
+        project = Project(name=args.name, description=args.description or "")
+        await _repo(app_state).create(project)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -218,28 +221,26 @@ async def _projects_update(
         args = typed_args(arguments, ProjectsUpdateArgs)
         project_id = _validated_uuid(args.project_id)
         actor_id = require_actor_id(actor)
-        service = _service(app_state)
-        current = await service.get(project_id)
+        repo = _repo(app_state)
+        current = await repo.get(project_id)
         if current is None:
             missing = NotFoundError(f"Project {project_id} not found")
             log_handler_invoke_failed(tool, missing, project_id=project_id)
             return err(missing, domain_code="not_found")
+        updated = current.model_copy(
+            update={
+                "name": args.name if args.name is not None else current.name,
+                "description": (
+                    args.description
+                    if args.description is not None
+                    else current.description
+                ),
+            }
+        )
         # Version-guarded on the row this patch was derived from, so a
         # concurrent operator edit is refused rather than overwritten by
         # whichever of the two wrote last.
-        updated = await service.update(
-            current.model_copy(
-                update={
-                    "name": args.name if args.name is not None else current.name,
-                    "description": (
-                        args.description
-                        if args.description is not None
-                        else current.description
-                    ),
-                }
-            ),
-            expected_version=current.version,
-        )
+        await repo.update(updated, expected_version=current.version)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -270,6 +271,13 @@ async def _projects_delete(
     tool = "synthorg_projects_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        # Local, and after the guardrail, so the meta package keeps its
+        # module-level independence from ``api`` without displacing the
+        # attribution check that must run before anything else.
+        from synthorg.api.controllers._project_removal import (  # noqa: PLC0415
+            remove_project,
+        )
+
         project_id = _validated_uuid(
             typed_args(arguments, ProjectsDeleteArgs).project_id
         )
@@ -282,7 +290,6 @@ async def _projects_delete(
         # board learns of the removal on its next read rather than live.
         await remove_project(
             app_state,
-            _service(app_state),
             project_id,
             requested_by=actor_id,
             channels_plugin=None,

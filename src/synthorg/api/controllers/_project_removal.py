@@ -35,7 +35,6 @@ logger = get_logger(__name__)
 
 async def remove_project(
     app_state: AppState,
-    service: ProjectService,
     project_id: str,
     *,
     requested_by: str,
@@ -45,11 +44,51 @@ async def remove_project(
 
     Takes the resolved plugin rather than a request, because this is not only
     a route: the MCP project tool deletes through the same path, and it has no
-    request to resolve one from.
+    request to resolve one from. It builds its own service for the same
+    reason: a caller below the api layer is entitled to this cascade but not
+    to the endpoint-audit service that performs the row write.
 
     Args:
         app_state: Application state.
-        service: The project service the caller already built.
+        project_id: The project to remove.
+        requested_by: The person who asked.
+        channels_plugin: Where the board's event goes, or ``None`` to drop it.
+
+    Raises:
+        NotFoundError: Project with ``project_id`` does not exist, or the row
+            disappeared between the read and the delete.
+    """
+    await _remove_one(
+        app_state,
+        _service(app_state),
+        project_id,
+        requested_by=requested_by,
+        channels_plugin=channels_plugin,
+    )
+
+
+def _service(app_state: AppState) -> ProjectService:
+    """Build the project service over this deployment's persisted projects.
+
+    Returns:
+        A service bound to the same repository the route's own reads use.
+    """
+    return ProjectService(repo=persistence_of(app_state).projects)
+
+
+async def _remove_one(
+    app_state: AppState,
+    service: ProjectService,
+    project_id: str,
+    *,
+    requested_by: str,
+    channels_plugin: ChannelsPlugin | None,
+) -> None:
+    """Remove one project through an already-built *service*.
+
+    Args:
+        app_state: Application state.
+        service: The service the caller built once for the whole selection.
         project_id: The project to remove.
         requested_by: The person who asked.
         channels_plugin: Where the board's event goes, or ``None`` to drop it.
@@ -102,7 +141,6 @@ async def remove_project(
 
 async def remove_projects(
     app_state: AppState,
-    service: ProjectService,
     ids: tuple[NotBlankStr, ...],
     *,
     requested_by: str,
@@ -112,7 +150,6 @@ async def remove_projects(
 
     Args:
         app_state: Application state.
-        service: The project service the route already built.
         ids: The projects the operator selected.
         requested_by: The person who asked.
         channels_plugin: Where each removal's event goes.
@@ -120,9 +157,10 @@ async def remove_projects(
     Returns:
         What was removed and what remains.
     """
+    service = _service(app_state)
     return await run_bulk_delete(
         ids,
-        lambda project_id: remove_project(
+        lambda project_id: _remove_one(
             app_state,
             service,
             project_id,

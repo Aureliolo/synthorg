@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.models import CandidateCard, HiringRequest
@@ -105,9 +106,15 @@ class TestHiringRequestRepository:
         assert not await backend.hiring_requests.delete(rid)
 
     async def test_query_by_status(self, backend: PersistenceBackend) -> None:
-        await backend.hiring_requests.save(_request(status=HiringRequestStatus.PENDING))
+        # Distinct roles: PENDING and APPROVED are both OPEN statuses, and one
+        # open hire per role is a database constraint, so staffing two gaps is
+        # the only shape in which two open requests coexist.
+        await backend.hiring_requests.save(
+            _request(role="Backend Engineer", status=HiringRequestStatus.PENDING)
+        )
         await backend.hiring_requests.save(
             _request(
+                role="Platform Engineer",
                 status=HiringRequestStatus.APPROVED,
                 when=_NOW + timedelta(hours=1),
             )
@@ -129,8 +136,12 @@ class TestHiringRequestRepository:
         assert count == 1
 
     async def test_list_items(self, backend: PersistenceBackend) -> None:
-        await backend.hiring_requests.save(_request(when=_NOW))
-        await backend.hiring_requests.save(_request(when=_NOW + timedelta(hours=2)))
+        # Two roles rather than two hires for one: the second is refused by the
+        # one-open-hire-per-role index.
+        await backend.hiring_requests.save(_request(role="Backend Engineer", when=_NOW))
+        await backend.hiring_requests.save(
+            _request(role="Platform Engineer", when=_NOW + timedelta(hours=2))
+        )
         results = await backend.hiring_requests.list_items()
         assert len(results) >= 2
 
@@ -151,7 +162,7 @@ class TestOneOpenHirePerRole:
             _request(role="Completion Reviewer", status=HiringRequestStatus.PENDING)
         )
 
-        with pytest.raises(Exception, match=r"(?i)unique|constraint"):
+        with pytest.raises(QueryError):
             await backend.hiring_requests.save(
                 _request(role="Completion Reviewer", status=HiringRequestStatus.PENDING)
             )
@@ -164,7 +175,7 @@ class TestOneOpenHirePerRole:
             _request(role="Red Team", status=HiringRequestStatus.APPROVED)
         )
 
-        with pytest.raises(Exception, match=r"(?i)unique|constraint"):
+        with pytest.raises(QueryError):
             await backend.hiring_requests.save(
                 _request(role="Red Team", status=HiringRequestStatus.PENDING)
             )
