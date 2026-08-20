@@ -469,4 +469,26 @@ describe('LoginPage', () => {
       ).toBeUndefined()
     })
   })
+
+  describe('sizing', () => {
+    /**
+     * A live run could not sign in at all: the card centred low and right
+     * with the submit button below the fold and no way to scroll to it,
+     * because `html, body, #root` are locked to `height: 100%; overflow:
+     * hidden` for the app shell while this page sized itself to `100vh`.
+     * Any sliver by which `100vh` exceeds the real viewport becomes
+     * unreachable rather than scrollable. AppLayout carries the same rule
+     * in a comment; this page is the one that broke it.
+     */
+    it('sizes to its container, never to the viewport', () => {
+      renderLogin()
+
+      // Anchored on the wordmark, which renders in every load state, so the
+      // assertion is about layout rather than about the form being ready.
+      const shell = screen.getByText('SynthOrg').closest('div.flex')
+
+      expect(shell?.className).not.toMatch(/\bmin-h-screen\b/)
+      expect(shell?.className).not.toMatch(/\bh-screen\b/)
+    })
+  })
 })

@@ -272,7 +272,14 @@ export default function LoginPage() {
   const form = useAuthForm({ mode, minPasswordLength })
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    // ``h-full`` (100% of the ``height:100%`` #root chain), NOT ``min-h-screen``
+    // (100vh), for the reason AppLayout carries the same rule: 100vh ignores the
+    // scrollbar/chrome gutter and overruns the real viewport. Here that was not
+    // a cosmetic sliver. ``#root`` is ``overflow: hidden``, so centring inside a
+    // box taller than the viewport put the Sign In button below the fold with
+    // nothing to scroll, and the product could not be signed into at all until
+    // the window was resized.
+    <div className="flex h-full items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <form
           onSubmit={form.handleSubmit}
