@@ -309,7 +309,13 @@ def build_coordinator(  # noqa: PLR0913
         planning_memory=planning_memory,
         agent_session_memory_digest_budget=agent_session_memory_digest_budget,
     )
-    decomposition_service = DecompositionService(strategy, classifier)
+    # The workspace service doubles as the planner's inventory: it is the only
+    # thing here that knows where a project's files actually are, and a plan
+    # written without that fact is written against whatever org-wide recall
+    # happens to surface, which spans every project the org has ever run.
+    decomposition_service = DecompositionService(
+        strategy, classifier, workspace_inventory=project_workspace_service
+    )
 
     routing = routing or CoordinatorRoutingDeps()
     scorer = routing.scorer or _build_scorer(

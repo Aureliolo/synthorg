@@ -28,6 +28,7 @@ from synthorg.engine.workspace.git_backend import (
     GitBackend,
     GitBackendConfig,
 )
+from synthorg.engine.workspace.inventory import describe_project_workspace
 from synthorg.engine.workspace.paths import PROJECTS_SUBDIR, project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
@@ -147,6 +148,23 @@ class ProjectWorkspaceService:
             project_id=project_id,
             git_dir=str(git_dir),
             success=True,
+        )
+
+    async def describe_inventory(self, project_id: NotBlankStr) -> str:
+        """Describe what *project_id*'s workspace holds, for a planning brief.
+
+        Deliberately read-only and provision-free: a planner asking what exists
+        must not bring a workspace into being as a side effect of the question.
+
+        Args:
+            project_id: The project being planned for.
+
+        Returns:
+            A phrase naming the workspace's top-level entries, or wording that
+            says plainly that no file has been written yet.
+        """
+        return await describe_project_workspace(
+            base_root=self._base_root, project_id=project_id
         )
 
     async def get_or_provision(

@@ -573,3 +573,91 @@ class TestOneDecompositionCannotRunForever:
 
         with pytest.raises(DecompositionError):
             await service.decompose_task(_make_task(), DecompositionContext())
+
+
+class _ContextRecordingStrategy:
+    """Captures the context the service actually hands the planner."""
+
+    def __init__(self) -> None:
+        self.seen: DecompositionContext | None = None
+
+    async def decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        self.seen = context
+        return _make_plan(parent_task_id=str(task.id))
+
+    def get_strategy_name(self) -> str:
+        return "context-recording"
+
+
+class _StubInventory:
+    """A workspace inventory that answers without touching a disk."""
+
+    def __init__(self, answer: str = "server.js, index.html") -> None:
+        self.answer = answer
+        self.asked_for: list[str] = []
+
+    async def describe_inventory(self, project_id: str) -> str:
+        self.asked_for.append(project_id)
+        return self.answer
+
+
+@pytest.mark.unit
+class TestPlanningIsGroundedInTheRealWorkspace:
+    """Every decomposition path must be told what the project actually holds.
+
+    Two of the five context-construction sites live deep in the engine with no
+    workspace root to read, and the charter route is one of them, so the fact
+    is resolved at the single seam they all pass through instead.
+    """
+
+    async def test_the_planner_is_told_what_the_workspace_holds(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary == "server.js, index.html"
+
+    async def test_the_inventory_is_asked_about_this_task_s_project(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert inventory.asked_for == ["proj-1"]
+
+    async def test_a_caller_supplied_summary_is_not_overwritten(self) -> None:
+        strategy = _ContextRecordingStrategy()
+        inventory = _StubInventory()
+        service = DecompositionService(
+            strategy, TaskStructureClassifier(), workspace_inventory=inventory
+        )
+
+        await service.decompose_task(
+            _make_task(), DecompositionContext(workspace_summary="a known answer")
+        )
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary == "a known answer"
+        assert inventory.asked_for == []
+
+    async def test_no_inventory_wired_leaves_the_context_alone(self) -> None:
+        """A harness builds this service with no workspace at all."""
+        strategy = _ContextRecordingStrategy()
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert strategy.seen is not None
+        assert strategy.seen.workspace_summary is None
