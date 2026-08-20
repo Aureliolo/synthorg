@@ -16,10 +16,11 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
+    combine_graph_violations,
     describe_structureless_graph,
-    describe_undecidable_criterion,
+    describe_undecidable_criteria,
     describe_unroutable_role,
-    describe_unstated_reference,
+    describe_unstated_references,
 )
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -157,15 +158,17 @@ def _validate_graph(
         units=subtasks,
     )
     if detail is None:
-        for subtask in subtasks:
-            detail = describe_unstated_reference(unit=subtask, others=subtasks)
-            if detail is not None:
-                break
-    if detail is None:
-        for subtask in subtasks:
-            detail = describe_undecidable_criterion(unit=subtask, others=subtasks)
-            if detail is not None:
-                break
+        # Every violation, not the first. A session that regenerates its whole
+        # plan on each rejection cannot converge while it is told one at a
+        # time: it resolves the pair it was given and manufactures another. A
+        # live run spent all twelve turns that way, seven submissions rejected
+        # by this one rule on seven different pairs, and returned no plan.
+        detail = combine_graph_violations(
+            (
+                *describe_unstated_references(subtasks),
+                *describe_undecidable_criteria(subtasks),
+            )
+        )
     if detail is None:
         return
     logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)

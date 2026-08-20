@@ -21,10 +21,11 @@ from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
+    combine_graph_violations,
     describe_structureless_graph,
-    describe_undecidable_criterion,
+    describe_undecidable_criteria,
     describe_unroutable_role,
-    describe_unstated_reference,
+    describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.models import roster_from_agents
@@ -63,14 +64,16 @@ def reject_undecidable_graph(
             declared_sequential=task_structure in ORDERED_STRUCTURES,
             units=items,
         )
-    for item in items:
-        if detail is not None:
-            break
-        detail = describe_unstated_reference(unit=item, others=items)
-    for item in items:
-        if detail is not None:
-            break
-        detail = describe_undecidable_criterion(unit=item, others=items)
+    if detail is None:
+        # Every violation at once, so an operator fixing a revision by hand
+        # sees the whole list rather than discovering the next one each time
+        # they resubmit.
+        detail = combine_graph_violations(
+            (
+                *describe_unstated_references(items),
+                *describe_undecidable_criteria(items),
+            )
+        )
     if detail is not None:
         raise ValidationError(detail)
 
