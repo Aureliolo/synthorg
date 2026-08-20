@@ -10,20 +10,16 @@ from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api._config_mirrors import (
+    API_MIRROR_FIELDS,
+    RATE_LIMIT_MIRROR_FIELDS,
+)
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import (
-    MirrorField,
-    apply_settings_mirrors,
-    parse_bool,
-    parse_float,
-    parse_int,
-    parse_str_tuple_json,
-)
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
 logger = get_logger(__name__)
 
@@ -129,43 +125,7 @@ class RateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="floor_max_requests",
-            namespace=SettingNamespace.API,
-            key="rate_limit_floor_max_requests",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="unauth_max_requests",
-            namespace=SettingNamespace.API,
-            key="rate_limit_unauth_max_requests",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="auth_max_requests",
-            namespace=SettingNamespace.API,
-            key="rate_limit_auth_max_requests",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="auth_endpoint_max_requests",
-            namespace=SettingNamespace.API,
-            key="rate_limit_auth_endpoint_max_requests",
-            parse=parse_int,
-        ),
-        MirrorField(
-            field="time_unit",
-            namespace=SettingNamespace.API,
-            key="rate_limit_time_unit",
-        ),
-        MirrorField(
-            field="exclude_paths",
-            namespace=SettingNamespace.API,
-            key="rate_limit_exclude_paths",
-            parse=parse_str_tuple_json,
-        ),
-    )
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = RATE_LIMIT_MIRROR_FIELDS
 
     floor_max_requests: int = Field(
         default=10000,
@@ -335,37 +295,7 @@ class ApiConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="api_prefix",
-            namespace=SettingNamespace.API,
-            key="api_prefix",
-        ),
-        MirrorField(
-            field="rate_limiter_enabled",
-            namespace=SettingNamespace.API,
-            key="rate_limiter_enabled",
-            parse=parse_bool,
-        ),
-        MirrorField(
-            field="readiness_probe_timeout_seconds",
-            namespace=SettingNamespace.API,
-            key="readiness_probe_timeout_seconds",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="bulk_delete_budget_seconds",
-            namespace=SettingNamespace.API,
-            key="bulk_delete_budget_seconds",
-            parse=parse_float,
-        ),
-        MirrorField(
-            field="subsystem_resync_interval_seconds",
-            namespace=SettingNamespace.API,
-            key="subsystem_resync_interval_seconds",
-            parse=parse_float,
-        ),
-    )
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = API_MIRROR_FIELDS
 
     cors: CorsConfig = Field(
         default_factory=CorsConfig,
