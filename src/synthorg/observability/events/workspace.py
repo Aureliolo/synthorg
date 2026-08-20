@@ -78,6 +78,10 @@ WORKSPACE_PATH_TRAVERSAL_REJECTED: Final[str] = (
     "project_workspace.path.traversal.rejected"
 )
 WORKSPACE_GIT_DIR_CLEARED: Final[str] = "project_workspace.git_dir.cleared"
+#: A deleted project's workspace tree was removed from disk. Carries
+#: ``removed``, because "nothing was there" and "it is gone now" are the two
+#: outcomes an operator chasing disk use needs told apart.
+PROJECT_WORKSPACE_DISCARDED: Final[str] = "project_workspace.discarded"
 # A sandboxed command resolved no project, so it runs against the shared
 # workspace root instead of one project's directory. Carries ``reason``,
 # because the two ways that happens need different fixes.
