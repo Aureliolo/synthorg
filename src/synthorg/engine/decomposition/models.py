@@ -234,10 +234,24 @@ class DecompositionPlan(BaseModel):
 class DecompositionResult(BaseModel):
     """Result of a complete task decomposition.
 
+    One level of a decomposition. A subtask the atomicity policy judged
+    oversized is decomposed again, and its own result hangs off ``children``,
+    so the whole shape is a tree rather than a list.
+
+    ``children`` defaults to empty, which is exactly what a non-recursive
+    decomposition produces, so every reader that predates recursion sees the
+    flat result it always saw.
+
     Attributes:
         plan: The decomposition plan that was executed.
         created_tasks: Task objects created from subtask definitions.
         dependency_edges: Directed edges (from_id, to_id) in the DAG.
+        depth: This level's nesting depth, ``0`` at the root. Recorded rather
+            than derived by the reader, because the reader most likely to want
+            it holds one node and not the tree it came from.
+        children: The decomposition of each subtask at this level that was
+            split further, in no particular relation to ``created_tasks``
+            order.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -250,6 +264,64 @@ class DecompositionResult(BaseModel):
         default=(),
         description="Directed edges (from_id, to_id) in the DAG",
     )
+    depth: int = Field(
+        default=0,
+        ge=0,
+        description="Nesting depth of this level, 0 at the root",
+    )
+    children: tuple[DecompositionResult, ...] = Field(
+        default=(),
+        description="Decompositions of the subtasks at this level that split",
+    )
+
+    @property
+    def split_task_ids(self) -> frozenset[str]:
+        """Ids of this level's tasks that were decomposed further.
+
+        Returns:
+            The parent task id of each child decomposition.
+        """
+        return frozenset(child.plan.parent_task_id for child in self.children)
+
+    @property
+    def leaf_tasks(self) -> tuple[Task, ...]:
+        """Every task in the tree that nothing below it replaced.
+
+        This is what gets dispatched: a task that was split is a container for
+        the work below it, and running it as well would do that work twice.
+
+        Returns:
+            The leaves, this level's first, then each child's in order.
+        """
+        split = self.split_task_ids
+        own = tuple(task for task in self.created_tasks if str(task.id) not in split)
+        return own + tuple(task for child in self.children for task in child.leaf_tasks)
+
+    @property
+    def all_tasks(self) -> tuple[Task, ...]:
+        """Every task in the tree, split containers included.
+
+        Returns:
+            This level's tasks, then each child's, recursively.
+        """
+        return self.created_tasks + tuple(
+            task for child in self.children for task in child.all_tasks
+        )
+
+    @property
+    def max_depth_reached(self) -> int:
+        """The deepest level this tree actually reached.
+
+        The measured counterpart of ``DecompositionContext.max_depth``, which
+        is only a ceiling: a planner that never produced an oversized subtask
+        stops well short of it.
+
+        Returns:
+            ``depth`` when nothing split, else the deepest child's answer.
+        """
+        return max(
+            (child.max_depth_reached for child in self.children), default=self.depth
+        )
 
     @model_validator(mode="after")
     def _validate_plan_task_consistency(self) -> Self:
@@ -261,8 +333,9 @@ class DecompositionResult(BaseModel):
 
         Raises:
             ValueError: When the structure is unresolved, the task count
-                mismatches, task ids differ from plan subtask ids, or an
-                edge endpoint is an unknown task id.
+                mismatches, task ids differ from plan subtask ids, an
+                edge endpoint is an unknown task id, or a child decomposes
+                something this level did not create.
         """
         # A completed decomposition always names its structure: the service
         # resolves an undeclared one through the classifier. Leaving AUTO
@@ -299,7 +372,39 @@ class DecompositionResult(BaseModel):
             )
             raise ValueError(msg)
 
+        self._validate_children(task_ids)
         return self
+
+    def _validate_children(self, task_ids: set[str]) -> None:
+        """Check each child decomposes a task this level created, one level down.
+
+        A child whose parent is not one of these tasks describes a subtree that
+        hangs off nothing, and ``leaf_tasks`` would then dispatch both the
+        container and the work below it.
+
+        Raises:
+            ValueError: When a child names an unknown parent, two children name
+                the same one, or a child's depth is not this level's plus one.
+        """
+        seen: set[str] = set()
+        for child in self.children:
+            parent = child.plan.parent_task_id
+            if parent not in task_ids:
+                msg = (
+                    f"child decomposition names parent {parent!r}, which is not "
+                    f"one of this level's tasks: {sorted(task_ids)}"
+                )
+                raise ValueError(msg)
+            if parent in seen:
+                msg = f"two child decompositions both name parent {parent!r}"
+                raise ValueError(msg)
+            seen.add(parent)
+            if child.depth != self.depth + 1:
+                msg = (
+                    f"child decomposition of {parent!r} is at depth "
+                    f"{child.depth}, expected {self.depth + 1}"
+                )
+                raise ValueError(msg)
 
 
 class SubtaskStatusRollup(BaseModel):

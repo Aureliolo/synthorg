@@ -489,6 +489,7 @@ class TestOneDecompositionCannotRunForever:
         never = _NeverAnsweringStrategy()
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_SHORT_CEILING
+        resolver.get_bool.return_value = False
         service = DecompositionService(
             never,
             TaskStructureClassifier(),
@@ -504,6 +505,7 @@ class TestOneDecompositionCannotRunForever:
         # the moment it is least available to them.
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_GENEROUS_CEILING
+        resolver.get_bool.return_value = False
         service = DecompositionService(
             ManualDecompositionStrategy(_make_plan()),
             TaskStructureClassifier(),
