@@ -139,4 +139,35 @@ describe('PlanDetailPage', () => {
       screen.getByText(/could not be completed/),
     ).toBeInTheDocument()
   })
+
+  describe('a plan the org is already running', () => {
+    function renderExecuting() {
+      hookReturn = {
+        ...defaultHookReturn,
+        plan: makePlan('plan-1', {
+          status: 'executing',
+          objective_title: 'Ship the Tetris game',
+          items: [makePlanItem('i1', { title: 'Scaffold the board' })],
+        }),
+      }
+      return renderPage()
+    }
+
+    it('offers the run to watch rather than no control at all', () => {
+      // The page carried nothing an operator could act on at this status: the
+      // review controls are gone by design and the only other affordance was
+      // gated on `approved`, the status a plan leaves the moment work starts.
+      renderExecuting()
+
+      expect(screen.getByRole('link', { name: /Watch it run/ })).toBeInTheDocument()
+    })
+
+    it('stops asking for a review it has already been given', () => {
+      renderExecuting()
+
+      expect(screen.queryByText('Needs your review')).toBeNull()
+      expect(screen.queryByText('Needs your attention')).toBeNull()
+      expect(screen.queryByRole('button', { name: /Request changes/ })).toBeNull()
+    })
+  })
 })

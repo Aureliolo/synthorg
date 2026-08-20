@@ -4,6 +4,7 @@ import type { PlanItem, PlanStatus } from '@/api/types/plans'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { StatusPill } from '@/components/ui/status-pill'
+import { planSolicitsReview } from '@/utils/plan-status'
 import { type PlanItemFlag, itemFlags, planItemAnchorId } from '@/utils/plans'
 
 interface FlaggedEntry {
@@ -115,20 +116,27 @@ export function PlanAttentionPanel({
       </SectionCard>
     )
   }
+  // Past the review decision the same flags are a record of what was weighed,
+  // not a request. Asking a second time for input on a plan already running is
+  // asking for something the page has no control to accept.
+  const solicits = status === undefined || planSolicitsReview(status)
   const flagged = collectFlagged(items, criticalPath, roster)
   if (flagged.length === 0) {
     return (
-      <SectionCard title="Nothing flagged for review" icon={ShieldCheck}>
+      <SectionCard
+        title={solicits ? 'Nothing flagged for review' : 'Nothing was flagged at review'}
+        icon={ShieldCheck}
+      >
         <p className="text-sm text-text-secondary">
-          Every item is owned, scoped, and has acceptance criteria. Read through
-          and make your decision.
+          Every item is owned, scoped, and has acceptance criteria.
+          {solicits && ' Read through and make your decision.'}
         </p>
       </SectionCard>
     )
   }
   return (
     <SectionCard
-      title="Needs your attention"
+      title={solicits ? 'Needs your attention' : 'Flagged at review'}
       icon={AlertTriangle}
       action={<StatPill label="flagged" value={flagged.length} />}
     >

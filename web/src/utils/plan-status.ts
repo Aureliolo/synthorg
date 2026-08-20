@@ -9,26 +9,41 @@
 import type { PlanStatus } from '@/api/types/plans'
 
 /**
- * The statuses with no lifecycle hops left, mirroring `TERMINAL_STATUSES`
- * server-side. The plan has been delivered, declined, replaced, or failed to
- * decompose.
+ * The statuses where the operator's review decision is still open, which are
+ * exactly the ones the review workspace offers controls for.
  */
-const TERMINAL_STATUSES: ReadonlySet<PlanStatus> = new Set<PlanStatus>([
-  'completed',
-  'rejected',
-  'superseded',
-  'failed',
+const AWAITING_REVIEW_STATUSES: ReadonlySet<PlanStatus> = new Set<PlanStatus>([
+  'draft',
+  'pending_review',
 ])
 
 /**
  * Whether reviewing this plan's items could still change anything.
  *
- * A superseded plan sat in the review inbox advertising items to review, on a
- * revision the org had already replaced: the operator is asked to weigh in on a
- * decision that has been taken and cannot be retaken here. The items still
- * carry their flags, because a flag is a property of the item, which is why the
- * question has to be asked of the plan instead.
+ * One predicate answers both "does this surface ask for a review" and "can one
+ * be given", because they were decided separately and disagreed: a superseded
+ * plan sat in the review inbox advertising items to review on a revision the
+ * org had already replaced, and an executing plan headlined six reviews and a
+ * panel asking for input while offering no control that could act on either.
+ * The items still carry their flags, because a flag is a property of the item,
+ * which is why the question has to be asked of the plan instead.
  */
 export function planSolicitsReview(status: PlanStatus): boolean {
-  return !TERMINAL_STATUSES.has(status)
+  return AWAITING_REVIEW_STATUSES.has(status)
+}
+
+/**
+ * The statuses where the org is working the plan: approved and waiting for the
+ * first wave, running one, assembling, or scoring the result.
+ */
+const RUNNING_STATUSES: ReadonlySet<PlanStatus> = new Set<PlanStatus>([
+  'approved',
+  'executing',
+  'integrating',
+  'evaluating',
+])
+
+/** Whether there is a run behind this plan for the operator to watch. */
+export function planIsRunning(status: PlanStatus): boolean {
+  return RUNNING_STATUSES.has(status)
 }

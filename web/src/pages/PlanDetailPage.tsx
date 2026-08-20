@@ -15,6 +15,7 @@ import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
 import { usePlanCommentsStore } from '@/stores/planComments'
 import { usePlansStore } from '@/stores/plans'
+import { planIsRunning, planSolicitsReview } from '@/utils/plan-status'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import {
   criticalPathFor,
@@ -106,7 +107,7 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   onEdit: () => void
   onRequestChanges: () => void
 }) {
-  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const editable = planSolicitsReview(plan.status)
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PlanApprovalActions plan={plan} />
@@ -122,7 +123,10 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
           </Button>
         </>
       )}
-      {plan.status === 'approved' && (
+      {/* Offered for the whole run, not only the moment after approval: an
+          executing plan is the one an operator most wants to follow, and it was
+          the status whose page carried no control at all. */}
+      {planIsRunning(plan.status) && (
         <Button variant="outline" size="sm" asChild>
           <Link to={ROUTES.MISSION_CONTROL}>
             <Radio aria-hidden="true" />
@@ -200,7 +204,7 @@ function PlanReviewView({ plan, roles, setMode }: {
     [plan.items, criticalPath, roles],
   )
   const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
-  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const editable = planSolicitsReview(plan.status)
   const comments = usePlanItemComments(plan.id)
   const chooseOption = useCallback(
     (itemId: string, optionId: string) =>

@@ -18,7 +18,7 @@ import {
   planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
-import { planSolicitsReview } from '@/utils/plan-status'
+import { planIsRunning, planSolicitsReview } from '@/utils/plan-status'
 
 describe('plan severity predicates', () => {
   it('treats complex and epic as high complexity', () => {
@@ -391,17 +391,44 @@ describe('derivePlanStaffing', () => {
 })
 
 describe('planSolicitsReview', () => {
-  it.each(['pending_review', 'draft', 'planning', 'approved', 'executing'] as const)(
+  it.each(['pending_review', 'draft'] as const)(
     'asks for a review on a %s plan',
     (status) => {
       expect(planSolicitsReview(status)).toBe(true)
     },
   )
 
-  it.each(['superseded', 'completed', 'rejected', 'failed'] as const)(
-    'asks for nothing on a %s plan',
+  // `planning` has nothing drafted to weigh yet, and everything from `approved`
+  // on has had its decision taken: an executing plan headlined six reviews and
+  // a panel asking for input while offering no control that could act on
+  // either, because this predicate and the toolbar's own answered separately.
+  it.each([
+    'planning',
+    'approved',
+    'executing',
+    'integrating',
+    'evaluating',
+    'superseded',
+    'completed',
+    'rejected',
+    'failed',
+  ] as const)('asks for nothing on a %s plan', (status) => {
+    expect(planSolicitsReview(status)).toBe(false)
+  })
+})
+
+describe('planIsRunning', () => {
+  it.each(['approved', 'executing', 'integrating', 'evaluating'] as const)(
+    'offers the run to watch on a %s plan',
     (status) => {
-      expect(planSolicitsReview(status)).toBe(false)
+      expect(planIsRunning(status)).toBe(true)
+    },
+  )
+
+  it.each(['planning', 'draft', 'pending_review', 'completed', 'failed'] as const)(
+    'has no run to watch on a %s plan',
+    (status) => {
+      expect(planIsRunning(status)).toBe(false)
     },
   )
 })
