@@ -32,6 +32,7 @@ services:
         condition: service_completed_successfully
     environment:
       SYNTHORG_DB_PATH: "/data/synthorg.db"
+      SYNTHORG_IMAGE_TAG: "latest"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
       SYNTHORG_MEMORY_BACKEND: "sqlvector"

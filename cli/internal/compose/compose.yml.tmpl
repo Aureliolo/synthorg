@@ -136,6 +136,15 @@ entry to this block.
 {{- else}}
       SYNTHORG_DB_PATH: "/data/synthorg.db"
 {{- end}}
+{{- /*
+The tag this deployment actually pulled. `synthorg.__version__` is the last
+RELEASED version, which release-please bumps at release time, so a stack running
+a pre-release reports the previous release's number as its own: a live run on
+v0.9.4-dev.143 had the health dialog headline "BACKEND VERSION 0.9.3". The
+process cannot know its build identity from source, so the launcher that chose
+the image tells it.
+*/}}
+      SYNTHORG_IMAGE_TAG: {{yamlStr .ImageTag}}
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: {{yamlStr .PersistenceBackend}}
       SYNTHORG_MEMORY_BACKEND: {{yamlStr .MemoryBackend}}

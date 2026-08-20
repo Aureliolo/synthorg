@@ -13,6 +13,7 @@ import { HealthPopover } from '@/components/ui/health-popover'
 import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { SubsystemState } from '@/components/ui/health-popover/health-popover.utils'
 import { useHealthStore } from '@/stores/health'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useWebSocketStore } from '@/stores/websocket'
 
 /**
@@ -144,6 +145,11 @@ function HealthStatusButton() {
   const loadState = useHealthStore((s) => s.loadState)
   const fetchHealth = useHealthStore((s) => s.fetchHealth)
   const cancelProbe = useHealthStore((s) => s.cancelProbe)
+  // Read, never fetched here: this pill renders on every page and a poll of
+  // its own would be a second cadence over the same endpoint. Whatever the
+  // dashboard or the health dialog last read is folded in, so the pill can
+  // fall short of the whole truth but never contradict the panel beside it.
+  const subsystems = useOrgPulseStore((s) => s.subsystems)
 
   // Polls the same ``/health`` snapshot the dialog this pill opens renders, and
   // rolls it up with the same derivation, so the two cannot report different
@@ -171,6 +177,7 @@ function HealthStatusButton() {
     wsConnected,
     wsReconnectExhausted,
     sseFallbackActive,
+    subsystems,
   )
   const statusCfg = resolveCombinedStatus(backendOnlyState, wsConnected, wsReconnectExhausted)
   return (

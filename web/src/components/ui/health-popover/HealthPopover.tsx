@@ -1,6 +1,7 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { useHealthStore } from '@/stores/health'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useWebSocketStore } from '@/stores/websocket'
 import { cn } from '@/lib/utils'
 import { buildFetchedAtLabel, HealthPopoverContent } from './HealthPopoverContent'
@@ -38,11 +39,17 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
+  // Read from the store that owns declared-subsystem state rather than fetched
+  // here: the dashboard's blockers panel reads the same list, and a second
+  // owner is how the pill and that panel came to disagree in the first place.
+  const subsystems = useOrgPulseStore((s) => s.subsystems)
+  const fetchOrgPulse = useOrgPulseStore((s) => s.fetchOrgPulse)
   const states = deriveHealthSubsystemStates(
     loadState,
     wsConnected,
     wsReconnectExhausted,
     sseFallbackActive,
+    subsystems,
   )
 
   // Live-updating "X seconds ago" ticker. Starts when the dialog opens,
@@ -66,8 +73,12 @@ export function HealthPopover({ children }: HealthPopoverProps) {
       // Fire and forget: the snapshot renders from the store, and the probe
       // never rejects, so there is nothing to await or handle here.
       void fetchHealth()
+      // Refreshed on open too, or a dialog opened away from the dashboard
+      // would render its verdict over whatever the subsystem list held when
+      // some other page last looked, which may be nothing at all.
+      void fetchOrgPulse()
     },
-    [fetchHealth],
+    [fetchHealth, fetchOrgPulse],
   )
 
   const refresh = useCallback(() => void fetchHealth(), [fetchHealth])

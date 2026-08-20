@@ -6,6 +6,7 @@ import type {
   MemoryHealth,
   ProviderReachability,
 } from '@/api/types/system'
+import type { SubsystemPhase, SubsystemReport } from '@/api/types/subsystems'
 
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 
@@ -265,5 +266,82 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
       false,
     )
     expect(states.memoryDetail).toBeUndefined()
+  })
+})
+
+const HEALTHY_MEMORY: MemoryHealth = {
+  state: 'durable',
+  backend: 'sqlvector',
+  detail: null,
+}
+
+function report(name: string, phase: SubsystemPhase): SubsystemReport {
+  return { name, phase, detail: null, waiting_on: [] }
+}
+
+/** Every backend component healthy, so the subsystem list decides the verdict. */
+function statesWith(subsystems: readonly SubsystemReport[] | null) {
+  return deriveHealthSubsystemStates(
+    okLoadState(HEALTHY_MEMORY),
+    true,
+    false,
+    false,
+    subsystems,
+  )
+}
+
+describe('deriveHealthSubsystemStates declared subsystems', () => {
+  it('does not report all systems normal over a blocked subsystem', () => {
+    // The pill read green and the dialog headlined "Every tracked component is
+    // reporting healthy" while the dashboard's own blockers panel listed five
+    // subsystems as not up. `/health` reports infrastructure; `/subsystems`
+    // reports capability, and only the first reached this verdict.
+    const states = statesWith([report('conversational_actor', 'blocked')])
+
+    expect(states.backendOnlyState).toBe('degraded')
+    expect(states.withWebSocketState).toBe('degraded')
+  })
+
+  it.each(['waiting', 'rebuilding', 'degraded'] as const)(
+    'counts a %s subsystem as degraded',
+    (phase) => {
+      expect(statesWith([report('memory_backend', phase)]).backendOnlyState).toBe(
+        'degraded',
+      )
+    },
+  )
+
+  it.each(['failed', 'unreachable'] as const)(
+    'counts a %s subsystem as down',
+    (phase) => {
+      expect(statesWith([report('memory_backend', phase)]).backendOnlyState).toBe('down')
+    },
+  )
+
+  it('leaves the verdict alone for a subsystem an operator switched off', () => {
+    // Configured, not faulty. The blockers panel still lists it, because that
+    // panel answers what stands between the org and progress rather than
+    // whether anything is wrong.
+    expect(statesWith([report('telemetry', 'disabled')]).backendOnlyState).toBe('ok')
+  })
+
+  it('reads an active subsystem as no signal at all', () => {
+    expect(statesWith([report('charter_engine', 'active')]).backendOnlyState).toBe('ok')
+  })
+
+  it('leaves the verdict to the health probe when nothing has been read', () => {
+    // Not knowing is not evidence of a fault, and every existing caller that
+    // supplies no list must keep behaving exactly as it did.
+    expect(statesWith(null).backendOnlyState).toBe('ok')
+  })
+
+  it('takes the worst of several', () => {
+    const states = statesWith([
+      report('a', 'blocked'),
+      report('b', 'failed'),
+      report('c', 'active'),
+    ])
+
+    expect(states.backendOnlyState).toBe('down')
   })
 })
