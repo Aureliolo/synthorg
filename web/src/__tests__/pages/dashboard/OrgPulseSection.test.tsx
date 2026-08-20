@@ -186,4 +186,49 @@ describe('OrgPulseSection', () => {
       expect(screen.getByText('Memory Backend is blocked')).toBeInTheDocument()
     })
   })
+
+  describe('what "running now" is allowed to mean', () => {
+    it('does not call a stuck agent running', () => {
+      // A live run put ten rows under "Running now", every one `stuck` at
+      // `0 turns`, beside a header reading ACTIVE AGENTS 0. The board said
+      // work was in flight while nothing was moving.
+      renderPanel({ running: [activity({ is_stuck: true, turn_count: 0 })] })
+
+      expect(screen.getByText('Nothing is running.')).toBeInTheDocument()
+    })
+
+    it('still shows the stuck agent, under a heading that is true of it', () => {
+      renderPanel({ running: [activity({ is_stuck: true, turn_count: 0 })] })
+
+      expect(screen.getByText(/Holding work, not progressing/i)).toBeInTheDocument()
+      expect(screen.getByText('Wire the login page')).toBeInTheDocument()
+    })
+
+    it('keeps a genuinely running agent under Running now', () => {
+      renderPanel({ running: [activity()] })
+
+      expect(screen.queryByText('Nothing is running.')).not.toBeInTheDocument()
+      expect(screen.queryByText(/Holding work, not progressing/i)).not.toBeInTheDocument()
+    })
+
+    it('separates the two when both are present', () => {
+      renderPanel({
+        running: [
+          activity(),
+          activity({ agent_id: 'agent-2', task_title: 'Park the queue', is_stuck: true }),
+        ],
+      })
+
+      expect(screen.getByText('Wire the login page')).toBeInTheDocument()
+      expect(screen.getByText('Park the queue')).toBeInTheDocument()
+      expect(screen.getByText(/Holding work, not progressing/i)).toBeInTheDocument()
+      expect(screen.queryByText('Nothing is running.')).not.toBeInTheDocument()
+    })
+
+    it('counts a runaway agent as running, because it is', () => {
+      renderPanel({ running: [activity({ is_runaway: true, turn_count: 40 })] })
+
+      expect(screen.queryByText('Nothing is running.')).not.toBeInTheDocument()
+    })
+  })
 })
