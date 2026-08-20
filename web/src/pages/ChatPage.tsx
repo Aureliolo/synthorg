@@ -70,7 +70,10 @@ function EmptyConversation({
   disabled: boolean
 }) {
   return (
-    <div className="mx-auto max-w-2xl space-y-section-gap py-8">
+    // Takes the transcript's place in the column, so it takes its bounds too:
+    // left to size itself, the prompts push the composer off the bottom of a
+    // short viewport, which is the state a first-time operator opens on.
+    <div className="mx-auto min-h-0 w-full max-w-2xl flex-1 space-y-section-gap overflow-y-auto py-8">
       <EmptyState
         icon={MessagesSquare}
         title="Talk to your organisation"
@@ -219,7 +222,13 @@ export default function ChatPage() {
       <div
         className={cn(
           'flex min-h-0 flex-1 gap-grid-gap',
-          showCharterPanel && 'lg:grid lg:grid-cols-2',
+          // The single row is bounded to the container rather than left at
+          // `auto`: an auto row sizes to its tallest child, so a long
+          // transcript grew the row past the page, the page past `<main>`, and
+          // the operator scrolled the composer off the bottom of the screen
+          // instead of scrolling the transcript inside it. Each column owns its
+          // own scroll once the row has a definite height.
+          showCharterPanel && 'lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]',
         )}
       >
         {thread}

@@ -186,3 +186,28 @@ describe('ChatPage unified surface', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('what scrolls on the chat page', () => {
+  /**
+   * A live run scrolled the composer off the bottom of the screen and filed a
+   * message into the wrong place. The transcript is meant to be the only thing
+   * that scrolls: everything above it in the column has to stay put, which
+   * needs every box between the page and the transcript to be bounded by the
+   * page rather than sized to its own content.
+   */
+  it('bounds the empty state instead of letting it size the column', async () => {
+    renderChat()
+
+    const empty = screen.getByText('Talk to your organisation').closest('div.flex-1')
+
+    // `min-h-0` is the half that is easy to lose: without it a flex item's
+    // automatic minimum is its content, so the scroll box grows the column it
+    // was supposed to be bounded by and nothing overflows anywhere.
+    expect(empty?.className).toMatch(/\bmin-h-0\b/)
+    expect(empty?.className).toMatch(/\boverflow-y-auto\b/)
+
+    await waitFor(() =>
+      expect(useOrgQuestionsStore.getState().loading).toBe(false),
+    )
+  })
+})
