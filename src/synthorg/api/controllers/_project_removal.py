@@ -16,7 +16,11 @@ the request.
 from litestar.channels import ChannelsPlugin
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event_with_plugin
-from synthorg.api.controllers._bulk_delete import BulkDeleteResult, run_bulk_delete
+from synthorg.api.controllers._bulk_delete import (
+    BulkDeleteResult,
+    resolve_bulk_delete_budget,
+    run_bulk_delete,
+)
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._project_cascade import cascade_supersede_children
 from synthorg.api.responses import require_resource_or_404
@@ -168,6 +172,8 @@ async def remove_projects(
             channels_plugin=channels_plugin,
         ),
         entity="project",
+        clock=app_state.clock,
+        budget_seconds=await resolve_bulk_delete_budget(app_state),
     )
 
 

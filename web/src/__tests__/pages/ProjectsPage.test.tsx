@@ -10,8 +10,12 @@ vi.mock('@/pages/projects/ProjectsSkeleton', () => ({
 vi.mock('@/pages/projects/ProjectFilters', () => ({
   ProjectFilters: () => <div data-testid="project-filters" />,
 }))
+const recordGridIds = vi.fn<(ids: readonly string[]) => void>()
 vi.mock('@/pages/projects/ProjectGridView', () => ({
-  ProjectGridView: () => <div data-testid="project-grid-view" />,
+  ProjectGridView: ({ projects }: { projects: readonly { id: string }[] }) => {
+    recordGridIds(projects.map((project) => project.id))
+    return <div data-testid="project-grid-view" />
+  },
 }))
 vi.mock('@/pages/projects/ProjectCreateDrawer', () => ({
   ProjectCreateDrawer: () => <div data-testid="project-create-drawer" />,
@@ -68,6 +72,7 @@ describe('ProjectsPage', () => {
   beforeEach(() => {
     hookReturn = { ...defaultHookReturn }
     recordSelectionIds.mockClear()
+    recordGridIds.mockClear()
   })
 
   it('offers for deletion only the rows on the current page', () => {
@@ -87,9 +92,15 @@ describe('ProjectsPage', () => {
 
     renderPage()
 
+    // Pinned to the rows the grid actually rendered, not merely to "fewer than
+    // all of them": a shorter list passes that check just as well when it is
+    // empty, or when it is a different page than the one on screen.
     const offered = recordSelectionIds.mock.calls.at(-1)?.[0]
-    expect(offered).toBeDefined()
-    expect(offered?.length).toBeLessThan(many.length)
+    const onScreen = recordGridIds.mock.calls.at(-1)?.[0]
+    expect(onScreen).toBeDefined()
+    expect(onScreen?.length).toBeGreaterThan(0)
+    expect(onScreen?.length).toBeLessThan(many.length)
+    expect(offered).toEqual(onScreen)
   })
 
   it('renders page heading', () => {

@@ -354,6 +354,12 @@ class ApiConfig(BaseModel):
             parse=parse_float,
         ),
         MirrorField(
+            field="bulk_delete_budget_seconds",
+            namespace=SettingNamespace.API,
+            key="bulk_delete_budget_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
             field="subsystem_resync_interval_seconds",
             namespace=SettingNamespace.API,
             key="subsystem_resync_interval_seconds",
@@ -414,6 +420,17 @@ class ApiConfig(BaseModel):
             " probe returns an unavailable (503) verdict within this"
             " budget instead of stalling the probe; kept just under the"
             " typical k8s 5s readinessProbe timeout."
+        ),
+    )
+    bulk_delete_budget_seconds: float = Field(
+        default=20.0,
+        gt=0.0,
+        description=(
+            "Wall-clock ceiling for one bulk-delete request. The loop checks"
+            " it between rows and stops before starting one it cannot finish,"
+            " reporting the untouched rows as refused, so a large selection"
+            " cannot outrun the browser's own timeout and leave the operator"
+            " told that deletions which happened did not."
         ),
     )
     subsystem_resync_interval_seconds: float = Field(

@@ -1,4 +1,11 @@
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import {
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  BULK_DELETE_TIMEOUT_MS,
+  type PaginatedResult,
+} from '../client'
 import type { BulkDeleteResult } from '../types/bulk-delete'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
@@ -64,6 +71,7 @@ export async function bulkDeleteTasks(ids: readonly string[]): Promise<BulkDelet
   const response = await apiClient.post<ApiResponse<BulkDeleteResult>>(
     '/tasks/bulk-delete',
     { ids },
+    { timeout: BULK_DELETE_TIMEOUT_MS },
   )
   return unwrap(response)
 }

@@ -24,6 +24,7 @@ from synthorg.hr.hiring_approval_submission import (
     propose_models,
     recommended_ref,
     require_proposable,
+    retire_unbacked_approval,
     submit_approval_item,
 )
 from synthorg.hr.hiring_candidates import (
@@ -411,7 +412,21 @@ class HiringService:
                     candidate_id=candidate_id,
                     proposal=proposal,
                 )
-                await self._store(updated, require_persist=True)
+                try:
+                    await self._store(updated, require_persist=True)
+                except Exception:
+                    # The item is already in the store and the request
+                    # explaining it never landed, so leaving it there parks a
+                    # decision naming a hire no surviving row describes. The
+                    # caller's compensation cannot reach it either: it discards
+                    # only a request carrying no approval, and ``_store`` seats
+                    # the approval-stamped copy in the cache before it raises.
+                    # Undo both, then surface the original failure.
+                    self._requests[str(request.id)] = request
+                    await retire_unbacked_approval(
+                        self._approval_store, request=updated
+                    )
+                    raise
 
         # Emit the status-transition log only when the status actually
         # flipped: the auto-approve branch goes PENDING -> APPROVED,
@@ -522,9 +537,13 @@ class HiringService:
                 or request.approval_id is not None
             ):
                 return False
-            del self._requests[request_id]
+            # The durable row goes first and the cache only reflects that it
+            # went. The other order drops the cache entry and then raises, so
+            # this process stops seeing a request that is still on disk and
+            # comes back at the next boot.
             if self._request_repo is not None:
                 await self._request_repo.delete(NotBlankStr(request_id))
+            del self._requests[request_id]
         logger.info(
             HR_HIRING_REQUEST_DISCARDED,
             request_id=request_id,

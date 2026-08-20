@@ -12,7 +12,7 @@ from typing import Final
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
-from litestar.status_codes import HTTP_204_NO_CONTENT
+from litestar.status_codes import HTTP_200_OK, HTTP_204_NO_CONTENT
 
 from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import (
@@ -506,6 +506,10 @@ class PlanController(Controller):
             require_write_access,
             per_op_rate_limit_from_policy("plans.bulk_delete", key="user"),
         ],
+        # POST defaults to 201, which promises a created resource and a
+        # Location to find it at. This creates nothing: it removes rows and
+        # answers with a report of what went.
+        status_code=HTTP_200_OK,
     )
     async def bulk_delete_plans(
         self,

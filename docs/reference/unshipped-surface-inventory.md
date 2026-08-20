@@ -39,7 +39,6 @@ owning `feature.py` `ghost_wired_symbols` claim.
 | Service | Construction site | Tools |
 | --- | --- | --- |
 | `SetupFacadeService` | `infrastructure/_construction.py::wire_construction` | `synthorg_setup_*` |
-| `ProjectFacadeService` | `infrastructure/_construction.py::wire_construction` | `synthorg_projects_*` |
 | `RequestsFacadeService` | `infrastructure/_construction.py::wire_construction` | `synthorg_requests_*` |
 | `TemplatePackFacadeService` | `infrastructure/_construction.py::wire_construction` | `synthorg_template_packs_*` |
 | `ClientFacadeService` | `infrastructure/_construction.py::wire_construction` | `synthorg_clients_*` |

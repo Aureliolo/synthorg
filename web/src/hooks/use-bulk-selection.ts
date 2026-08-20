@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 
 /**
  * Row selection for a list that can delete a selection.
@@ -18,13 +19,13 @@ export interface BulkSelection {
   readonly openConfirm: () => void
   readonly closeConfirm: () => void
   readonly deleting: boolean
-  /** Run the delete, then close the dialog and clear what it removed. */
+  /** Run the delete, close the dialog, and untick only the rows that went. */
   readonly runDelete: () => Promise<void>
 }
 
 export function useBulkSelection(
   visibleIds: readonly string[],
-  onDelete: (ids: readonly string[]) => Promise<unknown>,
+  onDelete: (ids: readonly string[]) => Promise<BulkDeleteOutcome | false>,
 ): BulkSelection {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -53,18 +54,29 @@ export function useBulkSelection(
   const runDelete = useCallback(async () => {
     setDeleting(true)
     try {
-      // The store owns the success / partial / error toast, so the outcome is
-      // deliberately discarded here: this hook drives the dialog and selection.
-      await onDelete([...visibleSelected])
+      // The store owns the success / partial / error toast; what comes back is
+      // read only for which rows actually went.
+      const outcome = await onDelete([...visibleSelected])
+      // Only the confirmed rows are unticked. Clearing the lot would make a
+      // refused row indistinguishable from a deleted one, so retrying a
+      // partial delete would mean finding and re-ticking every row that
+      // refused, and a wholly failed delete would lose the selection entirely.
+      const deleted = new Set(outcome === false ? [] : outcome.deletedIds)
+      setSelectedIds((prev) => {
+        const next = new Set<string>()
+        for (const id of prev) {
+          if (!deleted.has(id)) next.add(id)
+        }
+        return next
+      })
     } finally {
       // In a finally because the dialog refuses to close while a delete is in
       // flight: a throw that left this flag set would leave the operator
       // holding a modal over a destructive action with no way out of it.
       setDeleting(false)
       setConfirmOpen(false)
-      clear()
     }
-  }, [visibleSelected, onDelete, clear])
+  }, [visibleSelected, onDelete])
 
   return {
     visibleSelected,

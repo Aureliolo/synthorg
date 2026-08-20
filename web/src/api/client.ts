@@ -84,6 +84,22 @@ export const apiClient = axios.create({
  */
 export const LLM_BOUND_TIMEOUT_MS = 300_000
 
+/**
+ * Per-request timeout for a bulk delete.
+ *
+ * One request carries a whole selection, and every row cascades through its
+ * plans, tasks and workspace tree, so the call legitimately outlasts the 30s
+ * default on a large selection. Aborting it client-side would not stop the
+ * deletions, only the report of them: the rows go and the operator is told the
+ * action failed.
+ *
+ * The real bound is server-side (``api.bulk_delete_budget_seconds``), which
+ * stops before starting a row it cannot finish and answers for every row. This
+ * is deliberately well above that ceiling so the operator's own budget is what
+ * decides, with room for one they raised.
+ */
+export const BULK_DELETE_TIMEOUT_MS = 120_000
+
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)

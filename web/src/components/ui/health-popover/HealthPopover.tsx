@@ -82,7 +82,14 @@ export function HealthPopover({ children }: HealthPopoverProps) {
     [fetchHealth, fetchOrgPulse],
   )
 
-  const refresh = useCallback(() => void fetchHealth(), [fetchHealth])
+  // Both, for the same reason opening fetches both: the dialog renders a
+  // subsystem list beside the health verdict, and refreshing only the verdict
+  // leaves that list, and any error it is showing, until the dialog is closed
+  // and reopened.
+  const refresh = useCallback(() => {
+    void fetchHealth()
+    void fetchOrgPulse()
+  }, [fetchHealth, fetchOrgPulse])
   const dismiss = useCallback(() => setOpen(false), [])
 
   const fetchedAtLabel = buildFetchedAtLabel(loadState, nowMs)

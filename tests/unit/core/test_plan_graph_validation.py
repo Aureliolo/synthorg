@@ -262,7 +262,7 @@ class TestEveryViolationIsReportedAtOnce:
     Telling it everything that is wrong is what lets one repair pass finish.
     """
 
-    def test_three_unstated_references_are_all_reported(self) -> None:
+    def test_every_unstated_reference_is_reported_not_just_the_first(self) -> None:
         units = [
             _Unit(
                 id="int",

@@ -24,6 +24,7 @@ from synthorg.hr.hiring_candidates import build_hire_approval_item
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HR_HIRING_APPROVAL_ORPHANED,
     HR_HIRING_MODEL_PROPOSED,
     HR_HIRING_MODEL_UNSET,
 )
@@ -214,10 +215,45 @@ async def submit_approval_item(
     )
 
 
+async def retire_unbacked_approval(
+    store: ApprovalStoreProtocol | None, *, request: HiringRequest
+) -> None:
+    """Take back an approval item whose request never persisted.
+
+    The inverse of :func:`submit_approval_item`, and the reason it exists is
+    that the item lands in the store before the request that explains it is
+    written. Left behind, it parks a decision naming a hire no surviving row
+    describes.
+
+    Args:
+        store: Where the item was written, or ``None`` when there is none.
+        request: The approval-stamped copy that failed to persist.
+    """
+    request_id = str(request.id)
+    approval_id = request.approval_id
+    if store is None or approval_id is None:
+        return
+    try:
+        await store.delete(NotBlankStr(approval_id))
+    except Exception as exc:  # noqa: BLE001 -- compensation must not mask
+        reraise_critical(exc)
+        # Logged rather than raised: the caller is already unwinding a failure,
+        # and replacing it with this one would report the compensation instead
+        # of the thing that actually went wrong.
+        logger.warning(
+            HR_HIRING_APPROVAL_ORPHANED,
+            request_id=request_id,
+            approval_id=approval_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 __all__ = [
     "build_approval",
     "propose_models",
     "recommended_ref",
     "require_proposable",
+    "retire_unbacked_approval",
     "submit_approval_item",
 ]

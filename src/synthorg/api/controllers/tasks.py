@@ -398,6 +398,10 @@ class TaskController(Controller):
             require_write_access,
             per_op_rate_limit_from_policy("tasks.bulk_delete", key="user"),
         ],
+        # POST defaults to 201, which promises a created resource and a
+        # Location to find it at. This creates nothing: it removes rows and
+        # answers with a report of what went.
+        status_code=HTTP_200_OK,
     )
     async def bulk_delete_tasks(
         self,

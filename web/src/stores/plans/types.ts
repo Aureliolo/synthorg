@@ -25,7 +25,13 @@ export interface PlansState {
   fetchPlanDetail: (id: string) => Promise<void>
   editPlan: (id: string, data: EditPlanRequest) => Promise<Plan | null>
   deletePlan: (id: string) => Promise<boolean>
-  /** Delete a selection in one request; `false` when the call itself failed. */
+  /**
+   * Delete a selection in one request.
+   *
+   * `false` means the call settled nothing: either the request itself failed,
+   * or it returned with every row refused. A partial result is an outcome, not
+   * the sentinel, and names the rows that went.
+   */
   batchDeletePlans: (ids: readonly string[]) => Promise<BulkDeleteOutcome | false>
   requestPlanChanges: (id: string, note: string) => Promise<Plan | null>
   setStatusFilter: (status: PlanStatus | null) => void

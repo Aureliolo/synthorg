@@ -27,6 +27,7 @@ from uuid import UUID
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._remaining_args import (
@@ -227,6 +228,11 @@ async def _projects_update(
             missing = NotFoundError(f"Project {project_id} not found")
             log_handler_invoke_failed(tool, missing, project_id=project_id)
             return err(missing, domain_code="not_found")
+        # The repository writes ``version`` and ``updated_at`` verbatim, so the
+        # caller owns both. Leaving the version alone would not merely lose an
+        # increment: every writer would then read, guard on and rewrite the
+        # same number for ever, so the guard below would pass for a row that
+        # had already been edited underneath it.
         updated = current.model_copy(
             update={
                 "name": args.name if args.name is not None else current.name,
@@ -235,12 +241,21 @@ async def _projects_update(
                     if args.description is not None
                     else current.description
                 ),
+                "version": current.version + 1,
+                "updated_at": app_state.clock.now(),
             }
         )
         # Version-guarded on the row this patch was derived from, so a
         # concurrent operator edit is refused rather than overwritten by
         # whichever of the two wrote last.
-        await repo.update(updated, expected_version=current.version)
+        try:
+            await repo.update(updated, expected_version=current.version)
+        except PersistenceVersionConflictError as conflict:
+            # Distinct from a generic failure: nothing is wrong with the
+            # request, somebody else edited the row first, and the agent's move
+            # is to re-read and re-apply rather than retry this call unchanged.
+            log_handler_invoke_failed(tool, conflict, project_id=project_id)
+            return err(conflict, domain_code="conflict")
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

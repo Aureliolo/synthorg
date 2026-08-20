@@ -18,11 +18,15 @@ that a refusal is collected rather than raised, because one row that cannot go
 must not decide the fate of the others.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.state import AppState
+from synthorg.core.clock import Clock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -30,6 +34,8 @@ from synthorg.observability.events.api import (
     API_BULK_DELETE_PARTIAL,
     API_BULK_DELETE_ROW_REFUSED,
 )
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -42,6 +48,14 @@ logger = get_logger(__name__)
 #: set. A larger selection is two actions, which the operator can see and stop
 #: between.
 MAX_BULK_DELETE_IDS: Final[int] = 100
+
+#: What a row that was never attempted is told. Worded for the operator and
+#: distinct from a refusal the row itself caused, because the remedy differs:
+#: nothing is wrong with these rows and selecting them again is the whole fix.
+_BUDGET_SPENT_REASON: Final[str] = (
+    "not attempted: the request reached its time budget before this row; "
+    "select it again to finish"
+)
 
 
 class BulkDeleteRequest(BaseModel):
@@ -105,11 +119,53 @@ class BulkDeleteResult(BaseModel):
     )
 
 
+async def resolve_bulk_delete_budget(app_state: AppState) -> float:
+    """Resolve the per-request bulk-delete budget, live.
+
+    Reads ``api.bulk_delete_budget_seconds`` through the settings chain (DB >
+    env > default) so a change applies without a restart. Resolver-read-only,
+    so the boot-config value is the correct fallback when the resolver is
+    absent or unwell: a settings hiccup must not remove the bound on a
+    destructive request.
+
+    Args:
+        app_state: Application state.
+
+    Returns:
+        The ceiling in seconds.
+
+    Raises:
+        CancelledError: Propagated when the resolver await is cancelled.
+    """
+    boot_value = app_state.config.api.bulk_delete_budget_seconds
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
+        return boot_value
+    try:
+        return await config_resolver_of(app_state).get_float(
+            SettingNamespace.API.value,
+            "bulk_delete_budget_seconds",
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_BULK_DELETE_PARTIAL,
+            setting="api.bulk_delete_budget_seconds",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=boot_value,
+        )
+        return boot_value
+
+
 async def run_bulk_delete(
     ids: tuple[NotBlankStr, ...],
     delete_one: Callable[[str], Awaitable[None]],
     *,
     entity: str,
+    clock: Clock,
+    budget_seconds: float,
 ) -> BulkDeleteResult:
     """Delete each of *ids* through *delete_one*, collecting refusals.
 
@@ -117,9 +173,18 @@ async def run_bulk_delete(
     tasks and approvals, and running them together on one operator click would
     interleave writes over rows that reference each other.
 
+    Sequential also means the request grows with the selection, and the caller
+    waiting on it gives up on its own schedule. Past *budget_seconds* the loop
+    stops before starting another row and reports the rest as refused, so the
+    answer arrives while the browser is still listening and covers every row
+    the operator selected. Without it the deletions still happen and the
+    operator is told they did not, which is worse than not starting them.
+
     Args:
         ids: The selected identifiers; duplicates are collapsed, order kept.
         delete_one: The same removal the row's own DELETE performs.
+        clock: Time source, injected so the budget is testable.
+        budget_seconds: Wall-clock ceiling for the whole call.
         entity: What is being deleted, for the log.
 
     Returns:
@@ -128,10 +193,22 @@ async def run_bulk_delete(
     seen: set[str] = set()
     deleted: list[NotBlankStr] = []
     failed: list[BulkDeleteFailure] = []
+    started_at = clock.now()
     for entity_id in ids:
         if entity_id in seen:
             continue
         seen.add(entity_id)
+        # Checked BEFORE the row rather than after: the budget exists to keep
+        # the reply inside the caller's wait, and a check afterwards has
+        # already spent the time it was meant to protect.
+        if (clock.now() - started_at).total_seconds() >= budget_seconds:
+            failed.append(
+                BulkDeleteFailure(
+                    id=NotBlankStr(entity_id),
+                    reason=NotBlankStr(_BUDGET_SPENT_REASON),
+                )
+            )
+            continue
         try:
             await delete_one(entity_id)
         except DomainError as exc:

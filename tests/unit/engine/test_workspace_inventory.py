@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import WorkspaceSetupError
 from synthorg.engine.workspace import inventory
 from synthorg.engine.workspace.inventory import (
     EMPTY_WORKSPACE,
@@ -103,7 +104,7 @@ class TestDescribeProjectWorkspace:
         assert "5 more" in summary
 
     async def test_a_traversing_project_id_is_refused(self, tmp_path: Path) -> None:
-        with pytest.raises(Exception, match="traversal"):
+        with pytest.raises(WorkspaceSetupError, match="traversal"):
             await describe_project_workspace(
                 base_root=tmp_path, project_id=NotBlankStr("../elsewhere")
             )

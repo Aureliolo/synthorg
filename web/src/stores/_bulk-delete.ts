@@ -23,6 +23,14 @@ export interface BulkDeleteOutcome {
   succeeded: number
   failed: number
   failedReasons: string[]
+  /**
+   * The rows the backend confirmed it removed.
+   *
+   * Carried as ids rather than a count because the selection that survives a
+   * partial delete is the rows still on screen, and a count cannot say which
+   * those are.
+   */
+  deletedIds: readonly string[]
 }
 
 /** The noun this list deletes, singular and plural. */
@@ -65,13 +73,26 @@ function emitToast(
     })
     return
   }
+  emitTotalFailureToast(outcome, total, noun, description)
+}
+
+function emitTotalFailureToast(
+  outcome: BulkDeleteOutcome,
+  total: number,
+  noun: BulkDeleteNoun,
+  description: string | undefined,
+): void {
+  // Nothing was deleted, so the whole selection is what was lost. Counting
+  // only the rows the backend named would render "Failed to delete 0" for an
+  // answer that reported neither a deletion nor a refusal.
+  const lost = outcome.failed === 0 ? total : outcome.failed
   useToastStore.getState().add({
     variant: 'error',
     ...getCrudErrorTitle(
       new Error(outcome.failedReasons[0] ?? `Failed to delete ${noun.many}`),
-      outcome.failed === 1
+      lost === 1
         ? `Failed to delete ${noun.one.toLowerCase()}`
-        : `Failed to delete ${String(outcome.failed)} ${noun.many}`,
+        : `Failed to delete ${String(lost)} ${noun.many}`,
     ),
     description,
   })
@@ -92,6 +113,12 @@ export async function runBulkDelete({
   noun,
 }: BulkDeleteArgs): Promise<BulkDeleteOutcome | false> {
   const uniqueIds = Array.from(new Set(ids))
+  // An empty selection is settled here rather than at the backend, which
+  // refuses it: sending it would spend a request against a per-user rate limit
+  // and answer an operator who selected nothing with a failure toast.
+  if (uniqueIds.length === 0) {
+    return false
+  }
   // The guard covers the whole body, not just the call. Everything after it is
   // caller-supplied (the row removal each store passes in) or another store's
   // (the toast), so a throw there would escape a store mutation, which the
@@ -104,6 +131,7 @@ export async function runBulkDelete({
       succeeded: result.deleted.length,
       failed: result.failed.length,
       failedReasons: result.failed.map((failure) => failure.reason),
+      deletedIds: result.deleted,
     }
     if (outcome.failed > 0) {
       log.error(`Bulk delete ${noun.many} partial`, sanitizeForLog({
@@ -112,7 +140,11 @@ export async function runBulkDelete({
       }))
     }
     emitToast(outcome, uniqueIds.length, noun)
-    return outcome.succeeded === 0 && outcome.failed > 0 ? false : outcome
+    // The sentinel means the call settled nothing, so it keys on what was
+    // deleted rather than on what refused: an answer naming no deletion and no
+    // refusal settled nothing either, and reporting that as success tells the
+    // caller to clear a selection still sitting in the list.
+    return outcome.succeeded === 0 ? false : outcome
   } catch (err) {
     log.error(`Bulk delete ${noun.many} failed`, sanitizeForLog(err))
     useToastStore.getState().add({

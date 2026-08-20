@@ -68,11 +68,21 @@ def project_workspace_dir(base_root: Path, project_id: str) -> Path:
         raise WorkspaceSetupError(msg)
     resolved = base_root / PROJECTS_SUBDIR / project_id
     projects_root = base_root / PROJECTS_SUBDIR
-    if resolved == projects_root or projects_root not in resolved.parents:
+    # Containment is judged on the resolved pair and nothing else is: the
+    # answer must be about where the path physically lands, or a symlink named
+    # like a project id passes a purely lexical check. Both sides resolve
+    # together, since resolving one alone would fail a legitimately symlinked
+    # base against its own root. The UNRESOLVED join is what gets returned,
+    # because callers mount and compare the configured path, and canonicalising
+    # it here would hand them a different one than they asked for.
+    if (
+        resolved.resolve() == projects_root.resolve()
+        or projects_root.resolve() not in resolved.resolve().parents
+    ):
         # Belt to the character guard's braces: the guard reasons about the
         # id's spelling, this reasons about where the join actually landed, and
-        # only the second survives a future pathlib normalisation nobody here
-        # anticipated.
+        # only the second survives a symlink or a future pathlib normalisation
+        # nobody here anticipated.
         msg = (
             f"refusing project_id {project_id!r}: resolved path "
             f"{resolved} is not a directory under {projects_root}"

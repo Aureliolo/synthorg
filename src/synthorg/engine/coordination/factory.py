@@ -209,7 +209,11 @@ def build_coordinator(  # noqa: PLR0913
         2. ``DecompositionStrategy`` -- selected by *decomposition_strategy*
            (``agent-session`` default, or ``llm``) when provider+model are
            provided; otherwise a placeholder that raises at decompose-time
-        3. ``DecompositionService(strategy, classifier)``
+        3. ``DecompositionService(strategy, classifier,
+           workspace_inventory=project_workspace_service)`` -- the inventory
+           is what tells the planner which files a project actually has, so
+           ``None`` leaves the plan to be written against org-wide recall
+           instead
         4. ``AgentTaskScorer`` -- instantiated with
            *routing_scorer_config* (operator-tunable weights resolved
            from ``EngineBridgeConfig`` via

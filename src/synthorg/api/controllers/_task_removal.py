@@ -17,7 +17,11 @@ turns every surviving reference into a dangling id.
 """
 
 from synthorg.api.controllers._approval_retire import retiring_task_approvals
-from synthorg.api.controllers._bulk_delete import BulkDeleteResult, run_bulk_delete
+from synthorg.api.controllers._bulk_delete import (
+    BulkDeleteResult,
+    resolve_bulk_delete_budget,
+    run_bulk_delete,
+)
 from synthorg.api.controllers._deletion_record import record_deletion_for
 from synthorg.api.state import AppState
 from synthorg.core.deleted_entity import DeletedEntityKind
@@ -87,7 +91,13 @@ async def remove_tasks(
         await remove_task(app_state, task_id, requested_by=requested_by)
         logger.info(API_TASK_DELETED, task_id=task_id)
 
-    return await run_bulk_delete(ids, _delete_one, entity="task")
+    return await run_bulk_delete(
+        ids,
+        _delete_one,
+        entity="task",
+        clock=app_state.clock,
+        budget_seconds=await resolve_bulk_delete_budget(app_state),
+    )
 
 
 __all__ = ["remove_task", "remove_tasks"]

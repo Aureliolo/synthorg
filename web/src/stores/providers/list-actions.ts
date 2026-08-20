@@ -33,6 +33,12 @@ let _openHydration: Promise<void> | null = null
 
 /** Drop any coalesced hydration, so a reset store re-reads rather than joins. */
 export function resetProviderHydration(): void {
+  // The in-flight read is invalidated first. Clearing the slot alone only
+  // stops the NEXT caller joining it; a fetch already awaiting the network
+  // still passes its own ``isLatest()`` check and writes the catalogue and
+  // health map into the store that was just reset, so the reset silently
+  // undoes itself a moment later.
+  _listRequestId++
   _openHydration = null
 }
 

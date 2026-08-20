@@ -1,5 +1,6 @@
 import {
   apiClient,
+  BULK_DELETE_TIMEOUT_MS,
   LLM_BOUND_TIMEOUT_MS,
   type PaginatedResult,
   unwrap,
@@ -115,6 +116,7 @@ export async function bulkDeletePlans(
   const response = await apiClient.post<ApiResponse<BulkDeleteResult>>(
     '/plans/bulk-delete',
     { ids },
+    { timeout: BULK_DELETE_TIMEOUT_MS },
   )
   return unwrap(response)
 }

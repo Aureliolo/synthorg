@@ -84,7 +84,7 @@ class TestBulkDeleteProjects:
 
         status, body = await _post_bulk(async_test_client, "projects", ids)
 
-        assert status == 201
+        assert status == 200
         assert sorted(body["data"]["deleted"]) == sorted(ids)
         assert body["data"]["failed"] == []
         for project_id in ids:
@@ -103,7 +103,7 @@ class TestBulkDeleteProjects:
             async_test_client, "projects", [real, "proj-does-not-exist"]
         )
 
-        assert status == 201
+        assert status == 200
         assert body["data"]["deleted"] == [real]
         failed = body["data"]["failed"]
         assert len(failed) == 1
@@ -154,7 +154,7 @@ class TestBulkDeleteProjects:
             async_test_client, "projects", [first, stuck, last]
         )
 
-        assert status == 201
+        assert status == 200
         assert sorted(body["data"]["deleted"]) == sorted([first, last])
         assert [row["id"] for row in body["data"]["failed"]] == [stuck]
 
@@ -178,6 +178,65 @@ class TestBulkDeleteProjects:
         await _post_bulk(async_test_client, "projects", [stuck])
 
         follow_up = await async_test_client.get(f"/api/v1/projects/{stuck}")
+        assert follow_up.status_code == 200
+
+    async def test_a_row_taken_concurrently_is_reported_not_counted(
+        self, async_test_client: LoopAsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The window between reading the project and deleting its row.
+
+        A second issue of the same delete can take the row in between. Counting
+        it as deleted would tell this operator their selection went when the row
+        went to somebody else's request, so it is reported instead.
+        """
+        vanishing = await _make_project(async_test_client, "Taken in between")
+
+        async def _already_gone(_self: object, _project_id: str) -> bool:
+            return False
+
+        monkeypatch.setattr(
+            "synthorg.api.services.project_service.ProjectService.delete",
+            _already_gone,
+        )
+
+        status, body = await _post_bulk(async_test_client, "projects", [vanishing])
+
+        assert status == 200
+        assert body["data"]["deleted"] == []
+        assert [row["id"] for row in body["data"]["failed"]] == [vanishing]
+
+    async def test_a_row_the_budget_could_not_reach_is_reported_not_silent(
+        self, async_test_client: LoopAsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The deletions outlive the caller's patience; the report must not.
+
+        Each row cascades through its plans, tasks and workspace tree, so a
+        long selection can outrun the browser's own timeout. Aborting there
+        would not stop the deletions, only the account of them, so the loop
+        stops itself and answers for every row the operator selected.
+        """
+        first = await _make_project(async_test_client, "Goes")
+        unreached = await _make_project(async_test_client, "Never started")
+
+        async def _no_budget_left(_app_state: object) -> float:
+            return 0.0
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers._project_removal.resolve_bulk_delete_budget",
+            _no_budget_left,
+        )
+
+        status, body = await _post_bulk(
+            async_test_client, "projects", [first, unreached]
+        )
+
+        assert status == 200
+        assert body["data"]["deleted"] == []
+        reported = {row["id"] for row in body["data"]["failed"]}
+        assert reported == {first, unreached}
+        assert all("not attempted" in row["reason"] for row in body["data"]["failed"])
+        # Untouched, not half-deleted: the budget is checked before the row.
+        follow_up = await async_test_client.get(f"/api/v1/projects/{first}")
         assert follow_up.status_code == 200
 
     async def test_refuses_a_selection_past_the_cap(
@@ -212,7 +271,7 @@ class TestBulkDeletePlans:
 
         status, body = await _post_bulk(async_test_client, "plans", ids)
 
-        assert status == 201
+        assert status == 200
         assert sorted(body["data"]["deleted"]) == sorted(ids)
         for plan_id in ids:
             follow_up = await async_test_client.get(f"/api/v1/plans/{plan_id}")
@@ -229,7 +288,7 @@ class TestBulkDeletePlans:
             async_test_client, "plans", [removable, str(as_uuid("never-existed"))]
         )
 
-        assert status == 201
+        assert status == 200
         assert body["data"]["deleted"] == [removable]
         assert len(body["data"]["failed"]) == 1
 
@@ -246,7 +305,7 @@ class TestBulkDeleteTasks:
 
         status, body = await _post_bulk(async_test_client, "tasks", ids)
 
-        assert status == 201
+        assert status == 200
         assert sorted(body["data"]["deleted"]) == sorted(ids)
         assert body["data"]["failed"] == []
 
@@ -261,7 +320,7 @@ class TestBulkDeleteTasks:
 
         status, body = await _post_bulk(async_test_client, "tasks", [task_id, task_id])
 
-        assert status == 201
+        assert status == 200
         assert body["data"]["deleted"] == [task_id]
         assert body["data"]["failed"] == []
 
@@ -279,6 +338,6 @@ class TestBulkDeleteTasks:
             async_test_client, "tasks", [real, str(as_uuid("t-never-existed"))]
         )
 
-        assert status == 201
+        assert status == 200
         assert body["data"]["deleted"] == [real]
         assert len(body["data"]["failed"]) == 1

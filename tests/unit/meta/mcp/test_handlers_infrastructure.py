@@ -38,6 +38,7 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRecord,
 )
+from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
@@ -568,6 +569,96 @@ class TestProjects:
 
         names = [row["name"] for row in json.loads(response)["data"]]
         assert "Opened elsewhere" in names
+
+    async def test_get_answers_from_the_persisted_project(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        project = Project(name=NotBlankStr("Leaderboard"))
+        await real_projects.create(project)
+
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": str(project.id)},
+        )
+
+        assert json.loads(response)["data"]["name"] == "Leaderboard"
+
+    async def test_get_reports_absence_rather_than_inventing_a_project(
+        self, fake_app_state: AppState
+    ) -> None:
+        """An agent acts on the answer, so a miss says so in its own field."""
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": str(uuid4())},
+        )
+
+        assert json.loads(response)["domain_code"] == "not_found"
+
+    async def test_get_refuses_an_identifier_that_is_not_a_uuid(
+        self, fake_app_state: AppState
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": "not-a-uuid"},
+        )
+
+        assert json.loads(response)["status"] == "error"
+
+    async def test_update_writes_through_to_the_store(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        """A patch an operator would see on the dashboard, not a local echo."""
+        project = Project(name=NotBlankStr("Working title"))
+        await real_projects.create(project)
+
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_update"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": str(project.id), "name": "Tetris"},
+            actor=make_test_actor(),
+        )
+
+        assert json.loads(response)["data"]["name"] == "Tetris"
+        stored = await real_projects.get(NotBlankStr(str(project.id)))
+        assert stored is not None
+        assert stored.name == "Tetris"
+
+    async def test_update_leaves_the_fields_the_patch_omits(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        """A partial patch is partial: an omitted field is not a blank one."""
+        project = Project(
+            name=NotBlankStr("Keep me"), description="the original description"
+        )
+        await real_projects.create(project)
+
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_update"]
+        await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": str(project.id), "name": "Renamed"},
+            actor=make_test_actor(),
+        )
+
+        stored = await real_projects.get(NotBlankStr(str(project.id)))
+        assert stored is not None
+        assert stored.description == "the original description"
+
+    async def test_update_reports_absence_rather_than_creating_a_project(
+        self, fake_app_state: AppState, real_projects: FakeProjectRepository
+    ) -> None:
+        """Update is update-only, so a missing row is a miss, not an insert."""
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_projects_update"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"project_id": str(uuid4()), "name": "Ghost"},
+            actor=make_test_actor(),
+        )
+
+        assert json.loads(response)["domain_code"] == "not_found"
+        assert await real_projects.count(ProjectFilterSpec()) == 0
 
 
 class TestRequests:

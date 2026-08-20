@@ -25,7 +25,11 @@ from synthorg.api.channels import (
     publish_ws_event,
 )
 from synthorg.api.controllers._approval_retire import retiring_plan_approvals
-from synthorg.api.controllers._bulk_delete import BulkDeleteResult, run_bulk_delete
+from synthorg.api.controllers._bulk_delete import (
+    BulkDeleteResult,
+    resolve_bulk_delete_budget,
+    run_bulk_delete,
+)
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_service import PlanService
@@ -117,6 +121,8 @@ async def remove_plans(
             request, state, service, plan_id, requested_by=requested_by
         ),
         entity="plan",
+        clock=state.app_state.clock,
+        budget_seconds=await resolve_bulk_delete_budget(state.app_state),
     )
 
 

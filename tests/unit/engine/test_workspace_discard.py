@@ -8,14 +8,18 @@ by a later plan.
 """
 
 import shutil
+import stat
 from pathlib import Path
 
 import pytest
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import WorkspaceCleanupError
-from synthorg.engine.workspace.discard import discard_project_workspace
+from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
+from synthorg.engine.workspace.discard import (
+    discard_project_workspace,
+    force_writable_then_retry,
+)
 from synthorg.engine.workspace.paths import project_workspace_dir
 
 pytestmark = pytest.mark.unit
@@ -77,13 +81,63 @@ class TestDiscardRemovesTheManagedTree:
         assert not tree.exists()
 
 
+class TestForceWritableThenRetry:
+    """The ``onexc`` handler, driven directly.
+
+    Removing a read-only file through the tree above only reaches this handler
+    where the platform refuses the unlink. On Linux the permission to unlink
+    comes from the parent directory, so a read-only file there is removed
+    without the handler ever being called, and the path it guards is exercised
+    on one platform only.
+    """
+
+    def test_a_read_only_entry_is_made_writable_and_removed(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "pack-1.pack"
+        target.write_bytes(b"PACK")
+        target.chmod(0o444)
+        removed: list[str] = []
+
+        force_writable_then_retry(
+            removed.append, str(target), PermissionError("read-only")
+        )
+
+        assert removed == [str(target)]
+        assert target.stat().st_mode & stat.S_IWRITE
+
+    def test_a_failure_the_write_bit_does_not_explain_is_re_raised(
+        self, tmp_path: Path
+    ) -> None:
+        """Only a permission refusal is a candidate for the retry."""
+        original = OSError("disk gone")
+
+        with pytest.raises(OSError, match="disk gone"):
+            force_writable_then_retry(
+                lambda _path: None, str(tmp_path / "absent"), original
+            )
+
+    def test_an_entry_that_cannot_be_chmodded_re_raises_the_original(
+        self, tmp_path: Path
+    ) -> None:
+        """The retry is not attempted blind: if the write bit cannot be set,
+        the caller sees why the removal failed rather than why the repair
+        did."""
+        original = PermissionError("read-only")
+
+        with pytest.raises(PermissionError, match="read-only"):
+            force_writable_then_retry(
+                lambda _path: None, str(tmp_path / "not-there"), original
+            )
+
+
 class TestDiscardRefusesWhatIsNotItsToRemove:
     async def test_a_traversing_project_id_is_refused(self, tmp_path: Path) -> None:
         """The id is system-generated, so this can only ever be a bug or worse."""
         outside = tmp_path / "outside"
         outside.mkdir()
 
-        with pytest.raises(Exception, match="traversal"):
+        with pytest.raises(WorkspaceSetupError, match="traversal"):
             await discard_project_workspace(
                 base_root=tmp_path / "projects-root",
                 project_id=NotBlankStr("../../outside"),

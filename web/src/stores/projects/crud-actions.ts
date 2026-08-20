@@ -4,7 +4,7 @@ import {
   deleteProject as deleteProjectApi,
   setProjectAutonomyMode as setProjectAutonomyModeApi,
 } from '@/api/endpoints/projects'
-import { runBulkDelete } from '@/stores/_bulk-delete'
+import { runBulkDelete, type BulkDeleteOutcome } from '@/stores/_bulk-delete'
 import { useToastStore } from '@/stores/toast'
 import {
   getCrudErrorTitle,
@@ -22,11 +22,7 @@ import {
   isStaleAutonomyModeRequest,
   nextAutonomyModeRequestToken,
 } from './_state'
-import type {
-  BatchDeleteOutcome,
-  ProjectsGet,
-  ProjectsSet,
-} from './types'
+import type { ProjectsGet, ProjectsSet } from './types'
 
 const log = createLogger('projects')
 
@@ -99,7 +95,7 @@ async function deleteProjectImpl(
 function batchDeleteProjectsImpl(
   set: ProjectsSet,
   ids: readonly string[],
-): Promise<BatchDeleteOutcome | false> {
+): Promise<BulkDeleteOutcome | false> {
   // Rows are dropped on the answer rather than optimistically: the backend
   // says which ones went, so there is nothing to guess and nothing to restore.
   return runBulkDelete({

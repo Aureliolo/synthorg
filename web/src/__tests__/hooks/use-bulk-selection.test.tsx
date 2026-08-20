@@ -1,8 +1,18 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 
-function noDelete(): Promise<void> {
-  return Promise.resolve()
+function outcome(deletedIds: readonly string[], failed = 0): BulkDeleteOutcome {
+  return {
+    succeeded: deletedIds.length,
+    failed,
+    failedReasons: failed > 0 ? ['refused'] : [],
+    deletedIds,
+  }
+}
+
+function noDelete(): Promise<BulkDeleteOutcome | false> {
+  return Promise.resolve(outcome([]))
 }
 
 describe('useBulkSelection', () => {
@@ -46,7 +56,7 @@ describe('useBulkSelection', () => {
   })
 
   it('deletes what is selected, then clears and closes', async () => {
-    const onDelete = vi.fn(() => Promise.resolve())
+    const onDelete = vi.fn(() => Promise.resolve(outcome(['a'])))
     const { result } = renderHook(() => useBulkSelection(['a', 'b'], onDelete))
 
     act(() => {
@@ -65,6 +75,46 @@ describe('useBulkSelection', () => {
     })
     expect(result.current.selectedCount).toBe(0)
     expect(result.current.deleting).toBe(false)
+  })
+
+  it('keeps the rows that refused ticked so a retry is one click', async () => {
+    // A partial delete leaves the refused rows on screen. Unticking them too
+    // would make them indistinguishable from the ones that went, so retrying
+    // would mean hunting down and re-ticking every row that refused.
+    const onDelete = vi.fn(() => Promise.resolve(outcome(['a'], 1)))
+    const { result } = renderHook(() => useBulkSelection(['a', 'b'], onDelete))
+
+    act(() => {
+      result.current.toggle('a')
+      result.current.toggle('b')
+      result.current.openConfirm()
+    })
+
+    await act(async () => {
+      await result.current.runDelete()
+    })
+
+    expect([...result.current.visibleSelected]).toEqual(['b'])
+  })
+
+  it('keeps the whole selection when the request itself failed', async () => {
+    // The sentinel says nothing was deleted, so nothing is unticked: the
+    // operator retries the same selection rather than rebuilding it.
+    const onDelete = vi.fn(() => Promise.resolve<BulkDeleteOutcome | false>(false))
+    const { result } = renderHook(() => useBulkSelection(['a', 'b'], onDelete))
+
+    act(() => {
+      result.current.toggle('a')
+      result.current.toggle('b')
+      result.current.openConfirm()
+    })
+
+    await act(async () => {
+      await result.current.runDelete()
+    })
+
+    expect(result.current.selectedCount).toBe(2)
+    expect(result.current.confirmOpen).toBe(false)
   })
 
   it('lets go of the dialog even when the delete throws', async () => {

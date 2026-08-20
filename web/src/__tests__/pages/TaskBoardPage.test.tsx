@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { UseTaskBoardDataReturn } from '@/hooks/useTaskBoardData'
@@ -150,23 +150,44 @@ describe('clearing a selection of tasks', () => {
     // a loop would have refused most of them anyway.
     const batchDeleteTasks = vi.fn(
       (ids: readonly string[]): Promise<BulkDeleteOutcome> =>
-        Promise.resolve({ succeeded: ids.length, failed: 0, failedReasons: [] }),
+        Promise.resolve({
+          succeeded: ids.length,
+          failed: 0,
+          failedReasons: [],
+          deletedIds: ids,
+        }),
     )
+    // Captured and restored below: the store is module-level, so an override
+    // left in place is inherited by every test that runs after this one.
+    const originalBatchDelete = useTasksStore.getState().batchDeleteTasks
     useTasksStore.setState({ batchDeleteTasks })
     const user = userEvent.setup()
-    renderBoard(['/tasks?view=list'])
+    try {
+      renderBoard(['/tasks?view=list'])
 
-    await user.click(screen.getByRole('checkbox', { name: 'Select task Task t1' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Select task Active task' }))
-    await user.click(screen.getByRole('button', { name: 'Delete 2' }))
-    await user.click(
-      await screen.findByRole('button', { name: /^Delete 2$/, hidden: false }),
-    )
+      await user.click(screen.getByRole('checkbox', { name: 'Select task Task t1' }))
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Select task Active task' }),
+      )
+      await user.click(screen.getByRole('button', { name: 'Delete 2' }))
+      // Scoped to the dialog: the bulk bar behind it carries a button with the
+      // same name, so an unscoped query can resolve to the one that opened the
+      // dialog rather than the one that confirms it.
+      const dialog = await screen.findByRole('alertdialog')
+      await user.click(within(dialog).getByRole('button', { name: /^Delete 2$/ }))
 
-    await waitFor(() => {
-      expect(batchDeleteTasks).toHaveBeenCalledTimes(1)
-    })
-    expect(batchDeleteTasks.mock.calls[0]?.[0]).toHaveLength(2)
+      await waitFor(() => {
+        expect(batchDeleteTasks).toHaveBeenCalledTimes(1)
+      })
+      // The exact rows, not just how many: a count passes just as well when
+      // the selection sent is the wrong two.
+      expect([...(batchDeleteTasks.mock.calls[0]?.[0] ?? [])].sort()).toEqual([
+        't1',
+        't2',
+      ])
+    } finally {
+      useTasksStore.setState({ batchDeleteTasks: originalBatchDelete })
+    }
   })
 
   it('keeps the selection off the board view, where a card is a drag handle', () => {
