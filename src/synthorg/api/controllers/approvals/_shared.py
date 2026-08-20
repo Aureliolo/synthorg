@@ -85,6 +85,21 @@ class SafeEvidencePackage(EvidencePackage):
     ``approver_id`` values, which the safe signature retains).
     """
 
+    # lint-allow: frozen-extra-forbid -- this type is validated from its OWN
+    # dump. Every approval decision runs under the idempotency guard, which
+    # caches `model_dump(mode="json")` and re-validates it into an
+    # `ApprovalResponse` so a repeated key replays a typed response. A dump
+    # CARRIES `is_fully_signed` (clients read it and the replayed body must
+    # match the first one), and `extra="forbid"` then refuses the very dict
+    # this model produced: every decision on an approval with an evidence
+    # package returned 500 after the write had already committed, and the
+    # operator was told an irreversible action had failed when it had not.
+    # Ignoring lets the computed field be recomputed from `signatures` and
+    # `signature_threshold`, both of which the dump carries, so the round trip
+    # is lossless. Nothing validates client input into this type; it is a
+    # response DTO, and the domain `EvidencePackage` keeps its own `forbid`.
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
     # Narrowing the element type to the redacted signature is the whole
     # point of this subclass; Pydantic supports the field override but
     # mypy treats the annotation as an invariant reassignment. The

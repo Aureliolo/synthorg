@@ -27,6 +27,7 @@ frame-locals out of the sink.
 """
 
 import math
+import re
 from collections.abc import Mapping
 from http import HTTPStatus
 from types import MappingProxyType
@@ -792,6 +793,17 @@ def _determine_retryable(exc: Exception) -> bool:
     return bool(getattr(exc, "retryable", False))
 
 
+#: A validation library appends this to every error it raises, pointing at its
+#: own documentation. An operator reading a failed action in this product is
+#: sent to a third party's docs for a defect that is ours, and a live run put
+#: ``https://errors.pydantic.dev/2.13/v/extra_forbidden`` verbatim in a toast
+#: over a rejection that had in fact succeeded. Stripped from the ENVELOPE
+#: only: the log keeps the whole message, which is where the detail is useful.
+_LIBRARY_DOCS_TRAILER: Final[re.Pattern[str]] = re.compile(
+    r"\s*For further information visit https?://\S+",
+)
+
+
 def _select_message(exc: Exception, status_code: int) -> str:
     """Pick the real, secret-redacted error message for the envelope.
 
@@ -810,9 +822,9 @@ def _select_message(exc: Exception, status_code: int) -> str:
         Resulting string.
     """
     if status_code >= _SERVER_ERROR_THRESHOLD:
-        return safe_error_description(exc)
+        return _LIBRARY_DOCS_TRAILER.sub("", safe_error_description(exc))
     raw = str(exc) or str(getattr(exc, "default_message", "Request error"))
-    return scrub_secret_tokens(raw)
+    return _LIBRARY_DOCS_TRAILER.sub("", scrub_secret_tokens(raw))
 
 
 def _parse_retry_after(raw: object) -> int | None:
