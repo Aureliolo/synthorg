@@ -15,7 +15,6 @@ completion for every agent turn.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from typeguard import suppress_type_checks
@@ -94,7 +93,7 @@ class _StopStrategy:
 
 def _make_agent() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("solo-dev"),
         name="solo-dev",
         role="developer",
         department="engineering",

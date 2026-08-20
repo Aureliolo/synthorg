@@ -386,7 +386,9 @@ class TestHiringServiceInstantiateAgent:
         await hiring_service.instantiate_agent(approved)
         # The terminal request stays cached as INSTANTIATED; only its lock
         # auto-evicts once the instantiate step releases it (no holders left).
-        assert str(approved.id) in hiring_service._requests
+        assert hiring_service.get_request(str(approved.id)) is not None
+        # No public surface reports lock residency, and a lock that outlives
+        # its request is a leak nothing else would show.
         assert len(hiring_service._request_locks) == 0
         with pytest.raises(HiringError, match="already instantiated"):
             await hiring_service.instantiate_agent(approved)
