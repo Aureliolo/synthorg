@@ -43,6 +43,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   // here: the dashboard's blockers panel reads the same list, and a second
   // owner is how the pill and that panel came to disagree in the first place.
   const subsystems = useOrgPulseStore((s) => s.subsystems)
+  const subsystemsError = useOrgPulseStore((s) => s.subsystemsError)
   const fetchOrgPulse = useOrgPulseStore((s) => s.fetchOrgPulse)
   const states = deriveHealthSubsystemStates(
     loadState,
@@ -104,6 +105,8 @@ export function HealthPopover({ children }: HealthPopoverProps) {
           <HealthPopoverContent
             loadState={loadState}
             states={states}
+            subsystems={subsystems}
+            subsystemsError={subsystemsError}
             fetchedAtLabel={fetchedAtLabel}
             onRefresh={refresh}
             onDismiss={dismiss}
