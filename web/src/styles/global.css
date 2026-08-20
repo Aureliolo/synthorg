@@ -248,6 +248,16 @@ html {
   #root {
     overscroll-behavior: contain;
   }
+  /*
+   * The content column reserves its scrollbar's width whether or not one is
+   * showing. Without it, every list that grows past the fold or shrinks back
+   * under it moves the whole column sideways by the scrollbar width, and on a
+   * polling page that happens repeatedly while an operator is reading it --
+   * far enough to land a click on the control beside the intended one.
+   */
+  #main-content {
+    scrollbar-gutter: stable;
+  }
 }
 
 /* Print styles.
