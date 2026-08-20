@@ -6,7 +6,6 @@ from datetime import datetime
 import aiosqlite
 
 from synthorg.core.persistence_errors import (
-    ConstraintViolationError,
     QueryError,
     TurnSequenceConflictError,
 )
@@ -25,11 +24,12 @@ from synthorg.persistence._shared import (
     validate_pagination_args,
 )
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
-from synthorg.persistence.sqlite._shared import WriteContext
-from synthorg.persistence.sqlite.conversation_repo._base import (
-    _MAX_PAGE_LIMIT,
-    _safe_rollback,
+from synthorg.persistence.sqlite._integrity import (
+    classify_sqlite_integrity,
+    raise_constraint_violation,
 )
+from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite.conversation_repo._base import _safe_rollback
 
 logger = get_logger(__name__)
 
@@ -177,8 +177,9 @@ class SQLiteConversationTurnRepository:
                             error_type=type(exc).__name__,
                             error=safe_error_description(exc),
                         )
+                        constraint, sqlstate = classify_sqlite_integrity(exc)
                         raise TurnSequenceConflictError(
-                            msg, constraint=str(exc)
+                            msg, constraint=constraint, sqlstate=sqlstate
                         ) from exc
                     msg = (
                         "Constraint violation appending turn "
@@ -192,7 +193,7 @@ class SQLiteConversationTurnRepository:
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
-                    raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                    raise_constraint_violation(exc, msg)
                 except (sqlite3.Error, aiosqlite.Error) as exc:
                     await _safe_rollback(
                         self._db,
@@ -236,12 +237,24 @@ class SQLiteConversationTurnRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
         )
-        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.conversation_id is not None:
             clauses.append("conversation_id = ?")
             params.append(filter_spec.conversation_id)
+        if filter_spec.conversation_ids is not None:
+            # An empty set is written as a false predicate: ``IN ()`` is a
+            # syntax error, and dropping the clause would return every turn
+            # in the table for a caller that asked about no conversation.
+            if filter_spec.conversation_ids:
+                placeholders = ", ".join("?" * len(filter_spec.conversation_ids))
+                clauses.append(f"conversation_id IN ({placeholders})")
+                params.extend(filter_spec.conversation_ids)
+            else:
+                clauses.append("1=0")
+        if filter_spec.sequence is not None:
+            clauses.append("sequence = ?")
+            params.append(filter_spec.sequence)
         where = " AND ".join(clauses) if clauses else "1=1"
         params.extend([effective_limit, offset])
         sql = f"""

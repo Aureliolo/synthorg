@@ -677,6 +677,15 @@ async def _activate_initiative_replan(app_state: AppState) -> None:
     await attach_replan_trigger(app_state)
 
 
+async def _activate_initiative_stall_escalation(app_state: AppState) -> None:
+    """Attach the stalled-initiative escalation onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_stall_escalation,
+    )
+
+    await attach_stall_escalation(app_state)
+
+
 async def _activate_initiative_retro_capture(app_state: AppState) -> None:
     """Attach the SHIP-time retrospective capture onto the wired rollup."""
     from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
@@ -1594,6 +1603,19 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.COORDINATOR,
         ),
         activate=_activate_initiative_replan,
+    ),
+    SubsystemSpec(
+        # Separate from initiative_replan on purpose: this is what happens when
+        # the trigger is absent or refuses, so a boot that has one must not
+        # read as covering the other.
+        name="initiative_stall_escalation",
+        provides=CapabilityId.INITIATIVE_STALL_ESCALATION,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.APPROVAL_STORE,
+        ),
+        activate=_activate_initiative_stall_escalation,
     ),
     SubsystemSpec(
         # Both memory backends are tearable, and the capture holds them for the

@@ -135,6 +135,8 @@ describe('ChatPage unified surface', () => {
               updated_at: '2026-06-30T10:05:00Z',
               status: 'active',
               kind: 'direct',
+              // What the backend derives from the opening turn below.
+              title: 'What is our runway?',
             },
           ]),
         ),

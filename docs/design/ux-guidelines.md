@@ -350,6 +350,37 @@ is mandatory at every boundary: every legitimate case is a claim that the value
 is something a person reads (a model id, an author-chosen slug, a support
 reference), and the marker is the only place that claim gets written down.
 
+### 2.7 A Row Is Named By What It Is, Not What Kind It Is
+
+A list exists so a person can pick one row out of it. A row labelled by its
+**category** cannot be picked: every row of that category reads identically,
+and the list degrades into a column of timestamps. The conversation history
+drawer titled every row from its `ConversationKind`, so a run that filed twenty
+work requests showed twenty rows reading "Request work".
+
+The rule is that the row's primary line carries whatever distinguishes **this**
+one, and the category, if it earns a place at all, moves to the secondary line
+beside the timestamp where it informs instead of repeating:
+
+- **Derive, do not store.** A conversation is named from its opening turn, at
+  read time. A stored title is a second copy of something the transcript
+  already holds, and the two disagree the moment the turn is edited or purged.
+  Deriving it also names every row recorded before the feature existed.
+- **Resolve it beside the row.** Same rule as [2.6](#26-names-never-ids-mandatory):
+  the backend answers it in the response, one query for the whole page, never a
+  per-row lookup the browser makes after the fact.
+- **Trim, never rewrite.** What a person typed is what labels their
+  conversation: whitespace collapses, a Markdown marker goes, a long sentence
+  is cut on a word boundary with an ellipsis. No summarisation and no model.
+- **Keep the fallback honest.** When nothing names the row (a retention purge
+  took the opening turn), the category label is what renders. It was never
+  wrong, only insufficient.
+
+The same shape covers a status that hides a question: a plan waiting on an
+operator decision renders "Awaiting your decision" beside its raw status,
+because `executing` is true and leaves the operator no wiser about what the
+initiative is actually waiting for.
+
 ---
 
 ## 3. Interaction Design

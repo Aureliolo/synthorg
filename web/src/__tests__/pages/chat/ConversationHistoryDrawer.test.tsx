@@ -22,6 +22,9 @@ function conversation(overrides: Partial<ConversationSummary>): ConversationSumm
     updated_at: '2026-05-02T00:00:00Z',
     status: 'active',
     kind: 'direct',
+    // Untitled by default, so the resume cases below keep addressing rows by
+    // the kind label; the titled cases pass one explicitly.
+    title: null,
     ...overrides,
   }
 }
@@ -88,6 +91,37 @@ describe('ConversationHistoryDrawer', () => {
       expect(useOrgConversationStore.getState().conversationId).toBe('c1')
     })
     expect(useOrgConversationStore.getState().conversationClosed).toBe(false)
+  })
+
+  it('names each row by its own opening sentence', async () => {
+    // The defect: every row read "Request work", so a run that filed twenty
+    // intakes produced twenty rows nothing could tell apart.
+    useList([
+      conversation({ id: 'c1', title: 'Build me a dashboard' }),
+      conversation({ id: 'c2', title: 'Draft the Q3 hiring plan' }),
+    ])
+    render(<ConversationHistoryDrawer open onClose={vi.fn()} />)
+
+    expect(await screen.findByText('Build me a dashboard')).toBeInTheDocument()
+    expect(screen.getByText('Draft the Q3 hiring plan')).toBeInTheDocument()
+  })
+
+  it('keeps the kind as a secondary label on a titled row', async () => {
+    useList([conversation({ title: 'Build me a dashboard' })])
+    render(<ConversationHistoryDrawer open onClose={vi.fn()} />)
+
+    expect(await screen.findByText('Build me a dashboard')).toBeInTheDocument()
+    expect(screen.getByText(/request work/i)).toBeInTheDocument()
+  })
+
+  it('falls back to the kind label when nothing names the conversation', async () => {
+    // A retention purge took the opening turn; the row still says what it is.
+    useList([conversation({ title: null })])
+    render(<ConversationHistoryDrawer open onClose={vi.fn()} />)
+
+    expect(
+      await screen.findByRole('button', { name: /request work/i }),
+    ).toBeInTheDocument()
   })
 
   it('surfaces a load failure instead of an empty list', async () => {

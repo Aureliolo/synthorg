@@ -26,7 +26,7 @@ from synthorg.core.task_enums import (
 from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
-    apply_output_policy_gate,
+    observe_output_policy,
 )
 from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
 from synthorg.engine._review_red_team_gates import (
@@ -161,11 +161,16 @@ async def _apply_post_review_stages(
 ) -> GateOutcome:
     """Run the stages that follow peer review, on the shared deliverable.
 
-    In order: the deterministic output-style backstop (cheapest, most
-    objective, no LLM), the adversarial red-team gate, then the vision gate.
-    Every outcome is returned WHOLE rather than rebuilt from four fields, so
-    whatever blocked reason the last gate to speak set survives: an unstaffed
-    adversary parks for staffing, which is a different answer from rework.
+    Two deciding gates, in order: the adversarial red-team gate, then the
+    vision gate. Every outcome is returned WHOLE rather than rebuilt from four
+    fields, so whatever blocked reason the last gate to speak set survives: an
+    unstaffed adversary parks for staffing, which is a different answer from
+    rework.
+
+    The output-style backstop runs alongside them and decides nothing: it is
+    called for its observation and returns no outcome, because style is
+    enforced in-session at the tool that wrote the file and a task whose
+    substance passed review must not be failed over punctuation.
 
     Args:
         red_team: How the adversarial stage is wired.
@@ -178,16 +183,9 @@ async def _apply_post_review_stages(
     Returns:
         The (possibly rerouted) outcome.
     """
-    outcome = apply_output_policy_gate(
-        deliverable=deliverable_input,
-        task=task,
-        target=outcome.target,
-        transition_reason=outcome.transition_reason,
-        event=outcome.event,
-        approved=outcome.approved,
-    )
     if not outcome.approved:
         return outcome
+    observe_output_policy(deliverable=deliverable_input, task=task)
     outcome = await apply_red_team_stage(
         config=red_team,
         task=task,

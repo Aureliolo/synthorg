@@ -151,6 +151,59 @@ class ChatMessagesTool(_BaseChatTool):
         )
 
     @override
+    def _check_preconditions(self, args: BaseModel) -> None:
+        """Refuse a send whose text violates the house output-style policy.
+
+        A chat message leaves the organisation and is read by a person, which
+        makes it an agent-output boundary. The check runs here rather than in
+        the dispatch so a message that can never be sent does not first park
+        an approval for somebody to adjudicate.
+
+        Reject-only, including for a rule an operator set to AUTO_REWRITE: the
+        gate parks a signature over these arguments and a human approves the
+        text they were shown, so substituting different text afterwards would
+        send something nobody agreed to. The agent is handed the places to fix
+        and sends the message itself.
+
+        The refusal never carries the message body. An outbound message
+        routinely quotes a fetched page, a tool result or somebody else's
+        chat, so a body echoed behind "send this instead" is third-party bytes
+        arriving as an instruction inside the next turn's tool result. Both
+        refusals therefore go through the verdict's own reporting, which
+        fences every quoted excerpt as data.
+
+        Args:
+            args: The parsed arguments.
+
+        Raises:
+            ChatToolArgumentError: When the arguments are not this tool's own,
+                when the text violates a hard rule, or when it needs a rewrite
+                this boundary may not apply on the agent's behalf.
+        """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        if not isinstance(args, ChatMessagesArgs):
+            # A precondition that holds a send closed is not something to
+            # state in an assertion: ``-O`` strips one, and what is left runs
+            # the guard over an object it never checked.
+            msg = "chat_messages was given arguments it did not parse"
+            raise ChatToolArgumentError(msg)
+        if args.action != "send" or not args.text:
+            return
+        ctx = OutputContext(channel=OutputChannel.MESSAGE)
+        verdict = evaluate_output_policy(args.text, ctx)
+        if verdict is None:
+            return
+        if verdict.blocked:
+            raise ChatToolArgumentError(verdict.summary)
+        if verdict.rewritten_text is not None:
+            raise ChatToolArgumentError(verdict.rework_notice())
+
+    @override
     async def _dispatch(
         self, client: ChatApiClient, args: BaseModel
     ) -> ToolExecutionResult:

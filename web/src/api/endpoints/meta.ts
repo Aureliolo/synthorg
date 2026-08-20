@@ -299,6 +299,12 @@ export interface ConversationSummary {
   status: ConversationStatus
   /** ``direct`` / ``routed`` resume into Request work; ``group`` into Group. */
   kind: ConversationKind
+  /**
+   * Derived from the conversation's opening message, so one row can be told
+   * from another. Null when nothing names it (a retention purge removed the
+   * opening turn), and the kind label is the fallback.
+   */
+  title: string | null
 }
 
 /** One persisted turn of a conversation, for reconstructing a transcript. */

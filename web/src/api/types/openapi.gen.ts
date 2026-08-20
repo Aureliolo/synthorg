@@ -15753,6 +15753,19 @@ export type components = {
             /** @description Short option title */
             readonly title: string;
         };
+        /** PlanPendingDecision */
+        readonly PlanPendingDecision: {
+            /** @description Which decision this is */
+            readonly action_type: string;
+            /** @description The approval to navigate to */
+            readonly approval_id: string;
+            /** @description Why it was raised */
+            readonly reason: string;
+            /** @description Who raised the decision */
+            readonly requested_by: string;
+            /** @description What the decision is called */
+            readonly title: string;
+        };
         /** PlanReview */
         readonly PlanReview: {
             /**
@@ -15879,6 +15892,8 @@ export type components = {
             readonly open_questions: readonly string[];
             /** @description Objective task the plan decomposes */
             readonly parent_task_id: string;
+            /** @description The decision waiting on the operator about this plan */
+            readonly pending_decision: components["schemas"]["PlanPendingDecision"] | null;
             /** @description Which planner produced the items, recorded when a fallback stood in for the configured strategy so the approval gate shows what the operator is actually approving */
             readonly planning_strategy: string | null;
             /** @description Project the plan belongs to */

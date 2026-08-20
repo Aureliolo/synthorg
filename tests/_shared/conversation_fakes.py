@@ -84,11 +84,32 @@ class FakeConversationRepo:
         return True
 
 
+def _matches(turn: ConversationTurn, spec: ConversationTurnFilterSpec) -> bool:
+    """Apply every predicate the spec carries.
+
+    Returns:
+        Whether *turn* satisfies all of them. An empty ``conversation_ids``
+        matches nothing, exactly as both backends write it.
+    """
+    if spec.conversation_id is not None and (
+        turn.conversation_id != spec.conversation_id
+    ):
+        return False
+    if spec.conversation_ids is not None and (
+        turn.conversation_id not in spec.conversation_ids
+    ):
+        return False
+    return not (spec.sequence is not None and turn.sequence != spec.sequence)
+
+
 class FakeTurnRepo:
     """In-memory append-only ``ConversationTurnRepository`` double."""
 
     def __init__(self) -> None:
         self.turns: list[ConversationTurn] = []
+        #: Every spec this repo was asked, so a caller can assert a page cost
+        #: one query rather than one per row.
+        self.queries: list[ConversationTurnFilterSpec] = []
 
     async def append(self, event: ConversationTurn) -> None:
         self.turns.append(event)
@@ -100,13 +121,12 @@ class FakeTurnRepo:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[ConversationTurn, ...]:
-        rows = [
-            t
-            for t in self.turns
-            if filter_spec.conversation_id is None
-            or t.conversation_id == filter_spec.conversation_id
-        ]
-        rows.sort(key=lambda t: t.sequence, reverse=True)
+        self.queries.append(filter_spec)
+        rows = [t for t in self.turns if _matches(t, filter_spec)]
+        # ``(sequence DESC, id DESC)``, which is what both backends order by.
+        # Sorting on the sequence alone leaves ties in insertion order, so a
+        # test asserting an order would pass here and fail against a database.
+        rows.sort(key=lambda t: (t.sequence, str(t.id)), reverse=True)
         return tuple(rows[offset : offset + limit])
 
     async def purge_before(self, threshold: datetime) -> int:

@@ -30,6 +30,9 @@ from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_REWORK_ROUTED,
     COMPLETION_ORACLE_SHADOW_OBSERVED,
 )
+from synthorg.observability.events.output_style import (
+    OUTPUT_STYLE_BACKSTOP_OBSERVED,
+)
 from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepository
 
 if TYPE_CHECKING:
@@ -62,31 +65,40 @@ class GateOutcome(NamedTuple):
     blocked_reason: BlockedReason = BlockedReason.ORACLE_ESCALATED
 
 
-def apply_output_policy_gate(
+def observe_output_policy(
     *,
     deliverable: RedTeamReviewInput | None,
     task: Task,
-    target: TaskStatus,
-    transition_reason: str,
-    event: str,
-    approved: bool,
-) -> GateOutcome:
-    """Enforce the output-style policy on a completing deliverable (backstop).
+) -> None:
+    """Observe the output-style policy over a completing deliverable's files.
 
-    A deterministic, LLM-free defence-in-depth check on the deliverable prose
-    that runs before the adversarial red-team / vision gates. It complements the
-    per-tool interceptors: even a deliverable that reached completion by a path
-    that skipped a guarded tool cannot ship with a hard-rule violation. A
-    blocking verdict reroutes the task to IN_PROGRESS rework; a shadow or exempt
-    finding never blocks. When the policy is unwired / disabled, or no
-    deliverable was built, it passes through. Deferred import keeps the
+    A shadow backstop, deliberately: it reports and never decides. Enforcement
+    belongs at the tool that writes the thing, where a refusal comes back as a
+    tool result the agent fixes on its next turn. Here the session has already
+    ended, so the only correction available is a whole re-dispatch, and a style
+    nit would destroy work whose substance a peer reviewer already approved.
+    It returns nothing and takes no transition, so that promise is structural
+    rather than a docstring: there is no outcome for it to rewrite.
+
+    It still exists because one arm produces no in-session signal at all. The
+    bundled OpenHands harness writes files with the SDK's own editor tools
+    inside the sandbox and commits through a shell, so no boundary in this
+    process sees them; the post-session read over the produced files is the
+    only observation available there.
+
+    It reads the produced files, one per declared path, never the agent's
+    closing message. Narration and reasoning are working state, not output:
+    a task once failed after three rework rounds over four em-dashes in a
+    sentence nobody keeps. Per file, so an operator's PATH exemption applies
+    and a finding names the file to fix. Deferred import keeps the
     output-style leaf out of this module's cold-import set.
 
-    Returns:
-        The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
+    Args:
+        deliverable: The built deliverable, or ``None`` when none was.
+        task: The task whose completion is being judged.
     """
-    if not approved or deliverable is None:
-        return GateOutcome(target, transition_reason, event, approved)
+    if deliverable is None:
+        return
 
     from synthorg.engine.output_style import (  # noqa: PLC0415
         OutputChannel,
@@ -94,36 +106,31 @@ def apply_output_policy_gate(
         evaluate_output_policy,
     )
 
-    ctx = OutputContext(
-        channel=OutputChannel.DELIVERABLE,
-        task_type=task.type.value,
-        project_id=task.project,
-    )
-    # The agent's own prose, not the composed deliverable: the composed body
-    # carries the produced source files, and a hard rule matching a character
-    # inside one of them is not something the agent can rewrite.
-    verdict = evaluate_output_policy(deliverable.agent_summary, ctx)
-    if verdict is None:
-        return GateOutcome(target, transition_reason, event, approved)
-    # This backstop returns a transition, not content, so it cannot persist an
-    # AUTO_REWRITE fix. A verdict that blocks, or that would rewrite the stored
-    # deliverable, routes to rework so the agent regenerates compliant output
-    # rather than shipping the original violating text.
-    needs_rework = verdict.blocked or (
-        verdict.rewritten_text is not None
-        and verdict.rewritten_text != deliverable.agent_summary
-    )
-    if not needs_rework:
-        return GateOutcome(target, transition_reason, event, approved)
-    reason = verdict.summary or (
-        "Output-style policy requires a compliant rewrite of the deliverable"
-    )
-    return GateOutcome(
-        target=TaskStatus.IN_PROGRESS,
-        transition_reason=f"Output-style policy blocked completion: {reason}",
-        event=APPROVAL_GATE_REVIEW_REWORK,
-        approved=False,
-    )
+    rule_ids: set[str] = set()
+    paths: list[str] = []
+    for artifact in deliverable.produced_artifacts:
+        ctx = OutputContext(
+            channel=OutputChannel.CODE_FILE,
+            file_path=artifact.path,
+            task_type=task.type.value,
+            project_id=task.project,
+        )
+        verdict = evaluate_output_policy(artifact.content, ctx)
+        if verdict is None or not verdict.blocked:
+            continue
+        paths.append(artifact.path)
+        rule_ids.update(f.rule_id for f in verdict.findings if f.blocks)
+    if paths:
+        # One line per deliverable rather than per finding: the interceptor's
+        # own audit already emitted the per-finding events, and this says the
+        # thing they cannot, that the violation survived to delivery.
+        logger.warning(
+            OUTPUT_STYLE_BACKSTOP_OBSERVED,
+            task_id=str(task.id),
+            rule_ids=sorted(rule_ids),
+            paths=paths,
+            file_count=len(paths),
+        )
 
 
 def to_oracle_input(

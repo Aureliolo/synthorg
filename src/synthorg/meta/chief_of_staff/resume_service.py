@@ -22,6 +22,9 @@ modules these protocols depend on, which would otherwise trip the
 cold-import cycle gate.
 """
 
+from collections.abc import Mapping, Sequence
+from typing import Final
+
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
@@ -56,6 +59,11 @@ from synthorg.persistence.conversation_protocol import (
 )
 
 logger = get_logger(__name__)
+
+#: The turn that opened a conversation. Every intake path appends the human's
+#: own message first, at ``len(prior_turns)``, so a conversation's first row is
+#: both position zero and the operator's own words.
+_OPENING_SEQUENCE: Final[int] = 0
 
 
 class ConversationalResumeService:
@@ -127,6 +135,53 @@ class ConversationalResumeService:
             limit=limit,
             offset=offset,
         )
+
+    async def opening_turns(
+        self,
+        conversations: Sequence[Conversation],
+        *,
+        created_by: NotBlankStr,
+    ) -> Mapping[str, ConversationTurn]:
+        """Fetch the turn that opened each of *conversations*.
+
+        One query for the whole page. The drawer names every row from its own
+        opening sentence, so a per-row read would put the page's cost on how
+        many conversations the operator has had.
+
+        Scoped here rather than trusted from the caller. The turn carries what
+        a person typed and the header is the only row that says whose it is,
+        so a method taking bare ids would answer any id it was handed and the
+        next caller that assembles them from anywhere but its own owner-scoped
+        page is one line from reading somebody else's words. Taking the
+        headers keeps the check where the answer is.
+
+        Sequence ``0`` is the operator's own words: every intake path appends
+        the human turn before anything else, at ``len(prior_turns)``, which is
+        zero for a conversation that is being opened.
+
+        Args:
+            conversations: The headers the page is about.
+            created_by: The owner the page was read for. A header belonging to
+                anybody else contributes nothing.
+
+        Returns:
+            The opening turn per conversation id. A conversation whose opening
+            turn a retention purge removed is simply absent, which the caller
+            reads as "nothing names this one".
+        """
+        owned = tuple(
+            NotBlankStr(str(c.id)) for c in conversations if c.created_by == created_by
+        )
+        if not owned:
+            return {}
+        turns = await self._turn_repo.query(
+            ConversationTurnFilterSpec(
+                conversation_ids=owned,
+                sequence=_OPENING_SEQUENCE,
+            ),
+            limit=len(owned),
+        )
+        return {turn.conversation_id: turn for turn in turns}
 
     async def invites_for_approval(
         self,

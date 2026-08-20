@@ -10,6 +10,7 @@ identically so a caller can never distinguish "not mine" from "does not
 exist".
 """
 
+from collections.abc import Mapping
 from typing import Final
 
 from litestar import Controller, get
@@ -29,6 +30,7 @@ from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.conversation_title import derive_conversation_title
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.errors import ConversationNotFoundError
@@ -69,12 +71,27 @@ def _require_resume_service(app_state: AppState) -> ConversationalResumeService:
     return service
 
 
-def _conversation_to_dict(conversation: Conversation) -> dict[str, object]:
+def _conversation_to_dict(
+    conversation: Conversation,
+    openings: Mapping[str, ConversationTurn],
+) -> dict[str, object]:
     """Serialise a conversation header for the list endpoint.
 
+    The title is resolved here, beside the row, rather than by the browser:
+    the drawer would otherwise have to fetch a turn per row to find out what
+    each one is called, and every row would read as its bare kind until those
+    landed.
+
+    Args:
+        conversation: The header being serialised.
+        openings: The page's opening turns, keyed by conversation id.
+
     Returns:
-        A JSON-serialisable conversation summary.
+        A JSON-serialisable conversation summary. ``title`` is ``None`` when
+        nothing names this conversation, and the client falls back to the kind
+        label it already renders.
     """
+    opening = openings.get(str(conversation.id))
     return {
         "id": str(conversation.id),
         "created_by": conversation.created_by,
@@ -82,6 +99,9 @@ def _conversation_to_dict(conversation: Conversation) -> dict[str, object]:
         "updated_at": conversation.updated_at.isoformat(),
         "status": conversation.status.value,
         "kind": conversation.kind.value,
+        "title": (
+            None if opening is None else derive_conversation_title(opening.content)
+        ),
     }
 
 
@@ -150,7 +170,11 @@ class ConversationHistoryController(Controller):
             limit=limit,
             secret=secret,
         )
-        page = tuple(_conversation_to_dict(c) for c in conversations[:limit])
+        rows = conversations[:limit]
+        openings = await service.opening_turns(
+            rows, created_by=NotBlankStr(actor.actor_id)
+        )
+        page = tuple(_conversation_to_dict(c, openings) for c in rows)
         return PaginatedResponse[dict[str, object]](data=page, pagination=meta)
 
     @get("/{conversation_id:str}")

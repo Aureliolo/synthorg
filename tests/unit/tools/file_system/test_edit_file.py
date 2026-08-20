@@ -410,26 +410,60 @@ class TestEditFileExecution:
         that marker (so ``rule_id`` and ``match_text`` distinguish distinct
         violations), letting the guard's before/after multiset delta be
         exercised without a live policy pack.
-        """
-        from types import SimpleNamespace
 
+        Real verdict objects rather than an attribute bag: the guard reports
+        through a verdict carrying only the findings the write introduced, so
+        it needs the model's own ``model_copy`` and the ``summary`` derived
+        from the surviving findings.
+
+        Each finding carries the line its own occurrence sits on, because that
+        is half the key the guard subtracts by: a fake leaving every finding at
+        line 1 collapses every key onto the first line of the file and the
+        tests below would pass without the line ever being read.
+        """
+        from synthorg.core.types import NotBlankStr
         from synthorg.engine import output_style
+        from synthorg.engine.output_style.models import (
+            EnforcementMode,
+            OutputChannel,
+            OutputPolicyFinding,
+            OutputPolicyVerdict,
+            RuleSeverity,
+            RuleType,
+            SegmentKind,
+        )
 
         markers = ("VIOL_A", "VIOL_B")
 
-        def fake_evaluate(text: str, ctx: object) -> object:
+        def _offsets(text: str, marker: str) -> tuple[int, ...]:
+            """Every start offset of *marker* in *text*, in order."""
+            found: list[int] = []
+            at = text.find(marker)
+            while at != -1:
+                found.append(at)
+                at = text.find(marker, at + 1)
+            return tuple(found)
+
+        def fake_evaluate(text: str, ctx: object) -> OutputPolicyVerdict:
             del ctx
-            findings = [
-                SimpleNamespace(
-                    blocks=True,
-                    rule_id=marker,
+            findings = tuple(
+                OutputPolicyFinding(
+                    rule_id=NotBlankStr(marker),
+                    rule_type=RuleType.LITERAL_BAN,
+                    severity=RuleSeverity.CRITICAL,
+                    mode=EnforcementMode.REJECT_REWORK,
+                    message=NotBlankStr(f"{marker} is banned"),
                     match_text=marker,
-                    message=f"{marker} is banned",
+                    context=marker,
+                    segment_kind=SegmentKind.CODE,
+                    line=text.count("\n", 0, offset) + 1,
                 )
                 for marker in markers
-                for _ in range(text.count(marker))
-            ]
-            return SimpleNamespace(blocked=bool(findings), findings=tuple(findings))
+                for offset in _offsets(text, marker)
+            )
+            return OutputPolicyVerdict(
+                channel=OutputChannel.CODE_FILE, findings=findings
+            )
 
         monkeypatch.setattr(output_style, "evaluate_output_policy", fake_evaluate)
 
@@ -584,3 +618,102 @@ class TestEditFileExecution:
         )
         assert result.is_error
         assert "VIOL_A" in result.content
+
+    async def test_a_copy_of_a_violating_line_verbatim_is_still_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The one shape where both halves of the key collide.
+
+        A copy carries the same rule AND the same line text as the line it was
+        copied from, so the two are one key and only multiplicity separates
+        them. Were the subtraction a set rather than a multiset, the baseline's
+        single occurrence would cancel both and a violation the agent authored
+        would reach disk under the cover of one it did not.
+        """
+        self._patch_marker_policy(monkeypatch)
+        before = "x = 1  # VIOL_A\nkeep = 2\n"
+        (workspace / "copy.py").write_text(before, encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "copy.py",
+                "old_text": "keep = 2",
+                "new_text": "keep = 2\nx = 1  # VIOL_A",
+            }
+        )
+        assert result.is_error
+        assert "VIOL_A" in result.content
+        assert (workspace / "copy.py").read_text(encoding="utf-8") == before
+
+    async def test_moving_a_violating_line_is_not_authoring_a_violation(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Relocating a line the agent did not write is not introducing one.
+
+        The subtraction is a MULTISET over (rule, line text), so a write that
+        moves a violating line leaves the count unchanged and is allowed. It
+        has to be: the alternative is positional identity, and no line diff
+        recognises a move, so every reorder, extraction or reformat of an
+        already-violating file would be refused over characters somebody else
+        left there. What the file ships is identical either way; the count is
+        what the policy is about, and the count is what is checked.
+        """
+        self._patch_marker_policy(monkeypatch)
+        (workspace / "moved.py").write_text(
+            "x = 1  # VIOL_A\nkeep = 2\nz = 3\n", encoding="utf-8"
+        )
+        result = await edit_tool.execute(
+            arguments={
+                "path": "moved.py",
+                "edits": [
+                    {"old_text": "x = 1  # VIOL_A\n", "new_text": ""},
+                    {"old_text": "z = 3", "new_text": "z = 3\nx = 1  # VIOL_A"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "moved.py").read_text(encoding="utf-8")
+        assert content.count("VIOL_A") == 1
+        assert content.index("keep = 2") < content.index("VIOL_A")
+
+    async def test_moving_one_of_two_and_adding_a_third_is_still_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A move cannot launder an addition: multiplicity still decides.
+
+        Two occurrences to start, three after: one relocated and one added.
+        The move alone subtracts to nothing, so what the guard refuses on is
+        the count going up, which is the half a relocation cannot disguise.
+        """
+        self._patch_marker_policy(monkeypatch)
+        (workspace / "launder.py").write_text(
+            "x = 1  # VIOL_A\ny = 2  # VIOL_A\nkeep = 3\nz = 4\n", encoding="utf-8"
+        )
+        result = await edit_tool.execute(
+            arguments={
+                "path": "launder.py",
+                "edits": [
+                    {"old_text": "x = 1  # VIOL_A\n", "new_text": ""},
+                    {
+                        "old_text": "z = 4",
+                        "new_text": "z = 4\nx = 1  # VIOL_A\nq = 5  # VIOL_A",
+                    },
+                ],
+            }
+        )
+        assert result.is_error
+        assert "VIOL_A" in result.content
+        # The refusal has to reach disk as well as the agent: a guard that
+        # wrote first and reported afterwards would satisfy every assertion
+        # above while the violation it refused sat in the tree.
+        assert (workspace / "launder.py").read_text(encoding="utf-8") == (
+            "x = 1  # VIOL_A\ny = 2  # VIOL_A\nkeep = 3\nz = 4\n"
+        )

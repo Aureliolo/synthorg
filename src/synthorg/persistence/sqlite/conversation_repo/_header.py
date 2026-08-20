@@ -5,7 +5,7 @@ import sqlite3
 import aiosqlite
 
 from synthorg.communication.conversation.enums import ConversationStatus
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation
 from synthorg.observability import get_logger, safe_error_description
@@ -17,11 +17,9 @@ from synthorg.observability.events.persistence.conversation import (
 from synthorg.persistence._conversation_marshalling import row_to_conversation
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 from synthorg.persistence.sqlite._shared import WriteContext
-from synthorg.persistence.sqlite.conversation_repo._base import (
-    _MAX_PAGE_LIMIT,
-    _safe_rollback,
-)
+from synthorg.persistence.sqlite.conversation_repo._base import _safe_rollback
 
 logger = get_logger(__name__)
 
@@ -96,7 +94,7 @@ class SQLiteConversationRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -165,7 +163,6 @@ class SQLiteConversationRepository:
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
-        effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         where = "WHERE created_by = ?" if created_by is not None else ""
         sql = f"""
             SELECT {_CONVERSATION_COLUMNS}

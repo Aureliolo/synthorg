@@ -34,6 +34,18 @@ house_style:
 rules:
   # Hard ban: the em-dash character (codepoint 8212) and its HTML-entity forms.
   # Enforced: a match rejects the output and routes it back to the agent.
+  #
+  # scan_code is load-bearing here, not an edge case. A file an agent writes is
+  # a CODE_FILE, and the segmenter returns a code channel as one CODE span, so
+  # scan_code: false would leave this rule matching nothing at the boundary
+  # where the organisation's actual deliverable is written. What keeps it from
+  # over-reaching is elsewhere: segmentation picks a safe action rather than
+  # granting a pass, so a code-span match rejects instead of rewriting; an
+  # operator's sanctioned path exemption covers a file that must carry the
+  # literal; and the file-write guard subtracts what the file already held, so
+  # an agent is never refused for a character it did not author. The fuzzy
+  # rules below keep scan_code: false for the opposite reason: they match
+  # English words that occur in identifiers.
   - id: "emdash_literal"
     type: "literal_ban"
     codepoints: [8212]

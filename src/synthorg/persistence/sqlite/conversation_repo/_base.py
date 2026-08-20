@@ -8,8 +8,6 @@ from synthorg.observability import get_logger, log_exception_redacted
 
 logger = get_logger(__name__)
 
-_MAX_PAGE_LIMIT: int = 1_000
-
 
 async def _safe_rollback(
     db: aiosqlite.Connection,
@@ -39,4 +37,4 @@ async def _safe_rollback(
         )
 
 
-__all__ = ["_MAX_PAGE_LIMIT", "_safe_rollback"]
+__all__ = ["_safe_rollback"]

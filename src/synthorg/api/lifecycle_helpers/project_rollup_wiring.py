@@ -1,7 +1,7 @@
 # module-kind: orchestrator
 """Startup wiring for the initiative rollup service and its tail.
 
-Five activations, because they converge at five different times.
+One activation per collaborator, because they converge at different times.
 :func:`wire_project_rollup_service` constructs the
 :class:`ProjectRollupService` once the task engine and persistence exist, and
 registers it as a :class:`TaskEngine` observer so a task reaching a terminal
@@ -9,14 +9,14 @@ status advances the plan, the project, and the objective task behind it. That
 happens well before setup has configured a provider, so the rollup it builds is
 deliberately tailless.
 
-The four ``attach_*`` functions fill each tail collaborator in later, as the
-work pipeline, provider registry, coordinator and memory backends arrive. Each
-is its own subsystem, and each is probed from what it installed: folding them
-into one made a wired rollup stand for a wired tail, and a reconciler never
-revisits what it reads as converged. Folding the four into a single tail
-subsystem repeated the mistake one level down, because the union of three
-collaborators' requirements became a precondition for any of them: a boot with
-no coordinator got no integrate stage either.
+The ``attach_*`` functions fill each tail collaborator in later, as the
+approval store, work pipeline, provider registry, coordinator and memory
+backends arrive. Each is its own subsystem, and each is probed from what it
+installed: folding them into one made a wired rollup stand for a wired tail,
+and a reconciler never revisits what it reads as converged. Folding them into a
+single tail subsystem repeated the mistake one level down, because the union of
+every collaborator's requirements became a precondition for any of them: a boot
+with no coordinator got no integrate stage either.
 
 All are best-effort and idempotent. A re-run of the first is guarded by the
 state slice, so the observer is never registered twice; a re-run of any
@@ -133,6 +133,53 @@ async def attach_replan_trigger(app_state: AppState) -> None:
         raise SubsystemDeclinedError(msg)
     rollup.attach_tail(replan_trigger=trigger)
     _log_attached("initiative_replan_trigger")
+
+
+async def attach_stall_escalation(app_state: AppState) -> None:
+    """Attach the stalled-initiative escalation onto the wired rollup.
+
+    The activation the ``initiative_stall_escalation`` subsystem declares. Its
+    own dependency is the approval store, because the whole point is to put a
+    decision in front of a person; without one a stall fails the plan with its
+    reason instead, which is visible where a silent park is not.
+
+    Its own subsystem rather than the replan trigger's, because it is needed
+    exactly when the trigger is absent or refusing, and the two converge on
+    different dependencies.
+
+    Raises:
+        SubsystemDeclinedError: No approval store, so nothing can ask.
+    """
+    from synthorg.api.services.plan_service_factory import (  # noqa: PLC0415
+        build_plan_service,
+    )
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+    from synthorg.engine.initiative.stall_escalation import (  # noqa: PLC0415
+        StallEscalationService,
+    )
+    from synthorg.notifications.state import NotificationsStateSlice  # noqa: PLC0415
+
+    resolved = _tail_target(app_state, ProjectRollupService.has_stall_escalation)
+    if resolved is None:
+        return
+    persistence, rollup = resolved
+    store = app_state.slice(ApprovalStateSlice).store
+    if store is None:
+        msg = "no approval store; the escalation exists to ask a human"
+        raise SubsystemDeclinedError(msg)
+    rollup.attach_tail(
+        stall_escalation=StallEscalationService(
+            persistence=persistence,
+            plan_status_writer=build_plan_service(persistence, clock=app_state.clock),
+            approvals=store,
+            # Late-bound rather than captured: a settings write that rewires
+            # notifications closes the dispatcher that was current, and an
+            # initiative can stall months later.
+            notifications=lambda: app_state.slice(NotificationsStateSlice).dispatcher,
+            clock=app_state.clock,
+        )
+    )
+    _log_attached("initiative_stall_escalation")
 
 
 async def attach_integration_stage(app_state: AppState) -> None:

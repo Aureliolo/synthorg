@@ -50,6 +50,20 @@ DEFAULT_LIST_LIMIT: Final[int] = 100
 #: pure-helper limit here vs. the repository-protocol page size).
 DEFAULT_PAGE_SIZE: Final[int] = 100
 
+#: Largest batch a caller may fold into ONE filtered read: the id set a
+#: page of conversations turns into a single turn query. Lives in ``core``
+#: so that caller can size its batch without reaching into a persistence
+#: internal, and so it cannot read a private copy whose bound disagrees
+#: with the one actually applied.
+#:
+#: Deliberately NOT a second page ceiling. A repository that silently
+#: clamped its own ``limit`` below :data:`MAX_LIST_LIMIT` would make a
+#: short page ambiguous to :func:`paginate`, which reads one as the end of
+#: the data, and a drain asking above that private clamp would stop at the
+#: first page with rows still to read. One ceiling on a page, and it is
+#: the one :func:`validate_pagination_args` applies.
+MAX_PAGE_SIZE: Final[int] = 1_000
+
 # Hard upper bound on ``list_*`` / ``query`` page sizes regardless of
 # caller-supplied limit. Defense-in-depth: the API layer's
 # ``CursorLimit`` already caps caller input at 200, but internal
@@ -57,6 +71,37 @@ DEFAULT_PAGE_SIZE: Final[int] = 100
 # 10_000 ceiling matches the established per-repo ``_MAX_LIST_ROWS``
 # precedent in the project repositories.
 MAX_LIST_LIMIT: Final[int] = 10_000
+
+#: Hardest stop on one drain, counted in FULL pages. The short-page rule ends
+#: a sweep the moment a backend answers with fewer rows than it was asked for,
+#: which is every backend that runs out of data and most that are broken. The
+#: one shape it cannot see is a ``fetch`` that ignores ``offset`` and answers a
+#: full page every time: each page is indistinguishable from a healthy one, so
+#: only a count catches it. A drain reaching this many full pages has read ten
+#: million rows at the largest page a repository serves, which is a stuck fetch
+#: rather than a large dataset, so it is refused rather than left to grow until
+#: the process dies.
+MAX_DRAIN_PAGES: Final[int] = 1_000
+
+
+def _refuse_stuck_drain(pages: int, page_size: int) -> None:
+    """Refuse a drain that has read *pages* full pages without ending.
+
+    Args:
+        pages: Full pages yielded so far.
+        page_size: Rows each of them carried.
+
+    Raises:
+        QueryError: When the page cap is reached, naming both numbers so the
+            operator can tell a stuck fetch from a genuinely enormous read.
+    """
+    if pages < MAX_DRAIN_PAGES:
+        return
+    msg = (
+        f"drain read {pages} full pages of {page_size} without a short or "
+        "empty page; the fetch is not honouring offset"
+    )
+    raise QueryError(msg)
 
 
 async def paginate[PageItemT](
@@ -68,9 +113,33 @@ async def paginate[PageItemT](
 
     Centralises the offset-paging sweep that several services need when
     a single capped read would silently drop rows past the backend page
-    cap. The sweep is bounded: iteration stops as soon as a backend
-    returns a short (fewer than ``page_size``) or empty page, so a
-    caller cannot accidentally spin forever.
+    cap. The sweep is bounded two ways, and it needs both: iteration
+    stops as soon as a backend returns a short or empty page, and it
+    refuses outright past :data:`MAX_DRAIN_PAGES`.
+
+    The short page is the ordinary terminator and covers a backend that
+    ran out of rows. It also covers most of the broken ones, which is
+    why it terminates rather than the empty page: a ``fetch`` ignoring
+    ``offset`` answers rows for ever, and a sweep keyed on emptiness
+    alone would accumulate them until the process died.
+
+    What it does NOT cover is a ``fetch`` that ignores ``offset`` and
+    answers a FULL page every time. Every page then looks exactly like a
+    healthy one, so no per-page test can tell them apart and only a
+    count can. That is the page cap: a broken fetch rather than a large
+    dataset, so the sweep fails loudly instead of growing until the
+    process dies.
+
+    Reading a short page as the end of the data is sound only while the
+    backend honours the size it was asked for, which is why there is
+    exactly ONE ceiling on a page and ``validate_pagination_args``
+    applies it. A repository that clamped its own ``limit`` lower would
+    answer a larger request with a full-but-short page, this sweep would
+    read that as the end, and the drain would stop with rows still to
+    come. That is a repository defect rather than something to
+    compensate for here: compensating means naming the lowest private
+    clamp in this module, which taxes every other drain and is one
+    repository away from being wrong again.
 
     Implemented with ``itertools.count`` (a ``for`` iterator) rather
     than ``while True``. The long-running-loop kill-switch gate only
@@ -93,26 +162,23 @@ async def paginate[PageItemT](
         yielded before iteration terminates.
 
     Raises:
-        QueryError: If ``page_size`` is not a positive int. A
+        QueryError: If ``page_size`` is not a positive int (a
             non-positive step makes ``itertools.count`` never advance,
-            so a non-empty backend would page forever.
+            so a non-empty backend would page forever), or if the drain
+            reaches :data:`MAX_DRAIN_PAGES` full pages.
     """
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    # Repository read methods clamp ``limit`` to ``MAX_LIST_LIMIT``, so a
-    # requested page larger than the cap comes back short of ``page_size``
-    # even when more rows remain. Drain at the effective (clamped) size so
-    # the short-page termination check reflects what the backend can
-    # actually return, instead of stopping early and dropping rows.
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
-    for offset in count(0, effective_page_size):
+    for pages, offset in enumerate(count(0, effective_page_size), start=1):
         page = await fetch(effective_page_size, offset)
         if not page:
             return
         yield page
         if len(page) < effective_page_size:
             return
+        _refuse_stuck_drain(pages, effective_page_size)
 
 
 async def collect_all[PageItemT](
@@ -128,8 +194,10 @@ async def collect_all[PageItemT](
     single unbounded scan), while the caller still gets every row, so
     correctness is preserved without reintroducing the unbounded read
     the pagination was added to remove. Thin wrapper over
-    :func:`paginate`; the short-page termination guarantee is
-    inherited.
+    :func:`paginate`; both of its termination guarantees, the short
+    page and the page cap, are inherited. The cap matters most here,
+    because this is the drain that accumulates: a fetch stuck on a full
+    page grows this list until the process dies.
 
     Args:
         fetch: Async callable taking ``(limit, offset)`` positionally
@@ -142,6 +210,10 @@ async def collect_all[PageItemT](
     Returns:
         Every row across all pages, in the method's deterministic
         order.
+
+    Raises:
+        QueryError: Whatever :func:`paginate` raises, including the
+            refusal past :data:`MAX_DRAIN_PAGES`.
     """
     collected: list[PageItemT] = []
     async for page in paginate(fetch, page_size=page_size):
@@ -163,10 +235,10 @@ async def collect_all_mapping[KeyT, ValT](
     stops on the first short page exactly like :func:`paginate`.
 
     Caller invariant: the wrapped repo method MUST return disjoint
-    pages over a stable key order. Overlapping keys across pages are
-    silently last-write-wins (``dict.update``); this helper does not
-    detect page overlap. An empty first page legitimately yields an
-    empty dict (a valid result, not an error).
+    pages over a stable key order and honour ``offset``. Overlapping
+    keys across pages are silently last-write-wins (``dict.update``);
+    this helper does not detect page overlap. An empty first page
+    legitimately yields an empty dict (a valid result, not an error).
 
     Cancellation: if the awaiting task is cancelled mid-page the
     ``CancelledError`` from the in-flight ``fetch`` propagates
@@ -182,7 +254,8 @@ async def collect_all_mapping[KeyT, ValT](
         The fully reassembled mapping.
 
     Raises:
-        QueryError: If ``page_size`` is not a positive int.
+        QueryError: If ``page_size`` is not a positive int, or if the
+            drain reaches :data:`MAX_DRAIN_PAGES` full pages.
     """
     # ``bool`` is a subclass of ``int``; without the explicit
     # ``isinstance(page_size, bool)`` guard ``True`` / ``False`` would
@@ -190,18 +263,20 @@ async def collect_all_mapping[KeyT, ValT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    # Drain at the backend-clamped size (see :func:`paginate`) so a
-    # ``page_size`` above ``MAX_LIST_LIMIT`` does not read short and
-    # terminate early, silently dropping entries past the cap.
+    # Both terminators, for the reasons :func:`paginate` gives: one
+    # ceiling applies to a page, the short page ends the ordinary sweep,
+    # and the page cap catches the one broken shape a per-page test
+    # cannot see, a fetch answering a full page at every offset.
     effective_page_size = min(page_size, MAX_LIST_LIMIT)
     merged: dict[KeyT, ValT] = {}
-    for offset in count(0, effective_page_size):
+    for pages, offset in enumerate(count(0, effective_page_size), start=1):
         page = await fetch(effective_page_size, offset)
         if not page:
             return merged
         merged.update(page)
         if len(page) < effective_page_size:
             return merged
+        _refuse_stuck_drain(pages, effective_page_size)
     return merged  # unreachable; count() is infinite
 
 

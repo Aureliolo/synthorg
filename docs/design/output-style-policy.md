@@ -90,18 +90,33 @@ it starts counting the rest.
 
 ### Output boundaries
 
-The `interceptor.py` helpers (`enforce_output_policy` raises on a block;
-`evaluate_output_policy` returns the verdict) are called at every agent-output
-boundary before the output escapes:
+**A boundary is a tool through which the organisation keeps or sends
+something.** Enforcement happens there, in-session, so a refusal comes back as
+the tool's own result and the agent fixes it on its next turn. The
+`interceptor.py` helpers (`enforce_output_policy` raises on a block;
+`evaluate_output_policy` returns the verdict) are called at every one before
+the output escapes:
 
 | Boundary | Site | Channel |
 |----------|------|---------|
 | Inter-agent message | `communication/messenger.py` + `communication/messages/service.py`, via the shared `communication/_output_guard.py` `guard_message_output` (which applies any auto-rewrite back onto the message) | `message` |
+| Outbound chat message | `tools/chat/chat_tools.py` `ChatMessagesTool._check_preconditions` (the `send` action only) | `message` |
+| Outbound email | `tools/communication/email_sender.py` `_guard_email_text` guarding both the subject and the body | `message` |
 | Commit message | `tools/git_tools.py` `GitCommitTool.execute` | `commit_message` |
-| Code file write | `tools/file_system/write_file.py` (whole content) + `edit_file.py` (the replacement text) | `code_file` |
-| Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body` |
-| Completing deliverable | `engine/_review_oracle_gates.py` `apply_output_policy_gate`, run before the adversarial red-team / vision gates | `deliverable` |
+| Code file write | `tools/file_system/write_file.py` + `edit_file.py`, both through the shared `_output_policy_guard.py` `guard_written_content` over the whole resulting content | `code_file` |
+| Living document | `tools/docs/write_living_doc.py`, via `tools/docs/_doc_output_guard.py` `guard_doc_output` over the title and every block | `deliverable` (prose fields) / `code_file` (a code body, a metric value, a URL) |
+| Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body`, except a merge commit title (`is_commit=True`), which is `commit_message` |
+| Parked question | `tools/clarification_tool.py` + `tools/decision_tool.py`, via the shared `tools/_question_output_guard.py` | `message` |
 | Plan prose | `engine/decomposition/_plan_output_guard.py` `guard_plan_text` / `guard_plan_texts`, called from `engine/decomposition/llm_parse.py` on every submitted plan's item titles, descriptions, acceptance criteria, assumptions, and open questions | `deliverable` |
+| Initiative evaluation verdict | `engine/initiative/evaluate_session.py` `SubmitEvaluationTool`, over the summary and every criterion verdict the scoring session submits | `deliverable` |
+
+Every row's guard reaches the same primitive, `engine/output_style/approval.py`
+`approve_texts`: is the policy wired, does anything block, did a rule rewrite
+this, otherwise keep what was written. One copy, because five copies is how one
+boundary comes to reject where its siblings rewrite with nothing to notice. It
+answers a refusal STRING rather than a typed error, since the boundaries do not
+share an error type (a tool result, a chat argument error, a decomposition
+error) and each turns the refusal into its own.
 
 Plan prose is a boundary because a plan is read by a person before anything is
 built: the operator approves it, and the wording they approve is the wording
@@ -115,12 +130,87 @@ consistently at both. The code-file and forge boundaries are code-channel
 issue/PR body is rejected before it lands, unless a matching operator-sanctioned
 scope (a `path` exemption for code files) covers it.
 
-The per-tool interceptors give the producing agent instant feedback, like a
-pre-tool-use hook denial: the tool call fails with the specific rule and the
-agent reworks. The completion-gate check is a defence-in-depth backstop, so
-even a deliverable that reached completion by a path that skipped a guarded tool
-cannot ship a hard-rule violation. In-session output that never escapes the
-session is not gated.
+One boundary is deliberately reject-only even for prose: a **chat send** parks
+a signature over its own arguments for a human to approve, so substituting
+different text after that approval would send something nobody agreed to. The
+agent is handed the places to fix and sends the message itself, and the refusal
+never carries the body back: an outbound message routinely quotes a fetched
+page or somebody else's chat, so a body echoed behind "send this instead" is
+third-party text arriving as an instruction on the agent's next turn.
+
+A **living document's** prose is rewritten like any other prose. Its code body,
+metric value and URL are not prose at all: they go to the code channel, where a
+punctuation swap corrupts the value rather than tidying it, and the code
+channel is reject-only for everything, which is the same ruling the `segmenter`
+already applies to a fenced block inside a PR body.
+
+**Only a write counts, and only what the write introduces.** Both file tools
+subtract the blocking findings the file already carried: an agent editing or
+overwriting a file that already violated a rule is never refused over a
+character somebody else left behind, while a write that adds a new violation is
+refused even when the file already violated a different rule. Without that, the
+only moves left are mangling content it does not own or giving up.
+
+What identifies "the same violation" across the two evaluations is the rule and
+the SURROUNDINGS of the match, with multiplicity, never the match alone. A
+literal ban matches one character, so every occurrence of it in a file carries
+the same snippet: keyed on that, a write that removes one occurrence while
+adding another subtracts to nothing and the new one lands on disk, and the
+places quoted back to the agent are the first in the file rather than the ones
+it wrote. Rewriting the text AROUND a pre-existing violation therefore
+re-presents it as introduced, which is the intended reading: an agent that
+re-authored the sentence owns what the sentence now says.
+
+The subtraction fails CLOSED past the per-evaluation reporting cap. A file
+already carrying more blocking matches than one evaluation reports produces the
+same saturated set before and after, so every subtraction is empty and the
+boundary would silently stop guarding the one file that needs it most. Over the
+cap the write is refused with the places the evaluation did report, which is a
+state the agent can leave by fixing them.
+
+**Narration is never gated.** The agent's closing message, its reasoning and
+anything else that does not leave the session are working state, not output.
+A live run failed a task after three rework rounds, 199 seconds and 536,628
+tokens spent trying to clear four em-dashes from a message nobody keeps, and
+then failed it for producing no artifacts, after its peer reviewer had already
+approved the work. A style violation must never on its own destroy work whose
+substance passed review.
+
+### The completion backstop observes and decides nothing
+
+`engine/_review_oracle_gates.py::observe_output_policy` runs after peer review
+approves. It reads the **produced artifacts**, one per declared path (so an
+operator's `path` exemption applies and a finding names the file to fix), and
+emits one `output_style.backstop.observed` WARNING per deliverable that still
+carries a blocking finding. It returns nothing and is handed no transition, so
+it cannot reroute, cannot un-approve and cannot fail a task: the promise is
+structural rather than a docstring.
+
+It exists because one arm produces no in-session signal at all. The bundled
+OpenHands harness writes files with the SDK's own editor tools inside the
+sandbox and commits through a shell, out of reach of every boundary in this
+process, so the post-session read is the only observation available there. Deleting the
+gate would leave that arm silent; making it block would reintroduce the failure
+above. Shadow is the honest answer, and it is stated here rather than implying
+the hard ban is enforced everywhere.
+
+`scripts/check_output_boundaries_guarded.py` holds both halves: every boundary
+declares a kind, an `ENFORCING` one must still call a guard, and the single
+`OBSERVING` one must additionally NOT call `enforce_output_policy`.
+
+### Why `emdash_literal` sets `scan_code: true`
+
+Because the artifact is the enforced path. `OutputChannel.CODE_FILE` is a code
+channel, and the `segmenter` returns a code channel as one `CODE` span, so a rule
+with `scan_code: false` matches nothing at the file-write boundary: the setting
+is what makes the hard ban enforceable on the thing the organisation actually
+ships. Three separate mechanisms keep it from over-reaching: segmentation picks
+a safe action rather than granting a pass, so a code-span match rejects instead
+of rewriting; an operator's sanctioned `path` exemption covers a file that must
+contain the literal; and the introduced-only subtraction above means an agent is
+never refused for content it did not author. The fuzzy shadow rules keep
+`scan_code: false` for the opposite reason: they match English words that occur
+inside identifiers.
 
 ### Sanctioned exemptions
 

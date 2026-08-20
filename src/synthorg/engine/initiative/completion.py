@@ -28,7 +28,9 @@ Everything here is pure: no I/O, no clock, no repositories. The rollup service
 supplies the inputs and owns the persistence.
 """
 
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final
 from uuid import UUID
 
@@ -268,6 +270,63 @@ class StallReason(StrEnum):
 #: than re-deriving over items (which would find nothing wrong).
 ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
     {StallReason.ALL_FAILED, StallReason.BLOCKED, StallReason.MIXED_DEAD}
+)
+
+#: The tail stage each stage-derived verdict came from. A plan that has left
+#: that stage has been dealt with (a human replanned it, or the stage re-ran),
+#: so the verdict is stale.
+#:
+#: Declared here, beside the set that decides which branch applies, because
+#: every re-confirmation of a stall needs both halves and two copies of the
+#: pairing is two answers to "is this plan still stalled". Reading only the
+#: item half answers ``None`` for every tail-stage stall, which reads as
+#: "recovered" and silently drops the decision.
+STAGE_OF_STALL_REASON: Final[Mapping[StallReason, PlanStatus]] = MappingProxyType(
+    {
+        StallReason.INTEGRATION_FAILED: PlanStatus.INTEGRATING,
+        StallReason.EVALUATION_UNMET: PlanStatus.EVALUATING,
+    }
+)
+
+
+class ReplanDisposition(StrEnum):
+    """What the replan trigger did with a stall it was asked to consider.
+
+    "Does this initiative have a way forward" is one decision, and the trigger
+    is its owner: it holds the master switch and the generation cap, so a
+    caller deciding from the trigger's mere presence is a second authority
+    that cannot see either refusal. This is the answer travelling back, so the
+    caller routes on what happened rather than on what it assumed.
+
+    ``SCHEDULED``: a detached replan started. ``ALREADY_RUNNING``: one is in
+    flight for this plan, so this ask collapses into it. ``UNAVAILABLE``: the
+    trigger could not start work at this moment (the process is stopping, or
+    the spawn failed); transient, and the next pass asks again.
+
+    The last two are refusals with nothing behind them, and they are why this
+    enum exists: ``DISABLED`` (the operator switched auto-replan off) and
+    ``BUDGET_EXHAUSTED`` (the lineage is at ``auto_replan_max_generations``).
+    Both mean no automatic route remains, and an initiative in that state
+    needs a person rather than another pass.
+    """
+
+    SCHEDULED = "scheduled"
+    ALREADY_RUNNING = "already_running"
+    UNAVAILABLE = "unavailable"
+    DISABLED = "disabled"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+
+
+#: Dispositions where something is happening or will happen without anyone
+#: being asked. Their complement is what escalates, so a member added to the
+#: enum and to neither set is a mypy error at the routing site rather than a
+#: silent pass-through.
+REPLAN_IN_PROGRESS_DISPOSITIONS: Final[frozenset[ReplanDisposition]] = frozenset(
+    {
+        ReplanDisposition.SCHEDULED,
+        ReplanDisposition.ALREADY_RUNNING,
+        ReplanDisposition.UNAVAILABLE,
+    }
 )
 
 

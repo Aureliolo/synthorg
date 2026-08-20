@@ -9,6 +9,7 @@ import pytest
 
 from synthorg.core.pagination import (
     DEFAULT_LIST_LIMIT,
+    MAX_DRAIN_PAGES,
     MAX_LIST_LIMIT,
     collect_all,
     collect_all_mapping,
@@ -50,6 +51,72 @@ class TestPaginate:
             tuple(range(50, 100)),
             tuple(range(100, 120)),
         ]
+
+    async def test_a_fetch_that_ignores_offset_still_terminates(self) -> None:
+        """Boundedness is the property the short-page rule buys.
+
+        A fetch that hands back rows regardless of offset is a broken fetch,
+        and the sweep has to fail finitely against it rather than accumulate
+        pages until the process dies. Terminating on an empty page instead
+        would spin here, which is what makes the short page the terminator.
+        """
+        calls = 0
+
+        async def stuck(limit: int, offset: int) -> tuple[int, ...]:
+            nonlocal calls
+            calls += 1
+            del limit, offset
+            return (1,)
+
+        assert await collect_all(stuck, page_size=50) == (1,)
+        assert calls == 1
+
+    async def test_a_fetch_stuck_on_a_full_page_is_refused(self) -> None:
+        """The one broken shape no per-page test can see.
+
+        A fetch ignoring offset and answering a FULL page every time produces
+        pages indistinguishable from healthy ones, so the short-page rule
+        never fires and only the page cap ends it. Refused rather than
+        truncated: the rows returned are the same rows over and over, so a
+        partial result would be wrong rather than merely incomplete.
+        """
+        calls = 0
+
+        async def stuck(limit: int, offset: int) -> tuple[int, ...]:
+            nonlocal calls
+            calls += 1
+            del offset
+            return tuple(range(limit))
+
+        with pytest.raises(QueryError):
+            await collect_all(stuck, page_size=10)
+        assert calls == MAX_DRAIN_PAGES
+
+    async def test_a_mapping_drain_stuck_on_a_full_page_is_refused(self) -> None:
+        async def stuck(limit: int, offset: int) -> dict[int, str]:
+            del offset
+            return {n: str(n) for n in range(limit)}
+
+        with pytest.raises(QueryError):
+            await collect_all_mapping(stuck, page_size=10)
+
+    async def test_the_ask_is_bounded_by_one_ceiling_only(self) -> None:
+        """A page has exactly one ceiling, and this is the one that applies.
+
+        A repository clamping its own ``limit`` lower would answer a larger
+        request with a full-but-short page, which this reads as the end of the
+        data; there is deliberately no second cap here to compensate, because
+        one would tax every drain and still be a repository away from wrong.
+        """
+        asked: list[int] = []
+
+        async def honest(limit: int, offset: int) -> tuple[int, ...]:
+            asked.append(limit)
+            del offset
+            return ()
+
+        assert await collect_all(honest, page_size=MAX_LIST_LIMIT * 2) == ()
+        assert asked == [MAX_LIST_LIMIT]
 
     async def test_rejects_non_positive_page_size(self) -> None:
         async def fetch(limit: int, offset: int) -> tuple[int, ...]:

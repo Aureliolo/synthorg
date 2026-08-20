@@ -21,10 +21,29 @@ from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.file_system._args import WriteFileArgs
 from synthorg.tools.file_system._base_fs_tool import BaseFileSystemTool
+from synthorg.tools.file_system._output_policy_guard import guard_written_content
 
 logger = get_logger(__name__)
 
 MAX_WRITE_SIZE_BYTES: Final[int] = 10_485_760  # 10 MB
+
+
+def _read_existing(resolved: Path) -> str:
+    """Read the file as it stands, or empty when there is nothing to read.
+
+    The output-style baseline: what the target already held is not something
+    this agent authored. Every failure to read it (absent, a directory, binary,
+    unreadable) means the same thing here, that no prior content can be
+    attributed to the agent, and the honest baseline for all of them is empty.
+    The write itself reports its own failure a moment later.
+
+    Returns:
+        The existing text content, or ``""``.
+    """
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except OSError, UnicodeDecodeError:
+        return ""
 
 
 def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int, bool]:
@@ -114,36 +133,34 @@ class WriteFileTool(BaseFileSystemTool):
             parameters_schema=WriteFileArgs.model_json_schema(),
         )
 
-    def _guard_output_policy(
+    async def _guard_output_policy(
         self,
         user_path: str,
+        resolved: Path,
         content: str,
     ) -> ToolExecutionResult | None:
         """Enforce the output-style policy on agent-written file content.
 
-        Code files are a hard-rule boundary: a banned literal (an em-dash) in a
-        code comment or string is rejected before it lands on disk, unless an
-        operator-sanctioned PATH exemption covers this file. The check is
-        code-channel (reject, never auto-rewrite), so a violation returns an
-        error result with the rule, giving the agent instant rework feedback.
+        A file is what the organisation ships, so this is where the house rule
+        is enforced: the refusal is this tool's own result and the agent fixes
+        it on its next turn, in the same session. Code-channel (reject, never
+        auto-rewrite), unless an operator-sanctioned PATH exemption covers the
+        file.
+
+        Only what the write introduces blocks, which needs the file as it
+        stands. An overwrite of a file that already carried a banned literal
+        is otherwise refused over a character the agent never wrote, with
+        nothing it can do but mangle content it does not own.
 
         Returns:
-            An error result when a hard rule blocks, else ``None``.
+            An error result when the write introduces a hard-rule violation,
+            else ``None``.
         """
-        from synthorg.engine.output_style import (  # noqa: PLC0415
-            OutputChannel,
-            OutputContext,
-            evaluate_output_policy,
+        return guard_written_content(
+            user_path=user_path,
+            original=await asyncio.to_thread(_read_existing, resolved),
+            resulting=content,
         )
-
-        ctx = OutputContext(
-            channel=OutputChannel.CODE_FILE,
-            file_path=user_path or None,
-        )
-        verdict = evaluate_output_policy(content, ctx)
-        if verdict is None or not verdict.blocked:
-            return None
-        return ToolExecutionResult(content=verdict.summary, is_error=True)
 
     def _validate_write_args(
         self,
@@ -294,15 +311,17 @@ class WriteFileTool(BaseFileSystemTool):
         if err := self._validate_write_args(user_path, content):
             return err
 
-        if guard_err := self._guard_output_policy(user_path, content):
-            return guard_err
-
         resolved_or_err = self._resolve_write_path(
             user_path,
             create_dirs=create_dirs,
         )
         if isinstance(resolved_or_err, ToolExecutionResult):
             return resolved_or_err
+
+        if guard_err := await self._guard_output_policy(
+            user_path, resolved_or_err, content
+        ):
+            return guard_err
 
         return await self._perform_write(
             user_path,

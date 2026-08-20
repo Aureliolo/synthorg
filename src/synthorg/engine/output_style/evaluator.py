@@ -177,7 +177,9 @@ class OutputPolicyEvaluator:
             if budget <= 0:
                 break
             exemption = self._resolver.resolve(rule.id, ctx)
-            rule_findings, rule_ops = self._scan_rule(rule, exemption, segments, budget)
+            rule_findings, rule_ops = self._scan_rule(
+                rule, exemption, segments, budget, text
+            )
             findings.extend(rule_findings)
             rewrite_ops.extend(rule_ops)
 
@@ -201,8 +203,16 @@ class OutputPolicyEvaluator:
         exemption: SanctionedExemption | None,
         segments: tuple[Segment, ...],
         budget: int,
+        text: str,
     ) -> tuple[list[OutputPolicyFinding], list[RewriteOp]]:
         """Scan one rule over the segments, up to ``budget`` findings.
+
+        Args:
+            rule: The rule to scan.
+            exemption: The sanctioned exemption covering it, when one does.
+            segments: The prose/code spans of *text*.
+            budget: How many more findings may be produced.
+            text: The whole evaluated output, for the line each match sits on.
 
         Returns:
             The findings and any auto-rewrite ops produced by this rule;
@@ -233,6 +243,7 @@ class OutputPolicyEvaluator:
                                 seg.text, match.start(), match.end()
                             ),
                             segment_kind=seg.kind,
+                            line=text.count("\n", 0, seg.start + match.start()) + 1,
                             exempted=exemption is not None,
                             exemption_reason=(
                                 exemption.reason if exemption is not None else None

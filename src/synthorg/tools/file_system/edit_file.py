@@ -7,7 +7,6 @@ silently edits the wrong occurrence.
 """
 
 import asyncio
-from collections import Counter
 from pathlib import Path
 from typing import ClassVar, Final, override
 
@@ -35,6 +34,7 @@ from synthorg.tools.file_system._edit_plan import (
     _plan_edits_sync,
     _write_sync,
 )
+from synthorg.tools.file_system._output_policy_guard import guard_written_content
 
 logger = get_logger(__name__)
 
@@ -104,58 +104,18 @@ class EditFileTool(BaseFileSystemTool):
     ) -> ToolExecutionResult | None:
         """Enforce the output-style policy on the post-edit file content.
 
-        Evaluates the complete candidate content (existing file after all
-        hunks of the edit are applied), not just the replacement fragment, so
-        a violation formed at the boundary between an edit and its surroundings
-        is caught. Only a violation the edit *introduces* blocks: blocking
-        findings already present in the original (matched by rule id and
-        offending snippet, with multiplicity) are subtracted from the
-        post-edit findings, so an edit elsewhere in an already-violating file
-        stays editable while an edit that adds a *new* violation is rejected,
-        even when the file already violated a different rule. Code-channel
-        (reject, never auto-rewrite), unless an operator-sanctioned PATH
-        exemption covers this file.
+        Evaluates the complete candidate content (the existing file after all
+        hunks are applied), not just the replacement fragment, so a violation
+        formed at the boundary between an edit and its surroundings is caught.
+        See :func:`guard_written_content` for what "introduces" means and why
+        it is the rule.
 
         Returns:
             An error result when the edit introduces a hard-rule violation, else
             ``None``.
         """
-        from synthorg.engine.output_style import (  # noqa: PLC0415
-            OutputChannel,
-            OutputContext,
-            evaluate_output_policy,
-        )
-
-        ctx = OutputContext(
-            channel=OutputChannel.CODE_FILE,
-            file_path=user_path or None,
-        )
-        after = evaluate_output_policy(resulting, ctx)
-        if after is None or not after.blocked:
-            return None
-        before = evaluate_output_policy(original, ctx)
-        baseline: Counter[tuple[str, str]] = Counter()
-        if before is not None:
-            baseline = Counter(
-                (f.rule_id, f.match_text) for f in before.findings if f.blocks
-            )
-        introduced = (
-            Counter((f.rule_id, f.match_text) for f in after.findings if f.blocks)
-            - baseline
-        )
-        if not introduced:
-            return None
-        messages: list[str] = []
-        for finding in after.findings:
-            if (
-                finding.blocks
-                and introduced.get((finding.rule_id, finding.match_text))
-                and finding.message not in messages
-            ):
-                messages.append(finding.message)
-        return ToolExecutionResult(
-            content="Output-style policy rejected this edit: " + "; ".join(messages),
-            is_error=True,
+        return guard_written_content(
+            user_path=user_path, original=original, resulting=resulting
         )
 
     async def _preflight_check_file(
