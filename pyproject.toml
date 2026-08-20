@@ -443,6 +443,25 @@ max-complexity = 8
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
 ]
+"tests/evals_spine/recursion_depth/reference_tree/**/*.py" = [
+    # A delivered tree, not part of the test package: it is what `python -m
+    # sqlcsv` is run against so the held-out oracle has been observed to pass
+    # something. Making its parent a package would put a second importable
+    # `sqlcsv` on the path the moment anything under tests/ was imported.
+    "INP001",
+    "T20",     # it is a CLI; printing is its output
+]
+"evals/recursion_depth/spec/*/oracle/**/*.py" = [
+    # A held-out oracle IS a test suite; it sits under evals/ rather than
+    # tests/ only because it must never be collected by the repository's own
+    # run and must never be copied into an agent's workspace. It gets the same
+    # relaxations tests/ gets, for the same reasons.
+    "S101",    # assert is how an oracle states a requirement
+    "ARG",     # unused arguments (fixtures)
+    "D",       # no docstrings required on a test function
+    "PLR2004", # a requirement's expected value is the point
+    "TC",      # type-checking imports (fixture type hints)
+]
 "docker/**/*.py" = [
     # docker/ holds standalone scripts copied into container images
     # (e.g. sandbox/healthz.py), not an importable package, so the
@@ -576,7 +595,16 @@ show_error_codes = true
 # importable once copied into a seeded workspace, and one of them ships
 # deliberately defective code for a loop to repair, so type-checking them would
 # report on the benchmark's subject matter rather than on the codebase.
-exclude = ["^evals/loop_ab/briefs/seeds/"]
+#
+# The recursion-depth reference tree is the same category one step further on:
+# it is a DELIVERED tree, standing in for what an agent produces, and it is
+# only importable from its own root (``python -m sqlcsv`` with that root as the
+# working directory), which is exactly how the held-out oracle runs it. Nothing
+# an agent delivers is type-checked by this repository either.
+exclude = [
+    "^evals/loop_ab/briefs/seeds/",
+    "^tests/evals_spine/recursion_depth/reference_tree/",
+]
 # Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
 # ``src/`` and ``tests/``. The [[tool.mypy.overrides]] blocks below are
 # third-party ``ignore_missing_imports`` shims (no package relaxes a strict++

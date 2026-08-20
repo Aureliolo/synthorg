@@ -58,3 +58,16 @@ EVALS_HARNESS_SANDBOXES_RELEASED: Final[str] = "evals.harness.sandboxes_released
 EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
     "evals.harness.sandbox_release_failed"
 )
+
+# Recursion-depth sweep: does gating every merge hold off aggregation collapse?
+EVALS_RECURSION_ORACLE_RUN: Final[str] = "evals.recursion_depth.oracle_run"
+EVALS_RECURSION_UNIT_EXECUTED: Final[str] = "evals.recursion_depth.unit_executed"
+EVALS_RECURSION_MERGE_ATTEMPTED: Final[str] = "evals.recursion_depth.merge_attempted"
+EVALS_RECURSION_MERGE_GATED: Final[str] = "evals.recursion_depth.merge_gated"
+EVALS_RECURSION_MERGE_PARKED: Final[str] = "evals.recursion_depth.merge_parked"
+EVALS_RECURSION_TREE_BUILT: Final[str] = "evals.recursion_depth.tree_built"
+EVALS_RECURSION_CELL_RECORDED: Final[str] = "evals.recursion_depth.cell_recorded"
+EVALS_RECURSION_CELL_UNAVAILABLE: Final[str] = "evals.recursion_depth.cell_unavailable"
+EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
+EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
+EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"

@@ -270,6 +270,53 @@ class LoopAbNoCellsMeasuredError(EvalError):
     default_message: ClassVar[str] = "Loop A/B matrix measured no cells"
 
 
+class OracleUnusableError(EvalError):
+    """Raised when a held-out oracle could not produce a verdict at all.
+
+    Deliberately distinct from every requirement failing. A tree that fails
+    everything is a measurement; an oracle that could not be collected is a
+    broken harness, and recording the second as the first would publish a
+    survival curve of zeros that looks exactly like a finding.
+    """
+
+    default_message: ClassVar[str] = "The held-out oracle could not be run"
+
+
+class RecursionDepthNoCellsMeasuredError(EvalError):
+    """Raised when a completed recursion-depth sweep measured no cell.
+
+    An all-unavailable report is never a legitimate measurement, and writing
+    one exits successfully with a file that looks like a curve.
+    """
+
+    default_message: ClassVar[str] = "Recursion-depth sweep measured no cells"
+
+
+class RecursionDepthSessionCeilingError(EvalError):
+    """Raised when a sweep would run more agent sessions than it was allowed.
+
+    The ceiling exists because a depth sweep's session count is a product of
+    branching factors nobody can predict from the manifest alone, and the
+    failure mode of getting it wrong is spend rather than a wrong answer.
+    """
+
+    default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
+
+
+class RecursionDepthJudgeNotIndependentError(EvalError):
+    """Raised when the manifest binds the reviewer to the executor's own pair.
+
+    The gate is the treatment in this experiment, so a judge sharing the
+    executor's binding biases straight toward the null: self-preference runs
+    75-84% toward a model's own family, and an identical pair is that effect at
+    its maximum.
+    """
+
+    default_message: ClassVar[str] = (
+        "The reviewer pair must differ from the executor pair"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -306,7 +353,11 @@ __all__ = [
     "JudgeCalibrationFailedError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
+    "OracleUnusableError",
     "ProvenanceUnavailableError",
+    "RecursionDepthJudgeNotIndependentError",
+    "RecursionDepthNoCellsMeasuredError",
+    "RecursionDepthSessionCeilingError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",
     "WorkspaceSeedNotFoundError",

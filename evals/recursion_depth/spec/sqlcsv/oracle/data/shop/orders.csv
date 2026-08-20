@@ -1,0 +1,9 @@
+id,customer_id,item,qty,price,note
+1,10,widget,2,9.50,
+2,10,gizmo,1,19.00,gift wrap
+3,11,widget,10,9.50,"two, please"
+4,11,doohickey,3,4.25,
+5,12,gizmo,9,19.00,"he said ""later"""
+6,12,widget,1,9.50,
+7,13,sprocket,,2.00,don't ask
+8,13,gizmo,4,19.00,
