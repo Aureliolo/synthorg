@@ -1,143 +1,22 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { AnimatePresence } from 'motion/react'
 import { Link } from 'react-router'
-import { FolderKanban, MessagesSquare, Plus, Trash2 } from 'lucide-react'
+import { FolderKanban, MessagesSquare, Plus } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { useProjectsData } from '@/hooks/useProjectsData'
 import { useProjectsStore } from '@/stores/projects'
 import { Button } from '@/components/ui/button'
-import { BulkActionBar } from '@/components/ui/bulk-action-bar'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { BulkDeleteControls } from '@/components/ui/bulk-delete-controls'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useListPagination } from '@/hooks/use-list-pagination'
-import { formatNumber } from '@/utils/format'
 import { ProjectsSkeleton } from './projects/ProjectsSkeleton'
 import { ProjectFilters } from './projects/ProjectFilters'
 import { ProjectGridView } from './projects/ProjectGridView'
 import { ProjectCreateDrawer } from './projects/ProjectCreateDrawer'
-
-type ProjectList = ReturnType<typeof useProjectsData>['filteredProjects']
-
-interface ProjectSelection {
-  visibleSelected: ReadonlySet<string>
-  selectedCount: number
-  handleToggleSelect: (id: string) => void
-  clearSelection: () => void
-  bulkDeleteOpen: boolean
-  setBulkDeleteOpen: (open: boolean) => void
-  bulkDeleting: boolean
-  handleBulkDelete: () => Promise<void>
-}
-
-function useProjectSelection(filteredProjects: ProjectList): ProjectSelection {
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const [bulkDeleting, setBulkDeleting] = useState(false)
-
-  const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
-
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
-
-  const visibleIds = useMemo(
-    () => new Set(filteredProjects.map((p) => p.id)),
-    [filteredProjects],
-  )
-  const visibleSelected = useMemo(() => {
-    const next = new Set<string>()
-    for (const id of selectedIds) {
-      if (visibleIds.has(id)) next.add(id)
-    }
-    return next
-  }, [selectedIds, visibleIds])
-
-  const handleBulkDelete = useCallback(async () => {
-    setBulkDeleting(true)
-    const ids = [...visibleSelected]
-    // Store owns the success / warning / error toast UX (see
-    // stores/projects.ts batchDeleteProjects). The caller only drives
-    // the dialog and selection state, so we discard the returned
-    // counts/sentinel here.
-    await useProjectsStore.getState().batchDeleteProjects(ids)
-    setBulkDeleting(false)
-    setBulkDeleteOpen(false)
-    clearSelection()
-  }, [visibleSelected, clearSelection])
-
-  return {
-    visibleSelected,
-    selectedCount: visibleSelected.size,
-    handleToggleSelect,
-    clearSelection,
-    bulkDeleteOpen,
-    setBulkDeleteOpen,
-    bulkDeleting,
-    handleBulkDelete,
-  }
-}
-
-function ProjectsBulkActions({
-  selectedCount,
-  clearSelection,
-  bulkDeleting,
-  bulkDeleteOpen,
-  setBulkDeleteOpen,
-  onConfirm,
-}: {
-  selectedCount: number
-  clearSelection: () => void
-  bulkDeleting: boolean
-  bulkDeleteOpen: boolean
-  setBulkDeleteOpen: (open: boolean) => void
-  onConfirm: () => Promise<void>
-}) {
-  return (
-    <>
-      <AnimatePresence>
-        {selectedCount > 0 && (
-          <BulkActionBar
-            selectedCount={selectedCount}
-            onClear={clearSelection}
-            loading={bulkDeleting}
-            ariaLabel="Project bulk actions"
-          >
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-              onClick={() => setBulkDeleteOpen(true)}
-              disabled={bulkDeleting}
-            >
-              <Trash2 className="size-3.5" />
-              Delete {formatNumber(selectedCount)}
-            </Button>
-          </BulkActionBar>
-        )}
-      </AnimatePresence>
-
-      <ConfirmDialog
-        open={bulkDeleteOpen}
-        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
-        title={`Delete ${formatNumber(selectedCount)} project${selectedCount === 1 ? '' : 's'}?`}
-        description="This will permanently remove the selected projects. Associated tasks remain, but their project link will be broken. This action cannot be undone."
-        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
-        variant="destructive"
-        loading={bulkDeleting}
-        onConfirm={onConfirm}
-      />
-    </>
-  )
-}
 
 /**
  * Case-appropriate empty state for the project grid: a "New project" CTA when
@@ -243,16 +122,18 @@ export default function ProjectsPage() {
     setPageSize,
   } = useListPagination({ items: filteredProjects, namespace: 'projects' })
 
-  const {
-    visibleSelected,
-    selectedCount,
-    handleToggleSelect,
-    clearSelection,
-    bulkDeleteOpen,
-    setBulkDeleteOpen,
-    bulkDeleting,
-    handleBulkDelete,
-  } = useProjectSelection(filteredProjects)
+  const visibleIds = useMemo(
+    () => filteredProjects.map((project) => project.id),
+    [filteredProjects],
+  )
+  const selection = useBulkSelection(
+    visibleIds,
+    useCallback(
+      (ids: readonly string[]) =>
+        useProjectsStore.getState().batchDeleteProjects(ids),
+      [],
+    ),
+  )
 
   const emptyNode = useProjectsEmptyNode(
     filteredProjects.length,
@@ -282,8 +163,8 @@ export default function ProjectsPage() {
       <ProjectFilters />
       <ProjectGridView
         projects={pagedProjects}
-        onToggleSelect={handleToggleSelect}
-        selectedIds={visibleSelected}
+        onToggleSelect={selection.toggle}
+        selectedIds={selection.visibleSelected}
         emptyNode={emptyNode}
       />
       <Pagination
@@ -294,13 +175,11 @@ export default function ProjectsPage() {
         onPageSizeChange={setPageSize}
       />
 
-      <ProjectsBulkActions
-        selectedCount={selectedCount}
-        clearSelection={clearSelection}
-        bulkDeleting={bulkDeleting}
-        bulkDeleteOpen={bulkDeleteOpen}
-        setBulkDeleteOpen={setBulkDeleteOpen}
-        onConfirm={handleBulkDelete}
+      <BulkDeleteControls
+        selection={selection}
+        noun={{ one: 'Project', many: 'projects' }}
+        description="This will permanently remove the selected projects, their plans and tasks, and the workspaces their agents wrote into. This action cannot be undone."
+        ariaLabel="Project bulk actions"
       />
 
       <ProjectCreateDrawer open={createOpen} onClose={() => setCreateOpen(false)} />

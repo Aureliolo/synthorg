@@ -106,15 +106,15 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Messages | `/messages` | 3 routes under Messages. |
 | Objectives | `/objectives` | Objectives endpoint. |
 | Peer-Review Verdicts | `/completion-oracle/reports` | 2 routes under Peer-Review Verdicts. |
-| Plans | `/plans` | 8 routes under Plans. |
+| Plans | `/plans` | 9 routes under Plans. |
 | Project Brain | `/projects/{project_id}/brain` | 4 routes under Project Brain. |
 | Project Docs | `/projects/{project_id}/docs` | 4 routes under Project Docs. |
 | Project Knowledge | `/projects/{project_id}/knowledge` | 4 routes under Project Knowledge. |
-| Projects | `/projects` | 4 routes under Projects. |
+| Projects | `/projects` | 5 routes under Projects. |
 | Requests | `/requests` | 5 routes under Requests. |
 | Reviews | `/reviews/{task_id}` | 2 routes under Reviews. |
 | Sprints | `/sprints` | 6 routes under Sprints. |
-| Tasks | `/tasks` | 6 routes under Tasks. |
+| Tasks | `/tasks` | 7 routes under Tasks. |
 
 ### Workflows
 

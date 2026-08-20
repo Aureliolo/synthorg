@@ -1,4 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { BulkDeleteResult } from '../types/bulk-delete'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CancelTaskRequest,
@@ -51,4 +52,18 @@ export async function cancelTask(taskId: string, data: CancelTaskRequest): Promi
 export async function deleteTask(taskId: string): Promise<void> {
   const response = await apiClient.delete<ApiResponse<null>>(`/tasks/${encodeURIComponent(taskId)}`)
   unwrapVoid(response)
+}
+
+/**
+ * Delete a selection in one request.
+ *
+ * A task a plan still names as its objective refuses, and clearing a board is
+ * the selection that mixes those in, so the result reports each row.
+ */
+export async function bulkDeleteTasks(ids: readonly string[]): Promise<BulkDeleteResult> {
+  const response = await apiClient.post<ApiResponse<BulkDeleteResult>>(
+    '/tasks/bulk-delete',
+    { ids },
+  )
+  return unwrap(response)
 }

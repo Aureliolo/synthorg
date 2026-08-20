@@ -10,6 +10,11 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api._read_names import agent_name_map
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
+from synthorg.api.controllers._bulk_delete import (
+    BulkDeleteRequest,
+    BulkDeleteResult,
+    run_bulk_delete,
+)
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._project_autonomy import (
     AutonomyModeTransition,
@@ -350,6 +355,49 @@ class ProjectController(Controller):
             request: The incoming request.
             state: Application state.
             project_id: Project identifier.
+
+        Raises:
+            NotFoundError: Project with ``project_id`` does not exist.
+        """
+        await self._delete_one(request, state, project_id)
+
+    @post(
+        "/bulk-delete",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("projects.bulk_delete", key="user"),
+        ],
+    )
+    async def bulk_delete_projects(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        data: BulkDeleteRequest,
+    ) -> ApiResponse[BulkDeleteResult]:
+        """Delete every selected project, reporting each row's outcome.
+
+        Each row takes the same path its own DELETE does, so the cascade, the
+        tombstone and the event are identical; a refusal is collected instead
+        of raised, because one project that cannot go must not decide the fate
+        of the rest of the selection.
+
+        Returns:
+            What was removed and what remains.
+        """
+        result = await run_bulk_delete(
+            data.ids,
+            lambda project_id: self._delete_one(request, state, project_id),
+            entity="project",
+        )
+        return ApiResponse(data=result)
+
+    async def _delete_one(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        project_id: str,
+    ) -> None:
+        """Remove one project and everything that hangs off it.
 
         Raises:
             NotFoundError: Project with ``project_id`` does not exist.

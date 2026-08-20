@@ -21,7 +21,7 @@ import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.controllers.tasks import process_task_board_pipeline
+from synthorg.api.controllers._task_board_pipeline import process_task_board_pipeline
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState

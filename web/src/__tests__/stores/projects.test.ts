@@ -289,11 +289,6 @@ describe('useProjectsStore', () => {
           makeProject('proj-003'),
         ],
       })
-      server.use(
-        http.delete('/api/v1/projects/:id', () =>
-          new HttpResponse(null, { status: 204 }),
-        ),
-      )
 
       const result = await useProjectsStore
         .getState()
@@ -310,16 +305,22 @@ describe('useProjectsStore', () => {
     })
 
     it('keeps failed ids in the list and surfaces their reasons', async () => {
+      // One call, and the backend answers per row: the whole selection used to
+      // go as one DELETE each, and the endpoint is rate limited per user, so
+      // past the per-row budget the tail failed for a reason that had nothing
+      // to do with the rows.
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
       })
       server.use(
-        http.delete('/api/v1/projects/:id', ({ params }) => {
-          if (params['id'] === 'proj-001') {
-            return new HttpResponse(null, { status: 204 })
-          }
-          return HttpResponse.json(apiError('boom'), { status: 500 })
-        }),
+        http.post('/api/v1/projects/bulk-delete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              deleted: ['proj-001'],
+              failed: [{ id: 'proj-002', reason: 'boom' }],
+            }),
+          ),
+        ),
       )
 
       const result = await useProjectsStore
@@ -332,15 +333,29 @@ describe('useProjectsStore', () => {
       if (result === false) throw new Error('expected counts, not sentinel')
       expect(result.succeeded).toBe(1)
       expect(result.failed).toBe(1)
-      // failedReasons holds only the human-readable reason so the
-      // batch-toast helper can group identical reasons across the
-      // failures; per-id context is logged separately via the
-      // failedDetails channel inside the store.
-      expect(result.failedReasons).toHaveLength(1)
-      // 5xx now surfaces the backend's real (secret-redacted) error.
-      expect(result.failedReasons[0]).toContain('boom')
+      expect(result.failedReasons).toEqual(['boom'])
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+    })
+
+    it('sends one request for the whole selection', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+      })
+      let calls = 0
+      server.use(
+        http.post('/api/v1/projects/bulk-delete', async ({ request }) => {
+          calls += 1
+          const body = (await request.json()) as { ids: string[] }
+          return HttpResponse.json(apiSuccess({ deleted: body.ids, failed: [] }))
+        }),
+      )
+
+      await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      expect(calls).toBe(1)
     })
   })
 

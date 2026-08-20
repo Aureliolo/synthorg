@@ -339,6 +339,9 @@ API_PLAN_COMMENT_ADDED: Final[str] = "api.plan.comment_added"
 API_PLAN_DELETED: Final[str] = "api.plan.deleted"
 API_PLAN_DELETE_REFUSED: Final[str] = "api.plan.delete_refused"
 
+# Bulk deletion (one operator action over a selected set)
+API_BULK_DELETE_PARTIAL: Final[str] = "api.bulk_delete.partial"
+
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"
 API_ARTIFACT_UPDATED: Final[str] = "api.artifact.updated"

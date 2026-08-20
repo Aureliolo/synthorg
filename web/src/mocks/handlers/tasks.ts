@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  bulkDeleteTasks,
   cancelTask,
   createTask,
   getTask,
@@ -120,4 +121,10 @@ export const tasksHandlers = [
     )
   }),
   http.delete('/api/v1/tasks/:id', () => HttpResponse.json(voidSuccess())),
+  http.post('/api/v1/tasks/bulk-delete', async ({ request }) => {
+    const body = (await request.json()) as { ids: string[] }
+    return HttpResponse.json(
+      successFor<typeof bulkDeleteTasks>({ deleted: body.ids, failed: [] }),
+    )
+  }),
 ]

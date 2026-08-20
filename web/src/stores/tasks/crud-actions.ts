@@ -1,4 +1,5 @@
 import * as tasksApi from '@/api/endpoints/tasks'
+import { runBulkDelete, type BulkDeleteOutcome } from '@/stores/_bulk-delete'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -127,6 +128,30 @@ async function deleteTaskImpl(
   }
 }
 
+function batchDeleteTasksImpl(
+  set: TasksSet,
+  get: TasksGet,
+  ids: readonly string[],
+): Promise<BulkDeleteOutcome | false> {
+  return runBulkDelete({
+    ids,
+    call: tasksApi.bulkDeleteTasks,
+    removeRows: (deleted) => {
+      for (const taskId of deleted) {
+        get().removeTask(taskId)
+      }
+      const removed = new Set(deleted)
+      const selected = get().selectedTask
+      // The open drawer closes when its own task was in the selection, the
+      // same way the single delete clears it.
+      if (selected !== null && removed.has(selected.id)) {
+        set({ selectedTask: null })
+      }
+    },
+    noun: { one: 'Task', many: 'tasks' },
+  })
+}
+
 export function createCrudActions(set: TasksSet, get: TasksGet) {
   return {
     fetchTasks: (filters?: TaskFilters) => fetchTasksImpl(set, filters),
@@ -157,5 +182,7 @@ export function createCrudActions(set: TasksSet, get: TasksGet) {
         'Cancel task',
       ),
     deleteTask: (taskId: string) => deleteTaskImpl(set, get, taskId),
+    batchDeleteTasks: (ids: readonly string[]) =>
+      batchDeleteTasksImpl(set, get, ids),
   }
 }

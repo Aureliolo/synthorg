@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   PriorityBadge,
   TaskStatusIndicator,
@@ -23,6 +24,9 @@ export interface TaskListViewProps {
   // component's React.memo on every parent render.
   tasks: readonly DashboardTask[]
   onSelectTask: (taskId: string) => void
+  /** When defined, every row carries a selection checkbox. */
+  onToggleSelect?: ((taskId: string) => void) | undefined
+  selectedIds?: ReadonlySet<string> | undefined
 }
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
@@ -87,7 +91,12 @@ function sortLabel(
   return `${label}, not sorted. Activate to sort by this column.`
 }
 
-function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
+function TaskListViewInner({
+  tasks,
+  onSelectTask,
+  onToggleSelect,
+  selectedIds,
+}: TaskListViewProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>('asc')
 
@@ -122,6 +131,9 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
       <div className="min-w-[44rem]">
       {/* Table header */}
       <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
+        {/* Holds the checkbox column's width so the headings stay over their
+            own cells once selection is on. */}
+        {onToggleSelect && <span className="w-4 shrink-0" aria-hidden="true" />}
         {COLUMNS.map((col) => (
           <button
             key={col.key}
@@ -153,7 +165,12 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
       <StaggerGroup className="divide-y divide-border">
         {sorted.map((task) => (
           <StaggerItem key={task.id}>
-            <TaskListRow task={task} onSelectTask={onSelectTask} />
+            <TaskListRow
+              task={task}
+              onSelectTask={onSelectTask}
+              onToggleSelect={onToggleSelect}
+              selected={selectedIds?.has(task.id) ?? false}
+            />
           </StaggerItem>
         ))}
       </StaggerGroup>
@@ -167,10 +184,28 @@ export const TaskListView = memo(TaskListViewInner)
 interface TaskListRowProps {
   task: DashboardTask
   onSelectTask: (taskId: string) => void
+  onToggleSelect?: ((taskId: string) => void) | undefined
+  selected?: boolean | undefined
 }
 
-const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRowProps) {
+const TaskListRow = memo(function TaskListRow({
+  task,
+  onSelectTask,
+  onToggleSelect,
+  selected = false,
+}: TaskListRowProps) {
   return (
+    <div className={cn('flex items-center gap-4 pl-4', selected && 'bg-accent/5')}>
+      {/* A sibling of the row, never a child of it: the row is itself a
+          button, and a control inside one is invalid markup that behaves
+          unpredictably for assistive technology and for a plain click. */}
+      {onToggleSelect && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect(task.id)}
+          aria-label={`Select task ${task.title}`}
+        />
+      )}
     <div
       role="button"
       tabIndex={0}
@@ -181,7 +216,7 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
           onSelectTask(task.id)
         }
       }}
-      className={cn('flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover', FOCUS_RING)}
+      className={cn('flex flex-1 cursor-pointer items-center gap-4 py-3 pr-4 transition-colors hover:bg-card-hover', FOCUS_RING)}
       aria-label={`Task: ${task.title}`}
     >
       <span className="w-20">
@@ -220,6 +255,7 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
       <span className="w-20 text-right font-mono text-[10px] text-text-muted">
         {task.cost != null ? formatCurrency(task.cost, DEFAULT_CURRENCY) : '--'}
       </span>
+    </div>
     </div>
   )
 })

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { PlanListItem } from '@/pages/plans/PlanListItem'
 import { criticalPathFor, derivePlanStats } from '@/utils/plans'
@@ -106,5 +107,37 @@ describe('PlanListItem review solicitation', () => {
 
     expect(expected).toBeGreaterThan(0)
     expect(screen.getByText(`${expected} to review`)).toBeInTheDocument()
+  })
+})
+
+describe('selecting a plan row', () => {
+  it('carries no checkbox when the page is not selecting', () => {
+    renderRow(makePlan('plan-plain'))
+
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
+
+  it('keeps the checkbox out of the link it sits beside', async () => {
+    // A control nested inside an anchor is invalid markup, and it is what
+    // made a whole task card's surface inert elsewhere on this dashboard:
+    // ticking the box must not navigate.
+    const onToggleSelect = vi.fn()
+    render(
+      <MemoryRouter>
+        <PlanListItem
+          plan={makePlan('plan-pick')}
+          roster={undefined}
+          onToggleSelect={onToggleSelect}
+          selected={false}
+        />
+      </MemoryRouter>,
+    )
+
+    const checkbox = screen.getByRole('checkbox')
+    expect(checkbox.closest('a')).toBeNull()
+
+    await userEvent.setup().click(checkbox)
+
+    expect(onToggleSelect).toHaveBeenCalledWith('plan-pick')
   })
 })

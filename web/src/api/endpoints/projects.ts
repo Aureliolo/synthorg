@@ -1,4 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { BulkDeleteResult } from '../types/bulk-delete'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CreateProjectRequest,
@@ -43,4 +44,21 @@ export async function setProjectAutonomyMode(
 
 export async function deleteProject(projectId: string): Promise<void> {
   await apiClient.delete(`/projects/${encodeURIComponent(projectId)}`)
+}
+
+/**
+ * Delete a selection in one request.
+ *
+ * One call rather than one per row: the single delete is rate limited per user,
+ * so a loop refused its own tail for a reason that had nothing to do with the
+ * rows the operator picked.
+ */
+export async function bulkDeleteProjects(
+  ids: readonly string[],
+): Promise<BulkDeleteResult> {
+  const response = await apiClient.post<ApiResponse<BulkDeleteResult>>(
+    '/projects/bulk-delete',
+    { ids },
+  )
+  return unwrap(response)
 }

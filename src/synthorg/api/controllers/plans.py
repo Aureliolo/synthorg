@@ -8,11 +8,10 @@ plan-native capabilities the approval flow lacks -- reading the durable plan,
 reworking its items, and sending it back for revision.
 """
 
-from typing import Annotated, Final
+from typing import Final
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
-from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api._read_names import agent_name_map
@@ -21,12 +20,20 @@ from synthorg.api.channels import (
     plan_updated_payload,
     publish_ws_event,
 )
-from synthorg.api.controllers._approval_retire import retiring_plan_approvals
-from synthorg.api.controllers._deletion_record import record_deletion
+from synthorg.api.controllers._bulk_delete import (
+    BulkDeleteRequest,
+    BulkDeleteResult,
+)
+from synthorg.api.controllers._plan_filters import (
+    PlanObjectiveFilter,
+    PlanProjectFilter,
+    PlanStatusFilter,
+)
 from synthorg.api.controllers._plan_input_validation import (
     reject_undecidable_graph,
     reject_unroutable_owners,
 )
+from synthorg.api.controllers._plan_removal import remove_plan, remove_plans
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
     replan_initiative,
@@ -55,16 +62,14 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_countless_seek_meta,
 )
-from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.lifecycle_transition import LifecycleEntityKind
-from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
@@ -98,34 +103,6 @@ def _evaluation_service(state: State) -> PlanEvaluationService:
     return PlanEvaluationService(
         reports=persistence_of(state.app_state).evaluation_reports
     )
-
-
-PlanStatusFilter = Annotated[
-    NotBlankStr | None,
-    QueryParameter(
-        required=False,
-        max_length=QUERY_MAX_LENGTH,
-        description="Filter by plan lifecycle status",
-    ),
-]
-
-PlanProjectFilter = Annotated[
-    NotBlankStr | None,
-    QueryParameter(
-        required=False,
-        max_length=QUERY_MAX_LENGTH,
-        description="Filter by project id",
-    ),
-]
-
-PlanObjectiveFilter = Annotated[
-    NotBlankStr | None,
-    QueryParameter(
-        required=False,
-        max_length=QUERY_MAX_LENGTH,
-        description="Filter by the charter/objective the plan serves",
-    ),
-]
 
 
 class PlanController(Controller):
@@ -515,44 +492,45 @@ class PlanController(Controller):
                 delete was being prepared, so the plan is still being acted
                 on. Nothing is removed and the operator retries.
         """
-        service = _service(state)
-        existing = require_resource_or_404(
-            await service.get(plan_id),
-            resource_type="Plan",
-            identifier=plan_id,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="delete",
-        )
-        # Before anything is written: an unbound requester is a server fault
-        # here, and a fault must not first expire the plan's review approval
-        # and then refuse the delete.
-        requested_by = extract_requester()
-        # Scoped to the delete, not merely ahead of it: an approval left
-        # pending would drive the resume path at a missing plan, and a delete
-        # refused because the plan's items are still building must leave its
-        # review approval answerable.
-        async with retiring_plan_approvals(
-            state.app_state,
-            str(existing.id),
-        ) as retirement:
-            # Live work is counted inside the delete, in the same statement, so
-            # a task filed between the two cannot be stranded on a deleted plan.
-            await service.delete(existing, requested_by=requested_by)
-            retirement.removed(str(existing.id))
-        # Whichever route removed it, the records that outlive a plan keep
-        # naming its id, so the tombstone is what they resolve against.
-        await record_deletion(
-            persistence_of(state.app_state),
-            kind=DeletedEntityKind.PLAN,
-            entity_id=str(existing.id),
-            display_name=existing.objective_title,
-            deleted_by=requested_by,
-        )
-        # The review inbox and any open detail view drop it on the same
-        # event every other plan mutation publishes.
-        publish_ws_event(
+        await remove_plan(
             request,
-            WsEventType.PLAN_UPDATED,
-            CHANNEL_PLANS,
-            plan_updated_payload(existing),
+            state,
+            _service(state),
+            plan_id,
+            requested_by=extract_requester(),
         )
+
+    @post(
+        "/bulk-delete",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("plans.bulk_delete", key="user"),
+        ],
+    )
+    async def bulk_delete_plans(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        data: BulkDeleteRequest,
+    ) -> ApiResponse[BulkDeleteResult]:
+        """Delete every selected plan, reporting each row's outcome.
+
+        A plan refuses deletion on its own terms (its items are still
+        building, its review approval was just decided), and those refusals
+        are the common case in a mixed selection, so each is collected against
+        its own row rather than ending the action.
+
+        Returns:
+            What was removed and what remains.
+        """
+        result = await remove_plans(
+            request,
+            state,
+            _service(state),
+            data.ids,
+            # Bound before anything is written: an unbound requester is a
+            # server fault, and a fault must not first expire a plan's review
+            # approval and then refuse the delete.
+            requested_by=extract_requester(),
+        )
+        return ApiResponse(data=result)

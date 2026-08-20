@@ -1,7 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import type { UseTaskBoardDataReturn } from '@/hooks/useTaskBoardData'
 import TaskBoardPage from '@/pages/TaskBoardPage'
+import { useTasksStore } from '@/stores/tasks'
+import type { BulkDeleteOutcome } from '@/stores/_bulk-delete'
 import { makeTask } from '../helpers/factories'
 
 const defaultHookReturn: UseTaskBoardDataReturn = {
@@ -127,5 +130,48 @@ describe('TaskBoardPage', () => {
   it('renders Show terminal checkbox', () => {
     renderBoard()
     expect(screen.getByText('Show terminal')).toBeInTheDocument()
+  })
+})
+
+describe('clearing a selection of tasks', () => {
+  beforeEach(() => {
+    hookReturn = { ...defaultHookReturn }
+  })
+
+  it('offers no bulk bar until rows are picked', () => {
+    renderBoard(['/tasks?view=list'])
+
+    expect(screen.queryByRole('toolbar', { name: 'Task bulk actions' })).toBeNull()
+  })
+
+  it('deletes the picked rows in one call', async () => {
+    // Deleting them one dialog at a time was the only way to clear a board:
+    // 48 rows meant 48 dialogs, and the per-row endpoint is rate limited, so
+    // a loop would have refused most of them anyway.
+    const batchDeleteTasks = vi.fn(
+      (ids: readonly string[]): Promise<BulkDeleteOutcome> =>
+        Promise.resolve({ succeeded: ids.length, failed: 0, failedReasons: [] }),
+    )
+    useTasksStore.setState({ batchDeleteTasks })
+    const user = userEvent.setup()
+    renderBoard(['/tasks?view=list'])
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select task Task t1' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Select task Active task' }))
+    await user.click(screen.getByRole('button', { name: 'Delete 2' }))
+    await user.click(
+      await screen.findByRole('button', { name: /^Delete 2$/, hidden: false }),
+    )
+
+    await waitFor(() => {
+      expect(batchDeleteTasks).toHaveBeenCalledTimes(1)
+    })
+    expect(batchDeleteTasks.mock.calls[0]?.[0]).toHaveLength(2)
+  })
+
+  it('keeps the selection off the board view, where a card is a drag handle', () => {
+    renderBoard(['/tasks'])
+
+    expect(screen.queryByRole('checkbox', { name: /Select task/ })).toBeNull()
   })
 })

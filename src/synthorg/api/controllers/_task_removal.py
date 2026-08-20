@@ -17,10 +17,16 @@ turns every surviving reference into a dangling id.
 """
 
 from synthorg.api.controllers._approval_retire import retiring_task_approvals
+from synthorg.api.controllers._bulk_delete import BulkDeleteResult, run_bulk_delete
 from synthorg.api.controllers._deletion_record import record_deletion_for
 from synthorg.api.state import AppState
 from synthorg.core.deleted_entity import DeletedEntityKind
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import task_engine_of
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_TASK_DELETED
+
+logger = get_logger(__name__)
 
 
 async def remove_task(
@@ -57,4 +63,31 @@ async def remove_task(
     )
 
 
-__all__ = ["remove_task"]
+async def remove_tasks(
+    app_state: AppState,
+    ids: tuple[NotBlankStr, ...],
+    *,
+    requested_by: str,
+) -> BulkDeleteResult:
+    """Delete every task in *ids*, collecting the ones that refuse.
+
+    A task a plan still names as its objective refuses, and clearing a board is
+    the selection that mixes those in, so one refusal must not end the action.
+
+    Args:
+        app_state: Application state carrying the task engine and stores.
+        ids: The tasks the operator selected.
+        requested_by: The person who asked.
+
+    Returns:
+        What was removed and what remains.
+    """
+
+    async def _delete_one(task_id: str) -> None:
+        await remove_task(app_state, task_id, requested_by=requested_by)
+        logger.info(API_TASK_DELETED, task_id=task_id)
+
+    return await run_bulk_delete(ids, _delete_one, entity="task")
+
+
+__all__ = ["remove_task", "remove_tasks"]
