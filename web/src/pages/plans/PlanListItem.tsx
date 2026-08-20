@@ -7,11 +7,8 @@ import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
-import { derivePlanStats, planDetailPath } from '@/utils/plans'
-
-/** Review inbox rows only summarise; critical-path membership is a detail-page
- * signal, so the row stats intentionally ignore it (empty path set). */
-const NO_CRITICAL_PATH: ReadonlySet<string> = new Set()
+import { planSolicitsReview } from '@/utils/plan-status'
+import { criticalPathFor, derivePlanStats, planDetailPath } from '@/utils/plans'
 
 export interface PlanListItemProps {
   plan: Plan
@@ -28,10 +25,21 @@ export interface PlanListItemProps {
 export function PlanListItem({ plan, roster, className }: PlanListItemProps) {
   const itemCount = plan.items.length
   const headline = plan.objective_title
-  const stats = useMemo(
-    () => derivePlanStats(plan.items, NO_CRITICAL_PATH, roster),
-    [plan.items, roster],
+  // The same derivation the detail page runs, critical path included. Passing
+  // an empty path here made the row and the page it links to disagree about
+  // one number under one label: a row read "3 to review" and its own detail
+  // page headlined 6, because a critical-path item flags on one and not the
+  // other. Both are derived from the plan's own items, so there is nothing to
+  // fetch and no reason for two answers.
+  const criticalPath = useMemo(
+    () => criticalPathFor(plan.items, plan.task_structure),
+    [plan.items, plan.task_structure],
   )
+  const stats = useMemo(
+    () => derivePlanStats(plan.items, criticalPath, roster),
+    [plan.items, criticalPath, roster],
+  )
+  const solicitsReview = planSolicitsReview(plan.status)
   return (
     <Link
       to={planDetailPath(plan.id)}
@@ -57,7 +65,7 @@ export function PlanListItem({ plan, roster, className }: PlanListItemProps) {
               Awaiting your decision
             </StatusPill>
           )}
-          {stats.flaggedItems > 0 && (
+          {solicitsReview && stats.flaggedItems > 0 && (
             <StatusPill tone="warning" className="shrink-0">
               {stats.flaggedItems} to review
             </StatusPill>

@@ -1,5 +1,7 @@
 import type { TaskStructure } from '@/api/types/enums'
+import type { PlanStatus } from '@/api/types/plans'
 import { MetricCard } from '@/components/ui/metric-card'
+import { planSolicitsReview } from '@/utils/plan-status'
 import type { PlanStats } from '@/utils/plans'
 
 function pluralItems(count: number): string {
@@ -19,10 +21,17 @@ const STRUCTURE_LABEL: Record<TaskStructure, string> = {
 export function PlanMetricsHeader({
   stats,
   taskStructure,
+  status,
 }: {
   stats: PlanStats
   taskStructure: TaskStructure
+  status: PlanStatus
 }) {
+  // A replaced or decided plan cannot be reviewed into a different outcome, so
+  // asking for a review on it is asking for something that cannot be given. The
+  // flags themselves still stand: they describe the items, and the page is
+  // still worth reading as the record of what was proposed.
+  const solicitsReview = planSolicitsReview(status)
   return (
     <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
       <MetricCard
@@ -31,7 +40,7 @@ export function PlanMetricsHeader({
         subText={`${stats.highComplexity} high-effort`}
       />
       <MetricCard
-        label="Needs your review"
+        label={solicitsReview ? 'Needs your review' : 'Flagged at review'}
         value={stats.flaggedItems}
         subText={`${stats.highStakes} high-stakes`}
       />

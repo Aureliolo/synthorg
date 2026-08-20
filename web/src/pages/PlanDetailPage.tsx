@@ -225,7 +225,11 @@ function PlanReviewView({ plan, roles, setMode }: {
       />
       <PlanPendingDecisionBanner plan={plan} />
       <PlanFailureBanner plan={plan} />
-      <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
+      <PlanMetricsHeader
+        stats={stats}
+        taskStructure={plan.task_structure}
+        status={plan.status}
+      />
       <PlanEvaluationPanel planId={plan.id} />
       <PlanOpenQuestionsPanel plan={plan} />
       <PlanAttentionPanel

@@ -4,6 +4,7 @@ import { MetadataGrid } from '@/components/ui/metadata-grid'
 import { UNASSIGNED_LABEL } from '@/utils/agents'
 import { formatCurrency, formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Project } from '@/api/types/projects'
+import { ProjectDeleteAction } from './ProjectDeleteAction'
 
 interface ProjectHeaderProps {
   project: Project
@@ -55,7 +56,7 @@ export function ProjectHeader({ project, taskCount, contributorCount }: ProjectH
   const metadataItems = buildProjectMetadata(project, taskCount, contributorCount)
 
   return (
-    <SectionCard title={project.name}>
+    <SectionCard title={project.name} action={<ProjectDeleteAction project={project} />}>
       {project.description && (
         <p className="mb-4 text-sm text-muted-foreground">{project.description}</p>
       )}

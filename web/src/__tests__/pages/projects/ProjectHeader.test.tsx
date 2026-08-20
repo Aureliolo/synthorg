@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { ProjectHeader } from '@/pages/projects/ProjectHeader'
 import { makeProject } from '@/__tests__/helpers/factories'
@@ -9,7 +10,9 @@ describe('ProjectHeader', () => {
     // project field that nothing ever populated, so the header always showed
     // 0 while the task list below it rendered a full list.
     render(
-      <ProjectHeader project={makeProject('proj-1')} taskCount={3} contributorCount={2} />,
+      <MemoryRouter>
+        <ProjectHeader project={makeProject('proj-1')} taskCount={3} contributorCount={2} />
+      </MemoryRouter>,
     )
 
     const tasks = screen.getByText('Tasks').closest('div')
@@ -19,7 +22,9 @@ describe('ProjectHeader', () => {
 
   it('renders zero when the project genuinely has no tasks', () => {
     render(
-      <ProjectHeader project={makeProject('proj-2')} taskCount={0} contributorCount={0} />,
+      <MemoryRouter>
+        <ProjectHeader project={makeProject('proj-2')} taskCount={0} contributorCount={0} />
+      </MemoryRouter>,
     )
 
     const tasks = screen.getByText('Tasks').closest('div')

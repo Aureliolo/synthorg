@@ -18,6 +18,7 @@ import {
   planItemToPayload,
   planItemTitleMap,
 } from '@/utils/plans'
+import { planSolicitsReview } from '@/utils/plan-status'
 
 describe('plan severity predicates', () => {
   it('treats complex and epic as high complexity', () => {
@@ -387,6 +388,22 @@ describe('derivePlanStaffing', () => {
     ])
     expect(staffing.roles[0]?.overloaded).toBe(false)
   })
+})
+
+describe('planSolicitsReview', () => {
+  it.each(['pending_review', 'draft', 'planning', 'approved', 'executing'] as const)(
+    'asks for a review on a %s plan',
+    (status) => {
+      expect(planSolicitsReview(status)).toBe(true)
+    },
+  )
+
+  it.each(['superseded', 'completed', 'rejected', 'failed'] as const)(
+    'asks for nothing on a %s plan',
+    (status) => {
+      expect(planSolicitsReview(status)).toBe(false)
+    },
+  )
 })
 
 describe('planItemToPayload', () => {
