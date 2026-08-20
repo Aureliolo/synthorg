@@ -130,6 +130,16 @@ _BOUNDARIES: Final[dict[str, _Boundary]] = {
         _ENFORCING,
         frozenset({"guard_plan_text", "guard_plan_texts"}),
     ),
+    "src/synthorg/meta/charter/_charter_output_guard.py": _Boundary(
+        "shared charter-interview guard",
+        _ENFORCING,
+        frozenset({"approve_texts"}),
+    ),
+    "src/synthorg/meta/charter/strategy.py": _Boundary(
+        "charter question, title, brief and proposed project name",
+        _ENFORCING,
+        frozenset({"approved_decision"}),
+    ),
     "src/synthorg/tools/file_system/_output_policy_guard.py": _Boundary(
         "shared file-write guard",
         _ENFORCING,

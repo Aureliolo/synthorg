@@ -108,6 +108,7 @@ the output escapes:
 | Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body`, except a merge commit title (`is_commit=True`), which is `commit_message` |
 | Parked question | `tools/clarification_tool.py` + `tools/decision_tool.py`, via the shared `tools/_question_output_guard.py` | `message` |
 | Plan prose | `engine/decomposition/_plan_output_guard.py` `guard_plan_text` / `guard_plan_texts`, called from `engine/decomposition/llm_parse.py` on every submitted plan's item titles, descriptions, acceptance criteria, assumptions, and open questions | `deliverable` |
+| Charter interview | `meta/charter/_charter_output_guard.py` `approved_decision`, called from `meta/charter/strategy.py` on the parse of every interview turn | `message` (the question) / `deliverable` (the draft) |
 | Initiative evaluation verdict | `engine/initiative/evaluate_session.py` `SubmitEvaluationTool`, over the summary and every criterion verdict the scoring session submits | `deliverable` |
 
 Every row's guard reaches the same primitive, `engine/output_style/approval.py`
@@ -123,6 +124,18 @@ built: the operator approves it, and the wording they approve is the wording
 the org commits to. Refused there it is correctable in-session, which is why
 the guard raises rather than rewriting and the refusal names the places it
 matched.
+
+The **charter interview** is both halves of a turn and takes two channels for
+that reason. The question is addressed to the operator in chat, which is the
+surface they read most; the draft is an artefact they approve, and its
+`proposed_project_name` becomes the name of the project the whole run is
+delivered under. It is guarded on the parse of the model's reply, beside the
+schema check, because that is where the strategy already asks for a correction:
+a refusal costs one repair turn rather than the interview, which is the same
+bargain the plan guard strikes on the submit path. The repair turn asks for a
+CORRECTED reply rather than the same content in a different shape, since a
+reply refused on its wording and re-sent unchanged spends the one repair for
+nothing.
 
 The message boundaries share one helper so an auto-rewrite is applied
 consistently at both. The code-file and forge boundaries are code-channel
