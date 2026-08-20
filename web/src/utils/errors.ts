@@ -34,16 +34,29 @@ const GENERIC_VALIDATION_MESSAGE =
 
 /**
  * Per-HTTP-status canned copy used by `getErrorMessage` when no
- * specialised handler claimed the response. 502 / 504 are grouped
- * because both manifest as the same transient upstream hop failure.
+ * specialised handler claimed the response. 502 / 504 are grouped because
+ * both mean the proxy gave up on a hop, which says nothing about whether
+ * the backend finished the work.
+ *
+ * The copy deliberately does not call these transient or tell anyone to
+ * retry. A live run approved a charter behind a 504 and the backend had
+ * already created the project, the plan and a decomposition; "retry
+ * shortly" would have provisioned a second one. Another told the operator
+ * a deterministic five-minute planning failure was a connectivity blip.
+ * Whether the work landed is the one thing a gateway timeout cannot tell
+ * us, so the message says exactly that and sends them to look.
  */
+const UPSTREAM_TIMEOUT_MESSAGE =
+  'The server did not respond in time. The action may still have gone through, ' +
+  'so check its current state before trying again.'
+
 const STATUS_FALLBACK_MESSAGES: Readonly<Record<number, string>> = {
   400: 'Invalid request. Please check your input.',
   401: 'Authentication required. Please log in.',
   403: 'You do not have permission to perform this action.',
   404: 'The requested resource was not found.',
-  502: 'Temporary connectivity issue. Please retry shortly.',
-  504: 'Temporary connectivity issue. Please retry shortly.',
+  502: UPSTREAM_TIMEOUT_MESSAGE,
+  504: UPSTREAM_TIMEOUT_MESSAGE,
 }
 
 /**
