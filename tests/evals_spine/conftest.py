@@ -1,12 +1,36 @@
-"""Shared fixtures for the eval-spine test suite."""
+"""Shared fixtures for the eval-spine test suite.
+
+The ``host`` fixture is per-test, not shared. ``_ACTIVE_HOSTS`` allows one host
+per process, and several tests boot one of their own to exercise the lifecycle,
+so a wider scope would hold the single slot and refuse them. Booting the real
+application lifespan per test is the price of that; it is why every module using
+this fixture carries the ``slow`` marker and a raised timeout.
+
+It lives at the spine's root rather than in one harness's suite because every
+harness on the recording spine needs it, and pytest does not share fixtures
+between sibling packages.
+"""
 
 import asyncio
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from pathlib import Path
 
 import pytest
 import yaml
+
+from evals.runner.execution import seed_eval_project
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests.evals_spine._recording import (
+    RECORDING_OPENHANDS_IMAGE,
+    RECORDING_SANDBOX_IMAGE,
+    RECORDING_SIDECAR_IMAGE,
+    RecordingGatewayHost,
+    RecordingHostConfig,
+    recording_company_config,
+)
 
 BriefYamlWriter = Callable[..., Path]  # type: ignore[explicit-any]  # arbitrary-arg brief-writer test factory
 
@@ -81,3 +105,49 @@ def write_brief_yaml(tmp_path: Path) -> BriefYamlWriter:
         return path
 
     return _write
+
+
+@pytest.fixture
+async def project_repo(tmp_path: Path) -> AsyncIterator[ProjectRepository]:
+    """A connected backend carrying the benchmark project.
+
+    Every brief expects artifacts, which makes every cell a work task, and the
+    engine refuses to run one against a project it cannot look up. Real
+    persistence rather than a double, because the lookup the engine performs is
+    the thing under test: a stand-in that answered would prove nothing about
+    whether the seeded row is reachable.
+
+    Yields:
+        The seeded project repository.
+    """
+    backend = SQLitePersistenceBackend(
+        SQLiteConfig(path=str(tmp_path / "eval-projects.db"))
+    )
+    await backend.connect()
+    try:
+        await backend.migrate()
+        await seed_eval_project(backend.projects)
+        yield backend.projects
+    finally:
+        await backend.disconnect()
+
+
+@pytest.fixture
+async def host(tmp_path: Path) -> AsyncIterator[RecordingGatewayHost]:
+    """Boot and serve the recording host on an ephemeral loopback port.
+
+    Yields:
+        The started host.
+    """
+    # Loopback only: nothing here drives a container, so the wider bind a real
+    # recording needs would expose the surface for no gain.
+    config = RecordingHostConfig(
+        company_config=recording_company_config(),
+        scratch_dir=tmp_path / "host",
+        bind_host="127.0.0.1",
+        sandbox_image=RECORDING_SANDBOX_IMAGE,
+        sidecar_image=RECORDING_SIDECAR_IMAGE,
+        openhands_image=RECORDING_OPENHANDS_IMAGE,
+    )
+    async with RecordingGatewayHost(config) as started:
+        yield started

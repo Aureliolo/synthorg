@@ -1,35 +1,36 @@
 # module-kind: orchestrator
-"""The recording host: the A/B recorder serving its own LLM gateway.
+"""The recording host: a harness serving its own LLM gateway.
 
-The OpenHands loop authenticates to the gateway with a per-run bearer minted by
-the *same* :class:`~synthorg.llm.gateway_token.GatewaySigner` instance the
-gateway verifies with, and that instance is built per process and never
+An agent inside a container authenticates to the gateway with a per-run bearer
+minted by the *same* :class:`~synthorg.llm.gateway_token.GatewaySigner` instance
+the gateway verifies with, and that instance is built per process and never
 persisted, so only a process that owns the signer can mint a bearer its own
-gateway will accept. The recorder therefore boots the real application against a
+gateway will accept. A recorder therefore boots the real application against a
 scratch database, serves it on a local port, and reads the signer off the state
-the boot wiring populated.
+the boot wiring populated. Borrowing a running backend is not a shortcut here;
+it is the one configuration that cannot work.
 
-Owning the process rather than dialling one has two further consequences the
-scoreboard depends on. The gateway's cost ledger belongs to the recorder, so the
-OpenHands leg's spend (which is recorded inside the container's calls, not the
-engine's) is visible at all. And the credentialed-MCP surface the SDK insists on
-is the real one, served under the shipped empty capability grant, so the harness
-completes the handshake while reaching no credentialed tool.
+Owning the process rather than dialling one has two further consequences every
+artifact recorded through it depends on. The gateway's cost ledger belongs to
+the recorder, so spend from calls made inside a container (rather than by the
+engine) is visible at all. And the credentialed-MCP surface an embedded harness
+insists on is the real one, served under the shipped empty capability grant, so
+the handshake completes while reaching no credentialed tool.
 
 Serving the real application means serving *all* of it, which two things here
 exist to contain. ``/auth/setup`` is deliberately excluded from authentication
 so an operator can never lock themselves out, and it hands a CEO session to
 whoever asks first while no CEO exists, so this host seeds one of its own before
 anything can accept a connection. And the listener resolves the narrowest
-address the sandbox can still reach (see :mod:`evals.loop_ab.bind_host`) rather
+address the sandbox can still reach (see :mod:`evals.harness.bind_host`) rather
 than every interface, which keeps the remaining surfaces (login, health, docs)
 off the network. Plain HTTP is sound at that point because both resolved
 addresses (host loopback, or the Docker bridge gateway) are host-local: nothing
 on a shared segment is in a position to read a bearer off the wire.
 
 The scratch database and the bootstrap secrets die with the run; the signer
-never leaves memory. Per-cell workspace trees live outside this module and are
-reclaimed by the recorder.
+never leaves memory. Per-run workspace trees live outside this module and are
+reclaimed by whichever harness created them.
 """
 
 import asyncio
@@ -50,12 +51,12 @@ import uvicorn
 from litestar import Litestar
 
 from evals.errors import (
-    LoopAbGatewayUnavailableError,
-    LoopAbHostAlreadyStartedError,
-    LoopAbHostConfigInvalidError,
+    HarnessGatewayUnavailableError,
+    HarnessHostAlreadyStartedError,
+    HarnessHostConfigInvalidError,
 )
-from evals.loop_ab.bind_host import resolve_bind_host
-from evals.loop_ab.transcript import ASGIApp, TranscriptRecorder, transcribing
+from evals.harness.bind_host import resolve_bind_host
+from evals.harness.transcript import ASGIApp, TranscriptRecorder, transcribing
 from evals.runner.execution import seed_eval_project
 from synthorg.api.app import create_app
 from synthorg.api.app_overrides import AppOverrides
@@ -69,14 +70,14 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
-    EVALS_LOOP_AB_HOST_ADMIN_SEEDED,
-    EVALS_LOOP_AB_HOST_IMAGES_INSTALLED,
-    EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
-    EVALS_LOOP_AB_HOST_START_FAILED,
-    EVALS_LOOP_AB_HOST_STARTED,
-    EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
-    EVALS_LOOP_AB_HOST_STOPPED,
-    EVALS_LOOP_AB_IMAGE_UNRESOLVED,
+    EVALS_HARNESS_HOST_ADMIN_SEEDED,
+    EVALS_HARNESS_HOST_IMAGES_INSTALLED,
+    EVALS_HARNESS_HOST_SECRETS_INSTALLED,
+    EVALS_HARNESS_HOST_START_FAILED,
+    EVALS_HARNESS_HOST_STARTED,
+    EVALS_HARNESS_HOST_STOP_TIMED_OUT,
+    EVALS_HARNESS_HOST_STOPPED,
+    EVALS_HARNESS_IMAGE_UNRESOLVED,
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import SQLiteConfig
@@ -114,7 +115,8 @@ _STOP_TIMEOUT_SECONDS: Final[float] = 30.0
 #: socket is about to close under it either way.
 _CANCEL_TIMEOUT_SECONDS: Final[float] = 5.0
 
-_SCRATCH_DB_NAME: Final[str] = "loop-ab.db"
+#: Label a harness gets when it does not name itself.
+DEFAULT_RECORDING_LABEL: Final[str] = "recording"
 
 #: Owner-only, because the scratch database holds this run's cost, task and
 #: audit rows in the clear (only settings values are encrypted at rest), and a
@@ -123,10 +125,9 @@ _SCRATCH_DIR_MODE: Final[int] = 0o700
 
 _MAX_PORT: Final[int] = 65535
 
-#: The throwaway account that occupies the single-CEO slot. It exists so the
-#: unauthenticated first-run setup route has nothing left to grant, so its
-#: password is random, never disclosed and never used to log in.
-_SEED_ADMIN_USERNAME: Final[str] = "loop-ab-recorder"
+#: Bytes behind the throwaway account that occupies the single-CEO slot. It
+#: exists so the unauthenticated first-run setup route has nothing left to
+#: grant, so its password is random, never disclosed and never used to log in.
 _SEED_PASSWORD_BYTES: Final[int] = 32
 
 # Cat-3 bootstrap secrets the application resolves straight from the
@@ -182,7 +183,7 @@ async def _image_id(docker: aiodocker.Docker, reference: str) -> str | None:
         inspected = await docker.images.inspect(reference)
     except (aiodocker.DockerError, OSError) as exc:
         logger.warning(
-            EVALS_LOOP_AB_IMAGE_UNRESOLVED,
+            EVALS_HARNESS_IMAGE_UNRESOLVED,
             image=reference,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -213,7 +214,7 @@ async def _cancel_serving(serving: asyncio.Task[None], port: int) -> None:
             raise
     except TimeoutError:
         logger.warning(
-            EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+            EVALS_HARNESS_HOST_STOP_TIMED_OUT,
             timeout_seconds=_CANCEL_TIMEOUT_SECONDS,
             port=port,
             phase="cancel",
@@ -221,7 +222,7 @@ async def _cancel_serving(serving: asyncio.Task[None], port: int) -> None:
 
 
 @dataclass(frozen=True)
-class LoopAbHostConfig:
+class RecordingHostConfig:
     """What the recording host is stood up with.
 
     Attributes:
@@ -229,6 +230,10 @@ class LoopAbHostConfig:
             is what the gateway resolves a run bearer's bound provider against,
             so the manifest's capabilities must name providers present here.
         scratch_dir: Directory for the throwaway database, removed on exit.
+        label: Names this recording, and through it the throwaway database and
+            the seeded CEO account. Two harnesses recording at once would
+            otherwise write the same filename under a shared scratch root and
+            each read the other's rows.
         bind_host: Interface to listen on, or ``None`` to resolve the narrowest
             address the sandbox can still reach.
         bind_port: Port to listen on; ``0`` takes an ephemeral one.
@@ -248,6 +253,7 @@ class LoopAbHostConfig:
 
     company_config: RootConfig
     scratch_dir: Path
+    label: str = DEFAULT_RECORDING_LABEL
     bind_host: str | None = None
     bind_port: int = 0
     container_host: str = DEFAULT_CONTAINER_HOST
@@ -259,12 +265,12 @@ class LoopAbHostConfig:
         """Reject a port the socket layer could only refuse later.
 
         Raises:
-            LoopAbHostConfigInvalidError: ``bind_port`` is outside the TCP port
+            HarnessHostConfigInvalidError: ``bind_port`` is outside the TCP port
                 range.
         """
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
-            raise LoopAbHostConfigInvalidError(msg)
+            raise HarnessHostConfigInvalidError(msg)
 
 
 @dataclass(frozen=True)
@@ -304,7 +310,7 @@ class RecordedImages:
     openhands_id: str | None
 
 
-class LoopAbGatewayHost:
+class RecordingGatewayHost:
     """Boots, serves and tears down the recorder's own application instance.
 
     Used as an async context manager: the matrix runs inside it, and every
@@ -312,7 +318,7 @@ class LoopAbGatewayHost:
     them off the started host.
     """
 
-    def __init__(self, config: LoopAbHostConfig) -> None:
+    def __init__(self, config: RecordingHostConfig) -> None:
         self._config = config
         self._app: Litestar | None = None
         #: Records every completion exchange of whichever cell is bound, which
@@ -354,11 +360,11 @@ class LoopAbGatewayHost:
             The live :class:`AppState`.
 
         Raises:
-            LoopAbGatewayUnavailableError: The host has not been started.
+            HarnessGatewayUnavailableError: The host has not been started.
         """
         if self._app is None:
             msg = "loop A/B recording host was read before it was started"
-            raise LoopAbGatewayUnavailableError(msg)
+            raise HarnessGatewayUnavailableError(msg)
         state: AppState = self._app.state["app_state"]
         return state
 
@@ -370,7 +376,7 @@ class LoopAbGatewayHost:
             The shared :class:`GatewaySigner`.
 
         Raises:
-            LoopAbGatewayUnavailableError: The host is unstarted, or booted
+            HarnessGatewayUnavailableError: The host is unstarted, or booted
                 without a gateway. Building one here would recreate exactly the
                 second-instance bug this host exists to remove.
         """
@@ -380,7 +386,7 @@ class LoopAbGatewayHost:
                 "the recording host booted without a gateway signer, so no "
                 "bearer it mints could be verified by its own gateway"
             )
-            raise LoopAbGatewayUnavailableError(msg)
+            raise HarnessGatewayUnavailableError(msg)
         return signer
 
     @property
@@ -391,14 +397,14 @@ class LoopAbGatewayHost:
             The started host's project repository.
 
         Raises:
-            LoopAbGatewayUnavailableError: The host has not been started, so
+            HarnessGatewayUnavailableError: The host has not been started, so
                 there is no connected backend to read from.
         """
         if self._persistence is None:
             msg = (
                 "the recording host's project repository was read before it was started"
             )
-            raise LoopAbGatewayUnavailableError(msg)
+            raise HarnessGatewayUnavailableError(msg)
         return self._persistence.projects
 
     @property
@@ -409,7 +415,7 @@ class LoopAbGatewayHost:
             The resolved :class:`RecordedImages`.
 
         Raises:
-            LoopAbGatewayUnavailableError: The host has not been started, so
+            HarnessGatewayUnavailableError: The host has not been started, so
                 the resolver chain that decides these has not run.
         """
         if self._images is None:
@@ -417,7 +423,7 @@ class LoopAbGatewayHost:
                 "the recording host's images were read before it was started; "
                 "they are resolved by the application lifespan, not before it"
             )
-            raise LoopAbGatewayUnavailableError(msg)
+            raise HarnessGatewayUnavailableError(msg)
         return self._images
 
     @property
@@ -499,7 +505,7 @@ class LoopAbGatewayHost:
         ``__aexit__`` never runs for a ``__aenter__`` that raised.
 
         Raises:
-            LoopAbHostAlreadyStartedError: This host, or another in the same
+            HarnessHostAlreadyStartedError: This host, or another in the same
                 process, is already holding the ephemeral bootstrap secrets.
         """
         if self._app is not None or _ACTIVE_HOSTS:
@@ -507,13 +513,13 @@ class LoopAbGatewayHost:
                 "a loop A/B recording host is already started in this process; "
                 "stop it before starting another"
             )
-            raise LoopAbHostAlreadyStartedError(msg)
+            raise HarnessHostAlreadyStartedError(msg)
         _ACTIVE_HOSTS.add(id(self))
         try:
             await self._boot()
         except BaseException as exc:
             logger.warning(
-                EVALS_LOOP_AB_HOST_START_FAILED,
+                EVALS_HARNESS_HOST_START_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -535,7 +541,9 @@ class LoopAbGatewayHost:
         # lifespan never started. An open handle also blocks the scratch tree's
         # removal on Windows, so the leak would show up as a stranded database.
         persistence = SQLitePersistenceBackend(
-            SQLiteConfig(path=str(self._config.scratch_dir / _SCRATCH_DB_NAME))
+            SQLiteConfig(
+                path=str(self._config.scratch_dir / f"{self._config.label}.db")
+            )
         )
         self._persistence = persistence
         await persistence.connect()
@@ -560,7 +568,7 @@ class LoopAbGatewayHost:
         images = await self._resolve_images()
         self._images = images
         logger.info(
-            EVALS_LOOP_AB_HOST_STARTED,
+            EVALS_HARNESS_HOST_STARTED,
             port=self._port,
             gateway_base_url=self.container_gateway_url,
             mcp_base_url=self.container_mcp_url,
@@ -597,7 +605,7 @@ class LoopAbGatewayHost:
                             )
                 except TimeoutError:
                     logger.warning(
-                        EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+                        EVALS_HARNESS_HOST_STOP_TIMED_OUT,
                         timeout_seconds=_STOP_TIMEOUT_SECONDS,
                         port=port,
                     )
@@ -624,7 +632,7 @@ class LoopAbGatewayHost:
             await asyncio.to_thread(
                 shutil.rmtree, self._config.scratch_dir, ignore_errors=True
             )
-            logger.info(EVALS_LOOP_AB_HOST_STOPPED, port=port)
+            logger.info(EVALS_HARNESS_HOST_STOPPED, port=port)
 
     async def _seed_admin(self, persistence: SQLitePersistenceBackend) -> None:
         """Occupy the single-CEO slot before the host can accept a connection.
@@ -647,10 +655,11 @@ class LoopAbGatewayHost:
             secrets.token_urlsafe(_SEED_PASSWORD_BYTES)
         )
         now = datetime.now(UTC)
+        username = f"{self._config.label}-recorder"
         await persistence.users.save(
             User(
                 id=str(uuid.uuid4()),
-                username=_SEED_ADMIN_USERNAME,
+                username=username,
                 password_hash=password_hash,
                 role=HumanRole.CEO,
                 must_change_password=False,
@@ -659,7 +668,7 @@ class LoopAbGatewayHost:
                 updated_at=now,
             )
         )
-        logger.info(EVALS_LOOP_AB_HOST_ADMIN_SEEDED, username=_SEED_ADMIN_USERNAME)
+        logger.info(EVALS_HARNESS_HOST_ADMIN_SEEDED, username=username)
 
     def _install_ephemeral_secrets(self) -> None:
         """Give the throwaway instance its own Cat-3 bootstrap secrets.
@@ -678,7 +687,7 @@ class LoopAbGatewayHost:
                 secrets.token_bytes(_SECRET_BYTES)
             ).decode("ascii")
         logger.debug(
-            EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
+            EVALS_HARNESS_HOST_SECRETS_INSTALLED,
             variables=(*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS),
         )
 
@@ -705,7 +714,7 @@ class LoopAbGatewayHost:
         # Logged like its sibling secrets installer: the images decide what
         # every container of the recording actually runs, and an override that
         # silently did not take is a matrix measured against the wrong build.
-        logger.debug(EVALS_LOOP_AB_HOST_IMAGES_INSTALLED, overrides=applied)
+        logger.debug(EVALS_HARNESS_HOST_IMAGES_INSTALLED, overrides=applied)
 
     def _restore_env(self) -> None:
         """Put the caller's environment back the way the host found it."""
@@ -808,7 +817,8 @@ class LoopAbGatewayHost:
 
 __all__ = [
     "DEFAULT_CONTAINER_HOST",
-    "LoopAbGatewayHost",
-    "LoopAbHostConfig",
+    "DEFAULT_RECORDING_LABEL",
     "RecordedImages",
+    "RecordingGatewayHost",
+    "RecordingHostConfig",
 ]

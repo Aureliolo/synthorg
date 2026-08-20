@@ -1,13 +1,11 @@
 # module-kind: tests
-"""Per-run workspace provisioning for the loop A/B harness.
+"""Provisioning a cell's workspace from the brief that declares it.
 
-Every ``(loop, capability, brief, repetition)`` cell runs against a workspace recreated
-from the brief's committed seed fixture. That reset is the fair-comparison
-invariant the whole scoreboard rests on: if one loop could inherit another's
-artifacts, the acceptance grade would measure run order rather than the loop.
-
-The layout is project-scoped because both sandboxes a cell drives resolve their
-mount through the run's project id, so a flat workspace is one neither can bind.
+The reset, the containment guard and the per-key isolation are the recording
+spine's and are covered in ``tests/evals_spine/harness/test_workspace.py``. What
+is here is what the brief adds: which key names the tree, which fixture is
+copied, and the one shape the generic seeder cannot express, a brief that
+declares no workspace at all.
 """
 
 import asyncio
@@ -16,12 +14,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from evals.errors import (
-    WorkspacePathEscapeError,
-    WorkspaceSeedNotFoundError,
-    WorkspaceSpecMissingError,
-)
-from evals.loop_ab.workspace import CellWorkspace, _contained, seed_workspace
+from evals.errors import WorkspaceSeedNotFoundError, WorkspaceSpecMissingError
+from evals.loop_ab.workspace import seed_brief_workspace
 from evals.models.brief import (
     Brief,
     BriefKind,
@@ -40,7 +34,11 @@ _SEED_DIR = "seeds/widget"
 
 
 def _brief(*, brief_id: str = "loop-ab-simple", workspace: bool = True) -> Brief:
-    """Build a minimal executable brief, optionally workspace-graded."""
+    """Build a minimal executable brief, optionally workspace-graded.
+
+    Returns:
+        The brief.
+    """
     return Brief(
         brief_id=NotBlankStr(brief_id),
         schema_version=1,
@@ -61,7 +59,11 @@ def _brief(*, brief_id: str = "loop-ab-simple", workspace: bool = True) -> Brief
 
 @pytest.fixture
 def suite_root(tmp_path: Path) -> Path:
-    """A suite directory carrying a seed fixture with a nested subdirectory."""
+    """A suite directory carrying a seed fixture with a nested subdirectory.
+
+    Returns:
+        The suite root.
+    """
     seed = tmp_path / "suite" / _SEED_DIR
     (seed / "pkg").mkdir(parents=True)
     (seed / "README.md").write_text("seed readme\n", encoding="utf-8")
@@ -69,29 +71,15 @@ def suite_root(tmp_path: Path) -> Path:
     return tmp_path / "suite"
 
 
-def test_seeds_every_file_including_nested_directories(
-    suite_root: Path, tmp_path: Path
-) -> None:
+def test_the_brief_fixture_is_copied_whole(suite_root: Path, tmp_path: Path) -> None:
     """The loop starts from a faithful copy of the committed fixture."""
-    cell = seed_workspace(
+    cell = seed_brief_workspace(
         brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
     )
 
     project = cell.project_dir
     assert (project / "README.md").read_text(encoding="utf-8") == "seed readme\n"
     assert (project / "pkg" / "widget.py").read_text(encoding="utf-8") == "VALUE = 1\n"
-
-
-def test_seed_lands_in_the_project_subtree_of_the_sandbox_root(
-    suite_root: Path, tmp_path: Path
-) -> None:
-    """The graded directory is the project subtree, not the sandbox root."""
-    cell = seed_workspace(
-        brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
-    )
-
-    assert cell.project_dir == cell.root / "projects" / EVAL_TASK_PROJECT
-    assert cell.project_dir.is_dir()
 
 
 def test_the_sandbox_binds_the_project_subtree_the_seed_landed_in(
@@ -104,7 +92,7 @@ def test_the_sandbox_binds_the_project_subtree_the_seed_landed_in(
     mount. A layout the mount cannot resolve fails every cell at the first tool
     call, so the two are asserted together rather than assumed to agree.
     """
-    cell = seed_workspace(
+    cell = seed_brief_workspace(
         brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
     )
     sandbox = DockerSandbox(workspace=cell.root)
@@ -114,46 +102,19 @@ def test_the_sandbox_binds_the_project_subtree_the_seed_landed_in(
     assert resolved == cell.project_dir.resolve()
 
 
-def test_reseeding_discards_a_prior_run_artifacts(
-    suite_root: Path, tmp_path: Path
-) -> None:
-    """A second run cannot inherit the first run's files or its edits."""
-    brief = _brief()
-    work_root = tmp_path / "work"
-    first = seed_workspace(brief=brief, suite_root=suite_root, work_root=work_root)
-    (first.project_dir / "pkg" / "widget.py").write_text(
-        "VALUE = 999\n", encoding="utf-8"
-    )
-    (first.project_dir / "leftover.txt").write_text(
-        "from the previous loop\n", encoding="utf-8"
-    )
-    # Outside the project subtree, so only a reset of the whole sandbox root
-    # clears it; a loop can write here through the mount.
-    (first.root / "stray.txt").write_text("outside the project\n", encoding="utf-8")
-
-    second = seed_workspace(brief=brief, suite_root=suite_root, work_root=work_root)
-
-    assert second == first
-    assert (second.project_dir / "pkg" / "widget.py").read_text(
-        encoding="utf-8"
-    ) == "VALUE = 1\n"
-    assert not (second.project_dir / "leftover.txt").exists()
-    assert not (second.root / "stray.txt").exists()
-
-
 def test_each_brief_gets_its_own_workspace(suite_root: Path, tmp_path: Path) -> None:
-    """Briefs are isolated from each other under a shared work root."""
+    """The brief id, not something else, is the key naming a cell's tree."""
     work_root = tmp_path / "work"
 
-    first = seed_workspace(
+    first = seed_brief_workspace(
         brief=_brief(brief_id="brief-one"), suite_root=suite_root, work_root=work_root
     )
-    second = seed_workspace(
+    second = seed_brief_workspace(
         brief=_brief(brief_id="brief-two"), suite_root=suite_root, work_root=work_root
     )
 
-    assert first != second
-    assert isinstance(first, CellWorkspace)
+    assert first.root.name == "brief-one"
+    assert second.root.name == "brief-two"
 
 
 def test_missing_seed_fixture_fails_loud(tmp_path: Path) -> None:
@@ -161,7 +122,7 @@ def test_missing_seed_fixture_fails_loud(tmp_path: Path) -> None:
     (tmp_path / "suite").mkdir()
 
     with pytest.raises(WorkspaceSeedNotFoundError, match=_SEED_DIR):
-        seed_workspace(
+        seed_brief_workspace(
             brief=_brief(), suite_root=tmp_path / "suite", work_root=tmp_path / "work"
         )
 
@@ -171,7 +132,7 @@ def test_brief_without_a_workspace_block_is_refused(
 ) -> None:
     """Calling the workspace path for a text-deliverable brief is a contract error."""
     with pytest.raises(WorkspaceSpecMissingError, match="loop-ab-simple"):
-        seed_workspace(
+        seed_brief_workspace(
             brief=_brief(workspace=False),
             suite_root=suite_root,
             work_root=tmp_path / "work",
@@ -179,28 +140,11 @@ def test_brief_without_a_workspace_block_is_refused(
 
 
 def test_brief_id_that_escapes_the_work_root_is_refused_at_the_model() -> None:
-    """``brief_id`` reaches a path join from YAML, so an escaping value is
-    rejected at the model boundary before it can ever reach the seeding join."""
+    """The model boundary refuses an escaping key before the seeder sees it.
+
+    ``brief_id`` reaches a path join from authored YAML, so the first line is
+    the model. The seeder's own guard is the second, and is exercised in the
+    spine's suite where a key can arrive without passing a model at all.
+    """
     with pytest.raises(ValidationError):
         _brief(brief_id="../escaped")
-
-
-def test_the_containment_guard_refuses_an_escaping_path(tmp_path: Path) -> None:
-    """The guard behind that model boundary actually raises.
-
-    Both inputs the seeder joins are model-validated, so nothing a loaded brief
-    can express reaches this branch: it is the second line, for a value that
-    arrived some other way (a symlink planted under a reused root). A defence
-    that has never been observed to fire is a defence nobody can rely on.
-    """
-    with pytest.raises(WorkspacePathEscapeError):
-        _contained(Path("..") / "escaped", tmp_path / "root")
-
-
-def test_the_containment_guard_admits_a_contained_path(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    root.mkdir()
-
-    assert _contained(Path("inside") / "deeper", root) == (
-        root.resolve() / "inside" / "deeper"
-    )

@@ -32,8 +32,8 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
-    EVALS_LOOP_AB_CELL_STALLED,
-    EVALS_LOOP_AB_STALL_REPORT_FAILED,
+    EVALS_HARNESS_CELL_STALLED,
+    EVALS_HARNESS_STALL_REPORT_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -172,7 +172,7 @@ class StallWatch:
             raise
         except Exception as exc:  # noqa: BLE001 -- reported, never fatal
             logger.warning(
-                EVALS_LOOP_AB_STALL_REPORT_FAILED,
+                EVALS_HARNESS_STALL_REPORT_FAILED,
                 cell=self._cell,
                 phase="poller",
                 error_type=type(exc).__name__,
@@ -198,7 +198,7 @@ class StallWatch:
         if not self.should_report(idle):
             return
         logger.warning(
-            EVALS_LOOP_AB_CELL_STALLED,
+            EVALS_HARNESS_CELL_STALLED,
             cell=self._cell,
             idle_seconds=idle,
             threshold_seconds=self._idle_seconds,
@@ -213,7 +213,7 @@ class StallWatch:
             raise
         except Exception as exc:  # noqa: BLE001 -- reported, never fatal
             logger.warning(
-                EVALS_LOOP_AB_STALL_REPORT_FAILED,
+                EVALS_HARNESS_STALL_REPORT_FAILED,
                 cell=self._cell,
                 phase="notify",
                 error_type=type(exc).__name__,

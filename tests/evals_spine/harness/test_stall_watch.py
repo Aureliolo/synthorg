@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from evals.loop_ab.stall_watch import ProgressTrackingLedger, StallWatch
+from evals.harness.stall_watch import ProgressTrackingLedger, StallWatch
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr

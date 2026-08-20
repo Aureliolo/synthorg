@@ -248,7 +248,7 @@ as "cheaper at work both do perfectly", never as "better".
 
 With a zero-priced provider nothing bounds a run whose provider stopped
 answering, and on a sequential matrix that cell strands every cell behind it.
-`evals/loop_ab/stall_watch.py` samples the cell's own cost ledger, which every
+`evals/harness/stall_watch.py` samples the cell's own cost ledger, which every
 dispatch from both legs writes through, and warns once per idle interval
 (`--stall-notify-seconds`, five minutes by default) while also handing the fact
 to the recorder, which prints it where an operator watching a multi-hour run
@@ -335,7 +335,8 @@ is rejected, so a recorder that points at a separately running backend is
 precisely the configuration that cannot work.
 
 The recorder therefore stops borrowing a gateway and owns one
-(`evals/loop_ab/host.py`): it boots the real app against a scratch
+(`evals/harness/host.py`, shared with every other real-spend
+harness): it boots the real app against a scratch
 database, serves it on a local port, and reads the signer off the state the boot
 wiring populated. Mint and verify are the same instance because they are the
 same process. No token-minting endpoint joins the API surface, and no secret is

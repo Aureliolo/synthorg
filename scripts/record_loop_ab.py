@@ -37,30 +37,31 @@ from typing import Final
 from uuid import uuid4
 
 from evals.errors import (
-    LoopAbGatewayUnavailableError,
+    HarnessGatewayUnavailableError,
     LoopAbNoCellsMeasuredError,
 )
+from evals.harness.binding import HarnessBinder
+from evals.harness.host import (
+    DEFAULT_CONTAINER_HOST,
+    RecordingGatewayHost,
+    RecordingHostConfig,
+)
+from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.binding import CellBinder
 from evals.loop_ab.emit import write_scoreboard
-from evals.loop_ab.host import (
-    DEFAULT_CONTAINER_HOST,
-    LoopAbGatewayHost,
-    LoopAbHostConfig,
-)
 from evals.loop_ab.manifest import LoopAbManifest, load_manifest
 from evals.loop_ab.models import Scoreboard
 from evals.loop_ab.preflight import DEFAULT_LATENCY_CEILING_SECONDS, run_preflight
 from evals.loop_ab.provenance import capture_provenance
 from evals.loop_ab.runner import LoopAbDeps, run_matrix
-from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.models.brief import Brief
 from synthorg.config.loader import load_config
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
-    EVALS_LOOP_AB_HOST_STOPPED,
+    EVALS_HARNESS_HOST_STOPPED,
+    EVALS_HARNESS_WORKSPACES_RECLAIMED,
     EVALS_LOOP_AB_RECORD_START,
-    EVALS_LOOP_AB_WORKSPACES_RECLAIMED,
 )
 
 logger = get_logger(__name__)
@@ -127,7 +128,7 @@ async def _record(
         latency_ceiling_seconds=args.preflight_latency_seconds,
     )
 
-    host_config = LoopAbHostConfig(
+    host_config = RecordingHostConfig(
         company_config=company_config,
         scratch_dir=run_work_root / "host",
         bind_host=args.bind_host,
@@ -138,7 +139,7 @@ async def _record(
         sidecar_image=args.sidecar_image,
     )
     try:
-        async with LoopAbGatewayHost(host_config) as host:
+        async with RecordingGatewayHost(host_config) as host:
             _log_record_start(args, manifest=manifest, briefs=briefs, host=host)
             scoreboard = await _run_supervised(
                 host,
@@ -166,7 +167,7 @@ async def _record(
 
 
 def _build_deps(
-    host: LoopAbGatewayHost,
+    host: RecordingGatewayHost,
     *,
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> LoopAbDeps:
@@ -179,7 +180,7 @@ def _build_deps(
     Returns:
         The fully wired :class:`LoopAbDeps`.
     """
-    binder = CellBinder(host=host)
+    binder = CellBinder(binder=HarnessBinder(host=host))
     return LoopAbDeps(
         build_provider=binder.build_provider,
         build_tool_registry=binder.build_tool_registry,
@@ -206,7 +207,7 @@ def _log_record_start(
     *,
     manifest: LoopAbManifest,
     briefs: tuple[Brief, ...],
-    host: LoopAbGatewayHost,
+    host: RecordingGatewayHost,
 ) -> None:
     """State what is about to be spent, and where the container must reach.
 
@@ -234,7 +235,7 @@ def _log_record_start(
 
 
 async def _run_supervised(
-    host: LoopAbGatewayHost,
+    host: RecordingGatewayHost,
     *,
     manifest: LoopAbManifest,
     briefs: tuple[Brief, ...],
@@ -262,7 +263,7 @@ async def _run_supervised(
         The completed scoreboard.
 
     Raises:
-        LoopAbGatewayUnavailableError: The gateway stopped serving mid-matrix.
+        HarnessGatewayUnavailableError: The gateway stopped serving mid-matrix.
     """
     # ``capture_provenance`` shells out to git, so it runs off the event loop.
     provenance = await asyncio.to_thread(
@@ -301,14 +302,14 @@ async def _run_supervised(
     # Logged before it is raised: this ends a matrix that has already spent
     # real money, and the raise alone reaches only the CLI's own exit path.
     logger.error(
-        EVALS_LOOP_AB_HOST_STOPPED,
+        EVALS_HARNESS_HOST_STOPPED,
         phase="matrix",
         note="the host stopped serving before the matrix finished",
         error_type=type(cause).__name__ if cause is not None else None,
         error=safe_error_description(cause) if cause is not None else None,
     )
     msg = "the recording host stopped serving before the matrix finished"
-    raise LoopAbGatewayUnavailableError(msg) from cause
+    raise HarnessGatewayUnavailableError(msg) from cause
 
 
 async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
@@ -328,7 +329,7 @@ async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
         print(f"workspaces kept: {run_work_root}")
         return
     await asyncio.to_thread(shutil.rmtree, run_work_root, ignore_errors=True)
-    logger.info(EVALS_LOOP_AB_WORKSPACES_RECLAIMED, work_root=str(run_work_root))
+    logger.info(EVALS_HARNESS_WORKSPACES_RECLAIMED, work_root=str(run_work_root))
 
 
 def _suite_version(briefs: tuple[Brief, ...]) -> str:

@@ -25,7 +25,8 @@ from typing import Final
 
 import pytest
 
-from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
+from evals.errors import HarnessProviderMissingError, LoopAbOpenHandsUnwiredError
+from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.models import Provenance
@@ -43,8 +44,7 @@ from evals.loop_ab.runner import (
     _run_cell,
     run_matrix,
 )
-from evals.loop_ab.stall_watch import ProgressTrackingLedger
-from evals.loop_ab.workspace import seed_workspace
+from evals.loop_ab.workspace import seed_brief_workspace
 from evals.models.brief import Brief
 from evals.runner.execution import (
     EVAL_TASK_PROJECT,
@@ -420,7 +420,7 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
     async def _build_provider(cell: CellRun) -> ScriptedProvider:
         del cell
         msg = "capability names a provider absent from the company config"
-        raise LoopAbProviderMissingError(msg)
+        raise HarnessProviderMissingError(msg)
 
     deps = _scripted_deps(project_repo, build_provider=_build_provider)
     coord = _CellCoordinates(
@@ -429,7 +429,7 @@ async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
         brief=_simple_brief()[0],
     )
 
-    with pytest.raises(LoopAbProviderMissingError):
+    with pytest.raises(HarnessProviderMissingError):
         await _run_cell(
             coord=coord,
             manifest=_manifest(repetitions=2),
@@ -524,7 +524,7 @@ async def test_a_run_is_checked_against_the_tree_the_brief_is_graded_on(
     re-derives the project directory beneath it exactly as the sandboxes do.
     """
     brief = _simple_brief()[0]
-    workspace = seed_workspace(
+    workspace = seed_brief_workspace(
         brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
     )
     cell = CellRun(
@@ -568,7 +568,7 @@ def test_a_brief_whose_seed_already_holds_its_declaration_is_not_free(
     the rate would read 100% however the loops behaved.
     """
     brief = next(b for b in load_brief_suite(_SUITE) if b.brief_id == "loop-ab-bugfix")
-    workspace = seed_workspace(
+    workspace = seed_brief_workspace(
         brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
     )
     declared = expected_artifacts_of(brief)

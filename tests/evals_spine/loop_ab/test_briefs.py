@@ -22,7 +22,7 @@ from typing import Final
 import pytest
 
 from evals.loader.briefs import load_brief_suite
-from evals.loop_ab.workspace import seed_workspace
+from evals.loop_ab.workspace import seed_brief_workspace
 from evals.models.brief import Brief, BriefKind
 from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import EXEC_TOTAL, grade_executable
@@ -389,7 +389,7 @@ def _graded(brief: Brief, tmp_path: Path, files: dict[str, str]) -> int:
     Returns:
         The score ``grade_executable`` assigns to the resulting workspace.
     """
-    work_dir = seed_workspace(
+    work_dir = seed_brief_workspace(
         brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
     ).project_dir
     for relative, body in files.items():
@@ -420,7 +420,7 @@ def test_the_suite_covers_every_routing_bucket() -> None:
 def test_every_brief_seeds_a_real_committed_fixture(tmp_path: Path) -> None:
     """A brief pointing at a missing fixture would grade every loop at zero."""
     for brief in load_brief_suite(_SUITE):
-        work_dir = seed_workspace(
+        work_dir = seed_brief_workspace(
             brief=brief, suite_root=_SUITE, work_root=tmp_path / brief.brief_id
         ).project_dir
 

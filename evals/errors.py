@@ -152,7 +152,7 @@ class ProvenanceUnavailableError(EvalError):
     default_message: ClassVar[str] = "Scoreboard git provenance is unavailable"
 
 
-class LoopAbProviderMissingError(EvalError):
+class HarnessProviderMissingError(EvalError):
     """Raised when a loop A/B manifest tier names an unknown provider.
 
     The manifest binds each tier to an explicit ``(provider, model)`` pair, so a
@@ -166,7 +166,7 @@ class LoopAbProviderMissingError(EvalError):
     )
 
 
-class LoopAbGatewayUnavailableError(EvalError):
+class HarnessGatewayUnavailableError(EvalError):
     """Raised when the recorder's hosted gateway did not come up wired.
 
     The recording host exists so mint and verify are the same
@@ -194,7 +194,7 @@ class LoopAbOpenHandsUnwiredError(EvalError):
     )
 
 
-class LoopAbBindHostUnresolvedError(EvalError):
+class HarnessBindHostUnresolvedError(EvalError):
     """Raised when the interface the recording host should listen on is unknown.
 
     The container dials the recorder through a ``host-gateway`` alias, so the
@@ -211,7 +211,7 @@ class LoopAbBindHostUnresolvedError(EvalError):
     )
 
 
-class LoopAbHostConfigInvalidError(EvalError):
+class HarnessHostConfigInvalidError(EvalError):
     """Raised when the recording host is configured with a value it cannot bind.
 
     Caught alongside the other host errors, so a caller wrapping host
@@ -221,7 +221,7 @@ class LoopAbHostConfigInvalidError(EvalError):
     default_message: ClassVar[str] = "Loop A/B recording host config is invalid"
 
 
-class LoopAbHostAlreadyStartedError(EvalError):
+class HarnessHostAlreadyStartedError(EvalError):
     """Raised when a started recording host is started a second time.
 
     The second start would capture the first start's throwaway bootstrap
@@ -232,7 +232,7 @@ class LoopAbHostAlreadyStartedError(EvalError):
     default_message: ClassVar[str] = "Loop A/B recording host is already started"
 
 
-class LoopAbDockerUnavailableError(EvalError):
+class HarnessDockerUnavailableError(EvalError):
     """Raised when the Docker daemon is unreachable before a recording run.
 
     Every loop drives a sandbox, so a run without a daemon measures nothing.
@@ -244,7 +244,7 @@ class LoopAbDockerUnavailableError(EvalError):
     default_message: ClassVar[str] = "Docker daemon is unreachable"
 
 
-class LoopAbProviderDegradedError(EvalError):
+class HarnessProviderDegradedError(EvalError):
     """Raised when a tier's provider is too slow to measure a matrix against.
 
     Latency is a scored dimension, and cells are recorded one after another
@@ -295,17 +295,17 @@ __all__ = [
     "CompanyConfigInvalidError",
     "EvalError",
     "EvalToolMissingError",
+    "HarnessBindHostUnresolvedError",
+    "HarnessDockerUnavailableError",
+    "HarnessGatewayUnavailableError",
+    "HarnessHostAlreadyStartedError",
+    "HarnessHostConfigInvalidError",
+    "HarnessProviderDegradedError",
+    "HarnessProviderMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
-    "LoopAbBindHostUnresolvedError",
-    "LoopAbDockerUnavailableError",
-    "LoopAbGatewayUnavailableError",
-    "LoopAbHostAlreadyStartedError",
-    "LoopAbHostConfigInvalidError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
-    "LoopAbProviderDegradedError",
-    "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",
