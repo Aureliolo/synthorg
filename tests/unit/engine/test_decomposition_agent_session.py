@@ -112,7 +112,8 @@ class _SentinelFallback(DecompositionStrategy):
 
     @override
     def plans_any_task(self) -> bool:
-        return True
+        # A fixed plan for one parent, so it cannot serve a child level.
+        return False
 
 
 def _submit_then_continue() -> ScriptedProvider:

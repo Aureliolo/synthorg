@@ -53,6 +53,7 @@ re-checks before every spawn and the harness re-checks after the run and refuses
 the measurement outright.
 """
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
@@ -133,6 +134,60 @@ ORACLE_KEEP_FILES: Final[frozenset[str]] = frozenset({"conftest.py", "__init__.p
 ORACLE_KEEP_DIRS: Final[frozenset[str]] = frozenset({"data"})
 
 
+def is_kept(relative: Path) -> bool:
+    """Whether the allowlist admits *relative*.
+
+    The one predicate both the leftover sweep and the fingerprint read, so the
+    set they disagree about cannot exist: one asks what must be GONE and the
+    other asks whether what REMAINS is unchanged, and those are complements.
+
+    Args:
+        relative: A path relative to the staged oracle directory.
+
+    Returns:
+        Whether it may still be there once the expectations are swept.
+    """
+    if relative.parts[0] in ORACLE_KEEP_DIRS:
+        return True
+    return len(relative.parts) == 1 and relative.name in ORACLE_KEEP_FILES
+
+
+def oracle_fingerprint(suite_dir: Path) -> str:
+    """Digest what the staged oracle is allowed to KEEP, and only that.
+
+    The retained ``data/`` fixtures are the INPUT every query is run against,
+    and the delivered program runs in the same mount with the same identity as
+    pytest, so it can rewrite them between one test and the next. Nothing else
+    would notice: :func:`oracle_leftovers` reads names, and a delivery that
+    edited a fixture to match what it happens to produce would be scored
+    against its own answer.
+
+    Restricted to the allowlisted set rather than the whole directory, because
+    the run is SUPPOSED to change the rest: the sweep unlinks the expectations
+    partway through, so a digest over everything differs from itself on every
+    honest run.
+
+    Taken by the harness before the container starts and re-taken after it
+    exits, which is outside anything the tree can reach.
+
+    Args:
+        suite_dir: The staged oracle directory.
+
+    Returns:
+        A hex digest over every retained file's path and bytes.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(suite_dir.rglob("*")):
+        if path.is_dir() or path.is_symlink():
+            continue
+        relative = path.relative_to(suite_dir)
+        if not is_kept(relative):
+            continue
+        digest.update(str(relative).encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def oracle_leftovers(suite_dir: Path) -> tuple[Path, ...]:
     """Every staged file the oracle should not still be holding.
 
@@ -150,9 +205,7 @@ def oracle_leftovers(suite_dir: Path) -> tuple[Path, ...]:
         if path.is_dir():
             continue
         relative = path.relative_to(suite_dir)
-        if relative.parts[0] in ORACLE_KEEP_DIRS:
-            continue
-        if len(relative.parts) == 1 and relative.name in ORACLE_KEEP_FILES:
+        if is_kept(relative):
             continue
         offenders.append(relative)
     return tuple(offenders)
@@ -229,7 +282,7 @@ class SandboxUnitGrader:
             owner_id=NotBlankStr(str(project_dir)),
             project_id=self.project_id,
         )
-        _refuse_without_a_runner(result.stdout + result.stderr)
+        refuse_without_a_runner(result.stdout + result.stderr, report_path=report_path)
         passed, detail = read_verdict(report_path, timed_out=result.timed_out)
         logger.info(
             EVALS_RECURSION_GRADED,
@@ -243,37 +296,53 @@ class SandboxUnitGrader:
         return False, detail or tail_of(result.stdout + result.stderr)
 
 
-#: What the interpreter says when the image has no test runner in it.
+#: What the interpreter says when it has no test runner in it.
 _NO_RUNNER: Final[str] = "No module named pytest"
 
 
-def _refuse_without_a_runner(output: str) -> None:
-    """Refuse to grade at all when the image cannot run a suite.
+def refuse_without_a_runner(output: str, *, report_path: Path) -> None:
+    """Refuse to grade at all when the interpreter cannot run a suite.
 
-    An image without pytest fails every graded run identically to a delivery
-    that wrote no report, so the sweep would record every unit as undelivered
-    and publish an empty survival curve. That is the worst failure available
-    here: it does not look like a broken harness, it looks like a catastrophic
-    but legitimate result, which is the shape of the finding the experiment
-    exists to measure.
+    An interpreter without pytest fails identically to a delivery that wrote no
+    report, so the sweep would record every unit as undelivered and publish an
+    empty survival curve. That is the worst failure available here: it does not
+    look like a broken harness, it looks like a catastrophic but legitimate
+    result, which is the shape of the finding the experiment exists to measure.
+
+    Checked on both graded paths, and on the oracle's path the returncode
+    cannot substitute for it: ``python -m pytest`` with no pytest exits 1,
+    which is the same status as "tests ran and some failed", so the oracle
+    would read a missing runner as every requirement failing.
+
+    The marker ALONE is not enough to refuse on, and this is the load-bearing
+    half: the captured output carries whatever the delivered tree printed, so a
+    delivery whose test asserts on that message would abort a matrix that had
+    already spent real money. A session that ran writes its report at session
+    end and an absent interpreter never reaches one, so the report's ABSENCE is
+    the corroborating evidence the tree cannot fake in that direction: writing
+    a report does not trigger the refusal, and it is the only thing a tree
+    could do here.
 
     A missing tool is systemic rather than per cell, so this raises the error
     the matrix stops on rather than failing one unit.
 
     Args:
         output: What the graded run printed.
+        report_path: Where the run was told to write its report.
 
     Raises:
-        EvalToolMissingError: The sandbox image has no pytest.
+        EvalToolMissingError: The interpreter that ran has no pytest.
     """
-    if _NO_RUNNER not in output:
+    if _NO_RUNNER not in output or report_path.is_file():
         return
     msg = (
-        "the sandbox image has no pytest, so nothing can be graded in it and "
-        "every unit would read as undelivered. The image is built from "
-        "docker/sandbox/apko.yaml, which declares py3.14-pytest; a published "
-        "tag from before that was added does not carry it. Build the image "
-        "from this tree and pass --sandbox-image"
+        "the interpreter that ran has no pytest, so nothing can be graded and "
+        "every unit would read as undelivered. In a recording that is the "
+        "sandbox image, built from docker/sandbox/apko.yaml which declares "
+        "py3.14-pytest; a published tag from before that was added does not "
+        "carry it, so build the image from this tree and pass --sandbox-image. "
+        "Under a host-side sandbox it is the interpreter PATH resolved, which "
+        "is the system one rather than this project's environment"
     )
     raise EvalToolMissingError(msg)
 
@@ -384,7 +453,10 @@ __all__ = [
     "SandboxFactory",
     "SandboxUnitGrader",
     "UnitGrader",
+    "is_kept",
+    "oracle_fingerprint",
     "oracle_leftovers",
     "read_verdict",
+    "refuse_without_a_runner",
     "tail_of",
 ]

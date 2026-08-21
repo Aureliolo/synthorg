@@ -25,7 +25,11 @@ from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
-from evals.recursion_depth.grading import SandboxUnitGrader, read_verdict
+from evals.recursion_depth.grading import (
+    SandboxUnitGrader,
+    read_verdict,
+    refuse_without_a_runner,
+)
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -647,6 +651,30 @@ class TestTheOwnTestGate:
 
         with pytest.raises(EvalToolMissingError, match="no pytest"):
             await grader.own_tests_pass(tmp_path)
+
+    def test_a_delivery_cannot_abort_the_sweep_by_printing_the_marker(
+        self, tmp_path: Path
+    ) -> None:
+        # The captured output is agent-authored, so the marker alone is a
+        # string any delivered test can print or assert on. Keyed on that
+        # alone, one unit could stop a matrix that had already spent real
+        # money. A session that ran writes its report, and that is the half the
+        # tree cannot fake in the direction that matters.
+        report = self._report(
+            tmp_path, '<testsuite tests="1" failures="1" errors="0"/>'
+        )
+
+        refuse_without_a_runner(
+            "E   assert 'No module named pytest' in captured", report_path=report
+        )
+
+    def test_the_marker_still_stops_a_run_that_wrote_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(EvalToolMissingError, match="no pytest"):
+            refuse_without_a_runner(
+                "No module named pytest", report_path=tmp_path / "absent.xml"
+            )
 
     def test_a_clean_suite_delivers(self, tmp_path: Path) -> None:
         report = self._report(

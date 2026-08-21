@@ -69,9 +69,13 @@ class _StaticStrategy:
         """Answer the recursion question.
 
         Returns:
-            ``True``: it answers with its plan whatever it is asked about.
+            ``False``. It holds ONE plan, scoped to one parent, so a child level
+            asked of it would be handed subtasks belonging to a different task.
+            Claiming otherwise lets recursion open a level this double cannot
+            serve, which fails as a rejected plan rather than as a clear
+            unsupported answer.
         """
-        return True
+        return False
 
 
 def _rollup(

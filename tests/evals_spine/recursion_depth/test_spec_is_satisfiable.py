@@ -17,6 +17,7 @@ passes everything.
 import asyncio
 import re
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from evals.errors import OracleUnusableError
 from evals.recursion_depth.grading import (
     GRADED_ENV,
     ORACLE_SUITE_DIR,
+    oracle_fingerprint,
     oracle_leftovers,
 )
 from evals.recursion_depth.oracle import (
@@ -33,6 +35,7 @@ from evals.recursion_depth.oracle import (
     load_index,
     node_ids,
     oracle_argv,
+    refuse_if_oracle_inputs_changed,
     refuse_if_oracle_survived,
     requirement_ids,
     run_oracle,
@@ -76,6 +79,12 @@ def _local_sandbox(root: Path) -> SubprocessSandbox:
     separate claim, and it rests on :mod:`evals.harness.binding` rather than on
     anything observed here.
 
+    Every invocation here passes ``interpreter=sys.executable``. A recording
+    runs in the sandbox image, where the bare name ``python`` IS the project's
+    interpreter; on a host it is resolved on PATH, which on a Linux runner
+    finds ``/usr/bin/python`` rather than this environment, and that
+    interpreter has no pytest.
+
     Returns:
         A sandbox rooted at *root*.
     """
@@ -96,7 +105,10 @@ def reference_outcome() -> OracleOutcome:
     """
     return asyncio.run(
         run_oracle(
-            build_sandbox=_local_sandbox, spec_dir=_SPEC_DIR, tree=_REFERENCE_TREE
+            build_sandbox=_local_sandbox,
+            spec_dir=_SPEC_DIR,
+            tree=_REFERENCE_TREE,
+            interpreter=sys.executable,
         )
     )
 
@@ -156,7 +168,7 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
 
     result = asyncio.run(
         _local_sandbox(scratch).execute(
-            command="python",
+            command=sys.executable,
             args=oracle_argv(
                 nodes=node_ids(_SPEC_DIR), wanted=tuple(node_ids(_SPEC_DIR))[:2]
             ),
@@ -217,6 +229,56 @@ def test_a_surviving_expectation_refuses_the_measurement(
         refuse_if_oracle_survived(tmp_path)
 
 
+class TestTheOracleIsScoredOnItsOwnInputs:
+    """The fixtures a query runs against are writable by the graded program.
+
+    It is spawned by a test body, in the same mount and with the same identity
+    as pytest, so it can rewrite ``data/`` between one test and the next and be
+    scored against its own answer. The leftover sweep reads names and would see
+    nothing.
+    """
+
+    def _staged(self, tmp_path: Path) -> Path:
+        """Build a staged oracle holding one fixture.
+
+        Returns:
+            The staged oracle directory.
+        """
+        suite = tmp_path / ORACLE_SUITE_DIR
+        (suite / "data" / "shop").mkdir(parents=True)
+        (suite / "conftest.py").write_text("", encoding="utf-8")
+        (suite / "data" / "shop" / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+        return suite
+
+    def test_untouched_inputs_pass(self, tmp_path: Path) -> None:
+        suite = self._staged(tmp_path)
+        before = oracle_fingerprint(suite)
+
+        refuse_if_oracle_inputs_changed(tmp_path, before)
+
+    def test_a_swept_expectation_is_not_a_change(self, tmp_path: Path) -> None:
+        # The complement, and the one a whole-directory digest got wrong: the
+        # run is SUPPOSED to unlink the expectations partway through, so a
+        # fingerprint covering them differs from itself on every honest run.
+        suite = self._staged(tmp_path)
+        expectation = suite / "test_execution.py"
+        expectation.write_text("assert True\n", encoding="utf-8")
+        before = oracle_fingerprint(suite)
+        expectation.unlink()
+
+        refuse_if_oracle_inputs_changed(tmp_path, before)
+
+    def test_a_rewritten_fixture_refuses_the_measurement(self, tmp_path: Path) -> None:
+        suite = self._staged(tmp_path)
+        before = oracle_fingerprint(suite)
+        (suite / "data" / "shop" / "orders.csv").write_text(
+            "id\n99\n", encoding="utf-8"
+        )
+
+        with pytest.raises(OracleUnusableError, match="own inputs changed"):
+            refuse_if_oracle_inputs_changed(tmp_path, before)
+
+
 def test_the_allowlist_admits_only_what_setup_and_the_query_need(
     tmp_path: Path,
 ) -> None:
@@ -234,7 +296,10 @@ def test_the_allowlist_admits_only_what_setup_and_the_query_need(
 
 async def test_an_empty_tree_fails_every_requirement(tmp_path: Path) -> None:
     outcome = await run_oracle(
-        build_sandbox=_local_sandbox, spec_dir=_SPEC_DIR, tree=tmp_path
+        build_sandbox=_local_sandbox,
+        spec_dir=_SPEC_DIR,
+        tree=tmp_path,
+        interpreter=sys.executable,
     )
 
     assert outcome.passed == frozenset()

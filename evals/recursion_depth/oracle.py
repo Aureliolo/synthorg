@@ -41,7 +41,9 @@ from evals.recursion_depth.grading import (
     ORACLE_SUITE_DIR,
     ORACLE_TREE_DIR,
     SandboxFactory,
+    oracle_fingerprint,
     oracle_leftovers,
+    refuse_without_a_runner,
     tail_of,
 )
 from synthorg.observability import get_logger
@@ -64,6 +66,10 @@ _PYTEST_OK: Final[int] = 0
 #: The pytest exit status meaning tests ran and some failed. Anything else is a
 #: fault of the invocation rather than a verdict on the tree.
 _PYTEST_TESTS_FAILED: Final[int] = 1
+
+#: What runs the oracle inside the sandbox image, where the bare name is the
+#: only interpreter present and is the one the image was built around.
+_CONTAINER_INTERPRETER: Final[str] = "python"
 
 #: What is never copied into the staged oracle in the first place. The deletion
 #: and the refusal are both allowlists and would catch these anyway; not staging
@@ -232,6 +238,7 @@ async def run_oracle(
     spec_dir: Path,
     tree: Path,
     only: frozenset[str] | None = None,
+    interpreter: str = _CONTAINER_INTERPRETER,
 ) -> OracleOutcome:
     """Grade *tree* against the spec's held-out oracle, in a container.
 
@@ -242,6 +249,12 @@ async def run_oracle(
         tree: The produced tree to grade.
         only: Restrict the run to these requirement ids. ``None`` runs all of
             them, which is what the final merged tree is graded by.
+        interpreter: What runs ``-m pytest``. Defaults to the bare name, which
+            is correct inside the sandbox image and is where a recording runs.
+            A caller grading through a HOST-side sandbox passes
+            ``sys.executable``: the bare name is resolved on PATH there, which
+            on a Linux runner finds the system interpreter rather than this
+            project's environment, and that interpreter has no pytest.
 
     Returns:
         The outcome, with one verdict per requirement asked about.
@@ -249,6 +262,8 @@ async def run_oracle(
     Raises:
         OracleUnusableError: pytest could not run the oracle at all, so there
             is no verdict to record.
+        EvalToolMissingError: The interpreter has no pytest, which is systemic
+            and stops the matrix.
     """
     index = load_index(spec_dir)
     nodes = node_ids(spec_dir)
@@ -259,9 +274,13 @@ async def run_oracle(
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
+        # Taken here, on the host, before anything the tree wrote can run.
+        staged_before = await asyncio.to_thread(
+            oracle_fingerprint, root / ORACLE_SUITE_DIR
+        )
         report_path = root / _REPORT_NAME
         result = await build_sandbox(root).execute(
-            command="python",
+            command=interpreter,
             args=oracle_argv(nodes=nodes, wanted=wanted),
             cwd=root,
             env_overrides=GRADED_ENV,
@@ -269,6 +288,14 @@ async def run_oracle(
             category=ToolCategory.CODE_EXECUTION.value,
         )
         report = tail_of(result.stdout + result.stderr)
+        # Before the returncode is read, because the returncode cannot tell
+        # this apart. An interpreter with no pytest exits 1, which is exactly
+        # what "tests ran and some failed" looks like, so every requirement
+        # would be recorded as failed and the sweep would publish a curve of
+        # zeros that reads as a catastrophic result rather than as a harness
+        # that never ran anything. A missing tool is systemic, so it stops the
+        # matrix instead of scoring one tree.
+        refuse_without_a_runner(result.stdout + result.stderr, report_path=report_path)
         if result.timed_out:
             msg = (
                 f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s "
@@ -284,6 +311,7 @@ async def run_oracle(
             )
             raise OracleUnusableError(msg)
         refuse_if_oracle_survived(root)
+        await asyncio.to_thread(refuse_if_oracle_inputs_changed, root, staged_before)
         results = _read_report(
             report_path, nodes=nodes, wanted=wanted, returncode=result.returncode
         )
@@ -294,6 +322,40 @@ async def run_oracle(
         passed=sum(1 for ok in results.values() if ok),
     )
     return OracleOutcome(results=results, report=report)
+
+
+def refuse_if_oracle_inputs_changed(root: Path, before: str) -> None:
+    """Refuse a measurement taken against inputs the tree may have rewritten.
+
+    The delivered program is spawned by a test body, in the same mount and with
+    the same identity as pytest, so the fixtures under ``oracle/data/`` are
+    writable by it. Those fixtures are what every query is RUN AGAINST, and a
+    delivery that edited one to match whatever it produces would be scored on
+    its own answer with nothing else noticing: the deletion sweep reads names,
+    not bytes.
+
+    Isolating them properly means a second mount namespace per spawn, which the
+    oracle deliberately does not build (it runs inside one container already,
+    and a nested sandbox per invocation would multiply a 42-requirement grading
+    by an interpreter start each). Detection is the cheaper half and is enough:
+    a measurement taken against altered inputs is refused rather than recorded,
+    so the attack buys a stopped run instead of a better score.
+
+    Args:
+        root: The scratch directory the grading ran in.
+        before: The digest taken before the container started.
+
+    Raises:
+        OracleUnusableError: The retained oracle inputs are not what they were.
+    """
+    if oracle_fingerprint(root / ORACLE_SUITE_DIR) == before:
+        return
+    msg = (
+        "the oracle's own inputs changed while the graded tree was running, so "
+        "the delivery was scored against fixtures it may have written itself "
+        "and this measurement cannot be trusted"
+    )
+    raise OracleUnusableError(msg)
 
 
 def refuse_if_oracle_survived(root: Path) -> None:
@@ -433,7 +495,22 @@ def _read_report(
             f"is a harness fault rather than a failed delivery"
         )
         raise OracleUnusableError(msg)
-    raw = json.loads(report_path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"the oracle's report against {report_path} did not parse as JSON"
+        raise OracleUnusableError(msg) from exc
+    if not isinstance(raw, dict):
+        # The report sits in the mount the graded tree runs under, so its
+        # SHAPE is not guaranteed by the conftest that writes it. A list or a
+        # bare string would raise `AttributeError` on `.items()` below and the
+        # runner would file that as an opaque cell failure rather than as the
+        # unusable measurement it is.
+        msg = (
+            f"the oracle's report is a {type(raw).__name__} rather than a "
+            f"mapping of node to outcome, so nothing can be scored from it"
+        )
+        raise OracleUnusableError(msg)
     outcomes = {str(key): bool(value) for key, value in raw.items()}
     return {key: outcomes.get(nodes[key], False) for key in wanted}
 
@@ -443,6 +520,7 @@ __all__ = [
     "load_index",
     "node_ids",
     "oracle_argv",
+    "refuse_if_oracle_inputs_changed",
     "refuse_if_oracle_survived",
     "requirement_ids",
     "run_oracle",

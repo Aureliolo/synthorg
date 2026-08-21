@@ -176,16 +176,30 @@ recursion-depth-record:
 # apko is not installed locally and is not worth installing, so it runs from
 # its own image; `--arch host` keeps it to the one architecture that can be
 # loaded here, where CI builds both.
+# Pinned, and to the same version CI builds with (security-dast.yml's
+# APKO_VERSION): `latest` is mutable, so a build a week apart could compose a
+# different base and the recording would read that as a loop difference. Kept
+# Renovate-visible so a bump moves both.
+# renovate: datasource=github-releases depName=chainguard-dev/apko
+APKO_VERSION := v1.2.36
 SANDBOX_BASE_TAR := .sandbox-base.tar
+APKO_OUT := .apko-out
 build-sandbox-image:
-	docker run --rm -v "$(CURDIR):/work" -w /work cgr.dev/chainguard/apko:latest \
+	mkdir -p $(APKO_OUT)
+	# The worktree goes in READ-ONLY and the tarball comes out through its own
+	# mount. apko needs the yaml and the lockfile and nothing else from here,
+	# so there is no reason for a third-party image to hold a writable handle
+	# on the checkout while it composes.
+	docker run --rm \
+	  -v "$(CURDIR):/work:ro" -v "$(CURDIR)/$(APKO_OUT):/out" -w /work \
+	  cgr.dev/chainguard/apko:$(APKO_VERSION) \
 	  build --arch host docker/sandbox/apko.yaml synthorg-sandbox-base:local \
-	  /work/$(SANDBOX_BASE_TAR)
-	docker load -i $(SANDBOX_BASE_TAR)
+	  /out/$(SANDBOX_BASE_TAR)
+	docker load -i $(APKO_OUT)/$(SANDBOX_BASE_TAR)
 	docker build -f docker/sandbox/Dockerfile \
 	  --build-arg BASE_IMAGE=synthorg-sandbox-base:local-$(shell docker version --format '{{.Server.Arch}}') \
 	  -t synthorg-sandbox:local .
-	rm -f $(SANDBOX_BASE_TAR)
+	rm -rf $(APKO_OUT)
 	@echo "built synthorg-sandbox:local; record against it with:"
 	@echo "  make recursion-depth-record ARGS=\"--company-config <yours> --sandbox-image synthorg-sandbox:local\""
 

@@ -42,7 +42,7 @@ requirements:
 
   - id: R06
     area: lexer
-    title: Keywords are case-insensitive
+    title: Keywords are case-insensitive and identifiers are case-sensitive
     oracle: test_lexer.py::test_r06_keyword_case_folds_but_identifier_case_does_not
   - id: R07
     area: lexer

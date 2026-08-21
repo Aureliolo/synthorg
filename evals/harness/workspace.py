@@ -169,7 +169,14 @@ def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
     for path in mounted.rglob("*"):
         if not path.is_symlink():
             continue
-        target = (path.parent / path.readlink()).resolve()
+        # Resolved from where the link SAT IN THE ORIGINAL TREE, not from the
+        # copy. A relative link was authored against the original, so resolving
+        # it inside `mounted` lands under `mounted`, which is never inside
+        # `anchor`: every legitimate internal link would then be judged an
+        # escape and deleted. An absolute link ignores the base either way,
+        # which is the case this is actually looking for.
+        origin = (resolved_anchor / path.relative_to(mounted)).parent
+        target = (origin / path.readlink()).resolve()
         if target != resolved_anchor and resolved_anchor not in target.parents:
             logger.warning(
                 EVALS_HARNESS_WORKSPACE_LINK_DROPPED,

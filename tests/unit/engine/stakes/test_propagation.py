@@ -29,7 +29,8 @@ class _StaticStrategy:
         return "static-test"
 
     def plans_any_task(self) -> bool:
-        return True
+        # One fixed plan, scoped to one parent: it cannot serve a child level.
+        return False
 
 
 def _parent_task() -> Task:

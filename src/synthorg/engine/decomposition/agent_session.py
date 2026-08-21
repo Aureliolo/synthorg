@@ -336,12 +336,19 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
 
     @override
     def plans_any_task(self) -> bool:
-        """Plan any task: every call runs a fresh session over what it is given.
+        """Whether this strategy can plan a task it was not constructed around.
+
+        A session over the task it is given can plan anything, but three paths
+        degrade to the single-shot fallback (no owner staffed, the owner's
+        provider unresolved, the session producing no plan), and the fallback
+        answers for itself. Claiming unconditionally would let recursion open a
+        child level that a fixed-plan fallback then rejects, because the plan it
+        holds is scoped to a different parent.
 
         Returns:
-            ``True``, always.
+            Whether the fallback could also plan an arbitrary task.
         """
-        return True
+        return self._fallback.plans_any_task()
 
     @override
     async def decompose(

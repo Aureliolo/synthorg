@@ -484,11 +484,35 @@ def _ordered(
     for key in reversed(statement.order_by):
         ordered.sort(
             key=lambda pair, ref=key.column: _sort_key(  # type: ignore[misc]
-                pair[1][ref.name] if ref.name in pair[1] else _cell(pair[0], ref)
+                _order_value(pair, ref)
             ),
             reverse=key.descending,
         )
     return tuple(ordered)
+
+
+def _order_value(pair: tuple[Row, Row], ref: ColumnRef) -> Value:
+    """Read what one ORDER BY key sorts on.
+
+    A QUALIFIED reference names a side of the join, so it is resolved from the
+    context row through :func:`_cell` and nowhere else. Both rows are keyed by
+    bare column name as well, so a lookup that reached either of those first
+    would answer `ORDER BY customers.id` with the projected or left-merged
+    `id`, which is the order's.
+
+    An unqualified reference reads the context row, which still holds the
+    columns the projection dropped, and falls back to the output row for a key
+    naming an alias the projection introduced.
+
+    Returns:
+        The value to sort on.
+    """
+    projected, context = pair
+    if ref.table is not None:
+        return _cell(context, ref)
+    if ref.name in context:
+        return context[ref.name]
+    return projected.get(ref.name)
 
 
 def _sort_key(value: Value) -> tuple[int, float, str]:

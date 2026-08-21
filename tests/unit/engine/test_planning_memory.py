@@ -90,7 +90,8 @@ class _SentinelFallback(DecompositionStrategy):
 
     @override
     def plans_any_task(self) -> bool:
-        return True
+        # It raises when invoked, so it can plan nothing at all.
+        return False
 
 
 class _MarkerMemory:

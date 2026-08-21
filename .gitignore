@@ -43,10 +43,10 @@ data/codebase_map.json
 .recursion-depth/
 
 # What `make build-sandbox-image` leaves behind: apko writes an SBOM per
-# architecture beside its output tarball, in the working directory, and the
-# tarball itself is 100MB.
-/sbom-*.spdx.json
-/.sandbox-base.tar
+# architecture beside its output tarball, and the tarball itself is 100MB.
+# Both land in the target's own output mount, which it removes on success;
+# ignored so an interrupted build leaves nothing to commit by accident.
+/.apko-out/
 
 # Per-repo Claude/OpenCode runtime state (not config). Currently:
 # - last-push.json (used by scripts/check_push_throttle.sh)

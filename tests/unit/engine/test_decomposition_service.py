@@ -519,7 +519,13 @@ class TestOneDecompositionCannotRunForever:
         await service.decompose_task(_make_task(), ctx)
         await service.decompose_task(_make_task(), ctx)
 
-        assert resolver.get_float.await_count == 2
+        # Per key, not a total: a decomposition reads TWO ceilings, one for a
+        # planning session and one for the whole tree, and a bare count cannot
+        # tell "both read twice" from "one read four times".
+        keys = [call.args[1] for call in resolver.get_float.await_args_list]
+
+        assert keys.count("decomposition_timeout_seconds") == 2
+        assert keys.count("decomposition_tree_timeout_seconds") == 2
 
     async def test_an_unreadable_ceiling_still_bounds_the_call(
         self, monkeypatch: pytest.MonkeyPatch
