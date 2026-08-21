@@ -213,6 +213,18 @@ outright, so a roster built from a manifest that did not say would leave every
 review unstaffed and the gated arm would record escalations rather than
 verdicts. A placeholder id has no discoverable family either.
 
+Because the manifest ships placeholders, a company config decides which real
+models answer them, which makes family a fact with two owners: the manifest's
+copy is what the claim is checked against, and the config's copy names what
+runs. A config aliasing both placeholders onto one organisation therefore
+satisfies every check in the manifest and still produces a correlated judge, so
+the recorder compares the two before the host boots. What it compares is the
+RELATION and never the names: a vendor-agnostic placeholder cannot equal a real
+organisation's name, so testing for that would refuse every real recording,
+while the claim those placeholders make (that the two pairs differ) survives
+aliasing intact. A config declaring no family is not a disagreement; it is the
+config not saying, which leaves the manifest the only claim.
+
 ### The oracle is held out
 
 `evals/recursion_depth/spec/sqlcsv/` defines a SQL-over-CSV query CLI in 42
@@ -235,6 +247,18 @@ wrong answer. So plan mode prints a **floor** rather than an estimate, the
 manifest carries a hard `max_sessions` ceiling, and hitting it stops the sweep
 and reports what was measured with a caveat saying so. `--depths` stages the
 bill: record the shallow end, read the curve forming, then pay for the deep end.
+`--max-sessions` lowers the ceiling, and it is folded into the manifest rather
+than applied to the run, so the figure the plan prints is the one the run
+enforces: a ceiling applied downstream of the plan shows the manifest's own
+number beside the flag that was meant to lower it, at the one moment the number
+is being relied on.
+
+A unit is bounded twice, by `unit_cost_ceiling` and by `unit_token_ceiling`, and
+the second is not redundancy. A flat-rate connection attributes 0.0 to every
+call, so its cost ceiling can never fire and a runaway unit would be held by
+nothing but its turn cap. Tokens are counted on every provider, so the plan
+states the token bound as the one that holds without the reader first knowing
+how they are billed.
 
 Repetitions are concentrated rather than uniform. Depths 1 and 2 are expected
 flat and are cheap; the transition ARIES reports sits at 3 to 4, which is where
