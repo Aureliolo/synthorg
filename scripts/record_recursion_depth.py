@@ -378,7 +378,9 @@ async def _build_context(
             limits=limits,
             config_resolver=config_resolver_of(app_state),
         ),
-        budget=SessionBudget(args.max_sessions or manifest.max_sessions),
+        # The override is already folded into the manifest by `narrow`, so the
+        # ceiling the run enforces is the one the plan printed.
+        budget=SessionBudget(manifest.max_sessions),
     )
 
 
@@ -585,13 +587,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def narrow(
-    manifest: RecursionDepthManifest, depths: str | None
+    manifest: RecursionDepthManifest,
+    depths: str | None,
+    max_sessions: int | None = None,
 ) -> RecursionDepthManifest:
-    """Narrow *manifest* to the depth caps *depths* names.
+    """Narrow *manifest* to the depth caps *depths* names and *max_sessions*.
+
+    Both overrides are applied to the manifest itself rather than only to the
+    run, because the plan is what an operator reads to decide whether to spend:
+    a ceiling applied downstream of the plan prints the manifest's own figure
+    beside the flags that were meant to lower it, which is the one moment the
+    number is being relied on.
 
     Args:
         manifest: The loaded matrix.
         depths: Comma-separated caps, or ``None`` to keep the manifest's own.
+        max_sessions: Session ceiling override, or ``None`` to keep the
+            manifest's own.
 
     Returns:
         The narrowed matrix.
@@ -599,8 +611,13 @@ def narrow(
     Raises:
         ValueError: A named cap is not in the manifest.
     """
-    if depths is None:
+    if depths is None and max_sessions is None:
         return manifest
+    override: dict[str, object] = {}
+    if max_sessions is not None:
+        override["max_sessions"] = max_sessions
+    if depths is None:
+        return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
     unknown = [cap for cap in wanted if cap not in manifest.depths]
     if unknown:
@@ -613,7 +630,7 @@ def narrow(
     # measured no cell at all. The manifest already refuses both, so the fix is
     # to go back through it rather than to restate its rules here.
     return RecursionDepthManifest.model_validate(
-        manifest.model_dump() | {"depths": wanted}
+        manifest.model_dump() | {"depths": wanted} | override
     )
 
 
@@ -624,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
-    manifest = narrow(load_manifest(args.manifest), args.depths)
+    manifest = narrow(load_manifest(args.manifest), args.depths, args.max_sessions)
     spec = load_spec_brief(Path(manifest.spec_dir))
     # Checked on the plan path too, not only before a record. The plan path is
     # what an operator runs first and is where they decide to spend, so a

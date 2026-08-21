@@ -182,6 +182,24 @@ class TestStaging:
 
         assert narrow(manifest, None).depths == manifest.depths
 
+    def test_max_sessions_reaches_the_plan_the_operator_reads(self) -> None:
+        # The ceiling is what turns "at least 182 sessions" into a decision, so
+        # applying the override only to the run would print the manifest's own
+        # figure beside the flag that was meant to lower it.
+        narrowed = narrow(load_manifest(_MANIFEST), None, 30)
+
+        plan = describe_plan(narrowed, _spec())
+
+        assert narrowed.max_sessions == 30
+        assert "3000 sessions" not in plan
+        assert "30 sessions" in plan
+
+    def test_max_sessions_survives_a_depth_narrowing(self) -> None:
+        narrowed = narrow(load_manifest(_MANIFEST), "1,2", 30)
+
+        assert narrowed.depths == (1, 2)
+        assert narrowed.max_sessions == 30
+
     def test_a_cap_the_manifest_does_not_carry_is_refused(self) -> None:
         # Silently recording nothing for it would leave a gap in the curve that
         # reads as a measured zero.
