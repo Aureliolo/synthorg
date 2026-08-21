@@ -49,6 +49,15 @@ scripts/git-hooks/* text eol=lf
 # Dockerfiles run in Linux containers -- CRLF breaks shell continuations and heredocs.
 Dockerfile text eol=lf
 
+# The recursion-depth oracle fixtures ARE the specification, so their bytes must
+# arrive identical on every platform. RFC4180 keeps a line break inside a quoted
+# field as part of the VALUE, which `text=auto` cannot tell apart from a record
+# terminator: a Windows checkout rewrote one to CRLF and made R05 and R36
+# unsatisfiable by any delivery, the reference implementation included. A sweep
+# run there would have scored every tree down for a reason that has nothing to
+# do with decomposition depth.
+evals/recursion_depth/spec/*/oracle/data/** -text
+
 # PowerShell scripts -- Windows expects CRLF.
 *.ps1 text eol=crlf
 

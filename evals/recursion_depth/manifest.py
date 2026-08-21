@@ -11,6 +11,14 @@ therefore declares an independence class and the loader refuses a manifest whose
 pairs do not match what it claims, so a weakened judge cannot enter a recording
 silently.
 
+That claim is checked against a declared ``family``, never against the provider.
+Self-preference attaches to the organisation that trained a model, and an
+aggregating connection serves many of those through one endpoint, so a shared
+provider says nothing either way: two models reached through the same aggregator
+are as decorrelated as their families are, and two connections to the same
+vendor are not decorrelated at all. Family is undiscoverable from a placeholder
+id for the same reason the capability rung is, so it is declared beside it.
+
 And the repetitions are per depth rather than uniform. Depths 1 and 2 are
 expected flat and are cheap; the transition ARIES reports sits at 3 to 4, which
 is where samples are worth paying for.
@@ -56,17 +64,17 @@ class Independence(StrEnum):
     """How far apart the reviewer's binding is from the executor's.
 
     Members:
-        CROSS_FAMILY: Different providers. What a headline number requires:
-            decorrelating model family is the only lever the blind-spot
-            literature finds effective.
-        SAME_PROVIDER: Different model on the same provider. Permitted, and
+        CROSS_FAMILY: Different model families, whatever connection reaches
+            them. What a headline number requires: decorrelating model family
+            is the only lever the blind-spot literature finds effective.
+        SAME_FAMILY: A different model of the same family. Permitted, and
             stamped on every artifact, because it biases toward the null: a
             positive result survives it, a null result is not interpretable
             under it.
     """
 
     CROSS_FAMILY = "cross_family"
-    SAME_PROVIDER = "same_provider"
+    SAME_FAMILY = "same_family"
 
 
 class ModelPair(BaseModel):
@@ -83,6 +91,11 @@ class ModelPair(BaseModel):
         model_id: The model that connection is asked for.
         capability: The rung the roster claims for this pair. The catalogue
             still wins where it grades the pair itself.
+        family: Who trained the model, which is what self-preference attaches
+            to. Declared on a manifest pair and absent on one read back off a
+            live identity, which carries no such field; the loader requires it
+            wherever a manifest claims decorrelation, so it cannot be missing
+            at the point it decides anything.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -90,6 +103,7 @@ class ModelPair(BaseModel):
     provider: NotBlankStr
     model_id: NotBlankStr
     capability: CapabilityLevel
+    family: NotBlankStr | None = None
 
     @property
     def label(self) -> str:
@@ -208,8 +222,9 @@ class RecursionDepthManifest(BaseModel):
         """Hold the declared independence class to the pairs themselves.
 
         Raises:
-            RecursionDepthJudgeNotIndependentError: The pairs are identical, or
-                they do not match the declared class.
+            RecursionDepthJudgeNotIndependentError: The pairs are identical, the
+                families a decorrelation claim rests on are missing, or the
+                declared class does not match them.
         """
         if self.reviewer == self.executor:
             msg = (
@@ -219,19 +234,37 @@ class RecursionDepthManifest(BaseModel):
                 "the null"
             )
             raise RecursionDepthJudgeNotIndependentError(msg)
-        same_provider = self.reviewer.provider == self.executor.provider
-        if self.independence is Independence.CROSS_FAMILY and same_provider:
+        families = (self.executor.family, self.reviewer.family)
+        if self.independence is Independence.SAME_FAMILY:
+            if None not in families and self.executor.family != self.reviewer.family:
+                msg = (
+                    f"manifest declares {Independence.SAME_FAMILY.value} but the "
+                    f"pairs name families {self.executor.family!r} and "
+                    f"{self.reviewer.family!r}; declare "
+                    f"{Independence.CROSS_FAMILY.value}, which is stronger, "
+                    f"rather than stamping a caveat that is not true of the run"
+                )
+                raise RecursionDepthJudgeNotIndependentError(msg)
+            return
+        undeclared = [
+            role
+            for role, pair in (("executor", self.executor), ("reviewer", self.reviewer))
+            if pair.family is None
+        ]
+        if undeclared:
             msg = (
-                f"manifest declares {Independence.CROSS_FAMILY.value} but both "
-                f"pairs use provider {self.executor.provider!r}"
+                f"manifest declares {Independence.CROSS_FAMILY.value} but "
+                f"{' and '.join(undeclared)} declares no family, so the claim "
+                f"rests on nothing; name who trained each model, or declare "
+                f"{Independence.SAME_FAMILY.value}, which claims less"
             )
             raise RecursionDepthJudgeNotIndependentError(msg)
-        if self.independence is Independence.SAME_PROVIDER and not same_provider:
+        if self.reviewer.family == self.executor.family:
             msg = (
-                f"manifest declares {Independence.SAME_PROVIDER.value} but the "
-                f"pairs use different providers ({self.executor.provider!r} and "
-                f"{self.reviewer.provider!r}); declare "
-                f"{Independence.CROSS_FAMILY.value}, which is stronger"
+                f"manifest declares {Independence.CROSS_FAMILY.value} but both "
+                f"pairs are family {self.executor.family!r}; a shared family is "
+                f"the correlation the claim denies, whatever connection reaches "
+                f"it"
             )
             raise RecursionDepthJudgeNotIndependentError(msg)
 
@@ -253,7 +286,7 @@ class RecursionDepthManifest(BaseModel):
         if self.independence is Independence.CROSS_FAMILY:
             return None
         return (
-            "The reviewer and the executor share a provider, so judge "
+            "The reviewer and the executor share a model family, so judge "
             "independence here is by model rather than by family. Self-preference "
             "runs 75-84% toward a model's own family, which biases the gated arm "
             "toward the null: a gap in its favour survives this, a null result is "

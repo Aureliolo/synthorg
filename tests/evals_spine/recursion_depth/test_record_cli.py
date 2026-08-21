@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from scripts.record_recursion_depth import describe_plan, main, narrow
 
-from evals.recursion_depth.manifest import load_manifest
+from evals.recursion_depth.manifest import Independence, load_manifest
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 
 pytestmark = pytest.mark.unit
@@ -54,10 +54,27 @@ class TestPlanMode:
 
         assert "the SAME in both arms" in plan
 
-    def test_the_independence_caveat_is_on_the_plan(self) -> None:
+    def test_the_shipped_manifest_needs_no_independence_caveat(self) -> None:
         plan = describe_plan(load_manifest(_MANIFEST), _spec())
 
+        assert "CAVEAT" not in plan
+
+    def test_a_weakened_judge_puts_its_caveat_on_the_plan(self) -> None:
+        # The operator is told before spending, not after reading the chart.
+        shipped = load_manifest(_MANIFEST)
+        weakened = shipped.model_copy(
+            update={
+                "reviewer": shipped.reviewer.model_copy(
+                    update={"family": shipped.executor.family}
+                ),
+                "independence": Independence.SAME_FAMILY,
+            }
+        )
+
+        plan = describe_plan(weakened, _spec())
+
         assert "CAVEAT" in plan
+        assert "share a model family" in plan
 
 
 class TestStaging:

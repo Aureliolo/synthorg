@@ -95,16 +95,21 @@ _EXECUTOR = ModelPair(
     provider=NotBlankStr("example-provider"),
     model_id=NotBlankStr("example-capable-001"),
     capability="capable",
+    family=NotBlankStr("example-family-a"),
 )
 _REVIEWER = ModelPair(
     provider=NotBlankStr("example-provider"),
     model_id=NotBlankStr("example-expert-001"),
     capability="expert",
+    family=NotBlankStr("example-family-a"),
 )
+# Same connection as the executor, different family: the aggregator case, which
+# is decorrelated on the axis self-preference runs along.
 _CROSS_FAMILY_REVIEWER = ModelPair(
-    provider=NotBlankStr("other-provider"),
-    model_id=NotBlankStr("example-expert-001"),
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-expert-002"),
     capability="expert",
+    family=NotBlankStr("example-family-b"),
 )
 
 
@@ -881,7 +886,7 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "arms": (Arm.GATED, Arm.UNGATED),
         "executor": _EXECUTOR,
         "reviewer": _REVIEWER,
-        "independence": Independence.SAME_PROVIDER,
+        "independence": Independence.SAME_FAMILY,
         "merge_attempts": 2,
         "unit_max_turns": 4,
         "unit_cost_ceiling": 1.0,
@@ -917,7 +922,7 @@ def _provenance() -> Provenance:
         requirement_count=2,
         executor=_EXECUTOR,
         reviewer=_REVIEWER,
-        independence=Independence.SAME_PROVIDER,
+        independence=Independence.SAME_FAMILY,
     )
 
 

@@ -53,7 +53,11 @@ from evals.harness.host import (
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.recursion_depth.emit import write_report
 from evals.recursion_depth.grading import SandboxUnitGrader
-from evals.recursion_depth.manifest import RecursionDepthManifest, load_manifest
+from evals.recursion_depth.manifest import (
+    ModelPair,
+    RecursionDepthManifest,
+    load_manifest,
+)
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.provenance import capture_provenance
 from evals.recursion_depth.runner import (
@@ -83,6 +87,27 @@ _EPHEMERAL_PORT: Final[int] = 0
 _LABEL: Final[str] = "recursion-depth"
 
 
+def _pair(pair: ModelPair) -> str:
+    """Render one binding, family included.
+
+    The family is shown because the independence claim rests on it and the plan
+    is where an operator checks that claim before any spend. A connection name
+    cannot settle it either way, so printing only the connection would show the
+    reader everything except the fact that decides.
+
+    Args:
+        pair: The binding to render.
+
+    Returns:
+        ``provider/model_id (capability, family)``, or without the family where
+        none is declared.
+    """
+    detail = str(pair.capability)
+    if pair.family is not None:
+        detail = f"{detail}, {pair.family}"
+    return f"{pair.label} ({detail})"
+
+
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
     """Render the matrix a record run would execute.
 
@@ -107,8 +132,8 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         "  repetitions   : "
         + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
         f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
-        f"  executor      : {manifest.executor.label} ({manifest.executor.capability})",
-        f"  reviewer      : {manifest.reviewer.label} ({manifest.reviewer.capability})",
+        f"  executor      : {_pair(manifest.executor)}",
+        f"  reviewer      : {_pair(manifest.reviewer)}",
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
         "",

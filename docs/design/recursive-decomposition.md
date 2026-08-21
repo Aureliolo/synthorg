@@ -194,14 +194,24 @@ on unresolved escalations is a different claim from one resting on verdicts.
 The gate is the treatment, so a judge sharing the executor's `(provider,
 model)` pair biases straight toward the null. The manifest declares an
 independence class and the loader refuses a manifest whose pairs do not match
-what it claims; identical pairs are refused outright. Under `same_provider`
+what it claims; identical pairs are refused outright. Under `same_family`
 every artifact carries the caveat on its face.
 
-Each pair also declares its capability rung. The capability registry grades a
-pair from a catalogue that knows nothing about a placeholder id, and selection
-refuses an ungraded pair outright, so a roster built from a manifest that did
-not say would leave every review unstaffed and the gated arm would record
-escalations rather than verdicts.
+That claim is checked against a declared `family`, never against the provider.
+Self-preference attaches to the organisation that trained a model, and the
+connection reaching it is a separate fact: an aggregating provider serves many
+families through one endpoint, so two models behind it are as decorrelated as
+their families are, while two connections to one vendor are not decorrelated at
+all. Deriving family from the provider would refuse the first case and wave the
+second through, which is backwards in both directions. A `cross_family` claim
+whose pairs name one family, or name none, is refused.
+
+Each pair also declares its capability rung, and family is declared beside it
+for the same reason. The capability registry grades a pair from a catalogue that
+knows nothing about a placeholder id, and selection refuses an ungraded pair
+outright, so a roster built from a manifest that did not say would leave every
+review unstaffed and the gated arm would record escalations rather than
+verdicts. A placeholder id has no discoverable family either.
 
 ### The oracle is held out
 
