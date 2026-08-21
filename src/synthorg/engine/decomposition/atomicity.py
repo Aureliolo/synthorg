@@ -66,6 +66,34 @@ class AtomicityAssessment:
     observed: int | None = None
     limit: int | None = None
 
+    def __post_init__(self) -> None:
+        """Hold the verdict and its explanation to each other.
+
+        Enforced rather than documented: the whole reason the condition rides
+        along is to tell "items too large" apart from "threshold too low", and
+        an OVERSIZED verdict that names no condition answers neither. The
+        symmetric case matters as much: an ATOMIC verdict carrying a condition
+        reads as a rule that fired and was ignored.
+
+        Raises:
+            ValueError: The verdict and its explanation disagree.
+        """
+        explained = self.condition is not None
+        if self.is_oversized != explained:
+            msg = (
+                f"atomicity verdict {self.verdict.value} with "
+                f"condition={self.condition!r}: an oversized subtask must name "
+                f"the rule that fired, and an atomic one must name none"
+            )
+            raise ValueError(msg)
+        if explained and (self.observed is None or self.limit is None):
+            msg = (
+                f"atomicity condition {self.condition!r} reports "
+                f"observed={self.observed!r} against limit={self.limit!r}: a "
+                f"named condition carries both numbers or it cannot be read"
+            )
+            raise ValueError(msg)
+
     @property
     def is_oversized(self) -> bool:
         """Whether this subtask needs splitting.

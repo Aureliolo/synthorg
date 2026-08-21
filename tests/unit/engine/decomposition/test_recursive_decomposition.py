@@ -7,6 +7,7 @@ cover the write, the split it enables, and the two ways it must stop.
 """
 
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 
@@ -15,7 +16,11 @@ from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskTy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
-from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
+from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, mock_of, sid
@@ -168,6 +173,79 @@ def _two_level_service(
         config_resolver=_resolver(recursion_enabled=recursion_enabled),
     )
     return service, strategy
+
+
+def _result(
+    parent: str,
+    *,
+    subtasks: tuple[SubtaskDefinition, ...],
+    depth: int = 0,
+    children: tuple[DecompositionResult, ...] = (),
+) -> DecompositionResult:
+    """Build a level of a tree directly, bypassing the service.
+
+    Returns:
+        The level.
+    """
+    return DecompositionResult(
+        plan=_plan(parent, subtasks),
+        # The created task's id IS its definition's id: the model refuses a
+        # level where the two sets differ, which is what makes the id a
+        # guaranteed bijection everywhere the tree is walked.
+        created_tasks=tuple(
+            _task(str(definition.id)).model_copy(update={"id": UUID(definition.id)})
+            for definition in subtasks
+        ),
+        dependency_edges=(),
+        depth=depth,
+        children=children,
+    )
+
+
+class TestATreeCannotMisdescribeItsOwnShape:
+    """A child hanging off nothing would be dispatched twice, container and all.
+
+    Asserted on the model rather than through the service, because the service
+    can only build a well-formed tree and the validator is what stands between
+    a hand-built or deserialised one and the dispatcher.
+    """
+
+    def test_a_child_naming_an_unknown_parent_is_refused(self) -> None:
+        stray = _result(sid("nobody"), subtasks=(_subtask("x", artifacts=1),), depth=1)
+
+        with pytest.raises(ValueError, match="which is not one of this level's tasks"):
+            _result(
+                str(as_uuid("root")),
+                subtasks=(_subtask("a", artifacts=1),),
+                children=(stray,),
+            )
+
+    def test_two_children_naming_one_parent_are_refused(self) -> None:
+        # The second would overwrite the first everywhere the tree is keyed on
+        # the parent, silently losing a whole subtree.
+        parent_id = sid("a")
+        first = _result(parent_id, subtasks=(_subtask("x", artifacts=1),), depth=1)
+        second = _result(parent_id, subtasks=(_subtask("y", artifacts=1),), depth=1)
+
+        with pytest.raises(ValueError, match="both name parent"):
+            _result(
+                str(as_uuid("root")),
+                subtasks=(_subtask("a", artifacts=1),),
+                children=(first, second),
+            )
+
+    def test_a_child_at_the_wrong_depth_is_refused(self) -> None:
+        # Depths must be dense: max_depth_reached maxes over them, and a gap
+        # would report a tree shallower than it is.
+        parent_id = sid("a")
+        skipped = _result(parent_id, subtasks=(_subtask("x", artifacts=1),), depth=2)
+
+        with pytest.raises(ValueError, match="expected 1"):
+            _result(
+                str(as_uuid("root")),
+                subtasks=(_subtask("a", artifacts=1),),
+                children=(skipped,),
+            )
 
 
 class TestAnOversizedUnitIsSplitRatherThanDispatched:

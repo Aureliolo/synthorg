@@ -175,7 +175,7 @@ class DecompositionService:
             Decomposition result with created tasks and dependency edges.
 
         Raises:
-            DecompositionError: When the whole operation outruns
+            DecompositionError: When any one planning session outruns
                 ``coordination.decomposition_timeout_seconds``.
         """
         logger.info(
@@ -187,25 +187,9 @@ class DecompositionService:
 
         try:
             budget = await resolve_recursion_budget(self._config_resolver)
-            # Bounded here rather than per caller: a planning session waiting
-            # on a provider that never answers holds whatever called it, and
-            # two of the four callers are request handlers, so an unbounded
-            # call occupies an HTTP worker for as long as the provider stalls.
-            # One ceiling at the one place every caller comes through, so the
-            # answer cannot differ by entry point.
-            #
-            # A recursive decomposition is legitimately several planning
-            # sessions deep, so the operator's ceiling is read as bounding ONE
-            # level and multiplied by the depth budget they set. Left flat, a
-            # deep tree would trip a ceiling written for a single session and
-            # surface as a bare DecompositionError naming nothing.
-            async with asyncio.timeout(
-                await self._timeout_seconds()
-                * (context.max_depth if budget.enabled else 1)
-            ):
-                return await self._do_decompose(
-                    task, await self._grounded(task, context), budget
-                )
+            return await self._do_decompose(
+                task, await self._grounded(task, context), budget
+            )
         except TimeoutError as exc:
             msg = "Decomposition outran its wall-clock ceiling"
             logger.warning(
@@ -292,8 +276,21 @@ class DecompositionService:
             Decomposition result with created tasks, dependency edges, and the
             decomposition of each subtask that was split further.
         """
-        # 1. Decompose via strategy
-        plan = await self._strategy.decompose(task, context)
+        # 1. Decompose via strategy.
+        #
+        # Bounded per PLANNING SESSION rather than per tree, and here rather
+        # than per caller: a session waiting on a provider that never answers
+        # holds whatever called it, and two of the four callers are request
+        # handlers, so an unbounded call occupies an HTTP worker for as long as
+        # the provider stalls. Every caller comes through here, so the answer
+        # cannot differ by entry point, and every level of a recursion is
+        # bounded rather than sharing one budget with its siblings. A whole-tree
+        # ceiling cannot be derived from depth: sessions scale with the NODE
+        # COUNT, which is the branching factor to the power of the depth, so any
+        # multiple of the operator's number is a guess that kills a legitimate
+        # deep tree and discards every level it had already paid for.
+        async with asyncio.timeout(await self._timeout_seconds()):
+            plan = await self._strategy.decompose(task, context)
 
         # 2. Resolve the structure. The planner reasoned over the whole
         # objective, so its declaration stands; the keyword heuristic is
@@ -392,6 +389,15 @@ class DecompositionService:
         Returns:
             One result per subtask that split, empty when none did.
         """
+        if not budget.enabled:
+            # Nothing here can act on an oversized subtask, so assessing them
+            # only to report that recursion is off names a condition that did
+            # not occur. The shipped default leaves recursion off and thresholds
+            # at one artifact, so every subtask declaring two would take the
+            # depth-exhausted branch below, at warning level, on every
+            # decomposition the product runs.
+            return ()
+
         children: list[DecompositionResult] = []
         for subtask_def, child_task in zip(subtasks, created_tasks, strict=True):
             assessment = budget.policy.assess(subtask_def)
@@ -407,7 +413,6 @@ class DecompositionService:
                     limit=assessment.limit,
                     current_depth=context.current_depth,
                     max_depth=context.max_depth,
-                    recursion_enabled=budget.enabled,
                 )
                 continue
             logger.info(
