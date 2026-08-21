@@ -49,6 +49,7 @@ from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.html_parse_guard import HTMLParseGuard
 
 from .base import BaseTool, ToolExecutionResult
@@ -94,8 +95,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         security_interceptor: SecurityInterceptionStrategy | None = None,
         agent_id: str | None = None,
         task_id: str | None = None,
-        agent_provider_name: str | None = None,
-        agent_model_id: str | None = None,
+        agent_binding: ModelRef | None = None,
         invocation_tracker: ToolInvocationTracker | None = None,
         policy_engine: PolicyEngine | None = None,
         policy_evaluation_mode: Literal["enforce", "log_only"] = "log_only",
@@ -110,10 +110,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             security_interceptor: Optional pre/post-tool security layer.
             agent_id: Agent ID for security context.
             task_id: Task ID for security context.
-            agent_provider_name: Provider name the agent is using,
-                for cross-family LLM security evaluation.
-            agent_model_id: Model the agent dispatches on, carried beside the
-                provider because one connection may serve several families.
+            agent_binding: The ``(provider, model)`` pair the agent
+                dispatches on, for cross-family LLM security evaluation. One
+                object rather than two arguments because the provider alone
+                cannot answer which family judged the work: a connection may
+                serve several, so a caller holding one half has nothing.
             invocation_tracker: Optional tracker for recording
                 invocations for the activity timeline.
             policy_engine: Optional runtime policy engine evaluated before
@@ -137,8 +138,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self._security_interceptor = security_interceptor
         self._agent_id = agent_id
         self._task_id = task_id
-        self._agent_provider_name = agent_provider_name
-        self._agent_model_id = agent_model_id
+        self._agent_binding = agent_binding
         self._invocation_tracker = invocation_tracker
         self._policy_engine = policy_engine
         self._policy_evaluation_mode = policy_evaluation_mode
@@ -355,8 +355,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             arguments=copy.deepcopy(dict(tool_call.arguments)),
             agent_id=self._agent_id,
             task_id=self._task_id,
-            agent_provider_name=self._agent_provider_name,
-            agent_model_id=self._agent_model_id,
+            agent_provider_name=(
+                self._agent_binding.provider if self._agent_binding else None
+            ),
+            agent_model_id=(
+                self._agent_binding.model_id if self._agent_binding else None
+            ),
         )
 
     async def _check_security(

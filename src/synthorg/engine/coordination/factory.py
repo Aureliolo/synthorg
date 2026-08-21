@@ -7,7 +7,6 @@ dependency tree from config and runtime services.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.decomposition_strategy_factory import (
@@ -17,6 +16,9 @@ from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
+)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
@@ -188,10 +190,8 @@ def build_coordinator(  # noqa: PLR0913
     decomposition_strategy: str = "agent-session",
     decomposition_tool_provider: DecompositionToolProvider | None = None,
     decomposition_cost_tracker: CostTrackerProtocol | None = None,
-    agent_session_max_turns: int | None = None,
-    agent_session_ceilings: SessionCeilings | None = None,
+    agent_session_config: AgentSessionDecompositionConfig | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
-    agent_session_memory_digest_budget: int | None = None,
     decomposition_config_resolver: ConfigResolverProtocol | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
@@ -249,23 +249,19 @@ def build_coordinator(  # noqa: PLR0913
         decomposition_cost_tracker: Optional cost tracker; when wired, the
             agent-session planner records its provider spend against it under
             the owner + objective task.
-        agent_session_max_turns: Optional operator-tuned turn cap for the
-            agent-session planning loop (``coordination
-            .decomposition_agent_max_turns``); ``None`` uses the strategy
-            default.
-        agent_session_ceilings: Optional operator-tuned per-session bounds for
-            the agent-session planning loop
-            (``coordination.decomposition_agent_cost_ceiling`` and
-            ``budget.session_token_ceiling``); ``None`` uses the strategy
-            defaults. Paired so a wiring path cannot carry the money bound and
-            drop the token one, which would leave the session unbounded
-            against a provider that bills by flat subscription.
+        agent_session_config: Optional operator-tuned config for the
+            agent-session planning loop: its turn cap
+            (``coordination.decomposition_agent_max_turns``), both spend
+            bounds (``coordination.decomposition_agent_cost_ceiling`` and
+            ``budget.session_token_ceiling``) and its memory-digest budget
+            (``memory.planning_memory_digest_budget``). ``None`` uses the
+            strategy defaults. One object rather than loose scalars so a
+            wiring path cannot carry the money bound and drop the token one,
+            which would leave the session unbounded against a provider that
+            bills by flat subscription.
         planning_memory: Optional injection strategy that pre-seeds the
             org/retro memory digest into the owner-run planning brief; ``None``
             plans without a digest.
-        agent_session_memory_digest_budget: Optional token cap for that digest
-            (``memory.planning_memory_digest_budget``); ``None`` uses the
-            strategy default, ``0`` injects nothing.
         decomposition_config_resolver: Optional resolver the decomposition
             strategy reads its output-token ceiling from, once per call so a
             raised ceiling applies to the next decomposition rather than the
@@ -314,10 +310,8 @@ def build_coordinator(  # noqa: PLR0913
         provider_selector=provider_selector,
         cost_tracker=decomposition_cost_tracker,
         shutdown_checker=session_shutdown_checker,
-        agent_session_max_turns=agent_session_max_turns,
-        agent_session_ceilings=agent_session_ceilings,
+        agent_session_config=agent_session_config,
         planning_memory=planning_memory,
-        agent_session_memory_digest_budget=agent_session_memory_digest_budget,
         config_resolver=decomposition_config_resolver,
     )
     # The workspace service doubles as the planner's inventory: it is the only

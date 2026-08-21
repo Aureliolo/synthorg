@@ -24,6 +24,9 @@ from synthorg.engine.coordination.factory import (
     CoordinatorRoutingDeps,
     build_coordinator,
 )
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
+)
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
@@ -439,11 +442,16 @@ async def _build_runtime_coordinator(
         decomposition_strategy=decomposition_strategy,
         decomposition_tool_provider=planning_tool_provider,
         decomposition_cost_tracker=cost_tracker,
-        agent_session_max_turns=agent_session_max_turns,
-        agent_session_ceilings=agent_session_ceilings,
+        # Composed here, where every part of it was just resolved, so the
+        # strategy receives one config instead of three scalars a later
+        # wiring path could carry partially.
+        agent_session_config=AgentSessionDecompositionConfig(
+            max_turns=agent_session_max_turns,
+            ceilings=agent_session_ceilings,
+            memory_digest_budget=planning.digest_budget,
+        ),
         decomposition_config_resolver=config_resolver_of(app_state),
         planning_memory=planning.planning_memory,
-        agent_session_memory_digest_budget=planning.digest_budget,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,
