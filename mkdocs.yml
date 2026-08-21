@@ -259,6 +259,7 @@ nav:
       - LLM Provider Auth Survey: research/llm-provider-auth-survey.md
       - Multi-Agent Failure Audit: research/multi-agent-failure-audit.md
       - S1 Multi-Agent Decision: research/s1-multi-agent-decision.md
+      - S2 Agent-Parallelism Evidence: research/s2-agent-parallelism-evidence.md
   - Reference:
       - reference/research.md
       - reference/standards.md
