@@ -20,7 +20,12 @@ from typing import Protocol, runtime_checkable
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.session import SessionLimits, SweepDeps, ledger_scope
+from evals.recursion_depth.session import (
+    SessionLimits,
+    SweepDeps,
+    ledger_scope,
+    transcript_scope,
+)
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import build_tree
 from synthorg.budget.session_budget import SessionCeilings
@@ -117,7 +122,16 @@ class AgentSessionPlanner:
         """
         provider = await self.deps.build_provider(self._binding(task, execution_id))
         fallback = ProgressTrackingLedger()
-        async with ledger_scope(self.deps, execution_id, fallback) as tracker:
+        async with (
+            # Planning is transcribed for the same reason execution is, and it
+            # is the half worth reading most: the tree a run produced is the
+            # experiment's independent variable, and why the planner split the
+            # way it did survives nowhere else. Paired with the ledger scope
+            # because both key on this execution id, so a planning transcript
+            # and the spend it produced name the same session.
+            transcript_scope(self.deps, execution_id),
+            ledger_scope(self.deps, execution_id, fallback) as tracker,
+        ):
             result = await build_tree(
                 # The strategy books to its OWN tracker, never the hosted one,
                 # for the reason `open_session` does the same: a planning

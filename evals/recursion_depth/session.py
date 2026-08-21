@@ -455,6 +455,27 @@ def _forward_stall(
 
 
 @contextlib.asynccontextmanager
+async def transcript_scope(deps: SweepDeps, label: str) -> AsyncIterator[None]:
+    """Record every exchange *label*'s session makes, however it ends.
+
+    Shared by the planning and execution paths rather than written at each:
+    the planner opens no session of its own, so a bind living only in
+    ``open_session`` would silently record the building and skip the planning,
+    which is the half the experiment is about.
+
+    Yields:
+        Nothing; the unbind runs on the way out.
+    """
+    try:
+        if deps.transcripts is not None and deps.transcript_root is not None:
+            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
+        yield
+    finally:
+        if deps.transcripts is not None:
+            deps.transcripts.unbind()
+
+
+@contextlib.asynccontextmanager
 async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
     """Record this session's exchanges and release what its tools hold open.
 
@@ -468,16 +489,11 @@ async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
         Nothing; the unbind and the release run on the way out.
     """
     try:
-        if deps.transcripts is not None and deps.transcript_root is not None:
-            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
-        yield
+        async with transcript_scope(deps, label):
+            yield
     finally:
-        try:
-            if deps.transcripts is not None:
-                deps.transcripts.unbind()
-        finally:
-            if deps.release_tools is not None:
-                await deps.release_tools()
+        if deps.release_tools is not None:
+            await deps.release_tools()
 
 
 def ledger_scope(
@@ -519,6 +535,7 @@ __all__ = [
     "open_session",
     "run_binding",
     "run_session",
+    "transcript_scope",
     "unit_workspace",
     "watching",
 ]
