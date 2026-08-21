@@ -176,12 +176,19 @@ recursion-depth-record:
 # apko is not installed locally and is not worth installing, so it runs from
 # its own image; `--arch host` keeps it to the one architecture that can be
 # loaded here, where CI builds both.
-# Pinned, and to the same version CI builds with (security-dast.yml's
-# APKO_VERSION): `latest` is mutable, so a build a week apart could compose a
-# different base and the recording would read that as a loop difference. Kept
-# Renovate-visible so a bump moves both.
-# renovate: datasource=github-releases depName=chainguard-dev/apko
-APKO_VERSION := v1.2.36
+#
+# Pinned by DIGEST, not to CI's APKO_VERSION, because the two obtain apko by
+# different routes: CI downloads the release BINARY from GitHub, where every
+# version stays published, while this pulls the IMAGE from cgr.dev, whose free
+# tier serves `latest` alone. A version tag here resolves for nobody, which is
+# why this target had never run on any machine. Comparability does not rest on
+# the builder version anyway: docker/sandbox/apko.lock.json pins every package
+# by version and digest, so the tool decides layer assembly while the lockfile
+# decides the contents. A digest is also the stronger pin, being immutable
+# where a version tag is only conventional. Tag and digest sit in ONE variable
+# so a Renovate bump cannot move one and strand the other.
+# renovate: datasource=docker depName=cgr.dev/chainguard/apko
+APKO_IMAGE := cgr.dev/chainguard/apko:latest@sha256:e398a22baba28db345df4b89c3368b9d43e0f1e559f05476249405cece8e8486
 SANDBOX_BASE_TAR := .sandbox-base.tar
 APKO_OUT := .apko-out
 build-sandbox-image:
@@ -189,12 +196,18 @@ build-sandbox-image:
 	# The worktree goes in READ-ONLY and the tarball comes out through its own
 	# mount. apko needs the yaml and the lockfile and nothing else from here,
 	# so there is no reason for a third-party image to hold a writable handle
-	# on the checkout while it composes.
-	docker run --rm \
+	# on the checkout while it composes. `--sbom-path` is what makes that hold:
+	# apko emits the SBOM into the working directory by default, so without it
+	# the build composes the whole base and then dies on the last write.
+	# MSYS_NO_PATHCONV stops Git Bash rewriting the CONTAINER paths as if they
+	# were host ones: unset, `-w /work` reaches docker as
+	# `C:/Program Files/Git/work` and the daemon refuses it, so this target
+	# cannot run on Windows at all. Ignored by every other shell.
+	MSYS_NO_PATHCONV=1 docker run --rm \
 	  -v "$(CURDIR):/work:ro" -v "$(CURDIR)/$(APKO_OUT):/out" -w /work \
-	  cgr.dev/chainguard/apko:$(APKO_VERSION) \
-	  build --arch host docker/sandbox/apko.yaml synthorg-sandbox-base:local \
-	  /out/$(SANDBOX_BASE_TAR)
+	  $(APKO_IMAGE) \
+	  build --arch host --sbom-path /out docker/sandbox/apko.yaml \
+	  synthorg-sandbox-base:local /out/$(SANDBOX_BASE_TAR)
 	docker load -i $(APKO_OUT)/$(SANDBOX_BASE_TAR)
 	docker build -f docker/sandbox/Dockerfile \
 	  --build-arg BASE_IMAGE=synthorg-sandbox-base:local-$(shell docker version --format '{{.Server.Arch}}') \

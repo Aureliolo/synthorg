@@ -217,6 +217,16 @@
     },
     {
       "customType": "regex",
+      "description": "Tool images the root Makefile pulls at develop time. No manager reached the Makefile at all before this: the binary-version manager scans .github and scripts/install_*.sh only, so the apko pin there carried a `# renovate:` marker that had never once been read, and it sat on a cgr.dev version tag the free registry stopped serving while every CI job kept passing (CI installs the release binary from GitHub, so it never touches that registry). Tag and digest are captured in one regex, per the DHI note below, so both move in a single edit.",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "# renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s*[A-Z0-9_]+_IMAGE\\s*:?=\\s*[^\\s:]+:(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "description": "DHI image pins for postgres + nats. Tag AND digest both live in cli/internal/config/state.go as Default*Image{Tag,Digest} constants; cli/internal/verify/dhi.go derives its dhiPinnedIndexDigests map from those constants at init. One file, one regex shape, one match per dep -- Renovate makes a single docker-datasource lookup per (depName, currentValue) pair and writes both tag+digest in the same edit. Splitting tag+digest across two regex shapes (one capturing currentDigest, the other not) triggers https://github.com/renovatebot/renovate/issues/36461 ('Multiple changed values') and aborts the renovate/container branch with 'Error updating branch: update failure'.",
       "managerFilePatterns": ["/cli/internal/config/state\\.go$/"],
       "matchStrings": [
