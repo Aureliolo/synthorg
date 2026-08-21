@@ -6,12 +6,16 @@ from typing import cast
 import pytest
 
 from evals.recursion_depth.tree import arm_recursion
+from synthorg.engine.decomposition.llm import LlmDecompositionConfig
 from synthorg.engine.decomposition.service import (
     _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
 )
 from synthorg.settings.service import SettingsService
 
 pytestmark = pytest.mark.unit
+
+#: Read off the product's own config so the comparison cannot drift from it.
+_PRODUCT_DEFAULT_RETRIES = LlmDecompositionConfig().max_retries
 
 
 class _RecordingSettings:
@@ -67,6 +71,21 @@ async def test_planning_timeout_exceeds_the_product_default() -> None:
     assert float(written["decomposition_timeout_seconds"]) > (
         _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
     )
+
+
+async def test_planning_retries_exceed_the_product_default() -> None:
+    """A failed plan costs the sweep its comparison, not a data point.
+
+    Arms are compared pairwise, so one cell that never produces a tree
+    destroys the pairing rather than weakening it. A measured run refused a
+    plan three times for three DIFFERENT faults while its sibling arm planned
+    cleanly: each attempt corrected the previous one, so it was converging and
+    ran out of budget. The sweep therefore buys more attempts than a
+    production initiative would.
+    """
+    written = await _armed()
+
+    assert int(written["decomposition_max_retries"]) > _PRODUCT_DEFAULT_RETRIES
 
 
 @pytest.mark.parametrize("enabled", [True, False])

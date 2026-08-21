@@ -64,6 +64,20 @@ _OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
 #: that never answers.
 _PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 
+#: Decomposition self-correction attempts, raised above the product default.
+#:
+#: A cell whose decomposition fails produces NO tree, and a sweep compares arms
+#: pairwise, so one failed plan destroys the comparison the run exists to make
+#: rather than costing it a data point. That asymmetry is why the sweep buys
+#: more attempts than a production initiative would.
+#:
+#: Measured: a plan was refused three times for three DIFFERENT faults (a
+#: missing `title`, then a `satisfies` field of the wrong type, then an
+#: em-dash the house style bans) while its sibling arm planned cleanly. Each
+#: attempt corrected the previous fault, so the planner was converging and
+#: simply ran out of budget at the shipped default of two.
+_PLANNING_MAX_RETRIES: Final[str] = "6"
+
 #: How many subtasks one level may produce. Above the corroborated 11-to-25
 #: coherent-unit ceiling there is no evidence a planner can hold a level
 #: together at all, so a level is bounded well inside it and the sweep buys its
@@ -158,6 +172,9 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
     await settings.set(
         "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
+    )
+    await settings.set(
+        "coordination", "decomposition_max_retries", _PLANNING_MAX_RETRIES
     )
 
 

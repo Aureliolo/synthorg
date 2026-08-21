@@ -417,6 +417,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_retries",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many times a refused decomposition is re-asked for before"
+            " the initiative fails. Each attempt is a self-correction, not a"
+            " repeat: the previous error is fed back, so a run failing on a"
+            " DIFFERENT fault each time is converging rather than incapable,"
+            " and raising this lets it finish. Worth raising for a model that"
+            " plans well but is loose about the schema; the cost of the extra"
+            " attempt is one planning call, against an initiative that fails"
+            " outright without it."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=8,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="decomposition_timeout_seconds",
         type=SettingType.FLOAT,
         default="600.0",

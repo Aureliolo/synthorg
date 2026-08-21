@@ -63,6 +63,7 @@ logger = get_logger(__name__)
 
 _DECOMPOSITION_NS: Final[str] = "coordination"
 _MAX_OUTPUT_TOKENS_KEY: Final[str] = "decomposition_max_output_tokens"
+_MAX_RETRIES_KEY: Final[str] = "decomposition_max_retries"
 
 
 class LlmDecompositionConfig(BaseModel):
@@ -76,7 +77,10 @@ class LlmDecompositionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    max_retries: int = Field(default=2, ge=0, le=5, description="Max retry attempts")
+    # Ceiling matches `coordination.decomposition_max_retries`, because the
+    # live setting is what actually decides the count and two ceilings that
+    # disagree would let an operator write a value this refuses.
+    max_retries: int = Field(default=2, ge=0, le=8, description="Max retry attempts")
     temperature: float = Field(
         default=0.2,
         ge=0.0,
@@ -138,6 +142,24 @@ class LlmDecompositionStrategy:
         self._cost_tracker = cost_tracker
         self._resolver = config_resolver
 
+    async def _max_retries(self) -> int:
+        """How many times a refused plan may be re-asked for.
+
+        Read live for the same reason the ceiling is: the right number depends
+        on the bound model, which an operator changes without a restart. Each
+        attempt is a SELF-CORRECTION, not a repeat of the same request (the
+        prior error is fed back), so attempts are not interchangeable: a run
+        that failed three times on three DIFFERENT faults was converging and
+        ran out of budget, which is not the same as a model that cannot do it.
+
+        Returns:
+            The operator's current setting, or the configured default when no
+            resolver is wired (the harnesses and tests construct without one).
+        """
+        if self._resolver is None:
+            return self._config.max_retries
+        return await self._resolver.get_int(_DECOMPOSITION_NS, _MAX_RETRIES_KEY)
+
     async def _max_output_tokens(self) -> int:
         """The output-token ceiling this decomposition runs under.
 
@@ -186,7 +208,7 @@ class LlmDecompositionStrategy:
 
         last_error: str | None = None
         last_response: CompletionResponse | None = None
-        attempts = 1 + self._config.max_retries
+        attempts = 1 + await self._max_retries()
 
         # See docs/reference/retry-patterns.md: Pattern B -- semantic
         # self-correction. Each attempt re-prompts the LLM with prior-
