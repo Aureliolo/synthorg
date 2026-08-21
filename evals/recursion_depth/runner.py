@@ -391,8 +391,10 @@ async def _run_cell(
     )
     context.budget.spend(planned.sessions)
     assembled = await _build_tree_units(context, cell, root, planned.result, units)
-    merged = await asyncio.to_thread(
-        run_oracle, spec_dir=context.spec_dir, tree=assembled.project_dir
+    merged = await run_oracle(
+        build_sandbox=context.deps.build_sandbox,
+        spec_dir=context.spec_dir,
+        tree=assembled.project_dir,
     )
     record = CellRecord(
         depth_cap=cell.depth_cap,

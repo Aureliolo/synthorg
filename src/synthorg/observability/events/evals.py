@@ -71,3 +71,7 @@ EVALS_RECURSION_CELL_UNAVAILABLE: Final[str] = "evals.recursion_depth.cell_unava
 EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
+EVALS_RECURSION_CHILD_LINK_DROPPED: Final[str] = (
+    "evals.recursion_depth.child_link_dropped"
+)
+EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"

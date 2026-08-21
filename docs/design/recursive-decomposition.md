@@ -208,14 +208,40 @@ report is always written, a cell that cost real money is never dropped from it,
 and a run where nothing was measured is refused rather than published as a
 curve of zeros.
 
-### What a sweep runs on this machine
+### Where a sweep runs agent-authored code
 
-A sweep executes agent-authored code on the machine running it: the held-out
-oracle grades the delivered CLI by running it, and each unit's own tests are run
-against its own tree. That is inherent to grading a program by running it, and
-it is why this is an operator-run experiment against a specification the
-operator wrote rather than anything the product does. The agents themselves run
-in the sandbox container, as everywhere else.
+Everywhere, in a container. The agents run in the sandbox image the CLI
+verified, and so does everything that grades what they produced: each unit's own
+suite, and the held-out oracle. Nothing a sweep executes runs on the host.
+
+That is not belt-and-braces. Grading a tree means importing every `conftest.py`
+and package `__init__.py` in it, so the process that grades is a process the
+agent wrote. Running it on the host would give that code the network, the
+operator's provider credentials, the bootstrap secrets the recording host puts
+in its own environment, and the Docker socket, which is host root. The harness
+already treats the agent's shell commands as untrusted and runs them at
+`network=none`; running the artefacts of those same commands anywhere else would
+have been the same code with the restrictions taken off.
+
+Two consequences worth stating, because they are easy to conflate:
+
+- **Containment is complete.** No network, no credentials, host unreachable,
+  container thrown away.
+- **The grade is still self-reported, and nothing can change that.** A tree that
+  wants to claim its tests passed is running arbitrary code in the process doing
+  the claiming. Reading the verdict from the machine-written XML report rather
+  than the exit code stops the ORDINARY failures reading as passes (`os._exit(0)` in a
+  `conftest.py`, a suite that collected nothing, a collection hook that
+  deselected everything), which is what a model under pressure actually does.
+  Deliberate forgery remains possible and is bounded elsewhere: forging only
+  ever grows the survival DENOMINATOR, so it makes the measured result worse
+  rather than better, and the numerator is decided by the held-out oracle, which
+  never enters the tree and which the tree cannot write.
+
+The oracle's container is built per grading from a scratch directory holding a
+copy of the tree beside a copy of the oracle, and destroyed after. That is what
+holds the oracle out: it exists only somewhere no agent runs, rather than being
+kept from agents by nothing having copied it.
 
 ## Related
 

@@ -135,6 +135,15 @@ class _ScriptedStrategy:
             raise AssertionError(msg)
         return plan
 
+    def plans_any_task(self) -> bool:
+        """Answer for a strategy that holds a plan per parent.
+
+        Returns:
+            ``True``: it is keyed by parent, so it plans any task it was given
+            a plan for, which is what a recursion test needs.
+        """
+        return True
+
     def get_strategy_name(self) -> str:
         """Name this strategy for the service's logs.
 
@@ -295,6 +304,35 @@ class TestAnOversizedUnitIsSplitRatherThanDispatched:
         leaves = {str(task.id) for task in result.leaf_tasks}
         assert leaves == {sid("small"), sid("big-a"), sid("big-b")}
         assert sid("big") in {str(task.id) for task in result.all_tasks}
+
+
+class TestAStrategyThatPlansOneTaskIsNotRecursedInto:
+    """A working endpoint must not start failing because depth was enabled."""
+
+    async def test_the_manual_strategy_is_left_flat(self) -> None:
+        # ManualDecompositionStrategy holds one operator-supplied plan for one
+        # parent and raises when asked about anything else. Recursing into it
+        # turns an oversized subtask into a failed REQUEST, so the manual
+        # endpoint would refuse every plan whose subtask declares two artifacts
+        # the moment an operator enabled recursion.
+        from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
+
+        plan = _plan(
+            str(as_uuid("root")),
+            (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
+        )
+        service = DecompositionService(
+            ManualDecompositionStrategy(plan),
+            TaskStructureClassifier(),
+            config_resolver=_resolver(recursion_enabled=True),
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=4)
+        )
+
+        assert result.children == ()
+        assert len(result.created_tasks) == 1
 
 
 class TestRecursionStops:

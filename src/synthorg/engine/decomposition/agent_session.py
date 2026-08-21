@@ -335,6 +335,15 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         return _STRATEGY_NAME
 
     @override
+    def plans_any_task(self) -> bool:
+        """Plan any task: every call runs a fresh session over what it is given.
+
+        Returns:
+            ``True``, always.
+        """
+        return True
+
+    @override
     async def decompose(
         self,
         task: Task,

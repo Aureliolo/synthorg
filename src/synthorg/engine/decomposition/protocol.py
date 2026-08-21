@@ -37,6 +37,18 @@ class DecompositionStrategy(Protocol):
         """Return a human-readable name for this strategy."""
         ...
 
+    def plans_any_task(self) -> bool:
+        """Whether this strategy can plan a task it was not constructed for.
+
+        Recursion decomposes a CHILD task, which the caller never named, so a
+        strategy holding one operator-supplied plan for one parent cannot serve
+        it: asked about the child, it refuses, and the refusal fails the whole
+        decomposition rather than the one subtask. Declared per strategy rather
+        than inferred, because "can you plan something I have not shown you" is
+        a claim about the implementation that no caller can test without asking.
+        """
+        ...
+
 
 @runtime_checkable
 class WorkspaceInventory(Protocol):

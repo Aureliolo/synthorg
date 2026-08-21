@@ -39,6 +39,13 @@ contents:
     - nodejs-24
     - npm
     - python-3.14
+    # A test runner belongs in the image that runs untrusted code, not on the
+    # host beside it. Without it an agent asked to write code and its tests
+    # cannot run them where its code already runs, and anything grading a
+    # delivered tree has to execute that tree somewhere else, which means the
+    # host. Pinned to the interpreter's own minor so the two cannot drift apart
+    # under a lockfile refresh.
+    - py3.14-pytest
 
 accounts:
   groups:

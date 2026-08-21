@@ -50,6 +50,7 @@ from evals.harness.host import (
 )
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.recursion_depth.emit import write_report
+from evals.recursion_depth.grading import SandboxUnitGrader
 from evals.recursion_depth.manifest import RecursionDepthManifest, load_manifest
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.provenance import capture_provenance
@@ -62,8 +63,9 @@ from evals.recursion_depth.runner import (
 from evals.recursion_depth.session import SessionLimits, SweepDeps
 from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
-from evals.runner.execution import seed_eval_project
+from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
 from synthorg.settings.state import config_resolver_of, settings_service_of
@@ -116,6 +118,16 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         (
             f"  ceiling       : {manifest.max_sessions} sessions, then the "
             "sweep stops and reports what it measured"
+        ),
+        # Named rather than left to be worked out. The two ceilings bound
+        # different things and neither is a bill: an operator reading "3000
+        # sessions" and "2.0 per session" is one multiplication away from the
+        # number they actually care about, and printing the multiplication is
+        # cheaper than discovering it afterwards.
+        (
+            f"  worst case    : {manifest.max_sessions * manifest.unit_cost_ceiling:.2f}"
+            f" if every session spends its whole {manifest.unit_cost_ceiling:.2f}"
+            " ceiling"
         ),
     ]
     caveat = manifest.caveat()
@@ -257,6 +269,11 @@ def _build_deps(
     return SweepDeps(
         build_provider=binder.build_provider,
         build_tool_registry=binder.build_tool_registry,
+        build_grader=lambda workspace: SandboxUnitGrader(
+            sandbox=binder.build_sandbox(workspace.root),
+            project_id=NotBlankStr(EVAL_TASK_PROJECT),
+        ),
+        build_sandbox=binder.build_sandbox,
         release_tools=binder.release_tool_sandboxes,
         open_run_ledger=binder.open_run_ledger,
         project_repo=host.project_repo,

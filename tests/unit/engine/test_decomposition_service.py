@@ -45,6 +45,9 @@ class _NeverAnsweringStrategy:
     def get_strategy_name(self) -> str:
         return "never-answering"
 
+    def plans_any_task(self) -> bool:
+        return True
+
 
 def _make_task(
     task_id: str = "task-svc-1",
@@ -430,6 +433,9 @@ class TestDecompositionService:
             def get_strategy_name(self) -> str:
                 return "failing"
 
+            def plans_any_task(self) -> bool:
+                return True
+
         task = _make_task()
         strategy = _FailingStrategy()
         classifier = TaskStructureClassifier()
@@ -574,6 +580,9 @@ class _ContextRecordingStrategy:
 
     def get_strategy_name(self) -> str:
         return "context-recording"
+
+    def plans_any_task(self) -> bool:
+        return True
 
 
 class _StubInventory:

@@ -22,13 +22,9 @@ from evals.errors import (
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
-from evals.recursion_depth.execute import (
-    UNIT_REPORT_PATH,
-    leaf_brief,
-    leaf_task,
-    own_tests_pass,
-)
+from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
+from evals.recursion_depth.grading import read_verdict
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -391,10 +387,33 @@ def _deps() -> SweepDeps:
     async def _no_provider(_binding: object) -> object:
         raise AssertionError
 
+    def _no_sandbox(_root: Path) -> object:
+        raise AssertionError
+
     return SweepDeps(
         build_provider=_no_provider,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace: None,
+        build_grader=lambda _workspace: _PassingGrader(),
+        build_sandbox=_no_sandbox,  # type: ignore[arg-type]
     )
+
+
+class _PassingGrader:
+    """Stands in for the container grader, which needs a Docker daemon.
+
+    What the merge loop's tests are about is attempt accounting and arm wiring,
+    neither of which the verdict changes; the verdict itself is asserted
+    directly in ``TestTheOwnTestGate``.
+    """
+
+    async def own_tests_pass(self, project_dir: Path) -> tuple[bool, str]:
+        """Report a clean suite.
+
+        Returns:
+            Always a pass.
+        """
+        del project_dir
+        return True, ""
 
 
 @pytest.fixture
@@ -416,7 +435,6 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
-    monkeypatch.setattr(merge_module, "own_tests_pass", lambda _dir: (True, ""))
     monkeypatch.setattr(merge_module, "artifacts_present", lambda _task, _ws: True)
     return ran
 
@@ -511,24 +529,78 @@ class TestTheMergeLoop:
 
 
 class TestTheOwnTestGate:
-    """A unit that wrote no tests did not own itself end to end."""
+    """A unit that wrote no tests did not own itself end to end.
 
-    def test_a_tree_with_no_tests_does_not_deliver(self, tmp_path: Path) -> None:
-        (tmp_path / "sqlcsv").mkdir()
+    Asserted on the verdict rather than by running a suite, because the verdict
+    is the part that decides delivery and the part a delivered tree can lie
+    about. The tree runs in a container either way; what is under test here is
+    that the harness reads what the run REPORTED rather than what it EXITED
+    with.
+    """
 
-        passed, _ = own_tests_pass(tmp_path)
+    def _report(self, tmp_path: Path, body: str) -> Path:
+        """Write a junit report for the verdict to read.
+
+        Returns:
+            Its path.
+        """
+        path = tmp_path / "report.xml"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_no_report_at_all_does_not_deliver(self, tmp_path: Path) -> None:
+        # The shape a forged pass takes: os._exit(0) in a conftest exits clean
+        # and never reaches session end, so nothing is written. Read off the
+        # exit code this graded as a pass.
+        passed, detail = read_verdict(tmp_path / "absent.xml", timed_out=False)
 
         assert passed is False
+        assert "never reached session end" in detail
 
-    def test_a_tree_whose_tests_pass_delivers(self, tmp_path: Path) -> None:
-        (tmp_path / "test_thing.py").write_text(
-            "def test_it_adds():\n    assert 1 + 1 == 2\n", encoding="utf-8"
+    def test_a_suite_that_collected_nothing_does_not_deliver(
+        self, tmp_path: Path
+    ) -> None:
+        # Both an empty tree and a deselect-everything hook land here.
+        report = self._report(
+            tmp_path, '<testsuite tests="0" failures="0" errors="0"/>'
         )
 
-        passed, report = own_tests_pass(tmp_path)
+        passed, detail = read_verdict(report, timed_out=False)
+
+        assert passed is False
+        assert "collected no tests" in detail
+
+    def test_a_failing_suite_does_not_deliver(self, tmp_path: Path) -> None:
+        report = self._report(
+            tmp_path, '<testsuite tests="3" failures="1" errors="0"/>'
+        )
+
+        passed, detail = read_verdict(report, timed_out=False)
+
+        assert passed is False
+        assert "1 failed" in detail
+
+    def test_a_timed_out_suite_does_not_deliver(self, tmp_path: Path) -> None:
+        # Whatever it managed to write, the container killed it part-way.
+        report = self._report(
+            tmp_path, '<testsuite tests="9" failures="0" errors="0"/>'
+        )
+
+        passed, detail = read_verdict(report, timed_out=True)
+
+        assert passed is False
+        assert "did not finish" in detail
+
+    def test_a_clean_suite_delivers(self, tmp_path: Path) -> None:
+        report = self._report(
+            tmp_path,
+            '<testsuites><testsuite tests="4" failures="0" errors="0"/></testsuites>',
+        )
+
+        passed, detail = read_verdict(report, timed_out=False)
 
         assert passed is True
-        assert report == ""
+        assert detail == ""
 
 
 @dataclass
@@ -614,8 +686,20 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         runner_module,
         "run_oracle",
-        lambda *, spec_dir, tree: OracleOutcome(results={"R01": True}, report=""),
+        _scripted_oracle,
     )
+
+
+async def _scripted_oracle(
+    *, build_sandbox: object, spec_dir: Path, tree: Path
+) -> OracleOutcome:
+    """Stand in for the held-out oracle, which needs a container to run.
+
+    Returns:
+        One passing requirement, which is enough for the matrix to score.
+    """
+    del build_sandbox, spec_dir, tree
+    return OracleOutcome(results={"R01": True}, report="")
 
 
 def _assembles_then_dies(
@@ -874,7 +958,7 @@ class TestTheMatrix:
         monkeypatch.setattr(
             runner_module,
             "run_oracle",
-            lambda *, spec_dir, tree: OracleOutcome(results={"R01": True}, report=""),
+            _scripted_oracle,
         )
         planner = _ScriptedPlanner(
             answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
@@ -906,7 +990,7 @@ class TestTheMatrix:
         monkeypatch.setattr(
             runner_module,
             "run_oracle",
-            lambda *, spec_dir, tree: OracleOutcome(results={"R01": True}, report=""),
+            _scripted_oracle,
         )
         planner = _ScriptedPlanner(
             answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)

@@ -110,6 +110,10 @@ class _SentinelFallback(DecompositionStrategy):
     def get_strategy_name(self) -> str:
         return "sentinel-fallback"
 
+    @override
+    def plans_any_task(self) -> bool:
+        return True
+
 
 def _submit_then_continue() -> ScriptedProvider:
     """A session that submits its plan and then has a turn left to take.

@@ -19,6 +19,7 @@ harness's business. This module only needs the five facts a bearer carries.
 import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Final, Literal
 
 from evals.errors import HarnessProviderMissingError
@@ -235,6 +236,40 @@ class HarnessBinder:
         routed = await self.routed_provider_config(binding)
         registry = ProviderRegistry.from_config({binding.ref.provider: routed})
         return registry.get(binding.ref.provider)
+
+    def build_sandbox(self, root: Path) -> DockerSandbox:
+        """Build a container backend rooted at *root*, tracked for release.
+
+        Separate from :meth:`build_tool_registry` because the two answer to
+        different owners. That one builds what the AGENT drives; this one is
+        used by whatever GRADES what the agent produced, and by the held-out
+        oracle, neither of which is a tool the agent can reach. They share an
+        image and a network posture because the reason is the same either way:
+        the code being run is model output.
+
+        Args:
+            root: The directory mounted as the container's workspace.
+
+        Returns:
+            The sandbox, appended to ``open_sandboxes`` so the run's teardown
+            reclaims it whether the grading finished or raised.
+        """
+        app_state = self.host.app_state
+        sandbox = DockerSandbox(
+            config=DockerSandboxConfig(
+                image=NotBlankStr(self.host.sandbox_image),
+                sidecar_image=NotBlankStr(self.host.sidecar_image),
+                network=_SANDBOX_NETWORK,
+            ),
+            workspace=root,
+            clock=app_state.clock,
+            lifecycle_strategy=create_lifecycle_strategy(
+                app_state.config.sandboxing.docker.lifecycle,
+                clock=app_state.clock,
+            ),
+        )
+        self.open_sandboxes.append(sandbox)
+        return sandbox
 
     def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
         """Build the tool set a run gets, scoped to *workspace*.

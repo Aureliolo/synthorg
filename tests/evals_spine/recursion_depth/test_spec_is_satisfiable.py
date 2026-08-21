@@ -24,6 +24,7 @@ from evals.recursion_depth.oracle import (
     requirement_ids,
     run_oracle,
 )
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 pytestmark = [
     pytest.mark.integration,
@@ -43,14 +44,33 @@ _SPEC_DIR = (
 _REFERENCE_TREE = Path(__file__).resolve().parent / "reference_tree"
 
 
+def _local_sandbox(root: Path) -> SubprocessSandbox:
+    """Build the backend these two tests grade in.
+
+    A recording grades in a container, because the tree it grades is model
+    output. Here the tree is either this repository's own committed reference
+    delivery or an empty directory, so the reason for the container does not
+    apply and requiring a Docker daemon would make the one check that the spec
+    is satisfiable at all the hardest check in the suite to run.
+    ``SubprocessSandbox`` still filters the environment through its own
+    allowlist, so nothing here inherits the host's.
+
+    Returns:
+        A sandbox rooted at *root*.
+    """
+    return SubprocessSandbox(workspace=root)
+
+
 @pytest.fixture(scope="module")
-def reference_outcome() -> OracleOutcome:
+async def reference_outcome() -> OracleOutcome:
     """Grade the reference delivery once for every assertion below.
 
     Returns:
         What the oracle made of the reference tree.
     """
-    return run_oracle(spec_dir=_SPEC_DIR, tree=_REFERENCE_TREE)
+    return await run_oracle(
+        build_sandbox=_local_sandbox, spec_dir=_SPEC_DIR, tree=_REFERENCE_TREE
+    )
 
 
 def test_the_reference_delivery_passes_every_requirement(
@@ -84,8 +104,10 @@ def test_the_declared_requirements_match_the_spec_document() -> None:
     assert missing == set()
 
 
-def test_an_empty_tree_fails_every_requirement(tmp_path: Path) -> None:
-    outcome = run_oracle(spec_dir=_SPEC_DIR, tree=tmp_path)
+async def test_an_empty_tree_fails_every_requirement(tmp_path: Path) -> None:
+    outcome = await run_oracle(
+        build_sandbox=_local_sandbox, spec_dir=_SPEC_DIR, tree=tmp_path
+    )
 
     assert outcome.passed == frozenset()
     assert outcome.failed == frozenset(requirement_ids(_SPEC_DIR))

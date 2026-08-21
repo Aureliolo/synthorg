@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
-from evals.recursion_depth.execute import own_tests_pass
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
@@ -44,7 +43,10 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_MERGE_ATTEMPTED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_CHILD_LINK_DROPPED,
+    EVALS_RECURSION_MERGE_ATTEMPTED,
+)
 
 logger = get_logger(__name__)
 
@@ -189,6 +191,15 @@ def mount_children(workspace: CellWorkspace, pieces: tuple[MergePiece, ...]) -> 
     own copy and the child's own record of what it delivered stays intact for
     the report.
 
+    Symlinks are copied AS LINKS and then dropped unless they resolve inside
+    the piece. The child's tree is agent-authored on a bind mount, so a link in
+    it is a host path the agent chose: followed, ``copytree`` would read the
+    target on the HOST, where the workspace sits several levels under the
+    repository root, and deliver whatever it found to the merging agent, which
+    routes what it reads into a report and from there into the reviewer's
+    prompt. That is both an exfiltration path and a way to hand a unit the
+    held-out oracle. A link cycle is also unbounded disk.
+
     Args:
         workspace: The merge's tree.
         pieces: What to place in it.
@@ -197,7 +208,50 @@ def mount_children(workspace: CellWorkspace, pieces: tuple[MergePiece, ...]) -> 
     for piece in pieces:
         if not piece.tree.is_dir():
             continue
-        shutil.copytree(piece.tree, root / piece.slug, dirs_exist_ok=True)
+        destination = root / piece.slug
+        shutil.copytree(
+            piece.tree,
+            destination,
+            symlinks=True,
+            ignore_dangling_symlinks=True,
+            dirs_exist_ok=True,
+        )
+        _drop_escaping_links(destination, anchor=piece.tree)
+
+
+def _drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
+    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
+
+    Judged against the piece's ORIGINAL location rather than the copy, because
+    a relative link was authored against that tree and is what the agent meant
+    it to reach. A link that stays inside its own delivery is legitimate and
+    kept; anything else named a place the merge has no business reading.
+
+    Args:
+        mounted: The copied tree to sweep.
+        anchor: The piece's own tree, the only region a link may resolve into.
+    """
+    resolved_anchor = anchor.resolve()
+    for path in mounted.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = (path.parent / path.readlink()).resolve()
+        if not _within(target, resolved_anchor):
+            logger.warning(
+                EVALS_RECURSION_CHILD_LINK_DROPPED,
+                link=str(path.relative_to(mounted)),
+                slug=mounted.name,
+            )
+            path.unlink()
+
+
+def _within(candidate: Path, root: Path) -> bool:
+    """Whether *candidate* is *root* or sits beneath it.
+
+    Returns:
+        ``True`` when the path is contained.
+    """
+    return candidate == root or root in candidate.parents
 
 
 def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
@@ -309,9 +363,7 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    # Offloaded for the reason the leaf's is: a pytest subprocess under a
-    # ten-minute ceiling, on the loop that also serves the gateway.
-    detail = await asyncio.to_thread(_undelivered_reason, plan)
+    detail = await _undelivered_reason(deps, plan)
     return MergeOutcome(
         workspace=plan.workspace,
         delivered=not detail,
@@ -408,7 +460,7 @@ def _deliverable_summary(plan: MergePlan) -> str:
     )
 
 
-def _undelivered_reason(plan: MergePlan) -> str:
+async def _undelivered_reason(deps: SweepDeps, plan: MergePlan) -> str:
     """Say why the merged tree is not a delivery, or nothing when it is.
 
     Returns:
@@ -416,7 +468,8 @@ def _undelivered_reason(plan: MergePlan) -> str:
     """
     if not artifacts_present(_attempt_task(plan, ()), plan.workspace):
         return "declared artifacts are missing from the merged tree"
-    passed, report = own_tests_pass(plan.workspace.project_dir)
+    grader = deps.build_grader(plan.workspace)
+    passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
     if not passed:
         return f"the merged tree's own tests did not pass: {report}"
     return ""

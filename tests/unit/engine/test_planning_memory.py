@@ -88,6 +88,10 @@ class _SentinelFallback(DecompositionStrategy):
     def get_strategy_name(self) -> str:
         return "sentinel"
 
+    @override
+    def plans_any_task(self) -> bool:
+        return True
+
 
 class _MarkerMemory:
     """A MemoryInjectionStrategy that records its request and injects a marker."""

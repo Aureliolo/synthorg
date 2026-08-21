@@ -398,6 +398,16 @@ class DecompositionService:
             # decomposition the product runs.
             return ()
 
+        if not self._strategy.plans_any_task():
+            # A strategy holding one operator-supplied plan for one parent
+            # cannot plan the child, and says so by raising. Recursing anyway
+            # turns an oversized subtask into a failed REQUEST: the manual
+            # decomposition endpoint works today and would start refusing every
+            # plan whose subtask declares two artifacts the moment an operator
+            # enabled recursion, which is a setting about depth breaking a
+            # feature about neither.
+            return ()
+
         children: list[DecompositionResult] = []
         for subtask_def, child_task in zip(subtasks, created_tasks, strict=True):
             assessment = budget.policy.assess(subtask_def)

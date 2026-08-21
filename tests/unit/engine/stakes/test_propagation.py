@@ -28,6 +28,9 @@ class _StaticStrategy:
     def get_strategy_name(self) -> str:
         return "static-test"
 
+    def plans_any_task(self) -> bool:
+        return True
+
 
 def _parent_task() -> Task:
     return Task(

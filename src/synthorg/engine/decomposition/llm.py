@@ -285,6 +285,14 @@ class LlmDecompositionStrategy:
         """Return the strategy name."""
         return "llm"
 
+    def plans_any_task(self) -> bool:
+        """Plan any task: every call sends the task it was handed.
+
+        Returns:
+            ``True``, always.
+        """
+        return True
+
     @staticmethod
     def _check_depth(context: DecompositionContext) -> None:
         """Raise if depth limit is reached.

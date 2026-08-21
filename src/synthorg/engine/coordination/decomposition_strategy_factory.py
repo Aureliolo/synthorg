@@ -43,6 +43,16 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
         return "no-provider-placeholder"
 
     @override
+    def plans_any_task(self) -> bool:
+        """Answer for a strategy that plans nothing at all.
+
+        Returns:
+            ``False``: it refuses every task, so recursing into it would only
+            convert one refusal into two.
+        """
+        return False
+
+    @override
     async def decompose(
         self,
         task: Task,

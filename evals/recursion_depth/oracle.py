@@ -1,20 +1,29 @@
 # module-kind: code
 """Run the held-out oracle against a produced tree.
 
-The oracle lives outside every workspace and is named in no brief. It is run
-from here, after the fact, as a subprocess so the graded tree's own dependencies
-and its own conftest cannot reach into this process.
+The oracle lives outside every workspace and is named in no brief. Grading a
+tree means importing whatever the agent wrote into it, so the run goes into a
+container, on the sandbox image the CLI verified, with no network and only the
+environment :mod:`evals.recursion_depth.grading` hands it. Run on the host it
+would have given a delivered ``conftest.py`` the operator's credentials and the
+Docker socket, which is host root.
 
-The invocation deliberately clears the repository's ``addopts``. Inherited, they
-would fan the run across eight xdist workers, install the typeguard import hook
-over ``synthorg``, and apply a 30-second per-test timeout, none of which has
-anything to do with grading a delivered CLI, and the first of which would make
-the per-requirement result impossible to attribute.
+The container is built per grading from a scratch directory holding a copy of
+the tree beside a copy of the oracle, and destroyed after. That is what keeps
+the oracle held out: it only ever exists somewhere no agent runs, rather than
+being kept away from agents by nothing having copied it.
+
+The invocation is pointed at a configuration this module writes, rather than
+merely clearing ``addopts``. Clearing ``addopts`` leaves ``timeout``,
+``filterwarnings`` and ``pythonpath`` inherited from whatever ini file pytest
+resolves as rootdir, and two of those change the verdict: ``filterwarnings =
+["error", ...]`` fails a CORRECT delivery over a stray ``ResourceWarning``, and
+a 30-second per-test timeout undercuts this oracle's own per-invocation ceiling.
 """
 
+import asyncio
 import json
-import subprocess
-import sys
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,14 +32,28 @@ from typing import Final
 import yaml
 
 from evals.errors import OracleUnusableError
+from evals.recursion_depth.grading import (
+    GRADED_ENV,
+    INI_BODY,
+    INI_NAME,
+    ORACLE_SUITE_DIR,
+    ORACLE_TREE_DIR,
+    SandboxFactory,
+    tail_of,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_ORACLE_RUN
+from synthorg.security.autonomy.enums import ToolCategory
 
 logger = get_logger(__name__)
 
 #: Long enough for dozens of interpreter starts against a slow tree, short
 #: enough that a delivery which deadlocks fails the run rather than holding it.
 _ORACLE_TIMEOUT_SECONDS: Final[float] = 900.0
+
+#: Where the oracle writes its per-node verdicts, inside the scratch root that
+#: is mounted into the grading container.
+_REPORT_NAME: Final[str] = "report.json"
 
 #: The pytest exit status meaning every collected test passed.
 _PYTEST_OK: Final[int] = 0
@@ -127,15 +150,18 @@ def _node_ids(spec_dir: Path) -> dict[str, str]:
     return {str(entry["id"]): str(entry["oracle"]) for entry in entries}
 
 
-def run_oracle(
+async def run_oracle(
     *,
+    build_sandbox: SandboxFactory,
     spec_dir: Path,
     tree: Path,
     only: frozenset[str] | None = None,
 ) -> OracleOutcome:
-    """Grade *tree* against the spec's held-out oracle.
+    """Grade *tree* against the spec's held-out oracle, in a container.
 
     Args:
+        build_sandbox: Builds the container backend the grading runs in, rooted
+            at the scratch directory this assembles.
         spec_dir: The specification directory.
         tree: The produced tree to grade.
         only: Restrict the run to these requirement ids. ``None`` runs all of
@@ -154,22 +180,35 @@ def run_oracle(
         return OracleOutcome(results={}, report="")
     oracle_dir = spec_dir / str(load_index(spec_dir)["oracle_dir"])
     with tempfile.TemporaryDirectory() as scratch:
-        report_path = Path(scratch) / "report.json"
-        completed = _invoke(
-            tree=tree,
-            node_ids=tuple(_node_path(oracle_dir, nodes[key]) for key in wanted),
-            report_path=report_path,
+        root = Path(scratch)
+        await asyncio.to_thread(_stage, root, tree=tree, oracle_dir=oracle_dir)
+        report_path = root / _REPORT_NAME
+        result = await build_sandbox(root).execute(
+            command="python",
+            args=_argv(nodes=nodes, wanted=wanted),
+            cwd=root,
+            env_overrides=GRADED_ENV,
+            timeout=_ORACLE_TIMEOUT_SECONDS,
+            category=ToolCategory.CODE_EXECUTION.value,
         )
+        report = tail_of(result.stdout + result.stderr)
+        if result.timed_out:
+            msg = (
+                f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s "
+                f"against {tree}; a delivery that deadlocks is a failed "
+                f"requirement, but a run that cannot report which one is not a "
+                f"measurement"
+            )
+            raise OracleUnusableError(msg)
+        if result.returncode not in (_PYTEST_OK, _PYTEST_TESTS_FAILED):
+            msg = (
+                f"the oracle could not be run against {tree} "
+                f"(pytest exited {result.returncode}):\n{report}"
+            )
+            raise OracleUnusableError(msg)
         results = _read_report(
-            report_path, nodes=nodes, wanted=wanted, completed=completed
+            report_path, nodes=nodes, wanted=wanted, returncode=result.returncode
         )
-    report = completed.stdout + completed.stderr
-    if completed.returncode not in (_PYTEST_OK, _PYTEST_TESTS_FAILED):
-        msg = (
-            f"the oracle could not be run against {tree} "
-            f"(pytest exited {completed.returncode}):\n{report}"
-        )
-        raise OracleUnusableError(msg)
     logger.info(
         EVALS_RECURSION_ORACLE_RUN,
         tree=str(tree),
@@ -177,6 +216,53 @@ def run_oracle(
         passed=sum(1 for ok in results.values() if ok),
     )
     return OracleOutcome(results=results, report=report)
+
+
+def _stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
+    """Lay the graded tree and the oracle out side by side for the container.
+
+    The tree is copied WITHOUT following symlinks, for the reason
+    :func:`evals.recursion_depth.merge.mount_children` does not follow them: a
+    link in an agent-authored tree names a host path the agent chose, and
+    resolving it here would pull the repository, this oracle included, into the
+    directory about to be mounted.
+
+    Args:
+        root: The scratch directory to build.
+        tree: The produced tree to grade.
+        oracle_dir: The held-out suite.
+    """
+    shutil.copytree(
+        tree,
+        root / ORACLE_TREE_DIR,
+        symlinks=True,
+        ignore_dangling_symlinks=True,
+    )
+    shutil.copytree(oracle_dir, root / ORACLE_SUITE_DIR)
+    (root / INI_NAME).write_text(INI_BODY, encoding="utf-8")
+
+
+def _argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str, ...]:
+    """Build the argv the oracle container runs.
+
+    Paths are relative to the mounted scratch root, so nothing about the host
+    layout travels into the container.
+
+    Returns:
+        The arguments after ``python``.
+    """
+    return (
+        "-m",
+        "pytest",
+        "-c",
+        INI_NAME,
+        "-p",
+        "no:cacheprovider",
+        "-q",
+        f"--tree={ORACLE_TREE_DIR}",
+        f"--report-json={_REPORT_NAME}",
+        *(_node_path(Path(ORACLE_SUITE_DIR), nodes[key]) for key in wanted),
+    )
 
 
 def _node_path(oracle_dir: Path, node: str) -> str:
@@ -190,60 +276,12 @@ def _node_path(oracle_dir: Path, node: str) -> str:
     return f"{absolute}::{rest}" if rest else str(absolute)
 
 
-def _invoke(
-    *,
-    tree: Path,
-    node_ids: tuple[str, ...],
-    report_path: Path,
-) -> subprocess.CompletedProcess[str]:
-    """Run pytest over the oracle nodes and return what it did.
-
-    Returns:
-        The completed process.
-
-    Raises:
-        OracleUnusableError: pytest did not finish inside its ceiling.
-    """
-    argv = [
-        sys.executable,
-        "-m",
-        "pytest",
-        # The repository's own addopts have nothing to do with grading a
-        # delivered CLI, and xdist in particular would scatter the
-        # per-requirement result across workers.
-        "-o",
-        "addopts=",
-        "-p",
-        "no:cacheprovider",
-        "-q",
-        f"--tree={tree}",
-        f"--report-json={report_path}",
-        *node_ids,
-    ]
-    try:
-        return subprocess.run(  # noqa: S603 -- interpreter path, fixed argv
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=_ORACLE_TIMEOUT_SECONDS,
-            shell=False,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        msg = (
-            f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s against "
-            f"{tree}; a delivery that deadlocks is a failed requirement, but a "
-            "run that cannot report which one is not a measurement"
-        )
-        raise OracleUnusableError(msg) from exc
-
-
 def _read_report(
     report_path: Path,
     *,
     nodes: dict[str, str],
     wanted: tuple[str, ...],
-    completed: subprocess.CompletedProcess[str],
+    returncode: int,
 ) -> dict[str, bool]:
     """Turn the per-node report into a per-requirement verdict.
 
@@ -266,10 +304,9 @@ def _read_report(
     """
     if not report_path.is_file():
         msg = (
-            f"the oracle wrote no report (pytest exited {completed.returncode}), "
-            f"so nothing was measured; every completed session writes one, so "
-            f"this is a harness fault rather than a failed delivery. "
-            f"stderr: {completed.stderr[-_DIAGNOSTIC_CHARS:]!r}"
+            f"the oracle wrote no report (pytest exited {returncode}), so "
+            f"nothing was measured; every completed session writes one, so this "
+            f"is a harness fault rather than a failed delivery"
         )
         raise OracleUnusableError(msg)
     raw = json.loads(report_path.read_text(encoding="utf-8"))

@@ -104,3 +104,15 @@ class ManualDecompositionStrategy:
     def get_strategy_name(self) -> str:
         """Return the strategy name."""
         return "manual"
+
+    def plans_any_task(self) -> bool:
+        """Refuse recursion: this strategy holds one plan for one parent.
+
+        The operator supplied the plan and named the task it decomposes, so
+        asked about a child it raises, and that raise would fail the whole
+        request rather than leaving one oversized subtask whole.
+
+        Returns:
+            ``False``, always.
+        """
+        return False

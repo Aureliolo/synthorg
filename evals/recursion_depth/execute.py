@@ -18,11 +18,7 @@ run scored near-perfect against an exposed oracle while the library it
 delivered was dead outside the tested paths.
 """
 
-import asyncio
-import subprocess
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
@@ -50,16 +46,6 @@ logger = get_logger(__name__)
 #: only ask about a path, and a unit that produced only chat has to be
 #: reclassified rather than read as a clean success.
 UNIT_REPORT_PATH: Final[str] = ".synthorg/unit/report.md"
-
-#: How long a unit's own test suite may take before its tree is called
-#: undelivered. Generous, because a delivered CLI's tests spawn interpreters;
-#: bounded, because a suite that hangs must fail the unit rather than the run.
-_OWN_TESTS_TIMEOUT_SECONDS: Final[float] = 600.0
-
-#: pytest exit statuses meaning the suite ran and every test passed. Anything
-#: else (a failure, a collection error, or no tests at all) leaves the unit
-#: undelivered: a unit that wrote no tests did not own itself end to end.
-_PYTEST_OK: Final[int] = 0
 
 _ANTI_EXPLOIT: Final[str] = (
     "Build the behaviour the requirement describes, and let the tests follow "
@@ -219,10 +205,7 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    # Offloaded: this runs a pytest subprocess with a ten-minute ceiling, and
-    # the harness serves the LLM gateway from this same loop, so a blocking
-    # wait here stalls every agent's own completions.
-    detail = await asyncio.to_thread(_undelivered_reason, task, workspace)
+    detail = await _undelivered_reason(deps, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
@@ -235,7 +218,9 @@ async def run_leaf(
     )
 
 
-def _undelivered_reason(task: Task, workspace: CellWorkspace) -> str:
+async def _undelivered_reason(
+    deps: SweepDeps, task: Task, workspace: CellWorkspace
+) -> str:
     """Say why *task*'s tree is not a delivery, or nothing when it is.
 
     Returns:
@@ -243,74 +228,11 @@ def _undelivered_reason(task: Task, workspace: CellWorkspace) -> str:
     """
     if not artifacts_present(task, workspace):
         return "declared artifacts are missing from the tree"
-    passed, report = own_tests_pass(workspace.project_dir)
+    grader = deps.build_grader(workspace)
+    passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:
         return f"the unit's own tests did not pass: {report}"
     return ""
-
-
-def own_tests_pass(project_dir: Path) -> tuple[bool, str]:
-    """Run the tests a unit wrote for itself, against its own tree.
-
-    This executes agent-authored code on the machine running the recording,
-    which is inherent to grading a program by running it and is the same
-    posture the held-out oracle takes. A sweep is an operator-run experiment
-    against a specification the operator wrote, not a production path.
-
-    The repository's own ``addopts`` are cleared: inherited, they would fan the
-    run across xdist workers and install an import hook over ``synthorg``,
-    neither of which has anything to do with a delivered CLI's own suite.
-
-    Args:
-        project_dir: The unit's produced tree.
-
-    Returns:
-        Whether the suite ran clean, and a short report when it did not.
-    """
-    argv = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "-o",
-        "addopts=",
-        "-p",
-        "no:cacheprovider",
-        "-q",
-        str(project_dir),
-    ]
-    try:
-        completed = subprocess.run(  # noqa: S603 -- interpreter path, fixed argv
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=_OWN_TESTS_TIMEOUT_SECONDS,
-            shell=False,
-            check=False,
-            cwd=project_dir,
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"the suite did not finish in {_OWN_TESTS_TIMEOUT_SECONDS}s"
-    except OSError as exc:
-        return False, f"the suite could not be started: {type(exc).__name__}"
-    if completed.returncode == _PYTEST_OK:
-        return True, ""
-    return False, _tail(completed.stdout + completed.stderr)
-
-
-#: How much of a failing suite's output travels with the record. Enough to name
-#: what failed, short enough that a report is still readable with one line per
-#: unit across hundreds of units.
-_REPORT_TAIL_CHARS: Final[int] = 400
-
-
-def _tail(report: str) -> str:
-    """Trim a captured suite report to what fits a record.
-
-    Returns:
-        The last of the output, collapsed to one line.
-    """
-    collapsed = " ".join(report.split())
-    return collapsed[-_REPORT_TAIL_CHARS:]
 
 
 __all__ = [
@@ -318,6 +240,5 @@ __all__ = [
     "LeafOutcome",
     "leaf_brief",
     "leaf_task",
-    "own_tests_pass",
     "run_leaf",
 ]

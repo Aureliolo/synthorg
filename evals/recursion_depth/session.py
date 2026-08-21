@@ -30,6 +30,7 @@ from evals.harness.stall_watch import (
 )
 from evals.harness.workspace import CellWorkspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
+from evals.recursion_depth.grading import SandboxFactory, UnitGrader
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
@@ -52,6 +53,8 @@ logger = get_logger(__name__)
 
 ProviderFactory = Callable[[RunBinding], Awaitable[CompletionProvider]]
 ToolRegistryFactory = Callable[[CellWorkspace], ToolRegistry | None]
+#: Builds what grades a delivered tree, scoped to the workspace it sits in.
+GraderFactory = Callable[[CellWorkspace], UnitGrader]
 #: Releases whatever a unit's tools hold open. The deployment's sandbox
 #: lifecycle keeps a warm container per owner on a grace timer the strategy
 #: object owns, and every unit builds and discards its own, so a sweep of
@@ -86,6 +89,15 @@ class SweepDeps:
             carries that unit's own bearer.
         build_tool_registry: Builds the file and shell tools scoped to a
             unit's workspace.
+        build_grader: Builds what runs a delivered tree to decide whether it
+            delivered. A separate seam from the tool registry because the two
+            answer to different owners: the registry is the AGENT's, and this
+            one is the harness's judgement of what the agent produced. Both put
+            the execution in a container; only this one is trusted to report
+            what happened.
+        build_sandbox: Builds a container rooted at an arbitrary directory,
+            which is what the held-out oracle grades in: it needs the tree and
+            the oracle side by side, and no cell workspace may ever hold both.
         release_tools: Releases what that registry holds open, run after every
             unit whether it finished or raised.
         open_run_ledger: Installs the authoritative cost sink for one unit and
@@ -101,6 +113,8 @@ class SweepDeps:
 
     build_provider: ProviderFactory
     build_tool_registry: ToolRegistryFactory
+    build_grader: GraderFactory
+    build_sandbox: SandboxFactory
     release_tools: ToolReleaseHook | None = None
     open_run_ledger: LedgerFactory | None = None
     project_repo: ProjectRepository | None = None

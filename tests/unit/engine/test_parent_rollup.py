@@ -65,6 +65,14 @@ class _StaticStrategy:
         """
         return "static"
 
+    def plans_any_task(self) -> bool:
+        """Answer the recursion question.
+
+        Returns:
+            ``True``: it answers with its plan whatever it is asked about.
+        """
+        return True
+
 
 def _rollup(
     *,
