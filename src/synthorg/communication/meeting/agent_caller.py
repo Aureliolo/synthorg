@@ -132,7 +132,10 @@ def build_meeting_agent_caller(
         provider_name = str(identity.model.provider)
         provider = provider_registry.get(provider_name)
         messages = _build_messages(identity, prompt)
-        effective_max_tokens = min(max_tokens, identity.model.max_tokens)
+        # The meeting's own cap still binds; the agent's binding only tightens
+        # it further when an operator set one, and answers nothing when unset.
+        own = identity.model.max_tokens
+        effective_max_tokens = max_tokens if own is None else min(max_tokens, own)
         config = CompletionConfig(
             temperature=identity.model.temperature,
             max_tokens=effective_max_tokens,

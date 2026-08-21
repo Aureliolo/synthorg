@@ -6,6 +6,7 @@ import pytest
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.staffing import _identity
 from synthorg.core.agent import ModelConfig
+from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 
 pytestmark = pytest.mark.unit
 
@@ -28,18 +29,23 @@ def _staffed() -> ModelConfig:
     ).model
 
 
-def test_staffed_agents_exceed_the_model_config_default() -> None:
-    """4096 is fatal here, and it is what the binding defaults to.
+def test_staffed_agents_declare_their_own_ceiling() -> None:
+    """The sweep pins the budget rather than inheriting whatever is configured.
 
     ``ModelConfig.max_tokens`` is the value that reaches the provider; the
     provider capability record is not read when building a request. A reasoning
     model spends the per-response budget on hidden reasoning before it can emit
-    a tool call, so at the default seven of eight measured sessions emitted no
-    tool call at all and were recorded as finished work.
+    a tool call, so at the old flat 4096 seven of eight measured sessions
+    emitted no tool call at all and were recorded as finished work. A recording
+    has to be comparable across machines, so the sweep states its own figure
+    instead of deferring to an operator setting that may differ.
     """
-    default = ModelConfig(provider="p", model_id="m").max_tokens
+    unset = ModelConfig(provider="p", model_id="m").max_tokens
+    staffed = _staffed().max_tokens
 
-    assert _staffed().max_tokens > default
+    assert unset is None
+    assert staffed is not None
+    assert staffed > DEFAULT_AGENT_MAX_RESPONSE_TOKENS // 2
 
 
 def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:

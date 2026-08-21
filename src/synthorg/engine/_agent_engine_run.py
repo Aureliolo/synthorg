@@ -15,6 +15,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
+from synthorg.engine.response_budget import resolve_response_tokens
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
@@ -189,10 +190,36 @@ class AgentEngineRunMixin:
         return RunBinding(
             provider=provider,
             identity=identity,
-            completion_config=await self._fold_prompt_caching(
-                completion_config, identity
+            completion_config=await self._fold_response_budget(
+                await self._fold_prompt_caching(completion_config, identity),
+                identity,
             ),
         )
+
+    async def _fold_response_budget(
+        self, completion_config: CompletionConfig | None, identity: AgentIdentity
+    ) -> CompletionConfig:
+        """Settle how many tokens this run may spend on one response.
+
+        Folded where the binding commits, because this is the last point that
+        holds both the resolver and the identity: the loop below it has no
+        resolver, so a ceiling left unset here reaches the provider as "no
+        ceiling" and the operator's setting decides nothing.
+
+        Args:
+            completion_config: What earlier folds produced, if anything.
+            identity: The agent being dispatched.
+
+        Returns:
+            A config carrying an explicit ceiling.
+        """
+        base = completion_config or CompletionConfig(
+            temperature=identity.model.temperature
+        )
+        if base.max_tokens is not None:
+            return base
+        resolved = await resolve_response_tokens(self._config_resolver, identity)
+        return base.model_copy(update={"max_tokens": resolved})
 
     def _dispatch_client_for(
         self,
