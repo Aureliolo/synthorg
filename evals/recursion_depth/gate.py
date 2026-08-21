@@ -24,8 +24,10 @@ from typing import Final, Protocol, runtime_checkable
 
 from evals.errors import RecursionDepthGateUnbuildableError
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
+    SessionSpend,
     SweepDeps,
     open_session,
     run_binding,
@@ -115,6 +117,12 @@ class MergeReview:
         findings: What a rejection said, in the reviewer's own words, which is
             what the repair attempt is briefed from.
         cost: What the review spent.
+        tokens: What it spent in tokens, which is the arm comparison that does
+            not move with a price change.
+        reviewer: The pair the review actually ran on, absent when nothing
+            judged. The gate is the treatment, so a judge that silently came up
+            on the executor's own pair biases toward the null, and the pair is
+            recorded per review rather than assumed from the manifest.
         verdict: The gate's own verdict string, for the record.
     """
 
@@ -122,6 +130,8 @@ class MergeReview:
     parked: bool = False
     findings: tuple[str, ...] = ()
     cost: float = 0.0
+    tokens: int = 0
+    reviewer: ModelPair | None = None
     verdict: str | None = None
 
 
@@ -169,8 +179,9 @@ class OracleMergeReviewer:
         # roster binds every holder of the role to the manifest's reviewer
         # pair, so the driver is the same whichever holder selection returns,
         # and the gate still records WHICH agent judged.
+        judge = self.roster.reviewers[0]
         binding = run_binding(
-            identity=self.roster.reviewers[0],
+            identity=judge,
             task=request.task,
             execution_id=request.execution_id,
             limits=request.limits,
@@ -190,8 +201,14 @@ class OracleMergeReviewer:
                 async with watching(self.deps, session):
                     result = await gate.evaluate(_review_input(request))
             finally:
-                cost = await session.spend()
-        return _from_gate_result(result.verdict, result.report.findings, cost, request)
+                spend = await session.spend()
+        return _from_gate_result(
+            result.verdict,
+            result.report.findings,
+            spend,
+            request,
+            reviewer=ModelPair.of(judge),
+        )
 
 
 @dataclass(frozen=True)
@@ -218,7 +235,7 @@ class BlindMergeReviewer:
             execution_id=request.execution_id,
             limits=request.limits,
         )
-        return MergeReview(approved=None, cost=outcome.cost)
+        return MergeReview(approved=None, cost=outcome.cost, tokens=outcome.tokens)
 
 
 def _review_input(request: MergeReviewRequest) -> CompletionOracleReviewInput:
@@ -262,8 +279,10 @@ def _self_review_task(request: MergeReviewRequest) -> Task:
 def _from_gate_result(
     verdict: CompletionOracleVerdict,
     findings: tuple[CompletionOracleFinding, ...],
-    cost: float,
+    spend: SessionSpend,
     request: MergeReviewRequest,
+    *,
+    reviewer: ModelPair,
 ) -> MergeReview:
     """Turn one gate result into the sweep's own record of it.
 
@@ -294,13 +313,17 @@ def _from_gate_result(
         task_id=str(request.task.id),
         verdict=verdict.value,
         finding_count=len(findings),
-        cost=cost,
+        cost=spend.cost,
+        tokens=spend.tokens,
+        reviewer=reviewer.label,
     )
     return MergeReview(
         approved=approved,
         parked=parked,
         findings=tuple(_finding_text(finding) for finding in findings),
-        cost=cost,
+        cost=spend.cost,
+        tokens=spend.tokens,
+        reviewer=reviewer,
         verdict=verdict.value,
     )
 

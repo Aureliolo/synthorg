@@ -23,7 +23,11 @@ from typing import Final, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from evals.errors import RecursionDepthJudgeNotIndependentError
+from evals.errors import (
+    RecursionDepthCapabilityUnresolvedError,
+    RecursionDepthJudgeNotIndependentError,
+)
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 #: The shallowest cap worth recording: one level of planning, every unit
@@ -95,6 +99,42 @@ class ModelPair(BaseModel):
             ``provider/model_id``.
         """
         return f"{self.provider}/{self.model_id}"
+
+    @classmethod
+    def of(cls, identity: AgentIdentity) -> ModelPair:
+        """Read the pair an agent actually dispatches on.
+
+        Read off the identity rather than off the manifest, because the
+        manifest says what the roster was ASKED to bind and this says what ran.
+        A reviewer that silently came up on the executor's own pair is the one
+        failure that would bias the gated arm toward the null while every
+        manifest-level field still read correctly.
+
+        Args:
+            identity: The agent whose binding is wanted.
+
+        Returns:
+            Its ``(provider, model)`` pair and the rung it is graded at.
+
+        Raises:
+            RecursionDepthCapabilityUnresolvedError: The identity carries no
+                rung. Every roster identity is built from one of these pairs,
+                where the rung is required, so this is a roster built outside
+                that path rather than anything a run can reach.
+        """
+        if identity.model.capability is None:
+            msg = (
+                f"agent {identity.name!r} dispatches on "
+                f"{identity.model.provider}/{identity.model.model_id} with no "
+                f"declared capability rung, so what judged this unit cannot be "
+                f"recorded"
+            )
+            raise RecursionDepthCapabilityUnresolvedError(msg)
+        return cls(
+            provider=NotBlankStr(identity.model.provider),
+            model_id=NotBlankStr(identity.model.model_id),
+            capability=identity.model.capability,
+        )
 
 
 class RecursionDepthManifest(BaseModel):

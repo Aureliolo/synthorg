@@ -280,6 +280,50 @@ class TestArmsAndCost:
 
         assert total == pytest.approx(cell.total_cost)
 
+    def test_spend_and_claims_are_counted_as_separate_populations(self) -> None:
+        # A run contributes claims to every level its leaves sat at and books
+        # its spend at one, so a single population column made spend-per-run a
+        # ratio across two different denominators.
+        cell = _cell(
+            cap=3,
+            achieved=2,
+            units=(
+                _leaf("a", depth=0, claimed=("R01",)),
+                _leaf("b", depth=1, claimed=("R02",)),
+                _leaf("c", depth=2, claimed=("R03",)),
+            ),
+            passing=("R01", "R02", "R03"),
+        )
+
+        points = {point.depth: point for point in curve_by_achieved_depth((cell,))}
+
+        assert [points[depth].cells for depth in (1, 2, 3)] == [1, 1, 1]
+        assert [points[depth].runs for depth in (1, 2, 3)] == [0, 0, 1]
+        assert points[3].cost == pytest.approx(cell.total_cost)
+        assert points[1].cost == pytest.approx(0.0)
+
+    def test_a_run_whose_leaves_all_failed_still_books_its_spend(self) -> None:
+        # It contributes no claims, so it exists only in the cost population.
+        # Filtering the cost panel on the claims population dropped exactly
+        # these runs, which at the deep end are the most expensive in the sweep.
+        cell = _cell(
+            cap=5,
+            achieved=4,
+            units=(
+                _leaf("a", depth=3, claimed=("R01",), delivered=False),
+                _leaf("b", depth=4, claimed=("R02",), delivered=False),
+            ),
+            passing=(),
+        )
+
+        points = curve_by_achieved_depth((cell,))
+
+        assert [point.depth for point in points] == [5]
+        assert points[0].cells == 0
+        assert points[0].runs == 1
+        assert points[0].cost == pytest.approx(cell.total_cost)
+        assert points[0].fraction is None
+
     def test_an_unavailable_cell_contributes_nothing(self) -> None:
         unavailable = CellRecord(
             depth_cap=3,

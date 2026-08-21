@@ -6,6 +6,7 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ import pytest
 from evals.errors import (
     HarnessDockerUnavailableError,
     RecursionDepthNoCellsMeasuredError,
+    RecursionDepthSessionCeilingError,
 )
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
@@ -45,7 +47,14 @@ from evals.recursion_depth.merge import (
     piece_slug,
     run_merge,
 )
-from evals.recursion_depth.models import PLAN, Provenance
+from evals.recursion_depth.models import (
+    LEAF,
+    ORACLE_CAVEAT,
+    PLAN,
+    SIZING_CAVEAT,
+    Provenance,
+    UnitRecord,
+)
 from evals.recursion_depth.oracle import OracleOutcome
 from evals.recursion_depth.planner import PlannedTree, TreePlanner
 from evals.recursion_depth.runner import (
@@ -83,6 +92,11 @@ _EXECUTOR = ModelPair(
 )
 _REVIEWER = ModelPair(
     provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-expert-001"),
+    capability="expert",
+)
+_CROSS_FAMILY_REVIEWER = ModelPair(
+    provider=NotBlankStr("other-provider"),
     model_id=NotBlankStr("example-expert-001"),
     capability="expert",
 )
@@ -399,7 +413,7 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         _deps: SweepDeps, *, execution_id: str, **_rest: object
     ) -> SessionOutcome:
         ran.append(execution_id)
-        return SessionOutcome(cost=0.5, turns=3, termination="completed")
+        return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
     monkeypatch.setattr(merge_module, "own_tests_pass", lambda _dir: (True, ""))
@@ -604,6 +618,48 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     )
 
 
+def _assembles_then_dies(
+    tmp_path: Path, failure: Exception
+) -> Callable[
+    [object, object, object, object, list[UnitRecord]], Awaitable[CellWorkspace]
+]:
+    """Stand in for the build half: the first cell finishes, the second does not.
+
+    Two cells rather than one because a sweep that measured nothing raises
+    rather than returning, so the record the accounting lives on would never
+    reach a caller.
+
+    Returns:
+        The replacement for ``_build_tree_units``.
+    """
+    completed = False
+
+    async def _build(
+        _context: object,
+        _cell: object,
+        _root: object,
+        _tree: object,
+        units: list[UnitRecord],
+    ) -> CellWorkspace:
+        nonlocal completed
+        units.append(
+            UnitRecord(
+                unit_id=NotBlankStr("leaf-1"),
+                title=NotBlankStr("Built before the fall"),
+                kind=NotBlankStr(LEAF),
+                depth=1,
+                attempts=1,
+                cost=4.0,
+            )
+        )
+        if completed:
+            raise failure
+        completed = True
+        return _workspace(tmp_path, "assembled")
+
+    return _build
+
+
 def _tree() -> DecompositionResult:
     """Build a one-level decomposition tree.
 
@@ -760,6 +816,109 @@ class TestTheMatrix:
         assert len(plans) == 1
         assert plans[0].cost == pytest.approx(1.5)
         assert plans[0].attempts == 2
+
+    async def test_a_completed_sweep_states_what_it_measured_under(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The two standing caveats plus the independence class, on a sweep that
+        # completed normally. Asserting them on a hand-built report only ever
+        # exercises the renderer, and the recorder reached it with an empty
+        # tuple.
+        del assembled_trees
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await run_sweep(context, provenance=_provenance())
+
+        assert SIZING_CAVEAT in report.caveats
+        assert ORACLE_CAVEAT in report.caveats
+        independence = context.manifest.caveat()
+        assert independence is not None
+        assert independence in report.caveats
+
+    async def test_cross_family_independence_states_no_caveat_for_it(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The two standing caveats always hold; the independence one is a
+        # statement about a weakness this manifest does not have.
+        del assembled_trees
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
+        )
+        context = await _context(
+            tmp_path,
+            planner=planner,
+            manifest=_manifest(
+                reviewer=_CROSS_FAMILY_REVIEWER,
+                independence=Independence.CROSS_FAMILY,
+            ),
+        )
+
+        report = await run_sweep(context, provenance=_provenance())
+
+        assert set(report.caveats) == {SIZING_CAVEAT, ORACLE_CAVEAT}
+
+    async def test_a_cell_that_died_part_way_still_books_what_it_paid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The spend is the check on the whole result, so a cell that built
+        # fourteen leaves before dying cannot report zero. It enters no curve
+        # (it has no achieved depth) and it stays in the sweep total.
+        monkeypatch.setattr(
+            runner_module,
+            "_build_tree_units",
+            _assembles_then_dies(tmp_path, OSError("the merge workspace vanished")),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "run_oracle",
+            lambda *, spec_dir, tree: OracleOutcome(results={"R01": True}, report=""),
+        )
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await run_sweep(context, provenance=_provenance())
+
+        assert len(report.unavailable_cells) == 1
+        died = report.unavailable_cells[0]
+        assert died.total_cost == pytest.approx(5.5)
+        assert [unit.kind for unit in died.units] == [PLAN, LEAF]
+        # 5.5 lost + 5.5 kept: the total is the whole sweep, not the half of it
+        # that finished.
+        assert report.total_cost == pytest.approx(11.0)
+
+    async def test_the_ceiling_keeps_the_cell_it_stopped_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The ceiling branch appended nothing at all, so the run it stopped
+        # part-way vanished from the report while its spend was gone.
+        monkeypatch.setattr(
+            runner_module,
+            "_build_tree_units",
+            _assembles_then_dies(
+                tmp_path, RecursionDepthSessionCeilingError("ceiling reached")
+            ),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "run_oracle",
+            lambda *, spec_dir, tree: OracleOutcome(results={"R01": True}, report=""),
+        )
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await run_sweep(context, provenance=_provenance())
+
+        assert len(report.measured_cells) == 1
+        assert len(report.unavailable_cells) == 1
+        assert report.unavailable_cells[0].total_cost == pytest.approx(5.5)
+        assert report.total_cost == pytest.approx(11.0)
 
     async def test_a_systemic_failure_stops_the_matrix(self, tmp_path: Path) -> None:
         # Every remaining run would rediscover it, at full retry cost, and

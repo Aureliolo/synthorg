@@ -20,6 +20,7 @@ The gated arm stops early on an approval, which means it can only ever spend
 LESS: a survival gap in its favour is therefore not one it bought.
 """
 
+import asyncio
 import re
 import shutil
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from typing import Final
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.execute import own_tests_pass
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
+from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -135,6 +137,13 @@ class MergeOutcome:
             with the pair it ran on and nothing else; its SPEND is, and spend
             is what the equal-budget question is about.
         cost: What the merge and its reviews spent together.
+        tokens: What they spent in tokens.
+        executor: The pair the assembling sessions ran on.
+        reviewer: The pair that JUDGED, absent in the ungated arm. Recorded
+            here rather than only in the sweep provenance because the gate is
+            the treatment: a reviewer that came up on the executor's own pair
+            biases straight toward the null, and per-merge is the only place
+            that is visible.
         verdict: The last verdict taken, absent in the ungated arm.
         parked: Whether the gate escalated with nobody to escalate to.
         amendments: How many child-interface changes the agent recorded.
@@ -146,6 +155,9 @@ class MergeOutcome:
     attempts: int
     turns: int
     cost: float
+    tokens: int = 0
+    executor: ModelPair | None = None
+    reviewer: ModelPair | None = None
     verdict: str | None = None
     parked: bool = False
     amendments: int = 0
@@ -261,12 +273,14 @@ async def run_merge(
     Returns:
         The merge's outcome.
     """
-    mount_children(plan.workspace, plan.pieces)
+    # Offloaded: a whole-tree copytree per child, on the gateway's loop.
+    await asyncio.to_thread(mount_children, plan.workspace, plan.pieces)
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
     turns = 0
     cost = 0.0
+    tokens = 0
     for attempt in range(1, plan.attempts + 1):
         outcome = await run_session(
             deps,
@@ -279,9 +293,11 @@ async def run_merge(
         sessions += 1
         turns += outcome.turns
         cost += outcome.cost
+        tokens += outcome.tokens
         review = await reviewer.review(_review_request(plan, attempt))
         sessions += 1
         cost += review.cost
+        tokens += review.tokens
         logger.info(
             EVALS_RECURSION_MERGE_ATTEMPTED,
             task_id=str(plan.task.id),
@@ -293,13 +309,18 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    detail = _undelivered_reason(plan)
+    # Offloaded for the reason the leaf's is: a pytest subprocess under a
+    # ten-minute ceiling, on the loop that also serves the gateway.
+    detail = await asyncio.to_thread(_undelivered_reason, plan)
     return MergeOutcome(
         workspace=plan.workspace,
         delivered=not detail,
         attempts=sessions,
         turns=turns,
         cost=cost,
+        tokens=tokens,
+        executor=ModelPair.of(plan.owner),
+        reviewer=review.reviewer,
         verdict=review.verdict,
         parked=review.parked,
         amendments=count_amendments(plan.workspace),

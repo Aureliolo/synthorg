@@ -39,6 +39,11 @@ _PYTEST_OK: Final[int] = 0
 #: fault of the invocation rather than a verdict on the tree.
 _PYTEST_TESTS_FAILED: Final[int] = 1
 
+#: How much of a failed invocation's stderr rides on the refusal. Enough to
+#: name the import or collection error, bounded because agent-authored code can
+#: produce a traceback of any size.
+_DIAGNOSTIC_CHARS: Final[int] = 2000
+
 
 @dataclass(frozen=True)
 class OracleOutcome:
@@ -155,7 +160,9 @@ def run_oracle(
             node_ids=tuple(_node_path(oracle_dir, nodes[key]) for key in wanted),
             report_path=report_path,
         )
-        results = _read_report(report_path, nodes=nodes, wanted=wanted)
+        results = _read_report(
+            report_path, nodes=nodes, wanted=wanted, completed=completed
+        )
     report = completed.stdout + completed.stderr
     if completed.returncode not in (_PYTEST_OK, _PYTEST_TESTS_FAILED):
         msg = (
@@ -232,19 +239,39 @@ def _invoke(
 
 
 def _read_report(
-    report_path: Path, *, nodes: dict[str, str], wanted: tuple[str, ...]
+    report_path: Path,
+    *,
+    nodes: dict[str, str],
+    wanted: tuple[str, ...],
+    completed: subprocess.CompletedProcess[str],
 ) -> dict[str, bool]:
     """Turn the per-node report into a per-requirement verdict.
 
-    A requirement whose node produced no entry counts as failed: the delivery
-    did not satisfy it, and pytest declining to collect a node against an empty
-    tree is the ordinary way that happens.
+    A requirement whose node produced no ENTRY counts as failed: the delivery
+    did not satisfy it, and pytest declining to collect a node against a tree
+    that does not implement it is the ordinary way that happens.
+
+    A missing FILE is a different thing and is refused. ``pytest_sessionfinish``
+    writes the report on every completed session, an empty one included, so no
+    file at all means pytest died before session end: a collection error, a
+    crashed interpreter, a plugin that never loaded. Reading that as every
+    requirement failing would render a harness fault as total scientific
+    collapse at depth, which is the exact shape of the result being measured.
 
     Returns:
         The verdict per requested requirement.
+
+    Raises:
+        OracleUnusableError: pytest wrote no report at all.
     """
     if not report_path.is_file():
-        return dict.fromkeys(wanted, False)
+        msg = (
+            f"the oracle wrote no report (pytest exited {completed.returncode}), "
+            f"so nothing was measured; every completed session writes one, so "
+            f"this is a harness fault rather than a failed delivery. "
+            f"stderr: {completed.stderr[-_DIAGNOSTIC_CHARS:]!r}"
+        )
+        raise OracleUnusableError(msg)
     raw = json.loads(report_path.read_text(encoding="utf-8"))
     outcomes = {str(key): bool(value) for key, value in raw.items()}
     return {key: outcomes.get(nodes[key], False) for key in wanted}

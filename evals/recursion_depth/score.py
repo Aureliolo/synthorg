@@ -145,7 +145,9 @@ def _curve(
     delivered: dict[tuple[int, Arm], int] = defaultdict(int)
     surviving: dict[tuple[int, Arm], int] = defaultdict(int)
     counted: dict[tuple[int, Arm], int] = defaultdict(int)
+    booked: dict[tuple[int, Arm], int] = defaultdict(int)
     cost: dict[tuple[int, Arm], float] = defaultdict(float)
+    tokens: dict[tuple[int, Arm], int] = defaultdict(int)
     attempts: dict[tuple[int, Arm], int] = defaultdict(int)
     for cell in cells:
         if cell.achieved_depth is None:
@@ -161,10 +163,20 @@ def _curve(
         # landed in would multiply the sweep's spend by the tree's height, and
         # booking it in a bucket this curve does not use would mint a phantom
         # point carrying spend and no work.
+        #
+        # Counted separately from *counted* because on the achieved-depth curve
+        # the two are different populations: a run contributes claims to every
+        # level its leaves sat at and books its spend at one. Rendering the pair
+        # as one column made spend-per-run a ratio across two populations, and a
+        # run whose leaves ALL failed books spend while contributing no claims
+        # at all, which is precisely the deep failed run the sweep exists to
+        # measure.
         run_slot = (run_bucket(cell), cell.arm)
+        booked[run_slot] += 1
         cost[run_slot] += cell.total_cost
+        tokens[run_slot] += cell.total_tokens
         attempts[run_slot] += cell.total_attempts
-    slots = set(delivered) | set(cost)
+    slots = set(delivered) | set(booked)
     return tuple(
         DepthPoint(
             depth=depth,
@@ -172,7 +184,9 @@ def _curve(
             delivered_claims=delivered[(depth, arm)],
             surviving_claims=surviving[(depth, arm)],
             cells=counted[(depth, arm)],
+            runs=booked[(depth, arm)],
             cost=cost[(depth, arm)],
+            tokens=tokens[(depth, arm)],
             attempts=attempts[(depth, arm)],
         )
         for depth, arm in sorted(slots, key=lambda slot: (slot[0], slot[1].value))

@@ -12,26 +12,11 @@ from pathlib import Path
 
 from evals.recursion_depth.chart import render_chart
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import DepthPoint, RecursionDepthReport
+from evals.recursion_depth.models import MERGE, DepthPoint, RecursionDepthReport
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_REPORT_EMITTED
 
 logger = get_logger(__name__)
-
-#: What the harness measures under, stated wherever the number is.
-SIZING_CAVEAT = (
-    "Unit sizing is the planner's own: the size signal reads the declaration a "
-    "planner made, so this measures gated recursion UNDER PLANNER-DECLARED "
-    "SIZING and cannot separate 'recursion fails' from 'the planner sized "
-    "badly'. Separating them needs an agent that has read the code deciding its "
-    "own split, which no published system has."
-)
-
-#: What the held-out oracle buys, stated for the same reason.
-ORACLE_CAVEAT = (
-    "The oracle is held out: it never enters a workspace and is named in no "
-    "brief, so a delivery cannot be built to it."
-)
 
 
 def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...]:
@@ -56,6 +41,7 @@ def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...
         render_chart(
             points=report.by_achieved_depth,
             caption_lines=_caption(report),
+            by_cap=report.by_depth_cap,
         ),
         encoding="utf-8",
         newline="",
@@ -111,7 +97,7 @@ def _markdown(report: RecursionDepthReport) -> str:
             f"reviewer `{provenance.reviewer.label}` "
             f"({provenance.independence.value})"
         ),
-        f"- Total spend: {report.total_cost:.4f}",
+        f"- Total spend: {report.total_cost:.4f} across {report.total_tokens} tokens",
         "",
         "## Survival by depth reached",
         "",
@@ -156,10 +142,15 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
     Returns:
         The table lines.
     """
-    rows = [
-        "| Depth | Arm | Surviving | Delivered | Fraction | Runs | Sessions | Spend |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|",
-    ]
+    # Two population columns rather than one: "Contributing" is what the
+    # fraction is over, "Runs" is what the spend is over, and on the
+    # achieved-depth curve they differ. One column for both invited a
+    # spend-per-run read that divided across two populations.
+    header = (
+        "| Depth | Arm | Surviving | Delivered | Fraction | Contributing "
+        "| Runs | Sessions | Tokens | Spend |"
+    )
+    rows = [header, "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for point in points:
         fraction = point.fraction
         # An absence rather than a zero: nothing was delivered at this depth,
@@ -169,7 +160,8 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
         rows.append(
             f"| {point.depth} | {point.arm.value} | {point.surviving_claims} "
             f"| {point.delivered_claims} | {rendered} | {point.cells} "
-            f"| {point.attempts} | {point.cost:.4f} |"
+            f"| {point.runs} | {point.attempts} | {point.tokens} "
+            f"| {point.cost:.4f} |"
         )
     return rows
 
@@ -198,7 +190,7 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     merges = dict.fromkeys(Arm, 0)
     for cell in report.measured_cells:
         for unit in cell.units:
-            if unit.kind != "merge":
+            if unit.kind != MERGE:
                 continue
             merges[cell.arm] += 1
             parked[cell.arm] += int(unit.parked)
@@ -228,4 +220,4 @@ def load_report(path: Path) -> RecursionDepthReport:
     )
 
 
-__all__ = ["ORACLE_CAVEAT", "SIZING_CAVEAT", "load_report", "write_report"]
+__all__ = ["load_report", "write_report"]

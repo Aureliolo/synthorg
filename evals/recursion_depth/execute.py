@@ -18,6 +18,7 @@ run scored near-perfect against an exposed oracle while the library it
 delivered was dead outside the tested paths.
 """
 
+import asyncio
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -88,6 +90,8 @@ class LeafOutcome:
             both arms would move the difference off the merge.
         turns: Agent turns across those sessions.
         cost: What it spent.
+        tokens: What it spent in tokens.
+        executor: The pair it actually ran on.
         detail: Why it is not delivered, for a human reading the run.
     """
 
@@ -96,6 +100,8 @@ class LeafOutcome:
     attempts: int
     turns: int
     cost: float
+    tokens: int = 0
+    executor: ModelPair | None = None
     detail: str = ""
 
 
@@ -140,6 +146,13 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
     The planner's own words are fenced: they are agent-authored text on their
     way into another agent's prompt, and everything outside the fence is the
     only trusted instruction in the brief.
+
+    Defence in depth rather than the load-bearing fence. This brief becomes
+    ``task.description``, and ``prompt_render`` fences that unconditionally at
+    the LLM boundary, so the outer fence is what actually protects the prompt.
+    This one is kept because it marks WHICH span is untrusted: the outer fence
+    wraps the whole brief, including the harness's own instructions, and a
+    reader of the rendered prompt could not otherwise tell them apart.
 
     Args:
         task: The unit's task, for what decomposition wrote into it.
@@ -206,13 +219,18 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    detail = _undelivered_reason(task, workspace)
+    # Offloaded: this runs a pytest subprocess with a ten-minute ceiling, and
+    # the harness serves the LLM gateway from this same loop, so a blocking
+    # wait here stalls every agent's own completions.
+    detail = await asyncio.to_thread(_undelivered_reason, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
         attempts=1,
         turns=outcome.turns,
         cost=outcome.cost,
+        tokens=outcome.tokens,
+        executor=ModelPair.of(owner),
         detail=detail,
     )
 

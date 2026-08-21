@@ -109,16 +109,34 @@ class SweepDeps:
 
 
 @dataclass(frozen=True)
+class SessionSpend:
+    """What a session's ledger adds up to.
+
+    Attributes:
+        cost: Summed cost of every record.
+        tokens: Summed input plus output tokens across the same records.
+    """
+
+    cost: float
+    tokens: int
+
+
+@dataclass(frozen=True)
 class SessionOutcome:
     """What one session did.
 
     Attributes:
         cost: What it spent, read off the ledger.
+        tokens: Input plus output tokens across the same records. Reported
+            beside cost because the two arms do different amounts of work per
+            merge, and a survival gap bought with spend rather than with
+            judgement is not the finding.
         turns: How many turns it took.
         termination: Why the loop stopped, for a human reading a failure.
     """
 
     cost: float
+    tokens: int
     turns: int
     termination: str
 
@@ -142,18 +160,28 @@ class OpenSession:
     ledger: ProgressTrackingLedger
     label: str
 
-    async def spend(self) -> float:
-        """Read what this session has cost so far.
+    async def spend(self) -> SessionSpend:
+        """Read what this session has cost so far, in money and in tokens.
 
         Drains first: the cost chokepoint submits each record on a background
         task so the provider response returns immediately, and reading without
         draining loses whatever is still in flight, silently.
 
+        Both figures off ONE drained read. Two reads would drain twice and the
+        second could see records the first did not, so a unit's cost and its
+        tokens would describe different sets of calls.
+
         Returns:
-            The summed cost of every record on the ledger.
+            What every record on the ledger adds up to.
         """
         await self.ledger.drain_pending_records()
-        return sum(record.cost for record in await collect_all_records(self.ledger))
+        records = await collect_all_records(self.ledger)
+        return SessionSpend(
+            cost=sum(record.cost for record in records),
+            tokens=sum(
+                record.input_tokens + record.output_tokens for record in records
+            ),
+        )
 
 
 def unit_workspace(
@@ -322,7 +350,8 @@ async def run_session(
             # reports the failure without the spend under-reports the sweep.
             spend = await session.spend()
     outcome = SessionOutcome(
-        cost=spend,
+        cost=spend.cost,
+        tokens=spend.tokens,
         turns=result.total_turns,
         termination=result.termination_reason.value,
     )

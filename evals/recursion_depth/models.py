@@ -41,6 +41,24 @@ MERGE: Final[str] = "merge"
 #: end exactly where the question is.
 PLAN: Final[str] = "plan"
 
+#: What the harness measures under, stated wherever the number is. Held beside
+#: the field they populate rather than beside the renderer, because the writer
+#: seeds them and the renderer only draws them, and a caveat owned by the
+#: renderer is one the JSON can be emitted without.
+SIZING_CAVEAT: Final[str] = (
+    "Unit sizing is the planner's own: the size signal reads the declaration a "
+    "planner made, so this measures gated recursion UNDER PLANNER-DECLARED "
+    "SIZING and cannot separate 'recursion fails' from 'the planner sized "
+    "badly'. Separating them needs an agent that has read the code deciding its "
+    "own split, which no published system has."
+)
+
+#: What the held-out oracle buys, stated for the same reason.
+ORACLE_CAVEAT: Final[str] = (
+    "The oracle is held out: it never enters a workspace and is named in no "
+    "brief, so a delivery cannot be built to it."
+)
+
 
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.
@@ -62,6 +80,18 @@ class UnitRecord(BaseModel):
             the pair it ran on and nothing else; its spend is, and spend is
             what the confound is about.
         cost: Total spend across those sessions.
+        tokens: Input plus output tokens across the same sessions. The arm
+            comparison that does not move with a price change, and the figure
+            the equal-budget check is stated in.
+        executor: The pair this unit was actually built on.
+        reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
+            rather than once per sweep because the gate is the treatment: a
+            reviewer that silently ran on the executor's own pair is the one
+            failure that would bias the result toward the null while every
+            sweep-level field still read correctly.
+        detail: Why this unit is not a delivery, empty when it is. The whole
+            diagnostic surface for a sweep that cost thousands of sessions and
+            produced a flat line.
         verdict: The gate's verdict on this merge, absent in the ungated arm
             and on every leaf.
         parked: Whether the gate escalated with no human to decide, so the
@@ -84,9 +114,31 @@ class UnitRecord(BaseModel):
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
     cost: float = Field(default=0.0, ge=0.0)
+    tokens: int = Field(default=0, ge=0)
+    executor: ModelPair | None = None
+    reviewer: ModelPair | None = None
+    detail: str = ""
     verdict: NotBlankStr | None = None
     parked: bool = False
     amendments: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _delivered_units_carry_no_reason(self) -> Self:
+        """Reject a unit that both delivered and says why it did not.
+
+        Returns:
+            ``self`` when the pair agrees.
+
+        Raises:
+            ValueError: A delivered unit carries a failure reason.
+        """
+        if self.delivered and self.detail:
+            msg = (
+                f"unit {self.unit_id} delivered and still reports "
+                f"{self.detail!r} as why it did not"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class CellRecord(BaseModel):
@@ -164,6 +216,15 @@ class CellRecord(BaseModel):
         """
         return sum(unit.attempts for unit in self.units)
 
+    @property
+    def total_tokens(self) -> int:
+        """What this run spent in tokens.
+
+        Returns:
+            The summed unit tokens.
+        """
+        return sum(unit.tokens for unit in self.units)
+
 
 class DepthPoint(BaseModel):
     """One point on the survival curve.
@@ -176,9 +237,19 @@ class DepthPoint(BaseModel):
             denominator.
         surviving_claims: Those still satisfied by the final merged tree. The
             numerator.
-        cells: How many runs contributed.
-        cost: What those runs spent in total.
-        attempts: How many agent sessions they consumed.
+        cells: How many runs contributed CLAIMS here. On the achieved-depth
+            curve a run contributes to every level its leaves sat at, so this
+            is the population behind the fraction and nothing else.
+        runs: How many runs this bucket IS. A run's spend belongs to the run,
+            booked once at the bucket the curve puts the run itself in, so this
+            is the population behind ``cost`` and ``attempts``. It differs from
+            ``cells`` on the achieved-depth curve, and reporting one figure for
+            both made spend-per-run a ratio of two different populations.
+        cost: What the runs booked here spent in total.
+        tokens: What they spent in tokens. The equal-budget check reads this
+            rather than cost, because a price change moves cost and leaves the
+            work the two arms did unchanged.
+        attempts: How many agent sessions those runs consumed.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -188,7 +259,9 @@ class DepthPoint(BaseModel):
     delivered_claims: int = Field(ge=0)
     surviving_claims: int = Field(ge=0)
     cells: int = Field(ge=0)
+    runs: int = Field(default=0, ge=0)
     cost: float = Field(default=0.0, ge=0.0)
+    tokens: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -338,6 +411,15 @@ class RecursionDepthReport(BaseModel):
             The summed cell cost.
         """
         return sum(cell.total_cost for cell in self.cells)
+
+    @property
+    def total_tokens(self) -> int:
+        """What the whole sweep spent in tokens.
+
+        Returns:
+            The summed cell tokens.
+        """
+        return sum(cell.total_tokens for cell in self.cells)
 
 
 __all__ = [

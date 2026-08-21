@@ -110,7 +110,11 @@ def _cost_series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, floa
     """
     series: dict[Arm, list[tuple[int, float]]] = {arm: [] for arm in Arm}
     for point in points:
-        if point.cells == 0:
+        # Keyed on the runs booked here, not on the runs that contributed
+        # claims. A run whose leaves all failed contributes no claims and still
+        # cost what it cost, and dropping it hid the spend of exactly the deep
+        # failed runs this panel exists to show.
+        if point.runs == 0:
             continue
         series[point.arm].append((point.depth, point.cost))
     for values in series.values():
@@ -151,9 +155,18 @@ def _polyline(
 
 
 def _survival_panel(
-    series: dict[Arm, list[tuple[int, float]]], xs: dict[int, float]
+    series: dict[Arm, list[tuple[int, float]]],
+    xs: dict[int, float],
+    secondary: dict[Arm, list[tuple[int, float]]],
 ) -> list[str]:
     """Draw the survival axes, gridlines and lines.
+
+    The cap curve is drawn first and faint, so it sits behind the primary one:
+    the two answer different questions and the achieved-depth curve is the
+    finding. Drawn at all because a planner that stops splitting at three
+    produces identical trees at caps four, five and six, and the pair read
+    together is what distinguishes "gating holds at depth" from "nothing went
+    there".
 
     Returns:
         The SVG fragments.
@@ -179,6 +192,16 @@ def _survival_panel(
         parts.append(
             f'<text class="tick" x="{x:.1f}" y="{top + _PLOT_HEIGHT + 20:.1f}" '
             f'text-anchor="middle">{depth}</text>'
+        )
+    for arm, values in secondary.items():
+        if not values:
+            continue
+        colour, dash = _ARM_STYLE[arm]
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        points = _polyline(values, xs, top=top, height=_PLOT_HEIGHT, ceiling=1.0)
+        parts.append(
+            f'<polyline class="series secondary" points="{points}" '
+            f'stroke="{colour}"{dash_attr}/>'
         )
     for arm, values in series.items():
         if not values:
@@ -266,6 +289,15 @@ def _legend(top: float) -> list[str]:
             f'<text class="legend" x="{x + 36}" y="{top + 4:.1f}">'
             f"{_escape(label)}</text>"
         )
+    faint_x = _MARGIN_LEFT + len(Arm) * 200
+    parts.append(
+        f'<line class="series secondary" x1="{faint_x}" y1="{top:.1f}" '
+        f'x2="{faint_x + 28}" y2="{top:.1f}" stroke="var(--fg)"/>'
+    )
+    parts.append(
+        f'<text class="legend" x="{faint_x + 36}" y="{top + 4:.1f}">'
+        f"{_escape('faint: same runs binned on the depth cap allowed')}</text>"
+    )
     return parts
 
 
@@ -273,26 +305,31 @@ def render_chart(
     *,
     points: tuple[DepthPoint, ...],
     caption_lines: tuple[str, ...],
+    by_cap: tuple[DepthPoint, ...] = (),
 ) -> str:
     """Render the survival curve, the cost panel and the caption as one SVG.
 
     Args:
-        points: The curve, one entry per ``(depth, arm)``.
+        points: The primary curve, binned on the depth each leaf reached, one
+            entry per ``(depth, arm)``.
         caption_lines: What must travel with the number wherever it is pasted.
+        by_cap: The same measurement binned on the cap the run was allowed,
+            drawn faint behind the primary curve. Empty draws nothing.
 
     Returns:
         A self-contained SVG document.
     """
-    depths = tuple(sorted({point.depth for point in points}))
+    depths = tuple(sorted({point.depth for point in (*points, *by_cap)}))
     xs = _x_positions(depths) if depths else {}
     survival = _series(points)
+    capped = _series(by_cap)
     costs = _cost_series(points)
     legend_top = float(_MARGIN_TOP + _PLOT_HEIGHT + _GAP + _COST_HEIGHT + 34)
     wrapped = [line for text in caption_lines for line in _wrap(text, 110)]
     caption_top = legend_top + 30
     height = int(caption_top + len(wrapped) * _CAPTION_LINE_HEIGHT + 20)
     body = [
-        *_survival_panel(survival, xs),
+        *_survival_panel(survival, xs, capped),
         (
             f'<text class="axis-label" x="{_WIDTH / 2:.0f}" '
             f'y="{_MARGIN_TOP + _PLOT_HEIGHT + 44}" text-anchor="middle">'
@@ -348,6 +385,7 @@ gated and ungated">
     .grid {{ stroke: var(--grid); stroke-width: 1; }}
     .axis {{ stroke: var(--grid); stroke-width: 1.5; }}
     .series {{ fill: none; stroke-width: 2.5; stroke-linejoin: round; }}
+    .secondary {{ stroke-width: 1.25; opacity: 0.4; }}
   </style>
   <rect class="bg" x="0" y="0" width="{_WIDTH}" height="{height}"/>
   {drawn}

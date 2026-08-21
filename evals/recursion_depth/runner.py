@@ -24,6 +24,7 @@ from it.
 
 import asyncio
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,7 +56,9 @@ from evals.recursion_depth.merge import (
 from evals.recursion_depth.models import (
     LEAF,
     MERGE,
+    ORACLE_CAVEAT,
     PLAN,
+    SIZING_CAVEAT,
     CellRecord,
     Provenance,
     RecursionDepthReport,
@@ -271,10 +274,21 @@ async def run_sweep(
             verdict from.
     """
     records: list[CellRecord] = []
-    caveats: list[str] = []
+    # Seeded, not accumulated: these two hold for every sweep this harness can
+    # run, and a report that states them only when something went wrong states
+    # them in exactly the runs nobody reads closely.
+    caveats: list[str] = [SIZING_CAVEAT, ORACLE_CAVEAT]
+    independence = context.manifest.caveat()
+    if independence is not None:
+        caveats.append(independence)
     for cell in planned_cells(context.manifest):
+        # Owned out here rather than inside the run, because a cell that raises
+        # part-way has still been paid for and the sweep's spend is the check on
+        # the whole result. A cell that built fourteen leaves before tripping
+        # the ceiling reported nothing at all while the money was gone.
+        units: list[UnitRecord] = []
         try:
-            records.append(await _run_cell(context, cell))
+            records.append(await _run_cell(context, cell, units))
         except MemoryError, RecursionError:
             raise
         except RecursionDepthSessionCeilingError as exc:
@@ -286,12 +300,13 @@ async def run_sweep(
                 measured_cells=len(records),
                 error=safe_error_description(exc),
             )
+            records.append(_unavailable(cell, exc, units))
             caveats.append(_CEILING_CAVEAT)
             break
         except _SYSTEMIC_FAILURES:
             raise
         except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
-            records.append(_unavailable(cell, exc))
+            records.append(_unavailable(cell, exc, units))
     measured = tuple(record for record in records if record.achieved_depth is not None)
     if not measured:
         msg = (
@@ -309,8 +324,14 @@ async def run_sweep(
     )
 
 
-def _unavailable(cell: SweepCell, exc: Exception) -> CellRecord:
+def _unavailable(
+    cell: SweepCell, exc: Exception, units: Sequence[UnitRecord]
+) -> CellRecord:
     """Record one run that could not be measured, with its reason.
+
+    Carries whatever the run had already built. It contributes no claims and
+    enters no curve, because ``achieved_depth`` is what a curve is keyed on, but
+    its spend is real and belongs in the sweep total.
 
     Returns:
         The unavailable cell.
@@ -321,6 +342,8 @@ def _unavailable(cell: SweepCell, exc: Exception) -> CellRecord:
         depth_cap=cell.depth_cap,
         arm=cell.arm.value,
         repetition=cell.repetition,
+        units_built=len(units),
+        cost=sum(unit.cost for unit in units),
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
@@ -328,16 +351,22 @@ def _unavailable(cell: SweepCell, exc: Exception) -> CellRecord:
         depth_cap=cell.depth_cap,
         arm=cell.arm,
         repetition=cell.repetition,
+        units=tuple(units),
         unavailable_reason=reason,
     )
 
 
-async def _run_cell(context: SweepContext, cell: SweepCell) -> CellRecord:
+async def _run_cell(
+    context: SweepContext, cell: SweepCell, units: list[UnitRecord]
+) -> CellRecord:
     """Plan, build, assemble and grade one run.
 
     Args:
         context: Everything the sweep is driven with.
         cell: Which run this is.
+        units: Sink the per-unit records are appended to, owned by the caller so
+            a run that raises part-way still reports what it had already paid
+            for.
 
     Returns:
         The measured cell.
@@ -350,7 +379,7 @@ async def _run_cell(context: SweepContext, cell: SweepCell) -> CellRecord:
     planned = await context.planner.plan(
         task=root, depth_cap=cell.depth_cap, execution_id=f"{cell.key}-plan"
     )
-    units = [
+    units.append(
         UnitRecord(
             unit_id=NotBlankStr(f"{cell.key}-plan"),
             title=NotBlankStr(f"Plan: {context.spec.title}"),
@@ -359,7 +388,7 @@ async def _run_cell(context: SweepContext, cell: SweepCell) -> CellRecord:
             attempts=planned.sessions,
             cost=planned.cost,
         )
-    ]
+    )
     context.budget.spend(planned.sessions)
     assembled = await _build_tree_units(context, cell, root, planned.result, units)
     merged = await asyncio.to_thread(
@@ -586,6 +615,9 @@ def _leaf_record(
         attempts=leaf.attempts,
         turns=leaf.turns,
         cost=leaf.cost,
+        tokens=leaf.tokens,
+        executor=leaf.executor,
+        detail=leaf.detail,
     )
 
 
@@ -606,6 +638,10 @@ def _merge_record(
         attempts=outcome.attempts,
         turns=outcome.turns,
         cost=outcome.cost,
+        tokens=outcome.tokens,
+        executor=outcome.executor,
+        reviewer=outcome.reviewer,
+        detail=outcome.detail,
         verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
         parked=outcome.parked,
         amendments=outcome.amendments,

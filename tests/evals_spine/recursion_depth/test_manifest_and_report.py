@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
-from evals.recursion_depth.emit import ORACLE_CAVEAT, SIZING_CAVEAT, write_report
+from evals.recursion_depth.emit import write_report
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -18,6 +18,8 @@ from evals.recursion_depth.manifest import (
 )
 from evals.recursion_depth.models import (
     LEAF,
+    ORACLE_CAVEAT,
+    SIZING_CAVEAT,
     CellRecord,
     DepthPoint,
     Provenance,
