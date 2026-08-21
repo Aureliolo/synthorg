@@ -283,6 +283,20 @@ all of that is latency. The probe is also the warm-up, which matters because a
 cold model load would otherwise land entirely on whichever cell is recorded
 first, and that is depth 1: the flattest, cheapest point on the curve.
 
+### What the run keeps
+
+Every request and response crossing the recorder's own gateway is written to a
+JSONL transcript, one file per session, keyed on the same execution id the
+ledger keys its spend to, so a transcript and the cost it produced name the
+same session. They land under the run's work root beside the trees
+`--keep-workspaces` leaves, and are read against them.
+
+This is not diagnostics for its own sake. The chart answers what each cell
+scored; the questions actually worth asking afterwards are why a merge was
+rejected, what the reviewer said, and whether a repair round addressed the
+finding or talked past it. None of that is recoverable once the run ends, and a
+sweep costs too much to repeat because nobody kept the reasoning.
+
 ### Failures
 
 A missing provider, a dead gateway, a dead Docker daemon, or an oracle that

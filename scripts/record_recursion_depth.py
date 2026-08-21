@@ -363,7 +363,12 @@ async def _build_context(
         capability=capability,
     )
     deps = _build_deps(
-        host, binder=binder, stall_idle_seconds=args.stall_notify_seconds
+        host,
+        binder=binder,
+        # Under the run's own work root, so transcripts survive alongside the
+        # trees `--keep-workspaces` leaves and are read against them.
+        transcript_root=work_root / "transcripts",
+        stall_idle_seconds=args.stall_notify_seconds,
     )
     limits = SessionLimits(
         max_turns=manifest.unit_max_turns,
@@ -394,6 +399,7 @@ def _build_deps(
     host: RecordingGatewayHost,
     *,
     binder: HarnessBinder,
+    transcript_root: Path,
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
@@ -420,6 +426,11 @@ def _build_deps(
         ),
         build_sandbox=binder.build_sandbox,
         release_tools=binder.release_tool_sandboxes,
+        # Every exchange with every model, one file per session. The chart
+        # answers what each cell scored; this is the only thing that can
+        # answer why, and none of it is recoverable after the run.
+        transcripts=host.transcripts,
+        transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
         project_repo=host.project_repo,
         stall_idle_seconds=stall_idle_seconds,

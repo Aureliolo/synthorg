@@ -28,6 +28,7 @@ from evals.harness.stall_watch import (
     ProgressTrackingLedger,
     StallWatch,
 )
+from evals.harness.transcript import TranscriptRecorder
 from evals.harness.workspace import CellWorkspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.recursion_depth.grading import SandboxFactory, UnitGrader
@@ -106,6 +107,12 @@ class SweepDeps:
             the oracle side by side, and no cell workspace may ever hold both.
         release_tools: Releases what that registry holds open, run after every
             unit whether it finished or raised.
+        transcripts: Records every request and response crossing the hosted
+            gateway. Without it a sweep answers only WHAT each cell scored,
+            and the whole question is why a merge was rejected or what a
+            reviewer actually said, which is unrecoverable afterwards.
+        transcript_root: Directory the per-session transcripts are written
+            under; ``None`` alongside a recorder writes none.
         open_run_ledger: Installs the authoritative cost sink for one unit and
             yields it. ``None`` means no gateway is hosted, so the engine's own
             tracker is the ledger; that is the offline path the suite drives.
@@ -122,6 +129,8 @@ class SweepDeps:
     build_grader: GraderFactory
     build_sandbox: SandboxFactory
     release_tools: ToolReleaseHook | None = None
+    transcripts: TranscriptRecorder | None = None
+    transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
     project_repo: ProjectRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
@@ -299,7 +308,9 @@ async def open_session(
     """
     fallback = ProgressTrackingLedger()
     async with (
-        _released_tools(deps),
+        # Keyed on the execution id, which is what the ledger keys its spend
+        # to, so a transcript and the cost it produced name the same session.
+        _released_tools(deps, binding.execution_id),
         ledger_scope(deps, binding.execution_id, fallback) as ledger,
     ):
         engine = await _build_engine(
@@ -444,17 +455,29 @@ def _forward_stall(
 
 
 @contextlib.asynccontextmanager
-async def _released_tools(deps: SweepDeps) -> AsyncIterator[None]:
-    """Release what this session's tools hold open, however it ends.
+async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
+    """Record this session's exchanges and release what its tools hold open.
+
+    Both live here because both must run however the session ends, and the
+    bind is inside the guard rather than ahead of it: binding creates the
+    transcript's parent directory, so it can fail, and a failure before the
+    try would leave this session's containers to the grace timer the release
+    exists to pre-empt.
 
     Yields:
-        Nothing; the release runs on the way out.
+        Nothing; the unbind and the release run on the way out.
     """
     try:
+        if deps.transcripts is not None and deps.transcript_root is not None:
+            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
         yield
     finally:
-        if deps.release_tools is not None:
-            await deps.release_tools()
+        try:
+            if deps.transcripts is not None:
+                deps.transcripts.unbind()
+        finally:
+            if deps.release_tools is not None:
+                await deps.release_tools()
 
 
 def ledger_scope(

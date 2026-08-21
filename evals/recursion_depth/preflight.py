@@ -34,6 +34,7 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_PROVIDER_MISSING,
     EVALS_RECURSION_PREFLIGHT_PASSED,
 )
+from synthorg.observability.redaction import safe_error_description
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -153,10 +154,15 @@ async def _probe_pair(
     # anything the sweep does, so both are reported here rather than once per
     # cell as a failure of whichever subsystem happened to make the call.
     except (ProviderError, TimeoutError) as exc:
+        # The upstream's own words, redacted, rather than only our summary of
+        # them. "Could not complete" does not separate a bad credential from an
+        # unknown model id from an unreachable endpoint, and those have three
+        # different fixes; without the detail the operator reads the traceback
+        # to find what the probe already knew.
         msg = (
             f"the {role} pair {pair.label} could not complete a one-token "
-            f"request, so no cell recorded against it would measure anything. "
-            f"Check the credential and the model id in the company config"
+            f"request, so no cell recorded against it would measure anything: "
+            f"{safe_error_description(exc)}"
         )
         raise HarnessProviderMissingError(msg) from exc
 
