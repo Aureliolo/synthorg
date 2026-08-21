@@ -108,6 +108,27 @@ class TestUnstatedReference:
 
         assert describe_unstated_reference(unit=integrate, others=others) is None
 
+    def test_a_dependent_naming_its_own_dependency_backwards_is_cleared(
+        self,
+    ) -> None:
+        """A forward reference is ordered already, so demanding an edge deadlocks.
+
+        The parser depends on the lexer and the lexer's description says what
+        the parser will do with its tokens. Reading only one direction asks for
+        a lexer-depends-on-parser edge, which the cycle check then refuses.
+        """
+        lexer = _Unit(
+            id="lex",
+            title="SQL lexer",
+            description="Emit the tokens the SQL parser consumes",
+        )
+        others = [
+            lexer,
+            _Unit(id="par", title="SQL parser", dependencies=("lex",)),
+        ]
+
+        assert describe_unstated_reference(unit=lexer, others=others) is None
+
     def test_shared_generic_vocabulary_is_not_a_reference(self) -> None:
         """Otherwise every plan trips on its own verbs."""
         unit = _Unit(id="a", title="Build the API", description="Create endpoints")
