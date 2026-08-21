@@ -28,7 +28,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final
 
 import yaml
@@ -482,12 +482,22 @@ def oracle_argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str,
         "-q",
         f"--tree={ORACLE_TREE_DIR}",
         f"--report-json={_REPORT_NAME}",
-        *(_node_path(Path(ORACLE_SUITE_DIR), nodes[key]) for key in wanted),
+        *(_node_path(PurePosixPath(ORACLE_SUITE_DIR), nodes[key]) for key in wanted),
     )
 
 
-def _node_path(oracle_dir: Path, node: str) -> str:
-    """Turn a ``file.py::test`` entry into an absolute pytest node id.
+def _node_path(oracle_dir: PurePosixPath, node: str) -> str:
+    """Turn a ``file.py::test`` entry into a pytest node id for the container.
+
+    POSIX explicitly, because the separator belongs to the machine that RUNS
+    the argument, not the one that builds it. A plain ``Path`` renders the
+    Windows separator when the recorder runs there, and that character is
+    ordinary text in the Linux container: pytest resolves none of the
+    arguments, so it never loads the suite's ``conftest.py`` as an initial
+    conftest, and the run dies at argument parsing on the ``--tree`` and
+    ``--report-json`` options that conftest is what registers. The oracle then
+    grades nothing, on every tree, having never run a single test. A POSIX
+    runner cannot reproduce it, so CI stayed green throughout.
 
     Returns:
         The node id pytest is invoked with.
