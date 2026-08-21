@@ -14,7 +14,6 @@ client.human_response_timeout_seconds:unreachable
 cockpit.steering_propose_candidate_limit:construction-only
 coordination.decomposition_agent_max_turns:construction-only
 coordination.decomposition_strategy:construction-only
-coordination.leaf_subtask_threshold:construction-only
 coordination.plan_approval_required:construction-only
 coordination.routing_policy:construction-only
 engine.health_monitoring_enabled:construction-only
@@ -36,8 +35,6 @@ tools.git_command_timeout_seconds:construction-only
 tools.git_log_max_count:construction-only
 tools.mcp_sandbox_cpus:construction-only
 tools.mcp_sandbox_enabled:construction-only
-tools.mcp_sandbox_image:construction-only
 tools.mcp_sandbox_memory_limit:construction-only
 tools.mcp_sandbox_network:construction-only
 tools.mcp_sandbox_pids_limit:construction-only
-tools.web_request_timeout_seconds:construction-only

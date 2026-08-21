@@ -13,10 +13,8 @@ from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import DecompositionError
@@ -43,6 +41,16 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
     def get_strategy_name(self) -> str:
         """Return placeholder strategy name."""
         return "no-provider-placeholder"
+
+    @override
+    def plans_any_task(self) -> bool:
+        """Answer for a strategy that plans nothing at all.
+
+        Returns:
+            ``False``: it refuses every task, so recursing into it would only
+            convert one refusal into two.
+        """
+        return False
 
     @override
     async def decompose(

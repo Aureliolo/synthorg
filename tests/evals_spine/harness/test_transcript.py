@@ -27,7 +27,7 @@ from litestar.types import (
     Send,
 )
 
-from evals.loop_ab.transcript import TranscriptRecorder, transcribing
+from evals.harness.transcript import TranscriptRecorder, transcribing
 
 pytestmark = pytest.mark.unit
 

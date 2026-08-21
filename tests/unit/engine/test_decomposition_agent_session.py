@@ -18,11 +18,8 @@ from synthorg.engine.decomposition.agent_session import (
     _PlanCapture,
     _ran_without_submitting,
 )
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
@@ -112,6 +109,11 @@ class _SentinelFallback(DecompositionStrategy):
     @override
     def get_strategy_name(self) -> str:
         return "sentinel-fallback"
+
+    @override
+    def plans_any_task(self) -> bool:
+        # A fixed plan for one parent, so it cannot serve a child level.
+        return False
 
 
 def _submit_then_continue() -> ScriptedProvider:

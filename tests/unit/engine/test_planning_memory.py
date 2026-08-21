@@ -16,10 +16,8 @@ from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
 )
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.memory.org.protocol import OrgMemoryBackend
@@ -89,6 +87,11 @@ class _SentinelFallback(DecompositionStrategy):
     @override
     def get_strategy_name(self) -> str:
         return "sentinel"
+
+    @override
+    def plans_any_task(self) -> bool:
+        # It raises when invoked, so it can plan nothing at all.
+        return False
 
 
 class _MarkerMemory:

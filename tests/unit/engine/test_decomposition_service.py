@@ -10,12 +10,9 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.decomposition import service as service_module
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -47,6 +44,9 @@ class _NeverAnsweringStrategy:
 
     def get_strategy_name(self) -> str:
         return "never-answering"
+
+    def plans_any_task(self) -> bool:
+        return True
 
 
 def _make_task(
@@ -433,6 +433,9 @@ class TestDecompositionService:
             def get_strategy_name(self) -> str:
                 return "failing"
 
+            def plans_any_task(self) -> bool:
+                return True
+
         task = _make_task()
         strategy = _FailingStrategy()
         classifier = TaskStructureClassifier()
@@ -489,6 +492,7 @@ class TestOneDecompositionCannotRunForever:
         never = _NeverAnsweringStrategy()
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_SHORT_CEILING
+        resolver.get_bool.return_value = False
         service = DecompositionService(
             never,
             TaskStructureClassifier(),
@@ -504,6 +508,7 @@ class TestOneDecompositionCannotRunForever:
         # the moment it is least available to them.
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
         resolver.get_float.return_value = _A_GENEROUS_CEILING
+        resolver.get_bool.return_value = False
         service = DecompositionService(
             ManualDecompositionStrategy(_make_plan()),
             TaskStructureClassifier(),
@@ -514,7 +519,13 @@ class TestOneDecompositionCannotRunForever:
         await service.decompose_task(_make_task(), ctx)
         await service.decompose_task(_make_task(), ctx)
 
-        assert resolver.get_float.await_count == 2
+        # Per key, not a total: a decomposition reads TWO ceilings, one for a
+        # planning session and one for the whole tree, and a bare count cannot
+        # tell "both read twice" from "one read four times".
+        keys = [call.args[1] for call in resolver.get_float.await_args_list]
+
+        assert keys.count("decomposition_timeout_seconds") == 2
+        assert keys.count("decomposition_tree_timeout_seconds") == 2
 
     async def test_an_unreadable_ceiling_still_bounds_the_call(
         self, monkeypatch: pytest.MonkeyPatch
@@ -575,6 +586,9 @@ class _ContextRecordingStrategy:
 
     def get_strategy_name(self) -> str:
         return "context-recording"
+
+    def plans_any_task(self) -> bool:
+        return True
 
 
 class _StubInventory:

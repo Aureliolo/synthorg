@@ -43,7 +43,7 @@ from litestar.enums import ScopeType
 from litestar.types import ASGIApp, Message, Receive, ReceiveMessage, Scope, Send
 
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.evals import EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED
+from synthorg.observability.events.evals import EVALS_HARNESS_TRANSCRIPT_WRITE_FAILED
 from synthorg.observability.redaction import scrub_secret_tokens
 
 logger = get_logger(__name__)
@@ -124,7 +124,7 @@ class TranscriptRecorder:
                 handle.write(line + "\n")
         except (OSError, TypeError, ValueError) as exc:
             logger.warning(
-                EVALS_LOOP_AB_TRANSCRIPT_WRITE_FAILED,
+                EVALS_HARNESS_TRANSCRIPT_WRITE_FAILED,
                 path=str(path),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

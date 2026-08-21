@@ -5,7 +5,7 @@ Pure function for aggregating subtask statuses into a parent status.
 
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import SubtaskStatusRollup
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_ROLLUP_COMPUTED,

@@ -29,9 +29,9 @@ from typing import Final
 
 import aiodocker
 
-from evals.errors import LoopAbBindHostUnresolvedError
+from evals.errors import HarnessBindHostUnresolvedError
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_LOOP_AB_BIND_HOST_RESOLVED
+from synthorg.observability.events.evals import EVALS_HARNESS_BIND_HOST_RESOLVED
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,7 @@ async def resolve_bind_host(configured: str | None) -> str:
         The address to bind.
 
     Raises:
-        LoopAbBindHostUnresolvedError: No narrow address could be resolved.
+        HarnessBindHostUnresolvedError: No narrow address could be resolved.
             Widening to every interface is the operator's call, not this
             function's, so it is surfaced rather than assumed.
     """
@@ -67,14 +67,14 @@ async def resolve_bind_host(configured: str | None) -> str:
         return configured
     if sys.platform in _DESKTOP_PLATFORMS:
         logger.info(
-            EVALS_LOOP_AB_BIND_HOST_RESOLVED,
+            EVALS_HARNESS_BIND_HOST_RESOLVED,
             bind_host=LOOPBACK_BIND_HOST,
             source="desktop-loopback",
         )
         return LOOPBACK_BIND_HOST
     gateway = await _bridge_gateway()
     logger.info(
-        EVALS_LOOP_AB_BIND_HOST_RESOLVED, bind_host=gateway, source="bridge-gateway"
+        EVALS_HARNESS_BIND_HOST_RESOLVED, bind_host=gateway, source="bridge-gateway"
     )
     return gateway
 
@@ -86,7 +86,7 @@ async def _bridge_gateway() -> str:
         The gateway address.
 
     Raises:
-        LoopAbBindHostUnresolvedError: The daemon is unreachable, or its bridge
+        HarnessBindHostUnresolvedError: The daemon is unreachable, or its bridge
             network declares no IPv4 gateway.
     """
     try:
@@ -102,7 +102,7 @@ async def _bridge_gateway() -> str:
             "could not read the Docker bridge gateway to bind to; "
             "pass --bind-host explicitly"
         )
-        raise LoopAbBindHostUnresolvedError(msg) from exc
+        raise HarnessBindHostUnresolvedError(msg) from exc
     for entry in _ipam_config(detail):
         gateway = entry.get("Gateway")
         if isinstance(gateway, str) and _is_ipv4(gateway):
@@ -111,7 +111,7 @@ async def _bridge_gateway() -> str:
         "the Docker bridge network declares no IPv4 gateway address; "
         "pass --bind-host explicitly"
     )
-    raise LoopAbBindHostUnresolvedError(msg)
+    raise HarnessBindHostUnresolvedError(msg)
 
 
 def _is_ipv4(address: str) -> bool:

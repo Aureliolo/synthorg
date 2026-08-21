@@ -6,10 +6,8 @@ from ``decompose()``, validating against context limits.
 
 from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.task import Task
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
@@ -106,3 +104,15 @@ class ManualDecompositionStrategy:
     def get_strategy_name(self) -> str:
         """Return the strategy name."""
         return "manual"
+
+    def plans_any_task(self) -> bool:
+        """Refuse recursion: this strategy holds one plan for one parent.
+
+        The operator supplied the plan and named the task it decomposes, so
+        asked about a child it raises, and that raise would fail the whole
+        request rather than leaving one oversized subtask whole.
+
+        Returns:
+            ``False``, always.
+        """
+        return False

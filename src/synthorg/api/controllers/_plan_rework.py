@@ -39,7 +39,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.plan import Plan, PlanItem, PlanPremises
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import (
+from synthorg.engine.decomposition.context import (
     DecompositionContext,
     roster_from_agents,
 )

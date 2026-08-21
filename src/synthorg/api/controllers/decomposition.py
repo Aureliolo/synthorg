@@ -33,13 +33,15 @@ from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.task_enums import Complexity, CoordinationTopology, Stakes
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    roster_from_agents,
+)
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (
-    DecompositionContext,
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
-    roster_from_agents,
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.state import EngineStateSlice

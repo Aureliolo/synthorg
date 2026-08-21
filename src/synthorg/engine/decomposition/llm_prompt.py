@@ -19,7 +19,7 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr, flatten_label
-from synthorg.engine.decomposition.models import DecompositionContext
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,
@@ -407,6 +407,11 @@ def build_system_message(
         "genuinely cannot start until another finishes. Independent "
         "workstreams must run in parallel, so most plans are 'mixed' or "
         "'parallel', not 'sequential'.\n"
+        "- Split by DELIVERABLE, never by phase or role. One item is one "
+        "agent's whole job, its tests included: 'write the parser' and 'test "
+        "the parser' are one item, not two. Splitting by type of work hands "
+        "one piece of context to several agents and makes them coordinate to "
+        "get it back.\n"
         "- Assign an accountable owning role (required_role) to every item; no "
         "item is left unowned.\n"
         + _roster_guidance(available_roles)

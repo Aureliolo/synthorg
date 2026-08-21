@@ -244,7 +244,7 @@ class TestNoProviderDecompositionStrategy:
 
     async def test_raises_decomposition_error(self) -> None:
         from synthorg.core.task import Task
-        from synthorg.engine.decomposition.models import DecompositionContext
+        from synthorg.engine.decomposition.context import DecompositionContext
 
         strategy = _NoProviderDecompositionStrategy()
         task_mock = MagicMock(spec=Task)

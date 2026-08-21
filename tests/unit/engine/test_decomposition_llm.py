@@ -15,15 +15,13 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
     LlmDecompositionStrategy,
 )
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.errors import (
     DecompositionDepthError,

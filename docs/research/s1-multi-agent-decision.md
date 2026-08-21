@@ -15,6 +15,24 @@ last_reviewed: 2026-05-05
 **Issue**: #1254 (CRITICAL, blocks #1250 / #1251 / #1253)
 **Sources**: [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) (Multi-Agent Risks), [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) (Reliability Limits), [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) (Single-Agent Outperforms). Prior baseline: [Kim et al. 2025 (arXiv:2512.08296)](https://arxiv.org/abs/2512.08296), [Multi-Agent Failure Audit](multi-agent-failure-audit.md) (#690), [Task & Workflow Engine §Task Decomposability](../design/coordination.md#task-decomposability-coordination-topology), [Communication Coordination §Multi-Agent Failure Pattern Guardrails](../design/communication-coordination.md#multi-agent-failure-pattern-guardrails).
 
+!!! warning "Superseded in part by S2 (2026-08-20)"
+
+    Two claims on this page were mischaracterised and are corrected in
+    [S2 Agent Parallelism Evidence Review](s2-agent-parallelism-evidence.md):
+
+    - The `-39% to -70% multi-agent effect` is scoped to sequential-planning tasks. Kim et
+      al.'s actual range is **+80.8% to -70.0%**, and the paper's own conclusion is that
+      fit between coordination and task structure decides the outcome. That distortion
+      steered this codebase toward single-agent defaults for four months.
+    - `arXiv:2603.27771` is a safety paper on emergent collusion and conformity. It makes
+      no capability or coordination-cap claim and should not be cited for either.
+
+    Kim et al. has since been peer-reviewed as "Capable language models can outgrow the
+    benefits of collaboration", Nature Machine Intelligence 8(7):1157-1172, 2026-07-24.
+    The reasoning-parallelism versus work-stream-parallelism distinction noted below is
+    the framing the authors use for their own headline result, and S2 promotes it
+    accordingly.
+
 ## Bottom line
 
 SynthOrg keeps multi-agent as a foundational capability but treats it as **topology-per-task, not topology-per-company**, with single-agent as the default for all task types where multi-agent cannot demonstrate a per-task justification. The three S1 papers **confirm** this direction; they do not overturn it. Kim et al. 2025 (already integrated in the engine design) set up the heuristic; papers 2 and 3 formalise the math and empirics behind it; paper 1 supplies the emergent-risk catalog the existing guardrails do not yet fully cover.
@@ -29,7 +47,7 @@ The existing `CoordinationTopology` selector in `src/synthorg/engine/routing/top
 
 | Task property | Topology | Justification |
 |---|---|---|
-| `sequential` + any size | **SAS** (single-agent) | Kim 2025: -39% to -70% multi-agent effect. Paper 3: Data Processing Inequality. Coordination tokens displace reasoning tokens under equal budget. No change needed. |
+| `sequential` + any size | **SAS** (single-agent) | Kim 2025: -39% to -70% **on sequential-planning tasks specifically** (the paper's overall range is +80.8% to -70.0%; see [S2](s2-agent-parallelism-evidence.md)). Paper 3: Data Processing Inequality. Coordination tokens displace reasoning tokens under equal budget. No change needed. |
 | `parallel` + structured + common-evidence regime | **Centralised** (orchestrator + sub-agents, orchestrator synthesises) | Paper 2 **formal theorem**: delegated networks are decision-theoretically dominated by a centralised Bayes decision maker under common-evidence. Lowest error amplification (4.4x, Kim 2025). |
 | `parallel` + exploratory / high-entropy / **novel per-agent information sources** | **Decentralised** (peer debate) | Paper 2 boundary case: distributed CAN outperform when agents access non-shared information. Paper 3 boundary case: diverse specialised knowledge, error-checking via independent reasoning paths, asymmetric agent expertise. |
 | `mixed` (sequential backbone + parallel sub-phases) | **Context-dependent** | Kim 2025; per-phase selection already implemented as `ContextDependentDispatcher`. |

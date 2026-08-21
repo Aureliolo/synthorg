@@ -19,13 +19,13 @@ import httpx
 import pytest
 
 from evals.errors import (
-    LoopAbGatewayUnavailableError,
-    LoopAbHostAlreadyStartedError,
+    HarnessGatewayUnavailableError,
+    HarnessHostAlreadyStartedError,
 )
-from evals.loop_ab.host import (
+from evals.harness.host import (
     DEFAULT_CONTAINER_HOST,
-    LoopAbGatewayHost,
-    LoopAbHostConfig,
+    RecordingGatewayHost,
+    RecordingHostConfig,
     _cancel_serving,
 )
 from synthorg.core.auth.roles import HumanRole
@@ -35,7 +35,7 @@ from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of
-from tests.evals_spine.loop_ab.conftest import (
+from tests.evals_spine._recording import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
     recording_company_config,
@@ -72,7 +72,7 @@ _COMPLETION_BODY: dict[str, object] = {
 }
 
 
-def _local_mcp_url(host: LoopAbGatewayHost) -> str:
+def _local_mcp_url(host: RecordingGatewayHost) -> str:
     """Address the MCP endpoint over loopback rather than the container alias.
 
     Returns:
@@ -81,13 +81,13 @@ def _local_mcp_url(host: LoopAbGatewayHost) -> str:
     return host.container_mcp_url.replace(DEFAULT_CONTAINER_HOST, "127.0.0.1")
 
 
-def _config(tmp_path: Path, *, scratch: Path | None = None) -> LoopAbHostConfig:
+def _config(tmp_path: Path, *, scratch: Path | None = None) -> RecordingHostConfig:
     """Build a loopback-bound host config rooted under *tmp_path*.
 
     Returns:
         The host config.
     """
-    return LoopAbHostConfig(
+    return RecordingHostConfig(
         company_config=recording_company_config(),
         scratch_dir=scratch if scratch is not None else tmp_path / "host",
         bind_host="127.0.0.1",
@@ -123,7 +123,7 @@ async def _raise_boot_failure(*_args: object, **_kwargs: object) -> None:
     raise OSError(_BOOT_FAILURE)
 
 
-def _bearer(host: LoopAbGatewayHost) -> str:
+def _bearer(host: RecordingGatewayHost) -> str:
     """Mint a run bearer from the host's own signer.
 
     Returns:
@@ -141,7 +141,7 @@ def _bearer(host: LoopAbGatewayHost) -> str:
 
 class TestSigner:
     async def test_a_bearer_minted_here_is_accepted_over_there(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The defect this host exists to fix: a token minted by any instance
         # other than the one the gateway verifies with is rejected, so the only
@@ -161,7 +161,9 @@ class TestSigner:
         # a truthiness check would pass.
         assert content.startswith(_SCRIPTED_PREFIX), content
 
-    async def test_a_malformed_bearer_is_refused(self, host: LoopAbGatewayHost) -> None:
+    async def test_a_malformed_bearer_is_refused(
+        self, host: RecordingGatewayHost
+    ) -> None:
         # The other half of the same claim: the route is not simply unguarded.
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -173,7 +175,7 @@ class TestSigner:
         assert response.status_code == 401, response.text
 
     async def test_a_bearer_from_another_signer_is_refused(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The actual defect is cross-INSTANCE, not malformed input: a token that
         # is correctly shaped and correctly signed, just by a different signer,
@@ -198,7 +200,7 @@ class TestSigner:
 
 class TestEndpointSettings:
     async def test_both_endpoints_resolve_to_the_bound_port(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The loop wiring reads these settings, not the host object, so a port
         # written anywhere else would leave the container dialling nothing.
@@ -213,7 +215,7 @@ class TestEndpointSettings:
         assert f":{host.port}/" in mcp
 
     async def test_container_urls_address_the_docker_host_alias(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The container joins the sidecar's network namespace, where loopback
         # is the sidecar's own; only the host-gateway alias reaches the recorder.
@@ -223,7 +225,7 @@ class TestEndpointSettings:
 
 class TestCredentialedMcp:
     async def test_the_handshake_succeeds_but_grants_no_tools(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The SDK will not build an agent without an MCP endpoint, so the
         # surface has to answer. It must still hand the coding briefs nothing:
@@ -252,13 +254,13 @@ class TestCredentialedMcp:
 class TestLifecycle:
     async def test_scratch_directory_is_removed_on_exit(self, tmp_path: Path) -> None:
         scratch = tmp_path / "host"
-        config = LoopAbHostConfig(
+        config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=scratch,
             bind_host="127.0.0.1",
         )
 
-        async with LoopAbGatewayHost(config) as started:
+        async with RecordingGatewayHost(config) as started:
             assert scratch.is_dir()
             assert started.port > 0
 
@@ -268,7 +270,7 @@ class TestLifecycle:
         # Teardown runs from ``__aexit__`` and again from ``start()``'s own
         # unwind, so the second call has to be a no-op rather than an error
         # that replaces whatever ended the run.
-        started = LoopAbGatewayHost(_config(tmp_path))
+        started = RecordingGatewayHost(_config(tmp_path))
         await started.start()
         await started.stop()
         await started.stop()
@@ -276,7 +278,7 @@ class TestLifecycle:
         assert started.port == 0
 
     async def test_stop_before_start_is_a_no_op(self, tmp_path: Path) -> None:
-        await LoopAbGatewayHost(_config(tmp_path)).stop()
+        await RecordingGatewayHost(_config(tmp_path)).stop()
 
     async def test_a_server_that_overruns_teardown_is_cancelled(self) -> None:
         # ``asyncio.timeout`` cancels the coroutine that is waiting, never the
@@ -292,7 +294,7 @@ class TestLifecycle:
         assert never_finishes.cancelled()
 
     async def test_a_failed_start_restores_the_environment(
-        self, tmp_path: Path, host: LoopAbGatewayHost
+        self, tmp_path: Path, host: RecordingGatewayHost
     ) -> None:
         # A start that raises has already swapped the process environment, and
         # ``__aexit__`` never runs for an ``__aenter__`` that raised, so the
@@ -301,8 +303,8 @@ class TestLifecycle:
         before = _secret_fingerprint()
         scratch = tmp_path / "second-host"
 
-        with pytest.raises(LoopAbHostAlreadyStartedError):
-            async with LoopAbGatewayHost(_config(tmp_path, scratch=scratch)):
+        with pytest.raises(HarnessHostAlreadyStartedError):
+            async with RecordingGatewayHost(_config(tmp_path, scratch=scratch)):
                 pass
 
         assert _secret_fingerprint() == before
@@ -316,7 +318,7 @@ class TestLifecycle:
         # manager must still get them back, or the next host in the process is
         # refused and the operator's environment keeps this run's throwaways.
         before = _secret_fingerprint()
-        failing = LoopAbGatewayHost(_config(tmp_path, scratch=tmp_path / "doomed"))
+        failing = RecordingGatewayHost(_config(tmp_path, scratch=tmp_path / "doomed"))
         # Patched on the instance, so the recovery host below boots for real.
         monkeypatch.setattr(failing, "_seed_admin", _raise_boot_failure)
 
@@ -326,35 +328,35 @@ class TestLifecycle:
         assert _secret_fingerprint() == before
         assert not (tmp_path / "doomed").exists()
         # Proven by the next host booting at all: the slot is process-global.
-        async with LoopAbGatewayHost(_config(tmp_path)) as recovered:
+        async with RecordingGatewayHost(_config(tmp_path)) as recovered:
             assert recovered.port > 0
 
     async def test_a_second_concurrent_host_is_refused(
-        self, tmp_path: Path, host: LoopAbGatewayHost
+        self, tmp_path: Path, host: RecordingGatewayHost
     ) -> None:
         # Two live hosts would each capture the other's throwaway secrets as
         # the values to restore, so whichever stopped first would leave the
         # survivor's environment holding secrets that no longer decrypt.
         del host
-        with pytest.raises(LoopAbHostAlreadyStartedError):
-            await LoopAbGatewayHost(_config(tmp_path)).start()
+        with pytest.raises(HarnessHostAlreadyStartedError):
+            await RecordingGatewayHost(_config(tmp_path)).start()
 
     async def test_signer_before_start_fails_loud(self, tmp_path: Path) -> None:
         # A host that never started has no signer, and silently returning one
         # built here would be exactly the second instance this fixes.
-        config = LoopAbHostConfig(
+        config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
             bind_host="127.0.0.1",
         )
 
-        with pytest.raises(LoopAbGatewayUnavailableError):
-            _ = LoopAbGatewayHost(config).signer
+        with pytest.raises(HarnessGatewayUnavailableError):
+            _ = RecordingGatewayHost(config).signer
 
 
 class TestFirstRunSetup:
     async def test_the_setup_route_grants_nobody_admin(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # ``/auth/setup`` is excluded from authentication on purpose so a real
         # deployment cannot lock its operator out, and it grants CEO plus OWNER
@@ -371,7 +373,7 @@ class TestFirstRunSetup:
         assert response.status_code == 409, response.text
 
     async def test_the_seeded_admin_is_the_only_ceo(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         persistence = persistence_of(host.app_state)
 
@@ -383,14 +385,14 @@ class TestOpenHandsImage:
         # A maintainer records against a locally built image; the loop wiring
         # reads the setting, so the flag has to land there rather than on a
         # field only the recorder consults.
-        config = LoopAbHostConfig(
+        config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
             bind_host="127.0.0.1",
             openhands_image="synthorg-openhands:local",
         )
 
-        async with LoopAbGatewayHost(config) as started:
+        async with RecordingGatewayHost(config) as started:
             resolved = await config_resolver_of(started.app_state).get_str(
                 "tools", "openhands_image"
             )

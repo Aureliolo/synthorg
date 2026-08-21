@@ -12,8 +12,8 @@ from typing import Self
 
 import pytest
 
-from evals.errors import LoopAbBindHostUnresolvedError
-from evals.loop_ab.bind_host import (
+from evals.errors import HarnessBindHostUnresolvedError
+from evals.harness.bind_host import (
     LOOPBACK_BIND_HOST,
     resolve_bind_host,
 )
@@ -88,7 +88,7 @@ def _bind_daemon(monkeypatch: pytest.MonkeyPatch, detail: object) -> None:
         detail: The payload ``network.show()`` should return.
     """
     monkeypatch.setattr(
-        "evals.loop_ab.bind_host.aiodocker",
+        "evals.harness.bind_host.aiodocker",
         SimpleNamespace(Docker=lambda: _FakeDocker(detail)),
     )
     # The desktop platforms short-circuit to loopback before the daemon is
@@ -142,7 +142,7 @@ async def test_no_usable_gateway_fails_loud(
     # bridge asks for --bind-host rather than binding 0.0.0.0 quietly.
     _bind_daemon(monkeypatch, detail)
 
-    with pytest.raises(LoopAbBindHostUnresolvedError):
+    with pytest.raises(HarnessBindHostUnresolvedError):
         await resolve_bind_host(None)
 
 
@@ -153,11 +153,11 @@ async def test_an_unreachable_daemon_fails_loud(
         raise OSError(_DAEMON_DOWN)
 
     monkeypatch.setattr(
-        "evals.loop_ab.bind_host.aiodocker", SimpleNamespace(Docker=_refuse)
+        "evals.harness.bind_host.aiodocker", SimpleNamespace(Docker=_refuse)
     )
     monkeypatch.setattr(sys, "platform", "linux")
 
-    with pytest.raises(LoopAbBindHostUnresolvedError):
+    with pytest.raises(HarnessBindHostUnresolvedError):
         await resolve_bind_host(None)
 
 

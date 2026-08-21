@@ -16,11 +16,11 @@ from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
 )
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_prompt import (
     build_system_message,
     build_task_message,
 )
-from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, TAG_UNTRUSTED_ARTIFACT
 from tests._shared import as_uuid
 

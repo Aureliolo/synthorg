@@ -11,12 +11,12 @@ from typing import Final
 
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_prompt import (
     DECOMPOSITION_FENCES,
     foundation_lines,
     safe_roles,
 )
-from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
 
@@ -110,6 +110,11 @@ def planning_brief(
             "  genuinely cannot start until another finishes; independent",
             "  workstreams must run in parallel (task_structure mixed or",
             "  parallel, not a single sequential chain).",
+            "- Split by DELIVERABLE, never by phase or role. One item is one",
+            "  agent's whole job, its tests included: 'write the parser' and",
+            "  'test the parser' are one item, not two. Splitting by type of",
+            "  work hands one piece of context to several agents and makes",
+            "  them coordinate to get it back.",
             "- Assign an accountable owning role to every item; leave none",
             "  unowned.",
             *roster_lines(context.available_roles),

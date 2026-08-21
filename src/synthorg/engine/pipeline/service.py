@@ -27,11 +27,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.decomposition.models import (
+from synthorg.engine.decomposition.context import (
     DecompositionContext,
-    DecompositionResult,
     roster_from_agents,
 )
+from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline._initiative_authorisation import (

@@ -11,8 +11,9 @@ from pathlib import Path
 import pytest
 
 from evals.errors import ProvenanceUnavailableError
-from evals.loop_ab.host import RecordedImages
-from evals.loop_ab.provenance import capture_provenance, manifest_digest
+from evals.harness.host import RecordedImages
+from evals.harness.provenance import manifest_digest
+from evals.loop_ab.provenance import capture_provenance
 
 pytestmark = pytest.mark.integration
 

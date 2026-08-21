@@ -1,75 +1,34 @@
 # module-kind: code
-"""Bind one repetition to the recording host: bearer, provider, deps, ledger.
+"""Bind one A/B repetition to the recording host.
 
-Everything a cell needs from the hosted gateway is per repetition rather than
-per capability. The bearer binds one run, and the gateway's ledger keys its hard cost
-kill on that run's id, so a shared token would let a later cell inherit an
-exhausted ceiling. The OpenHands sandbox binds one workspace, which the next
-repetition will have recreated.
-
-The native legs authenticate here too. Routing their driver at the gateway
-without a bearer is what makes the whole matrix unrecordable: the gateway reads
-its own signed token and nothing else, so a driver with no credential is refused
-exactly like an attacker's would be.
+The generic half (bearer, routed provider, sandboxed tools, per-run ledger)
+lives in :mod:`evals.harness.binding`. What is here is what makes a repetition a
+CELL: the id the ledger keys on, the ceiling the brief declares, the pair the
+capability names, and the OpenHands leg, which is the A/B's own and nothing
+else's.
 """
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
-from typing import Final
+from dataclasses import dataclass
 
-from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
-from evals.loop_ab.host import LoopAbGatewayHost
+from evals.errors import LoopAbOpenHandsUnwiredError
+from evals.harness.binding import HarnessBinder, RunBinding
+from evals.harness.stall_watch import ProgressTrackingLedger
+from evals.harness.workspace import CellWorkspace
 from evals.loop_ab.runner import AB_AGENT_ID, CellRun
-from evals.loop_ab.stall_watch import ProgressTrackingLedger
-from evals.loop_ab.workspace import CellWorkspace
 from evals.runner.execution import brief_task_id
-from synthorg.budget.state import BudgetStateSlice
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
-from synthorg.llm.gateway_binding import mint_run_token
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.evals import (
-    EVALS_LOOP_AB_BEARER_MINTED,
-    EVALS_LOOP_AB_LEDGER_INSTALLED,
-    EVALS_LOOP_AB_PROVIDER_MISSING,
-    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
-    EVALS_LOOP_AB_SANDBOXES_RELEASED,
-)
-from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
-from synthorg.settings.state import config_resolver_of
-from synthorg.tools.file_system.delete_file import DeleteFileTool
-from synthorg.tools.file_system.edit_file import EditFileTool
-from synthorg.tools.file_system.read_file import ReadFileTool
-from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
-from synthorg.tools.terminal.shell_command import ShellCommandTool
 from synthorg.workers._openhands_wiring import (
     build_openhands_loop_config,
     build_openhands_loop_deps_or_none,
 )
-
-logger = get_logger(__name__)
-
-#: LiteLLM dispatches on a provider prefix and the driver forwards the model id
-#: with the routing key in front, so an unprefixed SynthOrg id resolves to no
-#: provider and never reaches ``base_url``. This key names the WIRE PROTOCOL, an
-#: OpenAI-compatible proxy at ``api_base``, which is what the gateway is; the
-#: real ``(provider, model)`` still comes from the run bearer's claims.
-_PROXY_ROUTING_KEY: Final[str] = "litellm_proxy"
-
-#: The driver every routed leg uses, whatever the operator configured for the
-#: real provider: the recorder's counterpart is the gateway, which is an
-#: OpenAI-compatible HTTP surface.
-_GATEWAY_DRIVER: Final[str] = "litellm"
 
 
 @dataclass(frozen=True)
@@ -77,245 +36,82 @@ class CellBinder:
     """Builds one repetition's collaborators against the recording host.
 
     Attributes:
-        host: The started host whose signer mints and whose gateway verifies.
-        open_sandboxes: Sandboxes handed to a registry and not yet released.
-            The deployment's lifecycle reuses a container per owner, so the
-            binder that opened one is what has to close it.
+        binder: The generic recording-spine binder this delegates to.
     """
 
-    host: LoopAbGatewayHost
-    open_sandboxes: list[DockerSandbox] = field(default_factory=list, repr=False)
+    binder: HarnessBinder
 
     @property
     def company_config(self) -> RootConfig:
         """The config the manifest's capabilities resolve against.
 
-        Read off the host rather than supplied separately: the gateway resolves
-        a bearer's bound provider against the config the host booted with, so a
-        second copy handed in here could disagree with it and route a scored run
-        through provider settings the gateway never saw.
-
         Returns:
             The booted application's config.
         """
-        return self.host.app_state.config
+        return self.binder.company_config
 
-    async def mint_bearer(self, cell: CellRun) -> str:
-        """Mint the per-run gateway bearer for *cell*.
-
-        Minting is the Explicit Provider Binding chokepoint, so a capability that
-        names no provider fails here rather than letting the gateway auto-pick
-        one later. The ceiling is the brief's own budget, which arms the
-        gateway's hard kill server-side for a real-spend matrix.
+    @property
+    def open_sandboxes(self) -> list[DockerSandbox]:
+        """Sandboxes handed out and not yet released.
 
         Returns:
-            The signed bearer.
-
-        Raises:
-            GatewayModelUnboundError: The capability is not fully bound.
+            The binder's open sandboxes, for a caller checking the invariant.
         """
-        resolver = config_resolver_of(self.host.app_state)
-        ttl_seconds = await resolver.get_int("providers", "gateway_token_ttl_seconds")
-        execution_id = _execution_id(cell)
-        bearer = mint_run_token(
-            self.host.signer,
-            execution_id=NotBlankStr(execution_id),
-            agent_id=NotBlankStr(str(AB_AGENT_ID)),
-            task_id=NotBlankStr(str(brief_task_id(cell.brief.brief_id))),
+        return list(self.binder.open_sandboxes)
+
+    def run_binding(self, cell: CellRun) -> RunBinding:
+        """Describe *cell* as the five facts a run bearer carries.
+
+        Returns:
+            The :class:`RunBinding` for this repetition.
+        """
+        return RunBinding(
+            execution_id=_execution_id(cell),
+            agent_id=str(AB_AGENT_ID),
+            task_id=str(brief_task_id(cell.brief.brief_id)),
             ref=ModelRef(
                 provider=cell.capability.provider,
                 model_id=cell.capability.model_id,
             ),
             cost_ceiling=cell.brief.limits.max_total_cost,
-            ttl_seconds=ttl_seconds,
+            label=cell.capability.capability,
         )
-        # What the cell is authorised to spend, and against which pair. Never
-        # the bearer: it is the credential, and this is the one place holding it.
-        logger.debug(
-            EVALS_LOOP_AB_BEARER_MINTED,
-            execution_id=execution_id,
-            capability=cell.capability.capability,
-            provider=cell.capability.provider,
-            model_id=cell.capability.model_id,
-            cost_ceiling=cell.brief.limits.max_total_cost,
-            ttl_seconds=ttl_seconds,
-        )
-        return bearer
+
+    async def mint_bearer(self, cell: CellRun) -> str:
+        """Mint the per-run gateway bearer for *cell*.
+
+        Returns:
+            The signed bearer.
+        """
+        return await self.binder.mint_bearer(self.run_binding(cell))
 
     async def routed_provider_config(self, cell: CellRun) -> ProviderConfig:
         """Point the capability's provider config at the gateway, with its bearer.
 
         Returns:
             The routed, authenticated :class:`ProviderConfig`.
-
-        Raises:
-            LoopAbProviderMissingError: The capability names a provider absent from
-                the company config.
         """
-        base = self.company_config.providers.get(cell.capability.provider)
-        if base is None:
-            # WARNING, not ERROR: the preflight is what turns this into a
-            # refusal before anything is spent. Reaching it here means one cell
-            # could not be measured, which the runner records as an unavailable
-            # row like any other, and an error level would read as an outage.
-            logger.warning(
-                EVALS_LOOP_AB_PROVIDER_MISSING,
-                capability=cell.capability.capability,
-                provider=cell.capability.provider,
-            )
-            msg = (
-                f"manifest capability {cell.capability.capability!r} names provider "
-                f"{cell.capability.provider!r}, which is absent from the company config"
-            )
-            raise LoopAbProviderMissingError(msg)
-        return base.model_copy(
-            update={
-                # Whatever driver the operator configured is the gateway's
-                # business, not the recorder's: what a loop dials here is an
-                # OpenAI-compatible HTTP endpoint, so the recorder always
-                # speaks that and lets the gateway use the operator's driver.
-                "driver": NotBlankStr(_GATEWAY_DRIVER),
-                "base_url": NotBlankStr(self.host.local_gateway_url),
-                "litellm_provider": NotBlankStr(_PROXY_ROUTING_KEY),
-                # The one catalog-less auth type whose credential lands in
-                # litellm's ``api_key``, which is the Authorization bearer the
-                # gateway reads. The container's SDK does the same thing with
-                # ``LLM(api_key=<bearer>)``.
-                "auth_type": AuthType.SUBSCRIPTION,
-                "subscription_token": NotBlankStr(await self.mint_bearer(cell)),
-                "connection_name": None,
-                # SUBSCRIPTION normally records an operator's acceptance of a
-                # vendor's terms. There is no vendor here: the counterparty is
-                # this process, one hop away, and the real provider call happens
-                # on the far side of the gateway under the operator's own
-                # config, where their acceptance already applies.
-                "tos_accepted_at": None,
-            }
-        )
+        return await self.binder.routed_provider_config(self.run_binding(cell))
 
     async def build_provider(self, cell: CellRun) -> CompletionProvider:
         """Build the completion driver this repetition dispatches through.
 
-        Retry behaviour comes from the company config's own ``retry`` block,
-        deliberately not from the live ``providers.retry_max_attempts`` setting
-        the production registry threads in: a scoreboard has to be reproducible
-        from the config it names, and a setting an operator can move between
-        runs would silently change what "the same measurement" means. It is
-        worth knowing that retries are not free here either, since a retried
-        call's tokens and latency land on the leg that made it; keeping the
-        budget in one declarative place is what makes that comparable.
-
         Returns:
             A driver routed and authenticated to the hosted gateway.
         """
-        routed = await self.routed_provider_config(cell)
-        registry = ProviderRegistry.from_config({cell.capability.provider: routed})
-        return registry.get(cell.capability.provider)
+        return await self.binder.build_provider(self.run_binding(cell))
 
     def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
-        """Build the tool set a native leg gets for one run, scoped to *workspace*.
-
-        Every tool is constructed against the cell root, not the graded project
-        directory beneath it: both halves resolve ``projects/<project_id>``
-        themselves from the bound execution identity, the file tools per call
-        and the sandbox per execution. Handing either the project directory
-        applies that step twice, which is how a run once wrote its deliverable
-        to ``projects/<id>/projects/<id>`` while the checks read the graded
-        tree and found nothing.
-
-        The shell tool runs on a :class:`DockerSandbox`, never a subprocess one:
-        this drives real LLM providers over authored brief and seed text, so the
-        commands they emit are untrusted (``terminal`` sits in the project's
-        ``_UNTRUSTED_EXEC_CATEGORIES``). Container isolation keeps that execution
-        off the host running ``--record``, matching the OpenHands leg's own
-        Docker requirement.
-
-        The sandbox config is built explicitly rather than defaulted. A
-        ``DockerSandbox`` given none takes the module-level default, which is
-        constructed at import time, before this host booted and before the
-        lifecycle seeded the image resolution cache, so its image freezes at a
-        fallback constant that no flag and no environment variable can reach.
-        The native leg would then run on an image the recording never chose
-        while the OpenHands leg ran on the one it did, and the scoreboard would
-        read that as a difference between the loops.
-
-        The lifecycle strategy is passed for the same reason. A ``DockerSandbox``
-        given none takes ``PerCallStrategy``, so every command gets a fresh
-        container and nothing outside the mount survives to the next one, while
-        the deployment configures ``per-agent`` and the OpenHands leg keeps one
-        container for the whole conversation. Measuring the native leg per-call
-        measures a loop the product does not run against one it does.
+        """Build the tool set a native leg gets for one run.
 
         Returns:
             The workspace-scoped :class:`ToolRegistry`.
         """
-        base = workspace.root
-        app_state = self.host.app_state
-        sandbox = DockerSandbox(
-            config=DockerSandboxConfig(
-                image=NotBlankStr(self.host.sandbox_image),
-                sidecar_image=NotBlankStr(self.host.sidecar_image),
-                # The OpenHands leg reaches the gateway and the MCP endpoint and
-                # nothing else. The brief suite is standard-library only, so an
-                # open native sandbox would grant one leg a reach the other is
-                # denied rather than measuring the loops.
-                network="none",
-            ),
-            workspace=workspace.root,
-            clock=app_state.clock,
-            lifecycle_strategy=create_lifecycle_strategy(
-                app_state.config.sandboxing.docker.lifecycle,
-                clock=app_state.clock,
-            ),
-        )
-        self.open_sandboxes.append(sandbox)
-        return ToolRegistry(
-            [
-                ReadFileTool(workspace_root=base),
-                WriteFileTool(workspace_root=base),
-                EditFileTool(workspace_root=base),
-                DeleteFileTool(workspace_root=base),
-                ShellCommandTool(sandbox=sandbox),
-            ]
-        )
+        return self.binder.build_tool_registry(workspace)
 
     async def release_tool_sandboxes(self) -> None:
-        """Tear down every sandbox this binder has handed out.
-
-        Called after each repetition. A reusing lifecycle destroys its warm
-        container on a grace timer owned by the strategy instance, and each
-        repetition builds and discards its own, so nothing would await that
-        timer: fifty-four runs would leave fifty-four containers behind.
-
-        Every sandbox is attempted whatever the others do. A raise from one
-        teardown would otherwise strand the rest for the life of the matrix,
-        and this runs in the bare ``finally`` of ``_released_tools``, where it
-        would replace a measurement that had already succeeded with an
-        unavailable row. A container this could not reclaim is reported and
-        left to Docker.
-        """
-        # Taken before the first await: a second call while one is in flight
-        # would otherwise clean the same container twice.
-        pending = list(self.open_sandboxes)
-        self.open_sandboxes.clear()
-        failures = 0
-        for sandbox in reversed(pending):
-            try:
-                await sandbox.cleanup()
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:  # noqa: BLE001 -- reported, never fatal
-                failures += 1
-                logger.warning(
-                    EVALS_LOOP_AB_SANDBOX_RELEASE_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        logger.debug(
-            EVALS_LOOP_AB_SANDBOXES_RELEASED,
-            released=len(pending) - failures,
-            failed=failures,
-        )
+        """Tear down every sandbox this binder has handed out."""
+        await self.binder.release_tool_sandboxes()
 
     async def build_openhands_cell(
         self, cell: CellRun
@@ -330,7 +126,7 @@ class CellBinder:
         The turn ceiling is overridden with the brief's own, because the loop
         takes the lower of its config and what the caller asks for. Left at the
         config default, a brief allowed more turns than that default would give
-        this leg fewer than the three it is ranked against, which is a
+        this leg fewer than the ones it is ranked against, which is a
         fair-comparison invariant rather than a tuning choice.
 
         Returns:
@@ -340,7 +136,7 @@ class CellBinder:
             LoopAbOpenHandsUnwiredError: The boundary declined to wire, having
                 logged which piece is missing.
         """
-        app_state = self.host.app_state
+        app_state = self.binder.host.app_state
         deps = await build_openhands_loop_deps_or_none(
             app_state, workspace_root=cell.workspace.root
         )
@@ -361,33 +157,11 @@ class CellBinder:
     ) -> AsyncIterator[ProgressTrackingLedger]:
         """Install this repetition's cost sink on the host and yield it.
 
-        The gateway records through whatever tracker the application state
-        carries, so swapping a fresh one in per repetition is what makes a
-        cell's spend attributable to it alone. The previous tracker is put back
-        on every exit path, so a failed cell cannot leave the next one writing
-        into a ledger nobody reads.
-
-        Installed through the slice's own atomic swap rather than a read then a
-        write: cells run one at a time today, so the two-step version has no
-        window to lose a swap in, but nothing about this method enforces that,
-        and a lost swap would misattribute one cell's real spend to another.
-
         Yields:
             The tracker holding this run's authoritative spend.
         """
-        app_state = self.host.app_state
-        # Progress-tracking rather than plain: every dispatch from both legs
-        # writes through this one sink, which makes it the only place that sees
-        # a cell go quiet without any loop or gateway having to report it.
-        ledger = ProgressTrackingLedger(clock=app_state.clock)
-        previous = app_state.swap_field_returning_previous(
-            BudgetStateSlice, "cost_tracker", ledger
-        )
-        logger.debug(EVALS_LOOP_AB_LEDGER_INSTALLED, execution_id=_execution_id(cell))
-        try:
+        async with self.binder.open_run_ledger(_execution_id(cell)) as ledger:
             yield ledger
-        finally:
-            app_state.wire(BudgetStateSlice, cost_tracker=previous)
 
 
 def _execution_id(cell: CellRun) -> str:

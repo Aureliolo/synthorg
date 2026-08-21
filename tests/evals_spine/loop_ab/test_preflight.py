@@ -16,8 +16,8 @@ import pytest
 
 from evals.errors import (
     EvalToolMissingError,
-    LoopAbProviderDegradedError,
-    LoopAbProviderMissingError,
+    HarnessProviderDegradedError,
+    HarnessProviderMissingError,
 )
 from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.preflight import DEFAULT_LATENCY_CEILING_SECONDS, run_preflight
@@ -155,7 +155,7 @@ class TestLatencyProbe:
         async def _probe(_tier: CapabilityEntry) -> float:
             return next(measured)
 
-        with pytest.raises(LoopAbProviderDegradedError):
+        with pytest.raises(HarnessProviderDegradedError):
             await run_preflight(
                 manifest=_manifest(),
                 company_config=_config(),
@@ -175,7 +175,7 @@ class TestLatencyProbe:
             await never.wait()
             return 0.0
 
-        with pytest.raises(LoopAbProviderDegradedError):
+        with pytest.raises(HarnessProviderDegradedError):
             await run_preflight(
                 manifest=_manifest(),
                 company_config=_config(),
@@ -190,7 +190,7 @@ class TestLatencyProbe:
         async def _probe(_tier: CapabilityEntry) -> float:
             return DEFAULT_LATENCY_CEILING_SECONDS + 1.0
 
-        with pytest.raises(LoopAbProviderDegradedError) as excinfo:
+        with pytest.raises(HarnessProviderDegradedError) as excinfo:
             await run_preflight(
                 manifest=_manifest(),
                 company_config=_config(),
@@ -275,7 +275,7 @@ class TestLatencyProbe:
             probed.append(capability.model_id)
             return 1.0
 
-        with pytest.raises(LoopAbProviderMissingError):
+        with pytest.raises(HarnessProviderMissingError):
             await run_preflight(
                 manifest=_manifest(
                     CapabilityEntry(

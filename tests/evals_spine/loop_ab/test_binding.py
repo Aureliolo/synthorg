@@ -11,13 +11,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from evals.errors import LoopAbProviderMissingError
+from evals.errors import HarnessProviderMissingError
+from evals.harness.binding import HarnessBinder
+from evals.harness.host import RecordingGatewayHost
+from evals.harness.workspace import CellWorkspace
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.binding import CellBinder
-from evals.loop_ab.host import LoopAbGatewayHost
 from evals.loop_ab.manifest import CapabilityEntry
 from evals.loop_ab.runner import CellRun
-from evals.loop_ab.workspace import CellWorkspace, seed_workspace
+from evals.loop_ab.workspace import seed_brief_workspace
 from evals.models.brief import Brief
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.budget.state import BudgetStateSlice
@@ -34,7 +36,7 @@ from synthorg.tools.sandbox._image_resolution import _FALLBACK_SANDBOX_IMAGE
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
-from tests.evals_spine.loop_ab.conftest import (
+from tests.evals_spine._recording import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
     RECORDING_SANDBOX_IMAGE,
@@ -129,24 +131,24 @@ def workspace(tmp_path: Path) -> CellWorkspace:
     Returns:
         The provisioned workspace.
     """
-    return seed_workspace(
+    return seed_brief_workspace(
         brief=_brief(), suite_root=_SUITE, work_root=tmp_path / "work"
     )
 
 
 @pytest.fixture
-def binder(host: LoopAbGatewayHost) -> CellBinder:
+def binder(host: RecordingGatewayHost) -> CellBinder:
     """A binder over the started recording host.
 
     Returns:
         The cell binder.
     """
-    return CellBinder(host=host)
+    return CellBinder(binder=HarnessBinder(host=host))
 
 
 class TestRunBearer:
     async def test_claims_carry_the_tier_binding_and_the_brief_ceiling(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # Verified through the host's own signer, which is the property the
         # whole recording host exists to provide.
@@ -158,7 +160,7 @@ class TestRunBearer:
         assert claims.cost_ceiling == _brief().limits.max_total_cost
 
     async def test_each_repetition_gets_its_own_run_id(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # The gateway's ledger keys the hard cost kill on the execution id, so a
         # shared one would let a later cell inherit an exhausted ceiling.
@@ -191,7 +193,7 @@ class TestRunBearer:
             )
 
     async def test_the_mint_still_refuses_an_unbound_reference(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # The inner guard, driven directly: the harness must never be able to
         # hand the gateway a token it would then auto-pick a provider for.
@@ -208,7 +210,7 @@ class TestRunBearer:
 
 class TestRoutedProvider:
     async def test_the_driver_is_routed_and_authenticated(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # Two failures this rules out at once: an unprefixed model id resolves
         # to no LiteLLM provider and never reaches the base URL at all, and a
@@ -234,7 +236,7 @@ class TestRoutedProvider:
             workspace=workspace,
         )
 
-        with pytest.raises(LoopAbProviderMissingError):
+        with pytest.raises(HarnessProviderMissingError):
             await binder.routed_provider_config(cell)
 
     async def test_the_built_provider_reaches_the_hosted_gateway(
@@ -285,7 +287,7 @@ class TestToolRegistry:
         assert resolved == workspace.project_dir
 
     def test_the_shell_sandbox_runs_the_image_this_recording_resolved(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # The defect this pins: the sandbox image freezes before the lifecycle
         # seeds the resolution cache, at the fallback constant that no flag and
@@ -301,7 +303,7 @@ class TestToolRegistry:
         assert sandbox.config.image != _FALLBACK_SANDBOX_IMAGE
 
     def test_the_shell_sandbox_keeps_state_between_commands(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # A ``DockerSandbox`` built without a strategy takes ``PerCallStrategy``,
         # so every command gets a fresh container and nothing outside the mount
@@ -366,7 +368,7 @@ class TestToolRegistry:
 
 class TestCellLedger:
     async def test_the_ledger_is_installed_on_the_host_and_restored(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # The gateway records into whatever tracker the app state carries, so
         # the cell's spend is only attributable if the binder swaps it in for
@@ -396,7 +398,7 @@ class TestCellLedger:
         assert {record.provider for record in records} == {RECORDING_PROVIDER}
 
     async def test_the_previous_ledger_is_restored_when_the_cell_raises(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # A cell that fails is the normal case the runner is built around, and
         # an un-restored swap would leave the NEXT cell's real spend landing in
@@ -411,7 +413,7 @@ class TestCellLedger:
         assert host.app_state.slice(BudgetStateSlice).cost_tracker is before
 
     async def test_repetitions_differ_in_their_run_id_and_nothing_else(
-        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+        self, binder: CellBinder, workspace: CellWorkspace, host: RecordingGatewayHost
     ) -> None:
         # The ceiling is keyed on the execution id, so repetitions must not
         # share one. Everything else is a property of the cell, not the run:

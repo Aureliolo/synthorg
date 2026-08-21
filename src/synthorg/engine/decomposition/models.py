@@ -1,16 +1,17 @@
 """Decomposition domain models.
 
-Frozen Pydantic models for subtask definitions, decomposition plans,
-results, status rollups, and decomposition context.
+Frozen Pydantic models for subtask definitions, decomposition plans and the
+decomposition tree. The context a decomposition runs under lives in
+:mod:`synthorg.engine.decomposition.context`, and what its execution adds up to
+is a different question again, in
+:mod:`synthorg.engine.decomposition.status_rollup`.
 """
 
 from collections import Counter
-from collections.abc import Sequence
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import PlanOption
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.plan_validation import (
@@ -22,10 +23,9 @@ from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
     Stakes,
-    TaskStatus,
     TaskStructure,
 )
-from synthorg.core.types import NotBlankStr, PersonaLabelStr
+from synthorg.core.types import NotBlankStr
 
 
 class SubtaskDefinition(BaseModel):
@@ -234,10 +234,24 @@ class DecompositionPlan(BaseModel):
 class DecompositionResult(BaseModel):
     """Result of a complete task decomposition.
 
+    One level of a decomposition. A subtask the atomicity policy judged
+    oversized is decomposed again, and its own result hangs off ``children``,
+    so the whole shape is a tree rather than a list.
+
+    ``children`` defaults to empty, which is exactly what a non-recursive
+    decomposition produces, so every reader that predates recursion sees the
+    flat result it always saw.
+
     Attributes:
         plan: The decomposition plan that was executed.
         created_tasks: Task objects created from subtask definitions.
         dependency_edges: Directed edges (from_id, to_id) in the DAG.
+        depth: This level's nesting depth, ``0`` at the root. Recorded rather
+            than derived by the reader, because the reader most likely to want
+            it holds one node and not the tree it came from.
+        children: The decomposition of each subtask at this level that was
+            split further, in no particular relation to ``created_tasks``
+            order.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -250,6 +264,64 @@ class DecompositionResult(BaseModel):
         default=(),
         description="Directed edges (from_id, to_id) in the DAG",
     )
+    depth: int = Field(
+        default=0,
+        ge=0,
+        description="Nesting depth of this level, 0 at the root",
+    )
+    children: tuple[DecompositionResult, ...] = Field(
+        default=(),
+        description="Decompositions of the subtasks at this level that split",
+    )
+
+    @property
+    def split_task_ids(self) -> frozenset[str]:
+        """Ids of this level's tasks that were decomposed further.
+
+        Returns:
+            The parent task id of each child decomposition.
+        """
+        return frozenset(child.plan.parent_task_id for child in self.children)
+
+    @property
+    def leaf_tasks(self) -> tuple[Task, ...]:
+        """Every task in the tree that nothing below it replaced.
+
+        This is what gets dispatched: a task that was split is a container for
+        the work below it, and running it as well would do that work twice.
+
+        Returns:
+            The leaves, this level's first, then each child's in order.
+        """
+        split = self.split_task_ids
+        own = tuple(task for task in self.created_tasks if str(task.id) not in split)
+        return own + tuple(task for child in self.children for task in child.leaf_tasks)
+
+    @property
+    def all_tasks(self) -> tuple[Task, ...]:
+        """Every task in the tree, split containers included.
+
+        Returns:
+            This level's tasks, then each child's, recursively.
+        """
+        return self.created_tasks + tuple(
+            task for child in self.children for task in child.all_tasks
+        )
+
+    @property
+    def max_depth_reached(self) -> int:
+        """The deepest level this tree actually reached.
+
+        The measured counterpart of ``DecompositionContext.max_depth``, which
+        is only a ceiling: a planner that never produced an oversized subtask
+        stops well short of it.
+
+        Returns:
+            ``depth`` when nothing split, else the deepest child's answer.
+        """
+        return max(
+            (child.max_depth_reached for child in self.children), default=self.depth
+        )
 
     @model_validator(mode="after")
     def _validate_plan_task_consistency(self) -> Self:
@@ -261,8 +333,9 @@ class DecompositionResult(BaseModel):
 
         Raises:
             ValueError: When the structure is unresolved, the task count
-                mismatches, task ids differ from plan subtask ids, or an
-                edge endpoint is an unknown task id.
+                mismatches, task ids differ from plan subtask ids, an
+                edge endpoint is an unknown task id, or a child decomposes
+                something this level did not create.
         """
         # A completed decomposition always names its structure: the service
         # resolves an undeclared one through the classifier. Leaving AUTO
@@ -299,176 +372,36 @@ class DecompositionResult(BaseModel):
             )
             raise ValueError(msg)
 
+        self._validate_children(task_ids)
         return self
 
+    def _validate_children(self, task_ids: set[str]) -> None:
+        """Check each child decomposes a task this level created, one level down.
 
-class SubtaskStatusRollup(BaseModel):
-    """Aggregated status of subtasks for a parent task.
-
-    Tracks six explicit statuses: COMPLETED, FAILED, IN_PROGRESS,
-    BLOCKED, CANCELLED, and SUSPENDED. Other statuses (CREATED,
-    ASSIGNED, IN_REVIEW, INTERRUPTED) are not individually tracked;
-    the gap between the sum of tracked counts and ``total`` accounts
-    for these. The ``derived_parent_status`` treats any such remainder
-    as work still pending (IN_PROGRESS).
-
-    When all subtasks are in terminal states but with a mix of
-    completed and cancelled, ``derived_parent_status`` returns
-    ``CANCELLED`` (some work was abandoned).
-
-    Attributes:
-        parent_task_id: ID of the parent task.
-        total: Total number of subtasks.
-        completed: Count of COMPLETED subtasks.
-        failed: Count of FAILED subtasks.
-        in_progress: Count of IN_PROGRESS subtasks.
-        blocked: Count of BLOCKED subtasks.
-        cancelled: Count of CANCELLED subtasks.
-        suspended: Count of SUSPENDED subtasks.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    parent_task_id: NotBlankStr = Field(description="Parent task ID")
-    total: int = Field(ge=0, description="Total subtasks")
-    completed: int = Field(ge=0, description="Completed subtasks")
-    failed: int = Field(ge=0, description="Failed subtasks")
-    in_progress: int = Field(ge=0, description="In-progress subtasks")
-    blocked: int = Field(ge=0, description="Blocked subtasks")
-    cancelled: int = Field(ge=0, description="Cancelled subtasks")
-    suspended: int = Field(ge=0, default=0, description="Suspended subtasks")
-
-    @model_validator(mode="after")
-    def _validate_counts(self) -> Self:
-        """Ensure counts don't exceed total.
-
-        Returns:
-            ``self`` unchanged when status counts sum to <= ``total``.
+        A child whose parent is not one of these tasks describes a subtree that
+        hangs off nothing, and ``leaf_tasks`` would then dispatch both the
+        container and the work below it.
 
         Raises:
-            ValueError: When the sum of per-status counts exceeds
-                ``total``.
+            ValueError: When a child names an unknown parent, two children name
+                the same one, or a child's depth is not this level's plus one.
         """
-        counted = (
-            self.completed
-            + self.failed
-            + self.in_progress
-            + self.blocked
-            + self.cancelled
-            + self.suspended
-        )
-        if counted > self.total:
-            msg = "Sum of status counts exceeds total"
-            raise ValueError(msg)
-        return self
-
-    @computed_field(
-        description="Derived parent task status from subtask statuses",
-    )
-    @property
-    def derived_parent_status(self) -> TaskStatus:
-        """Derive the parent task status from subtask statuses."""
-        if self.total == 0:
-            return TaskStatus.CREATED
-
-        if self.completed == self.total:
-            return TaskStatus.COMPLETED
-
-        if self.cancelled == self.total:
-            return TaskStatus.CANCELLED
-
-        if self.failed > 0:
-            return TaskStatus.FAILED
-
-        if self.in_progress > 0:
-            return TaskStatus.IN_PROGRESS
-
-        if self.blocked > 0:
-            return TaskStatus.BLOCKED
-
-        if self.suspended > 0:
-            return TaskStatus.SUSPENDED
-
-        # All subtasks in terminal states but mixed completed + cancelled
-        # -- not fully completed (pure completed already handled above),
-        # and not fully cancelled (pure cancelled already handled above).
-        # Report as CANCELLED since some work was abandoned.
-        if self.completed + self.cancelled == self.total:
-            return TaskStatus.CANCELLED
-
-        return TaskStatus.IN_PROGRESS
-
-
-def roster_from_agents(agents: Sequence[AgentIdentity]) -> tuple[NotBlankStr, ...]:
-    """Return the distinct roles a set of agents staffs, in a stable order.
-
-    Derived from the agents themselves rather than from the role catalogue: a
-    role nobody holds cannot own a plan item any more than an invented one
-    can, so the planner is offered what can actually be dispatched to.
-
-    Args:
-        agents: The agents available to the plan.
-
-    Returns:
-        Each role once, sorted, so the prompt and the schema enum are stable
-        across runs and a fingerprint test can pin them.
-    """
-    return tuple(sorted({agent.role for agent in agents}))
-
-
-class DecompositionContext(BaseModel):
-    """Configuration context for a decomposition operation.
-
-    Attributes:
-        max_subtasks: Maximum number of subtasks allowed.
-        max_depth: Maximum nesting depth for recursive decomposition.
-        current_depth: Current nesting depth.
-        workspace_summary: What the project workspace actually holds, for the
-            planner to plan against. ``None`` when the caller cannot resolve
-            it, which leaves the brief's unconditional rule to carry the
-            point: a planner that is told nothing must assume nothing.
-        owner_identity: The accountable owner staffed for this initiative,
-            or ``None`` when the initiative is unowned. An agent-session
-            decomposition strategy plans AS this owner (its persona, tools,
-            and memory); a single-shot strategy ignores it.
-        available_roles: The roles the org actually staffs, so the planner
-            selects an owner rather than inventing one. Empty means "no
-            roster known", which leaves the owner a free string and skips the
-            check: an org with no agents has nothing to validate against.
-            Typed as persona labels rather than plain non-blank strings: a
-            role name is operator-authored, and these go into the SYSTEM
-            prompt and the tool schema, where a newline or an angle bracket
-            would be a forged instruction line or a forged content fence
-            rather than a funny-looking job title.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    max_subtasks: int = Field(
-        default=10,
-        ge=1,
-        description="Maximum number of subtasks allowed",
-    )
-    max_depth: int = Field(
-        default=3,
-        ge=1,
-        description="Maximum nesting depth",
-    )
-    current_depth: int = Field(
-        default=0,
-        ge=0,
-        description="Current nesting depth",
-    )
-    workspace_summary: str | None = Field(
-        default=None,
-        description="What the project workspace actually contains, or None "
-        "when the caller cannot resolve it",
-    )
-    owner_identity: AgentIdentity | None = Field(
-        default=None,
-        description="Accountable owner the planning agent-session runs as",
-    )
-    available_roles: tuple[PersonaLabelStr, ...] = Field(
-        default=(),
-        description="Roles the org staffs, which an owner must be drawn from",
-    )
+        seen: set[str] = set()
+        for child in self.children:
+            parent = child.plan.parent_task_id
+            if parent not in task_ids:
+                msg = (
+                    f"child decomposition names parent {parent!r}, which is not "
+                    f"one of this level's tasks: {sorted(task_ids)}"
+                )
+                raise ValueError(msg)
+            if parent in seen:
+                msg = f"two child decompositions both name parent {parent!r}"
+                raise ValueError(msg)
+            seen.add(parent)
+            if child.depth != self.depth + 1:
+                msg = (
+                    f"child decomposition of {parent!r} is at depth "
+                    f"{child.depth}, expected {self.depth + 1}"
+                )
+                raise ValueError(msg)

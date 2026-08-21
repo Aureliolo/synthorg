@@ -33,12 +33,10 @@ from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
 )
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
@@ -335,6 +333,22 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     def get_strategy_name(self) -> str:
         """Return the strategy name."""
         return _STRATEGY_NAME
+
+    @override
+    def plans_any_task(self) -> bool:
+        """Whether this strategy can plan a task it was not constructed around.
+
+        A session over the task it is given can plan anything, but three paths
+        degrade to the single-shot fallback (no owner staffed, the owner's
+        provider unresolved, the session producing no plan), and the fallback
+        answers for itself. Claiming unconditionally would let recursion open a
+        child level that a fixed-plan fallback then rejects, because the plan it
+        holds is scoped to a different parent.
+
+        Returns:
+            Whether the fallback could also plan an arbitrary task.
+        """
+        return self._fallback.plans_any_task()
 
     @override
     async def decompose(

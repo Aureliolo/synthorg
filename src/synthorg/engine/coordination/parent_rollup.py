@@ -42,8 +42,8 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.decomposition.models import (
     DecompositionResult,
-    SubtaskStatusRollup,
 )
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import (
     get_logger,

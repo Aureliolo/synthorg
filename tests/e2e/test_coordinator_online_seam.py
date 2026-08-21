@@ -38,7 +38,7 @@ from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.decomposition.models import DecompositionContext
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus

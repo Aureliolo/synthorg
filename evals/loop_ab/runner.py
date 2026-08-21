@@ -29,10 +29,17 @@ from uuid import UUID
 from evals.errors import (
     BriefExecutionError,
     EvalToolMissingError,
-    LoopAbDockerUnavailableError,
-    LoopAbGatewayUnavailableError,
-    LoopAbProviderMissingError,
+    HarnessDockerUnavailableError,
+    HarnessGatewayUnavailableError,
+    HarnessProviderMissingError,
 )
+from evals.harness.stall_watch import (
+    DEFAULT_STALL_IDLE_SECONDS,
+    ProgressTrackingLedger,
+    StallWatch,
+)
+from evals.harness.transcript import TranscriptRecorder
+from evals.harness.workspace import CellWorkspace
 from evals.loop_ab.aggregate import (
     LoopRepetitionSummary,
     RepetitionOutcome,
@@ -49,13 +56,7 @@ from evals.loop_ab.models import (
 from evals.loop_ab.promotion import recommend_promotion
 from evals.loop_ab.rollup import rollup_by_complexity
 from evals.loop_ab.rubric import LoopCellScore, score_cell
-from evals.loop_ab.stall_watch import (
-    DEFAULT_STALL_IDLE_SECONDS,
-    ProgressTrackingLedger,
-    StallWatch,
-)
-from evals.loop_ab.transcript import TranscriptRecorder
-from evals.loop_ab.workspace import CellWorkspace, seed_workspace
+from evals.loop_ab.workspace import seed_brief_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.runner.execution import expected_artifacts_of, run_brief
@@ -113,9 +114,9 @@ _EVIDENCE_EXCLUDED: Final[tuple[str, ...]] = (".openhands",)
 #: them per cell would spend the rest of a matrix rediscovering one fact and
 #: then attribute it to whichever loop happened to hit it.
 _SYSTEMIC_FAILURES: Final[tuple[type[Exception], ...]] = (
-    LoopAbProviderMissingError,
-    LoopAbGatewayUnavailableError,
-    LoopAbDockerUnavailableError,
+    HarnessProviderMissingError,
+    HarnessGatewayUnavailableError,
+    HarnessDockerUnavailableError,
     # A grading command absent from PATH is a property of the machine: every
     # remaining cell would run, spend, and then fail to be graded, and each
     # would report it as though the loop were the thing that was unavailable.
@@ -209,7 +210,7 @@ class LoopAbDeps:
             :func:`~evals.runner.execution.eval_project`.
         stall_idle_seconds: Idle time after which a cell is reported as
             stalled. A report, never a stop: see
-            :mod:`evals.loop_ab.stall_watch`.
+            :mod:`evals.harness.stall_watch`.
         on_stall: Second channel for a stall report, alongside the warning the
             watch always logs. A real recording runs for hours in a terminal,
             and the operator watching it is who the report is for.
@@ -453,7 +454,8 @@ def _cell_ledger(
 def cell_evidence_dir(work_root: Path, cell: CellRun) -> Path:
     """Where one repetition's produced tree and transcript are kept.
 
-    Keyed by repetition because the seeded workspace is not: ``seed_workspace``
+    Keyed by repetition because the seeded workspace is not:
+    ``seed_brief_workspace``
     names the tree after the brief and removes it before each run, so the three
     repetitions of a cell share one directory and only the last survives.
     Comparing what each run produced needs each tree to still exist. The capability
@@ -577,7 +579,7 @@ async def _run_repetition(
     # stall the accept loop of the gateway this same process is serving.
     workspace = await asyncio.to_thread(
         partial(
-            seed_workspace,
+            seed_brief_workspace,
             brief=coord.brief,
             suite_root=suite_root,
             work_root=work_root,
@@ -717,10 +719,10 @@ async def _run_cell(
     budget, and report it as a property of each loop in turn.
 
     Raises:
-        LoopAbProviderMissingError: A capability names an absent provider, which no
+        HarnessProviderMissingError: A capability names an absent provider, which no
             other cell can survive either.
-        LoopAbGatewayUnavailableError: The hosted gateway is gone.
-        LoopAbDockerUnavailableError: The Docker daemon is gone.
+        HarnessGatewayUnavailableError: The hosted gateway is gone.
+        HarnessDockerUnavailableError: The Docker daemon is gone.
         EvalToolMissingError: A grading command is absent from PATH, so no
             other cell could be graded either.
     """

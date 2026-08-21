@@ -152,7 +152,7 @@ class ProvenanceUnavailableError(EvalError):
     default_message: ClassVar[str] = "Scoreboard git provenance is unavailable"
 
 
-class LoopAbProviderMissingError(EvalError):
+class HarnessProviderMissingError(EvalError):
     """Raised when a loop A/B manifest tier names an unknown provider.
 
     The manifest binds each tier to an explicit ``(provider, model)`` pair, so a
@@ -166,7 +166,7 @@ class LoopAbProviderMissingError(EvalError):
     )
 
 
-class LoopAbGatewayUnavailableError(EvalError):
+class HarnessGatewayUnavailableError(EvalError):
     """Raised when the recorder's hosted gateway did not come up wired.
 
     The recording host exists so mint and verify are the same
@@ -194,7 +194,7 @@ class LoopAbOpenHandsUnwiredError(EvalError):
     )
 
 
-class LoopAbBindHostUnresolvedError(EvalError):
+class HarnessBindHostUnresolvedError(EvalError):
     """Raised when the interface the recording host should listen on is unknown.
 
     The container dials the recorder through a ``host-gateway`` alias, so the
@@ -211,7 +211,7 @@ class LoopAbBindHostUnresolvedError(EvalError):
     )
 
 
-class LoopAbHostConfigInvalidError(EvalError):
+class HarnessHostConfigInvalidError(EvalError):
     """Raised when the recording host is configured with a value it cannot bind.
 
     Caught alongside the other host errors, so a caller wrapping host
@@ -221,7 +221,7 @@ class LoopAbHostConfigInvalidError(EvalError):
     default_message: ClassVar[str] = "Loop A/B recording host config is invalid"
 
 
-class LoopAbHostAlreadyStartedError(EvalError):
+class HarnessHostAlreadyStartedError(EvalError):
     """Raised when a started recording host is started a second time.
 
     The second start would capture the first start's throwaway bootstrap
@@ -232,7 +232,7 @@ class LoopAbHostAlreadyStartedError(EvalError):
     default_message: ClassVar[str] = "Loop A/B recording host is already started"
 
 
-class LoopAbDockerUnavailableError(EvalError):
+class HarnessDockerUnavailableError(EvalError):
     """Raised when the Docker daemon is unreachable before a recording run.
 
     Every loop drives a sandbox, so a run without a daemon measures nothing.
@@ -244,7 +244,7 @@ class LoopAbDockerUnavailableError(EvalError):
     default_message: ClassVar[str] = "Docker daemon is unreachable"
 
 
-class LoopAbProviderDegradedError(EvalError):
+class HarnessProviderDegradedError(EvalError):
     """Raised when a tier's provider is too slow to measure a matrix against.
 
     Latency is a scored dimension, and cells are recorded one after another
@@ -268,6 +268,76 @@ class LoopAbNoCellsMeasuredError(EvalError):
     """
 
     default_message: ClassVar[str] = "Loop A/B matrix measured no cells"
+
+
+class OracleUnusableError(EvalError):
+    """Raised when a held-out oracle could not produce a verdict at all.
+
+    Deliberately distinct from every requirement failing. A tree that fails
+    everything is a measurement; an oracle that could not be collected is a
+    broken harness, and recording the second as the first would publish a
+    survival curve of zeros that looks exactly like a finding.
+    """
+
+    default_message: ClassVar[str] = "The held-out oracle could not be run"
+
+
+class RecursionDepthNoCellsMeasuredError(EvalError):
+    """Raised when a completed recursion-depth sweep measured no cell.
+
+    An all-unavailable report is never a legitimate measurement, and writing
+    one exits successfully with a file that looks like a curve.
+    """
+
+    default_message: ClassVar[str] = "Recursion-depth sweep measured no cells"
+
+
+class RecursionDepthSessionCeilingError(EvalError):
+    """Raised when a sweep would run more agent sessions than it was allowed.
+
+    The ceiling exists because a depth sweep's session count is a product of
+    branching factors nobody can predict from the manifest alone, and the
+    failure mode of getting it wrong is spend rather than a wrong answer.
+    """
+
+    default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
+
+
+class RecursionDepthJudgeNotIndependentError(EvalError):
+    """Raised when the manifest binds the reviewer to the executor's own pair.
+
+    The gate is the treatment in this experiment, so a judge sharing the
+    executor's binding biases straight toward the null: self-preference runs
+    75-84% toward a model's own family, and an identical pair is that effect at
+    its maximum.
+    """
+
+    default_message: ClassVar[str] = (
+        "The reviewer pair must differ from the executor pair"
+    )
+
+
+class RecursionDepthGateUnbuildableError(EvalError):
+    """Raised when the completion-oracle seed came back without its store.
+
+    The gated arm reads the reviewer's verdict out of that store, so a seed
+    without one is an arm that would review every merge and record nothing, and
+    the run would report the ungated curve twice under two names.
+    """
+
+    default_message: ClassVar[str] = (
+        "The completion-oracle seed built no report repository"
+    )
+
+
+class RecursionDepthCapabilityUnresolvedError(EvalError):
+    """Raised when a sweep cannot resolve the one capability policy.
+
+    Selection and dispatch both read it, so without it the gated arm staffs no
+    reviewer and records escalations where it should record verdicts.
+    """
+
+    default_message: ClassVar[str] = "No capability policy could be built for the sweep"
 
 
 class ResearchBriefUnsupportedError(EvalError):
@@ -295,18 +365,24 @@ __all__ = [
     "CompanyConfigInvalidError",
     "EvalError",
     "EvalToolMissingError",
+    "HarnessBindHostUnresolvedError",
+    "HarnessDockerUnavailableError",
+    "HarnessGatewayUnavailableError",
+    "HarnessHostAlreadyStartedError",
+    "HarnessHostConfigInvalidError",
+    "HarnessProviderDegradedError",
+    "HarnessProviderMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
-    "LoopAbBindHostUnresolvedError",
-    "LoopAbDockerUnavailableError",
-    "LoopAbGatewayUnavailableError",
-    "LoopAbHostAlreadyStartedError",
-    "LoopAbHostConfigInvalidError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
-    "LoopAbProviderDegradedError",
-    "LoopAbProviderMissingError",
+    "OracleUnusableError",
     "ProvenanceUnavailableError",
+    "RecursionDepthCapabilityUnresolvedError",
+    "RecursionDepthGateUnbuildableError",
+    "RecursionDepthJudgeNotIndependentError",
+    "RecursionDepthNoCellsMeasuredError",
+    "RecursionDepthSessionCeilingError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",
     "WorkspaceSeedNotFoundError",

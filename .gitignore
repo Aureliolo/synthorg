@@ -36,6 +36,18 @@ data/codebase_map.json
 # evals/loop_ab/scoreboard/.
 .loop-ab/
 
+# The recursion-depth sweep's work root, for the same reason, plus one of its
+# own: what it holds is model-authored code, kept because --keep-workspaces is
+# how an operator reads what the run actually built. Untracked and unignored, it
+# is one `git add -A` away from being committed.
+.recursion-depth/
+
+# What `make build-sandbox-image` leaves behind: apko writes an SBOM per
+# architecture beside its output tarball, and the tarball itself is 100MB.
+# Both land in the target's own output mount, which it removes on success;
+# ignored so an interrupted build leaves nothing to commit by accident.
+/.apko-out/
+
 # Per-repo Claude/OpenCode runtime state (not config). Currently:
 # - last-push.json (used by scripts/check_push_throttle.sh)
 .claude/state/

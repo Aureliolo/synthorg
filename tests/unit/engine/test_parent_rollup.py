@@ -20,13 +20,10 @@ from synthorg.engine.coordination.parent_rollup import (
     run_update_parent_phase,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskStatusRollup,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan, DecompositionResult
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from tests._shared import FakeClock, mock_of
@@ -67,6 +64,18 @@ class _StaticStrategy:
             The literal ``"static"``.
         """
         return "static"
+
+    def plans_any_task(self) -> bool:
+        """Answer the recursion question.
+
+        Returns:
+            ``False``. It holds ONE plan, scoped to one parent, so a child level
+            asked of it would be handed subtasks belonging to a different task.
+            Claiming otherwise lets recursion open a level this double cannot
+            serve, which fails as a rejected plan rather than as a clear
+            unsupported answer.
+        """
+        return False
 
 
 def _rollup(

@@ -650,6 +650,14 @@ Events emitted: `ENVIRONMENT_PROVISION_START`, `ENVIRONMENT_PROVISIONED`,
 
 ## Task Decomposability & Coordination Topology
 
+A subtask that is more than one agent's worth of work is decomposed again
+rather than dispatched whole, which makes a decomposition a tree rather than a
+list. The recursion point, the size signal that drives it, and the experiment
+measuring whether verifying at every merge holds off aggregation collapse as
+that tree deepens are in
+[Recursive Decomposition](recursive-decomposition.md). It ships off, for a
+reason that page states.
+
 Empirical research on agent scaling
 ([Kim et al., 2025](https://arxiv.org/abs/2512.08296); 180 controlled
 experiments across 3 LLM families and 4 benchmarks) demonstrates that **task
@@ -976,6 +984,7 @@ budget injects nothing (the tool grant still applies).
 
 ## See Also
 
+- [Recursive Decomposition](recursive-decomposition.md): the decomposition tree and the depth experiment
 - [Task & Workflow Engine](engine.md): task dispatch, state coordination
 - [Agent Execution](agent-execution.md): per-agent execution loop, prompt profiles
 - [Verification & Quality](verification-quality.md): review pipeline, verification stage

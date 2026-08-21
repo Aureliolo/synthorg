@@ -1,0 +1,195 @@
+# The spec's requirement index: what each id means, and the held-out test that
+# decides it.
+#
+# The ids reach the planning brief so a unit can claim the requirements it
+# advances through `SubtaskDefinition.satisfies`. The `oracle` node ids do NOT:
+# they name tests no agent ever sees, and an agent told which test decides a
+# requirement builds to the test rather than to the requirement (S2 section 1:
+# a run scored near-perfect against an exposed 222-test oracle while the
+# delivered library was dead outside the tested paths).
+#
+# `area` is the seven-way grouping the top-level decomposition is expected to
+# fall out along. Nothing enforces that: it is here so a run whose planner
+# invented a different shape can be compared against the one a person would
+# have chosen.
+spec_id: sqlcsv
+title: A SQL query CLI over CSV files
+brief: SPEC.md
+seed_dir: seed
+oracle_dir: oracle
+
+requirements:
+  - id: R01
+    area: ingest
+    title: The header row names the columns
+    oracle: test_ingest.py::test_r01_header_row_names_the_columns
+  - id: R02
+    area: ingest
+    title: An integer column compares and sorts numerically
+    oracle: test_ingest.py::test_r02_integer_columns_sort_numerically
+  - id: R03
+    area: ingest
+    title: A decimal column reads as a float
+    oracle: test_ingest.py::test_r03_decimal_columns_read_as_float
+  - id: R04
+    area: ingest
+    title: An empty field is NULL
+    oracle: test_ingest.py::test_r04_an_empty_field_is_null
+  - id: R05
+    area: ingest
+    title: Quoted fields carry commas, newlines and doubled quotes
+    oracle: test_ingest.py::test_r05_quoted_fields_carry_awkward_characters
+
+  - id: R06
+    area: lexer
+    title: Keywords are case-insensitive and identifiers are case-sensitive
+    oracle: test_lexer.py::test_r06_keyword_case_folds_but_identifier_case_does_not
+  - id: R07
+    area: lexer
+    title: Single-quoted string literals, with doubled quotes
+    oracle: test_lexer.py::test_r07_string_literals_and_escaped_quotes
+  - id: R08
+    area: lexer
+    title: Integer and decimal numeric literals
+    oracle: test_lexer.py::test_r08_numeric_literals
+  - id: R09
+    area: lexer
+    title: An unterminated string is a lexical error
+    oracle: test_lexer.py::test_r09_unterminated_string_is_an_error
+
+  - id: R10
+    area: parser
+    title: SELECT list FROM table parses
+    oracle: test_parser.py::test_r10_select_list_from_table
+  - id: R11
+    area: parser
+    title: SELECT star selects every column in header order
+    oracle: test_parser.py::test_r11_select_star_in_header_order
+  - id: R12
+    area: parser
+    title: An optional WHERE clause parses
+    oracle: test_parser.py::test_r12_optional_where_clause
+  - id: R13
+    area: parser
+    title: An optional ORDER BY clause parses
+    oracle: test_parser.py::test_r13_optional_order_by_clause
+  - id: R14
+    area: parser
+    title: An optional LIMIT and OFFSET parse
+    oracle: test_parser.py::test_r14_optional_limit_and_offset
+
+  - id: R15
+    area: planner
+    title: An unknown table exits 3
+    oracle: test_planner.py::test_r15_unknown_table_exits_three
+  - id: R16
+    area: planner
+    title: An unknown column exits 3
+    oracle: test_planner.py::test_r16_unknown_column_exits_three
+  - id: R17
+    area: planner
+    title: A malformed query exits 2 before reading data
+    oracle: test_planner.py::test_r17_malformed_query_exits_two
+  - id: R18
+    area: planner
+    title: A bare column beside an aggregate without GROUP BY is rejected
+    oracle: test_planner.py::test_r18_bare_column_beside_aggregate_is_rejected
+
+  - id: R19
+    area: execution
+    title: Projection emits the SELECT list order
+    oracle: test_execution.py::test_r19_projection_uses_the_select_order
+  - id: R20
+    area: execution
+    title: AS renames a projected column
+    oracle: test_execution.py::test_r20_alias_renames_the_output_column
+  - id: R21
+    area: execution
+    title: DISTINCT removes duplicate rows
+    oracle: test_execution.py::test_r21_distinct_removes_duplicates
+  - id: R22
+    area: execution
+    title: WHERE equality and inequality
+    oracle: test_execution.py::test_r22_where_equality_and_inequality
+  - id: R23
+    area: execution
+    title: WHERE ordered comparisons are numeric on numeric columns
+    oracle: test_execution.py::test_r23_where_ordered_comparisons
+  - id: R24
+    area: execution
+    title: WHERE AND binds tighter than OR, parentheses override
+    oracle: test_execution.py::test_r24_where_and_binds_tighter_than_or
+  - id: R25
+    area: execution
+    title: WHERE NOT
+    oracle: test_execution.py::test_r25_where_not
+  - id: R26
+    area: execution
+    title: WHERE IS NULL and IS NOT NULL
+    oracle: test_execution.py::test_r26_where_is_null
+  - id: R27
+    area: execution
+    title: ORDER BY direction and tie-breaking
+    oracle: test_execution.py::test_r27_order_by_direction_and_ties
+  - id: R28
+    area: execution
+    title: LIMIT and OFFSET apply after ordering
+    oracle: test_execution.py::test_r28_limit_and_offset
+  - id: R29
+    area: execution
+    title: COUNT(*) counts rows, COUNT(col) skips NULLs
+    oracle: test_execution.py::test_r29_count_star_and_count_column
+  - id: R30
+    area: execution
+    title: SUM, AVG, MIN and MAX ignore NULLs
+    oracle: test_execution.py::test_r30_numeric_aggregates_ignore_nulls
+  - id: R31
+    area: execution
+    title: GROUP BY emits one row per group
+    oracle: test_execution.py::test_r31_group_by_emits_one_row_per_group
+  - id: R32
+    area: execution
+    title: HAVING filters groups after aggregation
+    oracle: test_execution.py::test_r32_having_filters_groups
+  - id: R33
+    area: execution
+    title: INNER JOIN on an equality, with qualified references
+    oracle: test_execution.py::test_r33_inner_join_on_equality
+  - id: R34
+    area: execution
+    title: LEFT JOIN fills unmatched right sides with NULL
+    oracle: test_execution.py::test_r34_left_join_fills_nulls
+
+  - id: R35
+    area: output
+    title: Table format prints a padded header and rows
+    oracle: test_output.py::test_r35_table_format_is_padded
+  - id: R36
+    area: output
+    title: CSV format is RFC 4180 with a header
+    oracle: test_output.py::test_r36_csv_format_is_rfc4180
+  - id: R37
+    area: output
+    title: JSON format is an array of row objects
+    oracle: test_output.py::test_r37_json_format_is_an_array_of_objects
+  - id: R38
+    area: output
+    title: NULL renders empty in CSV and null in JSON
+    oracle: test_output.py::test_r38_null_rendering
+  - id: R39
+    area: output
+    title: An empty result still prints its header
+    oracle: test_output.py::test_r39_empty_result_keeps_its_shape
+
+  - id: R40
+    area: cli
+    title: --help exits 0
+    oracle: test_cli.py::test_r40_help_exits_zero
+  - id: R41
+    area: cli
+    title: A missing or absent --data exits 2
+    oracle: test_cli.py::test_r41_missing_data_dir_exits_two
+  - id: R42
+    area: cli
+    title: A dash reads the statement from stdin
+    oracle: test_cli.py::test_r42_dash_reads_sql_from_stdin

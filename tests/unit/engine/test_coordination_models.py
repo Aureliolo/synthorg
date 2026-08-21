@@ -11,7 +11,7 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
     CoordinationWave,
 )
-from synthorg.engine.decomposition.models import SubtaskStatusRollup
+from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
 from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,

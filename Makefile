@@ -5,6 +5,7 @@
 # source of truth: every target maps to a command you can run directly.
 
 .PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
+	recursion-depth recursion-depth-record \
 	typecheck typecheck-warm typecheck-status typecheck-stop \
 	test-durations build-openhands-image \
 	dev-up dev-restart dev-status dev-logs dev-down
@@ -124,6 +125,83 @@ loop-ab:
 # it was measured against, so a stale one is self-evident.
 loop-ab-record:
 	PYTHONPATH=. uv run python scripts/record_loop_ab.py --record $(ARGS)
+
+# Print the recursion-depth matrix and the sessions it would run, without
+# spending anything: this path boots no gateway, opens no port and starts no
+# container. Run it before `recursion-depth-record`. The session figure is a
+# FLOOR, because the real count is a product of branching factors the manifest
+# cannot predict, which is why the sweep also carries a hard ceiling.
+# See `evals/recursion_depth/manifest.yaml`.
+recursion-depth:
+	PYTHONPATH=. uv run python scripts/record_recursion_depth.py $(ARGS)
+
+# Measure the recursion-depth sweep for real (REAL PROVIDER SPEND) and rewrite
+# the committed chart under `evals/recursion_depth/results/`. Like the A/B
+# recorder it hosts its own gateway, so no running API is needed; it does need a
+# Docker daemon and a `--company-config` whose `providers:` block aliases the
+# manifest's example-* ids to real models, one for the executor and a DIFFERENT
+# one for the reviewer (the harness refuses an identical pair, because the gate
+# is the treatment and a judge on the executor's own binding biases toward the
+# null).
+#
+# This is a large bill, so stage it. `--depths` narrows the sweep to a subset of
+# the manifest's caps and `--max-sessions` lowers the ceiling:
+#
+#   make recursion-depth-record ARGS="--company-config my-providers.yaml --depths 1,2"
+#
+# `--keep-workspaces` leaves every unit's tree on disk, which is where the thing
+# the sweep actually built ends up.
+#
+# A sweep runs agent-authored code, and never on this machine: the agents, each
+# unit's own suite and the held-out oracle all run in the sandbox image. Grading
+# a tree means importing whatever the agent wrote into it, so on the host it
+# would have had the network, this machine's credentials and the Docker socket.
+#
+# That image therefore needs a test runner in it. `docker/sandbox/apko.yaml`
+# declares one, but a PUBLISHED tag from before it was added does not carry it,
+# and against such a tag every graded run fails identically to a delivery that
+# wrote nothing: the sweep would record every unit undelivered and publish an
+# empty curve that looks like a result rather than a broken harness. The grader
+# refuses outright rather than measuring that, and `build-sandbox-image` is how
+# to get an image it accepts.
+recursion-depth-record:
+	PYTHONPATH=. uv run python scripts/record_recursion_depth.py --record $(ARGS)
+
+# Build the sandbox image from this worktree, which a sweep needs whenever the
+# published tag predates a change to `docker/sandbox/apko.yaml`.
+#
+# Two steps, because the Dockerfile is a thin wrapper over a base that apko
+# composes: building the wrapper alone against a published base would carry
+# none of this tree's package changes, which is the whole reason to run this.
+# apko is not installed locally and is not worth installing, so it runs from
+# its own image; `--arch host` keeps it to the one architecture that can be
+# loaded here, where CI builds both.
+# Pinned, and to the same version CI builds with (security-dast.yml's
+# APKO_VERSION): `latest` is mutable, so a build a week apart could compose a
+# different base and the recording would read that as a loop difference. Kept
+# Renovate-visible so a bump moves both.
+# renovate: datasource=github-releases depName=chainguard-dev/apko
+APKO_VERSION := v1.2.36
+SANDBOX_BASE_TAR := .sandbox-base.tar
+APKO_OUT := .apko-out
+build-sandbox-image:
+	mkdir -p $(APKO_OUT)
+	# The worktree goes in READ-ONLY and the tarball comes out through its own
+	# mount. apko needs the yaml and the lockfile and nothing else from here,
+	# so there is no reason for a third-party image to hold a writable handle
+	# on the checkout while it composes.
+	docker run --rm \
+	  -v "$(CURDIR):/work:ro" -v "$(CURDIR)/$(APKO_OUT):/out" -w /work \
+	  cgr.dev/chainguard/apko:$(APKO_VERSION) \
+	  build --arch host docker/sandbox/apko.yaml synthorg-sandbox-base:local \
+	  /out/$(SANDBOX_BASE_TAR)
+	docker load -i $(APKO_OUT)/$(SANDBOX_BASE_TAR)
+	docker build -f docker/sandbox/Dockerfile \
+	  --build-arg BASE_IMAGE=synthorg-sandbox-base:local-$(shell docker version --format '{{.Server.Arch}}') \
+	  -t synthorg-sandbox:local .
+	rm -rf $(APKO_OUT)
+	@echo "built synthorg-sandbox:local; record against it with:"
+	@echo "  make recursion-depth-record ARGS=\"--company-config <yours> --sandbox-image synthorg-sandbox:local\""
 
 # Build the OpenHands loop image from the working tree, for a record run that
 # has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to

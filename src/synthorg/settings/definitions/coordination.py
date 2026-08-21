@@ -419,15 +419,76 @@ _r.register(
         type=SettingType.INTEGER,
         default="1",
         description=(
-            "Maximum expected-artifact count for a sequential task to"
-            " still route to a single agent (leaf) under the"
-            " 'leaf-threshold' routing policy; larger work is split"
-            " across a team."
+            "Maximum expected-artifact count for work to still belong to a"
+            " single agent. Read twice: the 'leaf-threshold' routing policy"
+            " applies it to a whole objective, and recursive decomposition"
+            " applies it to each planned subtask, splitting one that declares"
+            " more deliverables than an agent can own."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="subtask_max_criteria",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum acceptance-criteria count for a planned subtask to still"
+            " be one agent's worth of work. A subtask declaring more ways of"
+            " being done is decomposed again when recursive decomposition is"
+            " enabled and the depth budget allows."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=25,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_tree_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Whole-tree ceiling for one decomposition call, across every level"
+            " it recurses into. Distinct from"
+            " 'decomposition_timeout_seconds', which bounds a single planning"
+            " session: sessions scale with the node count rather than the"
+            " depth, so no multiple of the per-session number bounds a tree."
+            " Two of the four callers are request handlers, and this is what"
+            " keeps a deep recursion from occupying one for as long as the"
+            " tree keeps branching."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="recursive_decomposition_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Decompose an oversized subtask again instead of dispatching it"
+            " whole, up to the decomposition's depth budget. Ships off: a"
+            " recursive plan is a tree, and the durable plan model is still"
+            " flat, so only a caller that reads the decomposition tree"
+            " directly (the recursion-depth harness) can act on the result."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
     )
 )
 

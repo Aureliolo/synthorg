@@ -246,7 +246,7 @@ class CoordinationController(Controller):
         Returns:
             ``CoordinationContext`` instance.
         """
-        from synthorg.engine.decomposition.models import (  # noqa: PLC0415
+        from synthorg.engine.decomposition.context import (  # noqa: PLC0415
             DecompositionContext,
             roster_from_agents,
         )

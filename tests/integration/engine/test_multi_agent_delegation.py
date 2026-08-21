@@ -48,12 +48,9 @@ from synthorg.engine.assignment.rankers import (
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.parallel_models import (

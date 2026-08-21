@@ -4,10 +4,8 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-)
+from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.models import DecompositionPlan
 
 
 @runtime_checkable
@@ -37,6 +35,18 @@ class DecompositionStrategy(Protocol):
 
     def get_strategy_name(self) -> str:
         """Return a human-readable name for this strategy."""
+        ...
+
+    def plans_any_task(self) -> bool:
+        """Whether this strategy can plan a task it was not constructed for.
+
+        Recursion decomposes a CHILD task, which the caller never named, so a
+        strategy holding one operator-supplied plan for one parent cannot serve
+        it: asked about the child, it refuses, and the refusal fails the whole
+        decomposition rather than the one subtask. Declared per strategy rather
+        than inferred, because "can you plan something I have not shown you" is
+        a claim about the implementation that no caller can test without asking.
+        """
         ...
 
 

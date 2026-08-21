@@ -35,9 +35,9 @@ import aiodocker
 from evals.errors import (
     BriefExecutionError,
     EvalToolMissingError,
-    LoopAbDockerUnavailableError,
-    LoopAbProviderDegradedError,
-    LoopAbProviderMissingError,
+    HarnessDockerUnavailableError,
+    HarnessProviderDegradedError,
+    HarnessProviderMissingError,
 )
 from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.models.brief import Brief
@@ -46,9 +46,9 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_EXECUTABLE_TOOL_MISSING,
+    EVALS_HARNESS_PROVIDER_MISSING,
     EVALS_LOOP_AB_PREFLIGHT_LATENCY,
     EVALS_LOOP_AB_PREFLIGHT_PASSED,
-    EVALS_LOOP_AB_PROVIDER_MISSING,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -113,14 +113,14 @@ async def run_preflight(
             completion through the capability's configured provider.
 
     Raises:
-        LoopAbProviderMissingError: A manifest capability names a provider the
+        HarnessProviderMissingError: A manifest capability names a provider the
             company config does not carry.
         BriefExecutionError: A brief declares no checks, so no loop's run of it
             could be graded.
         EvalToolMissingError: A brief grades with a command this machine does
             not have.
-        LoopAbDockerUnavailableError: The Docker daemon is unreachable.
-        LoopAbProviderDegradedError: A capability's warm response is outside the band.
+        HarnessDockerUnavailableError: The Docker daemon is unreachable.
+        HarnessProviderDegradedError: A capability's warm response is outside the band.
     """
     _check_capability_providers(manifest=manifest, company_config=company_config)
     _check_briefs_gradeable(briefs)
@@ -150,7 +150,7 @@ def _check_capability_providers(
         company_config: The company config the run will boot against.
 
     Raises:
-        LoopAbProviderMissingError: One or more capabilities name an absent provider.
+        HarnessProviderMissingError: One or more capabilities name an absent provider.
     """
     missing = sorted(
         {
@@ -162,7 +162,7 @@ def _check_capability_providers(
     if not missing:
         return
     logger.error(
-        EVALS_LOOP_AB_PROVIDER_MISSING,
+        EVALS_HARNESS_PROVIDER_MISSING,
         providers=tuple(missing),
         configured=tuple(sorted(company_config.providers)),
     )
@@ -171,7 +171,7 @@ def _check_capability_providers(
         f"{', '.join(missing)}. Pass --company-config pointing at a config whose "
         f"providers block covers every capability."
     )
-    raise LoopAbProviderMissingError(msg)
+    raise HarnessProviderMissingError(msg)
 
 
 def _check_briefs_gradeable(briefs: tuple[Brief, ...]) -> None:
@@ -256,7 +256,7 @@ async def _check_provider_latency(
         probe: Times one completion, or ``None`` for a real one.
 
     Raises:
-        LoopAbProviderDegradedError: A capability's warm response is outside the band.
+        HarnessProviderDegradedError: A capability's warm response is outside the band.
     """
     if ceiling_seconds <= 0:
         return
@@ -290,7 +290,7 @@ async def _check_provider_latency(
             f"Retry when it recovers, or pass "
             f"--preflight-latency-seconds 0 to measure it as it is."
         )
-        raise LoopAbProviderDegradedError(msg)
+        raise HarnessProviderDegradedError(msg)
 
 
 async def _bounded(
@@ -347,7 +347,7 @@ async def _check_docker() -> None:
     """Confirm the Docker daemon answers before any cell runs.
 
     Raises:
-        LoopAbDockerUnavailableError: The daemon did not answer.
+        HarnessDockerUnavailableError: The daemon did not answer.
     """
     try:
         async with aiodocker.Docker() as client:
@@ -362,7 +362,7 @@ async def _check_docker() -> None:
             "the Docker daemon is unreachable, and every loop in the matrix "
             "runs its shell tool in a container"
         )
-        raise LoopAbDockerUnavailableError(msg) from exc
+        raise HarnessDockerUnavailableError(msg) from exc
 
 
 __all__ = ["DEFAULT_LATENCY_CEILING_SECONDS", "LatencyProbe", "run_preflight"]

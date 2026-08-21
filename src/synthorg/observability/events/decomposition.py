@@ -33,6 +33,23 @@ DECOMPOSITION_SESSION_DUPLICATE_SUBMIT: Final[str] = (
 # failure mode for triage.
 DECOMPOSITION_EMPTY_PLAN_TEXT: Final[str] = "decomposition.empty_plan_text"
 
+DECOMPOSITION_SUBTASK_OVERSIZED: Final[str] = "decomposition.subtask.oversized"
+"""A subtask declared more work than one agent's worth, so it was split again.
+
+Carries the condition that fired and the counts behind it, because the
+alternative account of a deeper tree is a planner that simply produced more
+items, and the two want different fixes."""
+
+DECOMPOSITION_DEPTH_EXHAUSTED: Final[str] = "decomposition.depth_exhausted"
+"""An oversized subtask was dispatched whole because the depth budget ran out.
+
+The one outcome recursion exists to prevent, recorded where it happens: the
+task still runs, so nothing else downstream reports that it was known to be
+too big for the agent that got it."""
+
+DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
+"""One level of a recursive decomposition finished."""
+
 DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
 """No explicit provider + model pair is bound for decomposition.
 

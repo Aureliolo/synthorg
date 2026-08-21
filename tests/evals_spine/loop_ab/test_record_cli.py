@@ -15,10 +15,10 @@ first, and its whole promise is that it costs nothing.
 import pytest
 from scripts.record_loop_ab import _build_deps, _parse_args, main
 
+from evals.harness.host import RecordingGatewayHost
+from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.loop_ab.binding import CellBinder
-from evals.loop_ab.host import LoopAbGatewayHost
-from evals.loop_ab.stall_watch import DEFAULT_STALL_IDLE_SECONDS
-from tests.evals_spine.loop_ab.conftest import RECORDING_PROVIDER
+from tests.evals_spine._recording import RECORDING_PROVIDER
 
 pytestmark = [
     pytest.mark.integration,
@@ -30,7 +30,7 @@ pytestmark = [
 
 class TestDepsWiring:
     def test_every_collaborator_is_bound_to_the_host(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         deps = _build_deps(host)
 
@@ -42,7 +42,7 @@ class TestDepsWiring:
         assert deps.on_stall is not None
 
     def test_the_stall_threshold_reaches_the_cells(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # A threshold the operator set and the runner never read would leave a
         # wedged cell reported on the default, or not at all.
@@ -51,7 +51,7 @@ class TestDepsWiring:
         assert deps.stall_idle_seconds == 42.0
 
     def test_the_bound_methods_come_from_one_binder_over_this_host(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # Bound to the RIGHT thing: four methods of one binder over the started
         # host, not a binder over some other config, and not swapped with each
@@ -63,7 +63,7 @@ class TestDepsWiring:
         binder = deps.build_provider.__self__  # type: ignore[attr-defined]
 
         assert isinstance(binder, CellBinder)
-        assert binder.host is host
+        assert binder.binder.host is host
         assert deps.build_provider.__func__ is CellBinder.build_provider  # type: ignore[attr-defined]
         assert deps.build_tool_registry.__func__ is CellBinder.build_tool_registry  # type: ignore[attr-defined]
         assert deps.build_openhands_cell.__func__ is CellBinder.build_openhands_cell  # type: ignore[attr-defined]
@@ -73,7 +73,7 @@ class TestDepsWiring:
         assert deps.open_cell_ledger.__self__ is binder  # type: ignore[attr-defined]
 
     def test_the_binder_reads_its_config_off_the_host(
-        self, host: LoopAbGatewayHost
+        self, host: RecordingGatewayHost
     ) -> None:
         # Not handed in separately, so it cannot disagree with the config the
         # gateway resolves a bearer's bound provider against.

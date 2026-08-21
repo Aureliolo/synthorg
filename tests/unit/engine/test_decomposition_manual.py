@@ -5,12 +5,9 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
-from synthorg.engine.decomposition.models import (
-    DecompositionContext,
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.errors import (
     DecompositionDepthError,

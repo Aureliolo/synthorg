@@ -28,7 +28,7 @@ from synthorg.core.plan_validation import (
     describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
-from synthorg.engine.decomposition.models import roster_from_agents
+from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.hr.state import HrStateSlice
 
 __all__ = ["reject_undecidable_graph", "reject_unroutable_owners"]
