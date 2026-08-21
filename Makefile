@@ -152,11 +152,42 @@ recursion-depth:
 # `--keep-workspaces` leaves every unit's tree on disk, which is where the thing
 # the sweep actually built ends up.
 #
-# A sweep runs agent-authored code on this machine: the held-out oracle grades
-# the delivered CLI by running it, and each unit's own tests are run against its
-# own tree.
+# A sweep runs agent-authored code, and never on this machine: the agents, each
+# unit's own suite and the held-out oracle all run in the sandbox image. Grading
+# a tree means importing whatever the agent wrote into it, so on the host it
+# would have had the network, this machine's credentials and the Docker socket.
+#
+# That image therefore needs a test runner in it. `docker/sandbox/apko.yaml`
+# declares one, but a PUBLISHED tag from before it was added does not carry it,
+# and against such a tag every graded run fails identically to a delivery that
+# wrote nothing: the sweep would record every unit undelivered and publish an
+# empty curve that looks like a result rather than a broken harness. The grader
+# refuses outright rather than measuring that, and `build-sandbox-image` is how
+# to get an image it accepts.
 recursion-depth-record:
 	PYTHONPATH=. uv run python scripts/record_recursion_depth.py --record $(ARGS)
+
+# Build the sandbox image from this worktree, which a sweep needs whenever the
+# published tag predates a change to `docker/sandbox/apko.yaml`.
+#
+# Two steps, because the Dockerfile is a thin wrapper over a base that apko
+# composes: building the wrapper alone against a published base would carry
+# none of this tree's package changes, which is the whole reason to run this.
+# apko is not installed locally and is not worth installing, so it runs from
+# its own image; `--arch host` keeps it to the one architecture that can be
+# loaded here, where CI builds both.
+SANDBOX_BASE_TAR := .sandbox-base.tar
+build-sandbox-image:
+	docker run --rm -v "$(CURDIR):/work" -w /work cgr.dev/chainguard/apko:latest \
+	  build --arch host docker/sandbox/apko.yaml synthorg-sandbox-base:local \
+	  /work/$(SANDBOX_BASE_TAR)
+	docker load -i $(SANDBOX_BASE_TAR)
+	docker build -f docker/sandbox/Dockerfile \
+	  --build-arg BASE_IMAGE=synthorg-sandbox-base:local-$(shell docker version --format '{{.Server.Arch}}') \
+	  -t synthorg-sandbox:local .
+	rm -f $(SANDBOX_BASE_TAR)
+	@echo "built synthorg-sandbox:local; record against it with:"
+	@echo "  make recursion-depth-record ARGS=\"--company-config <yours> --sandbox-image synthorg-sandbox:local\""
 
 # Build the OpenHands loop image from the working tree, for a record run that
 # has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to

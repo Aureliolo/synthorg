@@ -15,6 +15,7 @@ from uuid import UUID, uuid5
 import pytest
 
 from evals.errors import (
+    EvalToolMissingError,
     HarnessDockerUnavailableError,
     RecursionDepthNoCellsMeasuredError,
     RecursionDepthSessionCeilingError,
@@ -24,7 +25,7 @@ from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
-from evals.recursion_depth.grading import read_verdict
+from evals.recursion_depth.grading import SandboxUnitGrader, read_verdict
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -78,6 +79,7 @@ from synthorg.engine.routing_policy.capability_policy import (
 )
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.providers.routing.models import ResolvedModel
+from synthorg.tools.sandbox.result import SandboxResult
 
 pytestmark = pytest.mark.unit
 
@@ -398,6 +400,23 @@ def _deps() -> SweepDeps:
     )
 
 
+class _RunnerlessSandbox:
+    """A container image with no pytest in it, which is what a stale tag is."""
+
+    async def execute(self, **kwargs: object) -> SandboxResult:
+        """Answer the way an interpreter does when the module is absent.
+
+        Returns:
+            A failed result carrying the interpreter's own message.
+        """
+        del kwargs
+        return SandboxResult(
+            stdout="",
+            stderr="No module named pytest\n",
+            returncode=1,
+        )
+
+
 class _PassingGrader:
     """Stands in for the container grader, which needs a Docker daemon.
 
@@ -590,6 +609,22 @@ class TestTheOwnTestGate:
 
         assert passed is False
         assert "did not finish" in detail
+
+    async def test_an_image_without_a_test_runner_stops_the_sweep(
+        self, tmp_path: Path
+    ) -> None:
+        # Against such an image every graded run fails identically to a
+        # delivery that wrote nothing, so the sweep would record every unit
+        # undelivered and publish an empty curve that reads as a catastrophic
+        # result rather than a broken harness. A missing tool is systemic, so
+        # it stops the matrix instead of failing one cell.
+        grader = SandboxUnitGrader(
+            sandbox=_RunnerlessSandbox(),  # type: ignore[arg-type]
+            project_id=NotBlankStr("proj"),
+        )
+
+        with pytest.raises(EvalToolMissingError, match="no pytest"):
+            await grader.own_tests_pass(tmp_path)
 
     def test_a_clean_suite_delivers(self, tmp_path: Path) -> None:
         report = self._report(

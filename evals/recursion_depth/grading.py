@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 from xml.etree import ElementTree as ET
 
+from evals.errors import EvalToolMissingError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -207,6 +208,7 @@ class SandboxUnitGrader:
             owner_id=NotBlankStr(str(project_dir)),
             project_id=self.project_id,
         )
+        _refuse_without_a_runner(result.stdout + result.stderr)
         passed, detail = read_verdict(report_path, timed_out=result.timed_out)
         logger.info(
             EVALS_RECURSION_GRADED,
@@ -218,6 +220,41 @@ class SandboxUnitGrader:
         if passed:
             return True, ""
         return False, detail or tail_of(result.stdout + result.stderr)
+
+
+#: What the interpreter says when the image has no test runner in it.
+_NO_RUNNER: Final[str] = "No module named pytest"
+
+
+def _refuse_without_a_runner(output: str) -> None:
+    """Refuse to grade at all when the image cannot run a suite.
+
+    An image without pytest fails every graded run identically to a delivery
+    that wrote no report, so the sweep would record every unit as undelivered
+    and publish an empty survival curve. That is the worst failure available
+    here: it does not look like a broken harness, it looks like a catastrophic
+    but legitimate result, which is the shape of the finding the experiment
+    exists to measure.
+
+    A missing tool is systemic rather than per cell, so this raises the error
+    the matrix stops on rather than failing one unit.
+
+    Args:
+        output: What the graded run printed.
+
+    Raises:
+        EvalToolMissingError: The sandbox image has no pytest.
+    """
+    if _NO_RUNNER not in output:
+        return
+    msg = (
+        "the sandbox image has no pytest, so nothing can be graded in it and "
+        "every unit would read as undelivered. The image is built from "
+        "docker/sandbox/apko.yaml, which declares py3.14-pytest; a published "
+        "tag from before that was added does not carry it. Build the image "
+        "from this tree and pass --sandbox-image"
+    )
+    raise EvalToolMissingError(msg)
 
 
 def read_verdict(report_path: Path, *, timed_out: bool) -> tuple[bool, str]:

@@ -42,6 +42,12 @@ data/codebase_map.json
 # is one `git add -A` away from being committed.
 .recursion-depth/
 
+# What `make build-sandbox-image` leaves behind: apko writes an SBOM per
+# architecture beside its output tarball, in the working directory, and the
+# tarball itself is 100MB.
+/sbom-*.spdx.json
+/.sandbox-base.tar
+
 # Per-repo Claude/OpenCode runtime state (not config). Currently:
 # - last-push.json (used by scripts/check_push_throttle.sh)
 .claude/state/
