@@ -557,6 +557,12 @@ class AgentEngineFactoriesMixin:
             security_interceptor=interceptor,
             agent_id=str(identity.id),
             task_id=task_id,
+            # The pair this agent dispatches on, so the security evaluator can
+            # tell whether the judge an operator bound shares its lineage. Both
+            # halves: a connection may serve several families, so the provider
+            # alone answers a different question.
+            agent_provider_name=identity.model.provider,
+            agent_model_id=identity.model.model_id,
             invocation_tracker=self._tool_invocation_tracker,
             policy_engine=self._policy_engine,
             policy_evaluation_mode=self._policy_evaluation_mode,

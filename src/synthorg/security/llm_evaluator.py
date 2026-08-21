@@ -214,7 +214,9 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
             agent_provider=context.agent_provider_name,
         )
 
-        binding = await self._resolve_binding(context.agent_provider_name)
+        binding = await self._resolve_binding(
+            context.agent_provider_name, context.agent_model_id
+        )
         if binding is None:
             return self._apply_error_policy(
                 rule_verdict,

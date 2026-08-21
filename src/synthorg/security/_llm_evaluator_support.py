@@ -22,7 +22,7 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_SAME_FAMILY,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.family import get_family
+from synthorg.providers.family import get_family, shares_lineage
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
@@ -70,6 +70,7 @@ class _LlmEvaluatorSupportMixin:
     async def _resolve_binding(
         self,
         agent_provider_name: str | None,
+        agent_model_id: str | None = None,
     ) -> tuple[ModelRef, BaseCompletionProvider] | None:
         """Resolve the operator's evaluation pair and its live client.
 
@@ -115,25 +116,34 @@ class _LlmEvaluatorSupportMixin:
                 )
             return None
         self._unregistered_warned = None
-        self._warn_on_family_collision(ref.provider, agent_provider_name)
+        self._warn_on_family_collision(ref, agent_provider_name, agent_model_id)
         return ref, self._registry.get(ref.provider)
 
     def _warn_on_family_collision(
         self,
-        evaluator_provider_name: str,
+        evaluator_ref: ModelRef,
         agent_provider_name: str | None,
+        agent_model_id: str | None,
     ) -> None:
         """Warn when the evaluator and the judged agent share a vendor family.
 
         The cross-family boundary is the point of LLM fallback, so a
         collision is an operator misconfiguration worth surfacing on every
         evaluation rather than a condition to silently work around.
+
+        Both sides are resolved from their ``(provider, model)`` pair rather
+        than the provider alone: an aggregating connection serves several
+        organisations, so a provider-only comparison reads every model behind
+        one endpoint as a single family.
         """
         if agent_provider_name is None:
             return
-        agent_family = get_family(agent_provider_name, self._configs)
-        evaluator_family = get_family(evaluator_provider_name, self._configs)
-        if evaluator_family != agent_family:
+        evaluator_provider_name = evaluator_ref.provider
+        agent_family = get_family(agent_provider_name, self._configs, agent_model_id)
+        evaluator_family = get_family(
+            evaluator_provider_name, self._configs, evaluator_ref.model_id
+        )
+        if not shares_lineage(evaluator_family, agent_family):
             logger.debug(
                 SECURITY_LLM_EVAL_CROSS_FAMILY,
                 selected_provider=evaluator_provider_name,

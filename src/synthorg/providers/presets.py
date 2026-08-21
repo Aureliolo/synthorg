@@ -523,8 +523,14 @@ _OLLAMA_CLOUD = CloudPreset(
     # There is no per-1k price to attribute, so cost stays 0.0 on every call
     # and a money-denominated ceiling measures nothing here.
     billing_model=BillingModel.FLAT_RATE,
-    # Live discovery refreshes the catalogue; this curated list is the
-    # create-time seed.
+    # Live discovery refreshes the catalogue; this curated list is only the
+    # create-time seed, and it goes stale on the upstream's schedule rather
+    # than ours. A hosted model is RETIRED, not merely deprecated: the endpoint
+    # answers a create-time request with "<id> was retired at <date>", so a
+    # seed nobody has refreshed hands an operator models that cannot serve a
+    # single call. Two here had been retired for over a month before anyone
+    # tried them. Prefer ids under a dated or numbered tag over a `:preview`
+    # one, which changes under whoever pinned it.
     default_models=(
         ProviderModelConfig(
             id="gpt-oss:120b",
@@ -540,27 +546,27 @@ _OLLAMA_CLOUD = CloudPreset(
             ),
         ),
         ProviderModelConfig(
-            id="deepseek-v3.1:671b",
-            alias="deepseek-v3",
+            id="deepseek-v4-pro:0813",
+            alias="deepseek-v4",
             max_context=160_000,
             metadata=ModelMetadata(
                 supports_tools=True,
                 supports_reasoning=True,
                 max_output_tokens=32_768,
                 family="deepseek-v",
-                generation=3.1,
+                generation=4.0,
                 metadata_source="preset",
             ),
         ),
         ProviderModelConfig(
-            id="qwen3-coder:480b",
-            alias="qwen3-coder",
-            max_context=256_000,
+            id="kimi-k2.7-code",
+            alias="kimi-code",
+            max_context=131_072,
             metadata=ModelMetadata(
                 supports_tools=True,
                 max_output_tokens=32_768,
-                family="qwen-coder",
-                generation=3.0,
+                family="kimi-k-code",
+                generation=2.7,
                 metadata_source="preset",
             ),
         ),

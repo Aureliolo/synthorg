@@ -95,6 +95,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         agent_id: str | None = None,
         task_id: str | None = None,
         agent_provider_name: str | None = None,
+        agent_model_id: str | None = None,
         invocation_tracker: ToolInvocationTracker | None = None,
         policy_engine: PolicyEngine | None = None,
         policy_evaluation_mode: Literal["enforce", "log_only"] = "log_only",
@@ -111,6 +112,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             task_id: Task ID for security context.
             agent_provider_name: Provider name the agent is using,
                 for cross-family LLM security evaluation.
+            agent_model_id: Model the agent dispatches on, carried beside the
+                provider because one connection may serve several families.
             invocation_tracker: Optional tracker for recording
                 invocations for the activity timeline.
             policy_engine: Optional runtime policy engine evaluated before
@@ -135,6 +138,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self._agent_id = agent_id
         self._task_id = task_id
         self._agent_provider_name = agent_provider_name
+        self._agent_model_id = agent_model_id
         self._invocation_tracker = invocation_tracker
         self._policy_engine = policy_engine
         self._policy_evaluation_mode = policy_evaluation_mode
@@ -352,6 +356,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             agent_id=self._agent_id,
             task_id=self._task_id,
             agent_provider_name=self._agent_provider_name,
+            agent_model_id=self._agent_model_id,
         )
 
     async def _check_security(
