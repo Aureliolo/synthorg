@@ -35,6 +35,7 @@ from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
 )
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 if TYPE_CHECKING:
     # config.schema would cycle here (it pulls api -> engine); the concrete
@@ -191,6 +192,7 @@ def build_coordinator(  # noqa: PLR0913
     agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
+    decomposition_config_resolver: ConfigResolverProtocol | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
@@ -264,6 +266,10 @@ def build_coordinator(  # noqa: PLR0913
         agent_session_memory_digest_budget: Optional token cap for that digest
             (``memory.planning_memory_digest_budget``); ``None`` uses the
             strategy default, ``0`` injects nothing.
+        decomposition_config_resolver: Optional resolver the decomposition
+            strategy reads its output-token ceiling from, once per call so a
+            raised ceiling applies to the next decomposition rather than the
+            next rebuild; ``None`` uses the strategy defaults.
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
@@ -312,6 +318,7 @@ def build_coordinator(  # noqa: PLR0913
         agent_session_ceilings=agent_session_ceilings,
         planning_memory=planning_memory,
         agent_session_memory_digest_budget=agent_session_memory_digest_budget,
+        config_resolver=decomposition_config_resolver,
     )
     # The workspace service doubles as the planner's inventory: it is the only
     # thing here that knows where a project's files actually are, and a plan

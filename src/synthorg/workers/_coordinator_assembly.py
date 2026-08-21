@@ -441,6 +441,7 @@ async def _build_runtime_coordinator(
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
         agent_session_ceilings=agent_session_ceilings,
+        decomposition_config_resolver=config_resolver_of(app_state),
         planning_memory=planning.planning_memory,
         agent_session_memory_digest_budget=planning.digest_budget,
         task_engine=task_engine_of(app_state),

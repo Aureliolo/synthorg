@@ -146,6 +146,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_output_tokens",
+        type=SettingType.INTEGER,
+        default="32768",
+        description=(
+            "Token ceiling for one decomposition completion. Sized for a"
+            " reasoning model, which spends completion tokens on its own"
+            " reasoning BEFORE writing any content: a budget sized for the plan"
+            " alone returns an empty string, which reaches the JSON parser and"
+            " is reported as malformed output. Raise this rather than rewording"
+            " the prompt when decomposition reports hitting its token ceiling."
+            " Resolved at boot; a runtime change applies on the next coordinator"
+            " rebuild (provider re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1024,
+        max_value=200_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="decomposition_agent_cost_ceiling",
         type=SettingType.FLOAT,
         default="2.0",

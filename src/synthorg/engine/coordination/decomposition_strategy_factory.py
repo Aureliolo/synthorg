@@ -25,6 +25,7 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_FAILED,
 )
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -90,6 +91,7 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Build the single-shot LLM decomposition strategy.
 
@@ -104,11 +106,37 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     del provider_selector, tool_provider, cost_tracker, shutdown_checker
     del agent_session_max_turns, agent_session_ceilings
     del planning_memory, agent_session_memory_digest_budget
+    return _llm_strategy(
+        provider=provider,
+        decomposition_model=decomposition_model,
+        config_resolver=config_resolver,
+    )
+
+
+def _llm_strategy(
+    *,
+    provider: CompletionProvider,
+    decomposition_model: str,
+    config_resolver: ConfigResolverProtocol | None,
+) -> DecompositionStrategy:
+    """Build the single-shot LLM strategy over the operator's live settings.
+
+    Shared by both builders, because the agent-session strategy falls back to
+    this one: a resolver given to the primary path and not the fallback would
+    leave the fallback truncating at a ceiling the operator had already raised.
+
+    Returns:
+        An :class:`LlmDecompositionStrategy` over *provider* + *model*.
+    """
     from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
         LlmDecompositionStrategy,
     )
 
-    return LlmDecompositionStrategy(provider=provider, model=decomposition_model)
+    return LlmDecompositionStrategy(
+        provider=provider,
+        model=decomposition_model,
+        config_resolver=config_resolver,
+    )
 
 
 def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
@@ -123,6 +151,7 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Build the owner-run agent-session strategy over an LLM fallback.
 
@@ -136,9 +165,6 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     from synthorg.engine.decomposition.agent_session import (  # noqa: PLC0415
         AgentSessionDecompositionConfig,
         AgentSessionDecompositionStrategy,
-    )
-    from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
-        LlmDecompositionStrategy,
     )
 
     # Read the field defaults off a base instance so the operator-tuned
@@ -165,7 +191,11 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
 
     return AgentSessionDecompositionStrategy(
         provider_selector=provider_selector,
-        fallback=LlmDecompositionStrategy(provider=provider, model=decomposition_model),
+        fallback=_llm_strategy(
+            provider=provider,
+            decomposition_model=decomposition_model,
+            config_resolver=config_resolver,
+        ),
         tool_provider=tool_provider,
         config=config,
         cost_tracker=cost_tracker,
@@ -198,6 +228,7 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
     agent_session_ceilings: SessionCeilings | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
     agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Select the decomposition strategy from config and available deps.
 
@@ -233,6 +264,7 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
             agent_session_ceilings=agent_session_ceilings,
             planning_memory=planning_memory,
             agent_session_memory_digest_budget=agent_session_memory_digest_budget,
+            config_resolver=config_resolver,
         )
     if (provider is None) != (decomposition_model is None):
         given = "provider" if provider is not None else "decomposition_model"
