@@ -15,10 +15,12 @@ passes everything.
 """
 
 import asyncio
+import json
 import re
 import shutil
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -31,7 +33,9 @@ from evals.recursion_depth.grading import (
     oracle_leftovers,
 )
 from evals.recursion_depth.oracle import (
+    _NONCE_NAME,
     OracleOutcome,
+    _read_report,
     load_index,
     node_ids,
     oracle_argv,
@@ -164,6 +168,10 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
     oracle_dir = _SPEC_DIR / str(load_index(_SPEC_DIR)["oracle_dir"])
     stage(scratch, tree=_REFERENCE_TREE, oracle_dir=oracle_dir)
     staged = scratch / ORACLE_SUITE_DIR
+    # Staged the way a run stages it, because the token has to be swept on the
+    # same schedule as the expectations: read at import, gone before the first
+    # test body, and therefore before the delivered program has a process.
+    (staged / _NONCE_NAME).write_text("deadbeef", encoding="utf-8")
     assert oracle_leftovers(staged) != ()
 
     result = asyncio.run(
@@ -180,6 +188,11 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout
     assert oracle_leftovers(staged) == ()
+    assert not (staged / _NONCE_NAME).exists()
+    # Which is where the token has to have come from: the file is gone, so the
+    # report can only carry it if the suite read it before the sweep ran.
+    written = json.loads((scratch / "report.json").read_text(encoding="utf-8"))
+    assert written["nonce"] == "deadbeef"
     # What stays is what pytest re-reads during setup, and neither holds an
     # expected output.
     assert (staged / "conftest.py").is_file()
@@ -277,6 +290,90 @@ class TestTheOracleIsScoredOnItsOwnInputs:
 
         with pytest.raises(OracleUnusableError, match="own inputs changed"):
             refuse_if_oracle_inputs_changed(tmp_path, before)
+
+
+class TestTheReportIsAttributedToTheRunThatAskedForIt:
+    """The verdicts come back through a file the graded tree can also write.
+
+    There is one mount and the sandbox contract offers no second one, so the
+    report is a sibling of the tree by necessity. Session finish is the last
+    thing in the run, so a forgery written during a test body is overwritten;
+    a process a body detached is not, and can clobber the file once pytest has
+    exited. What no forger can supply is the token, which stopped being
+    readable before the tree's first process existed, so the harness scores a
+    report it can attribute to its own session and refuses every other one.
+    """
+
+    _NODES: ClassVar[dict[str, str]] = {
+        "R01": "test_cli.py::test_one",
+        "R02": "test_cli.py::test_two",
+    }
+
+    def _report(self, tmp_path: Path, payload: object) -> Path:
+        """Write a report holding *payload*.
+
+        Returns:
+            Where it was written.
+        """
+        path = tmp_path / "report.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def _read(self, path: Path, *, nonce: str) -> dict[str, bool]:
+        """Score *path* as a run holding *nonce* would.
+
+        Returns:
+            The verdict per requirement.
+        """
+        return _read_report(
+            path,
+            nodes=self._NODES,
+            wanted=("R01", "R02"),
+            returncode=1,
+            nonce=nonce,
+        )
+
+    def test_this_run_s_own_report_is_scored(self, tmp_path: Path) -> None:
+        report = self._report(
+            tmp_path,
+            {
+                "nonce": "abc123",
+                "outcomes": {"test_cli.py::test_one": True},
+            },
+        )
+
+        assert self._read(report, nonce="abc123") == {"R01": True, "R02": False}
+
+    def test_another_run_s_report_refuses_the_measurement(self, tmp_path: Path) -> None:
+        # A stale report from an earlier session in a reused scratch directory
+        # scores exactly as convincingly as a forged one, and neither describes
+        # the tree in front of it.
+        report = self._report(
+            tmp_path,
+            {"nonce": "somebody-else", "outcomes": {"test_cli.py::test_one": True}},
+        )
+
+        with pytest.raises(OracleUnusableError, match="does not carry this run"):
+            self._read(report, nonce="abc123")
+
+    def test_an_untokened_report_refuses_the_measurement(self, tmp_path: Path) -> None:
+        # The shape a forger writes, because it is the obvious one and the only
+        # one visible from inside the container.
+        report = self._report(tmp_path, {"test_cli.py::test_one": True})
+
+        with pytest.raises(OracleUnusableError, match="does not carry this run"):
+            self._read(report, nonce="abc123")
+
+    def test_a_report_whose_outcomes_are_not_a_mapping_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        # Reached only by something holding the token, so this is a harness
+        # fault rather than a forgery; either way there is nothing to score and
+        # an `AttributeError` here would surface as an opaque cell failure.
+        report = self._report(tmp_path, {"nonce": "abc123", "outcomes": ["passed"]})
+
+        with pytest.raises(OracleUnusableError, match="rather than a mapping"):
+            self._read(report, nonce="abc123")
 
 
 def test_the_allowlist_admits_only_what_setup_and_the_query_need(

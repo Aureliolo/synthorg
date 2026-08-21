@@ -26,6 +26,7 @@ from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
+    RUNNER_PROBE_ARGS,
     SandboxUnitGrader,
     read_verdict,
     refuse_without_a_runner,
@@ -404,8 +405,20 @@ def _deps() -> SweepDeps:
     )
 
 
+@dataclass
 class _RunnerlessSandbox:
-    """A container image with no pytest in it, which is what a stale tag is."""
+    """A container image with no pytest in it, which is what a stale tag is.
+
+    Records what it was asked to run, because the property under test is an
+    ORDERING: the probe has to come before the tree gets a process, and a
+    double that discarded its arguments could only ever show that some non-zero
+    result refuses.
+
+    Attributes:
+        calls: The argv of every execution, oldest first.
+    """
+
+    calls: list[tuple[str, ...]] = field(default_factory=list)
 
     async def execute(self, **kwargs: object) -> SandboxResult:
         """Answer the way an interpreter does when the module is absent.
@@ -413,7 +426,9 @@ class _RunnerlessSandbox:
         Returns:
             A failed result carrying the interpreter's own message.
         """
-        del kwargs
+        args = kwargs["args"]
+        assert isinstance(args, tuple)
+        self.calls.append(args)
         return SandboxResult(
             stdout="",
             stderr="No module named pytest\n",
@@ -644,13 +659,19 @@ class TestTheOwnTestGate:
         # undelivered and publish an empty curve that reads as a catastrophic
         # result rather than a broken harness. A missing tool is systemic, so
         # it stops the matrix instead of failing one cell.
+        sandbox = _RunnerlessSandbox()
         grader = SandboxUnitGrader(
-            sandbox=_RunnerlessSandbox(),  # type: ignore[arg-type]
+            sandbox=sandbox,  # type: ignore[arg-type]
             project_id=NotBlankStr("proj"),
         )
 
         with pytest.raises(EvalToolMissingError, match="cannot import pytest"):
             await grader.own_tests_pass(tmp_path)
+
+        # The ORDERING is the property, not the refusal: the answer stops the
+        # whole matrix, so its evidence has to come from before the tree had a
+        # process. Exactly one execution, and it is the probe.
+        assert sandbox.calls == [RUNNER_PROBE_ARGS]
 
     def test_a_probe_that_imported_pytest_grades_normally(self) -> None:
         # The decision reads ONE thing, and it is a probe run before any

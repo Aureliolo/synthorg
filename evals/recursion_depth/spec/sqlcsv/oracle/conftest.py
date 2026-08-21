@@ -28,6 +28,11 @@ right answer is the work being graded. Everything else goes, source and compiled
 alike. ``_run`` re-checks before every spawn rather than trusting the sweep, and
 the harness re-checks after the run, so this is enforced at two levels rather
 than assumed at none.
+
+That one mount also holds the report this suite writes, which the tree reaches
+just as easily. So the verdicts travel back under a per-run token staged beside
+this file and swept along with the expectations, and a report the harness cannot
+attribute to the session it started is refused rather than scored.
 """
 
 import json
@@ -73,6 +78,33 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 #: unlinked.
 _SUITE_DIR = Path(__file__).parent
 
+#: Names the file holding the per-run token that attributes the report to this
+#: suite. Staged by the harness, which holds the same name and is the authority.
+_NONCE_NAME = "run_nonce.txt"
+
+#: The token itself, which travels back out in the report so the harness can
+#: tell a session's own verdicts from anything else that reached the file.
+#:
+#: The report lands in the single mount the graded tree also runs in, so a
+#: delivery can write it. Session finish is the last thing in the run, after
+#: every test body, so a forgery written during one is simply overwritten; a
+#: process a body detached is not, and can clobber the file once pytest has
+#: exited. Carrying the token closes that, because a forger has no way to
+#: supply one and an unattributable report is refused rather than believed.
+#:
+#: Read at IMPORT, and the file is swept with the expectations at collection
+#: finish, so it is gone before the first test body and therefore before the
+#: delivered program has ever had a process. It is never passed on argv or in
+#: the environment, either of which a child reads back out of ``/proc``.
+#:
+#: Absent when the suite is run by hand rather than by the harness, which asks
+#: for no attribution and gets none.
+_RUN_NONCE = (
+    (_SUITE_DIR / _NONCE_NAME).read_text(encoding="utf-8").strip()
+    if (_SUITE_DIR / _NONCE_NAME).is_file()
+    else None
+)
+
 #: Per-node phase outcomes, accumulated across setup, call and teardown so a
 #: test that errored in a fixture is recorded as failed rather than as absent.
 _OUTCOMES: dict[str, bool] = {}
@@ -98,8 +130,10 @@ def surviving_expectations() -> tuple[Path, ...]:
     What stays is this file, which describes how the CLI is invoked (which the
     CLI learns from its own argv anyway), the empty ``__init__.py`` pytest
     re-reads while setting a test up, and ``data/``, the input a query runs
-    against: the work rather than the answer. Anything else is an expectation,
-    whether or not anybody anticipated its file type.
+    against: the work rather than the answer. Anything else goes, whether or not
+    anybody anticipated its file type, this run's own attribution token
+    included: it has to be unreadable by the tree for the same reason the
+    expectations do.
 
     Read by the harness after the run as well as by ``_run`` before each spawn,
     because "the tree cannot read its own oracle" is the sentence the whole
@@ -159,11 +193,13 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    """Write the per-node verdicts where the caller asked for them."""
+    """Write the per-node verdicts, under the token that attributes them here."""
     destination = session.config.getoption("--report-json")
     if destination is None:
         return
-    Path(str(destination)).write_text(json.dumps(_OUTCOMES), encoding="utf-8")
+    Path(str(destination)).write_text(
+        json.dumps({"nonce": _RUN_NONCE, "outcomes": _OUTCOMES}), encoding="utf-8"
+    )
 
 
 def _node_key(node_id: str) -> str:

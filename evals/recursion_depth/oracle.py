@@ -23,6 +23,7 @@ a 30-second per-test timeout undercuts this oracle's own per-invocation ceiling.
 
 import asyncio
 import json
+import secrets
 import shutil
 import tempfile
 from collections.abc import Mapping
@@ -60,6 +61,21 @@ _ORACLE_TIMEOUT_SECONDS: Final[float] = 900.0
 #: Where the oracle writes its per-node verdicts, inside the scratch root that
 #: is mounted into the grading container.
 _REPORT_NAME: Final[str] = "report.json"
+
+#: Where the per-run attribution token is staged for the suite to read.
+#:
+#: There is ONE mount, so there is no location the graded tree cannot write:
+#: the report is a sibling of the tree by necessity, and the sandbox contract
+#: offers a single workspace. What can be arranged is that a report the harness
+#: did not start is not BELIEVED, and that is what the token does. It is read at
+#: import and swept with the expectations before the first test body, so no
+#: delivered program ever coexists with the file; a forgery therefore carries no
+#: token, and an untokened report refuses the measurement instead of scoring it.
+_NONCE_NAME: Final[str] = "run_nonce.txt"
+
+#: Token width. Unguessable is the whole requirement, and this is the width
+#: :mod:`secrets` documents for one.
+_NONCE_BYTES: Final[int] = 16
 
 #: The pytest exit status meaning every collected test passed.
 _PYTEST_OK: Final[int] = 0
@@ -275,7 +291,12 @@ async def run_oracle(
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
-        # Taken here, on the host, before anything the tree wrote can run.
+        nonce = secrets.token_hex(_NONCE_BYTES)
+        (root / ORACLE_SUITE_DIR / _NONCE_NAME).write_text(nonce, encoding="utf-8")
+        # Taken here, on the host, before anything the tree wrote can run. The
+        # token is deliberately outside it: the fingerprint covers what has to
+        # survive the run unchanged, and the token has to be gone by the time
+        # the first test body runs.
         staged_before = await asyncio.to_thread(
             oracle_fingerprint, root / ORACLE_SUITE_DIR
         )
@@ -323,7 +344,11 @@ async def run_oracle(
         refuse_if_oracle_survived(root)
         await asyncio.to_thread(refuse_if_oracle_inputs_changed, root, staged_before)
         results = _read_report(
-            report_path, nodes=nodes, wanted=wanted, returncode=result.returncode
+            report_path,
+            nodes=nodes,
+            wanted=wanted,
+            returncode=result.returncode,
+            nonce=nonce,
         )
     logger.info(
         EVALS_RECURSION_ORACLE_RUN,
@@ -478,6 +503,7 @@ def _read_report(
     nodes: dict[str, str],
     wanted: tuple[str, ...],
     returncode: int,
+    nonce: str,
 ) -> dict[str, bool]:
     """Turn the per-node report into a per-requirement verdict.
 
@@ -492,11 +518,21 @@ def _read_report(
     requirement failing would render a harness fault as total scientific
     collapse at depth, which is the exact shape of the result being measured.
 
+    So is a report this run cannot be shown to have produced. It sits in the
+    single mount the graded tree also runs in, so nothing about its LOCATION
+    keeps a delivery out of it, and pytest writing last only means a forgery
+    has to outlive the session rather than that it cannot happen. What the tree
+    cannot do is name the token, which stopped being readable before its first
+    process existed, so an unattributable report is refused rather than scored:
+    the failure it would otherwise produce is verdicts that look exactly like
+    honest ones.
+
     Returns:
         The verdict per requested requirement.
 
     Raises:
-        OracleUnusableError: pytest wrote no report at all.
+        OracleUnusableError: pytest wrote no report at all, or wrote one this
+            run cannot be shown to have produced.
     """
     if not report_path.is_file():
         msg = (
@@ -521,7 +557,25 @@ def _read_report(
             f"mapping of node to outcome, so nothing can be scored from it"
         )
         raise OracleUnusableError(msg)
-    outcomes = {str(key): bool(value) for key, value in raw.items()}
+    # Compared in constant time because the comparison is against a value an
+    # attacker supplies, which is the situation the timing-safe form exists for.
+    if not secrets.compare_digest(str(raw.get("nonce")), nonce):
+        msg = (
+            f"the oracle's report at {report_path} does not carry this run's "
+            f"token, so it is not the one this session wrote; the graded tree "
+            f"shares the mount it sits in, and verdicts of unknown authorship "
+            f"read exactly like measured ones"
+        )
+        raise OracleUnusableError(msg)
+    recorded = raw.get("outcomes")
+    if not isinstance(recorded, Mapping):
+        msg = (
+            f"the oracle's report carries a {type(recorded).__name__} of "
+            f"outcomes rather than a mapping of node to outcome, so nothing "
+            f"can be scored from it"
+        )
+        raise OracleUnusableError(msg)
+    outcomes = {str(key): bool(value) for key, value in recorded.items()}
     return {key: outcomes.get(nodes[key], False) for key in wanted}
 
 
