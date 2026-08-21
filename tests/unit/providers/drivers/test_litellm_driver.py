@@ -922,7 +922,12 @@ class TestGetModelCapabilities:
             caps = await driver.get_model_capabilities("medium")
 
         assert caps.model_id == "test-model-001"
-        assert caps.max_output_tokens == 4096
+        # Derived from the model's own window rather than taken flat: a metadata
+        # source that publishes no cap (every model behind an
+        # openai-compatible endpoint) would otherwise leave a 200k-context
+        # model described as a 4096-token responder, which is simply false.
+        assert caps.max_output_tokens > 4096
+        assert caps.max_output_tokens <= caps.max_context_tokens
 
     @pytest.mark.parametrize(
         "bad_max_output",
@@ -940,7 +945,7 @@ class TestGetModelCapabilities:
         """A non-numeric ``max_output_tokens`` falls back instead of raising.
 
         The ``Any`` -> ``object`` retype means ``int(raw)`` can no longer be
-        called blindly; an unexpected type must degrade to the configured
+        called blindly; an unexpected type must degrade to the derived
         fallback rather than raising out of capability discovery.
         """
         driver = _make_driver()
@@ -952,7 +957,10 @@ class TestGetModelCapabilities:
         ):
             caps = await driver.get_model_capabilities("medium")
 
-        assert caps.max_output_tokens == 4096
+        # Unusable metadata degrades to the SAME answer as absent metadata,
+        # which is derived from the model's window, not a flat constant.
+        assert caps.max_output_tokens > 4096
+        assert caps.max_output_tokens <= caps.max_context_tokens
 
     @pytest.mark.parametrize(
         (
