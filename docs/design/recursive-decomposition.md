@@ -110,7 +110,7 @@ For each leaf that delivered, the specification requirements it claimed through
 `SubtaskDefinition.satisfies` are leaf work delivered. After the root merge the
 oracle runs over the whole specification, and:
 
-```
+```text
         | claimed by delivered leaves AND passing in the merged tree |
     y = ------------------------------------------------------------
         | claimed by delivered leaves |
