@@ -60,6 +60,7 @@ from evals.recursion_depth.manifest import (
     load_manifest,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
+from evals.recursion_depth.preflight import run_preflight
 from evals.recursion_depth.provenance import capture_provenance
 from evals.recursion_depth.runner import (
     SessionBudget,
@@ -261,9 +262,14 @@ async def _record(
     # A run-scoped scratch root so two concurrent ``--record`` invocations never
     # target the same workspace path: each unit's reset removes and re-copies a
     # whole tree, which is only race-free within one process.
+    company_config = load_config(args.company_config)
+    # Before the host, because everything it checks is a property of the
+    # configuration or the machine and none of it becomes truer once a scratch
+    # database, a gateway and a container are standing.
+    await run_preflight(manifest=manifest, company_config=company_config)
     run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
     host_config = RecordingHostConfig(
-        company_config=load_config(args.company_config),
+        company_config=company_config,
         scratch_dir=run_work_root / "host",
         label=_LABEL,
         bind_host=args.bind_host,

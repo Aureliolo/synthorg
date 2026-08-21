@@ -264,6 +264,25 @@ Repetitions are concentrated rather than uniform. Depths 1 and 2 are expected
 flat and are cheap; the transition ARIES reports sits at 3 to 4, which is where
 samples are worth paying for.
 
+### Preflight
+
+Provider coverage, a reachable Docker daemon, and a one-token completion
+against each declared pair are all settled before the host boots. Each is a
+property of the configuration or the machine, so none becomes truer once a
+scratch database, a gateway and a container are standing, and each is otherwise
+found by a unit failing mid-decomposition.
+
+The misdiagnosis is what makes this load-bearing rather than merely faster. An
+invalid credential surfaces as `decomposition.failed` and records the cell
+unavailable with a `DecompositionError` reason, which names the wrong subsystem
+entirely: the operator goes and reads the planner. Measured with a deliberately
+invalid key, it took 56 seconds to get there, because the credential error was
+retried by the driver, returned across the recorder's own gateway hop as a 502,
+and retried again on the far side. A bad key fails identically every time, so
+all of that is latency. The probe is also the warm-up, which matters because a
+cold model load would otherwise land entirely on whichever cell is recorded
+first, and that is depth 1: the flattest, cheapest point on the curve.
+
 ### Failures
 
 A missing provider, a dead gateway, a dead Docker daemon, or an oracle that
