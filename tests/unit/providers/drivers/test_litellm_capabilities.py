@@ -116,3 +116,43 @@ def test_image_generation_detected_by_litellm_mode(
         fallback_max_output_tokens=2048,
     )
     assert caps.supports_image_generation is True
+
+
+def test_large_context_model_gets_more_than_the_flat_fallback() -> None:
+    # A metadata source that publishes no output cap (every model behind an
+    # openai-compatible endpoint) must not leave a million-token model
+    # answering in the flat fallback: a reasoning model spends that budget on
+    # hidden reasoning and emits no tool call at all, which the loop reads as a
+    # finished session rather than a truncation.
+    caps = _ollama_caps(_config("big-context-001", max_context=1_048_576))
+
+    assert caps.max_output_tokens > 2048
+
+
+def test_derived_output_cap_is_bounded() -> None:
+    # Derived from the window, but not proportional to it without limit: one
+    # runaway turn must not be able to consume a whole session budget.
+    caps = _ollama_caps(_config("big-context-001", max_context=1_048_576))
+
+    assert caps.max_output_tokens == 65_536
+
+
+def test_configured_fallback_is_a_floor_never_a_ceiling() -> None:
+    # A small-context model derives less than the operator's configured value,
+    # and keeps the operator's value: this widens an allowance, never narrows
+    # one somebody deliberately set.
+    caps = _ollama_caps(_config("small-context-001", max_context=8192))
+
+    assert caps.max_output_tokens == 2048
+
+
+def test_declared_metadata_cap_still_wins() -> None:
+    # Deriving is the answer only when nothing published a cap. A model that
+    # declares one keeps it, so an operator's per-model figure is authoritative.
+    config = _config("declared-001", max_context=1_048_576).model_copy(
+        update={"metadata": ModelMetadata(max_output_tokens=1024)}
+    )
+
+    caps = _ollama_caps(config)
+
+    assert caps.max_output_tokens == 1024
