@@ -67,6 +67,8 @@ export const decompositionHandlers = [
           buildTask({ id: _SUBTASK_ID, parent_task_id: String(params['id']) }),
         ],
         dependency_edges: [],
+        depth: 0,
+        children: [],
       }),
     )
   }),

@@ -55,7 +55,7 @@ conditions, any of which makes it oversized:
 
 | Condition | Setting | Ships at |
 |---|---|---|
-| `len(expected_artifacts)` | `coordination.leaf_subtask_threshold` | 3 |
+| `len(expected_artifacts)` | `coordination.leaf_subtask_threshold` | 1 |
 | `len(acceptance_criteria)` | `coordination.subtask_max_criteria` | 5 |
 | `len(satisfies)` | fixed at 1 | 1 |
 

@@ -178,6 +178,8 @@ describe('TaskDecomposeResult', () => {
       },
       created_tasks: [],
       dependency_edges: [],
+      depth: 0,
+      children: [],
     }
   }
 
