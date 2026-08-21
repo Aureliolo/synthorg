@@ -40,6 +40,7 @@ from evals.recursion_depth.grading import (
     INI_NAME,
     ORACLE_SUITE_DIR,
     ORACLE_TREE_DIR,
+    RUNNER_PROBE_ARGS,
     SandboxFactory,
     oracle_fingerprint,
     oracle_leftovers,
@@ -279,6 +280,23 @@ async def run_oracle(
             oracle_fingerprint, root / ORACLE_SUITE_DIR
         )
         report_path = root / _REPORT_NAME
+        # Probed BEFORE the tree runs, because the answer stops the whole
+        # matrix and the graded run's own output is agent-authored. The
+        # returncode of the run itself cannot substitute either: an interpreter
+        # with no pytest exits 1, which is exactly what "tests ran and some
+        # failed" looks like, so every requirement would be recorded as failed
+        # and the sweep would publish a curve of zeros that reads as a
+        # catastrophic result rather than as a harness that never ran anything.
+        refuse_without_a_runner(
+            await build_sandbox(root).execute(
+                command=interpreter,
+                args=RUNNER_PROBE_ARGS,
+                cwd=root,
+                env_overrides=GRADED_ENV,
+                timeout=_ORACLE_TIMEOUT_SECONDS,
+                category=ToolCategory.CODE_EXECUTION.value,
+            )
+        )
         result = await build_sandbox(root).execute(
             command=interpreter,
             args=oracle_argv(nodes=nodes, wanted=wanted),
@@ -288,14 +306,6 @@ async def run_oracle(
             category=ToolCategory.CODE_EXECUTION.value,
         )
         report = tail_of(result.stdout + result.stderr)
-        # Before the returncode is read, because the returncode cannot tell
-        # this apart. An interpreter with no pytest exits 1, which is exactly
-        # what "tests ran and some failed" looks like, so every requirement
-        # would be recorded as failed and the sweep would publish a curve of
-        # zeros that reads as a catastrophic result rather than as a harness
-        # that never ran anything. A missing tool is systemic, so it stops the
-        # matrix instead of scoring one tree.
-        refuse_without_a_runner(result.stdout + result.stderr, report_path=report_path)
         if result.timed_out:
             msg = (
                 f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s "

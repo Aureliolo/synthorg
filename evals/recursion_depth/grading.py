@@ -65,6 +65,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_GRADED
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
@@ -251,6 +252,20 @@ class SandboxUnitGrader:
         Returns:
             Whether the suite ran clean, and a short report when it did not.
         """
+        # BEFORE the tree runs, so the systemic answer is evidence the tree
+        # cannot have touched.
+        refuse_without_a_runner(
+            await self.sandbox.execute(
+                command="python",
+                args=RUNNER_PROBE_ARGS,
+                cwd=project_dir,
+                env_overrides=GRADED_ENV,
+                timeout=OWN_TESTS_TIMEOUT_SECONDS,
+                category=ToolCategory.CODE_EXECUTION.value,
+                owner_id=NotBlankStr(str(project_dir)),
+                project_id=self.project_id,
+            )
+        )
         (project_dir / INI_NAME).write_text(INI_BODY, encoding="utf-8")
         report_path = project_dir / REPORT_NAME
         report_path.unlink(missing_ok=True)
@@ -282,7 +297,6 @@ class SandboxUnitGrader:
             owner_id=NotBlankStr(str(project_dir)),
             project_id=self.project_id,
         )
-        refuse_without_a_runner(result.stdout + result.stderr, report_path=report_path)
         passed, detail = read_verdict(report_path, timed_out=result.timed_out)
         logger.info(
             EVALS_RECURSION_GRADED,
@@ -296,11 +310,17 @@ class SandboxUnitGrader:
         return False, detail or tail_of(result.stdout + result.stderr)
 
 
-#: What the interpreter says when it has no test runner in it.
-_NO_RUNNER: Final[str] = "No module named pytest"
+#: What a PROBE runs to establish that the interpreter can run a suite at all.
+#:
+#: ``-I`` is the whole point. Isolated mode drops the working directory from
+#: ``sys.path``, ignores the environment and ignores the user site, so the
+#: answer describes the interpreter and nothing else. Without it the probe runs
+#: with the graded tree's own directory first on the path, where an
+#: agent-authored ``pytest.py`` decides the result.
+RUNNER_PROBE_ARGS: Final[tuple[str, ...]] = ("-I", "-c", "import pytest")
 
 
-def refuse_without_a_runner(output: str, *, report_path: Path) -> None:
+def refuse_without_a_runner(probe: SandboxResult) -> None:
     """Refuse to grade at all when the interpreter cannot run a suite.
 
     An interpreter without pytest fails identically to a delivery that wrote no
@@ -309,35 +329,33 @@ def refuse_without_a_runner(output: str, *, report_path: Path) -> None:
     look like a broken harness, it looks like a catastrophic but legitimate
     result, which is the shape of the finding the experiment exists to measure.
 
-    Checked on both graded paths, and on the oracle's path the returncode
-    cannot substitute for it: ``python -m pytest`` with no pytest exits 1,
-    which is the same status as "tests ran and some failed", so the oracle
-    would read a missing runner as every requirement failing.
+    It is asked of a PROBE run before any agent-authored code, never inferred
+    from the graded run's own output. The output route was tried twice and both
+    versions were reachable by the tree: the marker alone lets a delivered test
+    print the message and abort a matrix mid-sweep, and corroborating it with a
+    missing report only widens the recipe, since the tree can delete the report
+    too. Since the systemic decision stops the whole run, its evidence has to
+    come from somewhere the run cannot reach, and "before it started" is the
+    only such place.
 
-    The marker ALONE is not enough to refuse on, and this is the load-bearing
-    half: the captured output carries whatever the delivered tree printed, so a
-    delivery whose test asserts on that message would abort a matrix that had
-    already spent real money. A session that ran writes its report at session
-    end and an absent interpreter never reaches one, so the report's ABSENCE is
-    the corroborating evidence the tree cannot fake in that direction: writing
-    a report does not trigger the refusal, and it is the only thing a tree
-    could do here.
+    ANY non-zero status refuses, rather than a message match. The question is
+    whether this interpreter can import pytest, and every way of answering no
+    is the same answer.
 
     A missing tool is systemic rather than per cell, so this raises the error
     the matrix stops on rather than failing one unit.
 
     Args:
-        output: What the graded run printed.
-        report_path: Where the run was told to write its report.
+        probe: What :data:`RUNNER_PROBE_ARGS` returned.
 
     Raises:
-        EvalToolMissingError: The interpreter that ran has no pytest.
+        EvalToolMissingError: The interpreter cannot import pytest.
     """
-    if _NO_RUNNER not in output or report_path.is_file():
+    if probe.returncode == 0:
         return
     msg = (
-        "the interpreter that ran has no pytest, so nothing can be graded and "
-        "every unit would read as undelivered. In a recording that is the "
+        "the graded interpreter cannot import pytest, so nothing can be graded "
+        "and every unit would read as undelivered. In a recording that is the "
         "sandbox image, built from docker/sandbox/apko.yaml which declares "
         "py3.14-pytest; a published tag from before that was added does not "
         "carry it, so build the image from this tree and pass --sandbox-image. "
@@ -450,6 +468,7 @@ __all__ = [
     "ORACLE_TREE_DIR",
     "OWN_TESTS_TIMEOUT_SECONDS",
     "REPORT_NAME",
+    "RUNNER_PROBE_ARGS",
     "SandboxFactory",
     "SandboxUnitGrader",
     "UnitGrader",
