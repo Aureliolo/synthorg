@@ -460,6 +460,22 @@ class TestBuildRetryMessage:
         assert msg.content is not None
         assert error_text in msg.content
 
+    def test_a_refusal_is_not_described_as_a_parse_failure(self) -> None:
+        """A plan refused on its WORDING parsed perfectly.
+
+        Attempts are scarce and each is a self-correction, so telling the
+        author its output could not be parsed points the fix at the shape of
+        the arguments rather than the sentence that was actually rejected,
+        and spends an attempt changing nothing. Observed: a plan was refused
+        for an em-dash, which cost one of three attempts and failed the cell.
+        """
+        msg = build_retry_message(
+            "The plan's wording breaks a house style rule: Em-dash is banned"
+        )
+
+        assert msg.content is not None
+        assert "could not be parsed" not in msg.content
+
     def test_the_error_is_fenced(self) -> None:
         """A rejection returning to its producer is untrusted content.
 
