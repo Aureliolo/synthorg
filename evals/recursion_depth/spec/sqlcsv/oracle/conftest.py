@@ -18,14 +18,16 @@ be executable, and there is only one filesystem. Adjacency would hand the tree
 exactly what it must not have, since ``_run`` spawns it with ``cwd`` set to a
 sibling of this directory and one ``..`` would reach the expected outputs.
 
-So the assertions delete themselves. Every test module here, and this file, are
-unlinked once collection has imported them, before any test body runs and
-therefore before the delivered program is ever executed. What stays is ``data/``,
-which the CLI needs as input and which reveals nothing: the fixtures are what a
-query runs against, and turning them into the right answer is the work being
-graded. ``_run`` re-checks the deletion before every spawn rather than trusting
-it, and the harness refuses the whole measurement if any module survived, so
-this is enforced at two levels rather than assumed at none.
+So the assertions delete themselves, once collection has imported them and
+before any test body runs, therefore before the delivered program is ever
+executed. What survives is named as an ALLOWLIST rather than swept by pattern:
+this file, which holds invocation machinery the CLI learns from its own argv
+anyway; the empty ``__init__.py`` pytest re-reads while setting a test up; and
+``data/``, the fixtures a query runs against, where turning the input into the
+right answer is the work being graded. Everything else goes, source and compiled
+alike. ``_run`` re-checks before every spawn rather than trusting the sweep, and
+the harness re-checks after the run, so this is enforced at two levels rather
+than assumed at none.
 """
 
 import json
@@ -76,22 +78,48 @@ _SUITE_DIR = Path(__file__).parent
 _OUTCOMES: dict[str, bool] = {}
 
 
-def surviving_expectations() -> tuple[Path, ...]:
-    """Every test module still readable under this suite.
+#: What may still be here once the expectations are gone. An ALLOWLIST, because
+#: the version of this that swept ``test_*.py`` left ``__pycache__`` behind and
+#: the compiled modules carried the queries and their expected rows in
+#: ``co_consts``. Naming what stays does not require anticipating what a future
+#: tool drops in beside it.
+#:
+#: Declared here rather than imported from :mod:`evals.recursion_depth.grading`
+#: because this file is staged into a container on its own, where ``evals`` does
+#: not exist. The harness holds the same list and is the authority: if the two
+#: ever disagree, its check refuses the measurement rather than passing it.
+_KEEP_FILES = frozenset({"conftest.py", "__init__.py"})
+_KEEP_DIRS = frozenset({"data"})
 
-    The test modules are where the expected outputs live, and they are the only
-    thing here a delivery must not read: this file describes how the CLI is
-    invoked, which the CLI learns from its own argv anyway, and ``data/`` is the
-    input a query runs against, which is the work rather than the answer.
+
+def surviving_expectations() -> tuple[Path, ...]:
+    """Everything still readable under this suite that has no business being.
+
+    What stays is this file, which describes how the CLI is invoked (which the
+    CLI learns from its own argv anyway), the empty ``__init__.py`` pytest
+    re-reads while setting a test up, and ``data/``, the input a query runs
+    against: the work rather than the answer. Anything else is an expectation,
+    whether or not anybody anticipated its file type.
 
     Read by the harness after the run as well as by ``_run`` before each spawn,
     because "the tree cannot read its own oracle" is the sentence the whole
     measurement rests on and an unenforced claim is how it stops being true.
 
     Returns:
-        The surviving test modules, empty once collection has cleaned up.
+        The paths that should already have gone, empty once collection has
+        cleaned up.
     """
-    return tuple(sorted(_SUITE_DIR.rglob("test_*.py")))
+    survivors: list[Path] = []
+    for path in sorted(_SUITE_DIR.rglob("*")):
+        if path.is_dir():
+            continue
+        relative = path.relative_to(_SUITE_DIR)
+        if relative.parts[0] in _KEEP_DIRS:
+            continue
+        if len(relative.parts) == 1 and relative.name in _KEEP_FILES:
+            continue
+        survivors.append(path)
+    return tuple(survivors)
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
@@ -103,10 +131,9 @@ def pytest_collection_finish(session: pytest.Session) -> None:
     the delivered program, so the program never coexists with the expectations
     it is judged against.
 
-    Only ``test_*.py`` goes. ``__init__.py`` stays because pytest re-reads it
-    when setting a test up and the run dies without it, and it is empty;
-    ``conftest.py`` stays for the same reason and because it holds machinery
-    rather than answers.
+    Everything outside the keep list goes, source and compiled alike, so a
+    ``.pyc`` holding the same assertions in ``co_consts`` is not a survivor that
+    happened to fall outside a pattern.
 
     The cost is that a failure's traceback can no longer quote its own source.
     That is worth paying: the harness reads pass or fail per node and nothing

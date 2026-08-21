@@ -240,8 +240,25 @@ Two consequences worth stating, because they are easy to conflate:
 
 The oracle's container is built per grading from a scratch directory holding a
 copy of the tree beside a copy of the oracle, and destroyed after. That is what
-holds the oracle out: it exists only somewhere no agent runs, rather than being
-kept from agents by nothing having copied it.
+holds the oracle out from the workspaces: it exists only somewhere no agent runs,
+rather than being kept from agents by nothing having copied it.
+
+Inside that container the two are unavoidably adjacent. pytest has to read the
+assertions and the delivered program has to be executable, and there is one
+filesystem, so a delivery spawned with its working directory in `tree/` is one
+`..` from `oracle/`. The suite therefore deletes its own expectations once
+collection has imported them. That happens before any test body runs, which is
+before the delivered program is ever spawned.
+
+What may remain is an allowlist rather than a set of patterns to sweep:
+`conftest.py`, `__init__.py` and `data/`. That distinction is load-bearing. The
+first version removed `test_*.py` and left `__pycache__` behind, where the same
+queries and expected rows were readable out of `co_consts`, and the test written
+against the same predicate agreed that the directory was clean. Nothing compiled
+is staged now, the sweep is keyed on what stays, the suite re-checks before every
+spawn and the harness re-checks afterwards and refuses the measurement outright.
+The adjacency is enforced, not prevented by construction, and it is worth saying
+so in those words.
 
 ## Related
 

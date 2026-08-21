@@ -39,12 +39,18 @@ before closing it. The held-out oracle has to read its assertions and the
 delivered program has to be executable, and in a container there is one
 filesystem, so the two are staged as siblings and one ``..`` from the program's
 working directory would reach the expected outputs. That is why the oracle
-suite deletes its own source once collection has imported it, before any test
-body runs and therefore before the delivered program is ever spawned: see
-``spec/sqlcsv/oracle/conftest.py``. The deletion is checked before every spawn
-and again by the harness afterwards, which refuses the measurement outright if
-any module survived. The claim that a tree cannot read the oracle grading it is
-therefore enforced twice rather than asserted once.
+suite deletes its own expectations once collection has imported them, before any
+test body runs and therefore before the delivered program is ever spawned: see
+``spec/sqlcsv/oracle/conftest.py``.
+
+What may remain is an ALLOWLIST (:data:`ORACLE_KEEP_FILES`,
+:data:`ORACLE_KEEP_DIRS`) rather than a set of patterns to remove, because the
+version that swept ``test_*.py`` left ``__pycache__`` in place and the compiled
+modules carried the same queries and expected rows in ``co_consts``. The
+adjacency is therefore not prevented by construction, it is enforced: nothing
+compiled is staged, the sweep removes anything outside the allowlist, the suite
+re-checks before every spawn and the harness re-checks after the run and refuses
+the measurement outright.
 """
 
 from dataclasses import dataclass
@@ -88,6 +94,12 @@ INI_BODY: Final[str] = "[pytest]\naddopts =\n"
 #: directory is the tree: inherited, it would put a ``sitecustomize.py`` the
 #: agent wrote on the import path, where it runs before any interpreter flag is
 #: parsed. ``PYTHONNOUSERSITE`` closes the same door through the user site.
+#:
+#: ``PYTHONDONTWRITEBYTECODE`` is confinement, not tidiness. pytest's assertion
+#: rewriter gates its own cache write on ``sys.dont_write_bytecode``, so without
+#: this the oracle's expectations would be recompiled beside the graded tree
+#: DURING the run, after the sweep that removed them and before the program that
+#: must not read them is spawned.
 GRADED_ENV: Final[dict[str, str]] = {
     "PYTHONPATH": "",
     "PYTHONNOUSERSITE": "1",
@@ -103,6 +115,50 @@ ORACLE_TREE_DIR: Final[str] = "tree"
 #: ever mounted from: the oracle stays invisible because it only exists
 #: somewhere no agent runs, rather than because nothing happened to copy it.
 ORACLE_SUITE_DIR: Final[str] = "oracle"
+
+#: Everything the staged oracle may still hold once its expectations are gone,
+#: as an ALLOWLIST rather than a list of things to remove.
+#:
+#: A denylist is one file extension away from being wrong, and was: the first
+#: version of this swept ``test_*.py`` and left ``__pycache__`` behind, so the
+#: compiled expectations sat beside the graded tree with the queries and their
+#: expected rows readable out of ``co_consts``. Nobody had thought of the
+#: extension; an allowlist does not require anybody to.
+#:
+#: ``conftest.py`` and ``__init__.py`` stay because pytest re-reads both while
+#: setting a test up and the run dies without them, and neither holds an
+#: expected output: the conftest is invocation machinery the CLI already learns
+#: from its own argv. ``data/`` stays because it is the input a query runs
+#: against, and turning that into the right answer is the work being graded.
+ORACLE_KEEP_FILES: Final[frozenset[str]] = frozenset({"conftest.py", "__init__.py"})
+
+#: Directories under the staged oracle that survive whole.
+ORACLE_KEEP_DIRS: Final[frozenset[str]] = frozenset({"data"})
+
+
+def oracle_leftovers(suite_dir: Path) -> tuple[Path, ...]:
+    """Every staged file the oracle should not still be holding.
+
+    The allowlist above decides, so a file type nobody anticipated is refused
+    by default rather than admitted by omission.
+
+    Args:
+        suite_dir: The staged oracle directory.
+
+    Returns:
+        The offending paths, relative to *suite_dir*, empty when clean.
+    """
+    offenders: list[Path] = []
+    for path in sorted(suite_dir.rglob("*")):
+        if path.is_dir():
+            continue
+        relative = path.relative_to(suite_dir)
+        if relative.parts[0] in ORACLE_KEEP_DIRS:
+            continue
+        if len(relative.parts) == 1 and relative.name in ORACLE_KEEP_FILES:
+            continue
+        offenders.append(relative)
+    return tuple(offenders)
 
 
 def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
@@ -354,6 +410,8 @@ __all__ = [
     "GRADED_ENV",
     "INI_BODY",
     "INI_NAME",
+    "ORACLE_KEEP_DIRS",
+    "ORACLE_KEEP_FILES",
     "ORACLE_SUITE_DIR",
     "ORACLE_TREE_DIR",
     "OWN_TESTS_TIMEOUT_SECONDS",
@@ -361,6 +419,7 @@ __all__ = [
     "SandboxFactory",
     "SandboxUnitGrader",
     "UnitGrader",
+    "oracle_leftovers",
     "read_verdict",
     "tail_of",
 ]

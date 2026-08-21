@@ -40,6 +40,7 @@ from evals.recursion_depth.grading import (
     ORACLE_TREE_DIR,
     SandboxFactory,
     drop_escaping_links,
+    oracle_leftovers,
     tail_of,
 )
 from synthorg.observability import get_logger
@@ -63,10 +64,10 @@ _PYTEST_OK: Final[int] = 0
 #: fault of the invocation rather than a verdict on the tree.
 _PYTEST_TESTS_FAILED: Final[int] = 1
 
-#: How much of a failed invocation's stderr rides on the refusal. Enough to
-#: name the import or collection error, bounded because agent-authored code can
-#: produce a traceback of any size.
-_DIAGNOSTIC_CHARS: Final[int] = 2000
+#: What is never copied into the staged oracle in the first place. The deletion
+#: and the refusal are both allowlists and would catch these anyway; not staging
+#: them means the window between staging and collection does not exist either.
+_NEVER_STAGED: Final[tuple[str, ...]] = ("__pycache__", "*.pyc", "*.pyo")
 
 
 @dataclass(frozen=True)
@@ -223,23 +224,27 @@ async def run_oracle(
 def refuse_if_oracle_survived(root: Path) -> None:
     """Refuse a measurement taken while the tree could read its expectations.
 
-    The suite unlinks its test modules once collection has imported them, so the
+    The suite unlinks its expectations once collection has imported them, so the
     delivered program never runs beside the assertions it is judged against.
     Checked here as well because that deletion happens inside code the graded
     tree shares a filesystem with, and an oracle that quietly stopped deleting
     itself would keep producing verdicts that looked exactly like honest ones.
 
+    What counts as an expectation is decided by
+    :func:`evals.recursion_depth.grading.oracle_leftovers`, which names what may
+    REMAIN rather than what must go. Asking the question the other way round is
+    how the compiled modules survived a check written to catch exactly them.
+
     Args:
         root: The scratch directory the grading ran in.
 
     Raises:
-        OracleUnusableError: Some of the suite's expectations outlived
-            collection.
+        OracleUnusableError: Something outlived collection that should not have.
     """
-    survivors = sorted((root / ORACLE_SUITE_DIR).rglob("test_*.py"))
+    survivors = oracle_leftovers(root / ORACLE_SUITE_DIR)
     if not survivors:
         return
-    names = [str(path.relative_to(root)) for path in survivors]
+    names = [str(Path(ORACLE_SUITE_DIR) / path) for path in survivors]
     msg = (
         f"the oracle's source outlived its own collection ({names}), so the "
         f"graded tree ran beside the expectations it is judged against and this "
@@ -273,7 +278,16 @@ def stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
     # tree resolves inside the same mount and `tree/x -> ../oracle` would hand
     # the delivery the suite grading it, with no host access needed.
     drop_escaping_links(staged_tree, anchor=tree)
-    shutil.copytree(oracle_dir, root / ORACLE_SUITE_DIR)
+    # The suite's own sources are staged because collection has to import them,
+    # and they are unlinked before the first test body runs. Compiled copies are
+    # not staged at all: nothing needs them, they are gitignored so a reviewer
+    # never sees them, and the interpreter that produced them left the queries
+    # and their expected rows readable in `co_consts`.
+    shutil.copytree(
+        oracle_dir,
+        root / ORACLE_SUITE_DIR,
+        ignore=shutil.ignore_patterns(*_NEVER_STAGED),
+    )
     (root / INI_NAME).write_text(INI_BODY, encoding="utf-8")
 
 

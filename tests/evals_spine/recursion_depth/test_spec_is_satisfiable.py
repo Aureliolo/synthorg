@@ -15,13 +15,18 @@ passes everything.
 """
 
 import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
 import yaml
 
 from evals.errors import OracleUnusableError
-from evals.recursion_depth.grading import GRADED_ENV, ORACLE_SUITE_DIR
+from evals.recursion_depth.grading import (
+    GRADED_ENV,
+    ORACLE_SUITE_DIR,
+    oracle_leftovers,
+)
 from evals.recursion_depth.oracle import (
     OracleOutcome,
     load_index,
@@ -62,6 +67,13 @@ def _local_sandbox(root: Path) -> SubprocessSandbox:
     is satisfiable at all the hardest check in the suite to run.
     ``SubprocessSandbox`` still filters the environment through its own
     allowlist, so nothing here inherits the host's.
+
+    It follows that the deletion test below validates the DELETION, not the
+    container: it proves the expectations are gone from the staged directory
+    before any test body runs, which is the property that matters and is the same
+    under either backend. That the graded run is confined to a container is a
+    separate claim, and it rests on :mod:`evals.harness.binding` rather than on
+    anything observed here.
 
     Returns:
         A sandbox rooted at *root*.
@@ -126,12 +138,18 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
     # are gone by the time it runs. Inspected on the staged directory directly:
     # the run's own report is length-bounded, so a marker printed by a delivery
     # is not a channel this can rely on.
+    #
+    # Asserted through the ALLOWLIST rather than by globbing the shapes anyone
+    # thought of. The version of this that checked `test_*.py` passed while the
+    # compiled modules sat next to the graded tree carrying the same queries and
+    # expected rows, so a test written to the implementation's own predicate is
+    # exactly as blind as the implementation.
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     oracle_dir = _SPEC_DIR / str(load_index(_SPEC_DIR)["oracle_dir"])
     stage(scratch, tree=_REFERENCE_TREE, oracle_dir=oracle_dir)
     staged = scratch / ORACLE_SUITE_DIR
-    assert sorted(p.name for p in staged.rglob("test_*.py")) != []
+    assert oracle_leftovers(staged) != ()
 
     result = asyncio.run(
         _local_sandbox(scratch).execute(
@@ -146,21 +164,69 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout
-    assert sorted(p.name for p in staged.rglob("test_*.py")) == []
+    assert oracle_leftovers(staged) == ()
     # What stays is what pytest re-reads during setup, and neither holds an
     # expected output.
     assert (staged / "conftest.py").is_file()
     assert (staged / "__init__.py").is_file()
 
 
-def test_a_surviving_expectation_refuses_the_measurement(tmp_path: Path) -> None:
+def test_compiled_expectations_are_never_staged(tmp_path: Path) -> None:
+    # The staged copy is taken from a directory the recorder's own machine has
+    # been running the suite in, so it holds a `__pycache__` that is gitignored
+    # and therefore invisible to everyone reviewing the copy. Planted here
+    # rather than relied upon, because whether one exists depends on what the
+    # machine happened to do before the sweep ran.
+    source = tmp_path / "oracle_src"
+    shutil.copytree(_SPEC_DIR / str(load_index(_SPEC_DIR)["oracle_dir"]), source)
+    cache = source / "__pycache__"
+    cache.mkdir(exist_ok=True)
+    (cache / "test_planted.cpython-314.pyc").write_bytes(b"expected rows live here")
+    empty_tree = tmp_path / "tree"
+    empty_tree.mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    stage(scratch, tree=empty_tree, oracle_dir=source)
+
+    assert list((scratch / ORACLE_SUITE_DIR).rglob("*.pyc")) == []
+
+
+@pytest.mark.parametrize(
+    "leftover",
+    [
+        "test_leftover.py",
+        # Refused on the same footing as source: it holds the same assertions,
+        # and `marshal` reads them back out without needing the interpreter.
+        "__pycache__/test_leftover.cpython-314.pyc",
+    ],
+)
+def test_a_surviving_expectation_refuses_the_measurement(
+    tmp_path: Path, leftover: str
+) -> None:
     # The harness's own half of the guard: if the suite ever stops deleting
     # itself, verdicts would keep looking exactly like the honest ones.
-    (tmp_path / ORACLE_SUITE_DIR).mkdir()
-    (tmp_path / ORACLE_SUITE_DIR / "test_leftover.py").write_text("", encoding="utf-8")
+    survivor = tmp_path / ORACLE_SUITE_DIR / leftover
+    survivor.parent.mkdir(parents=True)
+    survivor.write_bytes(b"")
 
     with pytest.raises(OracleUnusableError, match="outlived its own collection"):
         refuse_if_oracle_survived(tmp_path)
+
+
+def test_the_allowlist_admits_only_what_setup_and_the_query_need(
+    tmp_path: Path,
+) -> None:
+    # The complement of the refusal: a sweep that removed everything would also
+    # pass `oracle_leftovers`, and the run would then die during setup instead
+    # of grading. Both keepers and the fixture data have to survive it.
+    suite = tmp_path / ORACLE_SUITE_DIR
+    (suite / "data" / "shop").mkdir(parents=True)
+    (suite / "conftest.py").write_text("", encoding="utf-8")
+    (suite / "__init__.py").write_text("", encoding="utf-8")
+    (suite / "data" / "shop" / "orders.csv").write_text("id\n1\n", encoding="utf-8")
+
+    assert oracle_leftovers(suite) == ()
 
 
 async def test_an_empty_tree_fails_every_requirement(tmp_path: Path) -> None:
