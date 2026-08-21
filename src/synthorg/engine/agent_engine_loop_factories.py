@@ -7,20 +7,28 @@ question with its own dependencies, and separating it keeps each module inside
 its size budget.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.core.task import Task
 from synthorg.engine._agent_loop_selection import resolve_loop
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.compaction.protocol import CompactionCallback
-from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.loop_protocol import ExecutionLoop
-from synthorg.engine.loop_selector import AutoLoopConfig, build_execution_loop
-from synthorg.engine.openhands.config import (
-    OpenHandsLoopConfig,
-    OpenHandsLoopDeps,
-)
-from synthorg.engine.quality.classifier import StepQualityClassifier
-from synthorg.engine.stagnation.protocol import StagnationDetector
+from synthorg.engine.loop_selector import build_execution_loop
 from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    # Cycle breakers, mirroring the sibling factories module: importing these
+    # at runtime closes a loop back through the engine, and a cycle degrades an
+    # unrelated return type to ``Any`` rather than failing on itself.
+    from synthorg.engine.compaction.protocol import CompactionCallback
+    from synthorg.engine.intervention.inbox import SteeringInbox
+    from synthorg.engine.loop_selector import AutoLoopConfig
+    from synthorg.engine.openhands.config import (
+        OpenHandsLoopConfig,
+        OpenHandsLoopDeps,
+    )
+    from synthorg.engine.quality.classifier import StepQualityClassifier
+    from synthorg.engine.stagnation.protocol import StagnationDetector
 
 logger = get_logger(__name__)
 
