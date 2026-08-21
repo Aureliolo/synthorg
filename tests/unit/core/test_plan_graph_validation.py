@@ -184,6 +184,37 @@ class TestUndecidableCriterion:
 
         assert describe_undecidable_criterion(unit=checks, others=others) is None
 
+    def test_a_producer_that_already_waits_is_not_offered_as_a_dependency(
+        self,
+    ) -> None:
+        """Offering an edge that closes a cycle spends a retry on nothing.
+
+        The tests wait for the code, so the code cannot wait for the tests.
+        Rewording the criterion is the only exit, and the message says so
+        rather than naming a dependency the cycle check refuses next.
+        """
+        code = _Unit(
+            id="code",
+            title="Board module",
+            expected_artifacts=("board.py",),
+            acceptance_criteria=("test_board.py passes",),
+        )
+        others = [
+            code,
+            _Unit(
+                id="tests",
+                title="Board tests",
+                dependencies=("code",),
+                expected_artifacts=("test_board.py",),
+            ),
+        ]
+
+        detail = describe_undecidable_criterion(unit=code, others=others)
+
+        assert detail is not None
+        assert "Declare the dependency" not in detail
+        assert "already waits for it" in detail
+
     def test_a_criterion_naming_a_later_item_artefact_is_rejected(self) -> None:
         server = _Unit(
             id="server",

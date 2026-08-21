@@ -535,13 +535,19 @@ def describe_undecidable_criterion(
             filename = _artifact_filename(artifact)
             if filename is None or filename in delivered or filename not in named:
                 continue
+            remedy = (
+                "Judge this item on what it produces itself; it cannot wait "
+                f"for {other.id!r}, which already waits for it"
+                if unit.id in _dependency_closure(other, by_id)
+                else "Declare the dependency, or judge this item on what it "
+                "produces itself"
+            )
             return (
                 f"{unit.id!r} has an acceptance criterion naming {filename!r}, "
                 f"which {other.id!r} ({other.title!r}) produces and {unit.id!r} "
                 "does not wait for, so the criterion is unjudgeable when this "
-                "item is reviewed and stays unjudgeable through every rework. "
-                "Declare the dependency, or judge this item on what it "
-                "produces itself"
+                f"item is reviewed and stays unjudgeable through every rework. "
+                f"{remedy}"
             )
     return None
 
