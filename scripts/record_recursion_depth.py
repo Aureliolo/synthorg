@@ -18,11 +18,13 @@ run produces a curve, so a published number is always something that actually
 happened; the harness is regression-tested offline by
 ``tests/evals_spine/recursion_depth``, which needs no spend.
 
-A sweep executes agent-authored code on the machine running it: the held-out
-oracle grades a delivered CLI by running it, and a unit's own tests are run
-against its own tree. That is inherent to grading a program by running it, and
-it is why this is an operator-run experiment against a specification the
-operator wrote rather than anything the product does.
+A sweep executes agent-authored code, and never on the machine running it. The
+agents run in the sandbox image the CLI verified, and so does everything that
+grades what they produced: each unit's own suite, and the held-out oracle.
+Grading a tree means importing whatever the agent wrote into it, so the process
+that grades is a process the agent authored; on the host that would have had the
+network, this recorder's own credentials and the Docker socket. See
+``evals/recursion_depth/grading.py``.
 
 Every session dispatches through the LLM gateway, and the recorder hosts that
 gateway itself: the gateway verifies only bearers its own in-memory signer
@@ -165,10 +167,17 @@ async def _record(
         sandbox_image=args.sandbox_image,
         sidecar_image=args.sidecar_image,
     )
+    binder: HarnessBinder | None = None
     try:
         async with RecordingGatewayHost(host_config) as host:
+            binder = HarnessBinder(host=host)
             context = await _build_context(
-                host, args=args, manifest=manifest, spec=spec, work_root=run_work_root
+                host,
+                binder=binder,
+                args=args,
+                manifest=manifest,
+                spec=spec,
+                work_root=run_work_root,
             )
             _log_record_start(args, manifest=manifest, host=host)
             provenance = await asyncio.to_thread(
@@ -185,6 +194,14 @@ async def _record(
             # cannot discard a sweep that already cost real money to produce.
             paths = await asyncio.to_thread(write_report, report, args.out_dir)
     finally:
+        # Grading and the oracle open their own containers, and both run OUTSIDE
+        # the session context whose exit drains the agent's. Left to that hook
+        # alone, each grading container waits for the next unit's teardown and
+        # the last ones are never reclaimed at all, which is the leak
+        # release_tool_sandboxes exists to prevent, reintroduced by a second
+        # producer.
+        if binder is not None:
+            await binder.release_tool_sandboxes()
         await _reclaim_workspaces(run_work_root, keep=args.keep_workspaces)
     print("report written: " + ", ".join(str(path) for path in paths))
     if not report.measured_cells:
@@ -199,6 +216,7 @@ async def _record(
 async def _build_context(
     host: RecordingGatewayHost,
     *,
+    binder: HarnessBinder,
     args: argparse.Namespace,
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
@@ -233,7 +251,9 @@ async def _build_context(
         reviewer=manifest.reviewer,
         capability=capability,
     )
-    deps = _build_deps(host, stall_idle_seconds=args.stall_notify_seconds)
+    deps = _build_deps(
+        host, binder=binder, stall_idle_seconds=args.stall_notify_seconds
+    )
     limits = SessionLimits(
         max_turns=manifest.unit_max_turns, cost_ceiling=manifest.unit_cost_ceiling
     )
@@ -258,17 +278,27 @@ async def _build_context(
 def _build_deps(
     host: RecordingGatewayHost,
     *,
+    binder: HarnessBinder,
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
 
+    The binder is passed in rather than built here so the recorder's own
+    teardown can drain what grading and the oracle opened: both run outside the
+    session context that drains the agent's sandboxes, so nothing else awaits
+    their containers.
+
     Returns:
         The wired :class:`SweepDeps`.
     """
-    binder = HarnessBinder(host=host)
     return SweepDeps(
         build_provider=binder.build_provider,
         build_tool_registry=binder.build_tool_registry,
+        # Built per grading, never hoisted. A shared grader would share one
+        # lifecycle strategy and therefore one warm container across units,
+        # and unit N's graded run would see whatever unit N-1 left outside the
+        # mount. owner_id pins the separation regardless, so that stays true
+        # under a lifecycle this does not choose.
         build_grader=lambda workspace: SandboxUnitGrader(
             sandbox=binder.build_sandbox(workspace.root),
             project_id=NotBlankStr(EVAL_TASK_PROJECT),

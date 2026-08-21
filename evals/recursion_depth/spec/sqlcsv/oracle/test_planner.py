@@ -6,7 +6,7 @@ different fault from one that could not be read at all, and a delivery that
 collapses them tells an operator nothing about which end to fix.
 """
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import SqlRunner
+from .conftest import SqlRunner
 
 _BAD_INPUT = 2
 _NOT_FOUND = 3

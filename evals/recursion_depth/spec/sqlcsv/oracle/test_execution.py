@@ -3,7 +3,7 @@
 
 import pytest
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import JsonRunner
+from .conftest import JsonRunner
 
 #: Every id the orders fixture holds, so a length assertion names the data.
 _ORDER_IDS = (1, 2, 3, 4, 5, 6, 7, 8)

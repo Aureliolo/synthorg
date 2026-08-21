@@ -1,7 +1,7 @@
 # module-kind: tests
 """R10-R14: which statement shapes the grammar accepts."""
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import JsonRunner
+from .conftest import JsonRunner
 
 #: The header of the orders fixture, in declaration order.
 _ORDERS_COLUMNS = ("id", "customer_id", "item", "qty", "price", "note")

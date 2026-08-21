@@ -29,6 +29,7 @@ from typing import Final
 
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
+from evals.recursion_depth.grading import drop_escaping_links
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
@@ -44,7 +45,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
-    EVALS_RECURSION_CHILD_LINK_DROPPED,
     EVALS_RECURSION_MERGE_ATTEMPTED,
 )
 
@@ -216,42 +216,7 @@ def mount_children(workspace: CellWorkspace, pieces: tuple[MergePiece, ...]) -> 
             ignore_dangling_symlinks=True,
             dirs_exist_ok=True,
         )
-        _drop_escaping_links(destination, anchor=piece.tree)
-
-
-def _drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
-    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
-
-    Judged against the piece's ORIGINAL location rather than the copy, because
-    a relative link was authored against that tree and is what the agent meant
-    it to reach. A link that stays inside its own delivery is legitimate and
-    kept; anything else named a place the merge has no business reading.
-
-    Args:
-        mounted: The copied tree to sweep.
-        anchor: The piece's own tree, the only region a link may resolve into.
-    """
-    resolved_anchor = anchor.resolve()
-    for path in mounted.rglob("*"):
-        if not path.is_symlink():
-            continue
-        target = (path.parent / path.readlink()).resolve()
-        if not _within(target, resolved_anchor):
-            logger.warning(
-                EVALS_RECURSION_CHILD_LINK_DROPPED,
-                link=str(path.relative_to(mounted)),
-                slug=mounted.name,
-            )
-            path.unlink()
-
-
-def _within(candidate: Path, root: Path) -> bool:
-    """Whether *candidate* is *root* or sits beneath it.
-
-    Returns:
-        ``True`` when the path is contained.
-    """
-    return candidate == root or root in candidate.parents
+        drop_escaping_links(destination, anchor=piece.tree)
 
 
 def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:

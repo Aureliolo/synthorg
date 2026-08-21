@@ -11,6 +11,21 @@ The tree arrives through ``--tree``. Nothing here is copied into a workspace: an
 agent that could read these files would build to them rather than to the
 requirement, which is the failure mode that made an exposed 222-test oracle
 score near-perfect over a library that was dead outside the tested paths.
+
+Grading happens in a container, which puts this suite and the tree in one mount
+by necessity: pytest has to read the assertions and the delivered program has to
+be executable, and there is only one filesystem. Adjacency would hand the tree
+exactly what it must not have, since ``_run`` spawns it with ``cwd`` set to a
+sibling of this directory and one ``..`` would reach the expected outputs.
+
+So the assertions delete themselves. Every test module here, and this file, are
+unlinked once collection has imported them, before any test body runs and
+therefore before the delivered program is ever executed. What stays is ``data/``,
+which the CLI needs as input and which reveals nothing: the fixtures are what a
+query runs against, and turning them into the right answer is the work being
+graded. ``_run`` re-checks the deletion before every spawn rather than trusting
+it, and the harness refuses the whole measurement if any module survived, so
+this is enforced at two levels rather than assumed at none.
 """
 
 import json
@@ -51,9 +66,55 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+#: This suite's own directory, which stops existing as Python source partway
+#: through the session. Captured at import because ``__file__`` is about to be
+#: unlinked.
+_SUITE_DIR = Path(__file__).parent
+
 #: Per-node phase outcomes, accumulated across setup, call and teardown so a
 #: test that errored in a fixture is recorded as failed rather than as absent.
 _OUTCOMES: dict[str, bool] = {}
+
+
+def surviving_expectations() -> tuple[Path, ...]:
+    """Every test module still readable under this suite.
+
+    The test modules are where the expected outputs live, and they are the only
+    thing here a delivery must not read: this file describes how the CLI is
+    invoked, which the CLI learns from its own argv anyway, and ``data/`` is the
+    input a query runs against, which is the work rather than the answer.
+
+    Read by the harness after the run as well as by ``_run`` before each spawn,
+    because "the tree cannot read its own oracle" is the sentence the whole
+    measurement rests on and an unenforced claim is how it stops being true.
+
+    Returns:
+        The surviving test modules, empty once collection has cleaned up.
+    """
+    return tuple(sorted(_SUITE_DIR.rglob("test_*.py")))
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Unlink this suite's expectations once every module has been imported.
+
+    Collection is where pytest reads and imports the test modules, so by the
+    time this fires the assertions are objects in memory and the files are dead
+    weight. Test BODIES run after it, and a body is the only thing that spawns
+    the delivered program, so the program never coexists with the expectations
+    it is judged against.
+
+    Only ``test_*.py`` goes. ``__init__.py`` stays because pytest re-reads it
+    when setting a test up and the run dies without it, and it is empty;
+    ``conftest.py`` stays for the same reason and because it holds machinery
+    rather than answers.
+
+    The cost is that a failure's traceback can no longer quote its own source.
+    That is worth paying: the harness reads pass or fail per node and nothing
+    else, and the alternative is handing a tree the answers.
+    """
+    del session
+    for module in surviving_expectations():
+        module.unlink(missing_ok=True)
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -176,6 +237,18 @@ def run_sql(tree: Path) -> SqlRunner:
         stdin: str | None = None,
         extra: tuple[str, ...] = (),
     ) -> CliResult:
+        # Checked before every spawn, not once at session start: this is the
+        # moment the delivered program gets a process, and if the assertions
+        # are still on disk it gets them too. Cheap enough to pay per call, and
+        # the only place that can fail CLOSED rather than after the fact.
+        surviving = surviving_expectations()
+        if surviving:
+            msg = (
+                f"the oracle's expectations are still readable at "
+                f"{[path.name for path in surviving]}, so the tree about to be "
+                f"run can read what it is graded against"
+            )
+            raise RuntimeError(msg)
         argv = [sys.executable, "-m", "sqlcsv"]
         if data:
             argv += ["--data", str(DATA_DIR / data)]

@@ -27,11 +27,24 @@ exit code is that the ORDINARY failures stop reading as passes: ``os._exit(0)``
 in a ``conftest.py``, a suite that collected nothing, a
 ``pytest_collection_modifyitems`` that deselected everything. Those are what a
 model actually does under pressure, and each of them now fails rather than
-grading clean. A deliberate forgery is still possible and is bounded by two
-things outside this module: the survival denominator only ever grows from it,
-so forging makes the measured result WORSE rather than better, and the held-out
-oracle, which the tree never sees and cannot write, is what decides the
-numerator.
+grading clean.
+
+A deliberate forgery of the unit's OWN suite is still possible, and it is
+bounded: a forged pass adds that unit's claims to the survival DENOMINATOR and
+nothing to the numerator, so forging drives the measured result down rather than
+up. There is no incentive gradient toward it and no way to profit from it.
+
+The numerator is a different question, and the containerisation created it
+before closing it. The held-out oracle has to read its assertions and the
+delivered program has to be executable, and in a container there is one
+filesystem, so the two are staged as siblings and one ``..`` from the program's
+working directory would reach the expected outputs. That is why the oracle
+suite deletes its own source once collection has imported it, before any test
+body runs and therefore before the delivered program is ever spawned: see
+``spec/sqlcsv/oracle/conftest.py``. The deletion is checked before every spawn
+and again by the harness afterwards, which refuses the measurement outright if
+any module survived. The claim that a tree cannot read the oracle grading it is
+therefore enforced twice rather than asserted once.
 """
 
 from dataclasses import dataclass
@@ -41,7 +54,10 @@ from xml.etree import ElementTree as ET
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_GRADED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_CHILD_LINK_DROPPED,
+    EVALS_RECURSION_GRADED,
+)
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
@@ -86,6 +102,38 @@ ORACLE_TREE_DIR: Final[str] = "tree"
 #: ever mounted from: the oracle stays invisible because it only exists
 #: somewhere no agent runs, rather than because nothing happened to copy it.
 ORACLE_SUITE_DIR: Final[str] = "oracle"
+
+
+def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
+    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
+
+    Judged against the tree's ORIGINAL location rather than the copy, because a
+    relative link was authored against that tree and is what the agent meant it
+    to reach. A link that stays inside its own delivery is legitimate and kept;
+    anything else named a place the copy has no business reading.
+
+    Shared by every place an agent-authored tree is copied somewhere it will be
+    read: the merge's ``.children/`` mount and the oracle's staging directory.
+    Two copies of this would be one copy away from disagreeing, and the staging
+    one was written without it.
+
+    Args:
+        mounted: The copied tree to sweep.
+        anchor: The tree's own original location, the only region a link may
+            resolve into.
+    """
+    resolved_anchor = anchor.resolve()
+    for path in mounted.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = (path.parent / path.readlink()).resolve()
+        if target != resolved_anchor and resolved_anchor not in target.parents:
+            logger.warning(
+                EVALS_RECURSION_CHILD_LINK_DROPPED,
+                link=str(path.relative_to(mounted)),
+                mounted_as=mounted.name,
+            )
+            path.unlink()
 
 
 @runtime_checkable
@@ -148,6 +196,15 @@ class SandboxUnitGrader:
             env_overrides=GRADED_ENV,
             timeout=OWN_TESTS_TIMEOUT_SECONDS,
             category=ToolCategory.CODE_EXECUTION.value,
+            # Keyed on the tree, so a reusing lifecycle can never hand one
+            # unit's graded run the container another unit's ran in. Today the
+            # wiring builds a sandbox per grading and the separation holds
+            # without this; that is a property of the wiring, and hoisting the
+            # factory out for the obvious reason (why build a container per
+            # unit?) would silently let unit N read whatever unit N-1 left
+            # outside the mount. Stated here so the isolation belongs to the
+            # grader rather than to how it happens to be constructed.
+            owner_id=NotBlankStr(str(project_dir)),
             project_id=self.project_id,
         )
         passed, detail = read_verdict(report_path, timed_out=result.timed_out)

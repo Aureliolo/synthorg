@@ -1,7 +1,7 @@
 # module-kind: tests
 """R01-R05: what a CSV file means once it is read."""
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import JsonRunner
+from .conftest import JsonRunner
 
 
 def test_r01_header_row_names_the_columns(json_rows: JsonRunner) -> None:

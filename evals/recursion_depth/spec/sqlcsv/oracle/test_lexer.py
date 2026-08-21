@@ -1,7 +1,7 @@
 # module-kind: tests
 """R06-R09: what the tokeniser accepts and what it refuses."""
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import JsonRunner, SqlRunner
+from .conftest import JsonRunner, SqlRunner
 
 #: The exit code the spec assigns to input that is not usable.
 _BAD_INPUT = 2

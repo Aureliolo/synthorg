@@ -39,6 +39,7 @@ from evals.recursion_depth.grading import (
     ORACLE_SUITE_DIR,
     ORACLE_TREE_DIR,
     SandboxFactory,
+    drop_escaping_links,
     tail_of,
 )
 from synthorg.observability import get_logger
@@ -133,7 +134,7 @@ def requirement_ids(spec_dir: Path) -> tuple[str, ...]:
     return tuple(str(entry["id"]) for entry in entries)
 
 
-def _node_ids(spec_dir: Path) -> dict[str, str]:
+def node_ids(spec_dir: Path) -> dict[str, str]:
     """Map each requirement id to the oracle node that decides it.
 
     Args:
@@ -174,18 +175,18 @@ async def run_oracle(
         OracleUnusableError: pytest could not run the oracle at all, so there
             is no verdict to record.
     """
-    nodes = _node_ids(spec_dir)
+    nodes = node_ids(spec_dir)
     wanted = tuple(key for key in nodes if only is None or key in only)
     if not wanted:
         return OracleOutcome(results={}, report="")
     oracle_dir = spec_dir / str(load_index(spec_dir)["oracle_dir"])
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
-        await asyncio.to_thread(_stage, root, tree=tree, oracle_dir=oracle_dir)
+        await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
         report_path = root / _REPORT_NAME
         result = await build_sandbox(root).execute(
             command="python",
-            args=_argv(nodes=nodes, wanted=wanted),
+            args=oracle_argv(nodes=nodes, wanted=wanted),
             cwd=root,
             env_overrides=GRADED_ENV,
             timeout=_ORACLE_TIMEOUT_SECONDS,
@@ -206,6 +207,7 @@ async def run_oracle(
                 f"(pytest exited {result.returncode}):\n{report}"
             )
             raise OracleUnusableError(msg)
+        refuse_if_oracle_survived(root)
         results = _read_report(
             report_path, nodes=nodes, wanted=wanted, returncode=result.returncode
         )
@@ -218,7 +220,35 @@ async def run_oracle(
     return OracleOutcome(results=results, report=report)
 
 
-def _stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
+def refuse_if_oracle_survived(root: Path) -> None:
+    """Refuse a measurement taken while the tree could read its expectations.
+
+    The suite unlinks its test modules once collection has imported them, so the
+    delivered program never runs beside the assertions it is judged against.
+    Checked here as well because that deletion happens inside code the graded
+    tree shares a filesystem with, and an oracle that quietly stopped deleting
+    itself would keep producing verdicts that looked exactly like honest ones.
+
+    Args:
+        root: The scratch directory the grading ran in.
+
+    Raises:
+        OracleUnusableError: Some of the suite's expectations outlived
+            collection.
+    """
+    survivors = sorted((root / ORACLE_SUITE_DIR).rglob("test_*.py"))
+    if not survivors:
+        return
+    names = [str(path.relative_to(root)) for path in survivors]
+    msg = (
+        f"the oracle's source outlived its own collection ({names}), so the "
+        f"graded tree ran beside the expectations it is judged against and this "
+        f"measurement cannot be trusted"
+    )
+    raise OracleUnusableError(msg)
+
+
+def stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
     """Lay the graded tree and the oracle out side by side for the container.
 
     The tree is copied WITHOUT following symlinks, for the reason
@@ -232,17 +262,22 @@ def _stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
         tree: The produced tree to grade.
         oracle_dir: The held-out suite.
     """
+    staged_tree = root / ORACLE_TREE_DIR
     shutil.copytree(
         tree,
-        root / ORACLE_TREE_DIR,
+        staged_tree,
         symlinks=True,
         ignore_dangling_symlinks=True,
     )
+    # The oracle is staged BESIDE the tree, so a relative link escaping the
+    # tree resolves inside the same mount and `tree/x -> ../oracle` would hand
+    # the delivery the suite grading it, with no host access needed.
+    drop_escaping_links(staged_tree, anchor=tree)
     shutil.copytree(oracle_dir, root / ORACLE_SUITE_DIR)
     (root / INI_NAME).write_text(INI_BODY, encoding="utf-8")
 
 
-def _argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str, ...]:
+def oracle_argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str, ...]:
     """Build the argv the oracle container runs.
 
     Paths are relative to the mounted scratch root, so nothing about the host
@@ -317,6 +352,10 @@ def _read_report(
 __all__ = [
     "OracleOutcome",
     "load_index",
+    "node_ids",
+    "oracle_argv",
+    "refuse_if_oracle_survived",
     "requirement_ids",
     "run_oracle",
+    "stage",
 ]

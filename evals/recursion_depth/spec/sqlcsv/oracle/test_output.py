@@ -5,7 +5,7 @@ import csv
 import io
 import json
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import SqlRunner
+from .conftest import SqlRunner
 
 
 def _cells(line: str) -> list[str]:

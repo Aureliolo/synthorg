@@ -3,7 +3,7 @@
 
 import json
 
-from evals.recursion_depth.spec.sqlcsv.oracle.conftest import SqlRunner
+from .conftest import SqlRunner
 
 _BAD_INPUT = 2
 
