@@ -62,6 +62,7 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "merge_attempts": 3,
         "unit_max_turns": 40,
         "unit_cost_ceiling": 2.0,
+        "unit_token_ceiling": 600000,
         "max_sessions": 100,
     }
     payload.update(overrides)

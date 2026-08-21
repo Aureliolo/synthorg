@@ -345,7 +345,7 @@ class TestTheMergeBrief:
             ),
             criteria=(NotBlankStr("It runs end to end"),),
             execution_prefix="x",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0),
+            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
             attempts=2,
         )
 
@@ -513,7 +513,7 @@ class TestTheMergeLoop:
             pieces=(),
             criteria=(NotBlankStr("It runs"),),
             execution_prefix="cell-merge",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0),
+            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
             attempts=attempts,
         )
 
@@ -890,6 +890,7 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "merge_attempts": 2,
         "unit_max_turns": 4,
         "unit_cost_ceiling": 1.0,
+        "unit_token_ceiling": 1000,
         "max_sessions": 100,
     }
     payload.update(overrides)

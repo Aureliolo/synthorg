@@ -171,7 +171,14 @@ class RecursionDepthManifest(BaseModel):
             spending more rather than by catching anything.
         unit_max_turns: The turn ceiling one unit's session gets.
         unit_cost_ceiling: What one unit's session may spend before the
-            gateway's own hard kill stops it.
+            gateway's own hard kill stops it. Money only, so it is half a
+            bound: see ``unit_token_ceiling``.
+        unit_token_ceiling: The same bound counted in tokens, and the only one
+            of the two that binds everywhere. A flat-rate connection
+            attributes 0.0 to every call, so the cost ceiling cannot fire
+            there and a runaway unit would be held by nothing but its turn
+            cap. Required rather than optional, because the connection a
+            manifest will be recorded against is not knowable here.
         max_sessions: The whole sweep's session ceiling. A depth sweep's
             session count is a product of branching factors nobody can predict
             from the manifest alone, and the cost of being wrong is spend.
@@ -189,6 +196,7 @@ class RecursionDepthManifest(BaseModel):
     merge_attempts: int = Field(ge=1, le=10)
     unit_max_turns: int = Field(ge=1, le=200)
     unit_cost_ceiling: float = Field(gt=0.0)
+    unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
 
     @model_validator(mode="after")

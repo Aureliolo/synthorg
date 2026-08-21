@@ -190,6 +190,7 @@ class SweepContext:
         return SessionLimits(
             max_turns=self.manifest.unit_max_turns,
             cost_ceiling=self.manifest.unit_cost_ceiling,
+            token_ceiling=self.manifest.unit_token_ceiling,
         )
 
     def reviewer_for(self, arm: Arm) -> MergeReviewer:

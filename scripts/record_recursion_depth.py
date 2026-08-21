@@ -156,6 +156,19 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
             f" if every session spends its whole {manifest.unit_cost_ceiling:.2f}"
             " ceiling"
         ),
+        # The money figure above is the one that reads as the bill and the one
+        # that silently stops meaning anything: a flat-rate connection
+        # attributes 0.0 to every call, so its cost ceiling never fires and
+        # the worst case in money is 0.00 no matter how long the sweep runs.
+        # Tokens are counted on every provider, so this line is the bound an
+        # operator can rely on without first knowing how they are billed.
+        (
+            f"  token bound   : "
+            f"{manifest.max_sessions * manifest.unit_token_ceiling:,} if every "
+            f"session spends its whole {manifest.unit_token_ceiling:,}, and this "
+            "is the bound that holds on a flat-rate connection, where the "
+            "money ceiling above can never fire"
+        ),
     ]
     caveat = manifest.caveat()
     if caveat is not None:
@@ -280,7 +293,9 @@ async def _build_context(
         host, binder=binder, stall_idle_seconds=args.stall_notify_seconds
     )
     limits = SessionLimits(
-        max_turns=manifest.unit_max_turns, cost_ceiling=manifest.unit_cost_ceiling
+        max_turns=manifest.unit_max_turns,
+        cost_ceiling=manifest.unit_cost_ceiling,
+        token_ceiling=manifest.unit_token_ceiling,
     )
     return SweepContext(
         manifest=manifest,

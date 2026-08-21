@@ -54,6 +54,19 @@ class TestPlanMode:
 
         assert "the SAME in both arms" in plan
 
+    def test_it_states_a_token_bound_the_money_bound_cannot_give(self) -> None:
+        # A flat-rate connection attributes 0.0 to every call, so the money
+        # ceiling never fires there and the money worst case reads 0.00
+        # however long the sweep runs. Tokens are counted on every provider,
+        # so the plan states a bound that holds without the reader first
+        # knowing how they are billed.
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        assert f"{manifest.max_sessions * manifest.unit_token_ceiling:,}" in plan
+        assert "flat-rate" in plan
+
     def test_the_shipped_manifest_needs_no_independence_caveat(self) -> None:
         plan = describe_plan(load_manifest(_MANIFEST), _spec())
 

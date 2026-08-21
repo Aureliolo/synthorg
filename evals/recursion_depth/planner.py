@@ -181,7 +181,8 @@ class AgentSessionPlanner:
             cost_tracker=tracker,
             agent_session_max_turns=self.limits.max_turns,
             agent_session_ceilings=SessionCeilings.of(
-                cost_ceiling=self.limits.cost_ceiling, token_ceiling=None
+                cost_ceiling=self.limits.cost_ceiling,
+                token_ceiling=self.limits.token_ceiling,
             ),
         )
         return DecompositionService(

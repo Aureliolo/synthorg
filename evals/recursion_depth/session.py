@@ -73,10 +73,16 @@ class SessionLimits:
         max_turns: The turn ceiling the loop is given.
         cost_ceiling: What the bearer authorises before the gateway kills the
             run server-side.
+        token_ceiling: The same bound counted in tokens. Load-bearing rather
+            than belt-and-braces: a flat-rate connection attributes 0.0 to
+            every call, so ``cost_ceiling`` can never fire there and a unit
+            would run to its turn cap with no spend bound at all. Tokens are
+            counted on every provider.
     """
 
     max_turns: int
     cost_ceiling: float
+    token_ceiling: int
 
 
 @dataclass(frozen=True)

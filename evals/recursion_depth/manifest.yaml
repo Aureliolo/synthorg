@@ -57,6 +57,10 @@ independence: cross_family
 merge_attempts: 3
 unit_max_turns: 40
 unit_cost_ceiling: 2.0
+# Roughly what `unit_cost_ceiling` buys at mid-tier per-token pricing, so the
+# two bounds mean about the same thing wherever both can fire. Where only one
+# can, this is the one: a flat-rate connection attributes 0.0 to every call.
+unit_token_ceiling: 600000
 # Aborts rather than overruns. A depth sweep's session count is a product of
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.
