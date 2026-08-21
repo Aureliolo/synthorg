@@ -37,6 +37,25 @@ _BUILDER_ROLE: Final[str] = "Developer"
 _DEPARTMENT: Final[str] = "Engineering"
 _HIRING_DATE: Final[date] = date(2026, 1, 1)
 
+#: Per-RESPONSE output ceiling for every agent this sweep staffs.
+#:
+#: Declared because ``ModelConfig.max_tokens`` defaults to 4096, and that is
+#: the number that reaches the provider: it is the agent's own binding, not the
+#: provider capability record, which nothing reads when building a request.
+#:
+#: 4096 is fatal for a reasoning model, which spends the per-response budget on
+#: hidden reasoning BEFORE it can emit content or a tool call. A measured run
+#: had seven of eight agent sessions burn exactly 4096 completion tokens, emit
+#: no tool call at all, and be recorded as finished work, because a turn with
+#: no tool call is how a session says it is done. Every model these sweeps run
+#: against reports the `thinking` capability, so this is the normal case rather
+#: than an edge one.
+#:
+#: A cap costs nothing unused: probed against the endpoint, a request capped at
+#: 131072 returned 27 completion tokens. It permits a response to finish, it
+#: does not lengthen one, so a truncated turn is spend that buys nothing.
+_RESPONSE_TOKEN_CEILING: Final[int] = 65_536
+
 #: How many builders the roster carries. One per concurrent unit is not needed
 #: (units run one at a time), but a plan that assigns work to two owners has to
 #: find two, and a single-builder roster would silently collapse every plan to
@@ -99,6 +118,7 @@ def _identity(*, slug: str, name: str, role: str, pair: ModelPair) -> AgentIdent
             provider=pair.provider,
             model_id=pair.model_id,
             capability=pair.capability,
+            max_tokens=_RESPONSE_TOKEN_CEILING,
         ),
         hiring_date=_HIRING_DATE,
     )
