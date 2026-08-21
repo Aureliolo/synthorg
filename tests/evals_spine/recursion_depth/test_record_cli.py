@@ -4,10 +4,21 @@
 from pathlib import Path
 
 import pytest
-from scripts.record_recursion_depth import describe_plan, main, narrow
+from scripts.record_recursion_depth import (
+    check_declared_families,
+    describe_plan,
+    main,
+    narrow,
+)
 
+from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.manifest import Independence, load_manifest
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
+from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.config.schema import RootConfig
+from synthorg.core.types import NotBlankStr
+from synthorg.providers.enums import AuthType
 
 pytestmark = pytest.mark.unit
 
@@ -24,6 +35,74 @@ def _spec() -> SpecBrief:
     """
     manifest = load_manifest(_MANIFEST)
     return load_spec_brief(Path(manifest.spec_dir))
+
+
+def _config(*, executor_family: str | None, reviewer_family: str | None) -> RootConfig:
+    """Build a company config aliasing the manifest's two placeholder pairs.
+
+    Args:
+        executor_family: Family the config claims for the executor's model.
+        reviewer_family: Family the config claims for the reviewer's model.
+
+    Returns:
+        The config.
+    """
+
+    def _model(alias: str, family: str | None) -> ProviderModelConfig:
+        return ProviderModelConfig(
+            id=NotBlankStr(f"real-{alias}"),
+            alias=NotBlankStr(alias),
+            metadata=ModelMetadata(family=family),
+        )
+
+    return RootConfig(
+        company_name=NotBlankStr("Recursion Depth Sweep"),
+        providers={
+            "example-provider": ProviderConfig(
+                auth_type=AuthType.CUSTOM_HEADER,
+                custom_header_name=NotBlankStr("Authorization"),
+                custom_header_value=NotBlankStr("Bearer test-key"),
+                models=(
+                    _model("example-capable-001", executor_family),
+                    _model("example-expert-001", reviewer_family),
+                ),
+            )
+        },
+    )
+
+
+class TestDeclaredFamiliesMatchWhatAnswers:
+    """The manifest claims decorrelation; the config picks who actually runs."""
+
+    def test_a_config_putting_both_pairs_in_one_family_is_refused(self) -> None:
+        # The loophole the manifest alone cannot close: every check there
+        # passes on the declared strings, and the models that answer are both
+        # from one organisation.
+        with pytest.raises(
+            RecursionDepthJudgeNotIndependentError, match="nobody achieved"
+        ):
+            check_declared_families(
+                load_manifest(_MANIFEST),
+                _config(executor_family="qwen-coder", reviewer_family="qwen-coder"),
+            )
+
+    def test_real_families_that_differ_satisfy_the_placeholder_claim(self) -> None:
+        # The names never match the manifest's vendor-agnostic placeholders and
+        # are not required to. What is checked is that the two pairs differ,
+        # which is the whole content of a cross_family claim.
+        check_declared_families(
+            load_manifest(_MANIFEST),
+            _config(executor_family="qwen-coder", reviewer_family="deepseek-v"),
+        )
+
+    def test_a_config_declaring_no_family_leaves_the_manifest_the_only_claim(
+        self,
+    ) -> None:
+        # Not an error: the config saying nothing is not the config disagreeing.
+        check_declared_families(
+            load_manifest(_MANIFEST),
+            _config(executor_family=None, reviewer_family=None),
+        )
 
 
 class TestPlanMode:

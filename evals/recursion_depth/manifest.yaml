@@ -38,6 +38,10 @@ executor:
   model_id: example-capable-001
   capability: capable
   family: example-family-a
+# The declared `family` travels with the placeholder, so the pair a company
+# config aliases these to must actually belong to the family named here: the
+# cross_family claim below is checked against these strings, and nothing
+# downstream re-derives them from the model that answered.
 # Declared, not looked up: the capability registry grades a pair from a
 # catalogue that knows nothing about a placeholder id, and selection refuses an
 # ungraded pair outright, so an undeclared reviewer would leave every review

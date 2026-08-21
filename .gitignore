@@ -42,6 +42,14 @@ data/codebase_map.json
 # is one `git add -A` away from being committed.
 .recursion-depth/
 
+# An eval company config carries a live provider credential in the clear: the
+# recorder's throwaway host seeds no connection catalog, so the only auth type
+# that reaches a real provider is the one with the key embedded in the file.
+# Ignored by pattern rather than by name so a second one cannot be created
+# outside the rule.
+*.providers.yaml
+providers.local.yaml
+
 # What `make build-sandbox-image` leaves behind: apko writes an SBOM per
 # architecture beside its output tarball, and the tarball itself is 100MB.
 # Both land in the target's own output mount, which it removes on success;

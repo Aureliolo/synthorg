@@ -42,6 +42,7 @@ from uuid import uuid4
 
 from evals.errors import (
     RecursionDepthCapabilityUnresolvedError,
+    RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
 )
 from evals.harness.binding import HarnessBinder
@@ -71,6 +72,7 @@ from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
+from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
@@ -106,6 +108,71 @@ def _pair(pair: ModelPair) -> str:
     if pair.family is not None:
         detail = f"{detail}, {pair.family}"
     return f"{pair.label} ({detail})"
+
+
+def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
+    """The family the model actually answering for *pair* belongs to.
+
+    Returns:
+        The company config's family for the model this pair aliases to, or
+        ``None`` when the provider, the model or its family is not declared
+        there.
+    """
+    provider = config.providers.get(pair.provider)
+    if provider is None:
+        return None
+    for model in provider.models:
+        if pair.model_id in {model.id, model.alias}:
+            return model.metadata.family
+    return None
+
+
+def check_declared_families(
+    manifest: RecursionDepthManifest, config: RootConfig
+) -> None:
+    """Hold the manifest's independence claim to the models that answer it.
+
+    The manifest declares a family per pair and the company config declares one
+    per model, which is two owners for one fact. The manifest's copy is what
+    the claim is checked against, and the config's copy names what runs, so a
+    config aliasing both placeholders onto one organisation satisfies every
+    check in the manifest and still produces a correlated judge.
+
+    What is compared is the RELATION, never the names: the committed manifest
+    ships deliberately vendor-agnostic placeholders, so its family strings
+    cannot equal a real organisation's and testing for that would refuse every
+    real recording. The claim those placeholders make is that the two pairs
+    differ, and that survives aliasing intact.
+
+    A config declaring no family for either model is not a disagreement, it is
+    the config not saying, which leaves the manifest the only claim.
+
+    Args:
+        manifest: The recording matrix, carrying the declared families.
+        config: The company config the pairs resolve against.
+
+    Raises:
+        RecursionDepthJudgeNotIndependentError: The manifest and the config
+            disagree about whether the two pairs share a family.
+    """
+    if manifest.executor.family is None or manifest.reviewer.family is None:
+        return
+    claimed_distinct = manifest.executor.family != manifest.reviewer.family
+    executor = _resolved_family(manifest.executor, config)
+    reviewer = _resolved_family(manifest.reviewer, config)
+    if executor is None or reviewer is None:
+        return
+    if (executor != reviewer) == claimed_distinct:
+        return
+    relation = "differ" if claimed_distinct else "match"
+    msg = (
+        f"the manifest claims the two pairs' families {relation}, but the "
+        f"company config resolves {manifest.executor.label} to family "
+        f"{executor!r} and {manifest.reviewer.label} to family {reviewer!r}; "
+        f"the independence claim is checked against the manifest, so this "
+        f"would record a decorrelation nobody achieved"
+    )
+    raise RecursionDepthJudgeNotIndependentError(msg)
 
 
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
@@ -559,6 +626,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     manifest = narrow(load_manifest(args.manifest), args.depths)
     spec = load_spec_brief(Path(manifest.spec_dir))
+    # Checked on the plan path too, not only before a record. The plan path is
+    # what an operator runs first and is where they decide to spend, so a
+    # contradiction found only under --record is found one decision too late.
+    check_declared_families(manifest, load_config(args.company_config))
 
     if not args.record:
         # The plan path boots nothing, opens no port and starts no container.
