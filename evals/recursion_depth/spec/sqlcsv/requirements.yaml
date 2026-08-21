@@ -43,7 +43,7 @@ requirements:
   - id: R06
     area: lexer
     title: Keywords are case-insensitive
-    oracle: test_lexer.py::test_r06_keywords_are_case_insensitive
+    oracle: test_lexer.py::test_r06_keyword_case_folds_but_identifier_case_does_not
   - id: R07
     area: lexer
     title: Single-quoted string literals, with doubled quotes

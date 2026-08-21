@@ -68,9 +68,11 @@ _PROXY_ROUTING_KEY: Final[str] = "litellm_proxy"
 #: OpenAI-compatible HTTP surface.
 _GATEWAY_DRIVER: Final[str] = "litellm"
 
-#: What a recorded run's sandbox may reach. The gateway and the MCP endpoint
-#: are dialled through the container-host alias; everything else is off, so a
-#: run cannot fetch its way to an answer the measurement did not intend.
+#: What a recorded run's sandbox may reach: nothing at all. The gateway and the
+#: MCP endpoint are dialled from THIS process rather than from inside the
+#: container, so the shell tool needs no route to either, and with no interface
+#: attached a run cannot fetch its way to an answer the measurement did not
+#: intend.
 _SANDBOX_NETWORK: Final[Literal["none", "bridge", "host"]] = "none"
 
 

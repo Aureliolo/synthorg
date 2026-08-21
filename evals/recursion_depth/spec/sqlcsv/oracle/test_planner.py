@@ -25,6 +25,7 @@ def test_r16_unknown_column_exits_three(run_sql: SqlRunner) -> None:
 
     assert result.exit_code == _NOT_FOUND
     assert result.stdout == ""
+    assert result.stderr.strip() != ""
 
 
 def test_r17_malformed_query_exits_two(run_sql: SqlRunner) -> None:
@@ -35,6 +36,7 @@ def test_r17_malformed_query_exits_two(run_sql: SqlRunner) -> None:
 
     assert result.exit_code == _BAD_INPUT
     assert result.stdout == ""
+    assert result.stderr.strip() != ""
 
 
 def test_r18_bare_column_beside_aggregate_is_rejected(run_sql: SqlRunner) -> None:
@@ -42,3 +44,4 @@ def test_r18_bare_column_beside_aggregate_is_rejected(run_sql: SqlRunner) -> Non
 
     assert result.exit_code == _BAD_INPUT
     assert result.stdout == ""
+    assert result.stderr.strip() != ""

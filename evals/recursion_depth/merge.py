@@ -27,9 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from evals.harness.workspace import CellWorkspace
+from evals.harness.workspace import CellWorkspace, drop_escaping_links
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
-from evals.recursion_depth.grading import drop_escaping_links
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,

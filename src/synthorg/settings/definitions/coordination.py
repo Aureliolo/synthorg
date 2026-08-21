@@ -454,6 +454,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_tree_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Whole-tree ceiling for one decomposition call, across every level"
+            " it recurses into. Distinct from"
+            " 'decomposition_timeout_seconds', which bounds a single planning"
+            " session: sessions scale with the node count rather than the"
+            " depth, so no multiple of the per-session number bounds a tree."
+            " Two of the four callers are request handlers, and this is what"
+            " keeps a deep recursion from occupying one for as long as the"
+            " tree keeps branching."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="recursive_decomposition_enabled",
         type=SettingType.BOOLEAN,
         default="false",

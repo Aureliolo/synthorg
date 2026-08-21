@@ -41,7 +41,7 @@ class SubtaskStatusRollup(BaseModel):
         suspended: Count of SUSPENDED subtasks.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     parent_task_id: NotBlankStr = Field(description="Parent task ID")
     total: int = Field(ge=0, description="Total subtasks")

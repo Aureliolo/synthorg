@@ -18,7 +18,7 @@ chart could otherwise mislead.
 """
 
 from datetime import datetime
-from typing import Final, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -29,17 +29,25 @@ from synthorg.core.types import NotBlankStr
 RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 1
 
 
+#: What a recorded unit may be. Declared as a closed set rather than free text
+#: because two consumers filter on it and neither can tell a typo from a unit
+#: that genuinely is not what they wanted: ``CellRecord.leaves`` would drop a
+#: misspelled leaf out of the survival denominator, and ``_gate_table`` in
+#: :mod:`evals.recursion_depth.emit` would drop it out of the gate table, both
+#: silently. A closed set moves that to load time.
+type UnitKind = Literal["leaf", "merge", "plan"]
+
 #: A unit an agent built end to end, its own tests included.
-LEAF: Final[str] = "leaf"
+LEAF: Final[Literal["leaf"]] = "leaf"
 
 #: A unit that assembled the units below it.
-MERGE: Final[str] = "merge"
+MERGE: Final[Literal["merge"]] = "merge"
 
 #: The planning sessions that wrote the tree. Not work and not an assembly, so
 #: it claims nothing and delivers nothing, but a deep sweep pays for one of
 #: these per node and a cost panel that omitted them would understate the deep
 #: end exactly where the question is.
-PLAN: Final[str] = "plan"
+PLAN: Final[Literal["plan"]] = "plan"
 
 #: What the harness measures under, stated wherever the number is. Held beside
 #: the field they populate rather than beside the renderer, because the writer
@@ -66,7 +74,7 @@ class UnitRecord(BaseModel):
     Attributes:
         unit_id: The plan subtask id, which is also the workspace key.
         title: What the planner called it.
-        kind: :data:`LEAF` or :data:`MERGE`.
+        kind: :data:`LEAF`, :data:`MERGE` or :data:`PLAN`.
         depth: Its level in the decomposition tree, ``0`` at the root.
         claimed: The spec requirement ids the planner said this unit advances.
         delivered: Whether it produced its declared artifacts and its own tests
@@ -107,7 +115,7 @@ class UnitRecord(BaseModel):
 
     unit_id: NotBlankStr
     title: NotBlankStr
-    kind: NotBlankStr
+    kind: UnitKind
     depth: int = Field(ge=0)
     claimed: tuple[NotBlankStr, ...] = ()
     delivered: bool = False
@@ -333,7 +341,10 @@ class Provenance(BaseModel):
         Raises:
             ValueError: The timestamp carries no timezone.
         """
-        if value.tzinfo is None:
+        # Both halves: a tzinfo whose utcoffset() answers None is attached but
+        # carries no offset, so it passes an is-not-None check and still cannot
+        # be ordered against another timestamp, which is the whole point.
+        if value.tzinfo is None or value.utcoffset() is None:
             msg = "generated_at must be timezone-aware"
             raise ValueError(msg)
         return value
@@ -431,5 +442,6 @@ __all__ = [
     "DepthPoint",
     "Provenance",
     "RecursionDepthReport",
+    "UnitKind",
     "UnitRecord",
 ]

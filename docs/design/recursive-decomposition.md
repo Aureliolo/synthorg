@@ -63,6 +63,30 @@ The third is the interesting one and it is not configurable: a unit advancing
 several of the objective's own success criteria is several units, whatever its
 artifact count says.
 
+The signal is only asked about WORK items. A `DECISION` item is a choice among
+its declared options rather than work to divide, and the policy reads only the
+artifact, criterion and claim counts, so one declaring several acceptance
+criteria would read as oversized and open a child planning session that plans
+work nobody asked for.
+
+## Two ceilings, not one
+
+A decomposition is bounded twice, by separate settings, because the two things
+being bounded are different:
+
+| Setting | Bounds | Ships at |
+|---|---|---|
+| `coordination.decomposition_timeout_seconds` | one planning session | 600s |
+| `coordination.decomposition_tree_timeout_seconds` | one whole `decompose_task` call | 3600s |
+
+The second is not a multiple of the first and cannot be derived from the depth
+cap: sessions scale with the NODE COUNT, which is the branching factor to the
+power of the depth, so any multiple of the per-session number is a guess that
+kills a legitimate deep tree and discards every level it had already paid for.
+Two of the four callers are request handlers, and the outer ceiling is what
+keeps a deep recursion from occupying one for as long as the tree keeps
+branching.
+
 No published system has a signal like this at all, so it is deliberately a
 small measurable rule rather than an elaborate one.
 Its limitation is stated rather than hidden: the assessment is made from the
@@ -141,6 +165,14 @@ harness supplies the engine the reviewer runs on and nothing else: selection,
 the exclusion of the executor, the narrowed review session, the fail-closed
 escalation and the verdict's attribution all stay the product's. A rejection
 feeds its findings into a repair attempt.
+
+What the harness does change is which tree the reviewer is pointed at: it gets
+a **detached copy**, and the graded tree is the original. The gate prompt
+requires a disconfirming command, so the reviewer holds the terminal tool
+whatever its file tools allow, and a reviewer able to touch the tree it judges
+could repair the work under review. That repair would land in the arm whose
+independence is the entire measurement, and the gated line would be crediting
+gating for work the gate itself did.
 
 The **ungated** arm spends the identical number of attempts with nobody
 independent in the loop: a self-review by the agent that just did the merge,

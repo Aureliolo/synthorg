@@ -25,6 +25,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -32,6 +33,7 @@ from typing import Final
 import yaml
 
 from evals.errors import OracleUnusableError
+from evals.harness.workspace import drop_escaping_links
 from evals.recursion_depth.grading import (
     GRADED_ENV,
     INI_BODY,
@@ -39,7 +41,6 @@ from evals.recursion_depth.grading import (
     ORACLE_SUITE_DIR,
     ORACLE_TREE_DIR,
     SandboxFactory,
-    drop_escaping_links,
     oracle_leftovers,
     tail_of,
 )
@@ -118,6 +119,76 @@ def load_index(spec_dir: Path) -> dict[str, object]:
     return parsed
 
 
+def declared(index: Mapping[str, object], key: str, *, spec_dir: Path) -> object:
+    """Read one required key out of a spec index, or refuse the spec.
+
+    Every malformed-manifest path answers with the SAME typed error, because
+    the runner's systemic-versus-cell dispatch keys on the type: an oracle that
+    cannot be read at all is true of every remaining cell, so it stops the
+    matrix, while a bare ``KeyError`` from one unguarded read is recorded as one
+    opaque cell failure and the sweep grinds through the rest producing nothing.
+
+    Args:
+        index: The parsed ``requirements.yaml``.
+        key: The key the spec must declare.
+        spec_dir: The specification directory, for the message.
+
+    Returns:
+        The declared value.
+
+    Raises:
+        OracleUnusableError: The spec declares no such key.
+    """
+    if key not in index:
+        msg = f"{spec_dir}/requirements.yaml declares no {key}"
+        raise OracleUnusableError(msg)
+    return index[key]
+
+
+def requirement_entries(index: Mapping[str, object], *, spec_dir: Path) -> list[object]:
+    """Read the requirement list, or refuse the spec.
+
+    Args:
+        index: The parsed ``requirements.yaml``.
+        spec_dir: The specification directory, for the message.
+
+    Returns:
+        The declared requirement entries.
+
+    Raises:
+        OracleUnusableError: The spec declares no requirement list.
+    """
+    entries = declared(index, "requirements", spec_dir=spec_dir)
+    if not isinstance(entries, list):
+        msg = f"{spec_dir}/requirements.yaml declares no requirement list"
+        raise OracleUnusableError(msg)
+    return entries
+
+
+def entry_field(entry: object, field: str, *, spec_dir: Path) -> str:
+    """Read one field of one requirement entry, or refuse the spec.
+
+    Args:
+        entry: One item of the requirement list.
+        field: The field the entry must carry.
+        spec_dir: The specification directory, for the message.
+
+    Returns:
+        The field's value as text.
+
+    Raises:
+        OracleUnusableError: The entry is not a mapping, or omits the field.
+    """
+    if not isinstance(entry, Mapping):
+        msg = f"{spec_dir}/requirements.yaml has a requirement that is not a mapping"
+        raise OracleUnusableError(msg)
+    fields: Mapping[str, object] = entry
+    if field not in fields:
+        msg = f"{spec_dir}/requirements.yaml has a requirement with no {field}"
+        raise OracleUnusableError(msg)
+    return str(fields[field])
+
+
 def requirement_ids(spec_dir: Path) -> tuple[str, ...]:
     """Every requirement id the spec declares, in declaration order.
 
@@ -126,13 +197,12 @@ def requirement_ids(spec_dir: Path) -> tuple[str, ...]:
 
     Returns:
         The requirement ids.
+
+    Raises:
+        OracleUnusableError: The spec's index is malformed.
     """
-    index = load_index(spec_dir)
-    entries = index["requirements"]
-    if not isinstance(entries, list):
-        msg = "requirements.yaml declares no requirement list"
-        raise OracleUnusableError(msg)
-    return tuple(str(entry["id"]) for entry in entries)
+    entries = requirement_entries(load_index(spec_dir), spec_dir=spec_dir)
+    return tuple(entry_field(entry, "id", spec_dir=spec_dir) for entry in entries)
 
 
 def node_ids(spec_dir: Path) -> dict[str, str]:
@@ -143,13 +213,17 @@ def node_ids(spec_dir: Path) -> dict[str, str]:
 
     Returns:
         The requirement-to-node map.
+
+    Raises:
+        OracleUnusableError: The spec's index is malformed.
     """
-    index = load_index(spec_dir)
-    entries = index["requirements"]
-    if not isinstance(entries, list):
-        msg = "requirements.yaml declares no requirement list"
-        raise OracleUnusableError(msg)
-    return {str(entry["id"]): str(entry["oracle"]) for entry in entries}
+    entries = requirement_entries(load_index(spec_dir), spec_dir=spec_dir)
+    return {
+        entry_field(entry, "id", spec_dir=spec_dir): entry_field(
+            entry, "oracle", spec_dir=spec_dir
+        )
+        for entry in entries
+    }
 
 
 async def run_oracle(
@@ -176,11 +250,12 @@ async def run_oracle(
         OracleUnusableError: pytest could not run the oracle at all, so there
             is no verdict to record.
     """
+    index = load_index(spec_dir)
     nodes = node_ids(spec_dir)
     wanted = tuple(key for key in nodes if only is None or key in only)
     if not wanted:
         return OracleOutcome(results={}, report="")
-    oracle_dir = spec_dir / str(load_index(spec_dir)["oracle_dir"])
+    oracle_dir = spec_dir / str(declared(index, "oracle_dir", spec_dir=spec_dir))
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)

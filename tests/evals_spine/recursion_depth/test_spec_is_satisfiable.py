@@ -15,6 +15,7 @@ passes everything.
 """
 
 import asyncio
+import re
 import shutil
 from pathlib import Path
 
@@ -122,13 +123,15 @@ def test_every_declared_requirement_was_actually_run(
 def test_the_declared_requirements_match_the_spec_document() -> None:
     # The brief an agent reads and the index the harness scores from are two
     # files, and a requirement in one and not the other is either work nobody
-    # asked for or a claim nobody can make.
+    # asked for or a claim nobody can make. Compared BOTH ways: a one-sided
+    # check passes for an id SPEC.md states and requirements.yaml omits, and
+    # the oracle then never scores it, which is the direction that silently
+    # shrinks the measurement rather than breaking it.
     index = yaml.safe_load((_SPEC_DIR / "requirements.yaml").read_text("utf-8"))
     declared = {entry["id"] for entry in index["requirements"]}
     prose = (_SPEC_DIR / "SPEC.md").read_text("utf-8")
 
-    missing = {identifier for identifier in declared if identifier not in prose}
-    assert missing == set()
+    assert declared == set(re.findall(r"\bR\d{2}\b", prose))
 
 
 def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:

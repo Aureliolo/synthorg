@@ -7,6 +7,14 @@ the engine the reviewer runs on and nothing else. Selection, the exclusion of
 the executor, the narrowed review session, the fail-CLOSED escalation and the
 verdict's attribution all stay the product's.
 
+What the harness DOES change is which tree the reviewer is pointed at. It gets
+a detached copy, and the graded tree is the original. The reviewer is required
+by the gate prompt to run a disconfirming command, so it holds the terminal
+tool whatever the file tools allow, and a reviewer able to touch the tree it
+judges could repair the work under review. That repair would land in the arm
+whose INDEPENDENCE is the whole measurement, and the gated line would be
+crediting gating for work the gate itself did.
+
 The ungated arm spends the same budget with nobody independent in it. Its pass
 is a self-review by the agent that just did the merge: same tree, same
 criteria, same work, and no verdict. That is the honest control, because what
@@ -19,11 +27,15 @@ count onto the chart: a gated line resting on unresolved escalations is a
 different claim from one resting on verdicts.
 """
 
+import asyncio
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
 from evals.errors import RecursionDepthGateUnbuildableError
-from evals.harness.workspace import CellWorkspace
+from evals.harness.binding import RunBinding
+from evals.harness.workspace import CellWorkspace, detach_workspace
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
@@ -43,6 +55,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.builder import build_completion_oracle_tool_seed
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
 from synthorg.engine.completion_oracle.gate import CompletionOracleGateService
+from synthorg.engine.completion_oracle.protocol import CompletionOracleReportRepository
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleFinding,
@@ -54,6 +67,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_MERGE_GATED,
     EVALS_RECURSION_MERGE_PARKED,
 )
+from synthorg.tools.base import BaseTool
 
 logger = get_logger(__name__)
 
@@ -145,6 +159,30 @@ class MergeReviewer(Protocol):
 
 
 @dataclass(frozen=True)
+class _JudgeSeat:
+    """Everything one review is run under, once the copy has been taken.
+
+    A bundle rather than five more keyword arguments, so the split that keeps
+    the detached copy's lifetime visible at the call site does not widen a
+    signature past the repository's cap.
+
+    Attributes:
+        report_repo: Where the verdict lands, narrowed to non-``None`` by the
+            caller before the review is attempted at all.
+        extra_tools: The submit tool the gate reads its verdict back through.
+        binding: The reviewer's bearer facts.
+        judge: The selected agent, whose pair is recorded on the verdict.
+        workspace: The DETACHED copy, never the graded tree.
+    """
+
+    report_repo: CompletionOracleReportRepository
+    extra_tools: tuple[BaseTool, ...]
+    binding: RunBinding
+    judge: AgentIdentity
+    workspace: CellWorkspace
+
+
+@dataclass(frozen=True)
 class OracleMergeReviewer:
     """The gated arm: the shipped completion-oracle gate, unmodified.
 
@@ -186,15 +224,47 @@ class OracleMergeReviewer:
             execution_id=request.execution_id,
             limits=request.limits,
         )
+        # The reviewer judges a DETACHED COPY, and the graded tree is the
+        # original. `REVIEW_TOOL_PERMISSIONS` narrows the reviewer to STANDARD,
+        # which still admits the file and terminal tools the harness registry
+        # supplies, and the strengthened gate prompt REQUIRES a disconfirming
+        # command, so taking the tools away is not available either. Handed the
+        # graded tree, a reviewer could repair the work it is judging, and the
+        # repair would land in the arm whose independence is the whole
+        # measurement: the gated line would then be crediting gating for work
+        # the gate itself did.
+        with tempfile.TemporaryDirectory() as scratch:
+            reviewed = await asyncio.to_thread(
+                detach_workspace, request.workspace, Path(scratch)
+            )
+            return await self._judge(
+                request,
+                seat=_JudgeSeat(
+                    report_repo=seed.report_repo,
+                    extra_tools=seed.extra_tools,
+                    binding=binding,
+                    judge=judge,
+                    workspace=reviewed,
+                ),
+            )
+
+    async def _judge(
+        self, request: MergeReviewRequest, *, seat: _JudgeSeat
+    ) -> MergeReview:
+        """Run the gate against the copy the reviewer is allowed to change.
+
+        Returns:
+            The verdict, its findings, and what it cost.
+        """
         async with open_session(
             self.deps,
-            binding=binding,
-            workspace=request.workspace,
-            extra_tools=seed.extra_tools,
+            binding=seat.binding,
+            workspace=seat.workspace,
+            extra_tools=seat.extra_tools,
         ) as session:
             gate = CompletionOracleGateService(
                 agent_runner=ReviewerAgentEngineRunner(engine=session.engine),
-                report_repo=seed.report_repo,
+                report_repo=seat.report_repo,
                 staffing=self.roster.staffing,
             )
             try:
@@ -207,7 +277,7 @@ class OracleMergeReviewer:
             result.report.findings,
             spend,
             request,
-            reviewer=ModelPair.of(judge),
+            reviewer=ModelPair.of(seat.judge),
         )
 
 

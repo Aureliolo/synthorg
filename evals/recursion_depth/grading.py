@@ -61,10 +61,7 @@ from xml.etree import ElementTree as ET
 from evals.errors import EvalToolMissingError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import (
-    EVALS_RECURSION_CHILD_LINK_DROPPED,
-    EVALS_RECURSION_GRADED,
-)
+from synthorg.observability.events.evals import EVALS_RECURSION_GRADED
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
@@ -159,38 +156,6 @@ def oracle_leftovers(suite_dir: Path) -> tuple[Path, ...]:
             continue
         offenders.append(relative)
     return tuple(offenders)
-
-
-def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
-    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
-
-    Judged against the tree's ORIGINAL location rather than the copy, because a
-    relative link was authored against that tree and is what the agent meant it
-    to reach. A link that stays inside its own delivery is legitimate and kept;
-    anything else named a place the copy has no business reading.
-
-    Shared by every place an agent-authored tree is copied somewhere it will be
-    read: the merge's ``.children/`` mount and the oracle's staging directory.
-    Two copies of this would be one copy away from disagreeing, and the staging
-    one was written without it.
-
-    Args:
-        mounted: The copied tree to sweep.
-        anchor: The tree's own original location, the only region a link may
-            resolve into.
-    """
-    resolved_anchor = anchor.resolve()
-    for path in mounted.rglob("*"):
-        if not path.is_symlink():
-            continue
-        target = (path.parent / path.readlink()).resolve()
-        if target != resolved_anchor and resolved_anchor not in target.parents:
-            logger.warning(
-                EVALS_RECURSION_CHILD_LINK_DROPPED,
-                link=str(path.relative_to(mounted)),
-                mounted_as=mounted.name,
-            )
-            path.unlink()
 
 
 @runtime_checkable

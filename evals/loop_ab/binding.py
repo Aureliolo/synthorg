@@ -24,6 +24,7 @@ from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopD
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.workers._openhands_wiring import (
     build_openhands_loop_config,
     build_openhands_loop_deps_or_none,
@@ -50,7 +51,7 @@ class CellBinder:
         return self.binder.company_config
 
     @property
-    def open_sandboxes(self) -> list[object]:
+    def open_sandboxes(self) -> list[DockerSandbox]:
         """Sandboxes handed out and not yet released.
 
         Returns:

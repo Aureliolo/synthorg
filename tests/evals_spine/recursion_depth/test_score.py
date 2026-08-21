@@ -31,7 +31,7 @@ def _leaf(
     return UnitRecord(
         unit_id=NotBlankStr(unit_id),
         title=NotBlankStr(f"unit {unit_id}"),
-        kind=NotBlankStr(LEAF),
+        kind=LEAF,
         depth=depth,
         claimed=tuple(NotBlankStr(item) for item in claimed),
         delivered=delivered,
@@ -133,7 +133,7 @@ class TestWhatEntersTheDenominator:
         merge = UnitRecord(
             unit_id=NotBlankStr("root"),
             title=NotBlankStr("assemble"),
-            kind=NotBlankStr(MERGE),
+            kind=MERGE,
             depth=0,
             claimed=(NotBlankStr("R09"),),
             delivered=True,

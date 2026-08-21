@@ -435,22 +435,40 @@ class _PassingGrader:
         return True, ""
 
 
+@dataclass(frozen=True)
+class _Attempt:
+    """What one scripted merge attempt was actually handed.
+
+    The brief is recorded because the repair round is a claim about what the
+    SECOND attempt received. A test that re-composes the brief itself and
+    asserts the finding is in it holds whatever `run_merge` forwards, so it
+    passes for a loop that dropped the findings entirely.
+
+    Attributes:
+        execution_id: The ledger key this attempt ran under.
+        brief: The task description the attempt was briefed from.
+    """
+
+    execution_id: str
+    brief: str
+
+
 @pytest.fixture
-def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[_Attempt]:
     """Replace the session runner so the merge loop can be driven offline.
 
     The loop's own accounting is what these tests are about, and a real session
     would need a provider to answer nothing useful.
 
     Returns:
-        The execution ids each attempt ran under, in order.
+        What each attempt was handed, in order.
     """
-    ran: list[str] = []
+    ran: list[_Attempt] = []
 
     async def _fake_session(
-        _deps: SweepDeps, *, execution_id: str, **_rest: object
+        _deps: SweepDeps, *, execution_id: str, task: Task, **_rest: object
     ) -> SessionOutcome:
-        ran.append(execution_id)
+        ran.append(_Attempt(execution_id=execution_id, brief=str(task.description)))
         return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
@@ -479,7 +497,7 @@ class TestTheMergeLoop:
         )
 
     async def test_an_approval_stops_the_gated_arm_early(
-        self, tmp_path: Path, scripted_sessions: list[str]
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         reviewer = _ScriptedReviewer([MergeReview(approved=True, verdict="approve")])
 
@@ -491,7 +509,7 @@ class TestTheMergeLoop:
         assert outcome.verdict == "approve"
 
     async def test_a_rejection_buys_a_repair_round(
-        self, tmp_path: Path, scripted_sessions: list[str]
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         reviewer = _ScriptedReviewer(
             [
@@ -504,12 +522,14 @@ class TestTheMergeLoop:
 
         assert len(scripted_sessions) == 2
         assert outcome.attempts == 4
-        assert "it breaks" in merge_brief(
-            self._plan(tmp_path, attempts=3), ("it breaks",)
-        )
+        # On the brief the SECOND attempt received, which is the claim the
+        # test name makes. Asserted against the first attempt's brief as well,
+        # so this cannot pass for a loop that put the findings in every round.
+        assert "it breaks" not in scripted_sessions[0].brief
+        assert "it breaks" in scripted_sessions[1].brief
 
     async def test_the_ungated_arm_spends_the_whole_budget(
-        self, tmp_path: Path, scripted_sessions: list[str]
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         # No verdict means no stopping rule, which is the point: the control
         # spends the same attempts with nobody independent in the loop.
@@ -522,7 +542,7 @@ class TestTheMergeLoop:
         assert outcome.verdict is None
 
     async def test_an_escalation_stands_and_is_counted(
-        self, tmp_path: Path, scripted_sessions: list[str]
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         # There is no human in a sweep, so the merge stands and the count
         # travels with the chart.
@@ -536,7 +556,7 @@ class TestTheMergeLoop:
         assert outcome.parked is True
 
     async def test_every_attempt_gets_its_own_execution_id(
-        self, tmp_path: Path, scripted_sessions: list[str]
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         # A shared ledger key would let a later attempt inherit an exhausted
         # ceiling and would misattribute its spend.
@@ -544,7 +564,9 @@ class TestTheMergeLoop:
 
         await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
 
-        assert len(set(scripted_sessions)) == len(scripted_sessions)
+        ids = [attempt.execution_id for attempt in scripted_sessions]
+
+        assert len(set(ids)) == len(ids)
 
 
 class TestTheOwnTestGate:
@@ -765,7 +787,7 @@ def _assembles_then_dies(
             UnitRecord(
                 unit_id=NotBlankStr("leaf-1"),
                 title=NotBlankStr("Built before the fall"),
-                kind=NotBlankStr(LEAF),
+                kind=LEAF,
                 depth=1,
                 attempts=1,
                 cost=4.0,

@@ -8,6 +8,7 @@ import asyncio
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -53,6 +54,10 @@ logger = get_logger(__name__)
 #: Mirrors ``coordination.decomposition_timeout_seconds``. Held here because a
 #: harness runs with no settings at all, and the bound has to stand there too.
 _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS: Final[float] = 600.0
+
+#: Mirrors ``coordination.decomposition_tree_timeout_seconds``, for the same
+#: reason.
+_DEFAULT_TREE_TIMEOUT_SECONDS: Final[float] = 3600.0
 
 
 def _task_from_subtask(
@@ -176,7 +181,8 @@ class DecompositionService:
 
         Raises:
             DecompositionError: When any one planning session outruns
-                ``coordination.decomposition_timeout_seconds``.
+                ``coordination.decomposition_timeout_seconds``, or the whole
+                tree outruns ``coordination.decomposition_tree_timeout_seconds``.
         """
         logger.info(
             DECOMPOSITION_STARTED,
@@ -187,9 +193,16 @@ class DecompositionService:
 
         try:
             budget = await resolve_recursion_budget(self._config_resolver)
-            return await self._do_decompose(
-                task, await self._grounded(task, context), budget
-            )
+            # The outer of the two ceilings, and the only one that bounds a
+            # CALLER. The inner one below bounds a planning session, and a
+            # recursion runs one per node, so the number of sessions is the
+            # branching factor to the power of the depth and no per-session
+            # budget bounds the call at all. Two of the four callers are
+            # request handlers.
+            async with asyncio.timeout(await self._tree_timeout_seconds()):
+                return await self._do_decompose(
+                    task, await self._grounded(task, context), budget
+                )
         except TimeoutError as exc:
             msg = "Decomposition outran its wall-clock ceiling"
             logger.warning(
@@ -259,6 +272,35 @@ class DecompositionService:
             )
             return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
 
+    async def _tree_timeout_seconds(self) -> float:
+        """Read the whole-tree ceiling in force for this decomposition.
+
+        Returns:
+            The configured ceiling, or the definition's default when there is
+            no resolver or it cannot answer, for the reason its per-session
+            sibling falls back: a settings read that failed is no reason to
+            grant an unbounded wait.
+        """
+        resolver = self._config_resolver
+        if resolver is None:
+            return _DEFAULT_TREE_TIMEOUT_SECONDS
+        try:
+            return await resolver.get_float(
+                "coordination", "decomposition_tree_timeout_seconds"
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort settings read; the bound
+            # still stands on the definition's own default, so the failure
+            # this method exists to prevent cannot happen either way
+            reraise_critical(exc)
+            logger.warning(
+                DECOMPOSITION_FAILED,
+                note="tree timeout unreadable; the default ceiling stands",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return _DEFAULT_TREE_TIMEOUT_SECONDS
+
     async def _do_decompose(
         self,
         task: Task,
@@ -278,17 +320,16 @@ class DecompositionService:
         """
         # 1. Decompose via strategy.
         #
-        # Bounded per PLANNING SESSION rather than per tree, and here rather
-        # than per caller: a session waiting on a provider that never answers
-        # holds whatever called it, and two of the four callers are request
-        # handlers, so an unbounded call occupies an HTTP worker for as long as
-        # the provider stalls. Every caller comes through here, so the answer
-        # cannot differ by entry point, and every level of a recursion is
-        # bounded rather than sharing one budget with its siblings. A whole-tree
-        # ceiling cannot be derived from depth: sessions scale with the NODE
-        # COUNT, which is the branching factor to the power of the depth, so any
-        # multiple of the operator's number is a guess that kills a legitimate
-        # deep tree and discards every level it had already paid for.
+        # The inner of the two ceilings: one PLANNING SESSION, so a level
+        # waiting on a provider that never answers cannot hold the tree, and
+        # every level is bounded rather than sharing one budget with its
+        # siblings. Here rather than per caller, so the answer cannot differ by
+        # entry point. It is deliberately NOT derived from depth, which is why
+        # the whole-tree bound in `decompose_task` is a separate setting rather
+        # than a multiple of this one: sessions scale with the NODE COUNT, the
+        # branching factor to the power of the depth, so any multiple is a
+        # guess that kills a legitimate deep tree and discards every level it
+        # had already paid for.
         async with asyncio.timeout(await self._timeout_seconds()):
             plan = await self._strategy.decompose(task, context)
 
@@ -410,6 +451,14 @@ class DecompositionService:
 
         children: list[DecompositionResult] = []
         for subtask_def, child_task in zip(subtasks, created_tasks, strict=True):
+            if subtask_def.kind is not PlanItemKind.WORK:
+                # A DECISION item is a choice among its declared options, not
+                # work to divide, and the policy reads only the artifact,
+                # criterion and claim counts. One declaring several acceptance
+                # criteria would otherwise read as oversized and open a child
+                # planning session that plans work nobody asked for, which the
+                # harness then tries to build as a leaf.
+                continue
             assessment = budget.policy.assess(subtask_def)
             if not assessment.is_oversized:
                 continue

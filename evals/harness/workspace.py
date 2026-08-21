@@ -26,6 +26,7 @@ from evals.errors import WorkspacePathEscapeError, WorkspaceSeedNotFoundError
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_WORKSPACE_LINK_DROPPED,
     EVALS_HARNESS_WORKSPACE_PATH_ESCAPED,
     EVALS_WORKSPACE_SEEDED,
 )
@@ -146,4 +147,72 @@ def seed_workspace(
     return workspace
 
 
-__all__ = ["CellWorkspace", "seed_workspace"]
+def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
+    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
+
+    Judged against the tree's ORIGINAL location rather than the copy, because a
+    relative link was authored against that tree and is what the agent meant it
+    to reach. A link that stays inside its own delivery is legitimate and kept;
+    anything else named a place the copy has no business reading.
+
+    Shared by every place an agent-authored tree is copied somewhere it will be
+    read: a merge's mounted children, an oracle's staging directory, and the
+    detached copy a reviewer works in. Two copies of this would be one copy
+    away from disagreeing, and one of them was written without it.
+
+    Args:
+        mounted: The copied tree to sweep.
+        anchor: The tree's own original location, the only region a link may
+            resolve into.
+    """
+    resolved_anchor = anchor.resolve()
+    for path in mounted.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = (path.parent / path.readlink()).resolve()
+        if target != resolved_anchor and resolved_anchor not in target.parents:
+            logger.warning(
+                EVALS_HARNESS_WORKSPACE_LINK_DROPPED,
+                link=str(path.relative_to(mounted)),
+                mounted_as=mounted.name,
+            )
+            path.unlink()
+
+
+def detach_workspace(source: CellWorkspace, root: Path) -> CellWorkspace:
+    """Copy *source*'s project tree under *root* and answer a workspace on it.
+
+    For a session that must READ and RUN a tree without being able to change
+    the one that gets graded. The copy is the whole isolation: a read-only tool
+    set is not, because a session that can run shell commands in a tree can
+    write to it whatever its file tools allow, and the completion-oracle
+    reviewer is required to run disconfirming commands.
+
+    Symlinks are copied as links rather than followed, then any that resolve
+    outside the source tree are dropped, exactly as the merge mount and the
+    oracle staging do: a link in an agent-authored tree names a host path the
+    agent chose, and following it here would pull that path into a directory
+    about to be mounted into a container.
+
+    Args:
+        source: The workspace to copy from.
+        root: An empty directory to build the detached copy under.
+
+    Returns:
+        A :class:`CellWorkspace` on the copy.
+
+    Raises:
+        WorkspacePathEscapeError: A resolved path escapes its root.
+    """
+    project_dir = _contained(Path(_PROJECTS_SUBDIR) / EVAL_TASK_PROJECT, root)
+    shutil.copytree(
+        source.project_dir,
+        project_dir,
+        symlinks=True,
+        ignore_dangling_symlinks=True,
+    )
+    drop_escaping_links(project_dir, anchor=source.project_dir)
+    return CellWorkspace(root=root)
+
+
+__all__ = ["CellWorkspace", "detach_workspace", "seed_workspace"]

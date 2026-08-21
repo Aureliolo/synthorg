@@ -383,7 +383,7 @@ async def _run_cell(
         UnitRecord(
             unit_id=NotBlankStr(f"{cell.key}-plan"),
             title=NotBlankStr(f"Plan: {context.spec.title}"),
-            kind=NotBlankStr(PLAN),
+            kind=PLAN,
             depth=0,
             attempts=planned.sessions,
             cost=planned.cost,
@@ -610,7 +610,7 @@ def _leaf_record(
     return UnitRecord(
         unit_id=NotBlankStr(str(task.id)),
         title=NotBlankStr(str(task.title)),
-        kind=NotBlankStr(LEAF),
+        kind=LEAF,
         depth=node.depth,
         claimed=definition.satisfies,
         delivered=leaf.delivered,
@@ -634,7 +634,7 @@ def _merge_record(
     return UnitRecord(
         unit_id=NotBlankStr(str(parent.id)),
         title=NotBlankStr(f"Assemble: {parent.title}"),
-        kind=NotBlankStr(MERGE),
+        kind=MERGE,
         depth=node.depth,
         delivered=outcome.delivered,
         attempts=outcome.attempts,

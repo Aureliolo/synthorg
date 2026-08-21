@@ -15,7 +15,10 @@
 #
 # Run `python scripts/record_recursion_depth.py` (the default, no --record) to
 # print the matrix and the projected session count before anything is charged.
-spec_dir: evals/recursion_depth/spec/sqlcsv
+# Relative to THIS file, not to the repository root: the loader resolves it
+# against the manifest's own directory, so the sweep reads the same
+# specification whatever directory it was invoked from.
+spec_dir: spec/sqlcsv
 depths: [1, 2, 3, 4, 5, 6]
 repetitions:
   1: 1

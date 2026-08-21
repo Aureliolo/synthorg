@@ -84,17 +84,51 @@ def _source_rows(
     key_left, key_right = _join_keys(statement, left.name, right.name)
     index: dict[Value, list[Row]] = {}
     for row in right.rows:
-        index.setdefault(row.get(key_right), []).append(row)
+        # NULL keys are not indexed at all. SQL equality on NULL is unknown
+        # rather than true, so a NULL key joins to nothing, including another
+        # NULL: indexing them under a `None` key would make every NULL-keyed
+        # left row match every NULL-keyed right row.
+        key = row.get(key_right)
+        if key is not None:
+            index.setdefault(key, []).append(row)
     joined: list[Row] = []
+    padding: Row = dict.fromkeys(right.columns)
     for row in left.rows:
-        matches = index.get(row.get(key_left), [])
+        left_key = row.get(key_left)
+        matches = [] if left_key is None else index.get(left_key, [])
         if matches:
             joined.extend(
-                {**dict.fromkeys(right.columns), **match, **row} for match in matches
+                _merged(row, match, left=left.name, right=right.name)
+                for match in matches
             )
         elif statement.join.kind is JoinKind.LEFT:
-            joined.append({**dict.fromkeys(right.columns), **row})
+            joined.append(_merged(row, padding, left=left.name, right=right.name))
     return tuple(joined), tuple(dict.fromkeys((*left.columns, *right.columns)))
+
+
+def _merged(left_row: Row, right_row: Row, *, left: str, right: str) -> Row:
+    """Combine one left row with one right row into a joined row.
+
+    Carries QUALIFIED keys beside the bare ones. The bare merge gives the left
+    side precedence, which is the right answer for an unqualified reference and
+    unable to express a qualified one: R33 requires `customers.id` to resolve to
+    the customer's id, and with both tables carrying `id` the bare merge has
+    already thrown that value away.
+
+    Args:
+        left_row: The left source row.
+        right_row: The matched right row, or a row of NULLs for a left join
+            that matched nothing.
+        left: The left table's name.
+        right: The right table's name.
+
+    Returns:
+        The joined row.
+    """
+    merged: Row = {**right_row, **left_row}
+    merged.update({f"{right}.{name}": value for name, value in right_row.items()})
+    merged.update({f"{left}.{name}": value for name, value in left_row.items()})
+    return merged
 
 
 def _join_keys(statement: Select, left_name: str, right_name: str) -> tuple[str, str]:
@@ -234,7 +268,7 @@ def _matches(condition: Condition | None, row: Row) -> bool:
     if isinstance(condition, Not):
         return not _matches(condition.operand, row)
     if isinstance(condition, NullTest):
-        is_null = row.get(condition.column.name) is None
+        is_null = _cell(row, condition.column) is None
         return not is_null if condition.negated else is_null
     return _compare(condition, row)
 
@@ -264,6 +298,24 @@ def _compare(condition: Comparison, row: Row) -> bool:
     return bool(left >= right)  # type: ignore[operator]
 
 
+def _cell(row: Row, ref: ColumnRef) -> Value:
+    """Read the column *ref* names, honouring its table qualifier.
+
+    A joined row carries `table.column` keys beside the bare ones, so a
+    qualified reference reaches the side it named even when both sides provide
+    the column. An unqualified reference, and any row that was never joined,
+    fall through to the bare name.
+
+    Returns:
+        The value, ``None`` when the column is absent.
+    """
+    if ref.table is not None:
+        qualified = f"{ref.table}.{ref.name}"
+        if qualified in row:
+            return row[qualified]
+    return row.get(ref.name)
+
+
 def _value_of(expr: ColumnRef | Aggregate | Literal, row: Row) -> Value:
     """Read one operand's value from a row.
 
@@ -273,7 +325,7 @@ def _value_of(expr: ColumnRef | Aggregate | Literal, row: Row) -> Value:
     if isinstance(expr, Literal):
         return expr.value  # type: ignore[return-value]
     if isinstance(expr, ColumnRef):
-        return row.get(expr.name)
+        return _cell(row, expr)
     return row.get(expr.output_name)
 
 
@@ -374,15 +426,23 @@ def _aggregate_value(call: Aggregate, members: list[Row]) -> Value:
     if call.column is None:
         return len(members)
     values = [
-        row.get(call.column.name)
+        _cell(row, call.column)
         for row in members
-        if row.get(call.column.name) is not None
+        if _cell(row, call.column) is not None
     ]
     if call.func == "count":
         return len(values)
     if not values:
         return None
     numeric = [value for value in values if isinstance(value, int | float)]
+    if call.func in {"sum", "avg"} and not numeric:
+        # A text column leaves `values` non-empty and `numeric` empty. AVG
+        # would divide by zero and the traceback would escape `main`, so the
+        # CLI prints a stack trace instead of an exit code; SUM would answer
+        # 0, which reads as a total for a column holding no numbers. NULL is
+        # the honest answer to both. MIN and MAX are excluded deliberately:
+        # they order text perfectly well and are not asking a numeric question.
+        return None
     if call.func == "sum":
         return sum(numeric)
     if call.func == "avg":
@@ -423,8 +483,8 @@ def _ordered(
     ordered = list(paired)
     for key in reversed(statement.order_by):
         ordered.sort(
-            key=lambda pair, name=key.column.name: _sort_key(  # type: ignore[misc]
-                pair[1].get(name, pair[0].get(name))
+            key=lambda pair, ref=key.column: _sort_key(  # type: ignore[misc]
+                pair[1][ref.name] if ref.name in pair[1] else _cell(pair[0], ref)
             ),
             reverse=key.descending,
         )

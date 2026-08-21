@@ -116,7 +116,15 @@ class AgentSessionPlanner:
         fallback = ProgressTrackingLedger()
         async with ledger_scope(self.deps, execution_id, fallback) as tracker:
             result = await build_tree(
-                service=self._service(provider, tracker),
+                # The strategy books to its OWN tracker, never the hosted one,
+                # for the reason `open_session` does the same: a planning
+                # completion goes out through the hosted gateway, which records
+                # it, and the strategy's own cost scope records it again, so a
+                # shared ledger counts every planning call twice and the cost
+                # panel overstates exactly the arm that plans the most. When no
+                # gateway is hosted the two are the same object by
+                # construction, and the sum below is the only read either way.
+                service=self._service(provider, fallback),
                 task=task,
                 depth_cap=depth_cap,
                 workspace_summary=SEED_WORKSPACE_SUMMARY,

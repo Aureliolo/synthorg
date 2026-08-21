@@ -378,6 +378,8 @@ __all__ = [
     "LoopAbOpenHandsUnwiredError",
     "OracleUnusableError",
     "ProvenanceUnavailableError",
+    "RecursionDepthCapabilityUnresolvedError",
+    "RecursionDepthGateUnbuildableError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthSessionCeilingError",

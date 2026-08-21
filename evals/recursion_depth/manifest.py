@@ -141,7 +141,10 @@ class RecursionDepthManifest(BaseModel):
     """The whole recording matrix.
 
     Attributes:
-        spec_dir: The specification the sweep is run against.
+        spec_dir: The specification the sweep is run against. Declared
+            relative to the manifest file and stored absolute by
+            :func:`load_manifest`, so no consumer depends on a working
+            directory.
         depths: The ``max_depth`` caps swept, ascending.
         repetitions: How many times each cap is recorded, per cap.
         arms: The arms recorded. Both, in every real recording.
@@ -261,14 +264,24 @@ class RecursionDepthManifest(BaseModel):
 def load_manifest(path: Path) -> RecursionDepthManifest:
     """Load and validate the recording matrix.
 
+    ``spec_dir`` is resolved against the manifest's OWN directory and stored
+    absolute, so every consumer reads the same specification wherever it was
+    invoked from. Left relative it was a repository-root-relative path passed
+    through unchanged, which resolved correctly only for a process whose
+    working directory happened to be the repository root.
+
     Args:
         path: The manifest YAML.
 
     Returns:
-        The validated manifest.
+        The validated manifest, with an absolute ``spec_dir``.
     """
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    return RecursionDepthManifest.model_validate(payload)
+    manifest = RecursionDepthManifest.model_validate(payload)
+    resolved = (path.resolve().parent / manifest.spec_dir).resolve()
+    return RecursionDepthManifest.model_validate(
+        manifest.model_dump() | {"spec_dir": str(resolved)}
+    )
 
 
 __all__ = [

@@ -191,6 +191,10 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 delivered_claims=4,
                 surviving_claims=3,
                 cells=1,
+                # Set, not defaulted: `_cost_series` skips a point booking no
+                # runs, so a fixture leaving this at 0 renders no cost panel
+                # and every assertion about that panel passes on an empty one.
+                runs=1,
                 cost=1.5,
                 attempts=6,
             ),
@@ -200,11 +204,19 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 delivered_claims=4,
                 surviving_claims=1,
                 cells=1,
+                runs=1,
                 cost=1.0,
                 attempts=6,
             ),
         ),
-        achieved_depth_histogram={"cap=2 reached=2": 2},
+        # The key shape `achieved_depth_histogram` actually emits, arm
+        # included. Without the arm this fixture asserted a caption against a
+        # string the sweep cannot produce, so a change to the real format
+        # would have left the test green.
+        achieved_depth_histogram={
+            f"cap=2 {Arm.GATED.value} reached=2": 1,
+            f"cap=2 {Arm.UNGATED.value} reached=2": 1,
+        },
         caveats=(SIZING_CAVEAT, ORACLE_CAVEAT),
     )
 
@@ -224,7 +236,7 @@ def _measured_cell(arm: Arm) -> CellRecord:
             UnitRecord(
                 unit_id=NotBlankStr("a"),
                 title=NotBlankStr("build it"),
-                kind=NotBlankStr(LEAF),
+                kind=LEAF,
                 depth=1,
                 claimed=(NotBlankStr("R01"),),
                 delivered=True,
@@ -303,7 +315,7 @@ class TestTheEmittedArtifacts:
 
         assert "PLANNER-DECLARED" in svg
         assert "held out" in svg
-        assert "cap=2 reached=2" in svg
+        assert f"cap=2 {Arm.GATED.value} reached=2" in svg
 
     def test_an_unavailable_cell_keeps_its_reason_in_the_report(
         self, tmp_path: Path

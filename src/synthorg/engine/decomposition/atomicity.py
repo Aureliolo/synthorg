@@ -15,7 +15,7 @@ can be built without one.
 
 The sibling question at the objective level is already answered by
 :class:`~synthorg.engine.pipeline.policy.threshold.LeafThresholdRoutingPolicy`,
-which reads the same artefact count. This asks it per subtask, at the seam that
+which reads the same artifact count. This asks it per subtask, at the seam that
 can act on the answer by decomposing again.
 """
 

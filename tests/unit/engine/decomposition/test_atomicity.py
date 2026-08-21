@@ -11,6 +11,7 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.atomicity import (
     MAX_SATISFIED_CRITERIA,
+    AtomicityAssessment,
     AtomicityVerdict,
     SubtaskAtomicityPolicy,
 )
@@ -140,3 +141,55 @@ class TestTheReportedConditionIsStable:
 
         assert assessment.condition == "satisfies"
         assert assessment.observed == MAX_SATISFIED_CRITERIA + 3
+
+
+class TestTheVerdictAndItsExplanationAgree:
+    """The invariant that makes a reported condition worth reading.
+
+    A tree deeper than expected has two explanations, items genuinely too large
+    or a threshold set too low, and the named condition is the only thing that
+    tells them apart. Nothing exercised the validator that keeps the two
+    halves consistent, so every one of its branches could have stopped firing
+    without a test noticing.
+    """
+
+    def test_an_oversized_verdict_must_name_its_condition(self) -> None:
+        with pytest.raises(ValueError, match="must name"):
+            AtomicityAssessment(verdict=AtomicityVerdict.OVERSIZED)
+
+    def test_an_atomic_verdict_must_name_none(self) -> None:
+        with pytest.raises(ValueError, match="must name"):
+            AtomicityAssessment(
+                verdict=AtomicityVerdict.ATOMIC,
+                condition="expected_artifacts",
+                observed=2,
+                limit=1,
+            )
+
+    def test_a_named_condition_carries_the_observed_count(self) -> None:
+        with pytest.raises(ValueError, match="cannot be read"):
+            AtomicityAssessment(
+                verdict=AtomicityVerdict.OVERSIZED,
+                condition="expected_artifacts",
+                limit=1,
+            )
+
+    def test_a_named_condition_carries_the_limit(self) -> None:
+        with pytest.raises(ValueError, match="cannot be read"):
+            AtomicityAssessment(
+                verdict=AtomicityVerdict.OVERSIZED,
+                condition="expected_artifacts",
+                observed=2,
+            )
+
+    def test_a_complete_explanation_is_accepted(self) -> None:
+        # The complement: a validator that rejected everything would satisfy
+        # all four cases above and break every real assessment.
+        assessment = AtomicityAssessment(
+            verdict=AtomicityVerdict.OVERSIZED,
+            condition="expected_artifacts",
+            observed=2,
+            limit=1,
+        )
+
+        assert assessment.is_oversized

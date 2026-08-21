@@ -385,8 +385,17 @@ class Parser:
             InputError: The next token is not an integer literal.
         """
         token = self._peek()
-        if token.kind is not TokenKind.NUMBER or not isinstance(token.value, int):
-            msg = f"expected an integer, got {token.text!r}"
+        # The sign matters as much as the type. The lexer reads a leading minus
+        # into the literal, so `LIMIT -1` parses as an int here, and the
+        # windowing that consumes it evaluates `rows[0:-1]`, silently dropping
+        # the last row instead of reporting a bad input; a negative OFFSET
+        # slices from the tail the same way.
+        if (
+            token.kind is not TokenKind.NUMBER
+            or not isinstance(token.value, int)
+            or token.value < 0
+        ):
+            msg = f"expected a non-negative integer, got {token.text!r}"
             raise InputError(msg)
         self._advance()
         return token.value

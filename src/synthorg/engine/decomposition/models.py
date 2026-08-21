@@ -1,8 +1,9 @@
 """Decomposition domain models.
 
-Frozen Pydantic models for subtask definitions, decomposition plans, the
-decomposition tree, and the context one runs under. What a decomposition's
-execution adds up to is a different question and lives in
+Frozen Pydantic models for subtask definitions, decomposition plans and the
+decomposition tree. The context a decomposition runs under lives in
+:mod:`synthorg.engine.decomposition.context`, and what its execution adds up to
+is a different question again, in
 :mod:`synthorg.engine.decomposition.status_rollup`.
 """
 

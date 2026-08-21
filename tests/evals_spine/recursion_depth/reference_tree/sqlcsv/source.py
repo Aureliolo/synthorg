@@ -2,6 +2,7 @@
 """Read a CSV file into typed rows."""
 
 import csv
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +10,13 @@ from sqlcsv.errors import InputError, NotFoundError
 
 Value = str | int | float | None
 Row = dict[str, Value]
+
+#: An optional sign and digits, and nothing else.
+_INT_LITERAL = re.compile(r"[+-]?[0-9]+")
+
+#: The decimal grammar, with an optional exponent. Deliberately excludes the
+#: special values `float()` accepts by name.
+_FLOAT_LITERAL = re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
 
 
 @dataclass(frozen=True)
@@ -44,7 +52,12 @@ def load_table(data_dir: Path, name: str) -> Table:
         msg = f"data directory {str(data_dir)!r} does not exist"
         raise InputError(msg)
     path = data_dir / f"{name}.csv"
-    if not path.is_file():
+    # Matched against the directory listing rather than by opening the path.
+    # R06 makes identifiers case-sensitive, and `path.is_file()` delegates that
+    # to the filesystem, which answers differently on Windows and Linux: the
+    # same query then resolves `Orders` to `orders` on one and fails on the
+    # other, so the delivery's conformance would depend on where it ran.
+    if path.name not in {entry.name for entry in data_dir.iterdir()}:
         msg = f"no table named {name!r} in {str(data_dir)!r}"
         raise NotFoundError(msg)
     with path.open(newline="", encoding="utf-8") as handle:
@@ -99,24 +112,25 @@ def _convert(cells: list[str]) -> list[Value]:
 def _is_int(cell: str) -> bool:
     """Whether *cell* is an integer literal.
 
+    Matched against the grammar rather than handed to ``int()``, which also
+    accepts underscore separators and surrounding whitespace and would then
+    store a value differing from the CSV text it came from.
+
     Returns:
-        Whether it parses as an int.
+        Whether it is an integer literal.
     """
-    try:
-        int(cell)
-    except ValueError:
-        return False
-    return True
+    return _INT_LITERAL.fullmatch(cell) is not None
 
 
 def _is_float(cell: str) -> bool:
     """Whether *cell* is a decimal literal.
 
+    Matched rather than handed to ``float()``, which accepts ``nan``, ``inf``
+    and ``-Infinity``. A text column whose cells read "nan" would otherwise be
+    promoted to float, and NaN then makes equality and de-duplication behave
+    unpredictably, because it compares equal to nothing including itself.
+
     Returns:
-        Whether it parses as a float.
+        Whether it is a decimal literal.
     """
-    try:
-        float(cell)
-    except ValueError:
-        return False
-    return True
+    return _FLOAT_LITERAL.fullmatch(cell) is not None

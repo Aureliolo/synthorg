@@ -5,7 +5,7 @@ The sweep manipulates one variable, ``max_depth``, and the shape below it is
 the planner's own. What the harness fixes is the rule that decides when a
 subtask is oversized, and it fixes it so ONE rule binds: a unit still covering
 more than one spec requirement splits again. Left at the shipped thresholds,
-the artefact and criterion counts would also fire and every unit at every depth
+the artifact and criterion counts would also fire and every unit at every depth
 would be oversized, which reaches the cap every time but says nothing about
 sizing; opened all the way, nothing would ever split and the sweep would have
 no depth to measure. Between them, the requirement floor is what makes "depth
@@ -23,7 +23,12 @@ from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from evals.errors import OracleUnusableError
-from evals.recursion_depth.oracle import load_index
+from evals.recursion_depth.oracle import (
+    declared,
+    entry_field,
+    load_index,
+    requirement_entries,
+)
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -84,19 +89,32 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
 
     Returns:
         The brief.
+
+    Raises:
+        OracleUnusableError: The spec's index is malformed. Every read here
+            answers with that one type, because the runner decides
+            systemic-versus-cell from it: a spec that cannot be read is true of
+            every remaining cell, while a bare ``KeyError`` from one unguarded
+            key would be filed as a single opaque cell failure and the sweep
+            would grind through the rest measuring nothing.
     """
     index = load_index(spec_dir)
-    entries = index["requirements"]
-    if not isinstance(entries, list):
-        msg = f"{spec_dir}/requirements.yaml declares no requirement list"
-        raise OracleUnusableError(msg)
-    prose = (spec_dir / str(index["brief"])).read_text(encoding="utf-8")
+    entries = requirement_entries(index, spec_dir=spec_dir)
+    prose = (spec_dir / str(declared(index, "brief", spec_dir=spec_dir))).read_text(
+        encoding="utf-8"
+    )
+    ids = tuple(entry_field(entry, "id", spec_dir=spec_dir) for entry in entries)
     return SpecBrief(
-        spec_id=str(index["spec_id"]),
-        title=str(index["title"]),
+        spec_id=str(declared(index, "spec_id", spec_dir=spec_dir)),
+        title=str(declared(index, "title", spec_dir=spec_dir)),
         prose=prose,
-        requirement_ids=tuple(str(entry["id"]) for entry in entries),
-        titles={str(entry["id"]): str(entry["title"]) for entry in entries},
+        requirement_ids=ids,
+        titles={
+            entry_field(entry, "id", spec_dir=spec_dir): entry_field(
+                entry, "title", spec_dir=spec_dir
+            )
+            for entry in entries
+        },
     )
 
 
@@ -211,20 +229,42 @@ def unit_definitions(
 
     Keyed on the id rather than zipped by position. A child task's id IS its
     definition's id, and :class:`DecompositionResult` refuses a level where the
-    two sets differ, so the id is a guaranteed bijection while the ORDER is
+    two sets differ, so the id is a bijection WITHIN a level while the ORDER is
     only a property of how the service happens to build the list. Pairing by
     position would attribute one unit's claims to another the day that changes,
     silently and with nothing to notice.
+
+    Across levels the guarantee is a different one and worth naming, because
+    this flattens several planning sessions into one map. Ids are canonical
+    UUIDs, minted per session and rejected by
+    :func:`synthorg.engine.decomposition._ids.subtask_uuid` if they are
+    anything else, so a repeat is not a realistic outcome. It is still asserted
+    rather than assumed: ``dict`` update is silent on a collision, and the
+    consequence would be one unit's ``satisfies`` claims scored against another
+    unit's delivery, which is the survival metric computed on the wrong
+    denominator with nothing anywhere to notice.
 
     Args:
         result: The decomposition tree.
 
     Returns:
         Task id (as a string) to its definition, for every level.
+
+    Raises:
+        OracleUnusableError: Two levels minted the same subtask id, so the
+            claims cannot be attributed and no measurement taken from them
+            would mean anything.
     """
     pairs: dict[str, SubtaskDefinition] = {}
     for node in merge_nodes(result):
-        pairs.update({definition.id: definition for definition in node.plan.subtasks})
+        for definition in node.plan.subtasks:
+            if definition.id in pairs:
+                msg = (
+                    f"subtask id {definition.id!r} appears at more than one level "
+                    f"of the tree, so its claims cannot be attributed to a unit"
+                )
+                raise OracleUnusableError(msg)
+            pairs[definition.id] = definition
     return pairs
 
 

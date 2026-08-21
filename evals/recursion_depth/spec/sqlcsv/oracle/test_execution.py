@@ -150,7 +150,22 @@ def test_r33_inner_join_on_equality(json_rows: JsonRunner) -> None:
         "ORDER BY orders.id"
     )
 
+    # Both projected columns, and the bare-name rule R33 also states: a
+    # projected `table.column` is keyed by its column name alone. Asserting
+    # only the names left the ids and the output keys unchecked.
+    assert [row["id"] for row in rows] == [1, 2, 3, 4, 5, 6]
     assert [row["name"] for row in rows] == ["Ada", "Ada", "Bo", "Bo", "Cy", "Cy"]
+
+    # And that the predicate actually held per row, rather than the row count
+    # happening to come out right. `customer_id` and `id` are already distinct
+    # bare names, so neither needs an alias and this stays a test of R33.
+    keyed = json_rows(
+        "SELECT orders.customer_id, customers.id FROM orders "
+        "INNER JOIN customers ON orders.customer_id = customers.id "
+        "ORDER BY orders.customer_id"
+    )
+    assert len(keyed) == len(rows)
+    assert all(row["customer_id"] == row["id"] for row in keyed)
 
 
 def test_r34_left_join_fills_nulls(json_rows: JsonRunner) -> None:
@@ -160,5 +175,8 @@ def test_r34_left_join_fills_nulls(json_rows: JsonRunner) -> None:
         "ORDER BY orders.id"
     )
 
-    assert len(rows) == len(_ORDER_IDS)
-    assert rows[-1] == {"id": 8, "name": None}
+    # The full ordered sequence, not the count: a delivery that dropped one
+    # unmatched row and duplicated a matched one has the same length.
+    assert [row["id"] for row in rows] == list(_ORDER_IDS)
+    # Orders 7 and 8 both name customer 13, which has no row of its own.
+    assert [row["name"] for row in rows[-2:]] == [None, None]

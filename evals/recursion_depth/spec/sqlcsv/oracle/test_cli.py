@@ -18,12 +18,19 @@ def test_r40_help_exits_zero(run_sql: SqlRunner) -> None:
 
 
 def test_r41_missing_data_dir_exits_two(run_sql: SqlRunner) -> None:
+    # Both branches assert the whole contract, not just the code. The spec
+    # makes "a diagnostic on stderr and nothing on stdout" global to every
+    # non-zero exit, so a delivery that exits 2 in silence satisfies the
+    # assertion while failing the requirement.
     omitted = run_sql("SELECT id FROM orders", data="")
     absent = run_sql("SELECT id FROM orders", data="no-such-directory")
 
     assert omitted.exit_code == _BAD_INPUT
+    assert omitted.stdout == ""
+    assert omitted.stderr.strip() != ""
     assert absent.exit_code == _BAD_INPUT
     assert absent.stdout == ""
+    assert absent.stderr.strip() != ""
 
 
 def test_r42_dash_reads_sql_from_stdin(run_sql: SqlRunner) -> None:

@@ -6,12 +6,29 @@ from .conftest import JsonRunner, SqlRunner
 #: The exit code the spec assigns to input that is not usable.
 _BAD_INPUT = 2
 
+#: The exit code for a well-formed query naming something absent.
+_NOT_FOUND = 3
 
-def test_r06_keywords_are_case_insensitive(json_rows: JsonRunner) -> None:
+
+def test_r06_keyword_case_folds_but_identifier_case_does_not(
+    json_rows: JsonRunner, run_sql: SqlRunner
+) -> None:
     lower = json_rows("select id from orders where id = 1")
     mixed = json_rows("SeLeCt id FrOm orders WhErE id = 1")
 
     assert lower == mixed == [{"id": 1}]
+
+    # R06's second sentence, asserted in the same node because the requirement
+    # index scores one node per requirement and a separate test would never be
+    # invoked by the oracle at all. Without it, a delivery that lower-cases the
+    # whole statement passes the assertion above AND resolves `Orders` to the
+    # `orders` table, which R06 forbids. A table no source provides is R15's
+    # exit 3.
+    wrong_case = run_sql("SELECT id FROM Orders")
+
+    assert wrong_case.exit_code == _NOT_FOUND
+    assert wrong_case.stdout == ""
+    assert wrong_case.stderr.strip() != ""
 
 
 def test_r07_string_literals_and_escaped_quotes(json_rows: JsonRunner) -> None:

@@ -359,6 +359,35 @@ async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
     await asyncio.to_thread(shutil.rmtree, run_work_root, ignore_errors=True)
 
 
+def _positive_int(raw: str) -> int:
+    """Parse a ceiling that has to be a real one.
+
+    ``0`` is the value that matters here. ``argparse`` accepts it and every
+    read of the option is ``args.max_sessions or manifest.max_sessions``, so a
+    ceiling of zero is falsy, falls through to the manifest's own number, and
+    spends against it: the operator asked for nothing to run and paid for a
+    full sweep.
+
+    Args:
+        raw: The command-line text.
+
+    Returns:
+        The parsed count.
+
+    Raises:
+        argparse.ArgumentTypeError: The value is not a positive integer.
+    """
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        msg = f"expected a positive integer, got {raw!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if value < 1:
+        msg = f"expected a positive integer, got {value}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse the recording CLI arguments.
 
@@ -381,7 +410,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--max-sessions",
-        type=int,
+        type=_positive_int,
         default=None,
         help=(
             "Override the manifest's session ceiling. The sweep stops at it and "
@@ -470,7 +499,15 @@ def narrow(
     if unknown:
         msg = f"--depths names caps the manifest does not carry: {unknown}"
         raise ValueError(msg)
-    return manifest.model_copy(update={"depths": wanted})
+    # Re-validated rather than copied. `model_copy(update=...)` treats what it
+    # is handed as trusted and runs no validator, and this value came off a
+    # command line: `--depths 1,1` would plan the same cap twice and pay for it
+    # twice, and `--depths ,` would narrow to nothing and record a sweep that
+    # measured no cell at all. The manifest already refuses both, so the fix is
+    # to go back through it rather than to restate its rules here.
+    return RecursionDepthManifest.model_validate(
+        manifest.model_dump() | {"depths": wanted}
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

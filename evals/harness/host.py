@@ -36,6 +36,7 @@ reclaimed by whichever harness created them.
 import asyncio
 import base64
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -124,6 +125,12 @@ DEFAULT_RECORDING_LABEL: Final[str] = "recording"
 _SCRATCH_DIR_MODE: Final[int] = 0o700
 
 _MAX_PORT: Final[int] = 65535
+
+#: What a recording label may be, given that it becomes a filename and part of
+#: a username. An allowlist rather than a traversal check, because the two
+#: places it lands have different rules about what is dangerous and only the
+#: intersection is safe in both.
+_SAFE_LABEL: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 #: Bytes behind the throwaway account that occupies the single-CEO slot. It
 #: exists so the unauthenticated first-run setup route has nothing left to
@@ -262,14 +269,25 @@ class RecordingHostConfig:
     sidecar_image: str | None = None
 
     def __post_init__(self) -> None:
-        """Reject a port the socket layer could only refuse later.
+        """Reject what only the socket layer or the filesystem would catch later.
 
         Raises:
             HarnessHostConfigInvalidError: ``bind_port`` is outside the TCP port
-                range.
+                range, or ``label`` is not a safe identifier.
         """
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
+            raise HarnessHostConfigInvalidError(msg)
+        # `label` becomes a path component of the throwaway database and part
+        # of the seeded username. Absolute or carrying `..` it writes the
+        # database outside `scratch_dir`, which `stop()` then does not remove,
+        # so the supposedly throwaway store outlives the recording that made
+        # it. Checked here because this is where the value stops being text.
+        if not _SAFE_LABEL.fullmatch(self.label):
+            msg = (
+                f"label must be a non-empty identifier of ASCII letters, "
+                f"digits, '_' or '-', got {self.label!r}"
+            )
             raise HarnessHostConfigInvalidError(msg)
 
 

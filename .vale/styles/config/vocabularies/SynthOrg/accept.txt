@@ -10,6 +10,7 @@ compensatable
 coo
 dependabot
 deptry
+disconfirming
 disjointness
 dpdm
 htmlfor

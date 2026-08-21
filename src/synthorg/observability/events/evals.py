@@ -53,6 +53,9 @@ EVALS_HARNESS_WORKSPACES_RECLAIMED: Final[str] = "evals.harness.workspaces_recla
 EVALS_HARNESS_WORKSPACE_PATH_ESCAPED: Final[str] = (
     "evals.harness.workspace_path_escaped"
 )
+EVALS_HARNESS_WORKSPACE_LINK_DROPPED: Final[str] = (
+    "evals.harness.workspace_link_dropped"
+)
 EVALS_HARNESS_STALL_REPORT_FAILED: Final[str] = "evals.harness.stall_report_failed"
 EVALS_HARNESS_SANDBOXES_RELEASED: Final[str] = "evals.harness.sandboxes_released"
 EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
@@ -71,7 +74,4 @@ EVALS_RECURSION_CELL_UNAVAILABLE: Final[str] = "evals.recursion_depth.cell_unava
 EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
-EVALS_RECURSION_CHILD_LINK_DROPPED: Final[str] = (
-    "evals.recursion_depth.child_link_dropped"
-)
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
