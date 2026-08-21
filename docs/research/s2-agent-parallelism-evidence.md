@@ -8,9 +8,9 @@ last_reviewed: 2026-08-20
 # S2: Agent Parallelism Evidence Review
 
 **Date**: 2026-08-20. **Method**: eight parallel research passes plus direct primary-source
-verification. **Supersedes**: the conclusions of
-[S1 Multi-Agent Architecture Decision](s1-multi-agent-decision.md), which carries a
-mischaracterised statistic (see [Correction to S1](#correction-to-s1)).
+verification. **Supersedes in part**: the two mischaracterised claims of
+[S1 Multi-Agent Architecture Decision](s1-multi-agent-decision.md), and nothing else on
+that page (see [Correction to S1](#correction-to-s1)).
 
 ## Why this page exists
 
@@ -218,7 +218,9 @@ engineering.**
 The six properties: persists; live-readable by another party while running; resumable by a
 different agent or process; forkable; steerable mid-flight; partial output survives death.
 
-**No system has all six.** Closest partials: Claude Agent SDK (explicit fork,
+**No system has all six** (UNVERIFIED: a negative over a market, established by survey on
+2026-08-20 rather than against any source that enumerates it, so read it as "none found",
+not as "none exists"). Closest partials: Claude Agent SDK (explicit fork,
 cross-process resume), Restate (the only shipped generic live journal UI), Letta
 (different clients attaching to one persistent agent), Zed (the only multi-party live read,
 via a CRDT-synced buffer), Devin (the strongest same-owner steering, plus Slack-thread following as
@@ -281,8 +283,11 @@ Five properties: dependency-graph partitioning; hierarchical fan-out with
 non-coordinating workers; recursive self-split; structurally independent judge; durable
 observable sessions.
 
-**No shipping product has more than two of the five. Nobody has partitioning plus judging
-together. No shipped product has it, and no unshipped one either.** Cursor's internal system has neither: its splits are
+**No shipping product has more than two of the five, and none combines partitioning with
+judging** (UNVERIFIED, on the same footing as the durability negative above: a survey
+result of 2026-08-20 over the products named below, not an enumeration of the market).
+It is deliberately not extended to unshipped systems, which a survey cannot reach.
+Cursor's internal system has neither: its splits are
 planner-owned slices rather than graph analysis, and the judge was removed. Closest
 shipped competitors are Devin (fan-out plus unusually strong observability), Factory.ai
 Missions (typed-role coordinator dispatch), and Warp Factories (closest on the judge axis,

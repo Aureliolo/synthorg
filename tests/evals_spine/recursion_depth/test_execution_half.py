@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid5
 
 import pytest
@@ -84,7 +85,9 @@ from synthorg.engine.routing_policy.capability_policy import (
 )
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.providers.routing.models import ResolvedModel
+from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -405,35 +408,29 @@ def _deps() -> SweepDeps:
     )
 
 
-@dataclass
-class _RunnerlessSandbox:
-    """A container image with no pytest in it, which is what a stale tag is.
+def _runnerless_sandbox() -> tuple[SandboxBackend, AsyncMock]:
+    """Build a sandbox on an image with no pytest in it, which a stale tag is.
 
-    Records what it was asked to run, because the property under test is an
-    ORDERING: the probe has to come before the tree gets a process, and a
-    double that discarded its arguments could only ever show that some non-zero
+    Autospec'd off the protocol rather than hand-written, so the double carries
+    the lifecycle and health methods a partial class would omit and the call
+    site needs no ``type: ignore`` to pass it where a backend is expected.
+
+    The execution mock is handed back beside it, because the property under test
+    is an ORDERING: the probe has to come before the tree gets a process, and a
+    double that discarded its arguments could only show that some non-zero
     result refuses.
 
-    Attributes:
-        calls: The argv of every execution, oldest first.
+    Returns:
+        The backend, and the mock recording what it was asked to run.
     """
-
-    calls: list[tuple[str, ...]] = field(default_factory=list)
-
-    async def execute(self, **kwargs: object) -> SandboxResult:
-        """Answer the way an interpreter does when the module is absent.
-
-        Returns:
-            A failed result carrying the interpreter's own message.
-        """
-        args = kwargs["args"]
-        assert isinstance(args, tuple)
-        self.calls.append(args)
-        return SandboxResult(
-            stdout="",
-            stderr="No module named pytest\n",
-            returncode=1,
-        )
+    execute = AsyncMock(spec=SandboxBackend.execute)
+    execute.return_value = SandboxResult(
+        stdout="",
+        stderr="No module named pytest\n",
+        returncode=1,
+    )
+    backend: SandboxBackend = mock_of[SandboxBackend](execute=execute)
+    return backend, execute
 
 
 class _PassingGrader:
@@ -659,11 +656,8 @@ class TestTheOwnTestGate:
         # undelivered and publish an empty curve that reads as a catastrophic
         # result rather than a broken harness. A missing tool is systemic, so
         # it stops the matrix instead of failing one cell.
-        sandbox = _RunnerlessSandbox()
-        grader = SandboxUnitGrader(
-            sandbox=sandbox,  # type: ignore[arg-type]
-            project_id=NotBlankStr("proj"),
-        )
+        sandbox, execute = _runnerless_sandbox()
+        grader = SandboxUnitGrader(sandbox=sandbox, project_id=NotBlankStr("proj"))
 
         with pytest.raises(EvalToolMissingError, match="cannot import pytest"):
             await grader.own_tests_pass(tmp_path)
@@ -671,7 +665,8 @@ class TestTheOwnTestGate:
         # The ORDERING is the property, not the refusal: the answer stops the
         # whole matrix, so its evidence has to come from before the tree had a
         # process. Exactly one execution, and it is the probe.
-        assert sandbox.calls == [RUNNER_PROBE_ARGS]
+        ran = [call.kwargs["args"] for call in execute.await_args_list]
+        assert ran == [RUNNER_PROBE_ARGS]
 
     def test_a_probe_that_imported_pytest_grades_normally(self) -> None:
         # The decision reads ONE thing, and it is a probe run before any

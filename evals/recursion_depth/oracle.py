@@ -557,9 +557,22 @@ def _read_report(
             f"mapping of node to outcome, so nothing can be scored from it"
         )
         raise OracleUnusableError(msg)
+    carried = raw.get("nonce")
+    # Typed and narrowed to ASCII BEFORE the comparison, because
+    # `compare_digest` raises `TypeError` on a str holding any non-ASCII
+    # character, and the value it is handed here is one a forger writes. Coerced
+    # with `str()` instead, a report carrying "é" crashes the read rather than
+    # refusing it, and the runner files a forgery as an opaque cell failure. The
+    # token is hex, so nothing excluded here could have matched anyway: this
+    # reaches the same verdict without the crash.
+    #
     # Compared in constant time because the comparison is against a value an
     # attacker supplies, which is the situation the timing-safe form exists for.
-    if not secrets.compare_digest(str(raw.get("nonce")), nonce):
+    if (
+        not isinstance(carried, str)
+        or not carried.isascii()
+        or not secrets.compare_digest(carried, nonce)
+    ):
         msg = (
             f"the oracle's report at {report_path} does not carry this run's "
             f"token, so it is not the one this session wrote; the graded tree "
@@ -575,7 +588,20 @@ def _read_report(
             f"can be scored from it"
         )
         raise OracleUnusableError(msg)
-    outcomes = {str(key): bool(value) for key, value in recorded.items()}
+    outcomes: dict[str, bool] = {}
+    for key, value in recorded.items():
+        # Refused rather than coerced. `bool("false")` is True and `bool(1)` is
+        # True, so a report whose verdicts are the wrong TYPE would be read as a
+        # requirement passing, which is the one direction that inflates the
+        # measurement. The suite writes real booleans, so anything else says the
+        # report is not the shape this run's own conftest produces.
+        if not isinstance(value, bool):
+            msg = (
+                f"the oracle's report records a {type(value).__name__} rather "
+                f"than a verdict for {key!r}, so nothing can be scored from it"
+            )
+            raise OracleUnusableError(msg)
+        outcomes[str(key)] = value
     return {key: outcomes.get(nodes[key], False) for key in wanted}
 
 

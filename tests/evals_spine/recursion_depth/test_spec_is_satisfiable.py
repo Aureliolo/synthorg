@@ -364,6 +364,36 @@ class TestTheReportIsAttributedToTheRunThatAskedForIt:
         with pytest.raises(OracleUnusableError, match="does not carry this run"):
             self._read(report, nonce="abc123")
 
+    def test_a_non_ascii_token_refuses_rather_than_crashing(
+        self, tmp_path: Path
+    ) -> None:
+        # `compare_digest` raises `TypeError` on a str holding any non-ASCII
+        # character, and the value compared here is one a forger writes. Handed
+        # to it unchecked, this report would abort the read instead of refusing
+        # the measurement, and the runner would file a forgery as an opaque
+        # cell failure rather than as the tampering it is.
+        report = self._report(
+            tmp_path, {"nonce": "é", "outcomes": {"test_cli.py::test_one": True}}
+        )
+
+        with pytest.raises(OracleUnusableError, match="does not carry this run"):
+            self._read(report, nonce="abc123")
+
+    @pytest.mark.parametrize("verdict", ["false", "true", 1, 0, None])
+    def test_a_non_boolean_verdict_refuses(
+        self, tmp_path: Path, verdict: object
+    ) -> None:
+        # Refused rather than coerced: `bool("false")` is True, so a report
+        # whose verdicts are the wrong TYPE would read as requirements passing,
+        # which is the one direction that inflates the survival figure.
+        report = self._report(
+            tmp_path,
+            {"nonce": "abc123", "outcomes": {"test_cli.py::test_one": verdict}},
+        )
+
+        with pytest.raises(OracleUnusableError, match="rather than a verdict"):
+            self._read(report, nonce="abc123")
+
     def test_a_report_whose_outcomes_are_not_a_mapping_refuses(
         self, tmp_path: Path
     ) -> None:
