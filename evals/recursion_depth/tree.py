@@ -48,6 +48,22 @@ logger = get_logger(__name__)
 _OPEN_ARTIFACT_THRESHOLD: Final[str] = "20"
 _OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
 
+#: Wall-clock ceiling on one planning session, raised well above the product
+#: default of 600s.
+#:
+#: The default is sized for a model that answers directly. Every model a sweep
+#: is worth running against reasons first, and a reasoning model's planning
+#: turn is slow in proportion to the output budget it is given: a measured pair
+#: of runs decomposed the SAME brief in 310s and in over 600s, so at the
+#: default one arm completed and the other was killed mid-plan and recorded as
+#: an unavailable cell. Losing a whole arm to a timing margin is worse than
+#: waiting, because the arm is the comparison the sweep exists to make.
+#:
+#: This is a bound, not a budget: a planner that finishes sooner costs nothing
+#: extra, and the ceiling still exists to stop an unbounded wait on a provider
+#: that never answers.
+_PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
+
 #: How many subtasks one level may produce. Above the corroborated 11-to-25
 #: coherent-unit ceiling there is no evidence a planner can hold a level
 #: together at all, so a level is bounded well inside it and the sweep buys its
@@ -140,6 +156,9 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
         "coordination", "leaf_subtask_threshold", _OPEN_ARTIFACT_THRESHOLD
     )
     await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
+    await settings.set(
+        "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
+    )
 
 
 def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
