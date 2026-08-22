@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
@@ -149,8 +150,12 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
         The brief.
     """
     claimed = [
-        f"- {identifier}: {spec.titles.get(identifier, 'no such requirement')}"
-        for identifier in definition.satisfies
+        f"- {identifier}: {spec.titles[identifier]}"
+        for identifier in requirement_ids_of(
+            definition.satisfies,
+            known=spec.requirement_ids,
+            unit=definition.title,
+        )
     ]
     stated = [f"Your unit: {definition.title}", str(task.description)]
     if claimed:

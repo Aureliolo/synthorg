@@ -39,6 +39,7 @@ from evals.errors import (
     RecursionDepthSessionCeilingError,
 )
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
 from evals.recursion_depth.gate import (
     BlindMergeReviewer,
@@ -457,7 +458,9 @@ async def _build_tree_units(
                 )
                 produced[key] = leaf.workspace
                 delivered[key] = leaf.delivered
-                units.append(_leaf_record(task, definitions[key], node, leaf))
+                units.append(
+                    _leaf_record(task, definitions[key], node, leaf, context.spec)
+                )
                 context.budget.spend(leaf.attempts)
             pieces.append(
                 MergePiece(
@@ -602,8 +605,13 @@ def _leaf_record(
     definition: SubtaskDefinition,
     node: DecompositionResult,
     leaf: LeafOutcome,
+    spec: SpecBrief,
 ) -> UnitRecord:
     """Record what one leaf did.
+
+    The planner's ``satisfies`` carries criterion TEXT, and every consumer of
+    this record wants the requirement id, so the translation happens here,
+    once, rather than in each of them.
 
     Returns:
         The unit record.
@@ -613,7 +621,14 @@ def _leaf_record(
         title=NotBlankStr(str(task.title)),
         kind=LEAF,
         depth=node.depth,
-        claimed=definition.satisfies,
+        claimed=tuple(
+            NotBlankStr(one)
+            for one in requirement_ids_of(
+                definition.satisfies,
+                known=spec.requirement_ids,
+                unit=str(task.title),
+            )
+        ),
         delivered=leaf.delivered,
         attempts=leaf.attempts,
         turns=leaf.turns,

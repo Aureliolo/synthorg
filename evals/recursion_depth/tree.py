@@ -23,6 +23,7 @@ from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from evals.errors import OracleUnusableError
+from evals.recursion_depth.claims import criterion_for
 from evals.recursion_depth.oracle import (
     declared,
     entry_field,
@@ -199,7 +200,7 @@ def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
         created_by=NotBlankStr(created_by),
         status=TaskStatus.CREATED,
         acceptance_criteria=tuple(
-            AcceptanceCriterion(description=NotBlankStr(f"{identifier} is satisfied"))
+            AcceptanceCriterion(description=NotBlankStr(criterion_for(identifier)))
             for identifier in brief.requirement_ids
         ),
     )
