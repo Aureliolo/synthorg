@@ -58,20 +58,58 @@ SEED_WORKSPACE_SUMMARY: str = (
 )
 
 
-@dataclass(frozen=True)
-class PlannedTree:
-    """A decomposition tree and what producing it cost.
+class PlanningSpend:
+    """What one cell's planning has cost, however it ends.
 
-    Attributes:
-        result: The tree.
-        cost: What the planning sessions spent, across every level.
-        sessions: How many planning sessions ran, which is one per node that
-            planned rather than one per run.
+    Owned by the caller and booked into by the planner, rather than returned
+    beside the tree, because the figure matters most on the path that returns
+    no tree at all: a cell whose planning failed had still paid for every
+    session it ran, and a record built from the exception alone reported a cell
+    that cost nothing while two live cells burned an hour of provider time
+    between them.
+
+    Accumulating rather than assigning, because a cell's planning is retried
+    and each attempt opens its own ledger: reading only the last one
+    under-reports by exactly the attempts that failed.
+
+    Tokens travel beside cost because cost alone measures nothing against a
+    flat-rate subscription, where every record is priced at zero and the token
+    count is the only thing that moves.
     """
 
-    result: DecompositionResult
-    cost: float
-    sessions: int
+    __slots__ = ("_cost", "_sessions", "_tokens")
+
+    def __init__(self) -> None:
+        self._cost = 0.0
+        self._tokens = 0
+        self._sessions = 0
+
+    @property
+    def cost(self) -> float:
+        """What the planning attempts have spent."""
+        return self._cost
+
+    @property
+    def tokens(self) -> int:
+        """Input plus output tokens across the planning attempts."""
+        return self._tokens
+
+    @property
+    def sessions(self) -> int:
+        """How many planning sessions have run."""
+        return self._sessions
+
+    def book(self, *, cost: float, tokens: int, sessions: int) -> None:
+        """Add one attempt's spend.
+
+        Args:
+            cost: What the attempt's ledger recorded.
+            tokens: Input plus output tokens over the same records.
+            sessions: How many planning sessions the attempt ran.
+        """
+        self._cost += cost
+        self._tokens += tokens
+        self._sessions += sessions
 
 
 @runtime_checkable
@@ -79,9 +117,14 @@ class TreePlanner(Protocol):
     """Whatever produces the tree one run is executed from."""
 
     async def plan(
-        self, *, task: Task, depth_cap: int, execution_id: str
-    ) -> PlannedTree:
-        """Decompose *task* down to *depth_cap*."""
+        self,
+        *,
+        task: Task,
+        depth_cap: int,
+        execution_id: str,
+        spend: PlanningSpend,
+    ) -> DecompositionResult:
+        """Decompose *task* down to *depth_cap*, booking what it costs."""
         ...
 
 
@@ -108,17 +151,30 @@ class AgentSessionPlanner:
     config_resolver: ConfigResolverProtocol | None = None
 
     async def plan(
-        self, *, task: Task, depth_cap: int, execution_id: str
-    ) -> PlannedTree:
+        self,
+        *,
+        task: Task,
+        depth_cap: int,
+        execution_id: str,
+        spend: PlanningSpend,
+    ) -> DecompositionResult:
         """Decompose *task* down to *depth_cap* and book what it cost.
 
         Args:
             task: The root objective.
             depth_cap: The ``max_depth`` this run is allowed.
             execution_id: What the ledger keys the planning spend on.
+            spend: Where this attempt's spend is booked, whether or not it
+                produces a tree.
 
         Returns:
-            The tree and its cost.
+            The tree.
+
+        Raises:
+            Exception: Whatever planning raised, unchanged. Wrapping it would
+                cost the runner the two classifications it takes from the type
+                itself: a systemic failure that stops the sweep, and a
+                decomposition failure that earns the second attempt.
         """
         provider = await self.deps.build_provider(self._binding(task, execution_id))
         fallback = ProgressTrackingLedger()
@@ -132,40 +188,42 @@ class AgentSessionPlanner:
             transcript_scope(self.deps, execution_id),
             ledger_scope(self.deps, execution_id, fallback) as tracker,
         ):
-            result = await build_tree(
-                # The strategy books to its OWN tracker, never the hosted one,
-                # for the reason `open_session` does the same: a planning
-                # completion goes out through the hosted gateway, which records
-                # it, and the strategy's own cost scope records it again, so a
-                # shared ledger counts every planning call twice and the cost
-                # panel overstates exactly the arm that plans the most. When no
-                # gateway is hosted the two are the same object by
-                # construction, and the sum below is the only read either way.
-                service=self._service(provider, fallback),
-                task=task,
-                depth_cap=depth_cap,
-                workspace_summary=SEED_WORKSPACE_SUMMARY,
-                available_roles=self.roster.roles,
-                # The same lead the binding above dispatches as. Without it the
-                # agent-session strategy has no owner to plan as and falls back
-                # to the single-shot one, which is the planner this module
-                # exists to NOT measure: a live run reported `strategy=llm`
-                # under a sweep whose whole premise is the shipped planner.
-                owner=self.roster.lead,
-            )
-            # Drained before it is read: the cost chokepoint submits each
-            # record on a background task, so reading straight after the last
-            # planning turn loses whatever is still in flight.
-            await tracker.drain_pending_records()
-            cost = sum(record.cost for record in await collect_all_records(tracker))
-        return PlannedTree(
-            result=result,
-            cost=cost,
+            try:
+                result = await build_tree(
+                    # The strategy books to its OWN tracker, never the hosted
+                    # one, for the reason `open_session` does the same: a
+                    # planning completion goes out through the hosted gateway,
+                    # which records it, and the strategy's own cost scope
+                    # records it again, so a shared ledger counts every planning
+                    # call twice and the cost panel overstates exactly the arm
+                    # that plans the most. When no gateway is hosted the two are
+                    # the same object by construction, and the read below is the
+                    # only one either way.
+                    service=self._service(provider, fallback),
+                    task=task,
+                    depth_cap=depth_cap,
+                    workspace_summary=SEED_WORKSPACE_SUMMARY,
+                    available_roles=self.roster.roles,
+                    # The same lead the binding above dispatches as. Without it
+                    # the agent-session strategy has no owner to plan as and
+                    # falls back to the single-shot one, which is the planner
+                    # this module exists to NOT measure: a live run reported
+                    # `strategy=llm` under a sweep whose whole premise is the
+                    # shipped planner.
+                    owner=self.roster.lead,
+                )
+            except Exception:
+                # One session is a floor and is deliberately one: the root
+                # planned or this failure did not come from the planner, and
+                # the levels below it cannot be counted without the tree the
+                # failure withheld. The money is exact either way.
+                await _book(tracker, spend, sessions=1)
+                raise
             # Counted from the tree rather than from the cap: a planner that
             # stopped splitting at three ran three levels of sessions whatever
             # it was allowed to run.
-            sessions=len(levels(result)),
-        )
+            await _book(tracker, spend, sessions=len(levels(result)))
+        return result
 
     def _binding(self, task: Task, execution_id: str) -> RunBinding:
         """Describe the planning session as its bearer's facts.
@@ -223,6 +281,29 @@ class AgentSessionPlanner:
         )
 
 
+async def _book(
+    tracker: ProgressTrackingLedger, spend: PlanningSpend, *, sessions: int
+) -> None:
+    """Book what *tracker* recorded for one planning attempt.
+
+    Drained before it is read: the cost chokepoint submits each record on a
+    background task, so reading straight after the last planning turn loses
+    whatever is still in flight.
+
+    Args:
+        tracker: The attempt's authoritative cost sink.
+        spend: Where the cell's planning spend accumulates.
+        sessions: How many planning sessions this attempt ran.
+    """
+    await tracker.drain_pending_records()
+    records = await collect_all_records(tracker)
+    spend.book(
+        cost=sum(record.cost for record in records),
+        tokens=sum(record.input_tokens + record.output_tokens for record in records),
+        sessions=sessions,
+    )
+
+
 def levels(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
     """Every node of the tree, each of which was one planning session.
 
@@ -239,7 +320,7 @@ def levels(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
 __all__ = [
     "SEED_WORKSPACE_SUMMARY",
     "AgentSessionPlanner",
-    "PlannedTree",
+    "PlanningSpend",
     "TreePlanner",
     "levels",
 ]

@@ -14,9 +14,12 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
-    SubmitDecompositionPlanTool,
-    _PlanCapture,
     _ran_without_submitting,
+    _stopped_short,
+)
+from synthorg.engine.decomposition.agent_session_submit import (
+    PlanCapture,
+    SubmitDecompositionPlanTool,
 )
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
@@ -138,13 +141,29 @@ def _submit_then_continue() -> ScriptedProvider:
     )
 
 
+#: Every ``_strategy`` session's turn cap, and so the number of times a session
+#: that only ever answers in prose can be told it has not submitted.
+_MAX_TURNS = 4
+
+
+def _never_submits() -> ScriptedProvider:
+    """A session that answers in prose every turn until its budget is gone.
+
+    Returns:
+        A provider scripted with one text response per available turn.
+    """
+    return ScriptedProvider(
+        [make_text_response("I am still thinking.") for _ in range(_MAX_TURNS)]
+    )
+
+
 def _strategy(
     provider: ScriptedProvider, fallback: _SentinelFallback
 ) -> AgentSessionDecompositionStrategy:
     return AgentSessionDecompositionStrategy(
         provider_selector=lambda _identity: provider,
         fallback=fallback,
-        config=AgentSessionDecompositionConfig(max_turns=4),
+        config=AgentSessionDecompositionConfig(max_turns=_MAX_TURNS),
     )
 
 
@@ -225,12 +244,12 @@ class TestAgentSessionDecompose:
     async def test_a_session_that_ran_and_submitted_nothing_raises(self) -> None:
         """A researched plan that went missing is not replaced silently.
 
-        The owner reasoned across turns with read-only tools and finished
-        without calling its one tool. Falling back substitutes a single-shot
-        plan the operator then approves believing it is the researched one, so
-        the failure surfaces on the plan instead.
+        The owner reasoned across turns with read-only tools and spent its
+        budget without ever calling its one tool. Falling back substitutes a
+        single-shot plan the operator then approves believing it is the
+        researched one, so the failure surfaces on the plan instead.
         """
-        provider = ScriptedProvider([make_text_response("I am still thinking.")])
+        provider = _never_submits()
         fallback = _SentinelFallback()
         strategy = _strategy(provider, fallback)
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -239,7 +258,7 @@ class TestAgentSessionDecompose:
             await strategy.decompose(_task(), context)
 
         assert not fallback.called
-        assert provider.call_count >= 1
+        assert provider.call_count == _MAX_TURNS
 
     def test_strategy_name(self) -> None:
         strategy = _strategy(ScriptedProvider([]), _SentinelFallback())
@@ -248,7 +267,7 @@ class TestAgentSessionDecompose:
 
 class TestSubmitDecompositionPlanTool:
     async def test_captures_valid_plan(self) -> None:
-        capture = _PlanCapture()
+        capture = PlanCapture()
         tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
         result = await tool.execute(arguments=dict(_plan_args()))
         assert isinstance(result, ToolExecutionResult)
@@ -257,14 +276,14 @@ class TestSubmitDecompositionPlanTool:
         assert len(capture.plan.subtasks) == 2
 
     async def test_rejects_malformed_plan(self) -> None:
-        capture = _PlanCapture()
+        capture = PlanCapture()
         tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
         result = await tool.execute(arguments={"subtasks": "not-a-list"})
         assert result.is_error
         assert capture.plan is None
 
     async def test_double_submit_overwrites_with_latest(self) -> None:
-        capture = _PlanCapture()
+        capture = PlanCapture()
         tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
         await tool.execute(arguments=dict(_plan_args()))
         assert capture.plan is not None
@@ -483,10 +502,10 @@ class TestAgentSessionGuards:
     ) -> None:
         """Finishing without submitting is producing nothing, not producing less.
 
-        Same shape as the zero-artifact guard: a run that terminated on its own
-        terms having delivered none of what it was for fails visibly.
+        Same shape as the zero-artifact guard: a run that spent its budget
+        having delivered none of what it was for fails visibly.
         """
-        provider = ScriptedProvider([make_text_response("I give up")])
+        provider = _never_submits()
         fallback = _SentinelFallback()
         strategy = _strategy(provider, fallback)
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -591,6 +610,107 @@ class TestAgentSessionGuards:
         assert provider.call_count == 2
 
 
+class TestUnsubmittedSessionsContinue:
+    """A stop with turns left is a state to correct, not a verdict.
+
+    The session's one deliverable is a tool call, and the tool hands a
+    rejection straight back, so an agent that ends its turn holding a rejected
+    plan is in the ordinary state of any coding loop. A recorded run ended
+    there twice over: told its wording broke a style rule 21 times and its plan
+    was invalid 8 more, it stopped, and the whole measurement stopped with it.
+    """
+
+    async def test_a_session_that_stops_short_is_told_and_carries_on(self) -> None:
+        provider = ScriptedProvider(
+            [
+                make_text_response("Here is my thinking so far."),
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("Submitted."),
+            ]
+        )
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert not fallback.called
+        assert len(plan.subtasks) == 2
+        assert plan.planning_strategy == "agent-session"
+
+    async def test_the_agent_is_told_what_it_has_not_done(self) -> None:
+        # Read off what the provider received on the second call: a nudge the
+        # session never sees corrects nothing.
+        provider = ScriptedProvider(
+            [
+                make_text_response("Here is my thinking so far."),
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("Submitted."),
+            ]
+        )
+        strategy = _strategy(provider, _SentinelFallback())
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        await strategy.decompose(_task(), context)
+
+        resumed = "\n".join(
+            message.content or "" for message in provider.received_messages[1]
+        )
+        assert "have not submitted a plan" in resumed
+        assert "submit_decomposition_plan again" in resumed
+
+    async def test_the_conversation_carries_across(self) -> None:
+        """Re-prompting a session that lost its turns would relearn nothing.
+
+        The rejections it has to act on are tool results already in the
+        conversation, so continuing means continuing the same one.
+        """
+        provider = ScriptedProvider(
+            [
+                make_text_response("Here is my thinking so far."),
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("Submitted."),
+            ]
+        )
+        strategy = _strategy(provider, _SentinelFallback())
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        await strategy.decompose(_task(), context)
+
+        resumed = "\n".join(
+            message.content or "" for message in provider.received_messages[1]
+        )
+        assert "Here is my thinking so far." in resumed
+
+    async def test_it_stops_asking_once_the_turns_are_spent(self) -> None:
+        """The turn cap keeps its meaning: nothing here grants a turn.
+
+        A session told to carry on without a bound is the runaway the cap
+        exists to prevent, and every one of its turns is a paid call.
+        """
+        provider = _never_submits()
+        strategy = _strategy(provider, _SentinelFallback())
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        with pytest.raises(DecompositionError, match="without submitting a plan"):
+            await strategy.decompose(_task(), context)
+
+        assert provider.call_count == _MAX_TURNS
+
+    async def test_a_session_stopped_from_outside_is_not_re_prompted(self) -> None:
+        # The provider errors, so the session never reached the model; another
+        # turn would fail identically and the fallback is the standing answer.
+        provider = ScriptedProvider(error=RuntimeError("upstream refused"))
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert fallback.called
+        assert plan.planning_strategy == "sentinel-fallback"
+
+
 class TestTerminationClassification:
     """The fallback decision is taken for every termination, not most of them.
 
@@ -633,6 +753,41 @@ class TestTerminationClassification:
         self, reason: TerminationReason
     ) -> None:
         assert _ran_without_submitting(reason) is True
+
+    @pytest.mark.parametrize("reason", list(TerminationReason))
+    def test_every_termination_reason_decides_whether_to_carry_on(
+        self, reason: TerminationReason
+    ) -> None:
+        assert isinstance(_stopped_short(reason), bool)
+
+    @pytest.mark.parametrize(
+        "reason",
+        [TerminationReason.COMPLETED, TerminationReason.NO_OP],
+    )
+    def test_a_session_that_ended_its_own_turn_carries_on(
+        self, reason: TerminationReason
+    ) -> None:
+        assert _stopped_short(reason) is True
+
+    @pytest.mark.parametrize(
+        "reason",
+        [
+            TerminationReason.MAX_TURNS,
+            TerminationReason.BUDGET_EXHAUSTED,
+            TerminationReason.STAGNATION,
+            TerminationReason.ERROR,
+            TerminationReason.SHUTDOWN,
+            TerminationReason.PARKED,
+            TerminationReason.CANCELLED,
+        ],
+    )
+    def test_a_bound_or_an_outside_stop_is_not_re_prompted(
+        self, reason: TerminationReason
+    ) -> None:
+        # The bounds are what refuse another turn, so spending one against
+        # them would be the loop the bound exists to close; the outside stops
+        # would fail again identically.
+        assert _stopped_short(reason) is False
 
 
 class TestAgentSessionConfig:

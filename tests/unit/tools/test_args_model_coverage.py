@@ -45,7 +45,10 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # which remaps subtask ids). A strict typed args model would both
         # duplicate that schema and reject the retry-friendly partial
         # submissions the parser is designed to accept and correct.
-        "synthorg.engine.decomposition.agent_session.SubmitDecompositionPlanTool",
+        (
+            "synthorg.engine.decomposition.agent_session_submit."
+            "SubmitDecompositionPlanTool"
+        ),
         # Terminal submit tool for a plan-review panellist. Reuses the
         # hand-rolled ``build_review_tool_schema`` and the lenient
         # ``parse_reviewer_verdict`` parser (which coerces / defaults a

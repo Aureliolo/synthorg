@@ -28,6 +28,13 @@ DECOMPOSITION_SESSION_DUPLICATE_SUBMIT: Final[str] = (
     "decomposition.session.duplicate_submit"
 )
 
+DECOMPOSITION_SESSION_RESUMED: Final[str] = "decomposition.session.resumed"
+"""A planning session that stopped without submitting was told so and continued.
+
+Carries the turns already spent against the cap, because the question this
+answers on a slow or expensive run is whether the session is converging on a
+plan or burning its budget being handed the same rejection."""
+
 # Coordination-constraints middleware received an empty plan text from
 # the LLM.  Caller falls back to a default plan; the event preserves the
 # failure mode for triage.
