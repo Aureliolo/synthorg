@@ -62,6 +62,40 @@ async def run_sweep(context, *, provenance):
     return RecursionDepthReport(cells=tuple(cells))
 '''
 
+_DEAD_OPEN_DRIVER = '''
+"""A driver whose journal open sits where the matrix never goes."""
+
+from evals.recursion_depth.journal import open_cell_journal
+from evals.recursion_depth.models import RecursionDepthReport
+
+
+def _unused_someday(out_dir, provenance, resume):
+    """Nothing on the recording path calls this."""
+    return open_cell_journal(out_dir, provenance=provenance, resume=resume)
+
+
+async def run_sweep(context, *, provenance, out_dir, resume):
+    """Run it, journalling nothing."""
+    cells = []
+    return RecursionDepthReport(cells=tuple(cells))
+'''
+
+_DEAD_OPEN_BINDING = '''
+"""A binding whose shared call is not on its entry point."""
+
+from evals.harness.journal import open_journal
+
+
+def _never_called(out_dir):
+    """Nothing reaches this."""
+    return open_journal(out_dir, None, identity={}, resume=False)
+
+
+def open_cell_journal(out_dir, *, provenance, resume):
+    """Bind it, badly."""
+    return (out_dir / "cells.jsonl").open("a"), None
+'''
+
 _HELPER = '''
 """A runner-adjacent module that ends no matrix."""
 
@@ -148,6 +182,35 @@ class TestTheGateCatchesTheDefect:
 
         assert main(["--repo-root", str(tmp_path)]) == 1
         assert "second copy" in capsys.readouterr().out
+
+
+class TestAnOpenCallIsNotEnoughOnItsOwn:
+    """The call has to be where the matrix actually runs."""
+
+    def test_a_driver_whose_open_sits_in_dead_code_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # A module-wide union of called names passes this, and it journals
+        # exactly nothing.
+        _tree(tmp_path)
+        _harness(tmp_path, "sweep", driver=_DEAD_OPEN_DRIVER, binding=_BINDING)
+
+        assert main(["--repo-root", str(tmp_path)]) == 1
+        assert "opens no journal" in capsys.readouterr().out
+
+    def test_a_binding_whose_shared_call_is_off_the_entry_point_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _tree(tmp_path)
+        _harness(
+            tmp_path,
+            "sweep",
+            driver=_JOURNALLING_DRIVER,
+            binding=_DEAD_OPEN_BINDING,
+        )
+
+        assert main(["--repo-root", str(tmp_path)]) == 1
+        assert "entry point" in capsys.readouterr().out
 
 
 class TestTheGateFailsClosed:

@@ -36,6 +36,7 @@ from evals.errors import (
     EvalToolMissingError,
     HarnessDockerUnavailableError,
     HarnessGatewayUnavailableError,
+    HarnessJournalUnwritableError,
     HarnessProviderMissingError,
     OracleUnusableError,
     RecursionDepthGateUnbuildableError,
@@ -125,6 +126,10 @@ _SYSTEMIC_FAILURES: tuple[type[Exception], ...] = (
     # with no owner to run as has none in every cell. Recording it per cell
     # would buy six identical fallback plans at full price.
     RecursionDepthPlannerSubstitutedError,
+    # A journal that cannot be written is true of every remaining cell, and
+    # recording this one as unavailable would try to write that row to the
+    # same broken file. The sweep stops holding whatever already landed.
+    HarnessJournalUnwritableError,
 )
 
 #: Attempts one cell's tree gets. Two, not more: a planner that cannot produce

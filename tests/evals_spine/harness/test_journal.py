@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.errors import HarnessJournalMismatchError
+from evals.errors import HarnessJournalMismatchError, HarnessJournalUnwritableError
 from evals.harness.journal import (
     RecordedCells,
     ResumeState,
@@ -363,10 +363,20 @@ class TestRecordingIsOneOwner:
         journal.close()
         cells = RecordedCells(journal, SPEC)
 
-        with pytest.raises(ValueError, match="closed file"):
+        with pytest.raises(HarnessJournalUnwritableError):
             cells.add(_measured())
 
         assert len(cells) == 0
+
+    def test_an_unwritable_journal_raises_its_own_type(self, tmp_path: Path) -> None:
+        # Typed, not the filesystem's own error: a driver's per-cell handler
+        # must not read this as one cell's outcome and then try to write that
+        # outcome to the same broken file.
+        journal, _ = _opened(tmp_path, resume=False)
+        journal.close()
+
+        with pytest.raises(HarnessJournalUnwritableError, match="no longer keep"):
+            journal.record(_measured())
 
     def test_adding_a_cell_journals_it(self, tmp_path: Path) -> None:
         # Four branches record a cell. A journal call beside each append is

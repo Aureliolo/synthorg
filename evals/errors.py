@@ -303,6 +303,18 @@ class RecursionDepthSessionCeilingError(EvalError):
     default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
 
 
+class HarnessJournalUnwritableError(EvalError):
+    """Raised when a finished cell could not be appended to the journal.
+
+    Systemic rather than per-cell: a journal that cannot be written is true of
+    every remaining cell, so a driver treating it as one cell's outcome would
+    try to record that outcome to the same broken file. The recording stops
+    instead, having kept whatever reached the disk before the failure.
+    """
+
+    default_message: ClassVar[str] = "The recording journal could not be written"
+
+
 class HarnessJournalMismatchError(EvalError):
     """Raised when a recording's journal cannot be appended to or resumed from.
 
@@ -398,6 +410,7 @@ __all__ = [
     "HarnessHostAlreadyStartedError",
     "HarnessHostConfigInvalidError",
     "HarnessJournalMismatchError",
+    "HarnessJournalUnwritableError",
     "HarnessProviderDegradedError",
     "HarnessProviderMissingError",
     "JudgeAnchorSetTooSmallError",

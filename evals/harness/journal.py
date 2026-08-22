@@ -31,7 +31,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from evals.errors import HarnessJournalMismatchError
+from evals.errors import HarnessJournalMismatchError, HarnessJournalUnwritableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_HARNESS_JOURNAL_RESUMED,
@@ -120,9 +120,21 @@ class RunJournal[RecordT: BaseModel]:
         Args:
             record: The finished cell, measured or not.
         """
-        self._handle.write(record.model_dump_json() + "\n")
-        self._handle.flush()
-        os.fsync(self._handle.fileno())
+        try:
+            self._handle.write(record.model_dump_json() + "\n")
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+        except (OSError, ValueError) as exc:
+            # Raised as its own type rather than as whatever the filesystem
+            # said, because a driver's per-cell handler must not treat this as
+            # a cell outcome: a journal that cannot be written is true of every
+            # remaining cell, and recording an "unavailable" row for it would
+            # try to write that row to the same broken file.
+            msg = (
+                f"the journal could not be written, so this recording can no "
+                f"longer keep what it pays for: {exc}"
+            )
+            raise HarnessJournalUnwritableError(msg) from exc
         logger.info(
             EVALS_HARNESS_RECORD_JOURNALLED,
             journal_kind=self._spec.kind,

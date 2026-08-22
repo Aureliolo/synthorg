@@ -138,29 +138,42 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
     return root
 
 
-def _called_names(tree: ast.Module) -> set[str]:
-    """Every name this module CALLS, by its final attribute or identifier.
+def _called_names(node: ast.AST) -> set[str]:
+    """Every name CALLED anywhere under *node*, by its final attribute or name.
 
     Calls rather than references, because importing a name and never invoking
     it journals nothing. The attribute form is read too, so a module that keeps
     the binding in a namespace (``journal.open_journal(...)``) counts.
 
     Args:
-        tree: The parsed module.
+        node: The subtree to read, a module or a single function.
 
     Returns:
         The called names.
     """
     called: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
             continue
-        target = node.func
+        target = child.func
         if isinstance(target, ast.Name):
             called.add(target.id)
         elif isinstance(target, ast.Attribute):
             called.add(target.attr)
     return called
+
+
+def _functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every function defined in *tree*, nested ones included.
+
+    Returns:
+        The function nodes.
+    """
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
 
 
 def _drivers(root: Path) -> list[Path]:
@@ -202,16 +215,22 @@ def _driver_offence(path: Path, root: Path) -> _Offence | None:
         GateSourceError: The file could not be read or parsed.
     """
     _text, tree = read_and_parse(path)
-    called = _called_names(tree)
-    if not called & _REPORT_BUILDERS:
+    # Per FUNCTION, not per module. The function that assembles the report is
+    # the one that drove the matrix, so it is the one that had to be
+    # journalling: a module-wide union would be satisfied by an open sitting in
+    # a helper nothing on this path calls, which journals exactly nothing.
+    assembling = [
+        node for node in _functions(tree) if _called_names(node) & _REPORT_BUILDERS
+    ]
+    if not assembling:
         return None
-    if called & _JOURNAL_OPENS:
+    if any(_called_names(node) & _JOURNAL_OPENS for node in assembling):
         return None
     return _Offence(
         rel=path.relative_to(root).as_posix(),
         reason=(
-            "assembles a report but opens no journal, so every cell it paid "
-            "for is lost when the process dies"
+            "assembles a report in a function that opens no journal, so every "
+            "cell it paid for is lost when the process dies"
         ),
     )
 
@@ -230,13 +249,22 @@ def _binding_offence(path: Path, root: Path) -> _Offence | None:
         GateSourceError: The file could not be read or parsed.
     """
     _text, tree = read_and_parse(path)
-    if _SHARED_OPEN in _called_names(tree):
+    # Same reasoning as the driver: the function a harness hands its driver is
+    # the one that has to reach the shared writer. An ``open_journal`` call
+    # elsewhere in the file binds nothing.
+    entries = [
+        node
+        for node in _functions(tree)
+        if node.name.startswith("open_") and node.name.endswith("_journal")
+    ]
+    if entries and any(_SHARED_OPEN in _called_names(node) for node in entries):
         return None
     return _Offence(
         rel=path.relative_to(root).as_posix(),
         reason=(
-            f"does not call {_SHARED_OPEN}, so it is a second copy of the "
-            f"durability logic rather than a binding of it"
+            f"has no open_*_journal entry point that calls {_SHARED_OPEN}, so "
+            f"it is a second copy of the durability logic rather than a "
+            f"binding of it"
         ),
     )
 
