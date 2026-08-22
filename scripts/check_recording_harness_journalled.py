@@ -257,7 +257,10 @@ def _binding_offence(path: Path, root: Path) -> _Offence | None:
         for node in _functions(tree)
         if node.name.startswith("open_") and node.name.endswith("_journal")
     ]
-    if entries and any(_SHARED_OPEN in _called_names(node) for node in entries):
+    # EVERY entry point, not any: a module offering two ways in, one of which
+    # opens its own file, is precisely the second copy of the durability logic
+    # this checks for. One compliant sibling must not vouch for it.
+    if entries and all(_SHARED_OPEN in _called_names(node) for node in entries):
         return None
     return _Offence(
         rel=path.relative_to(root).as_posix(),

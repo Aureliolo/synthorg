@@ -96,6 +96,22 @@ def open_cell_journal(out_dir, *, provenance, resume):
     return (out_dir / "cells.jsonl").open("a"), None
 '''
 
+_MIXED_BINDING = '''
+"""A binding offering two ways in, one of which rolls its own."""
+
+from evals.harness.journal import open_journal
+
+
+def open_cell_journal(out_dir, *, provenance, resume):
+    """Bind it properly."""
+    return open_journal(out_dir, None, identity={}, resume=resume)
+
+
+def open_scratch_journal(out_dir, *, provenance, resume):
+    """Bind it improperly, right beside the compliant one."""
+    return (out_dir / "scratch.jsonl").open("a"), None
+'''
+
 _HELPER = '''
 """A runner-adjacent module that ends no matrix."""
 
@@ -211,6 +227,19 @@ class TestAnOpenCallIsNotEnoughOnItsOwn:
 
         assert main(["--repo-root", str(tmp_path)]) == 1
         assert "entry point" in capsys.readouterr().out
+
+
+class TestOneCompliantEntryDoesNotVouchForAnother:
+    """The rule is one owner of durability, so every way in must use it."""
+
+    def test_a_second_entry_point_rolling_its_own_is_refused(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _tree(tmp_path)
+        _harness(tmp_path, "sweep", driver=_JOURNALLING_DRIVER, binding=_MIXED_BINDING)
+
+        assert main(["--repo-root", str(tmp_path)]) == 1
+        assert "second copy" in capsys.readouterr().out
 
 
 class TestTheGateFailsClosed:
