@@ -14,12 +14,15 @@ the achieved-depth histogram is reported per arm: two arms compared at a depth
 only one of them reached is two experiments on one axis, and the histogram is
 where a reader sees that.
 
-Failures split the way loop A/B splits them. A missing provider, a dead gateway
-or a dead Docker daemon is true of every remaining run, so it stops the matrix
-rather than being rediscovered once per cell at full retry cost. Anything else
-records that one cell as unavailable with its reason and the sweep continues:
-the report is always written, and a cell that cost real money is never dropped
-from it.
+Failures split three ways. A missing provider, a dead gateway or a dead Docker
+daemon is true of every remaining run, so it stops the matrix rather than being
+rediscovered once per cell at full retry cost, and no report is written. The
+account running out of quota also stops the matrix, because it is true of every
+remaining cell too, but it keeps what was already paid for: the triggering cell
+is recorded, a caveat is added and the report is emitted. Anything else records
+that one cell as unavailable with its reason and the sweep continues: the
+report is always written, and a cell that cost real money is never dropped from
+it.
 """
 
 import asyncio
@@ -89,8 +92,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_RECORDED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
+    EVALS_RECURSION_NO_CELLS,
     EVALS_RECURSION_QUOTA_EXHAUSTED,
     EVALS_RECURSION_SESSION_CEILING,
+    EVALS_RECURSION_SYSTEMIC_FAILURE,
 )
 from synthorg.providers.errors import ProviderQuotaExceededError
 
@@ -115,6 +120,14 @@ _CEILING_CAVEAT: str = (
     "The sweep stopped early on its session ceiling, so the depths and "
     "repetitions the manifest asked for are not all present. Read the cell "
     "list, not the manifest, for what was actually measured."
+)
+
+_UNRESOLVED_CLAIMS_CAVEAT: str = (
+    "{dropped} planner claim(s) named no requirement this specification "
+    "defines and were dropped before scoring. A handful is one planner "
+    "inventing a requirement; a large share means the criterion template and "
+    "the id pattern have drifted apart, which deflates both halves of the "
+    "survival ratio and reads on the chart like a gate that does not help."
 )
 
 _QUOTA_CAVEAT: str = (
@@ -217,7 +230,16 @@ async def _run_and_record(
         records.append(_unavailable(cell, exc, units))
         caveats.append(_CEILING_CAVEAT)
         return True
-    except _SYSTEMIC_FAILURES:
+    except _SYSTEMIC_FAILURES as exc:
+        # Logged before it propagates: this ends the whole sweep and writes no
+        # report, so an unhandled traceback would be the only surviving record
+        # of why a run that had already spent money stopped.
+        logger.error(
+            EVALS_RECURSION_SYSTEMIC_FAILURE,
+            measured_cells=len(records),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise
     except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
         records.append(_unavailable(cell, exc, units))
@@ -409,7 +431,15 @@ async def run_sweep(
             "the recursion-depth sweep measured no cells; every run is "
             "unavailable, and a report of those is not a curve"
         )
+        logger.warning(
+            EVALS_RECURSION_NO_CELLS,
+            planned_cells=len(planned),
+            recorded_cells=len(records),
+        )
         raise RecursionDepthNoCellsMeasuredError(msg)
+    dropped = sum(unit.unresolved_claims for cell in records for unit in cell.units)
+    if dropped:
+        caveats.append(_UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped))
     return RecursionDepthReport(
         provenance=provenance,
         cells=tuple(records),
@@ -705,24 +735,25 @@ def _leaf_record(
 
     The planner's ``satisfies`` carries criterion TEXT, and every consumer of
     this record wants the requirement id, so the translation happens here,
-    once, rather than in each of them.
+    once, rather than in each of them. What did NOT translate is counted onto
+    the record rather than only warned about, because the survival metric is a
+    ratio over what does.
 
     Returns:
         The unit record.
     """
+    resolved = requirement_ids_of(
+        definition.satisfies,
+        known=spec.requirement_ids,
+        unit=str(task.title),
+    )
     return UnitRecord(
         unit_id=NotBlankStr(str(task.id)),
         title=NotBlankStr(str(task.title)),
         kind=LEAF,
         depth=node.depth,
-        claimed=tuple(
-            NotBlankStr(one)
-            for one in requirement_ids_of(
-                definition.satisfies,
-                known=spec.requirement_ids,
-                unit=str(task.title),
-            )
-        ),
+        claimed=tuple(NotBlankStr(one) for one in resolved),
+        unresolved_claims=len(definition.satisfies) - len(resolved),
         delivered=leaf.delivered,
         attempts=leaf.attempts,
         turns=leaf.turns,

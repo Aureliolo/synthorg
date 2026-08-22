@@ -21,6 +21,7 @@ import re
 from collections.abc import Iterable, Sequence
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_CLAIM_UNRESOLVED
 
 logger = get_logger(__name__)
 
@@ -67,9 +68,7 @@ def requirement_ids_of(
     for claim in claims:
         found = [one for one in _IDENTIFIER.findall(claim) if one in vocabulary]
         if not found:
-            logger.warning(
-                "evals.recursion_depth.claim_unresolved", unit=unit, claim=claim
-            )
+            logger.warning(EVALS_RECURSION_CLAIM_UNRESOLVED, unit=unit, claim=claim)
             continue
         resolved.extend(one for one in found if one not in resolved)
     return tuple(resolved)

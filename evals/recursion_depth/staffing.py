@@ -39,17 +39,18 @@ _HIRING_DATE: Final[date] = date(2026, 1, 1)
 
 #: Per-RESPONSE output ceiling for every agent this sweep staffs.
 #:
-#: Declared because ``ModelConfig.max_tokens`` defaults to 4096, and that is
-#: the number that reaches the provider: it is the agent's own binding, not the
-#: provider capability record, which nothing reads when building a request.
+#: Declared rather than left to resolve, because the agent's own binding is
+#: what reaches the provider: the capability record is read by nothing when a
+#: request is built, and the sweep should not measure against whatever the
+#: deployment's ``engine.agent_max_response_tokens`` happens to say.
 #:
-#: 4096 is fatal for a reasoning model, which spends the per-response budget on
-#: hidden reasoning BEFORE it can emit content or a tool call. A measured run
-#: had seven of eight agent sessions burn exactly 4096 completion tokens, emit
-#: no tool call at all, and be recorded as finished work, because a turn with
-#: no tool call is how a session says it is done. Every model these sweeps run
-#: against reports the `thinking` capability, so this is the normal case rather
-#: than an edge one.
+#: A small ceiling is fatal for a reasoning model, which spends the
+#: per-response budget on hidden reasoning BEFORE it can emit content or a
+#: tool call. A measured run had seven of eight agent sessions burn their
+#: whole 4096-token budget, emit no tool call at all, and be recorded as
+#: finished work, because a turn with no tool call is how a session says it is
+#: done. Every model these sweeps run against reports the `thinking`
+#: capability, so this is the normal case rather than an edge one.
 #:
 #: A cap costs nothing unused: probed against the endpoint, a request capped at
 #: 131072 returned 27 completion tokens. It permits a response to finish, it

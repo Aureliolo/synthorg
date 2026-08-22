@@ -213,10 +213,10 @@ class ModelConfig(BaseModel):
             ``engine.agent_max_response_tokens``. Two answers to one question
             is the defect this shape avoids: the agent's own value wins when
             set, the setting answers otherwise, and ``None`` is what tells
-            those apart. It previously defaulted to a flat 4096, which no
-            caller ever overrode, so every agent in every deployment silently
-            took a ceiling a reasoning model can exhaust on hidden reasoning
-            before emitting a single tool call.
+            those apart. A flat numeric default here is inherited in silence
+            by every agent that states no preference, and a reasoning model
+            can exhaust one on hidden reasoning before emitting a single tool
+            call.
         capability: What the model can be trusted with
             (``"expert"``/``"capable"``/``"basic"``), set once during model
             matching and never revised: a selection decision reads the model

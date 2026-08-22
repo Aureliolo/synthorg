@@ -304,13 +304,26 @@ sweep costs too much to repeat because nobody kept the reasoning.
 
 ### Failures
 
+Three outcomes, not two.
+
 A missing provider, a dead gateway, a dead Docker daemon, or an oracle that
 cannot run at all is true of every remaining run, so it stops the matrix rather
-than being rediscovered once per cell at full retry cost. Anything else records
-that one cell as unavailable **with its reason** and the sweep continues: the
-report is always written, a cell that cost real money is never dropped from it,
-and a run where nothing was measured is refused rather than published as a
-curve of zeros.
+than being rediscovered once per cell at full retry cost. No report is written:
+there is nothing to report on.
+
+The provider account running out of quota is the second, and it is a property
+of the ACCOUNT rather than of the cell that happened to ask last. Every
+remaining cell would be refused within seconds and filed under a cell-shaped
+reason, so the sweep stops there too, but it keeps what it paid for: the
+triggering cell is recorded unavailable, a caveat naming quota is added, and
+the report is emitted. One live sweep lost its whole remaining matrix in
+sixteen seconds before this outcome existed, and each lost row blamed
+decomposition.
+
+Anything else records that one cell as unavailable **with its reason** and the
+sweep continues: the report is always written, a cell that cost real money is
+never dropped from it, and a run where nothing was measured is refused rather
+than published as a curve of zeros.
 
 ### Where a sweep runs agent-authored code
 

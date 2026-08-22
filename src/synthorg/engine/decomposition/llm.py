@@ -57,6 +57,7 @@ from synthorg.providers.models import (
     CompletionResponse,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.kill_switch import resolve_int_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -88,7 +89,11 @@ class LlmDecompositionConfig(BaseModel):
         description="Sampling temperature",
     )
     max_output_tokens: int = Field(
-        default=4096,
+        # Matches `coordination.decomposition_max_output_tokens`. The fallback
+        # a resolver-down read lands on has to be the value the registry would
+        # have answered, or the same deployment plans against two different
+        # ceilings depending on whether the settings store was reachable.
+        default=32_768,
         gt=0,
         description="Max output tokens",
     )
@@ -154,22 +159,33 @@ class LlmDecompositionStrategy:
 
         Returns:
             The operator's current setting, or the configured default when no
-            resolver is wired (the harnesses and tests construct without one).
+            resolver is wired (the harnesses and tests construct without one)
+            and when a resolver read fails: this runs BEFORE the attempt loop
+            and outside the handler that promises every failure leaves as a
+            ``DecompositionError``, so a settings-store blip would otherwise
+            escape untyped and spend none of the attempts it was sizing.
         """
-        if self._resolver is None:
-            return self._config.max_retries
-        return await self._resolver.get_int(_DECOMPOSITION_NS, _MAX_RETRIES_KEY)
+        return await resolve_int_with_fallback(
+            resolver=self._resolver,
+            namespace=_DECOMPOSITION_NS,
+            key=_MAX_RETRIES_KEY,
+            fallback=self._config.max_retries,
+        )
 
     async def _max_output_tokens(self) -> int:
         """The output-token ceiling this decomposition runs under.
 
         Returns:
             The operator's current setting, or the configured default when no
-            resolver is wired (the harnesses and tests construct without one).
+            resolver is wired and when a resolver read fails, for the reason
+            :meth:`_max_retries` gives.
         """
-        if self._resolver is None:
-            return self._config.max_output_tokens
-        return await self._resolver.get_int(_DECOMPOSITION_NS, _MAX_OUTPUT_TOKENS_KEY)
+        return await resolve_int_with_fallback(
+            resolver=self._resolver,
+            namespace=_DECOMPOSITION_NS,
+            key=_MAX_OUTPUT_TOKENS_KEY,
+            fallback=self._config.max_output_tokens,
+        )
 
     async def decompose(
         self,

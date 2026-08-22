@@ -20,7 +20,14 @@ chart could otherwise mislead.
 from datetime import datetime
 from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
 from synthorg.core.types import NotBlankStr
@@ -77,6 +84,13 @@ class UnitRecord(BaseModel):
         kind: :data:`LEAF`, :data:`MERGE` or :data:`PLAN`.
         depth: Its level in the decomposition tree, ``0`` at the root.
         claimed: The spec requirement ids the planner said this unit advances.
+        unresolved_claims: How many of the planner's claims named no
+            requirement this specification defines, so they were dropped
+            before scoring. Carried into the report rather than left in a
+            warning log because the survival metric is a ratio over what
+            survives here: a drift between the criterion template and the id
+            pattern would deflate both halves toward zero and read on the
+            chart exactly like a gate that does not help.
         delivered: Whether it produced its declared artifacts and its own tests
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
@@ -118,6 +132,7 @@ class UnitRecord(BaseModel):
     kind: UnitKind
     depth: int = Field(ge=0)
     claimed: tuple[NotBlankStr, ...] = ()
+    unresolved_claims: int = Field(default=0, ge=0)
     delivered: bool = False
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
@@ -206,6 +221,15 @@ class CellRecord(BaseModel):
         """
         return tuple(unit for unit in self.units if unit.kind == LEAF)
 
+    # The three scalars below are `computed_field` rather than plain
+    # properties because `emit.py` persists this model with
+    # `model_dump_json` and calls that file what a later analysis reads: a
+    # plain property is invisible to serialisation, so the artifact would
+    # carry every raw unit and none of the totals they add up to. The
+    # record-returning helpers stay plain properties for the mirror-image
+    # reason: serialising them would write `units` and `cells` out a second
+    # time under another name.
+    @computed_field
     @property
     def total_cost(self) -> float:
         """What this run spent.
@@ -215,6 +239,7 @@ class CellRecord(BaseModel):
         """
         return sum(unit.cost for unit in self.units)
 
+    @computed_field
     @property
     def total_attempts(self) -> int:
         """How many agent sessions this run consumed.
@@ -224,6 +249,7 @@ class CellRecord(BaseModel):
         """
         return sum(unit.attempts for unit in self.units)
 
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """What this run spent in tokens.
@@ -290,6 +316,10 @@ class DepthPoint(BaseModel):
             raise ValueError(msg)
         return self
 
+    # Serialised: this is the number the whole sweep exists to produce, and a
+    # report that carries its two operands but not the ratio makes every
+    # reader recompute it and disagree about the empty case.
+    @computed_field
     @property
     def fraction(self) -> float | None:
         """The fraction of leaf work surviving to a correct merged result.
@@ -414,6 +444,7 @@ class RecursionDepthReport(BaseModel):
         """
         return tuple(cell for cell in self.cells if cell.unavailable_reason is not None)
 
+    @computed_field
     @property
     def total_cost(self) -> float:
         """What the whole sweep spent.
@@ -423,6 +454,7 @@ class RecursionDepthReport(BaseModel):
         """
         return sum(cell.total_cost for cell in self.cells)
 
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """What the whole sweep spent in tokens.

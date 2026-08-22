@@ -1,7 +1,7 @@
 # module-kind: tests
 """The sweep writes every coordination setting a planning run depends on."""
 
-from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -11,6 +11,7 @@ from synthorg.engine.decomposition.service import (
     _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
 )
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -18,35 +19,23 @@ pytestmark = pytest.mark.unit
 _PRODUCT_DEFAULT_RETRIES = LlmDecompositionConfig().max_retries
 
 
-class _RecordingSettings:
-    """Captures the writes ``arm_recursion`` makes, in order."""
-
-    def __init__(self) -> None:
-        self.writes: list[tuple[str, str, str]] = []
-
-    async def set(self, namespace: str, key: str, value: str, **_: object) -> None:
-        """Record one write.
-
-        Args:
-            namespace: The setting namespace.
-            key: The setting key.
-            value: The written value.
-        """
-        self.writes.append((namespace, key, value))
-
-
 async def _armed(*, enabled: bool = True) -> dict[str, str]:
-    """Run ``arm_recursion`` against a recorder.
+    """Run ``arm_recursion`` against a recording double.
+
+    ``mock_of`` rather than a hand-written class behind a ``cast``: the cast
+    tells the type checker a one-method object is the whole service, so a
+    changed ``set`` signature would break every production caller and nothing
+    here. The typed double carries the real signature.
 
     Returns:
         The coordination settings it wrote, keyed by setting key.
     """
-    recorder = _RecordingSettings()
-    await arm_recursion(cast(SettingsService, recorder), enabled=enabled)
+    settings = mock_of[SettingsService](set=AsyncMock(return_value=None))
+    await arm_recursion(settings, enabled=enabled)
     return {
-        key: value
-        for namespace, key, value in recorder.writes
-        if namespace == "coordination"
+        call.args[1]: call.args[2]
+        for call in settings.set.await_args_list
+        if call.args[0] == "coordination"
     }
 
 

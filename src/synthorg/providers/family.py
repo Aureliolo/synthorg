@@ -94,8 +94,9 @@ def _base_family(family: str) -> str:
     """Strip a trailing variant segment from a composed family label.
 
     Returns:
-        The base family (``qwen-coder`` -> ``qwen``), or *family* lowercased
-        and otherwise unchanged when it carries no known variant suffix.
+        The base family (``example-family-coder`` -> ``example-family``), or
+        *family* lowercased and otherwise unchanged when it carries no known
+        variant suffix.
     """
     base = family.lower()
     for variant in _VARIANT_SUFFIXES:

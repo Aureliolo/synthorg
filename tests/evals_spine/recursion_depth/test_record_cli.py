@@ -83,16 +83,22 @@ class TestDeclaredFamiliesMatchWhatAnswers:
         ):
             check_declared_families(
                 load_manifest(_MANIFEST),
-                _config(executor_family="qwen-coder", reviewer_family="qwen-coder"),
+                _config(
+                    executor_family="bound-family-a",
+                    reviewer_family="bound-family-a",
+                ),
             )
 
-    def test_real_families_that_differ_satisfy_the_placeholder_claim(self) -> None:
-        # The names never match the manifest's vendor-agnostic placeholders and
-        # are not required to. What is checked is that the two pairs differ,
-        # which is the whole content of a cross_family claim.
+    def test_bound_families_that_differ_satisfy_the_placeholder_claim(self) -> None:
+        # The bound names never match the manifest's own placeholders and are
+        # not required to. What is checked is that the two pairs differ, which
+        # is the whole content of a cross_family claim.
         check_declared_families(
             load_manifest(_MANIFEST),
-            _config(executor_family="qwen-coder", reviewer_family="deepseek-v"),
+            _config(
+                executor_family="bound-family-a",
+                reviewer_family="bound-family-b",
+            ),
         )
 
     def test_a_config_declaring_no_family_leaves_the_manifest_the_only_claim(
