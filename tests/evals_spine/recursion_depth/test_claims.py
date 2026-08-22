@@ -62,6 +62,30 @@ class TestShape:
 
         assert resolved.ids == ("R01",)
 
+    def test_one_claim_naming_the_same_requirement_twice_yields_it_once(
+        self,
+    ) -> None:
+        """The case that separates deduplication from append ordering.
+
+        Dropping a repeat ACROSS claims works however the appends are written;
+        dropping one WITHIN a single claim only works while each append lands
+        before the next membership test.
+        """
+        resolved = requirement_ids_of(
+            ("R01 and R01 are both satisfied",), known=_KNOWN, unit="u"
+        )
+
+        assert resolved.ids == ("R01",)
+
+    def test_a_repeat_within_a_claim_does_not_displace_a_later_requirement(
+        self,
+    ) -> None:
+        resolved = requirement_ids_of(
+            ("R02, R01, R02 all hold",), known=_KNOWN, unit="u"
+        )
+
+        assert resolved.ids == ("R02", "R01")
+
     def test_a_claim_naming_two_requirements_yields_both(self) -> None:
         resolved = requirement_ids_of(
             ("R01 and R02 are satisfied together",), known=_KNOWN, unit="u"

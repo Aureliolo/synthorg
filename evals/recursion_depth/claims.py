@@ -103,6 +103,14 @@ def requirement_ids_of(
     """
     vocabulary = frozenset(known)
     resolved: list[RequirementId] = []
+    # Carried beside the list rather than testing membership against it. The
+    # list would answer the same question, but only while every append happens
+    # before the next test, which is a property of how the appends are written
+    # rather than of what the function promises: `extend` fed a generator
+    # interleaves the two, `extend` fed a list does not, and the difference is
+    # invisible at the call site. A claim that names one requirement twice is
+    # what separates them, and the set makes the answer independent of that.
+    seen: set[RequirementId] = set()
     unresolved = 0
     for claim in claims:
         found = [
@@ -114,7 +122,10 @@ def requirement_ids_of(
             logger.warning(EVALS_RECURSION_CLAIM_UNRESOLVED, unit=unit, claim=claim)
             unresolved += 1
             continue
-        resolved.extend(one for one in found if one not in resolved)
+        for identifier in found:
+            if identifier not in seen:
+                seen.add(identifier)
+                resolved.append(identifier)
     return ResolvedClaims(ids=tuple(resolved), unresolved=unresolved)
 
 
