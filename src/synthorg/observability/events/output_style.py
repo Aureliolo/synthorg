@@ -12,6 +12,12 @@ OUTPUT_STYLE_VIOLATION_SHADOWED: Final[str] = "output_style.violation.shadowed"
 OUTPUT_STYLE_EXEMPTION_GRANTED: Final[str] = "output_style.exemption.granted"
 OUTPUT_STYLE_EXEMPTION_REQUESTED: Final[str] = "output_style.exemption.requested"
 OUTPUT_STYLE_PROMPT_INJECTED: Final[str] = "output_style.prompt.injected"
+OUTPUT_STYLE_PROMPT_SKIPPED: Final[str] = "output_style.prompt.skipped"
+"""A prompt was built carrying no house style, and why.
+
+The boundary at the far end of that session enforces regardless, so this is the
+line that separates "the agent broke a rule" from "the agent was never told
+one": the second reads identically at the guard and is a wiring fault."""
 OUTPUT_STYLE_GATE_REJECTED: Final[str] = "output_style.gate.rejected"
 OUTPUT_STYLE_GATE_PASSED: Final[str] = "output_style.gate.passed"
 OUTPUT_STYLE_SERVICE_REBUILT: Final[str] = "output_style.service.rebuilt"

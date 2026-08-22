@@ -40,23 +40,38 @@ scope does (see [Sanctioned exemptions](#sanctioned-exemptions)).
 
 ## Soft layer: house writing style
 
-`HouseStyleDirective` entries render into a `## House Writing Style` section of
-the agent system prompt, after Personality and before Skills, via
-`adapter.inject_house_style_context`. Directives are scoped org-wide or per
-role or per department, reusing the `ScopeKind` (`ALL` / `ROLE` / `DEPARTMENT`)
-mechanism the strategy module uses for constitutional principles: an agent receives
-every `ALL` directive plus the `ROLE` and `DEPARTMENT` directives that match it.
+Directives are scoped org-wide or per role or per department, reusing the
+`ScopeKind` (`ALL` / `ROLE` / `DEPARTMENT`) mechanism the strategy module uses
+for constitutional principles: an agent receives every `ALL` directive plus the
+`ROLE` and `DEPARTMENT` directives that match it.
+
+They reach an agent through **two** prompt builders, because the product has
+two, and a directive present in one and absent from the other would mean an
+agent is judged at its boundary against rules its own prompt never carried:
+
+- the full agent prompt renders a `## House Writing Style` section after
+  Personality and before Skills, via `adapter.inject_house_style_context`;
+- the compact persona prompt (`engine/agent_persona.py::render_agent_system_prompt`)
+  renders the same directives through the same `build_house_style_section`,
+  after the persona preamble and before the untrusted-content directive. Its
+  consumers are the planning session, the evaluation session, the retro
+  session, the plan-review session, the meeting agent caller, and the chat
+  action.
 
 The provider is a process-global ambient snapshot (`provider.py`), set at boot
-and refreshed by the settings subscriber. The prompt build resolves it once and
-threads that single snapshot through both the injection and the section-manifest
-read, so the two agree even if an operator hot-swaps the pack mid-build. Even if
-a future token-trimming pass were to drop this section under budget pressure,
-enforcement is unaffected, because the hard gate is independent of the prompt.
+and refreshed by the settings subscriber. Both builders resolve it through the
+one declared reader, `current_prompt_providers()`, so a hot-swap cannot land
+between the layers of a single build. Even if a future token-trimming pass were
+to drop this section under budget pressure, enforcement is unaffected, because
+the hard gate is independent of the prompt.
 
-The prompt states which directives are hard-enforced (the em-dash ban is
-rejected at the boundary) versus expected-and-monitored (the fuzzy signals), so an
-agent does not learn that the section carries no consequence.
+Both builders state which directives are hard-enforced (the em-dash ban is
+rejected at the boundary) versus expected-and-monitored (the fuzzy signals), so
+an agent does not learn that the section carries no consequence. Naming the
+enforced rule rather than claiming enforcement generally is what keeps that
+statement true for every consumer: the retro and plan-review submit tools are
+not guarded boundaries, so a blanket claim would promise those sessions a
+consequence their own output path does not have.
 
 ## Hard layer: deterministic guardrail
 

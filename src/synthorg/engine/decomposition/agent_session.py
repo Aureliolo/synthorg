@@ -14,9 +14,9 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import Final, assert_never, cast, override
+from typing import Final, assert_never, override
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.session_budget import (
@@ -33,9 +33,11 @@ from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
 )
+from synthorg.engine.decomposition.agent_session_submit import (
+    PlanCapture,
+    SubmitDecompositionPlanTool,
+)
 from synthorg.engine.decomposition.context import DecompositionContext
-from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
-from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
@@ -60,9 +62,9 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_COMPLETED,
-    DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
     DECOMPOSITION_SESSION_FALLBACK,
     DECOMPOSITION_SESSION_NO_PLAN,
+    DECOMPOSITION_SESSION_RESUMED,
     DECOMPOSITION_SESSION_STARTED,
     DECOMPOSITION_SESSION_TOOL_DROPPED,
     DECOMPOSITION_VALIDATION_ERROR,
@@ -72,8 +74,8 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
-from synthorg.security.autonomy.enums import ActionType, ToolCategory
-from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.security.autonomy.enums import ActionType
+from synthorg.tools.base import BaseTool
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
@@ -121,6 +123,63 @@ def _ran_without_submitting(reason: TerminationReason) -> bool:
             return False
         case _ as unreachable:
             assert_never(unreachable)
+
+
+def _stopped_short(reason: TerminationReason) -> bool:
+    """Report whether the session ended its own turn with its work undone.
+
+    A planning session has exactly one deliverable, and the tools it delivers
+    through hand a rejection straight back, so an agent that ends its turn
+    holding a rejected plan is in the ordinary state of any coding loop: told
+    what is wrong, with turns left to fix it. Ending the session there is what
+    turned a punctuation rejection into a dead run; the answer is the same one
+    a coding agent gets, which is to be told it has not delivered and to carry
+    on.
+
+    Separate from :func:`_ran_without_submitting`, which answers a different
+    question (was there a researched plan to lose), and the same ``match`` with
+    :func:`assert_never` for the same reason: continuing to spend an agent's
+    turns is a decision per termination, so a new :class:`TerminationReason`
+    must be classified deliberately.
+
+    Returns:
+        ``True`` when the session stopped on its own while it could still
+        deliver.
+    """
+    match reason:
+        case TerminationReason.COMPLETED | TerminationReason.NO_OP:
+            return True
+        # MAX_TURNS and BUDGET_EXHAUSTED are the bounds themselves, so another
+        # turn is exactly what they refuse; STAGNATION means the loop is
+        # already repeating itself, and re-prompting is one more repetition.
+        # ERROR is the loop giving up rather than the agent doing so, whether
+        # the provider failed or the corrections for unusable turns ran out;
+        # either way the next turn fails the same way. SHUTDOWN, PARKED and
+        # CANCELLED stopped the session from outside it, and nothing here can
+        # hand it back.
+        case (
+            TerminationReason.MAX_TURNS
+            | TerminationReason.BUDGET_EXHAUSTED
+            | TerminationReason.STAGNATION
+            | TerminationReason.ERROR
+            | TerminationReason.SHUTDOWN
+            | TerminationReason.PARKED
+            | TerminationReason.CANCELLED
+        ):
+            return False
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+#: Handed to a session that stopped without submitting. It names the one
+#: deliverable and points at the tool results already in the conversation,
+#: rather than restating a rejection the agent can read for itself.
+_UNSUBMITTED_NUDGE: Final[str] = (
+    "You have not submitted a plan, so this decomposition has produced "
+    "nothing. Prose is not a plan. If a previous submission came back "
+    "rejected, the tool result says exactly what to fix. Fix it and call "
+    "submit_decomposition_plan again."
+)
 
 
 # A planning session may only be granted tools that observe state, never ones
@@ -179,91 +238,6 @@ class AgentSessionDecompositionConfig(BaseModel):
         description="Token cap for the org/retro memory digest injected into "
         "the planning brief; 0 injects nothing (the tool grant still applies)",
     )
-
-
-class _PlanCapture:
-    """Mutable holder for the plan a session submits via the terminal tool."""
-
-    __slots__ = ("plan",)
-
-    def __init__(self) -> None:
-        self.plan: DecompositionPlan | None = None
-
-
-class SubmitDecompositionPlanTool(BaseTool):
-    """Terminal planning tool: the session submits its final plan through it.
-
-    The schema mirrors the single-shot decomposition tool (so each subtask
-    carries ``expected_artifacts`` + ``acceptance_criteria``); the parsed,
-    id-remapped plan is captured for the strategy to return. A malformed
-    submission surfaces as a tool error so the agent can correct and resubmit
-    within the same session.
-    """
-
-    def __init__(
-        self,
-        *,
-        parent_task_id: NotBlankStr,
-        capture: _PlanCapture,
-        available_roles: tuple[NotBlankStr, ...] = (),
-    ) -> None:
-        super().__init__(
-            name="submit_decomposition_plan",
-            description=(
-                "Submit the final plan. Provide every item with its "
-                "dependencies (only genuine ones, so independent work runs in "
-                "parallel), an accountable owning role, calibrated stakes, "
-                "expected_artifacts, and acceptance_criteria. Call this exactly "
-                "once, last, after you have researched and self-reviewed."
-            ),
-            parameters_schema=build_decomposition_tool(
-                available_roles
-            ).parameters_schema,
-            category=ToolCategory.OTHER,
-        )
-        self._parent_task_id = parent_task_id
-        self._capture = capture
-        self._available_roles = available_roles
-
-    @override
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, object],
-    ) -> ToolExecutionResult:
-        """Parse + capture the submitted plan, or report a correctable error.
-
-        Returns:
-            A success result naming the accepted subtask count, or an error
-            result describing why the plan was rejected so the agent retries.
-        """
-        try:
-            plan = args_to_decomposition_plan(
-                cast("dict[str, JsonValue]", arguments),
-                self._parent_task_id,
-                self._available_roles,
-            )
-        except DecompositionError as exc:
-            return ToolExecutionResult(
-                content=(
-                    f"Plan rejected: {safe_error_description(exc)}. "
-                    "Fix the issue and call submit_decomposition_plan again."
-                ),
-                is_error=True,
-            )
-        if self._capture.plan is not None:
-            logger.warning(
-                DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
-                parent_task_id=self._parent_task_id,
-                previous_subtask_count=len(self._capture.plan.subtasks),
-                new_subtask_count=len(plan.subtasks),
-            )
-        self._capture.plan = plan
-        return ToolExecutionResult(
-            content=(
-                f"Plan accepted with {len(plan.subtasks)} subtasks. You may stop now."
-            ),
-        )
 
 
 class AgentSessionDecompositionStrategy(DecompositionStrategy):
@@ -407,7 +381,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
             return await self._fallback_plan(task, context)
 
-        capture = _PlanCapture()
+        capture = PlanCapture(NotBlankStr(str(task.id)))
         result = await self._run_session(task, context, owner, provider, capture)
         plan = capture.plan
         if plan is None:
@@ -466,11 +440,16 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     ) -> None:
         """Refuse to substitute a blind plan for a session that just ran.
 
-        A session that terminated on its own terms and never called its one
-        tool produced nothing, which is the planning counterpart of the
+        A session that spent its budget without ever calling its one tool
+        produced nothing, which is the planning counterpart of the
         zero-artifact guard. Falling back there replaces a researched plan
         with a single-shot one nobody asked for, and the operator approves
         the substitute believing it is the original.
+
+        Reached only once the session has nothing left to try: an agent that
+        stops while it can still deliver is told so and continues
+        (:func:`_stopped_short`), so this is the exhausted case, not the
+        discouraged one.
 
         Raises:
             DecompositionError: When the session terminated normally with
@@ -517,9 +496,23 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         context: DecompositionContext,
         owner: AgentIdentity,
         provider: CompletionProvider,
-        capture: _PlanCapture,
+        capture: PlanCapture,
     ) -> ExecutionResult:
-        """Run the bounded planning loop as *owner*, capturing the plan.
+        """Run the planning session as *owner* until it delivers or is spent.
+
+        The session runs in segments over ONE context, so the turn budget, the
+        conversation and every rejection already in it carry across: a segment
+        that ends without a submitted plan while turns remain is told so and
+        continues, exactly as a coding loop that has just been handed a failing
+        check does. The bounds keep their meaning, because the only terminations
+        that re-enter are the ones the agent chose (:func:`_stopped_short`), and
+        reaching either of those costs a turn: the loop records the turn before
+        it can decide the response completed the run.
+
+        The one segment that can record no turn is one entered with the spend
+        ceiling already reached, which returns ``BUDGET_EXHAUSTED`` from its
+        first budget check. That is not resumable, so it ends the loop rather
+        than spinning in it.
 
         Args:
             task: The task being decomposed.
@@ -529,8 +522,8 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             capture: Sink the terminal submit tool writes the plan into.
 
         Returns:
-            The loop's execution result (termination reason + error detail
-            for observability).
+            The last segment's execution result (termination reason + error
+            detail for observability).
         """
         invoker, granted = self._build_invoker(task, owner, capture, context)
         ctx = await self._build_context(task, context, owner, granted)
@@ -541,6 +534,75 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             granted_tools=len(granted),
             max_turns=self._config.max_turns,
         )
+        result = await self._run_segment(task, owner, ctx, invoker, provider)
+        resumes = 0
+        while capture.plan is None:
+            resumed = self._resume_unsubmitted(task, owner, result, resumes)
+            if resumed is None:
+                return result
+            resumes += 1
+            result = await self._run_segment(task, owner, resumed, invoker, provider)
+        return result
+
+    def _resume_unsubmitted(
+        self,
+        task: Task,
+        owner: AgentIdentity,
+        result: ExecutionResult,
+        resumes: int,
+    ) -> AgentContext | None:
+        """Extend the session's context with the nudge, when one is warranted.
+
+        Args:
+            task: The task being decomposed.
+            owner: The staffed owner running the planning session.
+            result: The segment that ended without a submitted plan.
+            resumes: How many times this session has already been told.
+
+        Returns:
+            The context to run the next segment with, or ``None`` when the
+            session stopped for a reason another turn cannot answer, or has no
+            turn left to answer it in.
+        """
+        if not _stopped_short(result.termination_reason):
+            return None
+        if not result.context.has_turns_remaining:
+            return None
+        logger.info(
+            DECOMPOSITION_SESSION_RESUMED,
+            task_id=str(task.id),
+            owner_id=str(owner.id),
+            # The count is what separates a session converging on a plan from
+            # one spending its budget being handed the same rejection; without
+            # it the two read identically, one line at a time.
+            resume_count=resumes + 1,
+            turns_used=result.context.turn_count,
+            max_turns=result.context.max_turns,
+        )
+        return result.context.with_message(
+            ChatMessage(role=MessageRole.USER, content=_UNSUBMITTED_NUDGE)
+        )
+
+    async def _run_segment(
+        self,
+        task: Task,
+        owner: AgentIdentity,
+        ctx: AgentContext,
+        invoker: ToolInvoker,
+        provider: CompletionProvider,
+    ) -> ExecutionResult:
+        """Run one bounded stretch of the planning loop over *ctx*.
+
+        Args:
+            task: The task being decomposed.
+            owner: The staffed owner running the planning session.
+            ctx: The session context, carrying every turn spent so far.
+            invoker: The session's tool invoker (submit plus read tools).
+            provider: The completion client for the owner's bound provider.
+
+        Returns:
+            The loop's execution result for this stretch.
+        """
         loop = ReactLoop(approval_gate=None)
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
@@ -565,7 +627,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         self,
         task: Task,
         owner: AgentIdentity,
-        capture: _PlanCapture,
+        capture: PlanCapture,
         context: DecompositionContext,
     ) -> tuple[ToolInvoker, tuple[str, ...]]:
         """Assemble the session's tool invoker over the submit + read tools.

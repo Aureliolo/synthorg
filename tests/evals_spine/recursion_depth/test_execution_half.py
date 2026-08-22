@@ -21,6 +21,7 @@ from evals.errors import (
     RecursionDepthNoCellsMeasuredError,
     RecursionDepthSessionCeilingError,
 )
+from evals.harness.journal import open_journal
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
@@ -33,7 +34,13 @@ from evals.recursion_depth.grading import (
     read_verdict,
     refuse_without_a_runner,
 )
-from evals.recursion_depth.journal import CellUnits
+from evals.recursion_depth.journal import (
+    PROGRESS_SPEC,
+    CellUnits,
+    cell_key,
+    matrix_identity,
+    progress_by_cell,
+)
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -62,7 +69,7 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from evals.recursion_depth.oracle import OracleOutcome
-from evals.recursion_depth.planner import PlannedTree, TreePlanner
+from evals.recursion_depth.planner import PlanningSpend, TreePlanner
 from evals.recursion_depth.runner import (
     SessionBudget,
     SweepCell,
@@ -720,6 +727,44 @@ class TestTheOwnTestGate:
         assert detail == ""
 
 
+@dataclass(frozen=True)
+class _Plan:
+    """A scripted planning outcome and what producing it cost.
+
+    Attributes:
+        result: The tree, or ``None`` for an attempt that only spent.
+        cost: What the attempt's ledger would have recorded.
+        sessions: How many planning sessions it stands for.
+        tokens: Input plus output tokens over the same sessions.
+    """
+
+    result: DecompositionResult | None = None
+    cost: float = 0.0
+    sessions: int = 0
+    tokens: int = 0
+
+    def book(self, spend: PlanningSpend) -> None:
+        """Book this outcome's spend.
+
+        Args:
+            spend: Where the cell's planning spend accumulates.
+        """
+        spend.book(cost=self.cost, tokens=self.tokens, sessions=self.sessions)
+
+    def delivered(self, spend: PlanningSpend) -> DecompositionResult:
+        """Book this outcome's spend and hand back its tree.
+
+        Args:
+            spend: Where the cell's planning spend accumulates.
+
+        Returns:
+            The tree.
+        """
+        self.book(spend)
+        assert self.result is not None
+        return self.result
+
+
 @dataclass
 class _ScriptedPlanner:
     """A planner that answers from a script.
@@ -727,14 +772,23 @@ class _ScriptedPlanner:
     Attributes:
         answer: What every call returns.
         raises: Raised instead, when set.
+        spent_before_failing: Booked on the way out of a failing call, which is
+            what the shipped planner does: the sessions an attempt ran are paid
+            for whether or not it produced a tree.
     """
 
-    answer: PlannedTree | None = None
+    answer: _Plan | None = None
     raises: Exception | None = None
+    spent_before_failing: _Plan | None = None
 
     async def plan(
-        self, *, task: Task, depth_cap: int, execution_id: str
-    ) -> PlannedTree:
+        self,
+        *,
+        task: Task,
+        depth_cap: int,
+        execution_id: str,
+        spend: PlanningSpend,
+    ) -> DecompositionResult:
         """Answer the scripted tree, or fail.
 
         Returns:
@@ -745,9 +799,11 @@ class _ScriptedPlanner:
         """
         del task, depth_cap, execution_id
         if self.raises is not None:
+            if self.spent_before_failing is not None:
+                self.spent_before_failing.book(spend)
             raise self.raises
         assert self.answer is not None
-        return self.answer
+        return self.answer.delivered(spend)
 
 
 @dataclass
@@ -762,12 +818,17 @@ class _CountingPlanner:
         calls: How many times it has been asked.
     """
 
-    answer: PlannedTree
+    answer: _Plan
     calls: int = 0
 
     async def plan(
-        self, *, task: Task, depth_cap: int, execution_id: str
-    ) -> PlannedTree:
+        self,
+        *,
+        task: Task,
+        depth_cap: int,
+        execution_id: str,
+        spend: PlanningSpend,
+    ) -> DecompositionResult:
         """Count the ask, then answer.
 
         Returns:
@@ -775,7 +836,7 @@ class _CountingPlanner:
         """
         del task, depth_cap, execution_id
         self.calls += 1
-        return self.answer
+        return self.answer.delivered(spend)
 
 
 @dataclass
@@ -788,13 +849,18 @@ class _FlakyPlanner:
         calls: How many times it has been asked.
     """
 
-    answer: PlannedTree
+    answer: _Plan
     fail_first: Exception
     calls: int = 0
 
     async def plan(
-        self, *, task: Task, depth_cap: int, execution_id: str
-    ) -> PlannedTree:
+        self,
+        *,
+        task: Task,
+        depth_cap: int,
+        execution_id: str,
+        spend: PlanningSpend,
+    ) -> DecompositionResult:
         """Fail once, then answer.
 
         Returns:
@@ -807,7 +873,7 @@ class _FlakyPlanner:
         self.calls += 1
         if self.calls == 1:
             raise self.fail_first
-        return self.answer
+        return self.answer.delivered(spend)
 
 
 @pytest.fixture
@@ -1105,7 +1171,7 @@ class TestTheMatrix:
         # identical once the reasons are gone.
         del assembled_trees
         planner = _FlakyPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1),
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
             fail_first=ValueError("the planner submitted nothing"),
         )
         context = await _context(tmp_path, planner=planner)
@@ -1125,9 +1191,7 @@ class TestTheMatrix:
         # Asserting on the report alone would pass on a resume that silently
         # re-ran and re-measured every cell.
         del assembled_trees
-        planner = _CountingPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         first = await _swept(await _context(tmp_path, planner=planner), tmp_path)
         assert len(first.measured_cells) == 2
         planned_first = planner.calls
@@ -1145,9 +1209,7 @@ class TestTheMatrix:
         # A ceiling re-armed from zero would let a sweep resumed repeatedly
         # spend several times what its manifest allows.
         del assembled_trees
-        planner = _CountingPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         await _swept(await _context(tmp_path, planner=planner), tmp_path)
 
         context = await _context(tmp_path, planner=planner, ceiling=1)
@@ -1166,9 +1228,7 @@ class TestTheMatrix:
         )
         monkeypatch.setattr(runner_module, "_build_tree_units", build)
         monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
-        planner = _CountingPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         manifest = _manifest(arms=(Arm.GATED,))
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
@@ -1201,9 +1261,7 @@ class TestTheMatrix:
         )
         monkeypatch.setattr(runner_module, "_build_tree_units", build)
         monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
-        planner = _CountingPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         manifest = _manifest(arms=(Arm.GATED,))
         context = await _context(tmp_path, planner=planner, manifest=manifest)
 
@@ -1230,7 +1288,7 @@ class TestTheMatrix:
         # while a fourth planned the identical tree successfully.
         del assembled_trees
         planner = _FlakyPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1),
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
             fail_first=DecompositionError("provider call failed"),
         )
         context = await _context(tmp_path, planner=planner)
@@ -1255,13 +1313,55 @@ class TestTheMatrix:
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
             await _swept(context, tmp_path)
 
+    async def test_a_failed_plan_still_journals_what_it_spent(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        """A cell that could not plan had still paid for the attempts it made.
+
+        Journalled on the success path alone, two live cells reported zero
+        attempts, zero cost and zero tokens between them while an hour of
+        provider time was gone. Booked at zero cost here on purpose: that is
+        the flat-rate case, where money never rises and the token count is the
+        only figure that moves.
+        """
+        del assembled_trees
+        context = await _context(
+            tmp_path,
+            planner=_ScriptedPlanner(
+                raises=DecompositionError("provider call failed"),
+                spent_before_failing=_Plan(cost=0.0, tokens=4096, sessions=1),
+            ),
+            manifest=_manifest(depths=(1,), repetitions={1: 1}, arms=(Arm.GATED,)),
+        )
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
+
+        # Read back through the reader a resume uses, not a hand-rolled parse:
+        # what matters is that the row this leaves behind is one the next
+        # process can actually load.
+        _, resumed = open_journal(
+            tmp_path / "out",
+            PROGRESS_SPEC,
+            identity=matrix_identity(_provenance()),
+            resume=True,
+        )
+        plans = [record.unit for record in resumed.recorded if record.unit.kind == PLAN]
+        assert len(plans) == 1
+        # Both bounded attempts ran, and both are booked: reading the last
+        # ledger alone under-reports by exactly the attempts that failed.
+        assert plans[0].attempts == 2
+        assert plans[0].tokens == 8192
+        assert "provider call failed" in plans[0].detail
+        # No tree was journalled, so a resume restarts the cell whole rather
+        # than continuing from a plan it does not have.
+        assert progress_by_cell(resumed)[cell_key(1, Arm.GATED, 0)].plan is None
+
     async def test_a_measured_cell_books_what_planning_cost(
         self, tmp_path: Path, assembled_trees: None
     ) -> None:
         del assembled_trees
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=2)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=2))
         context = await _context(tmp_path, planner=planner)
 
         report = await _swept(context, tmp_path)
@@ -1280,9 +1380,7 @@ class TestTheMatrix:
         # exercises the renderer, and the recorder reached it with an empty
         # tuple.
         del assembled_trees
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
         context = await _context(tmp_path, planner=planner)
 
         report = await _swept(context, tmp_path)
@@ -1299,9 +1397,7 @@ class TestTheMatrix:
         # The two standing caveats always hold; the independence one is a
         # statement about a weakness this manifest does not have.
         del assembled_trees
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
         context = await _context(
             tmp_path,
             planner=planner,
@@ -1331,9 +1427,7 @@ class TestTheMatrix:
             runner_module, "_build_tree_units", _assembles_then_dies(tmp_path, refused)
         )
         monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
         context = await _context(
             tmp_path,
             planner=planner,
@@ -1366,9 +1460,7 @@ class TestTheMatrix:
             "run_oracle",
             _scripted_oracle,
         )
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         context = await _context(tmp_path, planner=planner)
 
         report = await _swept(context, tmp_path)
@@ -1398,9 +1490,7 @@ class TestTheMatrix:
             "run_oracle",
             _scripted_oracle,
         )
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
         context = await _context(tmp_path, planner=planner)
 
         report = await _swept(context, tmp_path)
@@ -1435,9 +1525,7 @@ class TestTheMatrix:
         self, tmp_path: Path
     ) -> None:
         # Aborts rather than overruns, and never loses what it has paid for.
-        planner = _ScriptedPlanner(
-            answer=PlannedTree(result=_tree(), cost=1.0, sessions=99)
-        )
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=99))
         context = await _context(tmp_path, planner=planner, ceiling=1)
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):

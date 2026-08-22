@@ -298,10 +298,11 @@ def _refuse_substituted_planner(result: DecompositionResult) -> None:
     Raises:
         RecursionDepthPlannerSubstitutedError: A node names a substitute.
     """
+    nodes = _nodes(result)
     substituted = sorted(
         {
             str(node.plan.planning_strategy)
-            for node in _nodes(result)
+            for node in nodes
             if node.plan.planning_strategy is not None
         }
     )
@@ -313,7 +314,9 @@ def _refuse_substituted_planner(result: DecompositionResult) -> None:
         f"cell would measure the fallback; staff an owner the planning "
         f"session can run as"
     )
-    raise RecursionDepthPlannerSubstitutedError(msg)
+    # Every node here planned and was billed before the substitution was
+    # noticed, so the refusal carries what the discarded tree cost.
+    raise RecursionDepthPlannerSubstitutedError(msg, sessions=len(nodes))
 
 
 def _nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:

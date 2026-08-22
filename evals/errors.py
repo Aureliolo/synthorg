@@ -335,11 +335,24 @@ class RecursionDepthPlannerSubstitutedError(EvalError):
     substitution is silent everywhere else on purpose: a product that cannot
     plan as an owner is better off with a single-shot plan than with none. A
     measurement is the one caller for which that trade is wrong.
+
+    Carries the session count because it is the one refusal raised with a
+    finished tree in hand: every level of it planned and was billed before the
+    substitution was noticed, so a caller booking the usual floor of one would
+    under-report the spend by everything below the root.
+
+    Args:
+        message: Why the tree was refused.
+        sessions: How many planning sessions the refused tree cost.
     """
 
     default_message: ClassVar[str] = (
         "The tree was produced by a substitute planner, not the shipped one"
     )
+
+    def __init__(self, message: str | None = None, *, sessions: int = 1) -> None:
+        super().__init__(message)
+        self.sessions = sessions
 
 
 class RecursionDepthJudgeNotIndependentError(EvalError):

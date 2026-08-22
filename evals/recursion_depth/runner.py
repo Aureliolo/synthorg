@@ -82,7 +82,7 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from evals.recursion_depth.oracle import run_oracle
-from evals.recursion_depth.planner import PlannedTree, TreePlanner
+from evals.recursion_depth.planner import PlanningSpend, TreePlanner
 from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
@@ -567,7 +567,8 @@ def _unavailable(
     Returns:
         The unavailable cell.
     """
-    reason = f"{type(exc).__name__}: {safe_error_description(exc)}"
+    # `safe_error_description` already leads with the exception type.
+    reason = safe_error_description(exc)
     logger.warning(
         EVALS_RECURSION_CELL_UNAVAILABLE,
         depth_cap=cell.depth_cap,
@@ -588,8 +589,8 @@ def _unavailable(
 
 
 async def _plan_with_retry(
-    context: SweepContext, cell: SweepCell, root: Task
-) -> PlannedTree:
+    context: SweepContext, cell: SweepCell, root: Task, spend: PlanningSpend
+) -> DecompositionResult:
     """Produce *cell*'s tree, re-asking once when the planner call fails.
 
     Planning is one call, it happens before anything else, and losing it loses
@@ -609,9 +610,11 @@ async def _plan_with_retry(
         context: Everything the sweep is driven with.
         cell: Which run this is.
         root: The objective being decomposed.
+        spend: Where every attempt's spend accumulates, the failed ones
+            included: a discarded attempt is money that left the account.
 
     Returns:
-        The tree and what producing it cost.
+        The tree.
     """
     retry = GeneralRetryHandler(
         retryable=lambda exc: isinstance(exc, DecompositionError),
@@ -622,7 +625,10 @@ async def _plan_with_retry(
     )
     return await retry.execute(
         lambda: context.planner.plan(
-            task=root, depth_cap=cell.depth_cap, execution_id=f"{cell.key}-plan"
+            task=root,
+            depth_cap=cell.depth_cap,
+            execution_id=f"{cell.key}-plan",
+            spend=spend,
         ),
         cell=cell.key,
     )
@@ -707,6 +713,32 @@ def _continue_cell(
     )
 
 
+def _plan_unit(
+    context: SweepContext, cell: SweepCell, spend: PlanningSpend, *, detail: str = ""
+) -> UnitRecord:
+    """Record what *cell*'s planning ran and what it cost.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        spend: What the planning attempts booked.
+        detail: Why planning produced no tree, empty when it produced one.
+
+    Returns:
+        The planning session's record.
+    """
+    return UnitRecord(
+        unit_id=NotBlankStr(f"{cell.key}-plan"),
+        title=NotBlankStr(f"Plan: {context.spec.title}"),
+        kind=PLAN,
+        depth=0,
+        attempts=spend.sessions,
+        cost=spend.cost,
+        tokens=spend.tokens,
+        detail=detail,
+    )
+
+
 async def _plan_cell(
     context: SweepContext, cell: SweepCell, units: CellUnits
 ) -> _ContinuedCell:
@@ -715,6 +747,12 @@ async def _plan_cell(
     The tree is written down with its objective rather than after the run,
     because it is what every unit on disk belongs to: a cell killed at hour six
     can only be continued by whoever holds the tree it was building against.
+
+    The planning session is journalled whether or not it produced that tree,
+    because the sessions it ran are real spend either way. Recorded only on
+    success, a cell whose planning failed reported zero attempts, zero cost and
+    zero tokens: two live cells spent an hour of provider time between them and
+    the report said the run had been free.
 
     Args:
         context: Everything the sweep is driven with.
@@ -729,20 +767,66 @@ async def _plan_cell(
         project=EVAL_TASK_PROJECT,
         created_by=str(context.roster.lead.id),
     )
-    planned = await _plan_with_retry(context, cell, root)
+    spend = PlanningSpend()
+    try:
+        tree = await _plan_with_retry(context, cell, root, spend)
+    except Exception as exc:
+        # No tree, so no plan row: a journalled plan is what a resume takes the
+        # cell up from, and this attempt left nothing to take up.
+        # `safe_error_description` already leads with the exception type, so
+        # naming it again would spend half the field's cap repeating itself.
+        units.append(
+            _plan_unit(context, cell, spend, detail=safe_error_description(exc))
+        )
+        _book_planning_budget(context, spend, failure=exc)
+        raise
     units.append(
-        UnitRecord(
-            unit_id=NotBlankStr(f"{cell.key}-plan"),
-            title=NotBlankStr(f"Plan: {context.spec.title}"),
-            kind=PLAN,
-            depth=0,
-            attempts=planned.sessions,
-            cost=planned.cost,
-        ),
-        plan=PlannedTreeRecord(root=root, result=planned.result),
+        _plan_unit(context, cell, spend),
+        plan=PlannedTreeRecord(root=root, result=tree),
     )
-    context.budget.spend(planned.sessions)
-    return _ContinuedCell(root=root, tree=planned.result, produced={}, delivered={})
+    _book_planning_budget(context, spend, failure=None)
+    return _ContinuedCell(root=root, tree=tree, produced={}, delivered={})
+
+
+def _book_planning_budget(
+    context: SweepContext, spend: PlanningSpend, *, failure: Exception | None
+) -> None:
+    """Book the planning sessions against the sweep's ceiling.
+
+    On the failure path the ceiling error must not become what propagates.
+    ``_run_and_record`` classifies by exception TYPE, and the two verdicts it
+    reaches are opposites: a ceiling breach stops the sweep and still writes
+    the report, while a systemic failure writes none at all. A planning failure
+    that happens to be the booking which crosses the ceiling would be filed as
+    the first, so an unreachable gateway or an unwritable journal would be
+    reported to the operator as "raise max_sessions" and, for the journal case,
+    answered by writing to the journal already known to be broken.
+
+    Args:
+        context: Everything the sweep is driven with.
+        spend: What the planning attempts booked.
+        failure: The planning failure already propagating, or ``None`` when
+            planning produced a tree and the ceiling may stop the sweep here.
+
+    Raises:
+        RecursionDepthSessionCeilingError: The sweep has spent its budget, and
+            no other failure is already on its way out.
+    """
+    try:
+        context.budget.spend(spend.sessions)
+    except RecursionDepthSessionCeilingError:
+        if failure is None:
+            raise
+        # Logged rather than raised: the breach is real and the sweep will
+        # reach it again on the next booking, but the failure already
+        # propagating is the one the operator needs to read.
+        logger.warning(
+            EVALS_RECURSION_SESSION_CEILING,
+            spent=context.budget.spent,
+            ceiling=context.manifest.max_sessions,
+            error_type=type(failure).__name__,
+            error=safe_error_description(failure),
+        )
 
 
 async def _run_cell(

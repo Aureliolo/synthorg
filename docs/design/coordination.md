@@ -779,11 +779,17 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      `CANCELLED`), it degrades to the single-shot strategy so a greenlight is
      never blocked, and stamps `Plan.planning_strategy` so the approval gate
      and the dashboard say which planner produced what the operator is being
-     asked to approve. A session that **ran and terminated without submitting**
-     is not one of those cases: it is the planning counterpart of the
-     zero-artifact guard, so it raises `DecompositionError` and the plan fails
-     visibly with the reason rather than a blind plan silently replacing the
-     researched one. A plan that came back **over
+     asked to approve. A session that **stopped without submitting while it
+     still had turns** is not a verdict at all: it is told so, plainly, and the
+     loop is re-entered over one unchanged context, carrying the conversation
+     and the turn budget, so the rejection it is acting on is still in front of
+     it.
+     That is what any coding loop does when a check fails, and without it a
+     planning session that gave up over a punctuation rule ended the run. A
+     session that **spent its budget without submitting** is the planning
+     counterpart of the zero-artifact guard, so it raises `DecompositionError`
+     and the plan fails visibly with the reason rather than a blind plan
+     silently replacing the researched one. A plan that came back **over
      `max_subtasks`** is not one of those cases: every strategy refuses it with
      `DecompositionSubtaskLimitError`, which fails the plan visibly with a
      reason naming both counts. Swapping in the thinner plan the single-shot
