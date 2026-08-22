@@ -131,8 +131,13 @@ anything, and `make recursion-depth-record` to measure for real.
 ### The metric
 
 For each leaf that delivered, the specification requirements it claimed through
-`SubtaskDefinition.satisfies` are leaf work delivered. After the root merge the
-oracle runs over the whole specification, and:
+`SubtaskDefinition.satisfies` are leaf work delivered. That field carries the
+root objective's acceptance-criterion TEXT rather than requirement ids, because
+that is what the planner is given and echoes back, so the harness resolves each
+claim to the id it names before anything counts it (`recursion_depth/claims.py`
+owns both directions, and an unresolvable claim is dropped with a warning rather
+than passed on). After the root merge the oracle runs over the whole
+specification, and:
 
 ```text
         | claimed by delivered leaves AND passing in the merged tree |
