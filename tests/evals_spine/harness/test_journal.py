@@ -50,7 +50,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
-from tests._shared import sid
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -204,6 +204,10 @@ def _task(title: str) -> Task:
         The task.
     """
     return Task(
+        # Derived rather than minted: this id is cross-referenced (the tree's
+        # subtask names its child by it, and the plan names the root by it),
+        # and the round-trip assertions read it back off the journal.
+        id=as_uuid(f"task:{title}"),
         title=NotBlankStr(title),
         description=NotBlankStr(f"Do {title}."),
         type=TaskType.DEVELOPMENT,
@@ -366,6 +370,11 @@ class TestASessionSurvivesTheCellThatRanIt:
 
         resumed = progress_by_cell(state)[cell_key(1, Arm.GATED, 0)]
         assert resumed.plan is not None
+        # The root comes back as it was written, not re-minted: every
+        # ``parent_task_id`` in the tree names it by id, so a fresh one would
+        # leave the whole plan pointing at a task that does not exist.
+        assert resumed.plan.root.id == _root_task().id
+        assert resumed.plan.result.plan.parent_task_id == str(resumed.plan.root.id)
         assert [unit.unit_id for unit in resumed.units] == ["plan-1", "leaf-1"]
 
     def test_sessions_are_re_booked_from_the_rows_that_ran_them(

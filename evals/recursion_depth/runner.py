@@ -28,6 +28,7 @@ it.
 import asyncio
 import zlib
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -467,6 +468,10 @@ async def run_sweep(
     Raises:
         HarnessJournalMismatchError: A journal exists that this sweep must not
             append to.
+        RecursionDepthSessionCeilingError: The sessions previous attempts
+            already spent are past the manifest ceiling, so this resume has
+            nothing left to buy. Raised before any cell runs, unlike the same
+            error inside the loop, which stops the sweep and keeps its report.
         RecursionDepthNoCellsMeasuredError: Not one run was measured. An
             all-unavailable report exits successfully with a file that looks
             like a curve.
@@ -485,15 +490,24 @@ async def run_sweep(
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
-    records, resumed = open_cell_journal(out_dir, provenance=provenance, resume=resume)
-    sessions, progress = open_progress_journal(
-        out_dir, provenance=provenance, resume=resume
-    )
-    # Re-booked before anything runs, so a sweep resumed four times is bounded
-    # like one sweep rather than like each of its attempts. Read off the
-    # session rows, which is where every session appears exactly once.
-    context.budget.spend(progress.sessions_spent)
-    try:
+    # Every handle registered the moment it is opened, because the two things
+    # that happen between the opens and the loop can both raise: the second
+    # open refuses a journal this sweep must not append to, and the re-booking
+    # below trips the ceiling on its own. A `finally` around the loop alone
+    # leaves whichever handle was already open on either exit.
+    with ExitStack() as stack:
+        records, resumed = open_cell_journal(
+            out_dir, provenance=provenance, resume=resume
+        )
+        stack.callback(records.close)
+        sessions, progress = open_progress_journal(
+            out_dir, provenance=provenance, resume=resume
+        )
+        stack.callback(sessions.close)
+        # Re-booked before anything runs, so a sweep resumed four times is
+        # bounded like one sweep rather than like each of its attempts. Read
+        # off the session rows, which is where every session appears once.
+        context.budget.spend(progress.sessions_spent)
         planned = tuple(planned_cells(context.manifest))
         for index, cell in enumerate(planned):
             already = resumed.holds(cell.key)
@@ -515,10 +529,7 @@ async def run_sweep(
                 resumed=progress.holds(cell.key),
             ):
                 break
-    finally:
-        sessions.close()
-        records.close()
-    cells = records.cells
+        cells = records.cells
     measured = tuple(record for record in cells if record.achieved_depth is not None)
     if not measured:
         msg = (
@@ -926,7 +937,7 @@ async def _run_one_leaf(
     workspace = await asyncio.to_thread(
         unit_workspace,
         cell_key=cell.key,
-        unit_key=f"leaf-{task.id}",
+        unit_key=leaf_unit_key(str(task.id)),
         spec_dir=context.spec_dir,
         work_root=context.work_root,
     )
@@ -957,7 +968,7 @@ async def _run_one_merge(
     workspace = await asyncio.to_thread(
         unit_workspace,
         cell_key=cell.key,
-        unit_key=f"merge-{parent.id}",
+        unit_key=merge_unit_key(str(parent.id)),
         spec_dir=context.spec_dir,
         work_root=context.work_root,
     )

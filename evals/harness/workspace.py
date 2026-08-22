@@ -171,10 +171,16 @@ def existing_workspace(*, cell_key: str, work_root: Path) -> CellWorkspace | Non
     Raises:
         WorkspacePathEscapeError: A resolved path escapes its root.
     """
-    workspace = CellWorkspace(root=_contained(Path(cell_key), work_root))
-    if not workspace.project_dir.is_dir():
+    root = _contained(Path(cell_key), work_root)
+    # The project subtree is re-checked too, for the reason ``seed_workspace``
+    # re-checks it: the tree being read back is one an AGENT could write into,
+    # so it could have replaced the subtree with a link to somewhere else. Here
+    # the stakes are the higher half of that pair, because a resume MOUNTS what
+    # it finds as a merge's child rather than copying a fixture over it.
+    project_dir = _contained(Path(_PROJECTS_SUBDIR) / EVAL_TASK_PROJECT, root)
+    if not project_dir.is_dir():
         return None
-    return workspace
+    return CellWorkspace(root=root)
 
 
 def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
