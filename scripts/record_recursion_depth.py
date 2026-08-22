@@ -326,15 +326,20 @@ async def _record(
         # the last ones are never reclaimed at all, which is the leak
         # release_tool_sandboxes exists to prevent, reintroduced by a second
         # producer.
-        if binder is not None:
-            await binder.release_tool_sandboxes()
-        # An unfinished sweep keeps its trees, because they are what
-        # ``--resume`` continues with: discarding them on the way out of a
-        # failure turns every part-built cell into one that has to be paid for
-        # again, which is the loss the journal exists to stop.
-        await _reclaim_workspaces(
-            run_work_root, keep=args.keep_workspaces or not completed
-        )
+        # Nested, so releasing the containers and reclaiming the trees are two
+        # independent obligations rather than a sequence where the first one
+        # failing silently drops the second.
+        try:
+            if binder is not None:
+                await binder.release_tool_sandboxes()
+        finally:
+            # An unfinished sweep keeps its trees, because they are what
+            # ``--resume`` continues with: discarding them on the way out of a
+            # failure turns every part-built cell into one that has to be paid
+            # for again, which is the loss the journal exists to stop.
+            await _reclaim_workspaces(
+                run_work_root, keep=args.keep_workspaces or not completed
+            )
     print("report written: " + ", ".join(str(path) for path in paths))
     if not report.measured_cells:
         msg = (
@@ -540,10 +545,10 @@ async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
 
     A sweep creates one tree per leaf and one per node, each written into by a
     coding agent. Nothing reuses a tree between COMPLETED runs, so retaining
-    them grows disk monotonically unless a maintainer is inspecting what was
-    built, which for the first working artefact in nine rounds is a real
-    reason. An unfinished run is the other case entirely: its trees are what
-    the next ``--resume`` builds on.
+    them grows disk monotonically; a maintainer inspecting what the sweep
+    actually built is the one reason to keep them anyway. An unfinished run is
+    the other case entirely: its trees are what the next ``--resume`` builds
+    on.
     """
     if keep:
         print(f"workspaces kept for --resume: {run_work_root}")

@@ -1,7 +1,9 @@
 # module-kind: tests
 """The entry point: plan mode spends nothing, and staging narrows honestly."""
 
+import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from scripts import record_recursion_depth as record_module
@@ -321,6 +323,114 @@ class TestStaging:
             narrow(load_manifest(_MANIFEST), "1,4,9")
 
 
+def _record_args(tmp_path: Path) -> argparse.Namespace:
+    """Build the argument bundle ``_record`` reads.
+
+    Returns:
+        The namespace.
+    """
+    return argparse.Namespace(
+        out_dir=tmp_path / "out",
+        work_root=tmp_path / "work",
+        keep_workspaces=False,
+        manifest=_MANIFEST,
+        resume=False,
+        max_sessions=None,
+    )
+
+
+def _recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, sweep: Exception | None
+) -> Path:
+    """Stub everything ``_record`` reaches for, and seed the tree it builds.
+
+    Every collaborator between the preflight and the report is a gateway, a
+    container or a provider call, so each is replaced with the smallest thing
+    that lets the lifecycle run. What is left unstubbed is the part under
+    test: which scratch root is chosen, and whether it survives.
+
+    Args:
+        tmp_path: The test's directory.
+        monkeypatch: Patching seam.
+        sweep: Raised by the sweep, or ``None`` for one that measured a cell.
+
+    Returns:
+        The scratch root the recorder will build under, already populated so
+        its removal is observable.
+    """
+    root = tmp_path / "work" / f"run-{_recording_slug(tmp_path / 'out')}"
+    (root / "unit").mkdir(parents=True)
+
+    async def _no_preflight(**_kwargs: object) -> None:
+        return None
+
+    async def _swept(*_args: object, **_kwargs: object) -> object:
+        if sweep is not None:
+            raise sweep
+        return SimpleNamespace(measured_cells=("one",))
+
+    monkeypatch.setattr(record_module, "run_preflight", _no_preflight)
+    monkeypatch.setattr(record_module, "RecordingGatewayHost", _NullHost)
+    monkeypatch.setattr(record_module, "HarnessBinder", _NullBinder)
+    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
+    monkeypatch.setattr(record_module, "_build_context", _built_context)
+    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+    monkeypatch.setattr(record_module, "run_sweep", _swept)
+    monkeypatch.setattr(record_module, "write_report", lambda *_a: (tmp_path / "r",))
+    return root
+
+
+async def _built_context(*_args: object, **_kwargs: object) -> None:
+    """Stand in for the context build, which needs a live gateway.
+
+    Returns:
+        Nothing the lifecycle under test reads.
+    """
+    return
+
+
+class _NullHost:
+    """A gateway host that stands up nothing.
+
+    The three addresses are the ones the start log states, which is the only
+    thing the lifecycle under test reads off a host.
+    """
+
+    container_gateway_url = "http://gateway.invalid/v1"
+    container_mcp_url = "http://gateway.invalid/mcp"
+    port = 0
+
+    def __init__(self, _config: object) -> None:
+        self._config = _config
+
+    async def __aenter__(self) -> _NullHost:
+        """Enter without binding a port.
+
+        Returns:
+            Itself.
+        """
+        return self
+
+    async def __aexit__(self, *_exc: object) -> bool:
+        """Leave without tearing anything down.
+
+        Returns:
+            False, so an exception propagates.
+        """
+        return False
+
+
+class _NullBinder:
+    """A binder holding no containers."""
+
+    def __init__(self, *, host: object) -> None:
+        self._host = host
+
+    async def release_tool_sandboxes(self) -> None:
+        """Release nothing."""
+        return
+
+
 class TestTheScratchRootAResumeContinuesWith:
     """A journal buys nothing if the trees it indexes move every run."""
 
@@ -365,5 +475,51 @@ class TestTheScratchRootAResumeContinuesWith:
         (root / "unit").mkdir(parents=True)
 
         await _reclaim_workspaces(root, keep=False)
+
+        assert not root.exists()
+
+
+class TestWhatTheRecorderDoesWithTheTreesItBuilt:
+    """Which trees survive is decided by the recorder, not by its helper.
+
+    The two cases above pin what ``_reclaim_workspaces`` does when told; these
+    pin what it is told, which is the half a resume actually depends on. A
+    ``completed`` flag set one statement too early reads correctly in both
+    branches of the helper and still deletes what the next attempt needed.
+    """
+
+    async def test_a_sweep_that_raised_leaves_its_trees_behind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _recorded(tmp_path, monkeypatch, sweep=OSError("the gateway died"))
+
+        with pytest.raises(OSError, match="the gateway died"):
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+
+        assert root.is_dir()
+
+    async def test_a_sweep_that_wrote_its_report_reclaims_them(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _recorded(tmp_path, monkeypatch, sweep=None)
+
+        assert (
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+            == 0
+        )
 
         assert not root.exists()
