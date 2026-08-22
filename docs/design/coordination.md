@@ -781,8 +781,9 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      and the dashboard say which planner produced what the operator is being
      asked to approve. A session that **stopped without submitting while it
      still had turns** is not a verdict at all: it is told so, plainly, and the
-     loop is re-entered over the same context, the same conversation and the
-     same turn budget, so the rejection it is acting on is still in front of it.
+     loop is re-entered over one unchanged context, carrying the conversation
+     and the turn budget, so the rejection it is acting on is still in front of
+     it.
      That is what any coding loop does when a check fails, and without it a
      planning session that gave up over a punctuation rule ended the run. A
      session that **spent its budget without submitting** is the planning

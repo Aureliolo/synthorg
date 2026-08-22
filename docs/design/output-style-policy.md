@@ -51,11 +51,12 @@ agent is judged at its boundary against rules its own prompt never carried:
 
 * the full agent prompt renders a `## House Writing Style` section after
   Personality and before Skills, via `adapter.inject_house_style_context`;
-* the compact persona prompt (`engine/agent_persona.py::render_agent_system_prompt`,
-  used by the planning, evaluation, retro and plan-review sessions, the meeting
-  agent caller and the chat action) renders the same directives through the same
-  `build_house_style_section`, between the persona preamble and the
-  untrusted-content directive.
+* the compact persona prompt (`engine/agent_persona.py::render_agent_system_prompt`)
+  renders the same directives through the same `build_house_style_section`,
+  after the persona preamble and before the untrusted-content directive. Its
+  consumers are the planning session, the evaluation session, the retro
+  session, the plan-review session, the meeting agent caller, and the chat
+  action.
 
 The provider is a process-global ambient snapshot (`provider.py`), set at boot
 and refreshed by the settings subscriber. Both builders resolve it through the
