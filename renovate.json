@@ -95,6 +95,12 @@
       "allowedVersions": "<3.15"
     },
     {
+      "description": "Block golang 1.27+ in Docker images. The builder image and the `go` directive it compiles are two halves of one toolchain choice: the Dockerfile comment above the FROM says as much, and `actions/setup-go` resolves every CI job's toolchain from `docker/sidecar/go.mod` and `cli/go.mod` rather than from the image. Renovate moves only the image, which silently splits the shipped sidecar binary (compiled on the new toolchain) from every test and lint that verifies it (still on the old one). Go 1.27 is also a wide release to absorb: `encoding/json` is re-backed by v2, `compress/flate` output changes, `net` unwraps `io.EOF` from `OpError`, HTTP/1 response bodies auto-drain on close, and the `asynctimerchan`, `tls*` and `gotypesalias` GODEBUGs are removed outright. Lift this cap as part of a deliberate 1.27 upgrade that moves both go.mod directives, both `run.go` values in the .golangci.yml files, and the image together.",
+      "matchDepNames": ["golang"],
+      "matchManagers": ["dockerfile"],
+      "allowedVersions": "<1.27"
+    },
+    {
       "description": "Block opentelemetry-* >=1.41.0 while logfire pins opentelemetry-sdk<1.41.0 (see logfire pyproject.toml on main). Without this, every Renovate run produces a grouped Python PR whose uv.lock regeneration fails. Lift the cap when logfire releases a version that allows OTel 1.41+.",
       "matchDepNames": [
         "opentelemetry-api",

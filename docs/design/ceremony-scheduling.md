@@ -181,8 +181,8 @@ sprint:
       # also fires on sprint_end
 ```
 
-**Auto-transition**: whichever comes first, task completion threshold _or_
-calendar duration boundary.
+**Auto-transition**: whichever comes first of the task completion threshold
+_and_ the calendar duration boundary.
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 

@@ -14,7 +14,7 @@ ARG BASE_IMAGE
 # satisfy go.mod and a digest behind the `go` directive fails the build
 # outright. That is the wanted posture for a hermetic image, and it means this
 # digest and the directive move together.
-FROM golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc AS builder
+FROM golang:1.26-alpine@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS builder
 
 WORKDIR /build
 COPY docker/sidecar/go.mod ./
