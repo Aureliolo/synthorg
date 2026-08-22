@@ -43,6 +43,7 @@ from evals.errors import (
     RecursionDepthPlannerSubstitutedError,
     RecursionDepthSessionCeilingError,
 )
+from evals.harness.journal import RecordedCells
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
@@ -51,7 +52,7 @@ from evals.recursion_depth.gate import (
     MergeReviewer,
     OracleMergeReviewer,
 )
-from evals.recursion_depth.journal import RecordedCells, cell_key, open_journal
+from evals.recursion_depth.journal import cell_key, open_cell_journal, sessions_spent
 from evals.recursion_depth.manifest import Arm, RecursionDepthManifest
 from evals.recursion_depth.merge import (
     MergeOutcome,
@@ -212,7 +213,7 @@ def _report_quota_exhaustion(
 async def _run_and_record(
     context: SweepContext,
     cell: SweepCell,
-    records: RecordedCells,
+    records: RecordedCells[CellRecord],
     caveats: list[str],
     *,
     remaining: int,
@@ -439,8 +440,8 @@ async def run_sweep(
         The report, always written, carrying every run that was attempted.
 
     Raises:
-        RecursionDepthJournalMismatchError: A journal exists that this sweep
-            must not append to.
+        HarnessJournalMismatchError: A journal exists that this sweep must not
+            append to.
         RecursionDepthNoCellsMeasuredError: Not one run was measured. An
             all-unavailable report exits successfully with a file that looks
             like a curve.
@@ -459,11 +460,10 @@ async def run_sweep(
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
-    journal, resumed = open_journal(out_dir, provenance=provenance, resume=resume)
+    records, resumed = open_cell_journal(out_dir, provenance=provenance, resume=resume)
     # Re-booked before anything runs, so a sweep resumed four times is bounded
     # like one sweep rather than like each of its attempts.
-    context.budget.spend(resumed.sessions_spent)
-    records = RecordedCells(journal)
+    context.budget.spend(sessions_spent(resumed))
     try:
         planned = tuple(planned_cells(context.manifest))
         for index, cell in enumerate(planned):
@@ -476,7 +476,7 @@ async def run_sweep(
             ):
                 break
     finally:
-        journal.close()
+        records.close()
     cells = records.cells
     measured = tuple(record for record in cells if record.achieved_depth is not None)
     if not measured:

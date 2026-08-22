@@ -64,6 +64,10 @@ EVALS_HARNESS_WORKSPACE_LINK_DROPPED: Final[str] = (
     "evals.harness.workspace_link_dropped"
 )
 EVALS_HARNESS_STALL_REPORT_FAILED: Final[str] = "evals.harness.stall_report_failed"
+EVALS_HARNESS_RECORD_JOURNALLED: Final[str] = "evals.harness.record_journalled"
+EVALS_HARNESS_RECORD_REPLAYED: Final[str] = "evals.harness.record_replayed"
+EVALS_HARNESS_JOURNAL_RESUMED: Final[str] = "evals.harness.journal_resumed"
+EVALS_HARNESS_JOURNAL_TRUNCATED: Final[str] = "evals.harness.journal_truncated"
 EVALS_HARNESS_SANDBOXES_RELEASED: Final[str] = "evals.harness.sandboxes_released"
 EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
     "evals.harness.sandbox_release_failed"

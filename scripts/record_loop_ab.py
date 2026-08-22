@@ -148,6 +148,8 @@ async def _record(
                 run_work_root=run_work_root,
                 deps=_build_deps(host, stall_idle_seconds=args.stall_notify_seconds),
                 manifest_path=args.manifest,
+                out_dir=args.out_dir,
+                resume=args.resume,
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a matrix that already cost real money to produce.
@@ -242,6 +244,8 @@ async def _run_supervised(
     run_work_root: Path,
     deps: LoopAbDeps,
     manifest_path: Path,
+    out_dir: Path,
+    resume: bool,
 ) -> Scoreboard:
     """Run the matrix, abandoning it if the gateway it dials stops serving.
 
@@ -258,6 +262,8 @@ async def _run_supervised(
         run_work_root: Root for this run's per-cell workspaces.
         deps: The wired per-cell collaborators.
         manifest_path: Path the manifest was loaded from, for provenance.
+        out_dir: Where the journal and the scoreboard are written.
+        resume: Whether an existing journal for this matrix is continued.
 
     Returns:
         The completed scoreboard.
@@ -283,6 +289,8 @@ async def _run_supervised(
             work_root=run_work_root,
             deps=deps,
             provenance=provenance,
+            out_dir=out_dir,
+            resume=resume,
         )
     )
     serving = host.serving
@@ -433,6 +441,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Leave each cell's workspace tree on disk after the run, to inspect "
             "what a loop actually produced. Off by default: nothing reuses them "
             "between runs, so they only accumulate."
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Continue the matrix already journalled in --out-dir: rows it "
+            "measured are read back rather than paid for again, and rows it "
+            "recorded as unavailable are attempted afresh. Without this a "
+            "journal already in --out-dir is refused rather than overwritten."
         ),
     )
     parser.add_argument(

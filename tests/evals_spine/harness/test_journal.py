@@ -1,5 +1,11 @@
 # module-kind: tests
-"""A cell that was paid for survives the process that produced it."""
+"""A cell that was paid for survives the process that produced it.
+
+Driven through the recursion-depth binding rather than a synthetic one, because
+what makes the mechanism worth having is that a real record model round-trips
+through it: these models carry ``computed_field`` totals and forbid extras, and
+the two halves of that disagree by default.
+"""
 
 import json
 from datetime import UTC, datetime
@@ -7,12 +13,21 @@ from pathlib import Path
 
 import pytest
 
-from evals.errors import RecursionDepthJournalMismatchError
-from evals.recursion_depth.journal import (
-    JOURNAL_NAME,
+from evals.errors import HarnessJournalMismatchError
+from evals.harness.journal import (
     RecordedCells,
-    cell_key,
+    ResumeState,
+    RunJournal,
     open_journal,
+)
+from evals.recursion_depth.journal import (
+    JOURNAL_KIND,
+    JOURNAL_NAME,
+    SPEC,
+    cell_key,
+    matrix_identity,
+    open_cell_journal,
+    sessions_spent,
 )
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
 from evals.recursion_depth.models import LEAF, CellRecord, Provenance, UnitRecord
@@ -95,6 +110,22 @@ def _unavailable(*, depth_cap: int = 1, arm: Arm = Arm.UNGATED) -> CellRecord:
     )
 
 
+def _opened(
+    tmp_path: Path, *, resume: bool, commit: str = "0" * 40
+) -> tuple[RunJournal[CellRecord], ResumeState[CellRecord]]:
+    """Open a journal at *tmp_path* under the recursion-depth binding.
+
+    Returns:
+        The journal and what a previous attempt paid for.
+    """
+    return open_journal(
+        tmp_path,
+        SPEC,
+        identity=matrix_identity(_provenance(commit=commit)),
+        resume=resume,
+    )
+
+
 class TestACellSurvivesTheProcess:
     """The failure this exists for is the process dying mid-matrix."""
 
@@ -103,7 +134,7 @@ class TestACellSurvivesTheProcess:
     ) -> None:
         # Not on close, not on the report: a sweep killed after cell one must
         # have cell one. Seven hours of a live run were lost to the opposite.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
 
         journal.record(_measured())
 
@@ -112,10 +143,10 @@ class TestACellSurvivesTheProcess:
         assert json.loads(lines[1])["depth_cap"] == 1
 
     def test_the_first_line_is_a_header_not_a_cell(self, tmp_path: Path) -> None:
-        open_journal(tmp_path, provenance=_provenance(), resume=False)
+        _opened(tmp_path, resume=False)
 
         first = json.loads((tmp_path / JOURNAL_NAME).read_text(encoding="utf-8"))
-        assert first["kind"] == "recursion-depth-journal"
+        assert first["journal_kind"] == JOURNAL_KIND
         assert first["git_commit"] == "0" * 40
 
 
@@ -123,11 +154,11 @@ class TestResume:
     """What a resume buys again, and what it refuses to."""
 
     def test_a_measured_cell_is_read_back(self, tmp_path: Path) -> None:
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.close()
 
-        _, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        _, state = _opened(tmp_path, resume=True)
 
         held = state.holds(cell_key(1, Arm.GATED, 0))
         assert held is not None
@@ -137,11 +168,11 @@ class TestResume:
         # It cost almost nothing, and the operator restarting has usually just
         # fixed the reason it failed. Reading it back hands them the same
         # broken report they restarted to escape.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_unavailable())
         journal.close()
 
-        _, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        _, state = _opened(tmp_path, resume=True)
 
         assert state.holds(cell_key(1, Arm.UNGATED, 0)) is None
 
@@ -150,36 +181,36 @@ class TestResume:
     ) -> None:
         # Otherwise a sweep resumed four times is bounded like four sweeps, and
         # the ceiling stops meaning what the manifest says it means.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.record(_measured(arm=Arm.UNGATED))
         journal.close()
 
-        _, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        _, state = _opened(tmp_path, resume=True)
 
-        assert state.sessions_spent == 4
+        assert sessions_spent(state) == 4
 
     def test_a_journal_from_a_different_commit_is_refused(self, tmp_path: Path) -> None:
         # Cells measured before a change to the recursion point are cells about
         # a different system, and two of those are not one curve.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.close()
 
-        with pytest.raises(RecursionDepthJournalMismatchError, match="git_commit"):
-            open_journal(tmp_path, provenance=_provenance(commit="1" * 40), resume=True)
+        with pytest.raises(HarnessJournalMismatchError, match="git_commit"):
+            _opened(tmp_path, resume=True, commit="1" * 40)
 
     def test_an_existing_journal_is_never_silently_overwritten(
         self, tmp_path: Path
     ) -> None:
         # Truncating it would discard hours of paid work, and this is not the
         # place that decision gets made.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.close()
 
-        with pytest.raises(RecursionDepthJournalMismatchError, match="--resume"):
-            open_journal(tmp_path, provenance=_provenance(), resume=False)
+        with pytest.raises(HarnessJournalMismatchError, match="already exists"):
+            _opened(tmp_path, resume=False)
 
 
 class TestACrashMidWrite:
@@ -188,7 +219,7 @@ class TestACrashMidWrite:
     def test_a_half_written_last_cell_is_dropped_not_fatal(
         self, tmp_path: Path
     ) -> None:
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.close()
         path = tmp_path / JOURNAL_NAME
@@ -198,7 +229,7 @@ class TestACrashMidWrite:
             newline="",
         )
 
-        _, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        _, state = _opened(tmp_path, resume=True)
 
         assert len(state.completed) == 1
 
@@ -210,19 +241,19 @@ class TestACrashMidWrite:
         # next resume, which is this file's own failure arrived at backwards.
         (tmp_path / JOURNAL_NAME).write_text("", encoding="utf-8", newline="")
 
-        journal, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        journal, state = _opened(tmp_path, resume=True)
         journal.record(_measured())
         journal.close()
 
         assert not state.completed
-        _, resumed = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        _, resumed = _opened(tmp_path, resume=True)
         assert len(resumed.completed) == 1
 
     def test_a_broken_line_in_the_middle_is_corruption_and_refused(
         self, tmp_path: Path
     ) -> None:
         # Reading past it would silently drop a measured cell already paid for.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
         journal.record(_measured(arm=Arm.UNGATED))
         journal.close()
@@ -233,8 +264,47 @@ class TestACrashMidWrite:
             f"{header}\n{{'not': 'json'}}\n{second}\n", encoding="utf-8", newline=""
         )
 
-        with pytest.raises(RecursionDepthJournalMismatchError, match="corruption"):
-            open_journal(tmp_path, provenance=_provenance(), resume=True)
+        with pytest.raises(HarnessJournalMismatchError, match="corruption"):
+            _opened(tmp_path, resume=True)
+
+
+class TestOneJournalPerHarness:
+    """Two harnesses write journals; neither may read the other's."""
+
+    def test_a_journal_from_another_harness_is_refused_by_kind(
+        self, tmp_path: Path
+    ) -> None:
+        # The identity fields would not even overlap, so without the kind the
+        # refusal would be about the wrong thing or would not happen at all.
+        journal, _ = _opened(tmp_path, resume=False)
+        journal.close()
+        path = tmp_path / JOURNAL_NAME
+        header, *rest = path.read_text(encoding="utf-8").splitlines()
+        foreign = json.loads(header) | {"journal_kind": "loop-ab"}
+        path.write_text(
+            "\n".join([json.dumps(foreign), *rest]) + "\n",
+            encoding="utf-8",
+            newline="",
+        )
+
+        with pytest.raises(HarnessJournalMismatchError, match="recursion-depth"):
+            _opened(tmp_path, resume=True)
+
+
+class TestTheSweepsOwnEntryPoint:
+    """What the runner actually calls, wired end to end."""
+
+    def test_it_hands_back_a_sink_that_journals(self, tmp_path: Path) -> None:
+        cells, state = open_cell_journal(
+            tmp_path, provenance=_provenance(), resume=False
+        )
+
+        cells.add(_measured())
+        cells.close()
+
+        assert not state.completed
+        _, resumed = open_cell_journal(tmp_path, provenance=_provenance(), resume=True)
+        assert len(resumed.completed) == 1
 
 
 class TestRecordingIsOneOwner:
@@ -243,8 +313,8 @@ class TestRecordingIsOneOwner:
     def test_adding_a_cell_journals_it(self, tmp_path: Path) -> None:
         # Four branches record a cell. A journal call beside each append is
         # four chances to add a fifth that only remembers.
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
-        cells = RecordedCells(journal)
+        journal, _ = _opened(tmp_path, resume=False)
+        cells = RecordedCells(journal, SPEC)
 
         cells.add(_measured())
 
@@ -253,9 +323,9 @@ class TestRecordingIsOneOwner:
         assert len(written) == 2
 
     def test_a_replayed_cell_is_not_written_twice(self, tmp_path: Path) -> None:
-        journal, _ = open_journal(tmp_path, provenance=_provenance(), resume=False)
+        journal, _ = _opened(tmp_path, resume=False)
         journal.record(_measured())
-        cells = RecordedCells(journal)
+        cells = RecordedCells(journal, SPEC)
 
         cells.replay(_measured())
 
