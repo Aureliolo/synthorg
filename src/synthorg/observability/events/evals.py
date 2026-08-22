@@ -27,6 +27,13 @@ EVALS_LOOP_AB_RECORD_START: Final[str] = "evals.loop_ab.record_start"
 EVALS_LOOP_AB_RUN_RECORDED: Final[str] = "evals.loop_ab.run_recorded"
 EVALS_LOOP_AB_LOOP_UNAVAILABLE: Final[str] = "evals.loop_ab.loop_unavailable"
 EVALS_HARNESS_PROVIDER_MISSING: Final[str] = "evals.harness.provider_missing"
+EVALS_HARNESS_PROBE_CLEANUP_FAILED: Final[str] = "evals.harness.probe_cleanup_failed"
+"""The preflight probe's single-use provider registry could not be released.
+Logged at WARNING and carries whether the probe itself had already failed,
+because the two cases differ in what the operator is told: a probe that already
+has a verdict keeps it (the bad credential or unknown model is the actionable
+fact, and a cleanup failure raised over it would erase that), while a cleanup
+failure on its own is the only thing that went wrong and is raised."""
 EVALS_LOOP_AB_SCOREBOARD_EMITTED: Final[str] = "evals.loop_ab.scoreboard_emitted"
 EVALS_HARNESS_HOST_STARTED: Final[str] = "evals.harness.host_started"
 EVALS_HARNESS_HOST_STOPPED: Final[str] = "evals.harness.host_stopped"

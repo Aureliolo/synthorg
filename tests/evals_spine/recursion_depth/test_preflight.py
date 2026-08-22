@@ -28,6 +28,10 @@ _MANIFEST = (
 #: failures the operator has to be able to tell apart from the message alone.
 _UPSTREAM_REFUSAL = "invalid api key"
 
+#: What a driver says when it cannot release what it opened, which is a fact
+#: about the harness rather than about the operator's configuration.
+_CLEANUP_FAILURE = "socket already detached"
+
 
 class TestProviderCoverage:
     """A pair naming a provider nothing carries cannot record anything."""
@@ -80,7 +84,7 @@ def _configured() -> RootConfig:
 type _Complete = Callable[[object, str], Awaitable[object]]
 
 
-def _answering(answer: _Complete) -> object:
+def _answering(answer: _Complete, *, close_error: Exception | None = None) -> object:
     """Build a registry whose one provider answers with *answer*.
 
     Written as a plain class rather than with ``mock_of``: the probe reaches
@@ -117,6 +121,8 @@ def _answering(answer: _Complete) -> object:
 
         async def aclose(self) -> None:
             type(self).closed.append(True)
+            if close_error is not None:
+                raise close_error
 
     return _Registry
 
@@ -231,6 +237,59 @@ class TestTheProbeReleasesWhatItOpened:
             )
 
         assert registry.closed  # type: ignore[attr-defined]  # the stand-in's own recorder
+
+
+class TestCleanupNeverOutranksTheProbesVerdict:
+    """A raise inside `finally` REPLACES the exception in flight.
+
+    The probe exists to name which of three unrelated fixes an operator needs
+    (a bad credential, an unknown model id, an unreachable endpoint). A driver
+    that fails to close is a fourth, unrelated fact, and letting it overwrite
+    the verdict throws away the entire output of the probe.
+    """
+
+    async def test_a_failing_close_does_not_erase_the_upstream_diagnosis(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _refuse(messages: object, model_id: str) -> object:
+            del messages, model_id
+            raise ProviderError(_UPSTREAM_REFUSAL)
+
+        monkeypatch.setattr(
+            preflight_module,
+            "ProviderRegistry",
+            _answering(_refuse, close_error=RuntimeError(_CLEANUP_FAILURE)),
+        )
+        manifest = load_manifest(_MANIFEST)
+
+        with pytest.raises(HarnessProviderMissingError) as caught:
+            await _probe_pair(
+                role="executor", pair=manifest.executor, company_config=_configured()
+            )
+
+        assert _UPSTREAM_REFUSAL in str(caught.value)
+        assert _CLEANUP_FAILURE not in str(caught.value)
+
+    async def test_a_cleanup_only_failure_is_still_reported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no verdict to displace, the leak is the only thing wrong."""
+
+        async def _answer(messages: object, model_id: str) -> object:
+            del messages, model_id
+            return object()
+
+        monkeypatch.setattr(
+            preflight_module,
+            "ProviderRegistry",
+            _answering(_answer, close_error=RuntimeError(_CLEANUP_FAILURE)),
+        )
+        manifest = load_manifest(_MANIFEST)
+
+        with pytest.raises(HarnessProviderMissingError, match="leaked client"):
+            await _probe_pair(
+                role="executor", pair=manifest.executor, company_config=_configured()
+            )
 
 
 class TestTheDockerCheck:

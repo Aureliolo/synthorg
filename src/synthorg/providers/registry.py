@@ -195,6 +195,11 @@ class ProviderRegistry:
             try:
                 await driver.aclose()
             except Exception as exc:  # noqa: BLE001 -- one failure must not strand the rest
+                # Before the logging, because an interpreter that is out of
+                # memory or out of stack cannot be relied on to finish the
+                # sweep, and continuing to call into more drivers is the
+                # opposite of what either condition needs.
+                reraise_critical(exc)
                 logger.warning(
                     PROVIDER_DRIVER_CLOSE_FAILED,
                     provider_name=name,

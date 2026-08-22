@@ -29,8 +29,10 @@ from evals.errors import (
 )
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest
 from synthorg.config.schema import RootConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_PROBE_CLEANUP_FAILED,
     EVALS_HARNESS_PROVIDER_MISSING,
     EVALS_RECURSION_PREFLIGHT_PASSED,
 )
@@ -141,6 +143,7 @@ async def _probe_pair(
         {pair.provider: company_config.providers[pair.provider]}
     )
     provider = registry.get(pair.provider)
+    probe_failure: HarnessProviderMissingError | None = None
     try:
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
             await provider.complete(
@@ -164,15 +167,55 @@ async def _probe_pair(
             f"request, so no cell recorded against it would measure anything: "
             f"{safe_error_description(exc)}"
         )
-        raise HarnessProviderMissingError(msg) from exc
-    finally:
-        # This registry is built for the probe alone and is unreachable
-        # afterwards, so whatever its drivers opened lazily during the call is
-        # released here or not at all. On the ollama path that is a live
-        # ``httpx.AsyncClient``, and the failure branches need this as much as
-        # the success one: an endpoint that refuses or hangs is exactly where a
-        # client is left open.
+        probe_failure = HarnessProviderMissingError(msg)
+        probe_failure.__cause__ = exc
+    # This registry is built for the probe alone and is unreachable afterwards,
+    # so whatever its drivers opened lazily during the call is released here or
+    # not at all. On the ollama path that is a live ``httpx.AsyncClient``, and
+    # the failure branches need this as much as the success one: an endpoint
+    # that refuses or hangs is exactly where a client is left open.
+    #
+    # Deliberately NOT a `finally`: an exception raised there REPLACES the one
+    # in flight, so a driver that fails to close would erase the message naming
+    # the bad credential, the unknown model or the timeout, which is the whole
+    # output of this probe. The probe's own verdict wins, and a cleanup failure
+    # is reported only when there is no verdict for it to displace.
+    await _release(registry, probe_failure=probe_failure)
+    if probe_failure is not None:
+        raise probe_failure
+
+
+async def _release(
+    registry: ProviderRegistry, *, probe_failure: HarnessProviderMissingError | None
+) -> None:
+    """Close *registry*, without letting cleanup outrank the probe's verdict.
+
+    Args:
+        registry: The single-use registry the probe dispatched through.
+        probe_failure: What the probe concluded, when it concluded anything.
+
+    Raises:
+        HarnessProviderMissingError: Cleanup failed and the probe itself did
+            not, so this is the only thing that went wrong and the operator
+            would otherwise never hear about it.
+    """
+    try:
         await registry.aclose()
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            EVALS_HARNESS_PROBE_CLEANUP_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            probe_already_failed=probe_failure is not None,
+        )
+        if probe_failure is None:
+            msg = (
+                f"the probe's provider connection could not be released, so a "
+                f"sweep would run alongside a leaked client: "
+                f"{safe_error_description(exc)}"
+            )
+            raise HarnessProviderMissingError(msg) from exc
 
 
 async def _check_docker() -> None:
