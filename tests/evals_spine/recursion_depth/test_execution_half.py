@@ -743,6 +743,34 @@ class _ScriptedPlanner:
 
 
 @dataclass
+class _CountingPlanner:
+    """A planner that answers from a script and counts what it was asked.
+
+    Planning is the first thing a cell pays for, so the count is what separates
+    a resume that read its cells back from one that quietly bought them again.
+
+    Attributes:
+        answer: What every call returns.
+        calls: How many times it has been asked.
+    """
+
+    answer: PlannedTree
+    calls: int = 0
+
+    async def plan(
+        self, *, task: Task, depth_cap: int, execution_id: str
+    ) -> PlannedTree:
+        """Count the ask, then answer.
+
+        Returns:
+            The planned tree.
+        """
+        del task, depth_cap, execution_id
+        self.calls += 1
+        return self.answer
+
+
+@dataclass
 class _FlakyPlanner:
     """A planner that fails its first call and answers afterwards.
 
@@ -1009,6 +1037,42 @@ class TestTheMatrix:
         assert reason is not None
         assert "submitted nothing" in reason
         assert len(report.measured_cells) == 1
+
+    async def test_a_resumed_sweep_reads_its_measured_cells_back(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The whole point of the journal, at the level the operator uses it.
+        # Asserting on the report alone would pass on a resume that silently
+        # re-ran and re-measured every cell.
+        del assembled_trees
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        first = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+        assert len(first.measured_cells) == 2
+        planned_first = planner.calls
+
+        second = await _swept(
+            await _context(tmp_path, planner=planner), tmp_path, resume=True
+        )
+
+        assert planner.calls == planned_first
+        assert len(second.measured_cells) == 2
+
+    async def test_a_resumed_sweep_re_books_what_the_replayed_cells_spent(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # A ceiling re-armed from zero would let a sweep resumed repeatedly
+        # spend several times what its manifest allows.
+        del assembled_trees
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        context = await _context(tmp_path, planner=planner, ceiling=1)
+        with pytest.raises(RecursionDepthSessionCeilingError):
+            await _swept(context, tmp_path, resume=True)
 
     async def test_a_flaky_planning_call_does_not_cost_a_cell(
         self, tmp_path: Path, assembled_trees: None
