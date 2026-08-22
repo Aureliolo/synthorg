@@ -158,6 +158,12 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
       'no-useless-assignment': 'error',
+      // A loop whose condition reads a variable the body never writes cannot
+      // terminate on its own. ``checkConditionalExpressions`` extends the
+      // check through ternaries in the condition, which is where the
+      // unchanging operand usually hides once a loop guard grows past a
+      // single comparison.
+      'no-unmodified-loop-condition': ['error', { checkConditionalExpressions: true }],
       'no-restricted-syntax': [
         'error',
         {
