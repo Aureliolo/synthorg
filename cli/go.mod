@@ -3,8 +3,8 @@ module github.com/Aureliolo/synthorg/cli
 go 1.26.6
 
 require (
-	charm.land/bubbles/v2 v2.1.1
-	charm.land/bubbletea/v2 v2.0.8
+	charm.land/bubbles/v2 v2.2.0
+	charm.land/bubbletea/v2 v2.0.9
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.8
@@ -12,8 +12,8 @@ require (
 	github.com/google/go-containerregistry v0.21.9
 	github.com/klauspost/compress v1.19.2
 	github.com/mattn/go-isatty v0.0.24
-	github.com/mattn/go-runewidth v0.0.27
-	github.com/sigstore/protobuf-specs v0.5.1
+	github.com/mattn/go-runewidth v0.0.28
+	github.com/sigstore/protobuf-specs v0.5.2
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
