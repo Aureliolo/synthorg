@@ -20,6 +20,8 @@ from evals.errors import (
     HarnessProviderMissingError,
     RecursionDepthJudgeNotIndependentError,
 )
+from evals.harness.binding import HarnessBinder
+from evals.harness.host import RecordingGatewayHost
 from evals.recursion_depth.manifest import Independence, load_manifest
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
@@ -27,6 +29,7 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -340,7 +343,11 @@ def _record_args(tmp_path: Path) -> argparse.Namespace:
 
 
 def _recorded(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, sweep: Exception | None
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    sweep: Exception | None,
+    release: Exception | None = None,
 ) -> Path:
     """Stub everything ``_record`` reaches for, and seed the tree it builds.
 
@@ -353,6 +360,8 @@ def _recorded(
         tmp_path: The test's directory.
         monkeypatch: Patching seam.
         sweep: Raised by the sweep, or ``None`` for one that measured a cell.
+        release: Raised when the containers are released, or ``None`` for a
+            release that succeeds.
 
     Returns:
         The scratch root the recorder will build under, already populated so
@@ -360,6 +369,18 @@ def _recorded(
     """
     root = tmp_path / "work" / f"run-{_recording_slug(tmp_path / 'out')}"
     (root / "unit").mkdir(parents=True)
+
+    host = mock_of[RecordingGatewayHost](
+        # The three addresses the start log states, which is everything the
+        # lifecycle under test reads off a host.
+        container_gateway_url="http://gateway.invalid/v1",
+        container_mcp_url="http://gateway.invalid/mcp",
+        port=0,
+    )
+    host.__aenter__.return_value = host
+    host.__aexit__.return_value = False
+    binder = mock_of[HarnessBinder]()
+    binder.release_tool_sandboxes.side_effect = release
 
     async def _no_preflight(**_kwargs: object) -> None:
         return None
@@ -370,8 +391,8 @@ def _recorded(
         return SimpleNamespace(measured_cells=("one",))
 
     monkeypatch.setattr(record_module, "run_preflight", _no_preflight)
-    monkeypatch.setattr(record_module, "RecordingGatewayHost", _NullHost)
-    monkeypatch.setattr(record_module, "HarnessBinder", _NullBinder)
+    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
+    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
     monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
     monkeypatch.setattr(record_module, "_build_context", _built_context)
     monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
@@ -387,48 +408,6 @@ async def _built_context(*_args: object, **_kwargs: object) -> None:
         Nothing the lifecycle under test reads.
     """
     return
-
-
-class _NullHost:
-    """A gateway host that stands up nothing.
-
-    The three addresses are the ones the start log states, which is the only
-    thing the lifecycle under test reads off a host.
-    """
-
-    container_gateway_url = "http://gateway.invalid/v1"
-    container_mcp_url = "http://gateway.invalid/mcp"
-    port = 0
-
-    def __init__(self, _config: object) -> None:
-        self._config = _config
-
-    async def __aenter__(self) -> _NullHost:
-        """Enter without binding a port.
-
-        Returns:
-            Itself.
-        """
-        return self
-
-    async def __aexit__(self, *_exc: object) -> bool:
-        """Leave without tearing anything down.
-
-        Returns:
-            False, so an exception propagates.
-        """
-        return False
-
-
-class _NullBinder:
-    """A binder holding no containers."""
-
-    def __init__(self, *, host: object) -> None:
-        self._host = host
-
-    async def release_tool_sandboxes(self) -> None:
-        """Release nothing."""
-        return
 
 
 class TestTheScratchRootAResumeContinuesWith:
@@ -504,6 +483,28 @@ class TestWhatTheRecorderDoesWithTheTreesItBuilt:
             )
 
         assert root.is_dir()
+
+    async def test_a_release_failure_still_reclaims_a_finished_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Releasing the containers and reclaiming the trees are two
+        # obligations, not a sequence: run as one, the first one raising
+        # silently drops the second and the disk grows for ever.
+        root = _recorded(
+            tmp_path, monkeypatch, sweep=None, release=OSError("the daemon went away")
+        )
+
+        with pytest.raises(OSError, match="the daemon went away"):
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+
+        assert not root.exists()
 
     async def test_a_sweep_that_wrote_its_report_reclaims_them(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
