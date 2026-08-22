@@ -42,6 +42,7 @@ from uuid import uuid4
 
 from evals.errors import (
     RecursionDepthCapabilityUnresolvedError,
+    RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
 )
 from evals.harness.binding import HarnessBinder
@@ -53,8 +54,13 @@ from evals.harness.host import (
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.recursion_depth.emit import write_report
 from evals.recursion_depth.grading import SandboxUnitGrader
-from evals.recursion_depth.manifest import RecursionDepthManifest, load_manifest
+from evals.recursion_depth.manifest import (
+    ModelPair,
+    RecursionDepthManifest,
+    load_manifest,
+)
 from evals.recursion_depth.planner import AgentSessionPlanner
+from evals.recursion_depth.preflight import run_preflight
 from evals.recursion_depth.provenance import capture_provenance
 from evals.recursion_depth.runner import (
     SessionBudget,
@@ -67,9 +73,11 @@ from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
+from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
+from synthorg.providers.family import model_named
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
 
@@ -81,6 +89,99 @@ _DEFAULT_OUT_DIR: Final[Path] = Path("evals/recursion_depth/results")
 _DEFAULT_WORK_ROOT: Final[Path] = Path(".recursion-depth/work")
 _EPHEMERAL_PORT: Final[int] = 0
 _LABEL: Final[str] = "recursion-depth"
+
+
+def _pair(pair: ModelPair) -> str:
+    """Render one binding, family included.
+
+    The family is shown because the independence claim rests on it and the plan
+    is where an operator checks that claim before any spend. A connection name
+    cannot settle it either way, so printing only the connection would show the
+    reader everything except the fact that decides.
+
+    Args:
+        pair: The binding to render.
+
+    Returns:
+        ``provider/model_id (capability, family)``, or without the family where
+        none is declared.
+    """
+    detail = str(pair.capability)
+    if pair.family is not None:
+        detail = f"{detail}, {pair.family}"
+    return f"{pair.label} ({detail})"
+
+
+def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
+    """The family the model actually answering for *pair* belongs to.
+
+    Resolved down the same ladder the product's own family lookup uses
+    (:func:`synthorg.providers.family.get_family`): the model's declared family
+    where there is one, else the CONNECTION's. Reading only the model half
+    answers ``None`` for a config that declares the family once on the
+    connection and inherits it, and two ``None`` families satisfy the
+    cross-family check by saying nothing rather than by differing, so a
+    correlated judge records as independent.
+
+    Returns:
+        The family the model this pair aliases to belongs to, or ``None`` when
+        neither the model nor its connection declares one.
+    """
+    provider = config.providers.get(pair.provider)
+    if provider is None:
+        return None
+    model = model_named(provider, pair.model_id)
+    if model is not None and model.metadata.family is not None:
+        return model.metadata.family
+    return provider.family
+
+
+def check_declared_families(
+    manifest: RecursionDepthManifest, config: RootConfig
+) -> None:
+    """Hold the manifest's independence claim to the models that answer it.
+
+    The manifest declares a family per pair and the company config declares one
+    per model, which is two owners for one fact. The manifest's copy is what
+    the claim is checked against, and the config's copy names what runs, so a
+    config aliasing both placeholders onto one organisation satisfies every
+    check in the manifest and still produces a correlated judge.
+
+    What is compared is the RELATION, never the names: the committed manifest
+    ships deliberately vendor-agnostic placeholders, so its family strings
+    cannot equal a real organisation's and testing for that would refuse every
+    real recording. The claim those placeholders make is that the two pairs
+    differ, and that survives aliasing intact.
+
+    A config declaring no family for either model is not a disagreement, it is
+    the config not saying, which leaves the manifest the only claim.
+
+    Args:
+        manifest: The recording matrix, carrying the declared families.
+        config: The company config the pairs resolve against.
+
+    Raises:
+        RecursionDepthJudgeNotIndependentError: The manifest and the config
+            disagree about whether the two pairs share a family.
+    """
+    if manifest.executor.family is None or manifest.reviewer.family is None:
+        return
+    claimed_distinct = manifest.executor.family != manifest.reviewer.family
+    executor = _resolved_family(manifest.executor, config)
+    reviewer = _resolved_family(manifest.reviewer, config)
+    if executor is None or reviewer is None:
+        return
+    if (executor != reviewer) == claimed_distinct:
+        return
+    relation = "differ" if claimed_distinct else "match"
+    msg = (
+        f"the manifest claims the two pairs' families {relation}, but the "
+        f"company config resolves {manifest.executor.label} to family "
+        f"{executor!r} and {manifest.reviewer.label} to family {reviewer!r}; "
+        f"the independence claim is checked against the manifest, so this "
+        f"would record a decorrelation nobody achieved"
+    )
+    raise RecursionDepthJudgeNotIndependentError(msg)
 
 
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
@@ -107,8 +208,8 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         "  repetitions   : "
         + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
         f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
-        f"  executor      : {manifest.executor.label} ({manifest.executor.capability})",
-        f"  reviewer      : {manifest.reviewer.label} ({manifest.reviewer.capability})",
+        f"  executor      : {_pair(manifest.executor)}",
+        f"  reviewer      : {_pair(manifest.reviewer)}",
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
         "",
@@ -131,6 +232,19 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
             f" if every session spends its whole {manifest.unit_cost_ceiling:.2f}"
             " ceiling"
         ),
+        # The money figure above is the one that reads as the bill and the one
+        # that silently stops meaning anything: a flat-rate connection
+        # attributes 0.0 to every call, so its cost ceiling never fires and
+        # the worst case in money is 0.00 no matter how long the sweep runs.
+        # Tokens are counted on every provider, so this line is the bound an
+        # operator can rely on without first knowing how they are billed.
+        (
+            f"  token bound   : "
+            f"{manifest.max_sessions * manifest.unit_token_ceiling:,} if every "
+            f"session spends its whole {manifest.unit_token_ceiling:,}, and this "
+            "is the bound that holds on a flat-rate connection, where the "
+            "money ceiling above can never fire"
+        ),
     ]
     caveat = manifest.caveat()
     if caveat is not None:
@@ -144,6 +258,7 @@ async def _record(
     *,
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
+    company_config: RootConfig,
 ) -> int:
     """Run the sweep for real and write the report.
 
@@ -153,23 +268,19 @@ async def _record(
     Raises:
         RecursionDepthNoCellsMeasuredError: Not one run was measured.
     """
+    # Before the host, because everything it checks is a property of the
+    # configuration or the machine and none of it becomes truer once a scratch
+    # database, a gateway and a container are standing.
+    await run_preflight(manifest=manifest, company_config=company_config)
     # A run-scoped scratch root so two concurrent ``--record`` invocations never
     # target the same workspace path: each unit's reset removes and re-copies a
     # whole tree, which is only race-free within one process.
     run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
-    host_config = RecordingHostConfig(
-        company_config=load_config(args.company_config),
-        scratch_dir=run_work_root / "host",
-        label=_LABEL,
-        bind_host=args.bind_host,
-        bind_port=args.bind_port,
-        container_host=args.container_host,
-        sandbox_image=args.sandbox_image,
-        sidecar_image=args.sidecar_image,
-    )
     binder: HarnessBinder | None = None
     try:
-        async with RecordingGatewayHost(host_config) as host:
+        async with RecordingGatewayHost(
+            _host_config(args, company_config=company_config, work_root=run_work_root)
+        ) as host:
             binder = HarnessBinder(host=host)
             context = await _build_context(
                 host,
@@ -189,7 +300,12 @@ async def _record(
                     spec=spec,
                 )
             )
-            report = await run_sweep(context, provenance=provenance)
+            report = await run_sweep(
+                context,
+                provenance=provenance,
+                out_dir=args.out_dir,
+                resume=args.resume,
+            )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
             paths = await asyncio.to_thread(write_report, report, args.out_dir)
@@ -211,6 +327,31 @@ async def _record(
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
     return 0
+
+
+def _host_config(
+    args: argparse.Namespace, *, company_config: RootConfig, work_root: Path
+) -> RecordingHostConfig:
+    """Assemble the scratch backend the sweep dispatches through.
+
+    Args:
+        args: The parsed command line.
+        company_config: The config the run boots against.
+        work_root: This run's scratch root.
+
+    Returns:
+        The host configuration.
+    """
+    return RecordingHostConfig(
+        company_config=company_config,
+        scratch_dir=work_root / "host",
+        label=_LABEL,
+        bind_host=args.bind_host,
+        bind_port=args.bind_port,
+        container_host=args.container_host,
+        sandbox_image=args.sandbox_image,
+        sidecar_image=args.sidecar_image,
+    )
 
 
 async def _build_context(
@@ -252,10 +393,17 @@ async def _build_context(
         capability=capability,
     )
     deps = _build_deps(
-        host, binder=binder, stall_idle_seconds=args.stall_notify_seconds
+        host,
+        binder=binder,
+        # Under the run's own work root, so transcripts survive alongside the
+        # trees `--keep-workspaces` leaves and are read against them.
+        transcript_root=work_root / "transcripts",
+        stall_idle_seconds=args.stall_notify_seconds,
     )
     limits = SessionLimits(
-        max_turns=manifest.unit_max_turns, cost_ceiling=manifest.unit_cost_ceiling
+        max_turns=manifest.unit_max_turns,
+        cost_ceiling=manifest.unit_cost_ceiling,
+        token_ceiling=manifest.unit_token_ceiling,
     )
     return SweepContext(
         manifest=manifest,
@@ -271,7 +419,9 @@ async def _build_context(
             limits=limits,
             config_resolver=config_resolver_of(app_state),
         ),
-        budget=SessionBudget(args.max_sessions or manifest.max_sessions),
+        # The override is already folded into the manifest by `narrow`, so the
+        # ceiling the run enforces is the one the plan printed.
+        budget=SessionBudget(manifest.max_sessions),
     )
 
 
@@ -279,6 +429,7 @@ def _build_deps(
     host: RecordingGatewayHost,
     *,
     binder: HarnessBinder,
+    transcript_root: Path,
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
@@ -305,6 +456,11 @@ def _build_deps(
         ),
         build_sandbox=binder.build_sandbox,
         release_tools=binder.release_tool_sandboxes,
+        # Every exchange with every model, one file per session. The chart
+        # answers what each cell scored; this is the only thing that can
+        # answer why, and none of it is recoverable after the run.
+        transcripts=host.transcripts,
+        transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
         project_repo=host.project_repo,
         stall_idle_seconds=stall_idle_seconds,
@@ -470,6 +626,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Continue the sweep already journalled in --out-dir: cells it "
+            "measured are read back rather than paid for again, and cells it "
+            "recorded as unavailable are attempted afresh. Without this a "
+            "journal already in --out-dir is refused rather than overwritten."
+        ),
+    )
+    parser.add_argument(
         "--record",
         action="store_true",
         help="Execute the sweep against real providers (real spend).",
@@ -478,13 +644,23 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def narrow(
-    manifest: RecursionDepthManifest, depths: str | None
+    manifest: RecursionDepthManifest,
+    depths: str | None,
+    max_sessions: int | None = None,
 ) -> RecursionDepthManifest:
-    """Narrow *manifest* to the depth caps *depths* names.
+    """Narrow *manifest* to the depth caps *depths* names and *max_sessions*.
+
+    Both overrides are applied to the manifest itself rather than only to the
+    run, because the plan is what an operator reads to decide whether to spend:
+    a ceiling applied downstream of the plan prints the manifest's own figure
+    beside the flags that were meant to lower it, which is the one moment the
+    number is being relied on.
 
     Args:
         manifest: The loaded matrix.
         depths: Comma-separated caps, or ``None`` to keep the manifest's own.
+        max_sessions: Session ceiling override, or ``None`` to keep the
+            manifest's own.
 
     Returns:
         The narrowed matrix.
@@ -492,8 +668,13 @@ def narrow(
     Raises:
         ValueError: A named cap is not in the manifest.
     """
-    if depths is None:
+    if depths is None and max_sessions is None:
         return manifest
+    override: dict[str, object] = {}
+    if max_sessions is not None:
+        override["max_sessions"] = max_sessions
+    if depths is None:
+        return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
     unknown = [cap for cap in wanted if cap not in manifest.depths]
     if unknown:
@@ -506,7 +687,7 @@ def narrow(
     # measured no cell at all. The manifest already refuses both, so the fix is
     # to go back through it rather than to restate its rules here.
     return RecursionDepthManifest.model_validate(
-        manifest.model_dump() | {"depths": wanted}
+        manifest.model_dump() | {"depths": wanted} | override
     )
 
 
@@ -517,14 +698,21 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
-    manifest = narrow(load_manifest(args.manifest), args.depths)
+    manifest = narrow(load_manifest(args.manifest), args.depths, args.max_sessions)
     spec = load_spec_brief(Path(manifest.spec_dir))
+    company_config = load_config(args.company_config)
+    # Checked on the plan path too, not only before a record. The plan path is
+    # what an operator runs first and is where they decide to spend, so a
+    # contradiction found only under --record is found one decision too late.
+    check_declared_families(manifest, company_config)
 
     if not args.record:
         # The plan path boots nothing, opens no port and starts no container.
         print(describe_plan(manifest, spec))
         return 0
-    return asyncio.run(_record(args, manifest=manifest, spec=spec))
+    return asyncio.run(
+        _record(args, manifest=manifest, spec=spec, company_config=company_config)
+    )
 
 
 if __name__ == "__main__":

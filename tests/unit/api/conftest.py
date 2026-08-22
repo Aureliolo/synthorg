@@ -307,6 +307,33 @@ def fake_message_bus() -> FakeMessageBus:
     return bus
 
 
+@pytest.fixture(autouse=True)
+def _empty_shared_fakes_after_each_test(
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+) -> Iterator[None]:
+    """Leave the session-scoped fakes empty for whichever test runs next.
+
+    The reset in :func:`_pre_test_reset` hangs off the client fixtures, so it
+    reaches only a test that asks for one. A test that takes
+    ``fake_persistence`` and builds its own app inherits whatever the previous
+    test wrote, and which test that is is not stable: ``pytest-split``
+    partitions the suite by test rather than by file, so a shard boundary
+    decides the neighbour. A roster written by a setup-template case that way
+    became the first agent a YAML-roster case read, under a name Faker had
+    generated for somebody else.
+
+    Clearing on the way out attaches the isolation to the shared state itself
+    rather than to one route into it, so nothing can be inherited whichever
+    fixtures a test happens to ask for. Teardown rather than setup because it
+    is the order-independent half: the client path clears and re-seeds on its
+    own way in, and this must not run between those two steps.
+    """
+    yield
+    fake_persistence.clear()
+    fake_message_bus.clear()
+
+
 @pytest.fixture(scope="session")
 def cost_tracker() -> CostTracker:
     return CostTracker()

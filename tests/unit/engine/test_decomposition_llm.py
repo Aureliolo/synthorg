@@ -24,6 +24,7 @@ from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.errors import (
+    DecompositionBudgetExhaustedError,
     DecompositionDepthError,
     DecompositionError,
     DecompositionSubtaskLimitError,
@@ -466,6 +467,63 @@ class TestLlmDecompositionStrategy:
 
         with pytest.raises(DecompositionError):
             await strategy.decompose(task, ctx)
+
+    @pytest.mark.unit
+    async def test_truncation_is_named_and_not_retried(self) -> None:
+        """A budget truncation is its own condition, and repeating it is futile.
+
+        A reasoning model spends completion tokens on reasoning before any
+        content, so a budget sized for the answer alone returns an empty string
+        that reaches the JSON parser. Reported as malformed JSON it sends the
+        reader to the prompt; the fix is a larger ceiling. Retrying truncates
+        at the same place, so the ladder is paid to learn nothing.
+        """
+        truncated = CompletionResponse(
+            content="",
+            finish_reason=FinishReason.MAX_TOKENS,
+            usage=TokenUsage(input_tokens=10, output_tokens=300, cost=0.0),
+            model="test-model-001",
+        )
+        provider = MockCompletionProvider([truncated, truncated, truncated])
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=2),
+        )
+
+        with pytest.raises(DecompositionBudgetExhaustedError, match="token ceiling"):
+            await strategy.decompose(_make_task(), _make_context())
+
+        assert provider.call_count == 1
+
+    @pytest.mark.unit
+    async def test_a_truncation_that_still_wrote_content_is_parsed(self) -> None:
+        """Only an EMPTY truncation is the budget condition.
+
+        A response cut off mid-JSON has content the parser can fail on for its
+        own reasons, and calling that a budget error would hide a genuine
+        malformed-output problem behind a ceiling nobody needs to raise.
+        """
+        provider = MockCompletionProvider(
+            [
+                CompletionResponse(
+                    content='{"subtasks": [',
+                    finish_reason=FinishReason.MAX_TOKENS,
+                    usage=TokenUsage(input_tokens=10, output_tokens=300, cost=0.0),
+                    model="test-model-001",
+                )
+            ]
+        )
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=0),
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            await strategy.decompose(_make_task(), _make_context())
+
+        assert not isinstance(caught.value, DecompositionBudgetExhaustedError)
 
     @pytest.mark.unit
     async def test_provider_error_surfaces_as_decomposition_error(self) -> None:

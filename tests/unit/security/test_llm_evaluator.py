@@ -9,8 +9,12 @@ import structlog.testing
 from pydantic import JsonValue
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.security import (
+    SECURITY_LLM_EVAL_CROSS_FAMILY,
     SECURITY_LLM_EVAL_SAME_FAMILY,
 )
 from synthorg.providers.enums import MessageRole
@@ -47,6 +51,7 @@ def _make_context(
     tool_name: str = "test-tool",
     action_type: str = "code:write",
     agent_provider_name: str | None = "provider-a",
+    agent_model_id: str | None = None,
 ) -> SecurityContext:
     return SecurityContext(
         tool_name=tool_name,
@@ -56,6 +61,7 @@ def _make_context(
         agent_id="agent-1",
         task_id="task-1",
         agent_provider_name=agent_provider_name,
+        agent_model_id=agent_model_id,
     )
 
 
@@ -104,9 +110,37 @@ def _make_completion_response(
     )
 
 
+def _connection(family: str | None, *models: tuple[str, str | None]) -> ProviderConfig:
+    """Build a connection declaring *family* and serving *models*.
+
+    Real config objects rather than stand-ins: family resolution reads
+    ``model.metadata.family`` and lowercases it, and a stand-in answers a
+    truthy placeholder there, so a comparison would pass on two objects that
+    are merely both present rather than on two families that match.
+
+    Args:
+        family: The connection-level family, or ``None`` when undeclared.
+        models: ``(model_id, family)`` pairs this connection serves.
+
+    Returns:
+        The connection.
+    """
+    return ProviderConfig(
+        connection_name=NotBlankStr("connection"),
+        family=family,
+        models=tuple(
+            ProviderModelConfig(
+                id=NotBlankStr(model_id),
+                metadata=ModelMetadata(family=model_family),
+            )
+            for model_id, model_family in models
+        ),
+    )
+
+
 def _make_evaluator(
     *,
-    provider_configs: dict[str, MagicMock] | None = None,
+    provider_configs: dict[str, ProviderConfig] | None = None,
     config: LlmFallbackConfig | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
     bound_pair: str | None = "provider-b",
@@ -119,13 +153,10 @@ def _make_evaluator(
     model an unset assignment, where LLM fallback stays unarmed.
     """
     if provider_configs is None:
-        config_a = MagicMock()
-        config_a.family = "family-a"
-        config_a.models = (MagicMock(id="model-a-1", alias="small"),)
-        config_b = MagicMock()
-        config_b.family = "family-b"
-        config_b.models = (MagicMock(id="model-b-1", alias="small"),)
-        provider_configs = {"provider-a": config_a, "provider-b": config_b}
+        provider_configs = {
+            "provider-a": _connection("family-a", ("model-a-1", None)),
+            "provider-b": _connection("family-b", ("model-b-1", None)),
+        }
 
     if driver_map is None:
         # Separate AsyncMock per provider so tests that assert on one
@@ -183,9 +214,7 @@ async def test_evaluate_dispatches_on_the_configured_connection() -> None:
 @pytest.mark.unit
 async def test_evaluate_warns_but_runs_on_a_same_family_connection() -> None:
     """A family collision is surfaced, never silently re-picked."""
-    config_a = MagicMock()
-    config_a.family = "family-a"
-    config_a.models = (MagicMock(id="model-a-1", alias="small"),)
+    config_a = _connection("family-a", ("model-a-1", None))
 
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=_make_completion_response())
@@ -204,6 +233,63 @@ async def test_evaluate_warns_but_runs_on_a_same_family_connection() -> None:
     mock_driver.complete.assert_awaited_once()
     assert result.verdict == SecurityVerdictType.ALLOW
     assert any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY for e in logs)
+
+
+class TestTheModelDecidesTheFamilyNotTheConnection:
+    """The judge-independence check reads the pair, not the connection alone.
+
+    Both cases below are unreachable through a provider-keyed comparison, and
+    they fail in opposite directions: one connection serving two organisations
+    reads as a collision that is not there, and two connections serving one
+    organisation read as an independence that is not there.
+    """
+
+    @pytest.mark.unit
+    async def test_one_connection_serving_two_families_is_not_a_collision(
+        self,
+    ) -> None:
+        aggregator = _connection(
+            None,
+            ("model-a-1", "family-a"),
+            (_EVAL_MODEL, "family-b"),
+        )
+        driver = AsyncMock()
+        driver.complete = AsyncMock(return_value=_make_completion_response())
+        evaluator = _make_evaluator(
+            provider_configs={"aggregator": aggregator},
+            driver_map={"aggregator": driver},
+            bound_pair="aggregator",
+        )
+        context = _make_context(
+            agent_provider_name="aggregator", agent_model_id="model-a-1"
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await evaluator.evaluate(context, _make_rule_verdict())
+
+        assert any(e["event"] == SECURITY_LLM_EVAL_CROSS_FAMILY for e in logs)
+        assert not any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY for e in logs)
+
+    @pytest.mark.unit
+    async def test_a_tuning_variant_of_one_family_is_still_a_collision(self) -> None:
+        """A variant names what a model was tuned for, not who trained it."""
+        agent_side = _connection(None, ("model-a-1", "family-a-coder"))
+        judge_side = _connection(None, (_EVAL_MODEL, "family-a-chat"))
+        driver = AsyncMock()
+        driver.complete = AsyncMock(return_value=_make_completion_response())
+        evaluator = _make_evaluator(
+            provider_configs={"provider-a": agent_side, "provider-b": judge_side},
+            driver_map={"provider-b": driver},
+            bound_pair="provider-b",
+        )
+        context = _make_context(
+            agent_provider_name="provider-a", agent_model_id="model-a-1"
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await evaluator.evaluate(context, _make_rule_verdict())
+
+        assert any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY for e in logs)
 
 
 @pytest.mark.unit

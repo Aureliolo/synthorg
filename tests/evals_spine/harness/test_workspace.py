@@ -7,12 +7,18 @@ know what a run is: the reset, the isolation between keys, and the containment
 guard on a key that arrives from outside.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 from evals.errors import WorkspacePathEscapeError, WorkspaceSeedNotFoundError
-from evals.harness.workspace import CellWorkspace, _contained, seed_workspace
+from evals.harness.workspace import (
+    CellWorkspace,
+    _contained,
+    existing_workspace,
+    seed_workspace,
+)
 from evals.runner.execution import EVAL_TASK_PROJECT
 
 pytestmark = pytest.mark.unit
@@ -116,3 +122,47 @@ def test_the_containment_guard_admits_a_contained_path(tmp_path: Path) -> None:
     assert _contained(Path("inside") / "deeper", root) == (
         root.resolve() / "inside" / "deeper"
     )
+
+
+def test_a_tree_that_was_never_built_is_absent_rather_than_an_error(
+    tmp_path: Path,
+) -> None:
+    # An operator clearing the work root between attempts is ordinary, and the
+    # caller's answer to it is to run the unit again.
+    assert existing_workspace(cell_key="unit-a", work_root=tmp_path / "work") is None
+
+
+def test_a_built_tree_is_handed_back_without_being_recreated(
+    suite_root: Path, tmp_path: Path
+) -> None:
+    # The whole point: a resume must NOT reseed, because the tree on disk is
+    # the delivery it is trying not to pay for twice.
+    work = tmp_path / "work"
+    seeded = _seed("unit-a", suite_root, work)
+    (seeded.project_dir / "delivered.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    found = existing_workspace(cell_key="unit-a", work_root=work)
+
+    assert found is not None
+    assert found == seeded
+    assert (found.project_dir / "delivered.py").exists()
+
+
+def test_a_project_subtree_symlinked_out_of_the_root_is_refused(
+    suite_root: Path, tmp_path: Path
+) -> None:
+    # The tree being read back is one an AGENT could write into, and a resume
+    # MOUNTS what it finds as a merge's child rather than copying a fixture
+    # over it, so a subtree redirected outside the root would be assembled in.
+    work = tmp_path / "work"
+    seeded = _seed("unit-a", suite_root, work)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    shutil.rmtree(seeded.project_dir)
+    try:
+        seeded.project_dir.symlink_to(outside, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("symlink creation requires elevated privileges on this OS")
+
+    with pytest.raises(WorkspacePathEscapeError):
+        existing_workspace(cell_key="unit-a", work_root=work)

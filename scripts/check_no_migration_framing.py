@@ -13,14 +13,18 @@ recurring shapes:
   signals migration narrative ("once upon a time...").
 * ``previously <verb>`` where ``<verb>`` is one of the migration
   shapes (``lived``, ``inlined``, ``extracted``, ``duplicated``,
-  ``scattered``, ``routed``, ``emitted``, ``wrapped``, ``owned``).
+  ``scattered``, ``routed``, ``emitted``, ``wrapped``, ``owned``,
+  ``defaulted``, ``overrode``, ``overridden``). The last three name
+  what a value USED TO DO rather than where code used to live, which
+  is the same history narrated by another part of speech.
   Bare ``previously`` is left alone so legitimate runtime prose
   ("previously stored ciphertext", "previously compacted
   conversation") is not flagged.
 * ``were previously inlined`` / ``was previously inlined`` and the
   same shape with ``duplicated`` / ``extracted`` / ``scattered`` /
-  ``owned`` / ``emitted`` / ``wrapped`` -- copular variants of the
-  ``previously <verb>`` rule above.
+  ``owned`` / ``emitted`` / ``wrapped`` / ``defaulted`` /
+  ``overridden`` -- copular variants of the ``previously <verb>``
+  rule above.
 * ``used to be`` -- variant of ``we used to`` that names a past
   shape of the code as a fact ("used to be scattered across N
   handlers").
@@ -92,14 +96,17 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     # Code-migration "previously <verb>" shapes. The verb list is
     # deliberately code-migration specific: ``lived``, ``inlined``,
     # ``extracted``, ``duplicated``, ``scattered`` describe where the
-    # code USED TO LIVE. Bare ``previously`` matches plenty of
+    # code USED TO LIVE, and ``defaulted`` / ``overrode`` / ``overridden``
+    # describe what it USED TO DO, which is the same narration of history
+    # by another part of speech. Bare ``previously`` matches plenty of
     # legitimate runtime prose (``previously compacted conversation``,
     # ``previously stored ciphertext``) and is not enforced.
     (
         "previously <verb>",
         re.compile(
             r"\bpreviously\s+(?:lived|inlined|extracted|duplicated|"
-            r"scattered|routed|emitted|wrapped|owned)\b",
+            r"scattered|routed|emitted|wrapped|owned|defaulted|"
+            r"overrode|overridden)\b",
             re.IGNORECASE,
         ),
     ),
@@ -107,7 +114,7 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "were previously inlined",
         re.compile(
             r"\bwere\s+previously\s+(?:inlined|duplicated|scattered|"
-            r"extracted|owned|emitted|wrapped)\b",
+            r"extracted|owned|emitted|wrapped|defaulted|overridden)\b",
             re.IGNORECASE,
         ),
     ),
@@ -115,7 +122,7 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "was previously inlined",
         re.compile(
             r"\bwas\s+previously\s+(?:inlined|duplicated|extracted|"
-            r"scattered|owned|emitted|wrapped)\b",
+            r"scattered|owned|emitted|wrapped|defaulted|overridden)\b",
             re.IGNORECASE,
         ),
     ),

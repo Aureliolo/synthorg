@@ -28,7 +28,8 @@ from evals.harness.stall_watch import (
     ProgressTrackingLedger,
     StallWatch,
 )
-from evals.harness.workspace import CellWorkspace, seed_workspace
+from evals.harness.transcript import TranscriptRecorder
+from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.recursion_depth.grading import SandboxFactory, UnitGrader
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -42,7 +43,10 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 )
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_EXECUTED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_UNIT_EXECUTED,
+    EVALS_RECURSION_UNIT_STARTED,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
@@ -73,10 +77,16 @@ class SessionLimits:
         max_turns: The turn ceiling the loop is given.
         cost_ceiling: What the bearer authorises before the gateway kills the
             run server-side.
+        token_ceiling: The same bound counted in tokens. Load-bearing rather
+            than belt-and-braces: a flat-rate connection attributes 0.0 to
+            every call, so ``cost_ceiling`` can never fire there and a unit
+            would run to its turn cap with no spend bound at all. Tokens are
+            counted on every provider.
     """
 
     max_turns: int
     cost_ceiling: float
+    token_ceiling: int
 
 
 @dataclass(frozen=True)
@@ -100,6 +110,12 @@ class SweepDeps:
             the oracle side by side, and no cell workspace may ever hold both.
         release_tools: Releases what that registry holds open, run after every
             unit whether it finished or raised.
+        transcripts: Records every request and response crossing the hosted
+            gateway. Without it a sweep answers only WHAT each cell scored,
+            and the whole question is why a merge was rejected or what a
+            reviewer actually said, which is unrecoverable afterwards.
+        transcript_root: Directory the per-session transcripts are written
+            under; ``None`` alongside a recorder writes none.
         open_run_ledger: Installs the authoritative cost sink for one unit and
             yields it. ``None`` means no gateway is hosted, so the engine's own
             tracker is the ledger; that is the offline path the suite drives.
@@ -116,6 +132,8 @@ class SweepDeps:
     build_grader: GraderFactory
     build_sandbox: SandboxFactory
     release_tools: ToolReleaseHook | None = None
+    transcripts: TranscriptRecorder | None = None
+    transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
     project_repo: ProjectRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
@@ -198,6 +216,28 @@ class OpenSession:
         )
 
 
+def leaf_unit_key(task_id: str) -> str:
+    """What a leaf's tree is called under its cell.
+
+    The single owner of the format, because a resume reaches for a tree a
+    previous attempt built by rebuilding this string: a second spelling would
+    look in an empty directory and re-run work already paid for.
+
+    Returns:
+        The key.
+    """
+    return f"leaf-{task_id}"
+
+
+def merge_unit_key(task_id: str) -> str:
+    """What an assembly's tree is called under its cell.
+
+    Returns:
+        The key.
+    """
+    return f"merge-{task_id}"
+
+
 def unit_workspace(
     *, cell_key: str, unit_key: str, spec_dir: Path, work_root: Path
 ) -> CellWorkspace:
@@ -218,6 +258,22 @@ def unit_workspace(
         suite_root=spec_dir,
         work_root=work_root,
     )
+
+
+def built_unit_workspace(
+    *, cell_key: str, unit_key: str, work_root: Path
+) -> CellWorkspace | None:
+    """The tree a previous attempt left for one unit, if it is still there.
+
+    Args:
+        cell_key: Names the run this unit belongs to.
+        unit_key: Names the unit within that run.
+        work_root: Directory per-unit trees live under.
+
+    Returns:
+        The workspace, or ``None`` when nothing was built there.
+    """
+    return existing_workspace(cell_key=f"{cell_key}/{unit_key}", work_root=work_root)
 
 
 def artifacts_present(task: Task, workspace: CellWorkspace) -> bool:
@@ -293,7 +349,9 @@ async def open_session(
     """
     fallback = ProgressTrackingLedger()
     async with (
-        _released_tools(deps),
+        # Keyed on the execution id, which is what the ledger keys its spend
+        # to, so a transcript and the cost it produced name the same session.
+        _released_tools(deps, binding.execution_id),
         ledger_scope(deps, binding.execution_id, fallback) as ledger,
     ):
         engine = await _build_engine(
@@ -327,6 +385,27 @@ def watching(
     return watch.watching()
 
 
+def _token_bounded(task: Task, limits: SessionLimits) -> Task:
+    """Arm the in-loop token kill this session's limits declare.
+
+    The engine's budget checker reads ``Task.hard_token_ceiling``, never the
+    sweep's own limits, so a ceiling that is not written onto the task binds
+    nothing. That is not a spare belt here: every connection these sweeps run
+    against is flat-rate, so ``cost_ceiling`` is measured against a cost the
+    provider reports as ``0.0`` on every call and can never fire, leaving a
+    runaway unit bounded only by its turn budget.
+
+    Re-validated rather than ``model_copy``-ed, because a copy runs no
+    validator and the field is constrained ``ge=0``.
+
+    Returns:
+        The task, carrying the session's token ceiling.
+    """
+    return Task.model_validate(
+        task.model_dump() | {"hard_token_ceiling": limits.token_ceiling}
+    )
+
+
 async def run_session(
     deps: SweepDeps,
     *,
@@ -349,6 +428,14 @@ async def run_session(
     Returns:
         The session's outcome.
     """
+    logger.debug(
+        EVALS_RECURSION_UNIT_STARTED,
+        execution_id=execution_id,
+        task_id=str(task.id),
+        agent_id=str(identity.id),
+        max_turns=limits.max_turns,
+    )
+    bounded = _token_bounded(task, limits)
     binding = run_binding(
         identity=identity, task=task, execution_id=execution_id, limits=limits
     )
@@ -356,7 +443,7 @@ async def run_session(
         try:
             async with watching(deps, session):
                 result = await session.engine.run(
-                    identity=identity, task=task, max_turns=limits.max_turns
+                    identity=identity, task=bounded, max_turns=limits.max_turns
                 )
         finally:
             # Read however the session ended. A provider call that recorded
@@ -438,14 +525,42 @@ def _forward_stall(
 
 
 @contextlib.asynccontextmanager
-async def _released_tools(deps: SweepDeps) -> AsyncIterator[None]:
-    """Release what this session's tools hold open, however it ends.
+async def transcript_scope(deps: SweepDeps, label: str) -> AsyncIterator[None]:
+    """Record every exchange *label*'s session makes, however it ends.
+
+    Shared by the planning and execution paths rather than written at each:
+    the planner opens no session of its own, so a bind living only in
+    ``open_session`` would silently record the building and skip the planning,
+    which is the half the experiment is about.
 
     Yields:
-        Nothing; the release runs on the way out.
+        Nothing; the unbind runs on the way out.
     """
     try:
+        if deps.transcripts is not None and deps.transcript_root is not None:
+            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
         yield
+    finally:
+        if deps.transcripts is not None:
+            deps.transcripts.unbind()
+
+
+@contextlib.asynccontextmanager
+async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
+    """Record this session's exchanges and release what its tools hold open.
+
+    Both live here because both must run however the session ends, and the
+    bind is inside the guard rather than ahead of it: binding creates the
+    transcript's parent directory, so it can fail, and a failure before the
+    try would leave this session's containers to the grace timer the release
+    exists to pre-empt.
+
+    Yields:
+        Nothing; the unbind and the release run on the way out.
+    """
+    try:
+        async with transcript_scope(deps, label):
+            yield
     finally:
         if deps.release_tools is not None:
             await deps.release_tools()
@@ -490,6 +605,7 @@ __all__ = [
     "open_session",
     "run_binding",
     "run_session",
+    "transcript_scope",
     "unit_workspace",
     "watching",
 ]

@@ -519,11 +519,18 @@ def build_retry_message(error: str) -> ChatMessage:
     Returns:
         A ``ChatMessage`` with ``MessageRole.USER``.
     """
+    # Deliberately does NOT say "could not be parsed": a plan refused on its
+    # WORDING parsed perfectly, and telling its author otherwise points the
+    # correction at the shape of the arguments instead of the sentence that was
+    # actually rejected. Attempts are scarce and each one is a self-correction,
+    # so a misdirected retry costs the run an attempt and changes nothing. The
+    # reason below already names what failed, whether that is a missing field
+    # or a banned character.
     content = (
-        "Your previous response could not be parsed. Error:\n"
+        "Your previous response was refused. Reason:\n"
         f"{wrap_untrusted(TAG_TASK_DATA, error)}\n\n"
-        "Please try again using the "
-        "submit_decomposition_plan tool with corrected "
+        "Fix exactly what the reason names, then call the "
+        "submit_decomposition_plan tool again with corrected "
         "arguments."
     )
     return ChatMessage(role=MessageRole.USER, content=content)

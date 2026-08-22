@@ -8,10 +8,13 @@
 # repository. A maintainer recording real numbers aliases them to real models in
 # provider config, so the committed manifest never names a vendor.
 #
-# `independence` is checked against the pairs at load: a manifest claiming
-# cross_family while both pairs share a provider is refused, and a manifest
-# whose reviewer and executor are the same pair is refused outright. Under
-# same_provider every artifact carries the caveat on its face.
+# `independence` is checked against the declared FAMILIES at load, never against
+# the provider: a manifest claiming cross_family whose pairs name one family, or
+# name none at all, is refused, and a manifest whose reviewer and executor are
+# the same pair is refused outright. Under same_family every artifact carries the
+# caveat on its face. Family is declared rather than derived because an
+# aggregating connection serves many families through one endpoint, so the
+# provider answers a different question than the one decorrelation asks.
 #
 # Run `python scripts/record_recursion_depth.py` (the default, no --record) to
 # print the matrix and the projected session count before anything is charged.
@@ -34,21 +37,42 @@ executor:
   provider: example-provider
   model_id: example-capable-001
   capability: capable
+  family: example-family-a
+# The declared `family` travels with the placeholder, so the pair a company
+# config aliases these to must actually belong to the family named here: the
+# cross_family claim below is checked against these strings, and nothing
+# downstream re-derives them from the model that answered.
 # Declared, not looked up: the capability registry grades a pair from a
 # catalogue that knows nothing about a placeholder id, and selection refuses an
 # ungraded pair outright, so an undeclared reviewer would leave every review
 # unstaffed and the gated arm would record escalations rather than verdicts.
+# `family` is declared for the same reason and answers a different question:
+# which organisation trained the model, which is what self-preference attaches
+# to and what the provider cannot tell you.
 reviewer:
   provider: example-provider
   model_id: example-expert-001
   capability: expert
-independence: same_provider
+  family: example-family-b
+independence: cross_family
 # The same number in BOTH arms. Repair only in the gated arm would let it win
 # by spending more attempts rather than by catching anything, so the ungated arm
 # spends the identical budget blindly.
 merge_attempts: 3
+# A BASE budget, not a ceiling, and it is the shipped loop's own semantics
+# rather than a looseness introduced here: a run that used a tool in the budget
+# it just spent earns another budget of the same size, up to
+# `engine.max_turn_extensions` times, so the effective cap is this number times
+# one plus that allowance. Measuring the product means inheriting that, so the
+# bound that actually stops a unit running away is the token ceiling below, and
+# it is set with that job in mind. A live run put 52 turns and 1.58M tokens
+# into one leaf that delivered nothing.
 unit_max_turns: 40
 unit_cost_ceiling: 2.0
+# Roughly what `unit_cost_ceiling` buys at mid-tier per-token pricing, so the
+# two bounds mean about the same thing wherever both can fire. Where only one
+# can, this is the one: a flat-rate connection attributes 0.0 to every call.
+unit_token_ceiling: 600000
 # Aborts rather than overruns. A depth sweep's session count is a product of
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.

@@ -108,6 +108,27 @@ class TestUnstatedReference:
 
         assert describe_unstated_reference(unit=integrate, others=others) is None
 
+    def test_a_dependent_naming_its_own_dependency_backwards_is_cleared(
+        self,
+    ) -> None:
+        """A forward reference is ordered already, so demanding an edge deadlocks.
+
+        The parser depends on the lexer and the lexer's description says what
+        the parser will do with its tokens. Reading only one direction asks for
+        a lexer-depends-on-parser edge, which the cycle check then refuses.
+        """
+        lexer = _Unit(
+            id="lex",
+            title="SQL lexer",
+            description="Emit the tokens the SQL parser consumes",
+        )
+        others = [
+            lexer,
+            _Unit(id="par", title="SQL parser", dependencies=("lex",)),
+        ]
+
+        assert describe_unstated_reference(unit=lexer, others=others) is None
+
     def test_shared_generic_vocabulary_is_not_a_reference(self) -> None:
         """Otherwise every plan trips on its own verbs."""
         unit = _Unit(id="a", title="Build the API", description="Create endpoints")
@@ -162,6 +183,37 @@ class TestUndecidableCriterion:
         ]
 
         assert describe_undecidable_criterion(unit=checks, others=others) is None
+
+    def test_a_producer_that_already_waits_is_not_offered_as_a_dependency(
+        self,
+    ) -> None:
+        """Offering an edge that closes a cycle spends a retry on nothing.
+
+        The tests wait for the code, so the code cannot wait for the tests.
+        Rewording the criterion is the only exit, and the message says so
+        rather than naming a dependency the cycle check refuses next.
+        """
+        code = _Unit(
+            id="code",
+            title="Board module",
+            expected_artifacts=("board.py",),
+            acceptance_criteria=("test_board.py passes",),
+        )
+        others = [
+            code,
+            _Unit(
+                id="tests",
+                title="Board tests",
+                dependencies=("code",),
+                expected_artifacts=("test_board.py",),
+            ),
+        ]
+
+        detail = describe_undecidable_criterion(unit=code, others=others)
+
+        assert detail is not None
+        assert "Declare the dependency" not in detail
+        assert "already waits for it" in detail
 
     def test_a_criterion_naming_a_later_item_artefact_is_rejected(self) -> None:
         server = _Unit(

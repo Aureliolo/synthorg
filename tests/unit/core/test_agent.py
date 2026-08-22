@@ -305,10 +305,17 @@ class TestModelConfig:
         assert sample_model_config.max_tokens == 8192
 
     def test_defaults(self) -> None:
-        """Verify default temperature and max_tokens."""
+        """An unset ceiling defers rather than carrying a flat number.
+
+        ``None`` is what distinguishes "the operator chose nothing" from "the
+        operator chose a small value", which is what lets
+        ``engine.agent_max_response_tokens`` answer for the first without
+        overriding the second. A flat number here is nobody's choice and
+        every agent's ceiling.
+        """
         m = ModelConfig(provider="test", model_id="test-model")
         assert m.temperature == 0.7
-        assert m.max_tokens == 4096
+        assert m.max_tokens is None
 
     def test_an_agent_has_no_spare_model(self) -> None:
         """A bare fallback model id names a model with no connection.

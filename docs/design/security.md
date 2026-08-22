@@ -249,6 +249,36 @@ Pluggable `SecurityInterceptionStrategy` protocol. Initial strategy intercepts b
 tool invocation; slots into existing `ToolInvoker` between permission check and tool
 execution. Post-tool-call scanning detects sensitive data in outputs.
 
+### The evaluator judges from outside the agent's family
+
+The LLM evaluator judges an agent's own output, so a jailbreak of one model
+family must not also cover its reviewer. `security.llm_evaluator_model` is the
+operator's explicit pair and nothing re-picks it: a family collision is
+**warned about, never silently worked around**, because substituting a
+connection would bill and rate-limit a judgement against an account nobody
+chose for it.
+
+A family is a property of the ORGANISATION that trained a model, never of the
+connection that serves it, so both sides are resolved from their full
+`(provider, model)` pair. Deriving a family from the provider name alone is
+wrong in both directions: an aggregating connection reaches several
+organisations through one endpoint, so a decorrelated pair reads as correlated;
+and one organisation reachable through two connections reads as decorrelated.
+Comparison is on the BASE family (`providers.family.shares_lineage`), because a
+variant suffix splits one organisation's models into several labels and a code
+variant is not independent of its chat sibling.
+
+Both sides can be undeclared. Where nothing declares a family the connection
+name is answered in its place and a DEBUG entry
+(`provider.family.undeclared`) records the reason, so a comparison made without
+the fact it needs is visible rather than indistinguishable from one that had it.
+
+The agent's half travels from the loop as `ToolInvoker(agent_binding=...)` into
+`SecurityContext.agent_provider_name` / `.agent_model_id`. A session with a
+closed, read-only toolkit wires no interceptor at all and therefore passes no
+binding; those sites say so at the construction, because passing one there
+would read as governance that is not running.
+
 ## Output Scan Response Policies
 
 After the output scanner detects sensitive data, a pluggable `OutputScanResponsePolicy`

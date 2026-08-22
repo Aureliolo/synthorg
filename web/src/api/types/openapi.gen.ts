@@ -13968,11 +13968,8 @@ export type components = {
              * @enum {null|string}
              */
             readonly capability: "basic" | "capable" | "expert" | null;
-            /**
-             * @description Maximum output tokens
-             * @default 4096
-             */
-            readonly max_tokens: number;
+            /** @description Output ceiling for one response; None defers to engine.agent_max_response_tokens */
+            readonly max_tokens: number | null;
             /** @description Model identifier */
             readonly model_id: string;
             /** @description LLM provider name */

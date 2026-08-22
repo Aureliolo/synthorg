@@ -146,6 +146,29 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_output_tokens",
+        type=SettingType.INTEGER,
+        default="32768",
+        description=(
+            "Token ceiling for one decomposition completion. Sized for a"
+            " reasoning model, which spends completion tokens on its own"
+            " reasoning BEFORE writing any content: a budget sized for the plan"
+            " alone returns an empty string, which reaches the JSON parser and"
+            " is reported as malformed output. Raise this rather than rewording"
+            " the prompt when decomposition reports hitting its token ceiling."
+            " Read live, once per decomposition, so a raised ceiling applies to"
+            " the next plan rather than after a restart."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1024,
+        max_value=200_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="decomposition_agent_cost_ceiling",
         type=SettingType.FLOAT,
         default="2.0",
@@ -388,6 +411,29 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_retries",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many times a refused decomposition is re-asked for before"
+            " the initiative fails. Each attempt is a self-correction, not a"
+            " repeat: the previous error is fed back, so a run failing on a"
+            " DIFFERENT fault each time is converging rather than incapable,"
+            " and raising this lets it finish. Worth raising for a model that"
+            " plans well but is loose about the schema; the cost of the extra"
+            " attempt is one planning call, against an initiative that fails"
+            " outright without it."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=8,
     )
 )
 

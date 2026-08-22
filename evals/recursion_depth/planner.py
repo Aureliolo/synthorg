@@ -20,7 +20,12 @@ from typing import Protocol, runtime_checkable
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.session import SessionLimits, SweepDeps, ledger_scope
+from evals.recursion_depth.session import (
+    SessionLimits,
+    SweepDeps,
+    ledger_scope,
+    transcript_scope,
+)
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import build_tree
 from synthorg.budget.session_budget import SessionCeilings
@@ -28,6 +33,9 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol, collect_all_re
 from synthorg.core.task import Task
 from synthorg.engine.coordination.decomposition_strategy_factory import (
     build_decomposition_strategy,
+)
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -114,7 +122,16 @@ class AgentSessionPlanner:
         """
         provider = await self.deps.build_provider(self._binding(task, execution_id))
         fallback = ProgressTrackingLedger()
-        async with ledger_scope(self.deps, execution_id, fallback) as tracker:
+        async with (
+            # Planning is transcribed for the same reason execution is, and it
+            # is the half worth reading most: the tree a run produced is the
+            # experiment's independent variable, and why the planner split the
+            # way it did survives nowhere else. Paired with the ledger scope
+            # because both key on this execution id, so a planning transcript
+            # and the spend it produced name the same session.
+            transcript_scope(self.deps, execution_id),
+            ledger_scope(self.deps, execution_id, fallback) as tracker,
+        ):
             result = await build_tree(
                 # The strategy books to its OWN tracker, never the hosted one,
                 # for the reason `open_session` does the same: a planning
@@ -129,6 +146,12 @@ class AgentSessionPlanner:
                 depth_cap=depth_cap,
                 workspace_summary=SEED_WORKSPACE_SUMMARY,
                 available_roles=self.roster.roles,
+                # The same lead the binding above dispatches as. Without it the
+                # agent-session strategy has no owner to plan as and falls back
+                # to the single-shot one, which is the planner this module
+                # exists to NOT measure: a live run reported `strategy=llm`
+                # under a sweep whose whole premise is the shipped planner.
+                owner=self.roster.lead,
             )
             # Drained before it is read: the cost chokepoint submits each
             # record on a background task, so reading straight after the last
@@ -179,10 +202,19 @@ class AgentSessionPlanner:
             # binding stays explicit: it was minted for that pair.
             provider_selector=lambda _identity: provider,
             cost_tracker=tracker,
-            agent_session_max_turns=self.limits.max_turns,
-            agent_session_ceilings=SessionCeilings.of(
-                cost_ceiling=self.limits.cost_ceiling, token_ceiling=None
+            agent_session_config=AgentSessionDecompositionConfig(
+                max_turns=self.limits.max_turns,
+                ceilings=SessionCeilings.of(
+                    cost_ceiling=self.limits.cost_ceiling,
+                    token_ceiling=self.limits.token_ceiling,
+                ),
             ),
+            # The same resolver the service reads its recursion settings from.
+            # Without it the strategy falls back to its own construction
+            # default for the output-token ceiling, which is sized for a model
+            # that writes its answer directly: a reasoning model spends that
+            # budget before writing anything and the plan comes back empty.
+            config_resolver=self.config_resolver,
         )
         return DecompositionService(
             strategy,

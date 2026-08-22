@@ -20,10 +20,20 @@ chart could otherwise mislead.
 from datetime import datetime
 from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import DecompositionResult
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
 RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 1
@@ -77,6 +87,13 @@ class UnitRecord(BaseModel):
         kind: :data:`LEAF`, :data:`MERGE` or :data:`PLAN`.
         depth: Its level in the decomposition tree, ``0`` at the root.
         claimed: The spec requirement ids the planner said this unit advances.
+        unresolved_claims: How many of the planner's claims named no
+            requirement this specification defines, so they were dropped
+            before scoring. Carried into the report rather than left in a
+            warning log because the survival metric is a ratio over what
+            survives here: a drift between the criterion template and the id
+            pattern would deflate both halves toward zero and read on the
+            chart exactly like a gate that does not help.
         delivered: Whether it produced its declared artifacts and its own tests
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
@@ -117,7 +134,8 @@ class UnitRecord(BaseModel):
     title: NotBlankStr
     kind: UnitKind
     depth: int = Field(ge=0)
-    claimed: tuple[NotBlankStr, ...] = ()
+    claimed: tuple[RequirementId, ...] = ()
+    unresolved_claims: int = Field(default=0, ge=0)
     delivered: bool = False
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
@@ -173,7 +191,7 @@ class CellRecord(BaseModel):
     repetition: int = Field(ge=0)
     achieved_depth: int | None = None
     units: tuple[UnitRecord, ...] = ()
-    merged_passing: tuple[NotBlankStr, ...] = ()
+    merged_passing: tuple[RequirementId, ...] = ()
     unavailable_reason: str | None = None
 
     @model_validator(mode="after")
@@ -206,6 +224,15 @@ class CellRecord(BaseModel):
         """
         return tuple(unit for unit in self.units if unit.kind == LEAF)
 
+    # The three scalars below are `computed_field` rather than plain
+    # properties because `emit.py` persists this model with
+    # `model_dump_json` and calls that file what a later analysis reads: a
+    # plain property is invisible to serialisation, so the artifact would
+    # carry every raw unit and none of the totals they add up to. The
+    # record-returning helpers stay plain properties for the mirror-image
+    # reason: serialising them would write `units` and `cells` out a second
+    # time under another name.
+    @computed_field
     @property
     def total_cost(self) -> float:
         """What this run spent.
@@ -215,6 +242,7 @@ class CellRecord(BaseModel):
         """
         return sum(unit.cost for unit in self.units)
 
+    @computed_field
     @property
     def total_attempts(self) -> int:
         """How many agent sessions this run consumed.
@@ -224,6 +252,7 @@ class CellRecord(BaseModel):
         """
         return sum(unit.attempts for unit in self.units)
 
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """What this run spent in tokens.
@@ -232,6 +261,74 @@ class CellRecord(BaseModel):
             The summed unit tokens.
         """
         return sum(unit.tokens for unit in self.units)
+
+
+class PlannedTreeRecord(BaseModel):
+    """The tree one run was executed from, written down before anything runs.
+
+    Both halves, because neither is recoverable without the other. ``result``
+    is what a resume walks; ``root`` is the objective its top level hangs off,
+    and its id is minted per call, so re-deriving it would leave every
+    ``parent_task_id`` in ``result`` naming a task that no longer exists.
+
+    Attributes:
+        root: The objective the tree decomposes.
+        result: The decomposition tree.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    root: Task
+    result: DecompositionResult
+
+
+class CellProgressRecord(BaseModel):
+    """One session of one run, on disk the moment it returns.
+
+    A cell is hours of sessions and the cell record is written once, at the
+    end, so a cell killed part-way used to leave nothing: not what it built,
+    not what it spent, not the tree it was building against. This is the row
+    that closes that window, and it is the SPEND ledger as well as the progress
+    log, because every session the sweep books is one of these and no session
+    is anything else.
+
+    Attributes:
+        depth_cap: The ``max_depth`` the run was allowed.
+        arm: Gated or ungated.
+        repetition: Zero-based index within the cell.
+        unit: What that session produced, whatever kind of session it was.
+        plan: The tree, carried by the planning row alone. A resume that has it
+            executes the tree the earlier attempt built against; a resume
+            without it has nothing the units on disk belong to and re-runs the
+            cell whole.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth_cap: int = Field(ge=1)
+    arm: Arm
+    repetition: int = Field(ge=0)
+    unit: UnitRecord
+    plan: PlannedTreeRecord | None = None
+
+    @model_validator(mode="after")
+    def _only_the_plan_row_carries_a_tree(self) -> Self:
+        """Reject a tree hung off a row that did no planning.
+
+        Returns:
+            ``self`` when the pair agrees.
+
+        Raises:
+            ValueError: A non-planning row carries a tree.
+        """
+        if self.plan is not None and self.unit.kind != PLAN:
+            msg = (
+                f"progress row for unit {self.unit.unit_id} is a "
+                f"{self.unit.kind} and carries a tree; only the planning row "
+                f"does, or a resume has two trees to choose between"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class DepthPoint(BaseModel):
@@ -290,6 +387,10 @@ class DepthPoint(BaseModel):
             raise ValueError(msg)
         return self
 
+    # Serialised: this is the number the whole sweep exists to produce, and a
+    # report that carries its two operands but not the ratio makes every
+    # reader recompute it and disagree about the empty case.
+    @computed_field
     @property
     def fraction(self) -> float | None:
         """The fraction of leaf work surviving to a correct merged result.
@@ -414,6 +515,7 @@ class RecursionDepthReport(BaseModel):
         """
         return tuple(cell for cell in self.cells if cell.unavailable_reason is not None)
 
+    @computed_field
     @property
     def total_cost(self) -> float:
         """What the whole sweep spent.
@@ -423,6 +525,7 @@ class RecursionDepthReport(BaseModel):
         """
         return sum(cell.total_cost for cell in self.cells)
 
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """What the whole sweep spent in tokens.

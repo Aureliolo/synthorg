@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import write_report
 from evals.recursion_depth.manifest import (
     Arm,
@@ -50,16 +51,19 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
             "provider": "example-provider",
             "model_id": "example-capable-001",
             "capability": "capable",
+            "family": "example-family-a",
         },
         "reviewer": {
             "provider": "example-provider",
             "model_id": "example-expert-001",
             "capability": "expert",
+            "family": "example-family-a",
         },
-        "independence": "same_provider",
+        "independence": "same_family",
         "merge_attempts": 3,
         "unit_max_turns": 40,
         "unit_cost_ceiling": 2.0,
+        "unit_token_ceiling": 600000,
         "max_sessions": 100,
     }
     payload.update(overrides)
@@ -80,6 +84,7 @@ class TestTheJudgeMustBeIndependent:
             "provider": "example-provider",
             "model_id": "example-capable-001",
             "capability": "capable",
+            "family": "example-family-a",
         }
 
         with pytest.raises(RecursionDepthJudgeNotIndependentError, match="maximum"):
@@ -87,15 +92,38 @@ class TestTheJudgeMustBeIndependent:
                 _manifest_payload(executor=same, reviewer=same)
             )
 
-    def test_claiming_cross_family_on_one_provider_is_refused(self) -> None:
+    def test_claiming_cross_family_within_one_family_is_refused(self) -> None:
         with pytest.raises(
-            RecursionDepthJudgeNotIndependentError, match="cross_family"
+            RecursionDepthJudgeNotIndependentError, match="shared family"
         ):
             RecursionDepthManifest.model_validate(
                 _manifest_payload(independence="cross_family")
             )
 
-    def test_claiming_same_provider_across_two_is_refused(self) -> None:
+    def test_claiming_cross_family_without_declaring_families_is_refused(self) -> None:
+        # The claim is what generates the absence of a caveat, so it may not
+        # rest on nothing: a manifest that names no family has stated no reason
+        # to believe the two judges are decorrelated.
+        with pytest.raises(
+            RecursionDepthJudgeNotIndependentError, match="rests on nothing"
+        ):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(
+                    independence="cross_family",
+                    executor={
+                        "provider": "example-provider",
+                        "model_id": "example-capable-001",
+                        "capability": "capable",
+                    },
+                    reviewer={
+                        "provider": "other-provider",
+                        "model_id": "example-expert-001",
+                        "capability": "expert",
+                    },
+                )
+            )
+
+    def test_claiming_same_family_across_two_families_is_refused(self) -> None:
         # Refused rather than quietly upgraded: the artifact's caveat is
         # generated from the declared class, so a manifest understating its own
         # independence would stamp a caveat that is not true of the run.
@@ -103,14 +131,89 @@ class TestTheJudgeMustBeIndependent:
             RecursionDepthManifest.model_validate(
                 _manifest_payload(
                     reviewer={
-                        "provider": "other-provider",
+                        "provider": "example-provider",
                         "model_id": "example-expert-001",
                         "capability": "expert",
+                        "family": "example-family-b",
                     }
                 )
             )
 
-    def test_same_provider_carries_its_caveat_and_cross_family_does_not(self) -> None:
+    @pytest.mark.parametrize(
+        ("executor_family", "reviewer_family"),
+        [(None, None), ("example-family-a", None), (None, "example-family-a")],
+        ids=["neither-declared", "reviewer-silent", "executor-silent"],
+    )
+    def test_same_family_accepts_an_undeclared_family(
+        self, executor_family: str | None, reviewer_family: str | None
+    ) -> None:
+        """An absent family contradicts nothing, and the caveat is the same.
+
+        The asymmetry is deliberate and load-bearing: cross-family REFUSES an
+        undeclared family, because the claim it makes rests on the two names
+        being different and there is nothing to compare. Same-family claims
+        only that the run is caveated, which is true whatever the names are.
+        """
+        executor = {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+        }
+        reviewer = {
+            "provider": "example-provider",
+            "model_id": "example-expert-001",
+            "capability": "expert",
+        }
+        if executor_family is not None:
+            executor["family"] = executor_family
+        if reviewer_family is not None:
+            reviewer["family"] = reviewer_family
+
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(executor=executor, reviewer=reviewer)
+        )
+
+        assert manifest.caveat() is not None
+
+    def test_one_provider_serving_two_families_is_cross_family(self) -> None:
+        # The case an aggregating connection puts everyone in, and the one a
+        # provider-derived rule refused: both pairs are reached through the same
+        # endpoint and neither trained the other.
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(
+                independence="cross_family",
+                reviewer={
+                    "provider": "example-provider",
+                    "model_id": "example-expert-001",
+                    "capability": "expert",
+                    "family": "example-family-b",
+                },
+            )
+        )
+
+        assert manifest.executor.provider == manifest.reviewer.provider
+        assert manifest.caveat() is None
+
+    def test_two_connections_to_one_family_is_not_cross_family(self) -> None:
+        # The mirror image, and the one a provider-derived rule waved through:
+        # separate connections decorrelate nothing when the same organisation
+        # trained both models.
+        with pytest.raises(
+            RecursionDepthJudgeNotIndependentError, match="shared family"
+        ):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(
+                    independence="cross_family",
+                    reviewer={
+                        "provider": "other-provider",
+                        "model_id": "example-expert-001",
+                        "capability": "expert",
+                        "family": "example-family-a",
+                    },
+                )
+            )
+
+    def test_same_family_carries_its_caveat_and_cross_family_does_not(self) -> None:
         same = RecursionDepthManifest.model_validate(_manifest_payload())
         cross = RecursionDepthManifest.model_validate(
             _manifest_payload(
@@ -119,6 +222,7 @@ class TestTheJudgeMustBeIndependent:
                     "provider": "other-provider",
                     "model_id": "example-expert-001",
                     "capability": "expert",
+                    "family": "example-family-b",
                 },
             )
         )
@@ -175,13 +279,15 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 provider=NotBlankStr("example-provider"),
                 model_id=NotBlankStr("example-capable-001"),
                 capability="capable",
+                family=NotBlankStr("example-family-a"),
             ),
             reviewer=ModelPair(
                 provider=NotBlankStr("example-provider"),
                 model_id=NotBlankStr("example-expert-001"),
                 capability="expert",
+                family=NotBlankStr("example-family-a"),
             ),
-            independence=Independence.SAME_PROVIDER,
+            independence=Independence.SAME_FAMILY,
         ),
         cells=cells,
         by_achieved_depth=(
@@ -238,13 +344,13 @@ def _measured_cell(arm: Arm) -> CellRecord:
                 title=NotBlankStr("build it"),
                 kind=LEAF,
                 depth=1,
-                claimed=(NotBlankStr("R01"),),
+                claimed=(RequirementId("R01"),),
                 delivered=True,
                 attempts=1,
                 cost=0.5,
             ),
         ),
-        merged_passing=(NotBlankStr("R01"),),
+        merged_passing=(RequirementId("R01"),),
     )
 
 

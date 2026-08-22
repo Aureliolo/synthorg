@@ -9,10 +9,12 @@ assembly and the strategy-selection logic each stay within their size budget.
 
 from typing import override
 
-from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
+)
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
@@ -25,6 +27,7 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_FAILED,
 )
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -86,29 +89,59 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     tool_provider: DecompositionToolProvider | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
-    agent_session_max_turns: int | None = None,
-    agent_session_ceilings: SessionCeilings | None = None,
+    agent_session_config: AgentSessionDecompositionConfig | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
-    agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Build the single-shot LLM decomposition strategy.
 
     The agent-session-only deps (*provider_selector*, *tool_provider*,
-    *cost_tracker*, *shutdown_checker*, *planning_memory*, the session-tuning
-    scalars) are accepted so the strategy registry can pass a uniform kwarg set
-    to every builder; the single-shot strategy ignores them.
+    *shutdown_checker*, *planning_memory*, the session config) are accepted so
+    the strategy registry can pass a uniform kwarg set to every builder; the
+    single-shot strategy ignores them. *cost_tracker* is NOT one of them: the
+    single-shot strategy opens its own ``cost_recording_scope`` around the
+    planning call, so dropping it here leaves every decomposition this path
+    runs attributed to nothing.
 
     Returns:
         An :class:`LlmDecompositionStrategy` over *provider* + *model*.
     """
-    del provider_selector, tool_provider, cost_tracker, shutdown_checker
-    del agent_session_max_turns, agent_session_ceilings
-    del planning_memory, agent_session_memory_digest_budget
+    del provider_selector, tool_provider, shutdown_checker
+    del agent_session_config, planning_memory
+    return _llm_strategy(
+        provider=provider,
+        decomposition_model=decomposition_model,
+        cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
+    )
+
+
+def _llm_strategy(
+    *,
+    provider: CompletionProvider,
+    decomposition_model: str,
+    cost_tracker: CostTrackerProtocol | None,
+    config_resolver: ConfigResolverProtocol | None,
+) -> DecompositionStrategy:
+    """Build the single-shot LLM strategy over the operator's live settings.
+
+    Shared by both builders, because the agent-session strategy falls back to
+    this one: a resolver given to the primary path and not the fallback would
+    leave the fallback truncating at a ceiling the operator had already raised.
+
+    Returns:
+        An :class:`LlmDecompositionStrategy` over *provider* + *model*.
+    """
     from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
         LlmDecompositionStrategy,
     )
 
-    return LlmDecompositionStrategy(provider=provider, model=decomposition_model)
+    return LlmDecompositionStrategy(
+        provider=provider,
+        model=decomposition_model,
+        cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
+    )
 
 
 def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
@@ -119,55 +152,37 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     tool_provider: DecompositionToolProvider | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
-    agent_session_max_turns: int | None = None,
-    agent_session_ceilings: SessionCeilings | None = None,
+    agent_session_config: AgentSessionDecompositionConfig | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
-    agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Build the owner-run agent-session strategy over an LLM fallback.
 
+    The session's turn cap, spend bounds and memory-digest budget arrive as one
+    config rather than as loose scalars, for the reason the config's own
+    ``ceilings`` field gives for being one field instead of two: a wiring path
+    that resolves some of them cannot leave the rest at their defaults in
+    silence.
+
     Returns:
         An :class:`AgentSessionDecompositionStrategy` whose fallback is the
-        single-shot LLM strategy over the same *provider* + *model*. The
-        session's turn cap, spend ceiling, and memory-digest budget come from
-        the operator-tuned scalars when supplied, else from the config defaults;
+        single-shot LLM strategy over the same *provider* + *model*;
         *planning_memory* pre-seeds the org/retro digest into the brief.
     """
     from synthorg.engine.decomposition.agent_session import (  # noqa: PLC0415
-        AgentSessionDecompositionConfig,
         AgentSessionDecompositionStrategy,
-    )
-    from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
-        LlmDecompositionStrategy,
-    )
-
-    # Read the field defaults off a base instance so the operator-tuned
-    # scalars override only what was actually supplied, without duplicating
-    # the config's default literals here.
-    defaults = AgentSessionDecompositionConfig()
-    config = AgentSessionDecompositionConfig(
-        max_turns=(
-            agent_session_max_turns
-            if agent_session_max_turns is not None
-            else defaults.max_turns
-        ),
-        ceilings=(
-            agent_session_ceilings
-            if agent_session_ceilings is not None
-            else defaults.ceilings
-        ),
-        memory_digest_budget=(
-            agent_session_memory_digest_budget
-            if agent_session_memory_digest_budget is not None
-            else defaults.memory_digest_budget
-        ),
     )
 
     return AgentSessionDecompositionStrategy(
         provider_selector=provider_selector,
-        fallback=LlmDecompositionStrategy(provider=provider, model=decomposition_model),
+        fallback=_llm_strategy(
+            provider=provider,
+            decomposition_model=decomposition_model,
+            cost_tracker=cost_tracker,
+            config_resolver=config_resolver,
+        ),
         tool_provider=tool_provider,
-        config=config,
+        config=agent_session_config or AgentSessionDecompositionConfig(),
         cost_tracker=cost_tracker,
         shutdown_checker=shutdown_checker,
         planning_memory=planning_memory,
@@ -194,10 +209,9 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
     provider_selector: ProviderSelector | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
-    agent_session_max_turns: int | None = None,
-    agent_session_ceilings: SessionCeilings | None = None,
+    agent_session_config: AgentSessionDecompositionConfig | None = None,
     planning_memory: MemoryInjectionStrategy | None = None,
-    agent_session_memory_digest_budget: int | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> DecompositionStrategy:
     """Select the decomposition strategy from config and available deps.
 
@@ -229,10 +243,9 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
             tool_provider=tool_provider,
             cost_tracker=cost_tracker,
             shutdown_checker=shutdown_checker,
-            agent_session_max_turns=agent_session_max_turns,
-            agent_session_ceilings=agent_session_ceilings,
+            agent_session_config=agent_session_config,
             planning_memory=planning_memory,
-            agent_session_memory_digest_budget=agent_session_memory_digest_budget,
+            config_resolver=config_resolver,
         )
     if (provider is None) != (decomposition_model is None):
         given = "provider" if provider is not None else "decomposition_model"

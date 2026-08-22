@@ -298,16 +298,38 @@ def _distinctive_tokens(
     )
 
 
+def _ordered(unit: PlanUnit, other: PlanUnit) -> bool:
+    """Whether the plan already orders *unit* against *other*, either way.
+
+    The hazard this module reports is a reference that leaves the referring
+    item free to be dispatched FIRST. An edge in either direction removes it:
+    ``unit`` depending on ``other`` is the obvious case, and ``other``
+    depending on ``unit`` puts ``unit`` first by construction, which is what a
+    forward reference ("emits the tokens the parser consumes") describes.
+
+    Reading only the first direction turned a lexer that mentioned its parser
+    into a demand for a lexer-depends-on-parser edge, closing a cycle the
+    validator rejects on the next submission: a plan that could be corrected
+    only by rewording, told to add a dependency instead, until the retries ran
+    out.
+
+    Returns:
+        True when either item declares a dependency on the other.
+    """
+    return other.id in unit.dependencies or unit.id in other.dependencies
+
+
 def describe_unstated_reference(
     *,
     unit: PlanUnit,
     others: Sequence[PlanUnit],
 ) -> str | None:
-    """Describe an item that names another it does not depend on, or ``None``.
+    """Describe an item naming another the plan does not order it against.
 
     "Integrate game loop: tie engine, renderer, and input together" cannot
     precede the three items it names, but with no declared dependency the
-    dispatcher is free to run it first, and did.
+    dispatcher is free to run it first, and did. An edge in either direction
+    settles the order and clears the reference; see :func:`_ordered`.
 
     Matching is on whole words, and only on the other item's DISTINCTIVE title
     tokens, so it fires on a genuine reference rather than on the vocabulary a
@@ -324,7 +346,7 @@ def describe_unstated_reference(
     plan_titles = [_title_tokens(one) for one in (unit, *others)]
     text = frozenset(_words(f"{unit.title} {unit.description}"))
     for other in others:
-        if other.id == unit.id or other.id in unit.dependencies:
+        if other.id == unit.id or _ordered(unit, other):
             continue
         tokens = _distinctive_tokens(other, plan_titles=plan_titles)
         if tokens and tokens <= text:
@@ -513,13 +535,19 @@ def describe_undecidable_criterion(
             filename = _artifact_filename(artifact)
             if filename is None or filename in delivered or filename not in named:
                 continue
+            remedy = (
+                "Judge this item on what it produces itself; it cannot wait "
+                f"for {other.id!r}, which already waits for it"
+                if unit.id in _dependency_closure(other, by_id)
+                else "Declare the dependency, or judge this item on what it "
+                "produces itself"
+            )
             return (
                 f"{unit.id!r} has an acceptance criterion naming {filename!r}, "
                 f"which {other.id!r} ({other.title!r}) produces and {unit.id!r} "
                 "does not wait for, so the criterion is unjudgeable when this "
-                "item is reviewed and stays unjudgeable through every rework. "
-                "Declare the dependency, or judge this item on what it "
-                "produces itself"
+                f"item is reviewed and stays unjudgeable through every rework. "
+                f"{remedy}"
             )
     return None
 

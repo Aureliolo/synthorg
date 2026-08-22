@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
-from synthorg.core.task import Task
-from synthorg.engine._agent_loop_selection import resolve_loop
 from synthorg.engine._agent_tool_registry import (
     registry_with_chat_tools,
     registry_with_delegate_tool,
@@ -20,12 +18,10 @@ from synthorg.engine._security_factory import (
 )
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionLoop
-from synthorg.engine.loop_selector import (
-    build_execution_loop,
-)
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_REGISTRY_BUILT
 from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
@@ -197,62 +193,6 @@ class AgentEngineFactoriesMixin:
             event_hub=self._event_stream_hub,
             interrupt_store=self._interrupt_store,
             clock=self._clock,
-        )
-
-    def _make_default_loop(self) -> ExecutionLoop:
-        """Build the default ``react`` loop via the shared factory.
-
-        Returns:
-            A freshly-built ReAct :class:`ExecutionLoop` wired with
-            this engine's approval gate, stagnation detector, and
-            compaction callback.
-        """
-        return build_execution_loop(
-            "react",
-            approval_gate=self._approval_gate,
-            stagnation_detector=self._stagnation_detector,
-            compaction_callback=self._compaction_callback,
-            steering_inbox=self._steering_inbox,
-            step_classifier=self._step_classifier,
-        )
-
-    async def _resolve_loop(
-        self,
-        task: Task,
-        agent_id: str = "",
-        task_id: str = "",
-    ) -> ExecutionLoop:
-        """Select the execution loop for a task.
-
-        Returns:
-            The configured default loop when auto-selection is off;
-            otherwise an :class:`ExecutionLoop` of the type selected
-            from task complexity.
-        """
-        return await resolve_loop(
-            task,
-            agent_id=agent_id,
-            task_id=task_id,
-            static_loop=self._loop,
-            auto_loop_config=self._auto_loop_config,
-            build=self._build_loop,
-        )
-
-    def _build_loop(self, loop_type: str) -> ExecutionLoop:
-        """Build a loop of ``loop_type`` from the engine's dependencies.
-
-        Returns:
-            The constructed :class:`ExecutionLoop`.
-        """
-        return build_execution_loop(
-            loop_type,
-            approval_gate=self._approval_gate,
-            stagnation_detector=self._stagnation_detector,
-            compaction_callback=self._compaction_callback,
-            openhands_loop_config=self._openhands_loop_config,
-            openhands_loop_deps=self._openhands_loop_deps,
-            steering_inbox=self._steering_inbox,
-            step_classifier=self._step_classifier,
         )
 
     def _make_security_interceptor(
@@ -557,6 +497,14 @@ class AgentEngineFactoriesMixin:
             security_interceptor=interceptor,
             agent_id=str(identity.id),
             task_id=task_id,
+            # The pair this agent dispatches on, so the security evaluator can
+            # tell whether the judge an operator bound shares its lineage. Both
+            # halves: a connection may serve several families, so the provider
+            # alone answers a different question.
+            agent_binding=ModelRef(
+                provider=identity.model.provider,
+                model_id=identity.model.model_id,
+            ),
             invocation_tracker=self._tool_invocation_tracker,
             policy_engine=self._policy_engine,
             policy_evaluation_mode=self._policy_evaluation_mode,

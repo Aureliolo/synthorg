@@ -16,6 +16,7 @@ from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.quality.classifier import StepQualityClassifier
+from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
@@ -397,9 +398,19 @@ class ReactLoop:
             max_turns=context.max_turns,
         )
         model_id = context.identity.model.model_id
+        # A caller that hands us no config has not been through
+        # `_fold_response_budget`, so the identity's own `max_tokens` is
+        # whatever the operator bound and is `None` for every agent that bound
+        # nothing. `None` does NOT mean the same thing here as it does on the
+        # binding: the driver omits the key entirely, so it reaches the
+        # provider as no ceiling at all rather than as "resolve me". A floor
+        # keeps that one meaning out of the request; the resolver still wins
+        # wherever it ran, because a resolved config never reaches this branch.
         config = completion_config or CompletionConfig(
             temperature=context.identity.model.temperature,
-            max_tokens=context.identity.model.max_tokens,
+            max_tokens=(
+                context.identity.model.max_tokens or DEFAULT_AGENT_MAX_RESPONSE_TOKENS
+            ),
         )
         return (
             model_id,

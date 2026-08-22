@@ -171,6 +171,7 @@ Inspectable
 JWTs
 Jaccard
 Jira
+Journalled
 KPIs
 Kanban
 Kimi
@@ -576,6 +577,8 @@ iptables
 isort
 itemless
 journaling
+journalled
+journalling
 judgeable
 jsdom
 kanban
@@ -624,6 +627,7 @@ milestone_driven
 min_context
 decorrelation
 decorrelate
+decorrelated
 forkable
 hyperscalers
 mischaracterisation

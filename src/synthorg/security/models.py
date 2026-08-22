@@ -137,6 +137,9 @@ class SecurityContext(BaseModel):
         agent_provider_name: Name of the provider the agent is
             currently using.  Used by the LLM security evaluator
             for cross-family model selection.
+        agent_model_id: Model the agent dispatches on. Carried beside the
+            provider because the provider alone cannot answer which family
+            judged the work: one connection may serve several organisations.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -148,6 +151,7 @@ class SecurityContext(BaseModel):
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
     agent_provider_name: NotBlankStr | None = None
+    agent_model_id: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _deep_copy_arguments(self) -> SecurityContext:

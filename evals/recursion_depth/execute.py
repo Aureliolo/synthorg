@@ -22,9 +22,11 @@ from dataclasses import dataclass
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
+    SessionOutcome,
     SweepDeps,
     artifacts_present,
     run_session,
@@ -149,8 +151,12 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
         The brief.
     """
     claimed = [
-        f"- {identifier}: {spec.titles.get(identifier, 'no such requirement')}"
-        for identifier in definition.satisfies
+        f"- {identifier}: {spec.titles[identifier]}"
+        for identifier in requirement_ids_of(
+            definition.satisfies,
+            known=spec.requirement_ids,
+            unit=definition.title,
+        ).ids
     ]
     stated = [f"Your unit: {definition.title}", str(task.description)]
     if claimed:
@@ -205,7 +211,7 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    detail = await _undelivered_reason(deps, task, workspace)
+    detail = await _undelivered_reason(deps, task, workspace, outcome)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
@@ -219,13 +225,26 @@ async def run_leaf(
 
 
 async def _undelivered_reason(
-    deps: SweepDeps, task: Task, workspace: CellWorkspace
+    deps: SweepDeps, task: Task, workspace: CellWorkspace, outcome: SessionOutcome
 ) -> str:
     """Say why *task*'s tree is not a delivery, or nothing when it is.
+
+    The no-turn case is separated because it is a different fact about a
+    different subsystem. A session that took no turn at all was refused before
+    it began (an exhausted quota, a provider that would not answer), and
+    reporting that as missing artifacts sends an operator to read the agent's
+    work when there is none to read. A live run recorded three consecutive
+    leaves at zero turns and zero tokens, all of them saying the agent had
+    written no files.
 
     Returns:
         The reason, empty when the leaf delivered.
     """
+    if outcome.turns == 0:
+        return (
+            f"the session ran no turns, so nothing was built and this is not a "
+            f"delivery failure: it terminated {outcome.termination}"
+        )
     if not artifacts_present(task, workspace):
         return "declared artifacts are missing from the tree"
     grader = deps.build_grader(workspace)

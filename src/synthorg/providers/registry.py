@@ -21,6 +21,7 @@ from synthorg.observability import (
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_DRIVER_WRAPPED,
     PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED,
+    PROVIDER_DRIVER_CLOSE_FAILED,
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,
@@ -176,6 +177,38 @@ class ProviderRegistry:
     def __len__(self) -> int:
         """Return the number of registered providers."""
         return len(self._drivers)
+
+    async def aclose(self) -> None:
+        """Release every driver's lazily-opened resources.
+
+        Every driver is closed even when one of them raises, because a
+        registry that stopped at the first failure would leak the rest and the
+        thing being released is exactly what a failing driver is likeliest to
+        hold. The first error is re-raised once the sweep is complete.
+
+        Raises:
+            Exception: The first failure a driver's own ``aclose`` raised,
+                after every other driver has been closed.
+        """
+        first: Exception | None = None
+        for name, driver in self._drivers.items():
+            try:
+                await driver.aclose()
+            except Exception as exc:  # noqa: BLE001 -- one failure must not strand the rest
+                # Before the logging, because an interpreter that is out of
+                # memory or out of stack cannot be relied on to finish the
+                # sweep, and continuing to call into more drivers is the
+                # opposite of what either condition needs.
+                reraise_critical(exc)
+                logger.warning(
+                    PROVIDER_DRIVER_CLOSE_FAILED,
+                    provider_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                first = first or exc
+        if first is not None:
+            raise first
 
     @classmethod
     def from_config(

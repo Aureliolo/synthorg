@@ -21,6 +21,7 @@ from synthorg.engine.loop_unusable_turn import (
 )
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
@@ -2003,3 +2004,33 @@ class TestReactLoopNoOpFailLoud:
 
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.total_tool_calls == 0
+
+
+class TestAnUnconfiguredLoopStillCapsTheResponse:
+    """A caller that hands the loop no config must not dispatch uncapped.
+
+    ``None`` means "resolve me" on an agent's binding and "omit the key" at
+    the driver, so an identity that states no ceiling would otherwise reach
+    the provider with no ceiling at all rather than with the resolved one.
+    """
+
+    def test_an_identity_with_no_ceiling_gets_the_shipped_floor(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        _model_id, config, _tools, _turns = ReactLoop()._prepare_loop(
+            sample_agent_context, None, None
+        )
+
+        assert sample_agent_context.identity.model.max_tokens is None
+        assert config.max_tokens == DEFAULT_AGENT_MAX_RESPONSE_TOKENS
+
+    def test_a_supplied_config_is_used_unchanged(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        supplied = CompletionConfig(temperature=0.5, max_tokens=321)
+
+        _model_id, config, _tools, _turns = ReactLoop()._prepare_loop(
+            sample_agent_context, supplied, None
+        )
+
+        assert config.max_tokens == 321

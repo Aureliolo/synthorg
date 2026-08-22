@@ -61,7 +61,7 @@
       "labels": ["dependencies", "type:chore", "scope:web"]
     },
     {
-      "description": "Infrastructure dependencies. Single group spanning Go modules, Dockerfile + docker-compose images, GitHub Actions SHAs, and every custom-regex pin (binary-tool versions, container-image regexes for state.go / compose.yml / busybox / testcontainers, action version: inputs, go install URLs). Footprint: cli/, docker/, .github/workflows/*, .github/actions/*, scripts/install_*, cli/internal/config/state.go, tests/*.py testcontainers pins. One group with no carve-outs guarantees zero source/config overlap with the Python and Web groups; without it, an action SHA bump and a `version:` input bump for the same tool can land in two PRs that both modify the same workflow line, and a Dockerfile base-image bump for `golang` can desync from the matching cli/go.mod toolchain bump.",
+      "description": "Infrastructure dependencies. Single group spanning Go modules, Dockerfile + docker-compose images, GitHub Actions SHAs, and every custom-regex pin (binary-tool versions, container-image regexes for state.go / compose.yml / busybox / testcontainers, the root Makefile's apko image pin, action version: inputs, go install URLs). Footprint: cli/, docker/, .github/workflows/*, .github/actions/*, scripts/install_*, cli/internal/config/state.go, tests/*.py testcontainers pins. One group with no carve-outs guarantees zero source/config overlap with the Python and Web groups; without it, an action SHA bump and a `version:` input bump for the same tool can land in two PRs that both modify the same workflow line, and a Dockerfile base-image bump for `golang` can desync from the matching cli/go.mod toolchain bump.",
       "matchManagers": ["gomod", "dockerfile", "docker-compose", "github-actions", "custom.regex"],
       "groupName": "Infrastructure dependencies",
       "groupSlug": "infra",
@@ -211,6 +211,16 @@
       "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
       "matchStrings": [
         "image:\\s+(?<depName>busybox):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Tool images the root Makefile pulls at develop time. No manager reached the Makefile at all before this: the binary-version manager scans .github and scripts/install_*.sh only, so the apko pin there carried a `# renovate:` marker that had never once been read, and it sat on a cgr.dev version tag the free registry stopped serving while every CI job kept passing (CI installs the release binary from GitHub, so it never touches that registry). Tag and digest are captured in one regex, per the DHI note below, so both move in a single edit.",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "# renovate: datasource=docker depName=(?<depName>[^\\s]+)\\n\\s*[A-Z0-9_]+_IMAGE\\s*:?=\\s*[^\\s:]+:(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"

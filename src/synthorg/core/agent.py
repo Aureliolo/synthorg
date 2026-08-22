@@ -209,7 +209,14 @@ class ModelConfig(BaseModel):
         provider: LLM provider name (e.g. ``"example-provider"``).
         model_id: Model identifier (e.g. ``"example-capable-001"``).
         temperature: Sampling temperature (0.0 to 2.0).
-        max_tokens: Maximum output tokens.
+        max_tokens: Output ceiling for ONE response, or ``None`` to defer to
+            ``engine.agent_max_response_tokens``. Two answers to one question
+            is the defect this shape avoids: the agent's own value wins when
+            set, the setting answers otherwise, and ``None`` is what tells
+            those apart. A flat numeric default here is inherited in silence
+            by every agent that states no preference, and a reasoning model
+            can exhaust one on hidden reasoning before emitting a single tool
+            call.
         capability: What the model can be trusted with
             (``"expert"``/``"capable"``/``"basic"``), set once during model
             matching and never revised: a selection decision reads the model
@@ -227,10 +234,13 @@ class ModelConfig(BaseModel):
         le=2.0,
         description="Sampling temperature",
     )
-    max_tokens: int = Field(
-        default=4096,
+    max_tokens: int | None = Field(
+        default=None,
         gt=0,
-        description="Maximum output tokens",
+        description=(
+            "Output ceiling for one response; None defers to "
+            "engine.agent_max_response_tokens"
+        ),
     )
     capability: CapabilityLevel | None = Field(
         default=None,

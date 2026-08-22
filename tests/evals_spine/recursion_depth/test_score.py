@@ -8,6 +8,7 @@ means.
 
 import pytest
 
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm
 from evals.recursion_depth.models import LEAF, MERGE, CellRecord, UnitRecord
 from evals.recursion_depth.score import (
@@ -33,7 +34,7 @@ def _leaf(
         title=NotBlankStr(f"unit {unit_id}"),
         kind=LEAF,
         depth=depth,
-        claimed=tuple(NotBlankStr(item) for item in claimed),
+        claimed=tuple(RequirementId(item) for item in claimed),
         delivered=delivered,
         attempts=1,
         cost=1.0,
@@ -60,7 +61,7 @@ def _cell(
         repetition=repetition,
         achieved_depth=achieved,
         units=units,
-        merged_passing=tuple(NotBlankStr(item) for item in passing),
+        merged_passing=tuple(RequirementId(item) for item in passing),
     )
 
 
@@ -135,7 +136,7 @@ class TestWhatEntersTheDenominator:
             title=NotBlankStr("assemble"),
             kind=MERGE,
             depth=0,
-            claimed=(NotBlankStr("R09"),),
+            claimed=(RequirementId("R09"),),
             delivered=True,
         )
         cell = _cell(

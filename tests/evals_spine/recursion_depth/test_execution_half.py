@@ -6,12 +6,12 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
-from collections.abc import Awaitable, Callable
+import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid5
 
 import pytest
 
@@ -24,6 +24,7 @@ from evals.errors import (
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
@@ -32,6 +33,7 @@ from evals.recursion_depth.grading import (
     read_verdict,
     refuse_without_a_runner,
 )
+from evals.recursion_depth.journal import CellUnits
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -56,17 +58,24 @@ from evals.recursion_depth.models import (
     PLAN,
     SIZING_CAVEAT,
     Provenance,
+    RecursionDepthReport,
     UnitRecord,
 )
 from evals.recursion_depth.oracle import OracleOutcome
 from evals.recursion_depth.planner import PlannedTree, TreePlanner
 from evals.recursion_depth.runner import (
     SessionBudget,
+    SweepCell,
     SweepContext,
     planned_cells,
     run_sweep,
 )
-from evals.recursion_depth.session import SessionLimits, SessionOutcome, SweepDeps
+from evals.recursion_depth.session import (
+    SessionLimits,
+    SessionOutcome,
+    SweepDeps,
+    leaf_unit_key,
+)
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
 from synthorg.core.agent import AgentIdentity
@@ -78,16 +87,18 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
     ResolvedAgentCapabilityReader,
 )
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
+from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -95,16 +106,21 @@ _EXECUTOR = ModelPair(
     provider=NotBlankStr("example-provider"),
     model_id=NotBlankStr("example-capable-001"),
     capability="capable",
+    family=NotBlankStr("example-family-a"),
 )
 _REVIEWER = ModelPair(
     provider=NotBlankStr("example-provider"),
     model_id=NotBlankStr("example-expert-001"),
     capability="expert",
+    family=NotBlankStr("example-family-a"),
 )
+# Same connection as the executor, different family: the aggregator case, which
+# is decorrelated on the axis self-preference runs along.
 _CROSS_FAMILY_REVIEWER = ModelPair(
-    provider=NotBlankStr("other-provider"),
-    model_id=NotBlankStr("example-expert-001"),
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-expert-002"),
     capability="expert",
+    family=NotBlankStr("example-family-b"),
 )
 
 
@@ -143,8 +159,11 @@ def _spec() -> SpecBrief:
         spec_id="tiny",
         title="A tiny thing",
         prose="Build the tiny thing.",
-        requirement_ids=("R01", "R02"),
-        titles={"R01": "It parses", "R02": "It prints"},
+        requirement_ids=(RequirementId("R01"), RequirementId("R02")),
+        titles={
+            RequirementId("R01"): "It parses",
+            RequirementId("R02"): "It prints",
+        },
     )
 
 
@@ -155,12 +174,12 @@ def _task(title: str, *, criteria: tuple[str, ...] = ()) -> Task:
         The task.
     """
     return Task(
-        id=uuid5(UUID("00000000-0000-4000-8000-00000000e000"), title),
+        id=as_uuid(f"task:{title}"),
         title=NotBlankStr(title),
         description=NotBlankStr(f"Do {title}."),
         type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project=NotBlankStr("00000000-0000-4000-8000-0000000000ff"),
+        project=NotBlankStr(sid("project:recursion-depth-suite")),
         created_by=NotBlankStr("test"),
         status=TaskStatus.CREATED,
         acceptance_criteria=tuple(
@@ -180,7 +199,7 @@ def _identity(name: str, capability: CapabilityLevel = "capable") -> AgentIdenti
     from synthorg.core.agent import ModelConfig
 
     return AgentIdentity(
-        id=uuid5(UUID("00000000-0000-4000-8000-00000000e001"), name),
+        id=as_uuid(f"identity:{name}"),
         name=NotBlankStr(name),
         role=NotBlankStr("Developer"),
         department=NotBlankStr("Engineering"),
@@ -340,7 +359,7 @@ class TestTheMergeBrief:
             ),
             criteria=(NotBlankStr("It runs end to end"),),
             execution_prefix="x",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0),
+            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
             attempts=2,
         )
 
@@ -508,7 +527,7 @@ class TestTheMergeLoop:
             pieces=(),
             criteria=(NotBlankStr("It runs"),),
             execution_prefix="cell-merge",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0),
+            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
             attempts=attempts,
         )
 
@@ -732,6 +751,34 @@ class _ScriptedPlanner:
 
 
 @dataclass
+class _CountingPlanner:
+    """A planner that answers from a script and counts what it was asked.
+
+    Planning is the first thing a cell pays for, so the count is what separates
+    a resume that read its cells back from one that quietly bought them again.
+
+    Attributes:
+        answer: What every call returns.
+        calls: How many times it has been asked.
+    """
+
+    answer: PlannedTree
+    calls: int = 0
+
+    async def plan(
+        self, *, task: Task, depth_cap: int, execution_id: str
+    ) -> PlannedTree:
+        """Count the ask, then answer.
+
+        Returns:
+            The planned tree.
+        """
+        del task, depth_cap, execution_id
+        self.calls += 1
+        return self.answer
+
+
+@dataclass
 class _FlakyPlanner:
     """A planner that fails its first call and answers afterwards.
 
@@ -776,8 +823,12 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _cell: object,
         _root: object,
         _tree: object,
-        _units: list[object],
+        _units: object,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
     ) -> CellWorkspace:
+        del produced, delivered
         return _workspace(tmp_path, "assembled")
 
     monkeypatch.setattr(runner_module, "_build_tree_units", _assembled)
@@ -797,14 +848,28 @@ async def _scripted_oracle(
         One passing requirement, which is enough for the matrix to score.
     """
     del build_sandbox, spec_dir, tree
-    return OracleOutcome(results={"R01": True}, report="")
+    return OracleOutcome(results={RequirementId("R01"): True}, report="")
 
 
-def _assembles_then_dies(
-    tmp_path: Path, failure: Exception
-) -> Callable[
-    [object, object, object, object, list[UnitRecord]], Awaitable[CellWorkspace]
-]:
+class _BuildsTreeUnits(Protocol):
+    """What ``_build_tree_units`` looks like to whoever stands in for it."""
+
+    async def __call__(
+        self,
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
+    ) -> CellWorkspace:
+        """Build every leaf and assemble every node."""
+        ...
+
+
+def _assembles_then_dies(tmp_path: Path, failure: Exception) -> _BuildsTreeUnits:
     """Stand in for the build half: the first cell finishes, the second does not.
 
     Two cells rather than one because a sweep that measured nothing raises
@@ -817,13 +882,17 @@ def _assembles_then_dies(
     completed = False
 
     async def _build(
-        _context: object,
-        _cell: object,
-        _root: object,
-        _tree: object,
-        units: list[UnitRecord],
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
     ) -> CellWorkspace:
         nonlocal completed
+        del context, cell, root, tree, produced, delivered
         units.append(
             UnitRecord(
                 unit_id=NotBlankStr("leaf-1"),
@@ -840,6 +909,56 @@ def _assembles_then_dies(
         return _workspace(tmp_path, "assembled")
 
     return _build
+
+
+def _builds_one_leaf_then_dies(
+    tmp_path: Path, failure: Exception
+) -> tuple[_BuildsTreeUnits, list[dict[str, CellWorkspace]]]:
+    """Stand in for the build half: build one leaf, journal it, then die.
+
+    The leaf's tree is left where a resume looks for it, so the second attempt
+    can take it up rather than paying for it again. A later attempt that
+    already holds it assembles and returns.
+
+    Returns:
+        The replacement for ``_build_tree_units``, and the ``produced`` map it
+        was handed on each call, which is what says whether the resume took up
+        anything at all.
+    """
+    seen: list[dict[str, CellWorkspace]] = []
+
+    async def _build(
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
+    ) -> CellWorkspace:
+        del root, delivered
+        seen.append(dict(produced))
+        if produced:
+            return _workspace(tmp_path, "assembled")
+        leaf = tree.created_tasks[0]
+        key = f"{cell.key}/{leaf_unit_key(str(leaf.id))}"
+        built = CellWorkspace(root=context.work_root / key)
+        built.project_dir.mkdir(parents=True, exist_ok=True)
+        units.append(
+            UnitRecord(
+                unit_id=NotBlankStr(str(leaf.id)),
+                title=NotBlankStr("Built before the fall"),
+                kind=LEAF,
+                depth=1,
+                delivered=True,
+                attempts=1,
+                cost=4.0,
+            )
+        )
+        raise failure
+
+    return _build, seen
 
 
 def _tree() -> DecompositionResult:
@@ -881,10 +1000,11 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "arms": (Arm.GATED, Arm.UNGATED),
         "executor": _EXECUTOR,
         "reviewer": _REVIEWER,
-        "independence": Independence.SAME_PROVIDER,
+        "independence": Independence.SAME_FAMILY,
         "merge_attempts": 2,
         "unit_max_turns": 4,
         "unit_cost_ceiling": 1.0,
+        "unit_token_ceiling": 1000,
         "max_sessions": 100,
     }
     payload.update(overrides)
@@ -917,7 +1037,7 @@ def _provenance() -> Provenance:
         requirement_count=2,
         executor=_EXECUTOR,
         reviewer=_REVIEWER,
-        independence=Independence.SAME_PROVIDER,
+        independence=Independence.SAME_FAMILY,
     )
 
 
@@ -942,6 +1062,22 @@ async def _context(
         roster=await _roster(),
         planner=planner,
         budget=SessionBudget(ceiling),
+    )
+
+
+async def _swept(
+    context: SweepContext, tmp_path: Path, *, resume: bool = False
+) -> RecursionDepthReport:
+    """Run *context*'s matrix, journalling beside a report in *tmp_path*.
+
+    Returns:
+        The report.
+    """
+    return await run_sweep(
+        context,
+        provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=resume,
     )
 
 
@@ -974,13 +1110,150 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.unavailable_cells) == 1
         reason = report.unavailable_cells[0].unavailable_reason
         assert reason is not None
         assert "submitted nothing" in reason
         assert len(report.measured_cells) == 1
+
+    async def test_a_resumed_sweep_reads_its_measured_cells_back(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The whole point of the journal, at the level the operator uses it.
+        # Asserting on the report alone would pass on a resume that silently
+        # re-ran and re-measured every cell.
+        del assembled_trees
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        first = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+        assert len(first.measured_cells) == 2
+        planned_first = planner.calls
+
+        second = await _swept(
+            await _context(tmp_path, planner=planner), tmp_path, resume=True
+        )
+
+        assert planner.calls == planned_first
+        assert len(second.measured_cells) == 2
+
+    async def test_a_resumed_sweep_re_books_what_the_replayed_cells_spent(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # A ceiling re-armed from zero would let a sweep resumed repeatedly
+        # spend several times what its manifest allows.
+        del assembled_trees
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        context = await _context(tmp_path, planner=planner, ceiling=1)
+        with pytest.raises(RecursionDepthSessionCeilingError):
+            await _swept(context, tmp_path, resume=True)
+
+    async def test_a_resumed_cell_takes_up_the_units_it_already_built(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A cell is hours. Reading only finished cells back means a cell killed
+        # at hour six buys every leaf again, and this is the pass that proves
+        # it does not: the planner is asked once across both attempts, and the
+        # tree the first attempt left on disk is what the second assembles.
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        manifest = _manifest(arms=(Arm.GATED,))
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        assert planner.calls == 1
+        assert seen == [{}]
+
+        report = await _swept(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            tmp_path,
+            resume=True,
+        )
+
+        # Not re-planned, and the leaf it had already built came back with its
+        # tree rather than being run a second time.
+        assert planner.calls == 1
+        assert list(seen[1]) == [str(_tree().created_tasks[0].id)]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, LEAF]
+
+    async def test_a_resumed_cell_starts_again_when_its_trees_are_gone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A plan without its trees is a walk that would hand a merge empty
+        # directories and record the assembly as having delivered nothing.
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        manifest = _manifest(arms=(Arm.GATED,))
+        context = await _context(tmp_path, planner=planner, manifest=manifest)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
+        shutil.rmtree(context.work_root)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest),
+                tmp_path,
+                resume=True,
+            )
+
+        # Re-planned, and handed nothing: continuing from a plan whose trees
+        # are gone would assemble empty directories and call it a delivery.
+        assert planner.calls == 2
+        assert seen[1] == {}
+
+    async def test_a_flaky_planning_call_does_not_cost_a_cell(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # A live run lost three of its four cells to this, on the same task,
+        # while a fourth planned the identical tree successfully.
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1),
+            fail_first=DecompositionError("provider call failed"),
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await _swept(context, tmp_path)
+
+        assert not report.unavailable_cells
+        assert len(report.measured_cells) == 2
+
+    async def test_a_planner_that_never_answers_is_still_recorded(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The retry is bounded: a planner that cannot produce a tree twice is
+        # telling the operator something, and the cell keeps that reason.
+        del assembled_trees
+        context = await _context(
+            tmp_path,
+            planner=_ScriptedPlanner(raises=DecompositionError("provider call failed")),
+            manifest=_manifest(depths=(1,), repetitions={1: 1}, arms=(Arm.GATED,)),
+        )
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
 
     async def test_a_measured_cell_books_what_planning_cost(
         self, tmp_path: Path, assembled_trees: None
@@ -991,7 +1264,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         measured = report.measured_cells[0]
         plans = [unit for unit in measured.units if unit.kind == PLAN]
@@ -1012,7 +1285,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert SIZING_CAVEAT in report.caveats
         assert ORACLE_CAVEAT in report.caveats
@@ -1038,9 +1311,44 @@ class TestTheMatrix:
             ),
         )
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert set(report.caveats) == {SIZING_CAVEAT, ORACLE_CAVEAT}
+
+    async def test_a_depleted_account_stops_the_sweep_instead_of_shredding_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Quota is an ACCOUNT fact, so the cells after it are not measurements.
+
+        A live sweep filed its whole remaining matrix as unavailable in sixteen
+        seconds, each row blaming decomposition, because every one of them
+        asked a depleted account and was refused instantly.
+        """
+        depleted = ProviderQuotaExceededError("session usage limit reached")
+        refused = DecompositionError("LLM decomposition provider call failed")
+        refused.__cause__ = depleted
+        monkeypatch.setattr(
+            runner_module, "_build_tree_units", _assembles_then_dies(tmp_path, refused)
+        )
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
+        )
+        context = await _context(
+            tmp_path,
+            planner=planner,
+            manifest=_manifest(depths=(1, 2), repetitions={1: 1, 2: 1}),
+        )
+
+        report = await _swept(context, tmp_path)
+
+        # Four planned; the second refused, so the third and fourth are never
+        # asked and never appear as cells nobody could tell apart from real
+        # unavailable ones.
+        assert len(planned_cells(context.manifest)) == 4
+        assert len(report.cells) == 2
+        assert len(report.unavailable_cells) == 1
+        assert any("ran out of quota" in one for one in report.caveats)
 
     async def test_a_cell_that_died_part_way_still_books_what_it_paid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1063,7 +1371,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.unavailable_cells) == 1
         died = report.unavailable_cells[0]
@@ -1095,7 +1403,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.measured_cells) == 1
         assert len(report.unavailable_cells) == 1
@@ -1111,7 +1419,7 @@ class TestTheMatrix:
         )
 
         with pytest.raises(HarnessDockerUnavailableError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
 
     async def test_an_all_unavailable_sweep_is_refused(self, tmp_path: Path) -> None:
         # A report of nothing but reasons exits successfully with a file that
@@ -1121,7 +1429,7 @@ class TestTheMatrix:
         )
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
 
     async def test_the_session_ceiling_stops_the_sweep_with_a_caveat(
         self, tmp_path: Path
@@ -1133,5 +1441,5 @@ class TestTheMatrix:
         context = await _context(tmp_path, planner=planner, ceiling=1)
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
         assert context.budget.spent == 99

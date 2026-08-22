@@ -78,7 +78,11 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
       provider: 'test-provider',
       model_id: 'test-capable-001',
       temperature: 0.7,
-      max_tokens: 4096,
+      // Null is what the API answers for an agent nobody pinned a ceiling on,
+      // which is every agent by default: the backend reads the ceiling from
+      // `engine.agent_max_response_tokens` unless one is set here. Fixtures
+      // that all stated a number left that shape untested everywhere.
+      max_tokens: null,
     },
     memory: { type: 'persistent' },
     tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },

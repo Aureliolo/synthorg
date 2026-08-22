@@ -26,6 +26,7 @@ import pytest
 import yaml
 
 from evals.errors import OracleUnusableError
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.grading import (
     GRADED_ENV,
     ORACLE_SUITE_DIR,
@@ -304,9 +305,9 @@ class TestTheReportIsAttributedToTheRunThatAskedForIt:
     report it can attribute to its own session and refuses every other one.
     """
 
-    _NODES: ClassVar[dict[str, str]] = {
-        "R01": "test_cli.py::test_one",
-        "R02": "test_cli.py::test_two",
+    _NODES: ClassVar[dict[RequirementId, str]] = {
+        RequirementId("R01"): "test_cli.py::test_one",
+        RequirementId("R02"): "test_cli.py::test_two",
     }
 
     def _report(self, tmp_path: Path, payload: object) -> Path:
@@ -319,7 +320,7 @@ class TestTheReportIsAttributedToTheRunThatAskedForIt:
         path.write_text(json.dumps(payload), encoding="utf-8")
         return path
 
-    def _read(self, path: Path, *, nonce: str) -> dict[str, bool]:
+    def _read(self, path: Path, *, nonce: str) -> dict[RequirementId, bool]:
         """Score *path* as a run holding *nonce* would.
 
         Returns:
@@ -328,7 +329,7 @@ class TestTheReportIsAttributedToTheRunThatAskedForIt:
         return _read_report(
             path,
             nodes=self._NODES,
-            wanted=("R01", "R02"),
+            wanted=(RequirementId("R01"), RequirementId("R02")),
             returncode=1,
             nonce=nonce,
         )

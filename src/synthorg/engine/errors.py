@@ -79,6 +79,18 @@ class DecompositionError(EngineError):
     """Base exception for task decomposition failures."""
 
 
+class DecompositionBudgetExhaustedError(DecompositionError):
+    """Raised when the model hit its token ceiling before writing content.
+
+    Distinct from a parse failure, and deliberately not retried: the next
+    attempt truncates at the same place. A reasoning model spends completion
+    tokens on its own reasoning before any content, so a budget sized for the
+    answer alone returns an empty string that reaches the JSON parser and is
+    reported as malformed JSON. The fix is a larger ``max_output_tokens``,
+    which is not what a parse error tells anyone to do.
+    """
+
+
 class PlanReviewUnavailableError(EngineError):
     """Raised when a seated review panel could not review at all.
 

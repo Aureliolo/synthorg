@@ -41,6 +41,9 @@ from synthorg.engine.agent_engine_context import (
 )
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
+from synthorg.engine.agent_engine_loop_factories import (
+    AgentEngineLoopFactoriesMixin,
+)
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
@@ -209,6 +212,7 @@ class AgentEngine(
     AgentEngineContextMixin,
     AgentEngineErrorsMixin,
     AgentEngineFactoriesMixin,
+    AgentEngineLoopFactoriesMixin,
     AgentEnginePostExecMixin,
     AgentEngineRecoveryMixin,
     AgentEngineResumeMixin,

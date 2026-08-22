@@ -45,6 +45,7 @@ from evals.loop_ab.aggregate import (
     RepetitionOutcome,
     summarise_repetitions,
 )
+from evals.loop_ab.journal import open_row_journal, row_key
 from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.models import (
     LoopBriefRow,
@@ -819,6 +820,8 @@ async def run_matrix(
     work_root: Path,
     deps: LoopAbDeps,
     provenance: Provenance,
+    out_dir: Path,
+    resume: bool,
 ) -> Scoreboard:
     """Run the whole matrix and assemble the scoreboard.
 
@@ -829,29 +832,50 @@ async def run_matrix(
         work_root: Directory per-run workspaces are created under.
         deps: Runtime collaborators.
         provenance: What this recording is measured against.
+        out_dir: Where the journal and the scoreboard are written. Every row is
+            journalled there the moment it lands, so a matrix killed part-way
+            has produced everything it had paid for rather than nothing.
+        resume: Whether an existing journal for this matrix is continued.
 
     Returns:
         The assembled :class:`Scoreboard`, including its promotion
         recommendation.
-    """
-    rows = [
-        await _run_cell(
-            coord=_CellCoordinates(
-                loop_type=loop_type,
-                capability=entry,
-                brief=brief,
-            ),
-            manifest=manifest,
-            suite_root=suite_root,
-            work_root=work_root / entry.capability / loop_type,
-            deps=deps,
-        )
-        for entry in manifest.capabilities
-        for brief in briefs
-        for loop_type in manifest.loops
-    ]
 
-    scored = _score_rows(tuple(rows))
+    Raises:
+        HarnessJournalMismatchError: A journal exists that this recording must
+            not append to.
+    """
+    recorded, resumed = open_row_journal(out_dir, provenance=provenance, resume=resume)
+    try:
+        for entry in manifest.capabilities:
+            for brief in briefs:
+                for loop_type in manifest.loops:
+                    coord = _CellCoordinates(
+                        loop_type=loop_type, capability=entry, brief=brief
+                    )
+                    already = resumed.holds(
+                        row_key(loop_type, entry.capability, brief.brief_id)
+                    )
+                    if already is not None:
+                        recorded.replay(already)
+                        continue
+                    # Journalled as each cell lands rather than after the whole
+                    # matrix. A cell is every repetition of one loop against one
+                    # brief at one rung, so losing the lot to a kill was losing
+                    # hours of real spend that had already produced its answer.
+                    recorded.add(
+                        await _run_cell(
+                            coord=coord,
+                            manifest=manifest,
+                            suite_root=suite_root,
+                            work_root=work_root / entry.capability / loop_type,
+                            deps=deps,
+                        )
+                    )
+    finally:
+        recorded.close()
+
+    scored = _score_rows(recorded.cells)
     estimates = {brief.brief_id: brief.estimated_complexity for brief in briefs}
     cells: dict[tuple[str, str], list[LoopCellScore]] = {}
     for row in scored:

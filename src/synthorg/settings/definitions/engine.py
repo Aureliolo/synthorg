@@ -29,6 +29,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="agent_max_response_tokens",
+        type=SettingType.INTEGER,
+        default="32768",
+        description=(
+            "Output ceiling for ONE agent response, covering the hidden"
+            " reasoning a model emits before it writes anything. An agent that"
+            " sets its own max_tokens keeps it; this answers for every agent"
+            " that does not, which is all of them by default. Sized for a"
+            " reasoning model: below roughly 8k such a model can spend the"
+            " whole budget thinking, emit no tool call, and be recorded as"
+            " having finished its work, because a turn with no tool call is"
+            " how a session reports completion. A ceiling costs nothing when"
+            " unused, so setting it low buys no saving and risks that silence."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=1024,
+        max_value=200_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="personality_max_tokens_override",
         type=SettingType.INTEGER,
         default="0",

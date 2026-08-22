@@ -131,8 +131,13 @@ anything, and `make recursion-depth-record` to measure for real.
 ### The metric
 
 For each leaf that delivered, the specification requirements it claimed through
-`SubtaskDefinition.satisfies` are leaf work delivered. After the root merge the
-oracle runs over the whole specification, and:
+`SubtaskDefinition.satisfies` are leaf work delivered. That field carries the
+root objective's acceptance-criterion TEXT rather than requirement ids, because
+that is what the planner is given and echoes back, so the harness resolves each
+claim to the id it names before anything counts it (`recursion_depth/claims.py`
+owns both directions, and an unresolvable claim is dropped with a warning rather
+than passed on). After the root merge the oracle runs over the whole
+specification, and:
 
 ```text
         | claimed by delivered leaves AND passing in the merged tree |
@@ -194,14 +199,36 @@ on unresolved escalations is a different claim from one resting on verdicts.
 The gate is the treatment, so a judge sharing the executor's `(provider,
 model)` pair biases straight toward the null. The manifest declares an
 independence class and the loader refuses a manifest whose pairs do not match
-what it claims; identical pairs are refused outright. Under `same_provider`
+what it claims; identical pairs are refused outright. Under `same_family`
 every artifact carries the caveat on its face.
 
-Each pair also declares its capability rung. The capability registry grades a
-pair from a catalogue that knows nothing about a placeholder id, and selection
-refuses an ungraded pair outright, so a roster built from a manifest that did
-not say would leave every review unstaffed and the gated arm would record
-escalations rather than verdicts.
+That claim is checked against a declared `family`, never against the provider.
+Self-preference attaches to the organisation that trained a model, and the
+connection reaching it is a separate fact: an aggregating provider serves many
+families through one endpoint, so two models behind it are as decorrelated as
+their families are, while two connections to one vendor are not decorrelated at
+all. Deriving family from the provider would refuse the first case and wave the
+second through, which is backwards in both directions. A `cross_family` claim
+whose pairs name one family, or name none, is refused.
+
+Each pair also declares its capability rung, and family is declared beside it
+for the same reason. The capability registry grades a pair from a catalogue that
+knows nothing about a placeholder id, and selection refuses an ungraded pair
+outright, so a roster built from a manifest that did not say would leave every
+review unstaffed and the gated arm would record escalations rather than
+verdicts. A placeholder id has no discoverable family either.
+
+Because the manifest ships placeholders, a company config decides which real
+models answer them, which makes family a fact with two owners: the manifest's
+copy is what the claim is checked against, and the config's copy names what
+runs. A config aliasing both placeholders onto one organisation therefore
+satisfies every check in the manifest and still produces a correlated judge, so
+the recorder compares the two before the host boots. What it compares is the
+RELATION and never the names: a vendor-agnostic placeholder cannot equal a real
+organisation's name, so testing for that would refuse every real recording,
+while the claim those placeholders make (that the two pairs differ) survives
+aliasing intact. A config declaring no family is not a disagreement; it is the
+config not saying, which leaves the manifest the only claim.
 
 ### The oracle is held out
 
@@ -225,20 +252,78 @@ wrong answer. So plan mode prints a **floor** rather than an estimate, the
 manifest carries a hard `max_sessions` ceiling, and hitting it stops the sweep
 and reports what was measured with a caveat saying so. `--depths` stages the
 bill: record the shallow end, read the curve forming, then pay for the deep end.
+`--max-sessions` lowers the ceiling, and it is folded into the manifest rather
+than applied to the run, so the figure the plan prints is the one the run
+enforces: a ceiling applied downstream of the plan shows the manifest's own
+number beside the flag that was meant to lower it, at the one moment the number
+is being relied on.
+
+A unit is bounded twice, by `unit_cost_ceiling` and by `unit_token_ceiling`, and
+the second is not redundancy. A flat-rate connection attributes 0.0 to every
+call, so its cost ceiling can never fire and a runaway unit would be held by
+nothing but its turn cap. Tokens are counted on every provider, so the plan
+states the token bound as the one that holds without the reader first knowing
+how they are billed.
 
 Repetitions are concentrated rather than uniform. Depths 1 and 2 are expected
 flat and are cheap; the transition ARIES reports sits at 3 to 4, which is where
 samples are worth paying for.
 
+### Preflight
+
+Provider coverage, a reachable Docker daemon, and a one-token completion
+against each declared pair are all settled before the host boots. Each is a
+property of the configuration or the machine, so none becomes truer once a
+scratch database, a gateway and a container are standing, and each is otherwise
+found by a unit failing mid-decomposition.
+
+The misdiagnosis is what makes this load-bearing rather than merely faster. An
+invalid credential surfaces as `decomposition.failed` and records the cell
+unavailable with a `DecompositionError` reason, which names the wrong subsystem
+entirely: the operator goes and reads the planner. Measured with a deliberately
+invalid key, it took 56 seconds to get there, because the credential error was
+retried by the driver, returned across the recorder's own gateway hop as a 502,
+and retried again on the far side. A bad key fails identically every time, so
+all of that is latency. The probe is also the warm-up, which matters because a
+cold model load would otherwise land entirely on whichever cell is recorded
+first, and that is depth 1: the flattest, cheapest point on the curve.
+
+### What the run keeps
+
+Every request and response crossing the recorder's own gateway is written to a
+JSONL transcript, one file per session, keyed on the same execution id the
+ledger keys its spend to, so a transcript and the cost it produced name the
+same session. They land under the run's work root beside the trees
+`--keep-workspaces` leaves, and are read against them.
+
+This is not diagnostics for its own sake. The chart answers what each cell
+scored; the questions actually worth asking afterwards are why a merge was
+rejected, what the reviewer said, and whether a repair round addressed the
+finding or talked past it. None of that is recoverable once the run ends, and a
+sweep costs too much to repeat because nobody kept the reasoning.
+
 ### Failures
+
+Three outcomes, not two.
 
 A missing provider, a dead gateway, a dead Docker daemon, or an oracle that
 cannot run at all is true of every remaining run, so it stops the matrix rather
-than being rediscovered once per cell at full retry cost. Anything else records
-that one cell as unavailable **with its reason** and the sweep continues: the
-report is always written, a cell that cost real money is never dropped from it,
-and a run where nothing was measured is refused rather than published as a
-curve of zeros.
+than being rediscovered once per cell at full retry cost. No report is written:
+there is nothing to report on.
+
+The provider account running out of quota is the second, and it is a property
+of the ACCOUNT rather than of the cell that happened to ask last. Every
+remaining cell would be refused within seconds and filed under a cell-shaped
+reason, so the sweep stops there too, but it keeps what it paid for: the
+triggering cell is recorded unavailable, a caveat naming quota is added, and
+the report is emitted. One live sweep lost its whole remaining matrix in
+sixteen seconds before this outcome existed, and each lost row blamed
+decomposition.
+
+Anything else records that one cell as unavailable **with its reason** and the
+sweep continues: the report is always written, a cell that cost real money is
+never dropped from it, and a run where nothing was measured is refused rather
+than published as a curve of zeros.
 
 ### Where a sweep runs agent-authored code
 

@@ -28,6 +28,7 @@ import pytest
 from evals.errors import HarnessProviderMissingError, LoopAbOpenHandsUnwiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.loader.briefs import load_brief_suite
+from evals.loop_ab.journal import JOURNAL_NAME
 from evals.loop_ab.manifest import CapabilityEntry, LoopAbManifest
 from evals.loop_ab.models import Provenance
 from evals.loop_ab.runner import (
@@ -188,9 +189,82 @@ async def test_every_registered_loop_gets_a_row(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     assert {row.loop_type for row in scoreboard.rows} == set(registered_loop_types())
+
+
+async def test_a_measured_row_is_journalled_as_it_lands(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """A matrix killed part-way must have kept what it already paid for."""
+    out_dir = tmp_path / "out"
+
+    await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=_scripted_deps(project_repo),
+        provenance=_provenance(),
+        out_dir=out_dir,
+        resume=False,
+    )
+
+    lines = (out_dir / JOURNAL_NAME).read_text(encoding="utf-8").splitlines()
+    # The header, plus one line per row rather than one write at the end.
+    assert len(lines) > 1
+
+
+async def test_a_resumed_matrix_does_not_re_run_a_measured_row(
+    tmp_path: Path, project_repo: ProjectRepository
+) -> None:
+    """Reading a row back is the whole point; paying for it twice is not."""
+    out_dir = tmp_path / "out"
+    dispatches: list[str] = []
+
+    async def _counting_provider(cell: CellRun) -> ScriptedProvider:
+        """Record that a cell actually dispatched, then answer as usual.
+
+        Returns:
+            The scripted provider.
+        """
+        dispatches.append(str(cell.loop_type))
+        return await _build_scripted_provider(cell)
+
+    first = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work-1",
+        deps=_scripted_deps(project_repo, build_provider=_counting_provider),
+        provenance=_provenance(),
+        out_dir=out_dir,
+        resume=False,
+    )
+    measured = {row.loop_type for row in first.rows if row.measurement is not None}
+    assert measured
+    dispatches.clear()
+
+    second = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work-2",
+        deps=_scripted_deps(project_repo, build_provider=_counting_provider),
+        provenance=_provenance(),
+        out_dir=out_dir,
+        resume=True,
+    )
+
+    # The whole point: a cell already paid for is read back, not bought again.
+    # Row identity alone would pass on a resume that silently re-ran the lot.
+    assert not [loop for loop in dispatches if loop in measured]
+    assert {row.loop_type for row in second.rows} == {
+        row.loop_type for row in first.rows
+    }
 
 
 async def test_an_unwired_loop_is_reported_not_dropped(
@@ -204,6 +278,8 @@ async def test_an_unwired_loop_is_reported_not_dropped(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     unavailable = {row.loop_type for row in scoreboard.unavailable_rows}
@@ -224,6 +300,8 @@ async def test_the_runnable_loop_is_measured_and_scored(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     measured = {row.loop_type for row in scoreboard.measured_rows}
@@ -245,6 +323,8 @@ async def test_a_cheaper_loop_outscores_a_more_expensive_one(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
     rows = {
         row.loop_type: row
@@ -277,6 +357,8 @@ async def test_each_repetition_starts_from_a_freshly_seeded_workspace(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
     react = next(row for row in scoreboard.measured_rows if row.loop_type == "react")
 
@@ -299,6 +381,8 @@ async def test_the_scoreboard_carries_its_promotion_recommendation(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     # Every scripted loop runs tool-less, writes nothing, and grades below the
@@ -320,6 +404,8 @@ async def test_measured_rows_carry_their_ledger_spend(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     for row in scoreboard.measured_rows:
@@ -706,6 +792,8 @@ async def test_a_tool_less_run_disqualifies_every_measured_loop(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     measured = scoreboard.measured_rows
@@ -732,6 +820,8 @@ async def test_a_tool_less_run_is_reported_as_the_no_op_it_is(
         work_root=tmp_path / "work",
         deps=_scripted_deps(project_repo),
         provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=False,
     )
 
     measured = scoreboard.measured_rows

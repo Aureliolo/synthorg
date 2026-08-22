@@ -715,7 +715,10 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # pydantic's ``@computed_field`` stacks on ``@property`` by design; mypy
 # cannot model the pass-through and flags ``prop-decorator`` at every site.
-module = "synthorg.*"
+# ``evals.*`` for the same reason: its report models are persisted with
+# ``model_dump_json`` and a derived value that is not a computed field is
+# absent from the artifact a later analysis reads.
+module = ["synthorg.*", "evals.*"]
 disable_error_code = ["prop-decorator"]
 
 [tool.pydantic-mypy]

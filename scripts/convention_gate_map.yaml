@@ -267,6 +267,11 @@ mandatory_rules:
     header: Dependency-Gated Waves
     gate: scripts/check_wave_dispatch_gated.py
 
+  - id: claude-md::journalled-recordings
+    file: CLAUDE.md
+    header: Journalled Recordings
+    gate: scripts/check_recording_harness_journalled.py
+
   - id: claude-md::roster-held-gate-roles
     file: CLAUDE.md
     header: Roster-Held Gate Roles

@@ -130,6 +130,18 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             self._inner.bind_credential_catalog(catalog)
 
     @override
+    async def aclose(self) -> None:
+        """Release the wrapped driver's lazily-opened resources.
+
+        Delegated rather than inherited: the base implementation is a no-op,
+        and a wrapper that took it would let a registry's close sweep report
+        success while the driver actually holding a client was never asked.
+        Pure-replay mode wraps no driver and has nothing to release.
+        """
+        if self._inner is not None:
+            await self._inner.aclose()
+
+    @override
     def serves_model(self, model: str) -> bool:
         """Delegate the model-catalogue check to the wrapped driver.
 

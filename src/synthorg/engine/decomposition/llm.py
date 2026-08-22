@@ -4,6 +4,8 @@ Uses an LLM provider with tool calling to break a task into subtasks.
 Falls back to parsing JSON from content when tool calls are absent.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -15,6 +17,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # must resolve at runtime when downstream tooling evaluates type hints
 # (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -31,6 +34,7 @@ from synthorg.engine.decomposition.llm_prompt import (
 )
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import (
+    DecompositionBudgetExhaustedError,
     DecompositionDepthError,
     DecompositionError,
     DecompositionSubtaskLimitError,
@@ -53,8 +57,14 @@ from synthorg.providers.models import (
     CompletionResponse,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.kill_switch import resolve_int_with_fallback
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+_DECOMPOSITION_NS: Final[str] = "coordination"
+_MAX_OUTPUT_TOKENS_KEY: Final[str] = "decomposition_max_output_tokens"
+_MAX_RETRIES_KEY: Final[str] = "decomposition_max_retries"
 
 
 class LlmDecompositionConfig(BaseModel):
@@ -68,7 +78,10 @@ class LlmDecompositionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    max_retries: int = Field(default=2, ge=0, le=5, description="Max retry attempts")
+    # Ceiling matches `coordination.decomposition_max_retries`, because the
+    # live setting is what actually decides the count and two ceilings that
+    # disagree would let an operator write a value this refuses.
+    max_retries: int = Field(default=2, ge=0, le=8, description="Max retry attempts")
     temperature: float = Field(
         default=0.2,
         ge=0.0,
@@ -76,7 +89,11 @@ class LlmDecompositionConfig(BaseModel):
         description="Sampling temperature",
     )
     max_output_tokens: int = Field(
-        default=4096,
+        # Matches `coordination.decomposition_max_output_tokens`. The fallback
+        # a resolver-down read lands on has to be the value the registry would
+        # have answered, or the same deployment plans against two different
+        # ceilings depending on whether the settings store was reachable.
+        default=32_768,
         gt=0,
         description="Max output tokens",
     )
@@ -91,7 +108,7 @@ class LlmDecompositionStrategy:
     parse/validation failures up to ``max_retries`` times.
     """
 
-    __slots__ = ("_config", "_cost_tracker", "_model", "_provider")
+    __slots__ = ("_config", "_cost_tracker", "_model", "_provider", "_resolver")
 
     def __init__(
         self,
@@ -100,6 +117,7 @@ class LlmDecompositionStrategy:
         model: str,
         config: LlmDecompositionConfig | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         """Initialize the LLM decomposition strategy.
 
@@ -110,6 +128,11 @@ class LlmDecompositionStrategy:
                 if not provided.
             cost_tracker: Optional CostTracker reference; when wired
                 each LLM call records via the chokepoint.
+            config_resolver: Optional resolver read once per decomposition for
+                the output-token ceiling. Read per call rather than baked in
+                at construction, because raising the ceiling is what an
+                operator does IN RESPONSE to a truncation, and a value fixed
+                at assembly would not apply until the next rebuild.
 
         Raises:
             ValueError: If model is blank.
@@ -122,6 +145,47 @@ class LlmDecompositionStrategy:
         self._model = model
         self._config = config or LlmDecompositionConfig()
         self._cost_tracker = cost_tracker
+        self._resolver = config_resolver
+
+    async def _max_retries(self) -> int:
+        """How many times a refused plan may be re-asked for.
+
+        Read live for the same reason the ceiling is: the right number depends
+        on the bound model, which an operator changes without a restart. Each
+        attempt is a SELF-CORRECTION, not a repeat of the same request (the
+        prior error is fed back), so attempts are not interchangeable: a run
+        that failed three times on three DIFFERENT faults was converging and
+        ran out of budget, which is not the same as a model that cannot do it.
+
+        Returns:
+            The operator's current setting, or the configured default when no
+            resolver is wired (the harnesses and tests construct without one)
+            and when a resolver read fails: this runs BEFORE the attempt loop
+            and outside the handler that promises every failure leaves as a
+            ``DecompositionError``, so a settings-store blip would otherwise
+            escape untyped and spend none of the attempts it was sizing.
+        """
+        return await resolve_int_with_fallback(
+            resolver=self._resolver,
+            namespace=_DECOMPOSITION_NS,
+            key=_MAX_RETRIES_KEY,
+            fallback=self._config.max_retries,
+        )
+
+    async def _max_output_tokens(self) -> int:
+        """The output-token ceiling this decomposition runs under.
+
+        Returns:
+            The operator's current setting, or the configured default when no
+            resolver is wired and when a resolver read fails, for the reason
+            :meth:`_max_retries` gives.
+        """
+        return await resolve_int_with_fallback(
+            resolver=self._resolver,
+            namespace=_DECOMPOSITION_NS,
+            key=_MAX_OUTPUT_TOKENS_KEY,
+            fallback=self._config.max_output_tokens,
+        )
 
     async def decompose(
         self,
@@ -143,6 +207,9 @@ class LlmDecompositionStrategy:
             DecompositionSubtaskLimitError: If a planned plan exceeds
                 ``max_subtasks``; raised on the first attempt that does,
                 so the produced count and the ceiling reach the caller.
+            DecompositionBudgetExhaustedError: The model stopped at its token
+                ceiling before writing content; raised on the first attempt,
+                because every later one truncates at the same place.
             DecompositionError: If all retries are exhausted or
                 the plan violates constraints.
         """
@@ -152,12 +219,12 @@ class LlmDecompositionStrategy:
         tool_def = build_decomposition_tool(context.available_roles)
         comp_config = CompletionConfig(
             temperature=self._config.temperature,
-            max_tokens=self._config.max_output_tokens,
+            max_tokens=await self._max_output_tokens(),
         )
 
         last_error: str | None = None
         last_response: CompletionResponse | None = None
-        attempts = 1 + self._config.max_retries
+        attempts = 1 + await self._max_retries()
 
         # See docs/reference/retry-patterns.md: Pattern B -- semantic
         # self-correction. Each attempt re-prompts the LLM with prior-
@@ -233,6 +300,13 @@ class LlmDecompositionStrategy:
                 plan = self._parse_response(
                     response, str(task.id), context.available_roles
                 )
+            except DecompositionBudgetExhaustedError:
+                # Not retried: the ceiling is the same on the next attempt, so
+                # every further call truncates at the same place and the run
+                # pays the full retry ladder to learn nothing. Raised with the
+                # condition it names, rather than collapsed into a
+                # retries-exhausted error that says only that parsing failed.
+                raise
             except DecompositionError as exc:
                 last_error = safe_error_description(exc)
                 logger.warning(
@@ -262,7 +336,10 @@ class LlmDecompositionStrategy:
                 )
                 continue
 
-            logger.debug(
+            # INFO, like every other state transition: a plan existing where
+            # none did is the outcome, and logging it below the retry that
+            # preceded it puts the attempt above the result.
+            logger.info(
                 DECOMPOSITION_COMPLETED,
                 task_id=str(task.id),
                 strategy="llm",
@@ -349,10 +426,28 @@ class LlmDecompositionStrategy:
             A parsed ``DecompositionPlan``.
 
         Raises:
+            DecompositionBudgetExhaustedError: The model stopped at its token
+                ceiling before writing any content.
             DecompositionError: If both parsing paths fail.
         """
         if response.tool_calls:
             return parse_tool_call_response(response, parent_task_id, available_roles)
+        # Checked BEFORE the content path, because a reasoning model that ran
+        # out of budget returns an empty string rather than nothing, which
+        # reaches the JSON parser and is reported as malformed JSON. The two
+        # have opposite fixes (a larger budget against a better prompt) and the
+        # parse error names the wrong one. Observed on a hosted reasoning model
+        # that spent all 300 completion tokens on `reasoning` and returned
+        # content of length zero.
+        if response.finish_reason is FinishReason.MAX_TOKENS and not response.content:
+            msg = (
+                "the model stopped at its token ceiling before writing any "
+                "content, which a reasoning model does when its budget is "
+                "spent on reasoning; raise the decomposition model's "
+                "max_output_tokens rather than rewording the prompt"
+            )
+            logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+            raise DecompositionBudgetExhaustedError(msg)
         if response.content is not None:
             return parse_content_response(response, parent_task_id, available_roles)
         msg = "Response has no tool calls and no content"

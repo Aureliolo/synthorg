@@ -27,6 +27,13 @@ EVALS_LOOP_AB_RECORD_START: Final[str] = "evals.loop_ab.record_start"
 EVALS_LOOP_AB_RUN_RECORDED: Final[str] = "evals.loop_ab.run_recorded"
 EVALS_LOOP_AB_LOOP_UNAVAILABLE: Final[str] = "evals.loop_ab.loop_unavailable"
 EVALS_HARNESS_PROVIDER_MISSING: Final[str] = "evals.harness.provider_missing"
+EVALS_HARNESS_PROBE_CLEANUP_FAILED: Final[str] = "evals.harness.probe_cleanup_failed"
+"""The preflight probe's single-use provider registry could not be released.
+Logged at WARNING and carries whether the probe itself had already failed,
+because the two cases differ in what the operator is told: a probe that already
+has a verdict keeps it (the bad credential or unknown model is the actionable
+fact, and a cleanup failure raised over it would erase that), while a cleanup
+failure on its own is the only thing that went wrong and is raised."""
 EVALS_LOOP_AB_SCOREBOARD_EMITTED: Final[str] = "evals.loop_ab.scoreboard_emitted"
 EVALS_HARNESS_HOST_STARTED: Final[str] = "evals.harness.host_started"
 EVALS_HARNESS_HOST_STOPPED: Final[str] = "evals.harness.host_stopped"
@@ -57,6 +64,10 @@ EVALS_HARNESS_WORKSPACE_LINK_DROPPED: Final[str] = (
     "evals.harness.workspace_link_dropped"
 )
 EVALS_HARNESS_STALL_REPORT_FAILED: Final[str] = "evals.harness.stall_report_failed"
+EVALS_HARNESS_RECORD_JOURNALLED: Final[str] = "evals.harness.record_journalled"
+EVALS_HARNESS_RECORD_REPLAYED: Final[str] = "evals.harness.record_replayed"
+EVALS_HARNESS_JOURNAL_RESUMED: Final[str] = "evals.harness.journal_resumed"
+EVALS_HARNESS_JOURNAL_TRUNCATED: Final[str] = "evals.harness.journal_truncated"
 EVALS_HARNESS_SANDBOXES_RELEASED: Final[str] = "evals.harness.sandboxes_released"
 EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
     "evals.harness.sandbox_release_failed"
@@ -64,6 +75,13 @@ EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
 
 # Recursion-depth sweep: does gating every merge hold off aggregation collapse?
 EVALS_RECURSION_ORACLE_RUN: Final[str] = "evals.recursion_depth.oracle_run"
+EVALS_RECURSION_UNIT_STARTED: Final[str] = "evals.recursion_depth.unit_started"
+"""A sweep unit is about to open a session that spends real provider tokens.
+Logged at DEBUG before the dispatch, because its INFO sibling
+``EVALS_RECURSION_UNIT_EXECUTED`` only fires once the session RETURNS: a run
+killed mid-session (a quota refusal, a wall-clock kill, an operator stopping
+it) otherwise leaves no record of which unit was in flight when the money was
+spent."""
 EVALS_RECURSION_UNIT_EXECUTED: Final[str] = "evals.recursion_depth.unit_executed"
 EVALS_RECURSION_MERGE_ATTEMPTED: Final[str] = "evals.recursion_depth.merge_attempted"
 EVALS_RECURSION_MERGE_GATED: Final[str] = "evals.recursion_depth.merge_gated"
@@ -74,4 +92,18 @@ EVALS_RECURSION_CELL_UNAVAILABLE: Final[str] = "evals.recursion_depth.cell_unava
 EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
+EVALS_RECURSION_QUOTA_EXHAUSTED: Final[str] = "evals.recursion_depth.quota_exhausted"
+EVALS_RECURSION_CLAIM_UNRESOLVED: Final[str] = "evals.recursion_depth.claim_unresolved"
+EVALS_RECURSION_NO_CELLS: Final[str] = "evals.recursion_depth.no_cells_measured"
+EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_failure"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
+EVALS_RECURSION_PREFLIGHT_PASSED: Final[str] = "evals.recursion_depth.preflight_passed"
+EVALS_RECURSION_PLAN_RETRIED: Final[str] = "evals.recursion_depth.plan_retried"
+EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
+EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
+EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"
+EVALS_RECURSION_JOURNAL_TRUNCATED: Final[str] = (
+    "evals.recursion_depth.journal_truncated"
+)
+EVALS_RECURSION_CELL_CONTINUED: Final[str] = "evals.recursion_depth.cell_continued"
+EVALS_RECURSION_CELL_RESTARTED: Final[str] = "evals.recursion_depth.cell_restarted"

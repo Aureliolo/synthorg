@@ -359,10 +359,11 @@ def _create_email_sink(
         return None
     from_addr = (params.get("from_addr") or "").strip()
     if not from_addr:
-        # Previously defaulted to ``synthorg@localhost``, which works
-        # in dev but is rejected by most production SMTP relays for
-        # ambiguous sender hostname. Fail loudly so operators wire a
-        # real sender address.
+        # No default sender: a synthesised one such as
+        # ``synthorg@localhost`` works in dev and is rejected by most
+        # production SMTP relays for an ambiguous sender hostname, so it
+        # would fail where it matters. Fail loudly instead, so an operator
+        # wires a real sender address.
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type="email",

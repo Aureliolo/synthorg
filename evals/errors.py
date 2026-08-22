@@ -303,6 +303,45 @@ class RecursionDepthSessionCeilingError(EvalError):
     default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
 
 
+class HarnessJournalUnwritableError(EvalError):
+    """Raised when a finished cell could not be appended to the journal.
+
+    Systemic rather than per-cell: a journal that cannot be written is true of
+    every remaining cell, so a driver treating it as one cell's outcome would
+    try to record that outcome to the same broken file. The recording stops
+    instead, having kept whatever reached the disk before the failure.
+    """
+
+    default_message: ClassVar[str] = "The recording journal could not be written"
+
+
+class HarnessJournalMismatchError(EvalError):
+    """Raised when a recording's journal cannot be appended to or resumed from.
+
+    The records under a journal are real provider spend, so a header naming a
+    different matrix or another harness, a corrupted line in the middle, or a
+    journal that would be silently overwritten is refused rather than resolved
+    by guessing.
+    """
+
+    default_message: ClassVar[str] = "The recording journal does not belong to this run"
+
+
+class RecursionDepthPlannerSubstitutedError(EvalError):
+    """Raised when a substitute planner produced the tree a cell would measure.
+
+    The sweep's premise is that recursion here behaves as it does in the
+    product, which holds only while the shipped planner writes the plan. The
+    substitution is silent everywhere else on purpose: a product that cannot
+    plan as an owner is better off with a single-shot plan than with none. A
+    measurement is the one caller for which that trade is wrong.
+    """
+
+    default_message: ClassVar[str] = (
+        "The tree was produced by a substitute planner, not the shipped one"
+    )
+
+
 class RecursionDepthJudgeNotIndependentError(EvalError):
     """Raised when the manifest binds the reviewer to the executor's own pair.
 
@@ -370,6 +409,8 @@ __all__ = [
     "HarnessGatewayUnavailableError",
     "HarnessHostAlreadyStartedError",
     "HarnessHostConfigInvalidError",
+    "HarnessJournalMismatchError",
+    "HarnessJournalUnwritableError",
     "HarnessProviderDegradedError",
     "HarnessProviderMissingError",
     "JudgeAnchorSetTooSmallError",
@@ -382,6 +423,7 @@ __all__ = [
     "RecursionDepthGateUnbuildableError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",
+    "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",

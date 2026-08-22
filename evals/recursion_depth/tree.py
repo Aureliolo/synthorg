@@ -19,16 +19,19 @@ caps four, five and six.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from evals.errors import OracleUnusableError
+from evals.errors import OracleUnusableError, RecursionDepthPlannerSubstitutedError
+from evals.recursion_depth.claims import RequirementId, criterion_for
 from evals.recursion_depth.oracle import (
     declared,
     entry_field,
     load_index,
     requirement_entries,
 )
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -47,6 +50,39 @@ logger = get_logger(__name__)
 #: might read as a recommendation.
 _OPEN_ARTIFACT_THRESHOLD: Final[str] = "20"
 _OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
+
+#: Wall-clock ceiling on one planning session, raised well above the product
+#: default of 600s.
+#:
+#: The default is sized for a model that answers directly. Every model a sweep
+#: is worth running against reasons first, and a reasoning model's planning
+#: turn is slow in proportion to the output budget it is given. On a
+#: development run of this harness (not a committed recording, so the figures
+#: below are an observation rather than a result anyone can re-read) a pair of
+#: runs decomposed the SAME brief in 310s and in over 600s, so at the default
+#: one arm completed and the other was killed mid-plan and recorded as an
+#: unavailable cell. Losing a whole arm to a timing margin is worse than
+#: waiting, because the arm is the comparison the sweep exists to make.
+#:
+#: This is a bound, not a budget: a planner that finishes sooner costs nothing
+#: extra, and the ceiling still exists to stop an unbounded wait on a provider
+#: that never answers.
+_PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
+
+#: Decomposition self-correction attempts, raised above the product default.
+#:
+#: A cell whose decomposition fails produces NO tree, and a sweep compares arms
+#: pairwise, so one failed plan destroys the comparison the run exists to make
+#: rather than costing it a data point. That asymmetry is why the sweep buys
+#: more attempts than a production initiative would.
+#:
+#: Observed on a development run of this harness, not on a committed
+#: recording: a plan was refused three times for three DIFFERENT faults (a
+#: missing `title`, then a `satisfies` field of the wrong type, then an
+#: em-dash the house style bans) while its sibling arm planned cleanly. Each
+#: attempt corrected the previous fault, so the planner was converging and
+#: simply ran out of budget at the shipped default of two.
+_PLANNING_MAX_RETRIES: Final[str] = "6"
 
 #: How many subtasks one level may produce. Above the corroborated 11-to-25
 #: coherent-unit ceiling there is no evidence a planner can hold a level
@@ -73,8 +109,8 @@ class SpecBrief:
     spec_id: str
     title: str
     prose: str
-    requirement_ids: tuple[str, ...]
-    titles: Mapping[str, str]
+    requirement_ids: tuple[RequirementId, ...]
+    titles: Mapping[RequirementId, str]
 
 
 def load_spec_brief(spec_dir: Path) -> SpecBrief:
@@ -103,18 +139,26 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
     prose = (spec_dir / str(declared(index, "brief", spec_dir=spec_dir))).read_text(
         encoding="utf-8"
     )
-    ids = tuple(entry_field(entry, "id", spec_dir=spec_dir) for entry in entries)
+    ids = tuple(
+        RequirementId(entry_field(entry, "id", spec_dir=spec_dir)) for entry in entries
+    )
     return SpecBrief(
         spec_id=str(declared(index, "spec_id", spec_dir=spec_dir)),
         title=str(declared(index, "title", spec_dir=spec_dir)),
         prose=prose,
         requirement_ids=ids,
-        titles={
-            entry_field(entry, "id", spec_dir=spec_dir): entry_field(
-                entry, "title", spec_dir=spec_dir
-            )
-            for entry in entries
-        },
+        # Wrapped, because `frozen=True` freezes the ATTRIBUTE and not the
+        # dict behind it: the specification is what every unit is judged
+        # against, and a holder of this reference could otherwise edit the
+        # requirement a leaf was briefed on after the brief was written.
+        titles=MappingProxyType(
+            {
+                RequirementId(entry_field(entry, "id", spec_dir=spec_dir)): entry_field(
+                    entry, "title", spec_dir=spec_dir
+                )
+                for entry in entries
+            }
+        ),
     )
 
 
@@ -140,6 +184,12 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
         "coordination", "leaf_subtask_threshold", _OPEN_ARTIFACT_THRESHOLD
     )
     await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
+    await settings.set(
+        "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
+    )
+    await settings.set(
+        "coordination", "decomposition_max_retries", _PLANNING_MAX_RETRIES
+    )
 
 
 def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
@@ -163,7 +213,7 @@ def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
         created_by=NotBlankStr(created_by),
         status=TaskStatus.CREATED,
         acceptance_criteria=tuple(
-            AcceptanceCriterion(description=NotBlankStr(f"{identifier} is satisfied"))
+            AcceptanceCriterion(description=NotBlankStr(criterion_for(identifier)))
             for identifier in brief.requirement_ids
         ),
     )
@@ -185,6 +235,7 @@ async def build_tree(
     depth_cap: int,
     workspace_summary: str,
     available_roles: tuple[NotBlankStr, ...],
+    owner: AgentIdentity,
 ) -> DecompositionResult:
     """Decompose *task* down to the cap and return the whole tree.
 
@@ -195,6 +246,11 @@ async def build_tree(
         workspace_summary: What the workspace holds, so the planner plans
             against the tree rather than against an imagined one.
         available_roles: The roles the roster staffs.
+        owner: Who the planning session runs AS. Required rather than
+            optional, because the shipped strategy plans as an owner and
+            falls back to the single-shot one when it has none: passing
+            nothing here does not fail, it quietly measures a different
+            planner than the one this experiment is about.
 
     Returns:
         The decomposition tree.
@@ -206,8 +262,10 @@ async def build_tree(
             max_depth=depth_cap,
             workspace_summary=workspace_summary,
             available_roles=available_roles,
+            owner_identity=owner,
         ),
     )
+    _refuse_substituted_planner(result)
     logger.info(
         EVALS_RECURSION_TREE_BUILT,
         depth_cap=depth_cap,
@@ -216,6 +274,55 @@ async def build_tree(
         node_count=len(result.all_tasks),
     )
     return result
+
+
+def _refuse_substituted_planner(result: DecompositionResult) -> None:
+    """Refuse a tree any node of which a substitute planner produced.
+
+    The experiment's premise is that what recursion does to a plan HERE is what
+    it does in the product, so the plan has to come from the shipped planner.
+    The substitution is silent by design everywhere else: the strategy logs it
+    and carries on, because a product that cannot plan as an owner is better
+    off with a single-shot plan than with nothing. A measurement is the one
+    caller for which that trade is wrong, and it went unnoticed through two
+    live recordings.
+
+    Checked per node rather than at the root, because recursion plans each
+    level in its own session and only the levels that failed to staff an owner
+    substitute; a tree can be part researched and part single-shot, which is
+    the shape hardest to notice and the least defensible to plot.
+
+    Args:
+        result: The tree.
+
+    Raises:
+        RecursionDepthPlannerSubstitutedError: A node names a substitute.
+    """
+    substituted = sorted(
+        {
+            str(node.plan.planning_strategy)
+            for node in _nodes(result)
+            if node.plan.planning_strategy is not None
+        }
+    )
+    if not substituted:
+        return
+    msg = (
+        f"the plan was produced by a substitute planner "
+        f"({', '.join(substituted)}) rather than the shipped one, so this "
+        f"cell would measure the fallback; staff an owner the planning "
+        f"session can run as"
+    )
+    raise RecursionDepthPlannerSubstitutedError(msg)
+
+
+def _nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
+    """Every node of the tree, this level first.
+
+    Returns:
+        The nodes.
+    """
+    return (result, *(node for child in result.children for node in _nodes(child)))
 
 
 def unit_definitions(

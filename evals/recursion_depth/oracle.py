@@ -28,13 +28,14 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final
 
 import yaml
 
 from evals.errors import OracleUnusableError
 from evals.harness.workspace import drop_escaping_links
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.grading import (
     GRADED_ENV,
     INI_BODY,
@@ -51,6 +52,7 @@ from evals.recursion_depth.grading import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_ORACLE_RUN
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
@@ -103,11 +105,11 @@ class OracleOutcome:
         report: The captured pytest output, for a human reading a failure.
     """
 
-    results: dict[str, bool]
+    results: dict[RequirementId, bool]
     report: str
 
     @property
-    def passed(self) -> frozenset[str]:
+    def passed(self) -> frozenset[RequirementId]:
         """The requirements this tree satisfies.
 
         Returns:
@@ -116,7 +118,7 @@ class OracleOutcome:
         return frozenset(key for key, ok in self.results.items() if ok)
 
     @property
-    def failed(self) -> frozenset[str]:
+    def failed(self) -> frozenset[RequirementId]:
         """The requirements this tree does not satisfy.
 
         Returns:
@@ -212,7 +214,7 @@ def entry_field(entry: object, field: str, *, spec_dir: Path) -> str:
     return str(fields[field])
 
 
-def requirement_ids(spec_dir: Path) -> tuple[str, ...]:
+def requirement_ids(spec_dir: Path) -> tuple[RequirementId, ...]:
     """Every requirement id the spec declares, in declaration order.
 
     Args:
@@ -225,10 +227,12 @@ def requirement_ids(spec_dir: Path) -> tuple[str, ...]:
         OracleUnusableError: The spec's index is malformed.
     """
     entries = requirement_entries(load_index(spec_dir), spec_dir=spec_dir)
-    return tuple(entry_field(entry, "id", spec_dir=spec_dir) for entry in entries)
+    return tuple(
+        RequirementId(entry_field(entry, "id", spec_dir=spec_dir)) for entry in entries
+    )
 
 
-def node_ids(spec_dir: Path) -> dict[str, str]:
+def node_ids(spec_dir: Path) -> dict[RequirementId, str]:
     """Map each requirement id to the oracle node that decides it.
 
     Args:
@@ -242,7 +246,7 @@ def node_ids(spec_dir: Path) -> dict[str, str]:
     """
     entries = requirement_entries(load_index(spec_dir), spec_dir=spec_dir)
     return {
-        entry_field(entry, "id", spec_dir=spec_dir): entry_field(
+        RequirementId(entry_field(entry, "id", spec_dir=spec_dir)): entry_field(
             entry, "oracle", spec_dir=spec_dir
         )
         for entry in entries
@@ -254,7 +258,7 @@ async def run_oracle(
     build_sandbox: SandboxFactory,
     spec_dir: Path,
     tree: Path,
-    only: frozenset[str] | None = None,
+    only: frozenset[RequirementId] | None = None,
     interpreter: str = _CONTAINER_INTERPRETER,
 ) -> OracleOutcome:
     """Grade *tree* against the spec's held-out oracle, in a container.
@@ -291,33 +295,10 @@ async def run_oracle(
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
-        nonce = secrets.token_hex(_NONCE_BYTES)
-        (root / ORACLE_SUITE_DIR / _NONCE_NAME).write_text(nonce, encoding="utf-8")
-        # Taken here, on the host, before anything the tree wrote can run. The
-        # token is deliberately outside it: the fingerprint covers what has to
-        # survive the run unchanged, and the token has to be gone by the time
-        # the first test body runs.
-        staged_before = await asyncio.to_thread(
-            oracle_fingerprint, root / ORACLE_SUITE_DIR
+        nonce, staged_before = await _arm_graded_root(
+            root, build_sandbox=build_sandbox, interpreter=interpreter
         )
         report_path = root / _REPORT_NAME
-        # Probed BEFORE the tree runs, because the answer stops the whole
-        # matrix and the graded run's own output is agent-authored. The
-        # returncode of the run itself cannot substitute either: an interpreter
-        # with no pytest exits 1, which is exactly what "tests ran and some
-        # failed" looks like, so every requirement would be recorded as failed
-        # and the sweep would publish a curve of zeros that reads as a
-        # catastrophic result rather than as a harness that never ran anything.
-        refuse_without_a_runner(
-            await build_sandbox(root).execute(
-                command=interpreter,
-                args=RUNNER_PROBE_ARGS,
-                cwd=root,
-                env_overrides=GRADED_ENV,
-                timeout=_ORACLE_TIMEOUT_SECONDS,
-                category=ToolCategory.CODE_EXECUTION.value,
-            )
-        )
         result = await build_sandbox(root).execute(
             command=interpreter,
             args=oracle_argv(nodes=nodes, wanted=wanted),
@@ -327,20 +308,7 @@ async def run_oracle(
             category=ToolCategory.CODE_EXECUTION.value,
         )
         report = tail_of(result.stdout + result.stderr)
-        if result.timed_out:
-            msg = (
-                f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s "
-                f"against {tree}; a delivery that deadlocks is a failed "
-                f"requirement, but a run that cannot report which one is not a "
-                f"measurement"
-            )
-            raise OracleUnusableError(msg)
-        if result.returncode not in (_PYTEST_OK, _PYTEST_TESTS_FAILED):
-            msg = (
-                f"the oracle could not be run against {tree} "
-                f"(pytest exited {result.returncode}):\n{report}"
-            )
-            raise OracleUnusableError(msg)
+        _refuse_unusable_run(result, tree=tree, report=report)
         refuse_if_oracle_survived(root)
         await asyncio.to_thread(refuse_if_oracle_inputs_changed, root, staged_before)
         results = _read_report(
@@ -357,6 +325,78 @@ async def run_oracle(
         passed=sum(1 for ok in results.values() if ok),
     )
     return OracleOutcome(results=results, report=report)
+
+
+async def _arm_graded_root(
+    root: Path, *, build_sandbox: SandboxFactory, interpreter: str
+) -> tuple[str, str]:
+    """Plant this run's token, fingerprint the suite, and prove pytest exists.
+
+    Args:
+        root: The staged scratch directory the grading runs in.
+        build_sandbox: Builds the container backend the probe runs in.
+        interpreter: What runs ``-m pytest``.
+
+    Returns:
+        ``(nonce, fingerprint)``: the token the report must carry back, and the
+        digest the staged suite must still match afterwards.
+
+    Raises:
+        EvalToolMissingError: The interpreter has no pytest.
+    """
+    nonce = secrets.token_hex(_NONCE_BYTES)
+    (root / ORACLE_SUITE_DIR / _NONCE_NAME).write_text(nonce, encoding="utf-8")
+    # Taken here, on the host, before anything the tree wrote can run. The
+    # token is deliberately outside it: the fingerprint covers what has to
+    # survive the run unchanged, and the token has to be gone by the time
+    # the first test body runs.
+    staged_before = await asyncio.to_thread(oracle_fingerprint, root / ORACLE_SUITE_DIR)
+    # Probed BEFORE the tree runs, because the answer stops the whole
+    # matrix and the graded run's own output is agent-authored. The
+    # returncode of the run itself cannot substitute either: an interpreter
+    # with no pytest exits 1, which is exactly what "tests ran and some
+    # failed" looks like, so every requirement would be recorded as failed
+    # and the sweep would publish a curve of zeros that reads as a
+    # catastrophic result rather than as a harness that never ran anything.
+    refuse_without_a_runner(
+        await build_sandbox(root).execute(
+            command=interpreter,
+            args=RUNNER_PROBE_ARGS,
+            cwd=root,
+            env_overrides=GRADED_ENV,
+            timeout=_ORACLE_TIMEOUT_SECONDS,
+            category=ToolCategory.CODE_EXECUTION.value,
+        )
+    )
+    return nonce, staged_before
+
+
+def _refuse_unusable_run(result: SandboxResult, *, tree: Path, report: str) -> None:
+    """Separate a failed DELIVERY from a run that measured nothing.
+
+    Args:
+        result: What the graded run returned.
+        tree: The tree it was run against, for the message.
+        report: The captured tail, for the message.
+
+    Raises:
+        OracleUnusableError: The run deadlocked, or pytest exited on something
+            other than a pass or a test failure.
+    """
+    if result.timed_out:
+        msg = (
+            f"the oracle did not finish inside {_ORACLE_TIMEOUT_SECONDS}s "
+            f"against {tree}; a delivery that deadlocks is a failed "
+            f"requirement, but a run that cannot report which one is not a "
+            f"measurement"
+        )
+        raise OracleUnusableError(msg)
+    if result.returncode not in (_PYTEST_OK, _PYTEST_TESTS_FAILED):
+        msg = (
+            f"the oracle could not be run against {tree} "
+            f"(pytest exited {result.returncode}):\n{report}"
+        )
+        raise OracleUnusableError(msg)
 
 
 def refuse_if_oracle_inputs_changed(root: Path, before: str) -> None:
@@ -463,7 +503,9 @@ def stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
     (root / INI_NAME).write_text(INI_BODY, encoding="utf-8")
 
 
-def oracle_argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str, ...]:
+def oracle_argv(
+    *, nodes: dict[RequirementId, str], wanted: tuple[RequirementId, ...]
+) -> tuple[str, ...]:
     """Build the argv the oracle container runs.
 
     Paths are relative to the mounted scratch root, so nothing about the host
@@ -482,12 +524,22 @@ def oracle_argv(*, nodes: dict[str, str], wanted: tuple[str, ...]) -> tuple[str,
         "-q",
         f"--tree={ORACLE_TREE_DIR}",
         f"--report-json={_REPORT_NAME}",
-        *(_node_path(Path(ORACLE_SUITE_DIR), nodes[key]) for key in wanted),
+        *(_node_path(PurePosixPath(ORACLE_SUITE_DIR), nodes[key]) for key in wanted),
     )
 
 
-def _node_path(oracle_dir: Path, node: str) -> str:
-    """Turn a ``file.py::test`` entry into an absolute pytest node id.
+def _node_path(oracle_dir: PurePosixPath, node: str) -> str:
+    """Turn a ``file.py::test`` entry into a pytest node id for the container.
+
+    POSIX explicitly, because the separator belongs to the machine that RUNS
+    the argument, not the one that builds it. A plain ``Path`` renders the
+    Windows separator when the recorder runs there, and that character is
+    ordinary text in the Linux container: pytest resolves none of the
+    arguments, so it never loads the suite's ``conftest.py`` as an initial
+    conftest, and the run dies at argument parsing on the ``--tree`` and
+    ``--report-json`` options that conftest is what registers. The oracle then
+    grades nothing, on every tree, having never run a single test. A POSIX
+    runner cannot reproduce it, so CI stayed green throughout.
 
     Returns:
         The node id pytest is invoked with.
@@ -500,11 +552,11 @@ def _node_path(oracle_dir: Path, node: str) -> str:
 def _read_report(
     report_path: Path,
     *,
-    nodes: dict[str, str],
-    wanted: tuple[str, ...],
+    nodes: dict[RequirementId, str],
+    wanted: tuple[RequirementId, ...],
     returncode: int,
     nonce: str,
-) -> dict[str, bool]:
+) -> dict[RequirementId, bool]:
     """Turn the per-node report into a per-requirement verdict.
 
     A requirement whose node produced no ENTRY counts as failed: the delivery
@@ -534,6 +586,25 @@ def _read_report(
         OracleUnusableError: pytest wrote no report at all, or wrote one this
             run cannot be shown to have produced.
     """
+    raw = _parsed_report(report_path, returncode=returncode)
+    _refuse_unattributed(raw, report_path=report_path, nonce=nonce)
+    outcomes = _node_outcomes(raw)
+    return {key: outcomes.get(nodes[key], False) for key in wanted}
+
+
+def _parsed_report(report_path: Path, *, returncode: int) -> Mapping[str, object]:
+    """Read the report and settle that it is a mapping at all.
+
+    Args:
+        report_path: Where the suite's conftest writes its report.
+        returncode: What pytest exited with, for the message.
+
+    Returns:
+        The parsed report.
+
+    Raises:
+        OracleUnusableError: No file, unparseable JSON, or not a mapping.
+    """
     if not report_path.is_file():
         msg = (
             f"the oracle wrote no report (pytest exited {returncode}), so "
@@ -549,14 +620,30 @@ def _read_report(
     if not isinstance(raw, dict):
         # The report sits in the mount the graded tree runs under, so its
         # SHAPE is not guaranteed by the conftest that writes it. A list or a
-        # bare string would raise `AttributeError` on `.items()` below and the
-        # runner would file that as an opaque cell failure rather than as the
-        # unusable measurement it is.
+        # bare string would raise `AttributeError` on `.items()` downstream and
+        # the runner would file that as an opaque cell failure rather than as
+        # the unusable measurement it is.
         msg = (
             f"the oracle's report is a {type(raw).__name__} rather than a "
             f"mapping of node to outcome, so nothing can be scored from it"
         )
         raise OracleUnusableError(msg)
+    return raw
+
+
+def _refuse_unattributed(
+    raw: Mapping[str, object], *, report_path: Path, nonce: str
+) -> None:
+    """Refuse a report this run cannot be shown to have produced.
+
+    Args:
+        raw: The parsed report.
+        report_path: Where it was read from, for the message.
+        nonce: The token this session minted before the tree existed.
+
+    Raises:
+        OracleUnusableError: The report does not carry this run's token.
+    """
     carried = raw.get("nonce")
     # Typed and narrowed to ASCII BEFORE the comparison, because
     # `compare_digest` raises `TypeError` on a str holding any non-ASCII
@@ -580,6 +667,21 @@ def _read_report(
             f"read exactly like measured ones"
         )
         raise OracleUnusableError(msg)
+
+
+def _node_outcomes(raw: Mapping[str, object]) -> dict[str, bool]:
+    """Read the per-NODE verdicts, which are keyed on test node rather than id.
+
+    Args:
+        raw: The parsed, attributed report.
+
+    Returns:
+        Each node id mapped to whether it passed.
+
+    Raises:
+        OracleUnusableError: The outcomes are not a mapping, or one verdict is
+            not a boolean.
+    """
     recorded = raw.get("outcomes")
     if not isinstance(recorded, Mapping):
         msg = (
@@ -602,7 +704,7 @@ def _read_report(
             )
             raise OracleUnusableError(msg)
         outcomes[str(key)] = value
-    return {key: outcomes.get(nodes[key], False) for key in wanted}
+    return outcomes
 
 
 __all__ = [
