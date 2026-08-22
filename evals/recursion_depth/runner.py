@@ -30,6 +30,7 @@ import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from evals.errors import (
     EvalToolMissingError,
@@ -49,6 +50,7 @@ from evals.recursion_depth.gate import (
     MergeReviewer,
     OracleMergeReviewer,
 )
+from evals.recursion_depth.journal import RecordedCells, cell_key, open_journal
 from evals.recursion_depth.manifest import Arm, RecursionDepthManifest
 from evals.recursion_depth.merge import (
     MergeOutcome,
@@ -69,7 +71,7 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from evals.recursion_depth.oracle import run_oracle
-from evals.recursion_depth.planner import TreePlanner
+from evals.recursion_depth.planner import PlannedTree, TreePlanner
 from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
@@ -85,14 +87,17 @@ from evals.recursion_depth.tree import (
 )
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
+from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_RECORDED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
     EVALS_RECURSION_NO_CELLS,
+    EVALS_RECURSION_PLAN_RETRIED,
     EVALS_RECURSION_QUOTA_EXHAUSTED,
     EVALS_RECURSION_SESSION_CEILING,
     EVALS_RECURSION_SYSTEMIC_FAILURE,
@@ -115,6 +120,20 @@ _SYSTEMIC_FAILURES: tuple[type[Exception], ...] = (
     # and fails is an ordinary result and does not come through here.
     OracleUnusableError,
 )
+
+#: Attempts one cell's tree gets. Two, not more: a planner that cannot produce
+#: a tree twice is telling the operator something, and a third attempt buys the
+#: same answer more slowly.
+_PLAN_ATTEMPTS: Final[int] = 2
+
+#: Seconds before the second planning attempt. Long enough to be past a
+#: momentary upstream refusal, short enough not to matter against a cell that
+#: runs for hours.
+_PLAN_RETRY_BASE_SECONDS: Final[float] = 5.0
+
+#: Ceiling on that wait. With one retry it is never reached; it exists because
+#: the retry handler refuses a cap below its base.
+_PLAN_RETRY_CAP_SECONDS: Final[float] = 30.0
 
 _CEILING_CAVEAT: str = (
     "The sweep stopped early on its session ceiling, so the depths and "
@@ -188,7 +207,7 @@ def _report_quota_exhaustion(
 async def _run_and_record(
     context: SweepContext,
     cell: SweepCell,
-    records: list[CellRecord],
+    records: RecordedCells,
     caveats: list[str],
     *,
     remaining: int,
@@ -198,7 +217,8 @@ async def _run_and_record(
     Args:
         context: Everything the sweep is driven with.
         cell: The planned run.
-        records: Sink every outcome is appended to, measured or not.
+        records: Sink every outcome is recorded to, measured or not, which
+            writes each one to the journal as it lands.
         caveats: Sink a stopping reason is appended to.
         remaining: Planned cells after this one, for the stop log.
 
@@ -215,7 +235,7 @@ async def _run_and_record(
     # ceiling reported nothing at all while the money was gone.
     units: list[UnitRecord] = []
     try:
-        records.append(await _run_cell(context, cell, units))
+        records.add(await _run_cell(context, cell, units))
     except MemoryError, RecursionError:
         raise
     except RecursionDepthSessionCeilingError as exc:
@@ -227,7 +247,7 @@ async def _run_and_record(
             measured_cells=len(records),
             error=safe_error_description(exc),
         )
-        records.append(_unavailable(cell, exc, units))
+        records.add(_unavailable(cell, exc, units))
         caveats.append(_CEILING_CAVEAT)
         return True
     except _SYSTEMIC_FAILURES as exc:
@@ -242,7 +262,7 @@ async def _run_and_record(
         )
         raise
     except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
-        records.append(_unavailable(cell, exc, units))
+        records.add(_unavailable(cell, exc, units))
         if not _report_quota_exhaustion(
             exc, measured=len(records) - 1, remaining=remaining
         ):
@@ -358,12 +378,16 @@ class SweepCell:
 
     @property
     def key(self) -> str:
-        """The name this run's trees and ledgers are keyed by.
+        """The name this run's trees, ledgers and journal entry are keyed by.
+
+        Delegated rather than spelled again: a resume matches a journalled cell
+        to a planned one by this string, so a second spelling would re-run
+        every cell the sweep had already paid for.
 
         Returns:
             The key.
         """
-        return f"d{self.depth_cap}-{self.arm.value}-r{self.repetition}"
+        return cell_key(self.depth_cap, self.arm, self.repetition)
 
 
 def planned_cells(manifest: RecursionDepthManifest) -> tuple[SweepCell, ...]:
@@ -388,18 +412,30 @@ def planned_cells(manifest: RecursionDepthManifest) -> tuple[SweepCell, ...]:
 
 
 async def run_sweep(
-    context: SweepContext, *, provenance: Provenance
+    context: SweepContext,
+    *,
+    provenance: Provenance,
+    out_dir: Path,
+    resume: bool,
 ) -> RecursionDepthReport:
     """Run the whole matrix and assemble the report.
+
+    Every cell is journalled to *out_dir* the moment it finishes, so a sweep
+    killed part-way has produced everything it had paid for rather than
+    nothing, and *resume* reads those cells back instead of buying them twice.
 
     Args:
         context: Everything the sweep is driven with.
         provenance: What this recording is measured against.
+        out_dir: Where the journal and the report are written.
+        resume: Whether an existing journal for this matrix is continued.
 
     Returns:
         The report, always written, carrying every run that was attempted.
 
     Raises:
+        RecursionDepthJournalMismatchError: A journal exists that this sweep
+            must not append to.
         RecursionDepthNoCellsMeasuredError: Not one run was measured. An
             all-unavailable report exits successfully with a file that looks
             like a curve.
@@ -411,7 +447,6 @@ async def run_sweep(
         RecursionDepthGateUnbuildableError: The gated arm has nowhere to read a
             verdict from.
     """
-    records: list[CellRecord] = []
     # Seeded, not accumulated: these two hold for every sweep this harness can
     # run, and a report that states them only when something went wrong states
     # them in exactly the runs nobody reads closely.
@@ -419,13 +454,26 @@ async def run_sweep(
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
-    planned = tuple(planned_cells(context.manifest))
-    for index, cell in enumerate(planned):
-        if await _run_and_record(
-            context, cell, records, caveats, remaining=len(planned) - index - 1
-        ):
-            break
-    measured = tuple(record for record in records if record.achieved_depth is not None)
+    journal, resumed = open_journal(out_dir, provenance=provenance, resume=resume)
+    # Re-booked before anything runs, so a sweep resumed four times is bounded
+    # like one sweep rather than like each of its attempts.
+    context.budget.spend(resumed.sessions_spent)
+    records = RecordedCells(journal)
+    try:
+        planned = tuple(planned_cells(context.manifest))
+        for index, cell in enumerate(planned):
+            already = resumed.holds(cell.key)
+            if already is not None:
+                records.replay(already)
+                continue
+            if await _run_and_record(
+                context, cell, records, caveats, remaining=len(planned) - index - 1
+            ):
+                break
+    finally:
+        journal.close()
+    cells = records.cells
+    measured = tuple(record for record in cells if record.achieved_depth is not None)
     if not measured:
         msg = (
             "the recursion-depth sweep measured no cells; every run is "
@@ -437,12 +485,12 @@ async def run_sweep(
             recorded_cells=len(records),
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
-    dropped = sum(unit.unresolved_claims for cell in records for unit in cell.units)
+    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
     if dropped:
         caveats.append(_UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped))
     return RecursionDepthReport(
         provenance=provenance,
-        cells=tuple(records),
+        cells=cells,
         by_achieved_depth=curve_by_achieved_depth(measured),
         by_depth_cap=curve_by_depth_cap(measured),
         achieved_depth_histogram=achieved_depth_histogram(measured),
@@ -482,6 +530,47 @@ def _unavailable(
     )
 
 
+async def _plan_with_retry(
+    context: SweepContext, cell: SweepCell, root: Task
+) -> PlannedTree:
+    """Produce *cell*'s tree, re-asking once when the planner call fails.
+
+    Planning is one call, it happens before anything else, and losing it loses
+    the entire cell: a live run had three of its four cells discarded by this
+    exact failure, on the same task, while a fourth cell planned the identical
+    tree successfully. That asymmetry is what a flaky call looks like, and one
+    of them must not cost a matrix position.
+
+    Retried at the sweep's level rather than inside the planner, because the
+    fact that makes a retry worth paying for is not visible there: a
+    decomposition that fails inside the product is one task, and here it is a
+    cell of the experiment. Bounded at two attempts, because a planner that
+    cannot produce a tree twice is telling the operator something, and a
+    third attempt buys the same answer more slowly.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        root: The objective being decomposed.
+
+    Returns:
+        The tree and what producing it cost.
+    """
+    retry = GeneralRetryHandler(
+        retryable=lambda exc: isinstance(exc, DecompositionError),
+        max_attempts=_PLAN_ATTEMPTS,
+        base=_PLAN_RETRY_BASE_SECONDS,
+        cap=_PLAN_RETRY_CAP_SECONDS,
+        event=EVALS_RECURSION_PLAN_RETRIED,
+    )
+    return await retry.execute(
+        lambda: context.planner.plan(
+            task=root, depth_cap=cell.depth_cap, execution_id=f"{cell.key}-plan"
+        ),
+        cell=cell.key,
+    )
+
+
 async def _run_cell(
     context: SweepContext, cell: SweepCell, units: list[UnitRecord]
 ) -> CellRecord:
@@ -502,9 +591,7 @@ async def _run_cell(
         project=EVAL_TASK_PROJECT,
         created_by=str(context.roster.lead.id),
     )
-    planned = await context.planner.plan(
-        task=root, depth_cap=cell.depth_cap, execution_id=f"{cell.key}-plan"
-    )
+    planned = await _plan_with_retry(context, cell, root)
     units.append(
         UnitRecord(
             unit_id=NotBlankStr(f"{cell.key}-plan"),

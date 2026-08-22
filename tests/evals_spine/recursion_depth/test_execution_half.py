@@ -56,6 +56,7 @@ from evals.recursion_depth.models import (
     PLAN,
     SIZING_CAVEAT,
     Provenance,
+    RecursionDepthReport,
     UnitRecord,
 )
 from evals.recursion_depth.oracle import OracleOutcome
@@ -956,6 +957,22 @@ async def _context(
     )
 
 
+async def _swept(
+    context: SweepContext, tmp_path: Path, *, resume: bool = False
+) -> RecursionDepthReport:
+    """Run *context*'s matrix, journalling beside a report in *tmp_path*.
+
+    Returns:
+        The report.
+    """
+    return await run_sweep(
+        context,
+        provenance=_provenance(),
+        out_dir=tmp_path / "out",
+        resume=resume,
+    )
+
+
 class TestTheMatrix:
     """Every run is recorded, measured or not, and the arms stay adjacent."""
 
@@ -985,13 +1002,45 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.unavailable_cells) == 1
         reason = report.unavailable_cells[0].unavailable_reason
         assert reason is not None
         assert "submitted nothing" in reason
         assert len(report.measured_cells) == 1
+
+    async def test_a_flaky_planning_call_does_not_cost_a_cell(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # A live run lost three of its four cells to this, on the same task,
+        # while a fourth planned the identical tree successfully.
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1),
+            fail_first=DecompositionError("provider call failed"),
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await _swept(context, tmp_path)
+
+        assert not report.unavailable_cells
+        assert len(report.measured_cells) == 2
+
+    async def test_a_planner_that_never_answers_is_still_recorded(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # The retry is bounded: a planner that cannot produce a tree twice is
+        # telling the operator something, and the cell keeps that reason.
+        del assembled_trees
+        context = await _context(
+            tmp_path,
+            planner=_ScriptedPlanner(raises=DecompositionError("provider call failed")),
+            manifest=_manifest(depths=(1,), repetitions={1: 1}, arms=(Arm.GATED,)),
+        )
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
 
     async def test_a_measured_cell_books_what_planning_cost(
         self, tmp_path: Path, assembled_trees: None
@@ -1002,7 +1051,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         measured = report.measured_cells[0]
         plans = [unit for unit in measured.units if unit.kind == PLAN]
@@ -1023,7 +1072,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert SIZING_CAVEAT in report.caveats
         assert ORACLE_CAVEAT in report.caveats
@@ -1049,7 +1098,7 @@ class TestTheMatrix:
             ),
         )
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert set(report.caveats) == {SIZING_CAVEAT, ORACLE_CAVEAT}
 
@@ -1078,7 +1127,7 @@ class TestTheMatrix:
             manifest=_manifest(depths=(1, 2), repetitions={1: 1, 2: 1}),
         )
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         # Four planned; the second refused, so the third and fourth are never
         # asked and never appear as cells nobody could tell apart from real
@@ -1109,7 +1158,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.unavailable_cells) == 1
         died = report.unavailable_cells[0]
@@ -1141,7 +1190,7 @@ class TestTheMatrix:
         )
         context = await _context(tmp_path, planner=planner)
 
-        report = await run_sweep(context, provenance=_provenance())
+        report = await _swept(context, tmp_path)
 
         assert len(report.measured_cells) == 1
         assert len(report.unavailable_cells) == 1
@@ -1157,7 +1206,7 @@ class TestTheMatrix:
         )
 
         with pytest.raises(HarnessDockerUnavailableError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
 
     async def test_an_all_unavailable_sweep_is_refused(self, tmp_path: Path) -> None:
         # A report of nothing but reasons exits successfully with a file that
@@ -1167,7 +1216,7 @@ class TestTheMatrix:
         )
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
 
     async def test_the_session_ceiling_stops_the_sweep_with_a_caveat(
         self, tmp_path: Path
@@ -1179,5 +1228,5 @@ class TestTheMatrix:
         context = await _context(tmp_path, planner=planner, ceiling=1)
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
-            await run_sweep(context, provenance=_provenance())
+            await _swept(context, tmp_path)
         assert context.budget.spent == 99

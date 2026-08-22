@@ -327,7 +327,7 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    detail = await _undelivered_reason(deps, plan)
+    detail = await _undelivered_reason(deps, plan, turns=turns)
     return MergeOutcome(
         workspace=plan.workspace,
         delivered=not detail,
@@ -424,12 +424,26 @@ def _deliverable_summary(plan: MergePlan) -> str:
     )
 
 
-async def _undelivered_reason(deps: SweepDeps, plan: MergePlan) -> str:
+async def _undelivered_reason(deps: SweepDeps, plan: MergePlan, *, turns: int) -> str:
     """Say why the merged tree is not a delivery, or nothing when it is.
+
+    A merge whose every attempt took no turn was refused before it began
+    rather than having assembled badly, and the two send an operator to
+    different subsystems. See the leaf's own reason for the case this covers.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        plan: The node being assembled.
+        turns: Turns across every attempt.
 
     Returns:
         The reason, empty when the merge delivered.
     """
+    if turns == 0:
+        return (
+            "no assembly attempt ran a single turn, so nothing was assembled "
+            "and this is not an assembly failure"
+        )
     if not artifacts_present(_attempt_task(plan, ()), plan.workspace):
         return "declared artifacts are missing from the merged tree"
     grader = deps.build_grader(plan.workspace)

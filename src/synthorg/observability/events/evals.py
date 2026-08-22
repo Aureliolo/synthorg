@@ -94,3 +94,10 @@ EVALS_RECURSION_NO_CELLS: Final[str] = "evals.recursion_depth.no_cells_measured"
 EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_failure"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
 EVALS_RECURSION_PREFLIGHT_PASSED: Final[str] = "evals.recursion_depth.preflight_passed"
+EVALS_RECURSION_PLAN_RETRIED: Final[str] = "evals.recursion_depth.plan_retried"
+EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
+EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
+EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"
+EVALS_RECURSION_JOURNAL_TRUNCATED: Final[str] = (
+    "evals.recursion_depth.journal_truncated"
+)

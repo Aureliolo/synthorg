@@ -303,6 +303,19 @@ class RecursionDepthSessionCeilingError(EvalError):
     default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
 
 
+class RecursionDepthJournalMismatchError(EvalError):
+    """Raised when a sweep's journal cannot be appended to or resumed from.
+
+    The cells under a journal are hours of paid work, so a header that names a
+    different matrix, a corrupted line in the middle, or a journal that would
+    be silently overwritten is refused rather than resolved by guessing.
+    """
+
+    default_message: ClassVar[str] = (
+        "The recursion-depth journal does not belong to this sweep"
+    )
+
+
 class RecursionDepthJudgeNotIndependentError(EvalError):
     """Raised when the manifest binds the reviewer to the executor's own pair.
 
@@ -380,6 +393,7 @@ __all__ = [
     "ProvenanceUnavailableError",
     "RecursionDepthCapabilityUnresolvedError",
     "RecursionDepthGateUnbuildableError",
+    "RecursionDepthJournalMismatchError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthSessionCeilingError",

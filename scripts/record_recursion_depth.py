@@ -300,7 +300,12 @@ async def _record(
                     spec=spec,
                 )
             )
-            report = await run_sweep(context, provenance=provenance)
+            report = await run_sweep(
+                context,
+                provenance=provenance,
+                out_dir=args.out_dir,
+                resume=args.resume,
+            )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
             paths = await asyncio.to_thread(write_report, report, args.out_dir)
@@ -618,6 +623,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Leave every unit's tree on disk after the run. This is where the "
             "thing the sweep actually built ends up."
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Continue the sweep already journalled in --out-dir: cells it "
+            "measured are read back rather than paid for again, and cells it "
+            "recorded as unavailable are attempted afresh. Without this a "
+            "journal already in --out-dir is refused rather than overwritten."
         ),
     )
     parser.add_argument(
