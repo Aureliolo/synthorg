@@ -34,11 +34,11 @@ recordable at all, and it puts every unit on one authoritative cost ledger.
 
 import argparse
 import asyncio
+import hashlib
 import shutil
 from functools import partial
 from pathlib import Path
 from typing import Final
-from uuid import uuid4
 
 from evals.errors import (
     RecursionDepthCapabilityUnresolvedError,
@@ -89,6 +89,10 @@ _DEFAULT_OUT_DIR: Final[Path] = Path("evals/recursion_depth/results")
 _DEFAULT_WORK_ROOT: Final[Path] = Path(".recursion-depth/work")
 _EPHEMERAL_PORT: Final[int] = 0
 _LABEL: Final[str] = "recursion-depth"
+#: Characters of the output-directory digest that name a run's scratch root.
+#: Long enough that two output directories on one machine do not collide,
+#: short enough to read in a path an operator is asked to inspect.
+_SLUG_CHARS: Final[int] = 12
 
 
 def _pair(pair: ModelPair) -> str:
@@ -272,11 +276,16 @@ async def _record(
     # configuration or the machine and none of it becomes truer once a scratch
     # database, a gateway and a container are standing.
     await run_preflight(manifest=manifest, company_config=company_config)
-    # A run-scoped scratch root so two concurrent ``--record`` invocations never
-    # target the same workspace path: each unit's reset removes and re-copies a
-    # whole tree, which is only race-free within one process.
-    run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
+    # Named after the output directory, because the journal there is what a
+    # resume continues from and these trees are what it continues WITH: a
+    # resume rebuilds each unit's path from this root, so a root it cannot
+    # predict leaves every cell unable to find what was already built for it.
+    # Two runs sharing an output directory are refused by the journal itself,
+    # and two with different ones land on different roots, so concurrent
+    # recordings still never reset each other's trees.
+    run_work_root = args.work_root / f"run-{_recording_slug(args.out_dir)}"
     binder: HarnessBinder | None = None
+    completed = False
     try:
         async with RecordingGatewayHost(
             _host_config(args, company_config=company_config, work_root=run_work_root)
@@ -309,6 +318,7 @@ async def _record(
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
             paths = await asyncio.to_thread(write_report, report, args.out_dir)
+            completed = True
     finally:
         # Grading and the oracle open their own containers, and both run OUTSIDE
         # the session context whose exit drains the agent's. Left to that hook
@@ -316,9 +326,20 @@ async def _record(
         # the last ones are never reclaimed at all, which is the leak
         # release_tool_sandboxes exists to prevent, reintroduced by a second
         # producer.
-        if binder is not None:
-            await binder.release_tool_sandboxes()
-        await _reclaim_workspaces(run_work_root, keep=args.keep_workspaces)
+        # Nested, so releasing the containers and reclaiming the trees are two
+        # independent obligations rather than a sequence where the first one
+        # failing silently drops the second.
+        try:
+            if binder is not None:
+                await binder.release_tool_sandboxes()
+        finally:
+            # An unfinished sweep keeps its trees, because they are what
+            # ``--resume`` continues with: discarding them on the way out of a
+            # failure turns every part-built cell into one that has to be paid
+            # for again, which is the loss the journal exists to stop.
+            await _reclaim_workspaces(
+                run_work_root, keep=args.keep_workspaces or not completed
+            )
     print("report written: " + ", ".join(str(path) for path in paths))
     if not report.measured_cells:
         msg = (
@@ -501,16 +522,36 @@ def _log_record_start(
     )
 
 
+def _recording_slug(out_dir: Path) -> str:
+    """A stable directory name for the recording written to *out_dir*.
+
+    The output directory names the recording, because the journal that makes a
+    sweep resumable lives in it. Hashed rather than embedded so an absolute
+    path with separators, spaces or a drive letter still yields one path
+    segment.
+
+    Args:
+        out_dir: Where the journal and the report are written.
+
+    Returns:
+        The slug.
+    """
+    resolved = str(out_dir.resolve())
+    return hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:_SLUG_CHARS]
+
+
 async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
     """Remove this run's per-unit workspace trees.
 
     A sweep creates one tree per leaf and one per node, each written into by a
-    coding agent. Nothing reuses a tree between runs, so retaining them grows
-    disk monotonically unless a maintainer is inspecting what was built, which
-    for the first working artefact in nine rounds is a real reason.
+    coding agent. Nothing reuses a tree between COMPLETED runs, so retaining
+    them grows disk monotonically; a maintainer inspecting what the sweep
+    actually built is the one reason to keep them anyway. An unfinished run is
+    the other case entirely: its trees are what the next ``--resume`` builds
+    on.
     """
     if keep:
-        print(f"workspaces kept: {run_work_root}")
+        print(f"workspaces kept for --resume: {run_work_root}")
         return
     await asyncio.to_thread(shutil.rmtree, run_work_root, ignore_errors=True)
 

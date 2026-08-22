@@ -1,11 +1,15 @@
 # module-kind: tests
 """The entry point: plan mode spends nothing, and staging narrows honestly."""
 
+import argparse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
+    _reclaim_workspaces,
+    _recording_slug,
     check_declared_families,
     describe_plan,
     main,
@@ -16,6 +20,8 @@ from evals.errors import (
     HarnessProviderMissingError,
     RecursionDepthJudgeNotIndependentError,
 )
+from evals.harness.binding import HarnessBinder
+from evals.harness.host import RecordingGatewayHost
 from evals.recursion_depth.manifest import Independence, load_manifest
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
@@ -23,6 +29,7 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -317,3 +324,203 @@ class TestStaging:
         # reads as a measured zero.
         with pytest.raises(ValueError, match="does not carry"):
             narrow(load_manifest(_MANIFEST), "1,4,9")
+
+
+def _record_args(tmp_path: Path) -> argparse.Namespace:
+    """Build the argument bundle ``_record`` reads.
+
+    Returns:
+        The namespace.
+    """
+    return argparse.Namespace(
+        out_dir=tmp_path / "out",
+        work_root=tmp_path / "work",
+        keep_workspaces=False,
+        manifest=_MANIFEST,
+        resume=False,
+        max_sessions=None,
+    )
+
+
+def _recorded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    sweep: Exception | None,
+    release: Exception | None = None,
+) -> Path:
+    """Stub everything ``_record`` reaches for, and seed the tree it builds.
+
+    Every collaborator between the preflight and the report is a gateway, a
+    container or a provider call, so each is replaced with the smallest thing
+    that lets the lifecycle run. What is left unstubbed is the part under
+    test: which scratch root is chosen, and whether it survives.
+
+    Args:
+        tmp_path: The test's directory.
+        monkeypatch: Patching seam.
+        sweep: Raised by the sweep, or ``None`` for one that measured a cell.
+        release: Raised when the containers are released, or ``None`` for a
+            release that succeeds.
+
+    Returns:
+        The scratch root the recorder will build under, already populated so
+        its removal is observable.
+    """
+    root = tmp_path / "work" / f"run-{_recording_slug(tmp_path / 'out')}"
+    (root / "unit").mkdir(parents=True)
+
+    host = mock_of[RecordingGatewayHost](
+        # The three addresses the start log states, which is everything the
+        # lifecycle under test reads off a host.
+        container_gateway_url="http://gateway.invalid/v1",
+        container_mcp_url="http://gateway.invalid/mcp",
+        port=0,
+    )
+    host.__aenter__.return_value = host
+    host.__aexit__.return_value = False
+    binder = mock_of[HarnessBinder]()
+    binder.release_tool_sandboxes.side_effect = release
+
+    async def _no_preflight(**_kwargs: object) -> None:
+        return None
+
+    async def _swept(*_args: object, **_kwargs: object) -> object:
+        if sweep is not None:
+            raise sweep
+        return SimpleNamespace(measured_cells=("one",))
+
+    monkeypatch.setattr(record_module, "run_preflight", _no_preflight)
+    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
+    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
+    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
+    monkeypatch.setattr(record_module, "_build_context", _built_context)
+    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+    monkeypatch.setattr(record_module, "run_sweep", _swept)
+    monkeypatch.setattr(record_module, "write_report", lambda *_a: (tmp_path / "r",))
+    return root
+
+
+async def _built_context(*_args: object, **_kwargs: object) -> None:
+    """Stand in for the context build, which needs a live gateway.
+
+    Returns:
+        Nothing the lifecycle under test reads.
+    """
+    return
+
+
+class TestTheScratchRootAResumeContinuesWith:
+    """A journal buys nothing if the trees it indexes move every run."""
+
+    def test_the_same_output_directory_names_the_same_root(
+        self, tmp_path: Path
+    ) -> None:
+        # A resume rebuilds each unit's tree path from the run root, so a root
+        # it cannot predict leaves every cell finding nothing and paying again
+        # for what the last attempt already built.
+        assert _recording_slug(tmp_path / "out") == _recording_slug(tmp_path / "out")
+
+    def test_two_output_directories_name_different_roots(self, tmp_path: Path) -> None:
+        # Each unit's provisioning removes and re-copies a whole tree, which is
+        # race-free only within one process, so two recordings running at once
+        # must never share a root.
+        assert _recording_slug(tmp_path / "one") != _recording_slug(tmp_path / "two")
+
+    def test_the_root_is_one_path_segment(self, tmp_path: Path) -> None:
+        # An output directory is an absolute path carrying separators, and on
+        # this platform a drive letter; embedding it would build a tree nobody
+        # asked for.
+        slug = _recording_slug(tmp_path / "out")
+
+        assert "/" not in slug
+        assert "\\" not in slug
+
+    async def test_an_unfinished_run_keeps_its_trees(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Reclaiming on the way out of a failure destroys exactly what the
+        # next --resume continues with.
+        root = tmp_path / "run-abc"
+        (root / "unit").mkdir(parents=True)
+
+        await _reclaim_workspaces(root, keep=True)
+
+        assert root.is_dir()
+        assert "--resume" in capsys.readouterr().out
+
+    async def test_a_finished_run_reclaims_them(self, tmp_path: Path) -> None:
+        root = tmp_path / "run-abc"
+        (root / "unit").mkdir(parents=True)
+
+        await _reclaim_workspaces(root, keep=False)
+
+        assert not root.exists()
+
+
+class TestWhatTheRecorderDoesWithTheTreesItBuilt:
+    """Which trees survive is decided by the recorder, not by its helper.
+
+    The two cases above pin what ``_reclaim_workspaces`` does when told; these
+    pin what it is told, which is the half a resume actually depends on. A
+    ``completed`` flag set one statement too early reads correctly in both
+    branches of the helper and still deletes what the next attempt needed.
+    """
+
+    async def test_a_sweep_that_raised_leaves_its_trees_behind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _recorded(tmp_path, monkeypatch, sweep=OSError("the gateway died"))
+
+        with pytest.raises(OSError, match="the gateway died"):
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+
+        assert root.is_dir()
+
+    async def test_a_release_failure_still_reclaims_a_finished_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Releasing the containers and reclaiming the trees are two
+        # obligations, not a sequence: run as one, the first one raising
+        # silently drops the second and the disk grows for ever.
+        root = _recorded(
+            tmp_path, monkeypatch, sweep=None, release=OSError("the daemon went away")
+        )
+
+        with pytest.raises(OSError, match="the daemon went away"):
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+
+        assert not root.exists()
+
+    async def test_a_sweep_that_wrote_its_report_reclaims_them(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = _recorded(tmp_path, monkeypatch, sweep=None)
+
+        assert (
+            await record_module._record(
+                _record_args(tmp_path),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a", reviewer_family="bound-family-b"
+                ),
+            )
+            == 0
+        )
+
+        assert not root.exists()
