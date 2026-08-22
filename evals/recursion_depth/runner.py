@@ -40,6 +40,7 @@ from evals.errors import (
     OracleUnusableError,
     RecursionDepthGateUnbuildableError,
     RecursionDepthNoCellsMeasuredError,
+    RecursionDepthPlannerSubstitutedError,
     RecursionDepthSessionCeilingError,
 )
 from evals.harness.workspace import CellWorkspace
@@ -119,6 +120,10 @@ _SYSTEMIC_FAILURES: tuple[type[Exception], ...] = (
     # run would build, spend, and then be ungradeable. A tree the oracle grades
     # and fails is an ordinary result and does not come through here.
     OracleUnusableError,
+    # Nothing about the roster changes between cells, so a planning session
+    # with no owner to run as has none in every cell. Recording it per cell
+    # would buy six identical fallback plans at full price.
+    RecursionDepthPlannerSubstitutedError,
 )
 
 #: Attempts one cell's tree gets. Two, not more: a planner that cannot produce

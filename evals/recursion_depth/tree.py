@@ -23,7 +23,7 @@ from types import MappingProxyType
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from evals.errors import OracleUnusableError
+from evals.errors import OracleUnusableError, RecursionDepthPlannerSubstitutedError
 from evals.recursion_depth.claims import RequirementId, criterion_for
 from evals.recursion_depth.oracle import (
     declared,
@@ -31,6 +31,7 @@ from evals.recursion_depth.oracle import (
     load_index,
     requirement_entries,
 )
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -234,6 +235,7 @@ async def build_tree(
     depth_cap: int,
     workspace_summary: str,
     available_roles: tuple[NotBlankStr, ...],
+    owner: AgentIdentity,
 ) -> DecompositionResult:
     """Decompose *task* down to the cap and return the whole tree.
 
@@ -244,6 +246,11 @@ async def build_tree(
         workspace_summary: What the workspace holds, so the planner plans
             against the tree rather than against an imagined one.
         available_roles: The roles the roster staffs.
+        owner: Who the planning session runs AS. Required rather than
+            optional, because the shipped strategy plans as an owner and
+            falls back to the single-shot one when it has none: passing
+            nothing here does not fail, it quietly measures a different
+            planner than the one this experiment is about.
 
     Returns:
         The decomposition tree.
@@ -255,8 +262,10 @@ async def build_tree(
             max_depth=depth_cap,
             workspace_summary=workspace_summary,
             available_roles=available_roles,
+            owner_identity=owner,
         ),
     )
+    _refuse_substituted_planner(result)
     logger.info(
         EVALS_RECURSION_TREE_BUILT,
         depth_cap=depth_cap,
@@ -265,6 +274,55 @@ async def build_tree(
         node_count=len(result.all_tasks),
     )
     return result
+
+
+def _refuse_substituted_planner(result: DecompositionResult) -> None:
+    """Refuse a tree any node of which a substitute planner produced.
+
+    The experiment's premise is that what recursion does to a plan HERE is what
+    it does in the product, so the plan has to come from the shipped planner.
+    The substitution is silent by design everywhere else: the strategy logs it
+    and carries on, because a product that cannot plan as an owner is better
+    off with a single-shot plan than with nothing. A measurement is the one
+    caller for which that trade is wrong, and it went unnoticed through two
+    live recordings.
+
+    Checked per node rather than at the root, because recursion plans each
+    level in its own session and only the levels that failed to staff an owner
+    substitute; a tree can be part researched and part single-shot, which is
+    the shape hardest to notice and the least defensible to plot.
+
+    Args:
+        result: The tree.
+
+    Raises:
+        RecursionDepthPlannerSubstitutedError: A node names a substitute.
+    """
+    substituted = sorted(
+        {
+            str(node.plan.planning_strategy)
+            for node in _nodes(result)
+            if node.plan.planning_strategy is not None
+        }
+    )
+    if not substituted:
+        return
+    msg = (
+        f"the plan was produced by a substitute planner "
+        f"({', '.join(substituted)}) rather than the shipped one, so this "
+        f"cell would measure the fallback; staff an owner the planning "
+        f"session can run as"
+    )
+    raise RecursionDepthPlannerSubstitutedError(msg)
+
+
+def _nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
+    """Every node of the tree, this level first.
+
+    Returns:
+        The nodes.
+    """
+    return (result, *(node for child in result.children for node in _nodes(child)))
 
 
 def unit_definitions(

@@ -303,6 +303,21 @@ class RecursionDepthSessionCeilingError(EvalError):
     default_message: ClassVar[str] = "Recursion-depth sweep hit its session ceiling"
 
 
+class RecursionDepthPlannerSubstitutedError(EvalError):
+    """Raised when a substitute planner produced the tree a cell would measure.
+
+    The sweep's premise is that recursion here behaves as it does in the
+    product, which holds only while the shipped planner writes the plan. The
+    substitution is silent everywhere else on purpose: a product that cannot
+    plan as an owner is better off with a single-shot plan than with none. A
+    measurement is the one caller for which that trade is wrong.
+    """
+
+    default_message: ClassVar[str] = (
+        "The tree was produced by a substitute planner, not the shipped one"
+    )
+
+
 class RecursionDepthJournalMismatchError(EvalError):
     """Raised when a sweep's journal cannot be appended to or resumed from.
 
@@ -396,6 +411,7 @@ __all__ = [
     "RecursionDepthJournalMismatchError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",
+    "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",

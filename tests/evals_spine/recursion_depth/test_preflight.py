@@ -208,7 +208,7 @@ class TestTheProbe:
 class TestTheProbeReleasesWhatItOpened:
     """The probe's registry is unreachable after it, so it closes it or leaks.
 
-    A driver on the ollama path builds an ``httpx.AsyncClient`` on its FIRST
+    A driver on an HTTP-backed path builds an ``httpx.AsyncClient`` on its FIRST
     dispatch and holds it for the driver's life. This registry exists for one
     call, so nothing else is ever in a position to release that client.
     """
@@ -269,6 +269,50 @@ class TestCleanupNeverOutranksTheProbesVerdict:
 
         assert _UPSTREAM_REFUSAL in str(caught.value)
         assert _CLEANUP_FAILURE not in str(caught.value)
+
+    async def test_an_unnamed_failure_still_releases_the_registry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The release must not depend on the probe failing a way we named.
+
+        The two named branches are the ones a misconfigured pair produces. An
+        unnamed failure, and a cancellation above all, leaves the same client
+        open, and a run stopped by an operator is exactly when that happens.
+        """
+
+        async def _break(messages: object, model_id: str) -> object:
+            del messages, model_id
+            raise MemoryError
+
+        registry = _answering(_break)
+        monkeypatch.setattr(preflight_module, "ProviderRegistry", registry)
+        manifest = load_manifest(_MANIFEST)
+
+        with pytest.raises(MemoryError):
+            await _probe_pair(
+                role="executor", pair=manifest.executor, company_config=_configured()
+            )
+
+        assert registry.closed  # type: ignore[attr-defined]  # the stand-in's own recorder
+
+    async def test_an_unnamed_failure_is_not_displaced_by_a_cleanup_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _break(messages: object, model_id: str) -> object:
+            del messages, model_id
+            raise MemoryError
+
+        monkeypatch.setattr(
+            preflight_module,
+            "ProviderRegistry",
+            _answering(_break, close_error=RuntimeError(_CLEANUP_FAILURE)),
+        )
+        manifest = load_manifest(_MANIFEST)
+
+        with pytest.raises(MemoryError):
+            await _probe_pair(
+                role="executor", pair=manifest.executor, company_config=_configured()
+            )
 
     async def test_a_cleanup_only_failure_is_still_reported(
         self, monkeypatch: pytest.MonkeyPatch

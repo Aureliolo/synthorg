@@ -202,6 +202,22 @@ class TestACrashMidWrite:
 
         assert len(state.completed) == 1
 
+    def test_an_empty_journal_file_is_given_a_header_before_anything_lands(
+        self, tmp_path: Path
+    ) -> None:
+        # A file whose header never reached the disk attributes nothing.
+        # Appending under no header makes every cell in it unreadable at the
+        # next resume, which is this file's own failure arrived at backwards.
+        (tmp_path / JOURNAL_NAME).write_text("", encoding="utf-8", newline="")
+
+        journal, state = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        journal.record(_measured())
+        journal.close()
+
+        assert not state.completed
+        _, resumed = open_journal(tmp_path, provenance=_provenance(), resume=True)
+        assert len(resumed.completed) == 1
+
     def test_a_broken_line_in_the_middle_is_corruption_and_refused(
         self, tmp_path: Path
     ) -> None:

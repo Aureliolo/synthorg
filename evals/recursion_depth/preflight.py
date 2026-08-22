@@ -144,6 +144,7 @@ async def _probe_pair(
     )
     provider = registry.get(pair.provider)
     probe_failure: HarnessProviderMissingError | None = None
+    unexpected = False
     try:
         async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
             await provider.complete(
@@ -169,35 +170,47 @@ async def _probe_pair(
         )
         probe_failure = HarnessProviderMissingError(msg)
         probe_failure.__cause__ = exc
-    # This registry is built for the probe alone and is unreachable afterwards,
-    # so whatever its drivers opened lazily during the call is released here or
-    # not at all. On the ollama path that is a live ``httpx.AsyncClient``, and
-    # the failure branches need this as much as the success one: an endpoint
-    # that refuses or hangs is exactly where a client is left open.
-    #
-    # Deliberately NOT a `finally`: an exception raised there REPLACES the one
-    # in flight, so a driver that fails to close would erase the message naming
-    # the bad credential, the unknown model or the timeout, which is the whole
-    # output of this probe. The probe's own verdict wins, and a cleanup failure
-    # is reported only when there is no verdict for it to displace.
-    await _release(registry, probe_failure=probe_failure)
+    except BaseException:
+        # Everything the two branches above do not name, cancellation included.
+        # Nothing is concluded from it, and it is already on its way out; the
+        # flag exists only so cleanup knows not to displace it.
+        unexpected = True
+        raise
+    finally:
+        # This registry is built for the probe alone and is unreachable
+        # afterwards, so whatever its drivers opened lazily during the call is
+        # released here or not at all. On an HTTP-backed driver path that is a
+        # live ``httpx.AsyncClient``, and the failure branches need this as
+        # much as the success one: an endpoint that refuses or hangs is exactly
+        # where a client is left open.
+        #
+        # A `finally`, so a cancellation or an unnamed failure cannot skip the
+        # release; but an exception raised HERE would REPLACE the one in
+        # flight, erasing the message naming the bad credential, the unknown
+        # model or the timeout, which is the whole output of this probe. So
+        # cleanup is told whether anything is already on its way to the caller,
+        # and it reports its own failure only when nothing is.
+        await _release(
+            registry, already_failing=probe_failure is not None or unexpected
+        )
     if probe_failure is not None:
         raise probe_failure
 
 
-async def _release(
-    registry: ProviderRegistry, *, probe_failure: HarnessProviderMissingError | None
-) -> None:
-    """Close *registry*, without letting cleanup outrank the probe's verdict.
+async def _release(registry: ProviderRegistry, *, already_failing: bool) -> None:
+    """Close *registry*, without letting cleanup outrank what went wrong first.
 
     Args:
         registry: The single-use registry the probe dispatched through.
-        probe_failure: What the probe concluded, when it concluded anything.
+        already_failing: Whether something is already on its way to the caller,
+            either the probe's own verdict or an unnamed failure passing
+            through. A cleanup failure never displaces one of those; it is
+            logged and dropped.
 
     Raises:
-        HarnessProviderMissingError: Cleanup failed and the probe itself did
-            not, so this is the only thing that went wrong and the operator
-            would otherwise never hear about it.
+        HarnessProviderMissingError: Cleanup failed and nothing else did, so
+            this is the only thing that went wrong and the operator would
+            otherwise never hear about it.
     """
     try:
         await registry.aclose()
@@ -207,9 +220,9 @@ async def _release(
             EVALS_HARNESS_PROBE_CLEANUP_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            probe_already_failed=probe_failure is not None,
+            probe_already_failed=already_failing,
         )
-        if probe_failure is None:
+        if not already_failing:
             msg = (
                 f"the probe's provider connection could not be released, so a "
                 f"sweep would run alongside a leaked client: "

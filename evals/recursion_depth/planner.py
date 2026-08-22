@@ -146,6 +146,12 @@ class AgentSessionPlanner:
                 depth_cap=depth_cap,
                 workspace_summary=SEED_WORKSPACE_SUMMARY,
                 available_roles=self.roster.roles,
+                # The same lead the binding above dispatches as. Without it the
+                # agent-session strategy has no owner to plan as and falls back
+                # to the single-shot one, which is the planner this module
+                # exists to NOT measure: a live run reported `strategy=llm`
+                # under a sweep whose whole premise is the shipped planner.
+                owner=self.roster.lead,
             )
             # Drained before it is read: the cost chokepoint submits each
             # record on a background task, so reading straight after the last

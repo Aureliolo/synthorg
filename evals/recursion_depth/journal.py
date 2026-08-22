@@ -360,29 +360,47 @@ def open_journal(
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / JOURNAL_NAME
     state = ResumeState(completed={}, sessions_spent=0)
-    if path.exists():
-        if not resume:
-            msg = (
-                f"a journal already exists at {path}; pass --resume to continue "
-                f"that sweep, or move it aside to record afresh"
-            )
-            raise RecursionDepthJournalMismatchError(msg)
-        lines = _read_lines(path)
-        if lines:
-            _refuse_foreign(path, lines[0], provenance)
-            state = _resume_state(_recorded_cells(path, lines[1:]))
-        logger.info(
-            EVALS_RECURSION_RESUMED,
-            journal=str(path),
-            completed_cells=len(state.completed),
-            sessions_spent=state.sessions_spent,
+    if not path.exists():
+        return _started(path, provenance), state
+    if not resume:
+        msg = (
+            f"a journal already exists at {path}; pass --resume to continue "
+            f"that sweep, or move it aside to record afresh"
         )
-        return CellJournal(path.open("a", encoding="utf-8", newline="")), state
+        raise RecursionDepthJournalMismatchError(msg)
+    lines = _read_lines(path)
+    if not lines:
+        # An empty file is a journal whose header never reached the disk, so it
+        # attributes nothing. Appending cells under no header would make every
+        # one of them unreadable at the next resume, which is the failure this
+        # whole file exists to prevent, arrived at from the other side.
+        return _started(path, provenance), state
+    _refuse_foreign(path, lines[0], provenance)
+    state = _resume_state(_recorded_cells(path, lines[1:]))
+    logger.info(
+        EVALS_RECURSION_RESUMED,
+        journal=str(path),
+        completed_cells=len(state.completed),
+        sessions_spent=state.sessions_spent,
+    )
+    return CellJournal(path.open("a", encoding="utf-8", newline="")), state
+
+
+def _started(path: Path, provenance: Provenance) -> CellJournal:
+    """Open *path* fresh and put its header beyond this process's survival.
+
+    Args:
+        path: The journal file.
+        provenance: What this recording is measured against.
+
+    Returns:
+        The open journal.
+    """
     handle = path.open("w", encoding="utf-8", newline="")
     handle.write(json.dumps({"kind": _HEADER_KIND} | _comparable(provenance)) + "\n")
     handle.flush()
     os.fsync(handle.fileno())
-    return CellJournal(handle), state
+    return CellJournal(handle)
 
 
 __all__ = [
