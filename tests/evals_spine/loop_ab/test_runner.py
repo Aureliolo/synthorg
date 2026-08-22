@@ -223,17 +223,27 @@ async def test_a_resumed_matrix_does_not_re_run_a_measured_row(
 ) -> None:
     """Reading a row back is the whole point; paying for it twice is not."""
     out_dir = tmp_path / "out"
-    common = {
-        "manifest": _manifest(),
-        "briefs": _simple_brief(),
-        "suite_root": _SUITE,
-        "deps": _scripted_deps(project_repo),
-        "provenance": _provenance(),
-        "out_dir": out_dir,
-    }
-    first = await run_matrix(work_root=tmp_path / "work-1", resume=False, **common)
+    first = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work-1",
+        deps=_scripted_deps(project_repo),
+        provenance=_provenance(),
+        out_dir=out_dir,
+        resume=False,
+    )
 
-    second = await run_matrix(work_root=tmp_path / "work-2", resume=True, **common)
+    second = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work-2",
+        deps=_scripted_deps(project_repo),
+        provenance=_provenance(),
+        out_dir=out_dir,
+        resume=True,
+    )
 
     measured = {row.loop_type for row in first.rows if row.measurement is not None}
     assert measured

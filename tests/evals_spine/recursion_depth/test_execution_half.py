@@ -90,7 +90,7 @@ from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import as_uuid, mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -171,7 +171,7 @@ def _task(title: str, *, criteria: tuple[str, ...] = ()) -> Task:
         description=NotBlankStr(f"Do {title}."),
         type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project=NotBlankStr("00000000-0000-4000-8000-0000000000ff"),
+        project=NotBlankStr(sid("project:recursion-depth-suite")),
         created_by=NotBlankStr("test"),
         status=TaskStatus.CREATED,
         acceptance_criteria=tuple(

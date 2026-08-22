@@ -25,7 +25,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -42,7 +42,7 @@ def _task(title: str) -> Task:
         description=NotBlankStr(f"Do {title}."),
         type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project=NotBlankStr("00000000-0000-4000-8000-0000000000ff"),
+        project=NotBlankStr(sid("project:recursion-depth-planner")),
         created_by=NotBlankStr("test"),
         status=TaskStatus.CREATED,
         acceptance_criteria=(AcceptanceCriterion(description=NotBlankStr("It runs")),),
