@@ -6,10 +6,11 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
-from collections.abc import Awaitable, Callable
+import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 from unittest.mock import AsyncMock
 
 import pytest
@@ -32,6 +33,7 @@ from evals.recursion_depth.grading import (
     read_verdict,
     refuse_without_a_runner,
 )
+from evals.recursion_depth.journal import CellUnits
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -63,11 +65,17 @@ from evals.recursion_depth.oracle import OracleOutcome
 from evals.recursion_depth.planner import PlannedTree, TreePlanner
 from evals.recursion_depth.runner import (
     SessionBudget,
+    SweepCell,
     SweepContext,
     planned_cells,
     run_sweep,
 )
-from evals.recursion_depth.session import SessionLimits, SessionOutcome, SweepDeps
+from evals.recursion_depth.session import (
+    SessionLimits,
+    SessionOutcome,
+    SweepDeps,
+    leaf_unit_key,
+)
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
 from synthorg.core.agent import AgentIdentity
@@ -815,8 +823,12 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _cell: object,
         _root: object,
         _tree: object,
-        _units: list[object],
+        _units: object,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
     ) -> CellWorkspace:
+        del produced, delivered
         return _workspace(tmp_path, "assembled")
 
     monkeypatch.setattr(runner_module, "_build_tree_units", _assembled)
@@ -839,11 +851,25 @@ async def _scripted_oracle(
     return OracleOutcome(results={RequirementId("R01"): True}, report="")
 
 
-def _assembles_then_dies(
-    tmp_path: Path, failure: Exception
-) -> Callable[
-    [object, object, object, object, list[UnitRecord]], Awaitable[CellWorkspace]
-]:
+class _BuildsTreeUnits(Protocol):
+    """What ``_build_tree_units`` looks like to whoever stands in for it."""
+
+    async def __call__(
+        self,
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
+    ) -> CellWorkspace:
+        """Build every leaf and assemble every node."""
+        ...
+
+
+def _assembles_then_dies(tmp_path: Path, failure: Exception) -> _BuildsTreeUnits:
     """Stand in for the build half: the first cell finishes, the second does not.
 
     Two cells rather than one because a sweep that measured nothing raises
@@ -856,13 +882,17 @@ def _assembles_then_dies(
     completed = False
 
     async def _build(
-        _context: object,
-        _cell: object,
-        _root: object,
-        _tree: object,
-        units: list[UnitRecord],
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
     ) -> CellWorkspace:
         nonlocal completed
+        del context, cell, root, tree, produced, delivered
         units.append(
             UnitRecord(
                 unit_id=NotBlankStr("leaf-1"),
@@ -879,6 +909,56 @@ def _assembles_then_dies(
         return _workspace(tmp_path, "assembled")
 
     return _build
+
+
+def _builds_one_leaf_then_dies(
+    tmp_path: Path, failure: Exception
+) -> tuple[_BuildsTreeUnits, list[dict[str, CellWorkspace]]]:
+    """Stand in for the build half: build one leaf, journal it, then die.
+
+    The leaf's tree is left where a resume looks for it, so the second attempt
+    can take it up rather than paying for it again. A later attempt that
+    already holds it assembles and returns.
+
+    Returns:
+        The replacement for ``_build_tree_units``, and the ``produced`` map it
+        was handed on each call, which is what says whether the resume took up
+        anything at all.
+    """
+    seen: list[dict[str, CellWorkspace]] = []
+
+    async def _build(
+        context: SweepContext,
+        cell: SweepCell,
+        root: Task,
+        tree: DecompositionResult,
+        units: CellUnits,
+        *,
+        produced: dict[str, CellWorkspace],
+        delivered: dict[str, bool],
+    ) -> CellWorkspace:
+        del root, delivered
+        seen.append(dict(produced))
+        if produced:
+            return _workspace(tmp_path, "assembled")
+        leaf = tree.created_tasks[0]
+        key = f"{cell.key}/{leaf_unit_key(str(leaf.id))}"
+        built = CellWorkspace(root=context.work_root / key)
+        built.project_dir.mkdir(parents=True, exist_ok=True)
+        units.append(
+            UnitRecord(
+                unit_id=NotBlankStr(str(leaf.id)),
+                title=NotBlankStr("Built before the fall"),
+                kind=LEAF,
+                depth=1,
+                delivered=True,
+                attempts=1,
+                cost=4.0,
+            )
+        )
+        raise failure
+
+    return _build, seen
 
 
 def _tree() -> DecompositionResult:
@@ -1073,6 +1153,75 @@ class TestTheMatrix:
         context = await _context(tmp_path, planner=planner, ceiling=1)
         with pytest.raises(RecursionDepthSessionCeilingError):
             await _swept(context, tmp_path, resume=True)
+
+    async def test_a_resumed_cell_takes_up_the_units_it_already_built(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A cell is hours. Reading only finished cells back means a cell killed
+        # at hour six buys every leaf again, and this is the pass that proves
+        # it does not: the planner is asked once across both attempts, and the
+        # tree the first attempt left on disk is what the second assembles.
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        manifest = _manifest(arms=(Arm.GATED,))
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        assert planner.calls == 1
+        assert seen == [{}]
+
+        report = await _swept(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            tmp_path,
+            resume=True,
+        )
+
+        # Not re-planned, and the leaf it had already built came back with its
+        # tree rather than being run a second time.
+        assert planner.calls == 1
+        assert list(seen[1]) == [str(_tree().created_tasks[0].id)]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, LEAF]
+
+    async def test_a_resumed_cell_starts_again_when_its_trees_are_gone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A plan without its trees is a walk that would hand a merge empty
+        # directories and record the assembly as having delivered nothing.
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.5, sessions=1)
+        )
+        manifest = _manifest(arms=(Arm.GATED,))
+        context = await _context(tmp_path, planner=planner, manifest=manifest)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
+        shutil.rmtree(context.work_root)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest),
+                tmp_path,
+                resume=True,
+            )
+
+        # Re-planned, and handed nothing: continuing from a plan whose trees
+        # are gone would assemble empty directories and call it a delivery.
+        assert planner.calls == 2
+        assert seen[1] == {}
 
     async def test_a_flaky_planning_call_does_not_cost_a_cell(
         self, tmp_path: Path, assembled_trees: None

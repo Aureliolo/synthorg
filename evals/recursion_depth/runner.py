@@ -53,7 +53,13 @@ from evals.recursion_depth.gate import (
     MergeReviewer,
     OracleMergeReviewer,
 )
-from evals.recursion_depth.journal import cell_key, open_cell_journal, sessions_spent
+from evals.recursion_depth.journal import (
+    CellProgress,
+    CellUnits,
+    cell_key,
+    open_cell_journal,
+    open_progress_journal,
+)
 from evals.recursion_depth.manifest import Arm, RecursionDepthManifest
 from evals.recursion_depth.merge import (
     MergeOutcome,
@@ -69,6 +75,7 @@ from evals.recursion_depth.models import (
     PLAN,
     SIZING_CAVEAT,
     CellRecord,
+    PlannedTreeRecord,
     Provenance,
     RecursionDepthReport,
     UnitRecord,
@@ -80,7 +87,14 @@ from evals.recursion_depth.score import (
     curve_by_achieved_depth,
     curve_by_depth_cap,
 )
-from evals.recursion_depth.session import SessionLimits, SweepDeps, unit_workspace
+from evals.recursion_depth.session import (
+    SessionLimits,
+    SweepDeps,
+    built_unit_workspace,
+    leaf_unit_key,
+    merge_unit_key,
+    unit_workspace,
+)
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
@@ -97,7 +111,9 @@ from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDef
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
+    EVALS_RECURSION_CELL_CONTINUED,
     EVALS_RECURSION_CELL_RECORDED,
+    EVALS_RECURSION_CELL_RESTARTED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
     EVALS_RECURSION_NO_CELLS,
     EVALS_RECURSION_PLAN_RETRIED,
@@ -222,6 +238,8 @@ async def _run_and_record(
     caveats: list[str],
     *,
     remaining: int,
+    units: CellUnits,
+    resumed: CellProgress,
 ) -> bool:
     """Run one planned cell, record it however it ends, and say whether to stop.
 
@@ -232,6 +250,13 @@ async def _run_and_record(
             writes each one to the journal as it lands.
         caveats: Sink a stopping reason is appended to.
         remaining: Planned cells after this one, for the stop log.
+        units: Sink the per-session records go to, which journals each one as
+            it lands. Owned by the caller rather than created here, because a
+            cell that raises part-way has still been paid for and the sweep's
+            spend is the check on the whole result. A cell that built fourteen
+            leaves before tripping the ceiling reported nothing at all while
+            the money was gone.
+        resumed: What an earlier attempt at this cell got through.
 
     Returns:
         True when the sweep must not continue.
@@ -240,13 +265,8 @@ async def _run_and_record(
         MemoryError: Never handled here.
         RecursionError: Never handled here.
     """
-    # Owned out here rather than inside the run, because a cell that raises
-    # part-way has still been paid for and the sweep's spend is the check on
-    # the whole result. A cell that built fourteen leaves before tripping the
-    # ceiling reported nothing at all while the money was gone.
-    units: list[UnitRecord] = []
     try:
-        records.add(await _run_cell(context, cell, units))
+        records.add(await _run_cell(context, cell, units, resumed))
     except MemoryError, RecursionError:
         raise
     except RecursionDepthSessionCeilingError as exc:
@@ -258,7 +278,7 @@ async def _run_and_record(
             measured_cells=len(records),
             error=safe_error_description(exc),
         )
-        records.add(_unavailable(cell, exc, units))
+        records.add(_unavailable(cell, exc, units.records))
         caveats.append(_CEILING_CAVEAT)
         return True
     except _SYSTEMIC_FAILURES as exc:
@@ -273,7 +293,7 @@ async def _run_and_record(
         )
         raise
     except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
-        records.add(_unavailable(cell, exc, units))
+        records.add(_unavailable(cell, exc, units.records))
         if not _report_quota_exhaustion(
             exc, measured=len(records) - 1, remaining=remaining
         ):
@@ -466,9 +486,13 @@ async def run_sweep(
     if independence is not None:
         caveats.append(independence)
     records, resumed = open_cell_journal(out_dir, provenance=provenance, resume=resume)
+    sessions, progress = open_progress_journal(
+        out_dir, provenance=provenance, resume=resume
+    )
     # Re-booked before anything runs, so a sweep resumed four times is bounded
-    # like one sweep rather than like each of its attempts.
-    context.budget.spend(sessions_spent(resumed))
+    # like one sweep rather than like each of its attempts. Read off the
+    # session rows, which is where every session appears exactly once.
+    context.budget.spend(progress.sessions_spent)
     try:
         planned = tuple(planned_cells(context.manifest))
         for index, cell in enumerate(planned):
@@ -477,10 +501,22 @@ async def run_sweep(
                 records.replay(already)
                 continue
             if await _run_and_record(
-                context, cell, records, caveats, remaining=len(planned) - index - 1
+                context,
+                cell,
+                records,
+                caveats,
+                remaining=len(planned) - index - 1,
+                units=CellUnits(
+                    sessions,
+                    depth_cap=cell.depth_cap,
+                    arm=cell.arm,
+                    repetition=cell.repetition,
+                ),
+                resumed=progress.holds(cell.key),
             ):
                 break
     finally:
+        sessions.close()
         records.close()
     cells = records.cells
     measured = tuple(record for record in cells if record.achieved_depth is not None)
@@ -581,20 +617,101 @@ async def _plan_with_retry(
     )
 
 
-async def _run_cell(
-    context: SweepContext, cell: SweepCell, units: list[UnitRecord]
-) -> CellRecord:
-    """Plan, build, assemble and grade one run.
+@dataclass(frozen=True)
+class _ContinuedCell:
+    """What an earlier attempt at a cell hands the one continuing it.
+
+    Attributes:
+        root: The objective its tree hangs off, read back rather than re-minted
+            because every ``parent_task_id`` in the tree names it by id.
+        tree: The decomposition the earlier attempt was building against.
+        produced: Each already-built unit id mapped to the tree it left on disk.
+        delivered: Each already-built unit id mapped to whether it delivered.
+    """
+
+    root: Task
+    tree: DecompositionResult
+    produced: dict[str, CellWorkspace]
+    delivered: dict[str, bool]
+
+
+def _continue_cell(
+    context: SweepContext, cell: SweepCell, resumed: CellProgress, units: CellUnits
+) -> _ContinuedCell | None:
+    """Take up an earlier attempt at *cell*, or say it must be run whole.
+
+    Continuing needs BOTH halves and they can be lost separately: the tree, so
+    the units on disk belong to something, and every one of those trees, so a
+    merge that reads them assembles what was actually built. A tree without its
+    plan is a set of directories nothing indexes; a plan without its trees is a
+    walk that would hand a merge empty directories and record the assembly as
+    delivered nothing. Either missing means the cell starts again, which costs
+    what it costs and is the only answer that cannot report a lie.
 
     Args:
         context: Everything the sweep is driven with.
         cell: Which run this is.
-        units: Sink the per-unit records are appended to, owned by the caller so
-            a run that raises part-way still reports what it had already paid
-            for.
+        resumed: What the earlier attempt got through.
+        units: Sink the replayed records go to. Mutated only once the whole
+            attempt is known to be usable.
 
     Returns:
-        The measured cell.
+        What to continue from, or ``None`` to run the cell whole.
+    """
+    if resumed.plan is None:
+        return None
+    produced: dict[str, CellWorkspace] = {}
+    delivered: dict[str, bool] = {}
+    for unit in resumed.units:
+        if unit.kind == PLAN:
+            continue
+        key = str(unit.unit_id)
+        unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
+        workspace = built_unit_workspace(
+            cell_key=cell.key, unit_key=unit_key, work_root=context.work_root
+        )
+        if workspace is None:
+            logger.warning(
+                EVALS_RECURSION_CELL_RESTARTED,
+                cell=cell.key,
+                recorded_units=len(resumed.units),
+                missing_unit=key,
+            )
+            return None
+        produced[key] = workspace
+        delivered[key] = unit.delivered
+    for unit in resumed.units:
+        units.replay(unit)
+    logger.info(
+        EVALS_RECURSION_CELL_CONTINUED,
+        cell=cell.key,
+        replayed_units=len(resumed.units),
+        replayed_sessions=sum(unit.attempts for unit in resumed.units),
+    )
+    return _ContinuedCell(
+        root=resumed.plan.root,
+        tree=resumed.plan.result,
+        produced=produced,
+        delivered=delivered,
+    )
+
+
+async def _plan_cell(
+    context: SweepContext, cell: SweepCell, units: CellUnits
+) -> _ContinuedCell:
+    """Mint *cell*'s objective and tree, journalling both before anything runs.
+
+    The tree is written down with its objective rather than after the run,
+    because it is what every unit on disk belongs to: a cell killed at hour six
+    can only be continued by whoever holds the tree it was building against.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        units: Sink the planning record goes to.
+
+    Returns:
+        The freshly planned tree, with nothing built yet.
     """
     root = objective_task(
         context.spec,
@@ -610,10 +727,44 @@ async def _run_cell(
             depth=0,
             attempts=planned.sessions,
             cost=planned.cost,
-        )
+        ),
+        plan=PlannedTreeRecord(root=root, result=planned.result),
     )
     context.budget.spend(planned.sessions)
-    assembled = await _build_tree_units(context, cell, root, planned.result, units)
+    return _ContinuedCell(root=root, tree=planned.result, produced={}, delivered={})
+
+
+async def _run_cell(
+    context: SweepContext,
+    cell: SweepCell,
+    units: CellUnits,
+    resumed: CellProgress,
+) -> CellRecord:
+    """Plan, build, assemble and grade one run.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        units: Sink the per-unit records are appended to, owned by the caller so
+            a run that raises part-way still reports what it had already paid
+            for, and journalling each one as it lands.
+        resumed: What an earlier attempt at this cell got through.
+
+    Returns:
+        The measured cell.
+    """
+    started = _continue_cell(context, cell, resumed, units) or await _plan_cell(
+        context, cell, units
+    )
+    assembled = await _build_tree_units(
+        context,
+        cell,
+        started.root,
+        started.tree,
+        units,
+        produced=started.produced,
+        delivered=started.delivered,
+    )
     merged = await run_oracle(
         build_sandbox=context.deps.build_sandbox,
         spec_dir=context.spec_dir,
@@ -623,8 +774,8 @@ async def _run_cell(
         depth_cap=cell.depth_cap,
         arm=cell.arm,
         repetition=cell.repetition,
-        achieved_depth=planned.result.max_depth_reached,
-        units=tuple(units),
+        achieved_depth=started.tree.max_depth_reached,
+        units=units.records,
         merged_passing=tuple(sorted(merged.passed)),
     )
     logger.info(
@@ -646,7 +797,10 @@ async def _build_tree_units(
     cell: SweepCell,
     root: Task,
     tree: DecompositionResult,
-    units: list[UnitRecord],
+    units: CellUnits,
+    *,
+    produced: dict[str, CellWorkspace],
+    delivered: dict[str, bool],
 ) -> CellWorkspace:
     """Build every leaf and assemble every node, children before their parent.
 
@@ -658,6 +812,10 @@ async def _build_tree_units(
         tree: The decomposition tree.
         units: Sink the per-unit records are appended to, so a run that raises
             partway still reports what it had already paid for.
+        produced: Each already-built unit id mapped to its tree, empty on a
+            fresh run and pre-filled by whatever an earlier attempt left.
+            Mutated.
+        delivered: The same, for whether each one delivered. Mutated.
 
     Returns:
         The workspace holding the root's assembled tree.
@@ -667,9 +825,14 @@ async def _build_tree_units(
     for node in merge_nodes(tree):
         parents.update({str(task.id): task for task in node.created_tasks})
     reviewer = context.reviewer_for(cell.arm)
-    produced: dict[str, CellWorkspace] = {}
-    delivered: dict[str, bool] = {}
     for node in merge_nodes(tree):
+        parent = parents[node.plan.parent_task_id]
+        if str(parent.id) in produced:
+            # An earlier attempt assembled this node, and the walk is
+            # children-first, so everything under it is on disk too. Re-running
+            # it would pay for the same assembly and then discard whichever
+            # copy lost.
+            continue
         pieces = await _leaf_pieces(
             context,
             cell,
@@ -679,7 +842,6 @@ async def _build_tree_units(
             delivered=delivered,
             units=units,
         )
-        parent = parents[node.plan.parent_task_id]
         outcome = await _run_one_merge(
             context,
             cell,
@@ -703,7 +865,7 @@ async def _leaf_pieces(
     definitions: Mapping[str, SubtaskDefinition],
     produced: dict[str, CellWorkspace],
     delivered: dict[str, bool],
-    units: list[UnitRecord],
+    units: CellUnits,
 ) -> tuple[MergePiece, ...]:
     """Build each of *node*'s children, and name what the merge assembles.
 

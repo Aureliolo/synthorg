@@ -105,3 +105,5 @@ EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed
 EVALS_RECURSION_JOURNAL_TRUNCATED: Final[str] = (
     "evals.recursion_depth.journal_truncated"
 )
+EVALS_RECURSION_CELL_CONTINUED: Final[str] = "evals.recursion_depth.cell_continued"
+EVALS_RECURSION_CELL_RESTARTED: Final[str] = "evals.recursion_depth.cell_restarted"

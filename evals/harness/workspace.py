@@ -147,6 +147,36 @@ def seed_workspace(
     return workspace
 
 
+def existing_workspace(*, cell_key: str, work_root: Path) -> CellWorkspace | None:
+    """The tree a previous run left at *cell_key*, if it is still there.
+
+    The counterpart to :func:`seed_workspace` and deliberately not a variant of
+    it: recreating from the seed is what makes each unit's grade its own, and a
+    resume is the one caller that must NOT recreate, because the tree on disk
+    is the delivery it is trying not to pay for twice.
+
+    Answers ``None`` rather than raising when the tree is gone, because that is
+    an ordinary state (an operator cleared the work root between attempts) and
+    the caller's answer to it is to run the unit again.
+
+    Args:
+        cell_key: Names the tree under *work_root*. Reaches this from a plan an
+            agent wrote, so it is resolved and re-checked against its root like
+            any other untrusted segment.
+        work_root: Directory per-cell roots live under.
+
+    Returns:
+        The workspace, or ``None`` when nothing was built there.
+
+    Raises:
+        WorkspacePathEscapeError: A resolved path escapes its root.
+    """
+    workspace = CellWorkspace(root=_contained(Path(cell_key), work_root))
+    if not workspace.project_dir.is_dir():
+        return None
+    return workspace
+
+
 def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
     """Remove every symlink under *mounted* that does not resolve inside *anchor*.
 

@@ -532,6 +532,13 @@ async def _record_cost_in_background(
         model=model,
         cost=record.cost,
         currency=ctx.currency,
+        # Logged beside cost because on a flat-rate connection cost is
+        # ALWAYS 0.0, so tokens are the only figure that says what a call
+        # consumed. Omitting them left an operator watching a subscription
+        # run reading `cost=0.0` on every line and learning nothing about
+        # what the run was spending, while the record carried it all along.
+        input_tokens=record.input_tokens,
+        output_tokens=record.output_tokens,
         call_category=effective_category.value,
         prompt_class_id=record.prompt_class_id,
         success=record.success,

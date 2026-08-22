@@ -31,7 +31,9 @@ from pydantic import (
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import DecompositionResult
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
 RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 1
@@ -259,6 +261,74 @@ class CellRecord(BaseModel):
             The summed unit tokens.
         """
         return sum(unit.tokens for unit in self.units)
+
+
+class PlannedTreeRecord(BaseModel):
+    """The tree one run was executed from, written down before anything runs.
+
+    Both halves, because neither is recoverable without the other. ``result``
+    is what a resume walks; ``root`` is the objective its top level hangs off,
+    and its id is minted per call, so re-deriving it would leave every
+    ``parent_task_id`` in ``result`` naming a task that no longer exists.
+
+    Attributes:
+        root: The objective the tree decomposes.
+        result: The decomposition tree.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    root: Task
+    result: DecompositionResult
+
+
+class CellProgressRecord(BaseModel):
+    """One session of one run, on disk the moment it returns.
+
+    A cell is hours of sessions and the cell record is written once, at the
+    end, so a cell killed part-way used to leave nothing: not what it built,
+    not what it spent, not the tree it was building against. This is the row
+    that closes that window, and it is the SPEND ledger as well as the progress
+    log, because every session the sweep books is one of these and no session
+    is anything else.
+
+    Attributes:
+        depth_cap: The ``max_depth`` the run was allowed.
+        arm: Gated or ungated.
+        repetition: Zero-based index within the cell.
+        unit: What that session produced, whatever kind of session it was.
+        plan: The tree, carried by the planning row alone. A resume that has it
+            executes the tree the earlier attempt built against; a resume
+            without it has nothing the units on disk belong to and re-runs the
+            cell whole.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth_cap: int = Field(ge=1)
+    arm: Arm
+    repetition: int = Field(ge=0)
+    unit: UnitRecord
+    plan: PlannedTreeRecord | None = None
+
+    @model_validator(mode="after")
+    def _only_the_plan_row_carries_a_tree(self) -> Self:
+        """Reject a tree hung off a row that did no planning.
+
+        Returns:
+            ``self`` when the pair agrees.
+
+        Raises:
+            ValueError: A non-planning row carries a tree.
+        """
+        if self.plan is not None and self.unit.kind != PLAN:
+            msg = (
+                f"progress row for unit {self.unit.unit_id} is a "
+                f"{self.unit.kind} and carries a tree; only the planning row "
+                f"does, or a resume has two trees to choose between"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class DepthPoint(BaseModel):

@@ -23,15 +23,34 @@ from evals.harness.journal import (
 from evals.recursion_depth.journal import (
     JOURNAL_KIND,
     JOURNAL_NAME,
+    PROGRESS_NAME,
+    PROGRESS_SPEC,
     SPEC,
     cell_key,
     matrix_identity,
     open_cell_journal,
+    progress_by_cell,
     sessions_spent,
 )
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
-from evals.recursion_depth.models import LEAF, CellRecord, Provenance, UnitRecord
+from evals.recursion_depth.models import (
+    LEAF,
+    PLAN,
+    CellProgressRecord,
+    CellRecord,
+    PlannedTreeRecord,
+    Provenance,
+    UnitRecord,
+)
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
@@ -110,35 +129,6 @@ def _unavailable(*, depth_cap: int = 1, arm: Arm = Arm.UNGATED) -> CellRecord:
     )
 
 
-def _partly_spent_then_failed() -> CellRecord:
-    """Build a cell that ran units and then could not be measured.
-
-    The shape the ceiling has to see: unavailable, so it is retried, but
-    carrying real sessions that were already paid for.
-
-    Returns:
-        The cell.
-    """
-    return CellRecord(
-        depth_cap=2,
-        arm=Arm.GATED,
-        repetition=0,
-        units=(
-            UnitRecord(
-                unit_id=NotBlankStr("leaf-2"),
-                title=NotBlankStr("A leaf that ran before the cell died"),
-                kind=LEAF,
-                depth=1,
-                delivered=False,
-                attempts=3,
-                turns=9,
-                tokens=4000,
-            ),
-        ),
-        unavailable_reason="DecompositionError: the planner call failed",
-    )
-
-
 def _opened(
     tmp_path: Path, *, resume: bool, commit: str = "0" * 40
 ) -> tuple[RunJournal[CellRecord], ResumeState[CellRecord]]:
@@ -150,6 +140,126 @@ def _opened(
     return open_journal(
         tmp_path,
         SPEC,
+        identity=matrix_identity(_provenance(commit=commit)),
+        resume=resume,
+    )
+
+
+def _plan_row(*, depth_cap: int = 1, arm: Arm = Arm.GATED) -> CellProgressRecord:
+    """Build the planning session of one cell, carrying its tree.
+
+    Returns:
+        The progress row.
+    """
+    root = _root_task()
+    return CellProgressRecord(
+        depth_cap=depth_cap,
+        arm=arm,
+        repetition=0,
+        unit=UnitRecord(
+            unit_id=NotBlankStr("plan-1"),
+            title=NotBlankStr("Plan: a tiny spec"),
+            kind=PLAN,
+            depth=0,
+            attempts=1,
+            cost=1.0,
+        ),
+        plan=PlannedTreeRecord(root=root, result=_tree(root)),
+    )
+
+
+def _leaf_row(
+    *,
+    depth_cap: int = 1,
+    arm: Arm = Arm.GATED,
+    unit_id: str = "leaf-1",
+    attempts: int = 2,
+) -> CellProgressRecord:
+    """Build one built-leaf session of a cell.
+
+    Returns:
+        The progress row.
+    """
+    return CellProgressRecord(
+        depth_cap=depth_cap,
+        arm=arm,
+        repetition=0,
+        unit=UnitRecord(
+            unit_id=NotBlankStr(unit_id),
+            title=NotBlankStr("A leaf"),
+            kind=LEAF,
+            depth=1,
+            delivered=True,
+            attempts=attempts,
+            turns=3,
+            tokens=10,
+        ),
+    )
+
+
+def _task(title: str) -> Task:
+    """Build a task the harness could brief.
+
+    Returns:
+        The task.
+    """
+    return Task(
+        title=NotBlankStr(title),
+        description=NotBlankStr(f"Do {title}."),
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr(sid("project:recursion-depth-suite")),
+        created_by=NotBlankStr("lead"),
+    )
+
+
+def _root_task() -> Task:
+    """Build the objective a tree hangs off.
+
+    Returns:
+        The task.
+    """
+    return _task("Deliver the tiny spec")
+
+
+def _tree(root: Task) -> DecompositionResult:
+    """Build a one-level decomposition of *root*.
+
+    Returns:
+        The tree.
+    """
+    child = _task("Build the tiny thing")
+    return DecompositionResult(
+        plan=DecompositionPlan(
+            parent_task_id=NotBlankStr(str(root.id)),
+            task_structure=TaskStructure.SEQUENTIAL,
+            subtasks=(
+                SubtaskDefinition(
+                    # A subtask id IS its child task's id, in canonical UUID
+                    # form: the result model refuses a level where the two
+                    # sets differ.
+                    id=NotBlankStr(str(child.id)),
+                    title=NotBlankStr("Build the tiny thing"),
+                    description=NotBlankStr("Build it."),
+                    expected_artifacts=(NotBlankStr("tiny/thing.py"),),
+                    satisfies=(NotBlankStr("R01"),),
+                ),
+            ),
+        ),
+        created_tasks=(child,),
+    )
+
+
+def _progress_opened(
+    tmp_path: Path, *, resume: bool, commit: str = "0" * 40
+) -> tuple[RunJournal[CellProgressRecord], ResumeState[CellProgressRecord]]:
+    """Open the session journal at *tmp_path* under the same binding.
+
+    Returns:
+        The journal and every session previous attempts recorded.
+    """
+    return open_journal(
+        tmp_path,
+        PROGRESS_SPEC,
         identity=matrix_identity(_provenance(commit=commit)),
         resume=resume,
     )
@@ -205,34 +315,6 @@ class TestResume:
 
         assert state.holds(cell_key(1, Arm.UNGATED, 0)) is None
 
-    def test_the_sessions_a_resumed_cell_spent_are_re_booked(
-        self, tmp_path: Path
-    ) -> None:
-        # Otherwise a sweep resumed four times is bounded like four sweeps, and
-        # the ceiling stops meaning what the manifest says it means.
-        journal, _ = _opened(tmp_path, resume=False)
-        journal.record(_measured())
-        journal.record(_measured(arm=Arm.UNGATED))
-        journal.close()
-
-        _, state = _opened(tmp_path, resume=True)
-
-        assert sessions_spent(state) == 4
-
-    def test_a_failed_cells_sessions_are_re_booked_too(self, tmp_path: Path) -> None:
-        # It is attempted again, but the sessions it already burned are gone
-        # from the account either way. Counting only what is replayed lets a
-        # sweep that keeps failing and resuming outspend its own manifest.
-        journal, _ = _opened(tmp_path, resume=False)
-        journal.record(_measured())
-        journal.record(_partly_spent_then_failed())
-        journal.close()
-
-        _, state = _opened(tmp_path, resume=True)
-
-        assert len(state.completed) == 1
-        assert sessions_spent(state) == 5
-
     def test_a_journal_from_a_different_commit_is_refused(self, tmp_path: Path) -> None:
         # Cells measured before a change to the recursion point are cells about
         # a different system, and two of those are not one curve.
@@ -254,6 +336,102 @@ class TestResume:
 
         with pytest.raises(HarnessJournalMismatchError, match="already exists"):
             _opened(tmp_path, resume=False)
+
+
+class TestASessionSurvivesTheCellThatRanIt:
+    """A cell is hours; a session is what a killed cell can still leave."""
+
+    def test_a_session_is_readable_before_its_cell_ends(self, tmp_path: Path) -> None:
+        # The whole point of the finer journal: a cell killed at hour six used
+        # to leave nothing, because its record is written once, at the end.
+        journal, _ = _progress_opened(tmp_path, resume=False)
+
+        journal.record(_plan_row())
+        journal.record(_leaf_row())
+
+        lines = (tmp_path / PROGRESS_NAME).read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 3
+
+    def test_the_planning_row_carries_the_tree_the_units_belong_to(
+        self, tmp_path: Path
+    ) -> None:
+        # Without it a resume holds directories nothing indexes, and every
+        # ``parent_task_id`` names an objective that was minted per call.
+        journal, _ = _progress_opened(tmp_path, resume=False)
+        journal.record(_plan_row())
+        journal.record(_leaf_row())
+        journal.close()
+
+        _, state = _progress_opened(tmp_path, resume=True)
+
+        resumed = progress_by_cell(state)[cell_key(1, Arm.GATED, 0)]
+        assert resumed.plan is not None
+        assert [unit.unit_id for unit in resumed.units] == ["plan-1", "leaf-1"]
+
+    def test_sessions_are_re_booked_from_the_rows_that_ran_them(
+        self, tmp_path: Path
+    ) -> None:
+        # Otherwise a sweep resumed four times is bounded like four sweeps, and
+        # the ceiling stops meaning what the manifest says it means.
+        journal, _ = _progress_opened(tmp_path, resume=False)
+        journal.record(_plan_row())
+        journal.record(_leaf_row())
+        journal.record(_leaf_row(arm=Arm.UNGATED, attempts=3))
+        journal.close()
+
+        _, state = _progress_opened(tmp_path, resume=True)
+
+        assert sessions_spent(state) == 6
+
+    def test_a_dead_cells_sessions_are_re_booked_too(self, tmp_path: Path) -> None:
+        # The cell never finished, so it has no cell record at all, and every
+        # session it burned is gone from the account either way. Reading spend
+        # off the finished cells alone is how a sweep that keeps dying and
+        # resuming outspends its own manifest.
+        journal, _ = _progress_opened(tmp_path, resume=False)
+        journal.record(_plan_row())
+        journal.record(_leaf_row())
+        journal.close()
+
+        cells, cell_state = _opened(tmp_path, resume=False)
+        cells.close()
+        _, state = _progress_opened(tmp_path, resume=True)
+
+        assert not cell_state.completed
+        assert sessions_spent(state) == 3
+
+    def test_a_second_plan_supersedes_the_units_of_the_first(
+        self, tmp_path: Path
+    ) -> None:
+        # A cell whose trees were cleaned away starts again, and the units it
+        # recorded against the old tree belong to nothing this attempt builds.
+        # Continuing from a mix of the two would hand a merge one attempt's
+        # directories under another attempt's plan.
+        journal, _ = _progress_opened(tmp_path, resume=False)
+        journal.record(_plan_row())
+        journal.record(_leaf_row(unit_id="leaf-old"))
+        journal.record(_plan_row())
+        journal.record(_leaf_row(unit_id="leaf-new"))
+        journal.close()
+
+        _, state = _progress_opened(tmp_path, resume=True)
+
+        resumed = progress_by_cell(state)[cell_key(1, Arm.GATED, 0)]
+        assert [unit.unit_id for unit in resumed.units] == ["plan-1", "leaf-new"]
+        # Both attempts were paid for, so both stay in the spend.
+        assert sessions_spent(state) == 6
+
+    def test_a_tree_on_a_row_that_did_no_planning_is_refused(self) -> None:
+        # Two trees on one cell is a resume with a choice to make and nothing
+        # to make it with.
+        with pytest.raises(ValueError, match="only the planning row"):
+            CellProgressRecord(
+                depth_cap=1,
+                arm=Arm.GATED,
+                repetition=0,
+                unit=_leaf_row().unit,
+                plan=_plan_row().plan,
+            )
 
 
 class TestACrashMidWrite:

@@ -29,7 +29,7 @@ from evals.harness.stall_watch import (
     StallWatch,
 )
 from evals.harness.transcript import TranscriptRecorder
-from evals.harness.workspace import CellWorkspace, seed_workspace
+from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.recursion_depth.grading import SandboxFactory, UnitGrader
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -216,6 +216,28 @@ class OpenSession:
         )
 
 
+def leaf_unit_key(task_id: str) -> str:
+    """What a leaf's tree is called under its cell.
+
+    The single owner of the format, because a resume reaches for a tree a
+    previous attempt built by rebuilding this string: a second spelling would
+    look in an empty directory and re-run work already paid for.
+
+    Returns:
+        The key.
+    """
+    return f"leaf-{task_id}"
+
+
+def merge_unit_key(task_id: str) -> str:
+    """What an assembly's tree is called under its cell.
+
+    Returns:
+        The key.
+    """
+    return f"merge-{task_id}"
+
+
 def unit_workspace(
     *, cell_key: str, unit_key: str, spec_dir: Path, work_root: Path
 ) -> CellWorkspace:
@@ -236,6 +258,22 @@ def unit_workspace(
         suite_root=spec_dir,
         work_root=work_root,
     )
+
+
+def built_unit_workspace(
+    *, cell_key: str, unit_key: str, work_root: Path
+) -> CellWorkspace | None:
+    """The tree a previous attempt left for one unit, if it is still there.
+
+    Args:
+        cell_key: Names the run this unit belongs to.
+        unit_key: Names the unit within that run.
+        work_root: Directory per-unit trees live under.
+
+    Returns:
+        The workspace, or ``None`` when nothing was built there.
+    """
+    return existing_workspace(cell_key=f"{cell_key}/{unit_key}", work_root=work_root)
 
 
 def artifacts_present(task: Task, workspace: CellWorkspace) -> bool:
