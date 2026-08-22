@@ -327,14 +327,15 @@ class TestTheScratchRootAResumeContinuesWith:
     def test_the_same_output_directory_names_the_same_root(
         self, tmp_path: Path
     ) -> None:
-        # The resume path rebuilds each unit's tree path from the run root, so
-        # a per-invocation name would leave every resumed cell finding nothing
-        # and paying for what the last attempt already built.
+        # A resume rebuilds each unit's tree path from the run root, so a root
+        # it cannot predict leaves every cell finding nothing and paying again
+        # for what the last attempt already built.
         assert _recording_slug(tmp_path / "out") == _recording_slug(tmp_path / "out")
 
     def test_two_output_directories_name_different_roots(self, tmp_path: Path) -> None:
-        # What the per-invocation name used to buy: two recordings running at
-        # once must not reset each other's trees.
+        # Each unit's provisioning removes and re-copies a whole tree, which is
+        # race-free only within one process, so two recordings running at once
+        # must never share a root.
         assert _recording_slug(tmp_path / "one") != _recording_slug(tmp_path / "two")
 
     def test_the_root_is_one_path_segment(self, tmp_path: Path) -> None:

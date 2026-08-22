@@ -276,14 +276,13 @@ async def _record(
     # configuration or the machine and none of it becomes truer once a scratch
     # database, a gateway and a container are standing.
     await run_preflight(manifest=manifest, company_config=company_config)
-    # Derived from the output directory rather than minted per invocation. The
-    # journal in that directory is what a resume continues from, and the unit
-    # trees are what it continues WITH: a fresh name per run would leave every
-    # resumed cell unable to find what the previous attempt built, so
-    # ``_continue_cell`` would restart each one and the journal would be
-    # buying nothing. The concurrency this used to guard is guarded better one
-    # layer up: two runs sharing an output directory are refused by the
-    # journal itself, and two with different ones land on different roots.
+    # Named after the output directory, because the journal there is what a
+    # resume continues from and these trees are what it continues WITH: a
+    # resume rebuilds each unit's path from this root, so a root it cannot
+    # predict leaves every cell unable to find what was already built for it.
+    # Two runs sharing an output directory are refused by the journal itself,
+    # and two with different ones land on different roots, so concurrent
+    # recordings still never reset each other's trees.
     run_work_root = args.work_root / f"run-{_recording_slug(args.out_dir)}"
     binder: HarnessBinder | None = None
     completed = False
@@ -329,10 +328,10 @@ async def _record(
         # producer.
         if binder is not None:
             await binder.release_tool_sandboxes()
-        # Kept whenever the sweep did NOT finish, because those trees are
-        # exactly what ``--resume`` continues with. Reclaiming them on the way
-        # out of a failure turns every part-built cell into one that has to be
-        # paid for again, which is the loss the journal exists to stop.
+        # An unfinished sweep keeps its trees, because they are what
+        # ``--resume`` continues with: discarding them on the way out of a
+        # failure turns every part-built cell into one that has to be paid for
+        # again, which is the loss the journal exists to stop.
         await _reclaim_workspaces(
             run_work_root, keep=args.keep_workspaces or not completed
         )
