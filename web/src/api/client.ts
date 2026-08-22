@@ -323,6 +323,10 @@ async function probeSession(): Promise<SessionVerdict> {
  * "one the last test left running".
  */
 export async function _settleSessionProbeForTests(): Promise<void> {
+  // The await is what modifies it: `probeSession` clears `sessionProbe` from a
+  // `.finally` callback, which cannot run until this loop yields. The rule
+  // reads the loop body syntactically and sees no assignment.
+  // eslint-disable-next-line no-unmodified-loop-condition
   while (sessionProbe !== null) await sessionProbe
 }
 
