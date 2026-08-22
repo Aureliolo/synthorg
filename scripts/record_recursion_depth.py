@@ -115,16 +115,25 @@ def _pair(pair: ModelPair) -> str:
 def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
     """The family the model actually answering for *pair* belongs to.
 
+    Resolved down the same ladder the product's own family lookup uses
+    (:func:`synthorg.providers.family.get_family`): the model's declared family
+    where there is one, else the CONNECTION's. Reading only the model half
+    answers ``None`` for a config that declares the family once on the
+    connection and inherits it, and two ``None`` families satisfy the
+    cross-family check by saying nothing rather than by differing, so a
+    correlated judge records as independent.
+
     Returns:
-        The company config's family for the model this pair aliases to, or
-        ``None`` when the provider, the model or its family is not declared
-        there.
+        The family the model this pair aliases to belongs to, or ``None`` when
+        neither the model nor its connection declares one.
     """
     provider = config.providers.get(pair.provider)
     if provider is None:
         return None
     model = model_named(provider, pair.model_id)
-    return None if model is None else model.metadata.family
+    if model is not None and model.metadata.family is not None:
+        return model.metadata.family
+    return provider.family
 
 
 def check_declared_families(

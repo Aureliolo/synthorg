@@ -165,6 +165,14 @@ async def _probe_pair(
             f"{safe_error_description(exc)}"
         )
         raise HarnessProviderMissingError(msg) from exc
+    finally:
+        # This registry is built for the probe alone and is unreachable
+        # afterwards, so whatever its drivers opened lazily during the call is
+        # released here or not at all. On the ollama path that is a live
+        # ``httpx.AsyncClient``, and the failure branches need this as much as
+        # the success one: an endpoint that refuses or hangs is exactly where a
+        # client is left open.
+        await registry.aclose()
 
 
 async def _check_docker() -> None:

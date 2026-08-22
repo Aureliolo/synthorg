@@ -4,7 +4,11 @@
 import pytest
 
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.staffing import SweepRoster, build_roster
+from evals.recursion_depth.staffing import (
+    _RESPONSE_TOKEN_CEILING,
+    SweepRoster,
+    build_roster,
+)
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.routing_policy.capability_policy import (
@@ -90,9 +94,12 @@ async def test_staffed_agents_declare_their_own_ceiling() -> None:
     assert unset is None
     assert staffed
     for identity in staffed:
-        ceiling = identity.model.max_tokens
-        assert ceiling is not None
-        assert ceiling > DEFAULT_AGENT_MAX_RESPONSE_TOKENS // 2
+        # Equality, not a lower bound. Any threshold below the sweep's own
+        # figure is also satisfied by the value an UNSET binding resolves to,
+        # so a roster that silently stopped declaring a ceiling would pass the
+        # very test written to catch that.
+        assert identity.model.max_tokens == _RESPONSE_TOKEN_CEILING
+    assert _RESPONSE_TOKEN_CEILING != DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 
 
 async def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:

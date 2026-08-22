@@ -347,6 +347,27 @@ def watching(
     return watch.watching()
 
 
+def _token_bounded(task: Task, limits: SessionLimits) -> Task:
+    """Arm the in-loop token kill this session's limits declare.
+
+    The engine's budget checker reads ``Task.hard_token_ceiling``, never the
+    sweep's own limits, so a ceiling that is not written onto the task binds
+    nothing. That is not a spare belt here: every connection these sweeps run
+    against is flat-rate, so ``cost_ceiling`` is measured against a cost the
+    provider reports as ``0.0`` on every call and can never fire, leaving a
+    runaway unit bounded only by its turn budget.
+
+    Re-validated rather than ``model_copy``-ed, because a copy runs no
+    validator and the field is constrained ``ge=0``.
+
+    Returns:
+        The task, carrying the session's token ceiling.
+    """
+    return Task.model_validate(
+        task.model_dump() | {"hard_token_ceiling": limits.token_ceiling}
+    )
+
+
 async def run_session(
     deps: SweepDeps,
     *,
@@ -376,6 +397,7 @@ async def run_session(
         agent_id=str(identity.id),
         max_turns=limits.max_turns,
     )
+    bounded = _token_bounded(task, limits)
     binding = run_binding(
         identity=identity, task=task, execution_id=execution_id, limits=limits
     )
@@ -383,7 +405,7 @@ async def run_session(
         try:
             async with watching(deps, session):
                 result = await session.engine.run(
-                    identity=identity, task=task, max_turns=limits.max_turns
+                    identity=identity, task=bounded, max_turns=limits.max_turns
                 )
         finally:
             # Read however the session ended. A provider call that recorded

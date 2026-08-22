@@ -96,18 +96,22 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     """Build the single-shot LLM decomposition strategy.
 
     The agent-session-only deps (*provider_selector*, *tool_provider*,
-    *cost_tracker*, *shutdown_checker*, *planning_memory*, the session config)
-    are accepted so the strategy registry can pass a uniform kwarg set to every
-    builder; the single-shot strategy ignores them.
+    *shutdown_checker*, *planning_memory*, the session config) are accepted so
+    the strategy registry can pass a uniform kwarg set to every builder; the
+    single-shot strategy ignores them. *cost_tracker* is NOT one of them: the
+    single-shot strategy opens its own ``cost_recording_scope`` around the
+    planning call, so dropping it here leaves every decomposition this path
+    runs attributed to nothing.
 
     Returns:
         An :class:`LlmDecompositionStrategy` over *provider* + *model*.
     """
-    del provider_selector, tool_provider, cost_tracker, shutdown_checker
+    del provider_selector, tool_provider, shutdown_checker
     del agent_session_config, planning_memory
     return _llm_strategy(
         provider=provider,
         decomposition_model=decomposition_model,
+        cost_tracker=cost_tracker,
         config_resolver=config_resolver,
     )
 
@@ -116,6 +120,7 @@ def _llm_strategy(
     *,
     provider: CompletionProvider,
     decomposition_model: str,
+    cost_tracker: CostTrackerProtocol | None,
     config_resolver: ConfigResolverProtocol | None,
 ) -> DecompositionStrategy:
     """Build the single-shot LLM strategy over the operator's live settings.
@@ -134,6 +139,7 @@ def _llm_strategy(
     return LlmDecompositionStrategy(
         provider=provider,
         model=decomposition_model,
+        cost_tracker=cost_tracker,
         config_resolver=config_resolver,
     )
 
@@ -172,6 +178,7 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
         fallback=_llm_strategy(
             provider=provider,
             decomposition_model=decomposition_model,
+            cost_tracker=cost_tracker,
             config_resolver=config_resolver,
         ),
         tool_provider=tool_provider,

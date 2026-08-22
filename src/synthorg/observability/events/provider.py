@@ -35,6 +35,12 @@ PROVIDER_DRIVER_INSTANTIATED: Final[str] = "provider.driver.instantiated"
 PROVIDER_SCRIPTED_DRIVER_INSTANTIATED: Final[str] = "provider.scripted.instantiated"
 PROVIDER_DRIVER_FACTORY_MISSING: Final[str] = "provider.driver.factory_missing"
 PROVIDER_DRIVER_NOT_REGISTERED: Final[str] = "provider.driver.not_registered"
+PROVIDER_DRIVER_CLOSE_FAILED: Final[str] = "provider.driver.close_failed"
+"""One driver's ``aclose`` raised while a registry was releasing all of them.
+Logged at WARNING and the sweep continues, because stopping at the first
+failure would leak every driver after it, and a driver that fails to release a
+client is the likeliest one to be holding one. The first error is re-raised
+once every driver has been closed."""
 PROVIDER_CALL_START: Final[str] = "provider.call.start"
 PROVIDER_CALL_SUCCESS: Final[str] = "provider.call.success"
 PROVIDER_CALL_ERROR: Final[str] = "provider.call.error"

@@ -531,9 +531,16 @@ _OLLAMA_CLOUD = CloudPreset(
     # single call. Two here had been retired for over a month before anyone
     # tried them. Prefer ids under a dated or numbered tag over a `:preview`
     # one, which changes under whoever pinned it.
+    #
+    # Every id carries the `-cloud` suffix, because this connection is the
+    # HOSTED endpoint and the plain tag names the local pull: `gpt-oss:120b`
+    # is a 65 GB download nothing behind ollama.com/v1 serves, and an untagged
+    # id resolves to `latest`, which the hosted catalogue does not publish at
+    # all. The suffix is what makes each of these a model this connection can
+    # actually answer with.
     default_models=(
         ProviderModelConfig(
-            id="gpt-oss:120b",
+            id="gpt-oss:120b-cloud",
             alias="oss-120b",
             max_context=131_072,
             metadata=ModelMetadata(
@@ -546,9 +553,9 @@ _OLLAMA_CLOUD = CloudPreset(
             ),
         ),
         ProviderModelConfig(
-            id="deepseek-v4-pro:0813",
+            id="deepseek-v4-pro:0813-cloud",
             alias="deepseek-v4",
-            max_context=160_000,
+            max_context=1_000_000,
             metadata=ModelMetadata(
                 supports_tools=True,
                 supports_reasoning=True,
@@ -559,9 +566,9 @@ _OLLAMA_CLOUD = CloudPreset(
             ),
         ),
         ProviderModelConfig(
-            id="kimi-k2.7-code",
+            id="kimi-k2.7-code:cloud",
             alias="kimi-code",
-            max_context=131_072,
+            max_context=262_144,
             metadata=ModelMetadata(
                 supports_tools=True,
                 max_output_tokens=32_768,

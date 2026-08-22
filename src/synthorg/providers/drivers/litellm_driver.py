@@ -181,6 +181,20 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         await guard.ensure_capacity(model_id)
 
     @override
+    async def aclose(self) -> None:
+        """Release the VRAM guard's shared HTTP client.
+
+        The guard is built on the first ollama dispatch and owns an
+        ``httpx.AsyncClient`` for the life of the driver, so nothing before
+        this closes it: construction runs during synchronous wiring, where no
+        loop exists to open a client, and each dispatch needs the one the last
+        dispatch left open.
+        """
+        guard = self._vram_guard
+        if guard is not None:
+            await guard.aclose()
+
+    @override
     def serves_model(self, model: str) -> bool:
         """Membership check over this provider's model ids and aliases.
 

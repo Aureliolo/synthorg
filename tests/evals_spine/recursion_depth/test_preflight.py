@@ -1,8 +1,10 @@
 # module-kind: tests
 """Everything knowable before the sweep boots is settled before it boots."""
 
+import contextlib
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import ClassVar
 
 import aiodocker
 import pytest
@@ -101,6 +103,8 @@ def _answering(answer: _Complete) -> object:
             return await answer(messages, model_id)
 
     class _Registry:
+        closed: ClassVar[list[bool]] = []
+
         @staticmethod
         def from_config(configs: object) -> _Registry:
             del configs
@@ -110,6 +114,9 @@ def _answering(answer: _Complete) -> object:
         def get(name: str) -> object:
             del name
             return _Provider()
+
+        async def aclose(self) -> None:
+            type(self).closed.append(True)
 
     return _Registry
 
@@ -190,6 +197,40 @@ class TestTheProbe:
         await _probe_pair(
             role="executor", pair=manifest.executor, company_config=_configured()
         )
+
+
+class TestTheProbeReleasesWhatItOpened:
+    """The probe's registry is unreachable after it, so it closes it or leaks.
+
+    A driver on the ollama path builds an ``httpx.AsyncClient`` on its FIRST
+    dispatch and holds it for the driver's life. This registry exists for one
+    call, so nothing else is ever in a position to release that client.
+    """
+
+    @pytest.mark.parametrize("outcome", ["answers", "refuses", "hangs"])
+    async def test_the_registry_is_closed_however_the_probe_ends(
+        self, monkeypatch: pytest.MonkeyPatch, outcome: str
+    ) -> None:
+        """A refusing or hanging endpoint is exactly where a client is left."""
+
+        async def _act(messages: object, model_id: str) -> object:
+            del messages, model_id
+            if outcome == "refuses":
+                raise ProviderError(_UPSTREAM_REFUSAL)
+            if outcome == "hangs":
+                raise TimeoutError
+            return object()
+
+        registry = _answering(_act)
+        monkeypatch.setattr(preflight_module, "ProviderRegistry", registry)
+        manifest = load_manifest(_MANIFEST)
+
+        with contextlib.suppress(HarnessProviderMissingError):
+            await _probe_pair(
+                role="executor", pair=manifest.executor, company_config=_configured()
+            )
+
+        assert registry.closed  # type: ignore[attr-defined]  # the stand-in's own recorder
 
 
 class TestTheDockerCheck:

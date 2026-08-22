@@ -155,7 +155,7 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
             definition.satisfies,
             known=spec.requirement_ids,
             unit=definition.title,
-        )
+        ).ids
     ]
     stated = [f"Your unit: {definition.title}", str(task.description)]
     if claimed:

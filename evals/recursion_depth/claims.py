@@ -19,7 +19,7 @@ the one number the sweep exists to produce.
 
 import re
 from collections.abc import Iterable, Sequence
-from typing import NewType
+from typing import NamedTuple, NewType
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_CLAIM_UNRESOLVED
@@ -46,6 +46,28 @@ _CRITERION_TEMPLATE = "{identifier} is satisfied"
 _IDENTIFIER = re.compile(r"\bR\d+\b")
 
 
+class ResolvedClaims(NamedTuple):
+    """What one unit's claims resolved to.
+
+    Two fields rather than one, because the counts are in DIFFERENT UNITS and
+    neither can be derived from the other: ``ids`` counts requirements, after
+    deduplication, while ``unresolved`` counts CLAIMS. Subtracting the first
+    from the claim count is wrong in both directions, and both are reachable
+    from an ordinary planner: one claim naming two requirements makes the
+    difference negative, which ``UnitRecord.unresolved_claims`` refuses at
+    ``ge=0`` and so discards a cell every leaf of which was already paid for;
+    two claims naming one requirement makes it over-report drift, which is the
+    one signal the caveat exists to carry.
+
+    Attributes:
+        ids: The resolved ids, deduplicated, in the order first seen.
+        unresolved: How many claims named no requirement the spec defines.
+    """
+
+    ids: tuple[RequirementId, ...]
+    unresolved: int
+
+
 def criterion_for(identifier: RequirementId) -> str:
     """Render the acceptance criterion carrying *identifier*.
 
@@ -57,7 +79,7 @@ def criterion_for(identifier: RequirementId) -> str:
 
 def requirement_ids_of(
     claims: Iterable[str], *, known: Sequence[RequirementId], unit: str
-) -> tuple[RequirementId, ...]:
+) -> ResolvedClaims:
     """Resolve *claims* to the spec requirement ids they name.
 
     A claim resolves on the id token it contains, checked against *known*, so
@@ -73,10 +95,15 @@ def requirement_ids_of(
         unit: The unit the claims belong to, for the warning.
 
     Returns:
-        The resolved ids, deduplicated, in the order first seen.
+        The resolved ids and how many claims resolved to nothing. The count is
+        taken HERE, where a claim is still one claim, rather than derived by a
+        caller from the two lengths: those are different units and the
+        subtraction is wrong whenever a claim names two requirements or two
+        claims name one.
     """
     vocabulary = frozenset(known)
     resolved: list[RequirementId] = []
+    unresolved = 0
     for claim in claims:
         found = [
             RequirementId(one)
@@ -85,9 +112,15 @@ def requirement_ids_of(
         ]
         if not found:
             logger.warning(EVALS_RECURSION_CLAIM_UNRESOLVED, unit=unit, claim=claim)
+            unresolved += 1
             continue
         resolved.extend(one for one in found if one not in resolved)
-    return tuple(resolved)
+    return ResolvedClaims(ids=tuple(resolved), unresolved=unresolved)
 
 
-__all__ = ["RequirementId", "criterion_for", "requirement_ids_of"]
+__all__ = [
+    "RequirementId",
+    "ResolvedClaims",
+    "criterion_for",
+    "requirement_ids_of",
+]

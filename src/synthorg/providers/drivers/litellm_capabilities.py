@@ -40,16 +40,18 @@ def _fallback_output_tokens(*, max_context: int, configured: int) -> int:
     session says it is done. A truncated response is spent and then discarded,
     so a cap set too low costs more than it saves.
 
-    The operator's configured value is a FLOOR, never a ceiling: this only ever
-    widens the allowance, so a deployment that tuned it down for a small model
-    keeps what it chose.
+    The operator's configured value is a floor on what THIS function answers:
+    it only ever widens the context-derived allowance. The caller then caps the
+    result against ``max_context``, which this cannot lift, so a model whose
+    whole context is smaller than *configured* still ends below it.
 
     Args:
         max_context: The model's declared context window.
         configured: The operator's configured fallback.
 
     Returns:
-        The per-response cap, at least *configured*.
+        The per-response cap before the caller's ``max_context`` cap, at least
+        *configured*.
     """
     derived = min(_DERIVED_OUTPUT_CEILING, max_context // _FALLBACK_CONTEXT_DIVISOR)
     return max(configured, derived)
@@ -73,8 +75,9 @@ def build_capabilities(
             provider name); ``"ollama"`` bypasses the static DB.
         provider_name: Owning provider name for the capability record.
         fallback_max_output_tokens: Floor for the output cap when the
-            metadata omits one; the effective value is derived from the
-            model's own context window and is never below this.
+            metadata omits one; the effective value is the larger of it and
+            one derived from the model's own context window, then capped by
+            that context window, which it cannot lift.
 
     Returns:
         A ``ModelCapabilities`` built from the config + discovery metadata.

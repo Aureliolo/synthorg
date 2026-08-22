@@ -136,6 +136,20 @@ class BaseCompletionProvider(ABC):
         ``None`` (leaves the driver without catalog-backed resolution).
         """
 
+    async def aclose(self) -> None:  # noqa: B027 -- intentional concrete no-op default
+        """Release whatever this driver opened lazily during dispatch.
+
+        No-op by default, because most drivers hold nothing beyond the
+        connection they were configured with. A driver that lazily builds a
+        long-lived client on the FIRST call has no other point at which to
+        release it: construction happens during synchronous wiring, so the
+        client cannot be opened there, and dispatch cannot close it without
+        paying to rebuild it on the next call.
+
+        Idempotent, so a caller may close a registry it did not build and a
+        second close is free.
+        """
+
     def serves_model(self, model: str) -> bool:  # noqa: ARG002 -- catalogue-free default accepts any id
         """Report whether this driver can complete against *model*.
 

@@ -52,6 +52,31 @@ def _config(*, executor_family: str | None, reviewer_family: str | None) -> Root
         The config.
     """
 
+    return _config_declaring(
+        executor_family=executor_family,
+        reviewer_family=reviewer_family,
+        connection_family=None,
+    )
+
+
+def _config_declaring(
+    *,
+    executor_family: str | None,
+    reviewer_family: str | None,
+    connection_family: str | None,
+) -> RootConfig:
+    """Build a config declaring families at the model and connection levels.
+
+    Args:
+        executor_family: Family the config claims for the executor's model.
+        reviewer_family: Family the config claims for the reviewer's model.
+        connection_family: Family the CONNECTION declares, which every model
+            that declares none of its own inherits.
+
+    Returns:
+        The config.
+    """
+
     def _model(alias: str, family: str | None) -> ProviderModelConfig:
         return ProviderModelConfig(
             id=NotBlankStr(f"real-{alias}"),
@@ -66,6 +91,7 @@ def _config(*, executor_family: str | None, reviewer_family: str | None) -> Root
                 auth_type=AuthType.CUSTOM_HEADER,
                 custom_header_name=NotBlankStr("Authorization"),
                 custom_header_value=NotBlankStr("Bearer test-key"),
+                family=connection_family,
                 models=(
                     _model("example-capable-001", executor_family),
                     _model("example-expert-001", reviewer_family),
@@ -112,6 +138,38 @@ class TestDeclaredFamiliesMatchWhatAnswers:
         check_declared_families(
             load_manifest(_MANIFEST),
             _config(executor_family=None, reviewer_family=None),
+        )
+
+    def test_a_family_inherited_from_the_connection_is_still_a_family(self) -> None:
+        """Reading only the model half turns a collision into two silences.
+
+        A config that declares the family once on the connection and lets both
+        models inherit it puts both pairs in ONE organisation. Resolved from
+        the model alone that reads as two undeclared families, which the check
+        waves through by saying nothing rather than by differing, and the run
+        records a correlated judge as independent.
+        """
+        with pytest.raises(
+            RecursionDepthJudgeNotIndependentError, match="nobody achieved"
+        ):
+            check_declared_families(
+                load_manifest(_MANIFEST),
+                _config_declaring(
+                    executor_family=None,
+                    reviewer_family=None,
+                    connection_family="bound-family-a",
+                ),
+            )
+
+    def test_a_models_own_family_still_wins_over_its_connections(self) -> None:
+        """The connection is the fallback, never an override."""
+        check_declared_families(
+            load_manifest(_MANIFEST),
+            _config_declaring(
+                executor_family="bound-family-a",
+                reviewer_family="bound-family-b",
+                connection_family="bound-family-a",
+            ),
         )
 
 
