@@ -1,10 +1,12 @@
 """Unit tests for the shared agent-persona system-prompt renderer.
 
 Verifies that the shared ``_render_system_prompt`` renderer produces
-byte-identical output to the meeting agent caller's private wrapper, and
-that the untrusted-content directive is always present.
+byte-identical output to the meeting agent caller's private wrapper, that the
+untrusted-content directive is always present, and that an agent is told the
+house-style rules its output is judged against.
 """
 
+from collections.abc import Iterator
 from datetime import date
 from uuid import uuid4
 
@@ -14,14 +16,33 @@ from synthorg.communication.meeting.agent_caller import _render_system_prompt
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.output_style.models import HouseStyleDirective
+from synthorg.engine.output_style.provider import (
+    SnapshotHouseStyleProvider,
+    set_house_style_provider,
+)
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     untrusted_content_directive,
 )
+from synthorg.engine.strategy.active_principle import ScopeKind
 from synthorg.hr.enums import AgentStatus
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _unbound_house_style() -> Iterator[None]:
+    """Leave the process-global house-style provider unbound for the next test.
+
+    The provider is a module global by design (org-wide policy visible across
+    every request coroutine), so a test that binds one would otherwise decide
+    what every later test's persona prompt says.
+    """
+    yield
+    set_house_style_provider(None)
+
 
 _DEFAULT_TRAITS: tuple[NotBlankStr, ...] = (NotBlankStr("analytical"),)
 _DEFAULT_STYLE: NotBlankStr = NotBlankStr("concise")
@@ -76,11 +97,74 @@ class TestRenderAgentSystemPrompt:
         expected = untrusted_content_directive((TAG_TASK_DATA,))
         assert expected in prompt
 
+    def test_no_house_style_block_without_a_provider(self) -> None:
+        prompt = render_agent_system_prompt(_identity())
+        assert "House writing style" not in prompt
+
     def test_meeting_caller_wrapper_matches_shared_renderer(self) -> None:
         # Delegating to the shared renderer must not change meeting
         # behaviour: the caller's private wrapper produces identical output.
         identity = _identity()
         assert _render_system_prompt(identity) == render_agent_system_prompt(identity)
+
+    def test_the_agent_is_told_the_rules_its_output_is_judged_against(self) -> None:
+        """A session judged on a rule it was never shown discovers it by
+        rejection.
+
+        Every boundary these persona-driven sessions deliver through refuses a
+        style violation and hands it back, so the directives belong in the
+        prompt and not only in the guard. A live planning session was handed
+        the em-dash refusal 21 times and then gave up.
+        """
+        set_house_style_provider(
+            SnapshotHouseStyleProvider(
+                (
+                    HouseStyleDirective(
+                        id=NotBlankStr("no_ai_tells"),
+                        text=NotBlankStr("Never use em-dashes."),
+                    ),
+                )
+            )
+        )
+
+        prompt = render_agent_system_prompt(_identity())
+
+        assert "House writing style" in prompt
+        assert "- Never use em-dashes." in prompt
+
+    def test_only_the_directives_in_scope_for_the_agent_reach_the_prompt(self) -> None:
+        set_house_style_provider(
+            SnapshotHouseStyleProvider(
+                (
+                    HouseStyleDirective(
+                        id=NotBlankStr("for_this_role"),
+                        text=NotBlankStr("Report in whole numbers."),
+                        scope=NotBlankStr("CFO"),
+                        scope_kind=ScopeKind.ROLE,
+                    ),
+                    HouseStyleDirective(
+                        id=NotBlankStr("for_another_role"),
+                        text=NotBlankStr("Cite the migration."),
+                        scope=NotBlankStr("Engineer"),
+                        scope_kind=ScopeKind.ROLE,
+                    ),
+                )
+            )
+        )
+
+        prompt = render_agent_system_prompt(_identity())
+
+        assert "Report in whole numbers." in prompt
+        assert "Cite the migration." not in prompt
+
+    def test_a_provider_with_nothing_in_scope_adds_no_block(self) -> None:
+        # An empty heading reads as a rule the agent cannot see and is one
+        # more thing between it and its work.
+        set_house_style_provider(SnapshotHouseStyleProvider(()))
+
+        prompt = render_agent_system_prompt(_identity())
+
+        assert "House writing style" not in prompt
 
     def test_injected_role_is_flattened(self) -> None:
         """A newline/angle-bracket payload in an identity field cannot
