@@ -43,7 +43,10 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 )
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_EXECUTED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_UNIT_EXECUTED,
+    EVALS_RECURSION_UNIT_STARTED,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
@@ -366,6 +369,13 @@ async def run_session(
     Returns:
         The session's outcome.
     """
+    logger.debug(
+        EVALS_RECURSION_UNIT_STARTED,
+        execution_id=execution_id,
+        task_id=str(task.id),
+        agent_id=str(identity.id),
+        max_turns=limits.max_turns,
+    )
     binding = run_binding(
         identity=identity, task=task, execution_id=execution_id, limits=limits
     )

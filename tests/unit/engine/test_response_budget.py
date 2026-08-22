@@ -7,24 +7,25 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine.response_budget import (
     DEFAULT_AGENT_MAX_RESPONSE_TOKENS,
     resolve_response_tokens,
 )
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.providers.models import CompletionConfig
+from synthorg.settings.resolver import ConfigResolver
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _resolver(
-    value: int | None = None, *, fail: bool = False
-) -> ConfigResolverProtocol:
+def _resolver(value: int | None = None, *, fail: bool = False) -> ConfigResolver:
     """Build a resolver double answering one int, or failing.
 
-    Built with ``mock_of`` rather than by hand: typeguard checks the WHOLE
-    protocol on a fake at runtime, so a class implementing only the method
-    under test is rejected for the methods it does not have.
+    Specced on the concrete resolver rather than on its protocol because the
+    engine mixin declares the concrete type: a protocol-typed double is what
+    the resolver ladder consumes, but not what the attribute the fold reads
+    is annotated as.
 
     Returns:
         The double.
@@ -39,7 +40,7 @@ def _resolver(
         assert value is not None
         return value
 
-    double: ConfigResolverProtocol = mock_of[ConfigResolverProtocol](get_int=_get_int)
+    double: ConfigResolver = mock_of[ConfigResolver](get_int=_get_int)
     return double
 
 
@@ -99,3 +100,71 @@ async def test_the_default_is_large_enough_for_a_reasoning_turn() -> None:
     recorded as work completed rather than as a truncation.
     """
     assert DEFAULT_AGENT_MAX_RESPONSE_TOKENS >= 8192
+
+
+class TestTheCeilingIsAlwaysUsable:
+    """Every source is constrained positive, and none is checked at the use.
+
+    A stored value can outlive the constraint that admitted it, and a zero does
+    not fail: it asks the driver for no output at all, which reads downstream
+    exactly like a model that answered nothing.
+    """
+
+    @pytest.mark.parametrize("stored", [0, -1])
+    async def test_a_non_positive_setting_falls_back(self, stored: int) -> None:
+        resolved = await resolve_response_tokens(_resolver(stored), _identity(None))
+
+        assert resolved == DEFAULT_AGENT_MAX_RESPONSE_TOKENS
+
+
+class _Folder(AgentEngineRunMixin):
+    """The fold under test, with only the collaborator it reads."""
+
+    def __init__(self, resolver: ConfigResolver | None) -> None:
+        self._config_resolver = resolver
+
+
+class TestTheFoldThatCommitsTheCeiling:
+    """The ladder is only worth anything where a dispatch actually reads it.
+
+    ``resolve_response_tokens`` answering correctly proves nothing on its own:
+    the fold decides whether it is consulted at all, and it runs on every
+    dispatch whose agent states no ceiling, which is every agent by default.
+    """
+
+    async def test_an_unset_binding_is_resolved_before_the_binding_commits(
+        self,
+    ) -> None:
+        folded = await _Folder(_resolver(4242))._fold_response_budget(
+            None, _identity(None)
+        )
+
+        assert folded.max_tokens == 4242
+
+    async def test_a_config_that_already_carries_a_ceiling_is_left_alone(
+        self,
+    ) -> None:
+        """An earlier fold's explicit value is a decision, not an absence."""
+        carried = CompletionConfig(temperature=0.3, max_tokens=777)
+
+        folded = await _Folder(_resolver(4242))._fold_response_budget(
+            carried, _identity(None)
+        )
+
+        assert folded.max_tokens == 777
+
+    async def test_the_folded_config_never_leaves_the_ceiling_unset(self) -> None:
+        """`None` past this point reaches the driver as no ceiling at all."""
+        folded = await _Folder(None)._fold_response_budget(None, _identity(None))
+
+        assert folded.max_tokens is not None
+
+    async def test_the_agents_temperature_survives_the_fold(self) -> None:
+        """The fold settles one field; it must not mint a fresh config."""
+        carried = CompletionConfig(temperature=0.11)
+
+        folded = await _Folder(_resolver(4242))._fold_response_budget(
+            carried, _identity(None)
+        )
+
+        assert folded.temperature == pytest.approx(0.11)

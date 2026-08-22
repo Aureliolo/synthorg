@@ -37,6 +37,7 @@ Also fail-open: `providers/ollama_usage_tier.py::_scrape_tier` makes a single fa
 - `src/synthorg/engine/decomposition/llm.py`: task decomposition self-correction loop.
 - `src/synthorg/engine/workspace/semantic_llm.py`: workspace operation self-correction loop.
 - `src/synthorg/memory/retrieval/hierarchical/default_retriever.py::retrieve`: the reflective-retry loop that reformulates a memory query and re-runs it when the first result set is judged insufficient. Bounded, no sleep, mutates the query each iteration.
+- `evals/recursion_depth/merge.py::run_merge`: the sweep's build-review-repair loop. The same shape one level up, over whole agent sessions rather than a single call: bounded by the manifest's `merge_attempts`, no sleep, and each attempt carries the reviewer's findings from the last one. The sessions it drives route through governed provider dispatch and carry their own resilience, so this loop adds attempts rather than duplicating them.
 
 **Why this is not `GeneralRetryHandler`**: forcing this through the transient-I/O helper would require `base=0`, `jitter=0`, and a `retryable` predicate that always returns `True`. The resulting call would be a confused mix of "retry on anything, no sleep" wrapped in a helper whose name and docstring promise temporal backoff. If a third self-correction loop appears, factor out a dedicated `LlmSelfCorrectionLoop` primitive rather than collapsing it into Pattern A.
 

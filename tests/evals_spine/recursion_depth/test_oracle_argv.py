@@ -42,7 +42,7 @@ def test_node_arguments_never_carry_a_backslash() -> None:
     """
     offenders = [argument for argument in _node_arguments() if "\\" in argument]
 
-    assert not offenders, f"{len(offenders)} node arguments carry a backslash"
+    assert not offenders, f"backslash in node arguments: {offenders!r}"
 
 
 def test_node_arguments_are_rooted_in_the_staged_suite() -> None:

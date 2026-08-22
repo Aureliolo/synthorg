@@ -17,8 +17,9 @@ decorrelated.
 from collections.abc import Mapping
 from typing import Final
 
-from synthorg.config.provider_schema import ProviderConfig
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
+from synthorg.observability.events.provider import PROVIDER_FAMILY_UNDECLARED
 
 logger = get_logger(__name__)
 
@@ -59,13 +60,53 @@ def get_family(
     """
     config = configs.get(provider_name)
     if config is None:
-        return provider_name
+        return _undeclared(provider_name, model_id, reason="no_such_connection")
     if model_id is not None:
-        for model in config.models:
-            if model_id in {model.id, model.alias} and model.metadata.family:
-                return model.metadata.family
+        model = model_named(config, model_id)
+        if model is not None and model.metadata.family:
+            return model.metadata.family
     if config.family is not None:
         return config.family
+    return _undeclared(provider_name, model_id, reason="family_not_declared")
+
+
+def model_named(config: ProviderConfig, model_id: str) -> ProviderModelConfig | None:
+    """Find the model *model_id* names on *config*, by id or by alias.
+
+    One lookup because an alias and an id name the same model, and a caller
+    that checks only one of them silently answers "not this connection's" for
+    every pair written the other way.
+
+    Args:
+        config: The connection to search.
+        model_id: A model id or an alias reached through it.
+
+    Returns:
+        The model, or ``None`` when the connection serves no such name.
+    """
+    for model in config.models:
+        if model_id in {model.id, model.alias}:
+            return model
+    return None
+
+
+def _undeclared(provider_name: str, model_id: str | None, *, reason: str) -> str:
+    """Answer the connection name where nothing declared a family.
+
+    Args:
+        provider_name: The connection asked about.
+        model_id: The model asked about, when one was named.
+        reason: What ran out, for the log.
+
+    Returns:
+        *provider_name*, which is the only thing left to answer.
+    """
+    logger.debug(
+        PROVIDER_FAMILY_UNDECLARED,
+        provider=provider_name,
+        model_id=model_id,
+        reason=reason,
+    )
     return provider_name
 
 

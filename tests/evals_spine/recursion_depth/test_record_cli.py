@@ -4,6 +4,7 @@
 from pathlib import Path
 
 import pytest
+from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
     check_declared_families,
     describe_plan,
@@ -11,7 +12,10 @@ from scripts.record_recursion_depth import (
     narrow,
 )
 
-from evals.errors import RecursionDepthJudgeNotIndependentError
+from evals.errors import (
+    HarnessProviderMissingError,
+    RecursionDepthJudgeNotIndependentError,
+)
 from evals.recursion_depth.manifest import Independence, load_manifest
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
@@ -173,6 +177,50 @@ class TestPlanMode:
 
         assert "CAVEAT" in plan
         assert "share a model family" in plan
+
+
+class TestPreflightGuardsTheBoot:
+    """Nothing is stood up until everything knowable has been settled."""
+
+    async def test_a_failing_preflight_stops_before_the_host_is_built(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The ordering IS the finding: a probe after the boot buys nothing.
+
+        Every condition preflight checks is a property of the configuration or
+        the machine, and none of it becomes truer once a scratch database, a
+        gateway and a container are standing. Asserted on the collaborator
+        never being reached, because the two calls type-check in either order
+        and only the sequence decides whether an operator waits.
+        """
+        built: list[object] = []
+
+        refusal = "no such provider"
+        built_early = "the host was built before preflight passed"
+
+        async def _refuse(**kwargs: object) -> None:
+            del kwargs
+            raise HarnessProviderMissingError(refusal)
+
+        def _host(config: object) -> object:
+            built.append(config)
+            raise AssertionError(built_early)
+
+        monkeypatch.setattr(record_module, "run_preflight", _refuse)
+        monkeypatch.setattr(record_module, "RecordingGatewayHost", _host)
+
+        with pytest.raises(HarnessProviderMissingError):
+            await record_module._record(
+                record_module._parse_args(["--record", "--work-root", str(tmp_path)]),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a",
+                    reviewer_family="bound-family-b",
+                ),
+            )
+
+        assert not built
 
 
 class TestStaging:

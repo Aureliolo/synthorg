@@ -187,6 +187,14 @@ recursion-depth-record:
 # decides the contents. A digest is also the stronger pin, being immutable
 # where a version tag is only conventional. Tag and digest sit in ONE variable
 # so a Renovate bump cannot move one and strand the other.
+#
+# The digest can still go unpullable between Renovate cycles: `latest` is the
+# only tag the free tier serves and the digest behind it is replaced on every
+# upstream release, with the superseded one eligible for collection. That fails
+# LOUD (the pull cannot resolve) rather than quietly building against something
+# else, and the fix is one Renovate bump, so the pin is kept: an unpinned tag
+# would trade a legible failure for a base layer nobody chose. Nothing in CI
+# depends on this target, which downloads the release binary instead.
 # renovate: datasource=docker depName=cgr.dev/chainguard/apko
 APKO_IMAGE := cgr.dev/chainguard/apko:latest@sha256:e398a22baba28db345df4b89c3368b9d43e0f1e559f05476249405cece8e8486
 SANDBOX_BASE_TAR := .sandbox-base.tar

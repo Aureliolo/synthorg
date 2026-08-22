@@ -156,8 +156,8 @@ _r.register(
             " alone returns an empty string, which reaches the JSON parser and"
             " is reported as malformed output. Raise this rather than rewording"
             " the prompt when decomposition reports hitting its token ceiling."
-            " Resolved at boot; a runtime change applies on the next coordinator"
-            " rebuild (provider re-init)."
+            " Read live, once per decomposition, so a raised ceiling applies to"
+            " the next plan rather than after a restart."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

@@ -586,6 +586,13 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         registry = ToolRegistry(tools)
         invoker = ToolInvoker(
             registry,
+            # No permission checker and no security interceptor, because the
+            # registry above is CLOSED: one terminal submit tool plus the
+            # owner's read-only planning tools, nothing that writes, spends or
+            # reaches outside the process. Both would be inert, and so would
+            # the agent's binding, whose only consumer is the interceptor's
+            # judge-independence comparison. Granting this session a tool that
+            # acts makes all three live decisions again.
             permission_checker=None,
             agent_id=str(owner.id),
             # Tag tool-execution cost with the objective task so planning spend

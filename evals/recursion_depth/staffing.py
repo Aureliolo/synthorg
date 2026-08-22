@@ -46,15 +46,18 @@ _HIRING_DATE: Final[date] = date(2026, 1, 1)
 #:
 #: A small ceiling is fatal for a reasoning model, which spends the
 #: per-response budget on hidden reasoning BEFORE it can emit content or a
-#: tool call. A measured run had seven of eight agent sessions burn their
-#: whole 4096-token budget, emit no tool call at all, and be recorded as
-#: finished work, because a turn with no tool call is how a session says it is
-#: done. Every model these sweeps run against reports the `thinking`
-#: capability, so this is the normal case rather than an edge one.
+#: tool call. On a development run of this harness (not a committed recording,
+#: so the figures here are an observation rather than a result anyone can
+#: re-read) seven of eight agent sessions burnt their whole 4096-token budget,
+#: emitted no tool call at all, and were recorded as finished work, because a
+#: turn with no tool call is how a session says it is done. Every model these
+#: sweeps run against reports the `thinking` capability, so this is the normal
+#: case rather than an edge one.
 #:
-#: A cap costs nothing unused: probed against the endpoint, a request capped at
-#: 131072 returned 27 completion tokens. It permits a response to finish, it
-#: does not lengthen one, so a truncated turn is spend that buys nothing.
+#: A cap costs nothing unused: probed against the endpoint on the same run, a
+#: request capped at 131072 returned 27 completion tokens. It permits a
+#: response to finish, it does not lengthen one, so a truncated turn is spend
+#: that buys nothing.
 _RESPONSE_TOKEN_CEILING: Final[int] = 65_536
 
 #: How many builders the roster carries. One per concurrent unit is not needed

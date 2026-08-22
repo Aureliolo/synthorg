@@ -3,11 +3,15 @@
 
 import pytest
 
-from evals.recursion_depth.claims import criterion_for, requirement_ids_of
+from evals.recursion_depth.claims import (
+    RequirementId,
+    criterion_for,
+    requirement_ids_of,
+)
 
 pytestmark = pytest.mark.unit
 
-_KNOWN = ("R01", "R02", "R42")
+_KNOWN = (RequirementId("R01"), RequirementId("R02"), RequirementId("R42"))
 
 
 class TestRoundTrip:
@@ -36,7 +40,9 @@ class TestUnresolvable:
         a fault.
         """
         resolved = requirement_ids_of(
-            (criterion_for("R99"), criterion_for("R01")), known=_KNOWN, unit="u"
+            (criterion_for(RequirementId("R99")), criterion_for(RequirementId("R01"))),
+            known=_KNOWN,
+            unit="u",
         )
 
         assert resolved == ("R01",)
@@ -49,7 +55,9 @@ class TestShape:
     def test_one_requirement_claimed_twice_is_counted_once(self) -> None:
         """Survival is a set question; a repeated claim is not more work."""
         resolved = requirement_ids_of(
-            (criterion_for("R01"), "R01 also covered here"), known=_KNOWN, unit="u"
+            (criterion_for(RequirementId("R01")), "R01 also covered here"),
+            known=_KNOWN,
+            unit="u",
         )
 
         assert resolved == ("R01",)

@@ -64,6 +64,13 @@ EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
 
 # Recursion-depth sweep: does gating every merge hold off aggregation collapse?
 EVALS_RECURSION_ORACLE_RUN: Final[str] = "evals.recursion_depth.oracle_run"
+EVALS_RECURSION_UNIT_STARTED: Final[str] = "evals.recursion_depth.unit_started"
+"""A sweep unit is about to open a session that spends real provider tokens.
+Logged at DEBUG before the dispatch, because its INFO sibling
+``EVALS_RECURSION_UNIT_EXECUTED`` only fires once the session RETURNS: a run
+killed mid-session (a quota refusal, a wall-clock kill, an operator stopping
+it) otherwise leaves no record of which unit was in flight when the money was
+spent."""
 EVALS_RECURSION_UNIT_EXECUTED: Final[str] = "evals.recursion_depth.unit_executed"
 EVALS_RECURSION_MERGE_ATTEMPTED: Final[str] = "evals.recursion_depth.merge_attempted"
 EVALS_RECURSION_MERGE_GATED: Final[str] = "evals.recursion_depth.merge_gated"

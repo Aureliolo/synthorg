@@ -453,6 +453,11 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         )
         return ToolInvoker(
             ToolRegistry([submit_tool]),
+            # No permission checker and no security interceptor: with one
+            # terminal submit tool and nothing else, both would be inert, and
+            # so would the reviewer's binding, whose only consumer is the
+            # interceptor's judge-independence comparison. Granting this
+            # session a tool that acts makes all three live decisions again.
             permission_checker=None,
             agent_id=str(reviewer.id),
             cost_tracker=self._cost_tracker,

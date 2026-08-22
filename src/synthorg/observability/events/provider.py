@@ -44,6 +44,15 @@ PROVIDER_STREAM_DONE: Final[str] = "provider.stream.done"
 PROVIDER_STREAM_CHUNK_NO_DELTA: Final[str] = "provider.stream.chunk_no_delta"
 PROVIDER_STREAM_CLOSE_FAILED: Final[str] = "provider.stream.close_failed"
 PROVIDER_MODEL_NOT_FOUND: Final[str] = "provider.model.not_found"
+PROVIDER_FAMILY_UNDECLARED: Final[str] = "provider.family.undeclared"
+"""Nothing declared a family for the model asked about, so the connection name
+was answered in its place. Logged at DEBUG with the ``reason`` that got there,
+because a family is a property of the organisation that trained a model and a
+connection name is not one: two models reached through one aggregator answer
+the same string and read as correlated, and one organisation reached through
+two connections answers two strings and reads as independent. The judge-
+independence warning is decided on that string, so this is the entry that says
+the decision was made without the fact it needs."""
 PROVIDER_RATE_LIMITED: Final[str] = "provider.rate.limited"
 PROVIDER_QUOTA_EXCEEDED: Final[str] = "provider.quota.exceeded"
 PROVIDER_PAYMENT_REQUIRED: Final[str] = "provider.payment.required"

@@ -27,7 +27,7 @@ it.
 
 import asyncio
 import zlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -528,7 +528,7 @@ async def _run_cell(
         repetition=cell.repetition,
         achieved_depth=planned.result.max_depth_reached,
         units=tuple(units),
-        merged_passing=tuple(NotBlankStr(key) for key in sorted(merged.passed)),
+        merged_passing=tuple(sorted(merged.passed)),
     )
     logger.info(
         EVALS_RECURSION_CELL_RECORDED,
@@ -573,34 +573,22 @@ async def _build_tree_units(
     produced: dict[str, CellWorkspace] = {}
     delivered: dict[str, bool] = {}
     for node in merge_nodes(tree):
-        pieces: list[MergePiece] = []
-        for index, task in enumerate(node.created_tasks):
-            key = str(task.id)
-            if key not in produced:
-                leaf = await _run_one_leaf(
-                    context, cell, task=task, definition=definitions[key]
-                )
-                produced[key] = leaf.workspace
-                delivered[key] = leaf.delivered
-                units.append(
-                    _leaf_record(task, definitions[key], node, leaf, context.spec)
-                )
-                context.budget.spend(leaf.attempts)
-            pieces.append(
-                MergePiece(
-                    title=str(task.title),
-                    slug=piece_slug(str(task.title), index=index),
-                    tree=produced[key].project_dir,
-                    delivered=delivered[key],
-                )
-            )
+        pieces = await _leaf_pieces(
+            context,
+            cell,
+            node,
+            definitions=definitions,
+            produced=produced,
+            delivered=delivered,
+            units=units,
+        )
         parent = parents[node.plan.parent_task_id]
         outcome = await _run_one_merge(
             context,
             cell,
             node=node,
             parent=parent,
-            pieces=tuple(pieces),
+            pieces=pieces,
             reviewer=reviewer,
         )
         produced[str(parent.id)] = outcome.workspace
@@ -608,6 +596,59 @@ async def _build_tree_units(
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
     return produced[str(root.id)]
+
+
+async def _leaf_pieces(
+    context: SweepContext,
+    cell: SweepCell,
+    node: DecompositionResult,
+    *,
+    definitions: Mapping[str, SubtaskDefinition],
+    produced: dict[str, CellWorkspace],
+    delivered: dict[str, bool],
+    units: list[UnitRecord],
+) -> tuple[MergePiece, ...]:
+    """Build each of *node*'s children, and name what the merge assembles.
+
+    A child already in *produced* is a node this walk assembled at a lower
+    level, so it is taken as it stands rather than rebuilt: the tree is walked
+    children-first and re-running one would pay for the same work twice and
+    then discard whichever copy lost.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        node: The level whose children are being built.
+        definitions: Every task id mapped to the planner definition it came
+            from, which is where a unit's claims live.
+        produced: Each built id mapped to its tree. Mutated.
+        delivered: Each built id mapped to whether it delivered. Mutated.
+        units: Sink the per-unit records are appended to. Mutated, so a run
+            that raises partway still reports what it had already paid for.
+
+    Returns:
+        One piece per child, in the order the level declares them.
+    """
+    pieces: list[MergePiece] = []
+    for index, task in enumerate(node.created_tasks):
+        key = str(task.id)
+        if key not in produced:
+            leaf = await _run_one_leaf(
+                context, cell, task=task, definition=definitions[key]
+            )
+            produced[key] = leaf.workspace
+            delivered[key] = leaf.delivered
+            units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
+            context.budget.spend(leaf.attempts)
+        pieces.append(
+            MergePiece(
+                title=str(task.title),
+                slug=piece_slug(str(task.title), index=index),
+                tree=produced[key].project_dir,
+                delivered=delivered[key],
+            )
+        )
+    return tuple(pieces)
 
 
 async def _run_one_leaf(
@@ -752,7 +793,7 @@ def _leaf_record(
         title=NotBlankStr(str(task.title)),
         kind=LEAF,
         depth=node.depth,
-        claimed=tuple(NotBlankStr(one) for one in resolved),
+        claimed=resolved,
         unresolved_claims=len(definition.satisfies) - len(resolved),
         delivered=leaf.delivered,
         attempts=leaf.attempts,

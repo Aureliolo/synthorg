@@ -123,7 +123,9 @@ function buildAgentIdentity(
       model_id: 'example-capable-001',
       capability: 'capable',
       temperature: 0.7,
-      max_tokens: 4096,
+      // What the API answers for an agent nobody pinned a ceiling on, which is
+      // every agent by default; the backend resolves it per dispatch instead.
+      max_tokens: null,
     },
     memory: {
       type: 'project',

@@ -20,7 +20,11 @@ from synthorg.approval.models import EscalationInfo
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_OUTPUT_SCAN_ERROR,
@@ -30,6 +34,7 @@ from synthorg.observability.events.security import (
 )
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
+    TOOL_INVOKE_ALL_FATAL,
     TOOL_INVOKE_ALL_START,
     TOOL_INVOKE_CONFIG_INVALID,
     TOOL_INVOKE_EXECUTION_ERROR,
@@ -951,11 +956,17 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         is_timeout = result.metadata.get("timed_out") is True
         is_error = result.is_error or is_timeout
         if is_error:
+            # The error text only passed the sensitive-data scanner when an
+            # interceptor was wired: `_scan_output` runs on a security
+            # context, and there is none without one. A failing tool is
+            # exactly where an upstream echoes a credential or a whole
+            # request body back, so what reaches the log is bounded here
+            # rather than trusted to a component that may not be present.
             logger.warning(
                 TOOL_INVOKE_TOOL_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                content=result.content,
+                content=scrub_secret_tokens(result.content),
             )
         else:
             logger.info(
@@ -1041,6 +1052,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         """
         if not fatal_errors:
             return
+        logger.error(
+            TOOL_INVOKE_ALL_FATAL,
+            fatal_count=len(fatal_errors),
+            error_types=tuple(type(exc).__name__ for exc in fatal_errors),
+        )
         if len(fatal_errors) == 1:
             raise fatal_errors[0]
         msg = "multiple non-recoverable tool errors"

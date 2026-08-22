@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid5
 
 import pytest
 
@@ -24,6 +23,7 @@ from evals.errors import (
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
@@ -89,7 +89,7 @@ from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -150,8 +150,11 @@ def _spec() -> SpecBrief:
         spec_id="tiny",
         title="A tiny thing",
         prose="Build the tiny thing.",
-        requirement_ids=("R01", "R02"),
-        titles={"R01": "It parses", "R02": "It prints"},
+        requirement_ids=(RequirementId("R01"), RequirementId("R02")),
+        titles={
+            RequirementId("R01"): "It parses",
+            RequirementId("R02"): "It prints",
+        },
     )
 
 
@@ -162,7 +165,7 @@ def _task(title: str, *, criteria: tuple[str, ...] = ()) -> Task:
         The task.
     """
     return Task(
-        id=uuid5(UUID("00000000-0000-4000-8000-00000000e000"), title),
+        id=as_uuid(f"task:{title}"),
         title=NotBlankStr(title),
         description=NotBlankStr(f"Do {title}."),
         type=TaskType.DEVELOPMENT,
@@ -187,7 +190,7 @@ def _identity(name: str, capability: CapabilityLevel = "capable") -> AgentIdenti
     from synthorg.core.agent import ModelConfig
 
     return AgentIdentity(
-        id=uuid5(UUID("00000000-0000-4000-8000-00000000e001"), name),
+        id=as_uuid(f"identity:{name}"),
         name=NotBlankStr(name),
         role=NotBlankStr("Developer"),
         department=NotBlankStr("Engineering"),
@@ -804,7 +807,7 @@ async def _scripted_oracle(
         One passing requirement, which is enough for the matrix to score.
     """
     del build_sandbox, spec_dir, tree
-    return OracleOutcome(results={"R01": True}, report="")
+    return OracleOutcome(results={RequirementId("R01"): True}, report="")
 
 
 def _assembles_then_dies(

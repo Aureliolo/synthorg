@@ -19,11 +19,12 @@ caps four, five and six.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from evals.errors import OracleUnusableError
-from evals.recursion_depth.claims import criterion_for
+from evals.recursion_depth.claims import RequirementId, criterion_for
 from evals.recursion_depth.oracle import (
     declared,
     entry_field,
@@ -54,10 +55,12 @@ _OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
 #:
 #: The default is sized for a model that answers directly. Every model a sweep
 #: is worth running against reasons first, and a reasoning model's planning
-#: turn is slow in proportion to the output budget it is given: a measured pair
-#: of runs decomposed the SAME brief in 310s and in over 600s, so at the
-#: default one arm completed and the other was killed mid-plan and recorded as
-#: an unavailable cell. Losing a whole arm to a timing margin is worse than
+#: turn is slow in proportion to the output budget it is given. On a
+#: development run of this harness (not a committed recording, so the figures
+#: below are an observation rather than a result anyone can re-read) a pair of
+#: runs decomposed the SAME brief in 310s and in over 600s, so at the default
+#: one arm completed and the other was killed mid-plan and recorded as an
+#: unavailable cell. Losing a whole arm to a timing margin is worse than
 #: waiting, because the arm is the comparison the sweep exists to make.
 #:
 #: This is a bound, not a budget: a planner that finishes sooner costs nothing
@@ -72,7 +75,8 @@ _PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 #: rather than costing it a data point. That asymmetry is why the sweep buys
 #: more attempts than a production initiative would.
 #:
-#: Measured: a plan was refused three times for three DIFFERENT faults (a
+#: Observed on a development run of this harness, not on a committed
+#: recording: a plan was refused three times for three DIFFERENT faults (a
 #: missing `title`, then a `satisfies` field of the wrong type, then an
 #: em-dash the house style bans) while its sibling arm planned cleanly. Each
 #: attempt corrected the previous fault, so the planner was converging and
@@ -104,8 +108,8 @@ class SpecBrief:
     spec_id: str
     title: str
     prose: str
-    requirement_ids: tuple[str, ...]
-    titles: Mapping[str, str]
+    requirement_ids: tuple[RequirementId, ...]
+    titles: Mapping[RequirementId, str]
 
 
 def load_spec_brief(spec_dir: Path) -> SpecBrief:
@@ -134,18 +138,26 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
     prose = (spec_dir / str(declared(index, "brief", spec_dir=spec_dir))).read_text(
         encoding="utf-8"
     )
-    ids = tuple(entry_field(entry, "id", spec_dir=spec_dir) for entry in entries)
+    ids = tuple(
+        RequirementId(entry_field(entry, "id", spec_dir=spec_dir)) for entry in entries
+    )
     return SpecBrief(
         spec_id=str(declared(index, "spec_id", spec_dir=spec_dir)),
         title=str(declared(index, "title", spec_dir=spec_dir)),
         prose=prose,
         requirement_ids=ids,
-        titles={
-            entry_field(entry, "id", spec_dir=spec_dir): entry_field(
-                entry, "title", spec_dir=spec_dir
-            )
-            for entry in entries
-        },
+        # Wrapped, because `frozen=True` freezes the ATTRIBUTE and not the
+        # dict behind it: the specification is what every unit is judged
+        # against, and a holder of this reference could otherwise edit the
+        # requirement a leaf was briefed on after the brief was written.
+        titles=MappingProxyType(
+            {
+                RequirementId(entry_field(entry, "id", spec_dir=spec_dir)): entry_field(
+                    entry, "title", spec_dir=spec_dir
+                )
+                for entry in entries
+            }
+        ),
     )
 
 

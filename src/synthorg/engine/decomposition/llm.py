@@ -336,7 +336,10 @@ class LlmDecompositionStrategy:
                 )
                 continue
 
-            logger.debug(
+            # INFO, like every other state transition: a plan existing where
+            # none did is the outcome, and logging it below the retry that
+            # preceded it puts the attempt above the result.
+            logger.info(
                 DECOMPOSITION_COMPLETED,
                 task_id=str(task.id),
                 strategy="llm",

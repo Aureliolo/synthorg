@@ -19,11 +19,23 @@ the one number the sweep exists to produce.
 
 import re
 from collections.abc import Iterable, Sequence
+from typing import NewType
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_CLAIM_UNRESOLVED
 
 logger = get_logger(__name__)
+
+#: One token of the closed vocabulary the specification declares.
+#:
+#: Distinct from ``str`` so that the confusion this module exists to prevent is
+#: a type error rather than a silent zero: criterion prose and a requirement id
+#: are both text, they flow through the same tuples, and reading one as the
+#: other cost a whole sweep. Every id enters through
+#: :func:`evals.recursion_depth.oracle.requirement_ids` or
+#: :func:`requirement_ids_of`, both of which read the spec's own declaration,
+#: so a value of this type has been checked against the vocabulary.
+RequirementId = NewType("RequirementId", str)
 
 #: The criterion a requirement id is filed as on the root objective.
 _CRITERION_TEMPLATE = "{identifier} is satisfied"
@@ -34,7 +46,7 @@ _CRITERION_TEMPLATE = "{identifier} is satisfied"
 _IDENTIFIER = re.compile(r"\bR\d+\b")
 
 
-def criterion_for(identifier: str) -> str:
+def criterion_for(identifier: RequirementId) -> str:
     """Render the acceptance criterion carrying *identifier*.
 
     Returns:
@@ -44,8 +56,8 @@ def criterion_for(identifier: str) -> str:
 
 
 def requirement_ids_of(
-    claims: Iterable[str], *, known: Sequence[str], unit: str
-) -> tuple[str, ...]:
+    claims: Iterable[str], *, known: Sequence[RequirementId], unit: str
+) -> tuple[RequirementId, ...]:
     """Resolve *claims* to the spec requirement ids they name.
 
     A claim resolves on the id token it contains, checked against *known*, so
@@ -64,9 +76,13 @@ def requirement_ids_of(
         The resolved ids, deduplicated, in the order first seen.
     """
     vocabulary = frozenset(known)
-    resolved: list[str] = []
+    resolved: list[RequirementId] = []
     for claim in claims:
-        found = [one for one in _IDENTIFIER.findall(claim) if one in vocabulary]
+        found = [
+            RequirementId(one)
+            for one in _IDENTIFIER.findall(claim)
+            if one in vocabulary
+        ]
         if not found:
             logger.warning(EVALS_RECURSION_CLAIM_UNRESOLVED, unit=unit, claim=claim)
             continue
@@ -74,4 +90,4 @@ def requirement_ids_of(
     return tuple(resolved)
 
 
-__all__ = ["criterion_for", "requirement_ids_of"]
+__all__ = ["RequirementId", "criterion_for", "requirement_ids_of"]

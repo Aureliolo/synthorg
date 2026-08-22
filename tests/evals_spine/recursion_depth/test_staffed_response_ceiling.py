@@ -4,32 +4,76 @@
 import pytest
 
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.staffing import _identity
-from synthorg.core.agent import ModelConfig
+from evals.recursion_depth.staffing import SweepRoster, build_roster
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
+from synthorg.engine.routing_policy.capability_policy import (
+    CapabilityPolicy,
+    ResolvedAgentCapabilityReader,
+)
+from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
+from synthorg.providers.routing.models import ResolvedModel
 
 pytestmark = pytest.mark.unit
 
-_PAIR = ModelPair(
+_EXECUTOR = ModelPair(
     provider="example-provider",
     model_id="example-capable-001",
     capability="capable",
     family="example-family-a",
 )
+_REVIEWER = ModelPair(
+    provider="example-provider",
+    model_id="example-expert-001",
+    capability="expert",
+    family="example-family-b",
+)
 
 
-def _staffed() -> ModelConfig:
-    """Build one staffed identity's model binding.
+class _UngradedResolver:
+    """A catalogue that grades nothing, which is the placeholder pairs' case."""
+
+    def resolve_for_pair(self, provider_name: str, ref: str) -> ResolvedModel | None:
+        """Grade nothing.
+
+        Returns:
+            ``None``, so the roster's own claim is what selection reads.
+        """
+        del provider_name, ref
+        return None
+
+
+async def _roster() -> SweepRoster:
+    """Register the roster a sweep would run on.
+
+    Built through the public entry point rather than the identity minter it
+    calls, so the assertion covers every agent the sweep actually staffs: the
+    minter answering correctly says nothing about a role the roster builds by
+    another route.
 
     Returns:
-        The binding the sweep would dispatch on.
+        The registered roster.
     """
-    return _identity(
-        slug="builder-1", name="Builder 1", role="Developer", pair=_PAIR
-    ).model
+    return await build_roster(
+        executor=_EXECUTOR,
+        reviewer=_REVIEWER,
+        capability=CapabilityPolicy(
+            config=CapabilityPolicyConfig(),
+            reader=ResolvedAgentCapabilityReader(_UngradedResolver()),
+        ),
+    )
 
 
-def test_staffed_agents_declare_their_own_ceiling() -> None:
+def _staffed(roster: SweepRoster) -> tuple[AgentIdentity, ...]:
+    """Every identity the roster registered.
+
+    Returns:
+        The builders and the reviewers.
+    """
+    return (*roster.builders, *roster.reviewers)
+
+
+async def test_staffed_agents_declare_their_own_ceiling() -> None:
     """The sweep pins the budget rather than inheriting whatever is configured.
 
     ``ModelConfig.max_tokens`` is the value that reaches the provider; the
@@ -40,17 +84,24 @@ def test_staffed_agents_declare_their_own_ceiling() -> None:
     has to be comparable across machines, so the sweep states its own figure
     instead of deferring to an operator setting that may differ.
     """
+    staffed = _staffed(await _roster())
     unset = ModelConfig(provider="p", model_id="m").max_tokens
-    staffed = _staffed().max_tokens
 
     assert unset is None
-    assert staffed is not None
-    assert staffed > DEFAULT_AGENT_MAX_RESPONSE_TOKENS // 2
+    assert staffed
+    for identity in staffed:
+        ceiling = identity.model.max_tokens
+        assert ceiling is not None
+        assert ceiling > DEFAULT_AGENT_MAX_RESPONSE_TOKENS // 2
 
 
-def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:
+async def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:
     """The ceiling rides along with the pair, it does not replace it."""
-    binding = _staffed()
+    roster = await _roster()
 
-    assert binding.provider == _PAIR.provider
-    assert binding.model_id == _PAIR.model_id
+    for builder in roster.builders:
+        assert builder.model.provider == _EXECUTOR.provider
+        assert builder.model.model_id == _EXECUTOR.model_id
+    for reviewer in roster.reviewers:
+        assert reviewer.model.provider == _REVIEWER.provider
+        assert reviewer.model.model_id == _REVIEWER.model_id

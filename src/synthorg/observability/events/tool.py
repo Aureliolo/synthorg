@@ -19,6 +19,11 @@ TOOL_BASE_INVALID_NAME: Final[str] = "tool.base.invalid_name"
 TOOL_REGISTRY_CONTAINS_TYPE_ERROR: Final[str] = "tool.registry.contains_type_error"
 TOOL_INVOKE_ALL_START: Final[str] = "tool.invoke_all.start"
 TOOL_INVOKE_ALL_COMPLETE: Final[str] = "tool.invoke_all.complete"
+TOOL_INVOKE_ALL_FATAL: Final[str] = "tool.invoke_all.fatal"
+"""A batch collected non-recoverable errors and is about to re-raise them.
+Logged at ERROR naming each error TYPE, because past this point the batch
+raises an ``ExceptionGroup`` whose members no handler unwraps: the caller sees
+one group and the individual causes are only in the traceback."""
 TOOL_INVOKE_CONFIG_INVALID: Final[str] = "tool.invoke.config_invalid"
 TOOL_PERMISSION_DENIED: Final[str] = "tool.permission.denied"
 TOOL_PERMISSION_CHECKER_CREATED: Final[str] = "tool.permission.checker_created"

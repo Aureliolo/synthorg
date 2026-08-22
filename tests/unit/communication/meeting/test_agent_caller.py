@@ -43,6 +43,7 @@ def _identity(
     department: str = "engineering",
     provider: str = "example-provider",
     model_id: str = "example-capable-001",
+    max_tokens: int | None = 4096,
 ) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
@@ -57,7 +58,7 @@ def _identity(
             provider=NotBlankStr(provider),
             model_id=NotBlankStr(model_id),
             temperature=0.7,
-            max_tokens=4096,
+            max_tokens=max_tokens,
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
@@ -223,6 +224,22 @@ class TestBuildMeetingAgentCaller:
         # request would overshoot the agent's configured limit and the
         # provider would either reject or silently truncate.
         assert config.max_tokens == 4096
+
+    async def test_an_unbound_agent_takes_the_meetings_own_cap(self) -> None:
+        """The default binding sets no ceiling, so this is the common case.
+
+        The clamp is a MINIMUM of two numbers and an agent that states none
+        has nothing to contribute to it: without the ``None`` branch the meeting
+        would be comparing its cap against an absence.
+        """
+        identity = _identity(max_tokens=None)
+        caller, _reg, provider_registry = _build_caller(identity=identity)
+
+        await caller(_AGENT_ID, "agenda", 10_000, _MEETING_ID)
+
+        provider = provider_registry.get.return_value
+        config = provider.complete.await_args.kwargs["config"]
+        assert config.max_tokens == 10_000
 
     async def test_provider_error_logs_failure_event_before_raising(self) -> None:
         identity = _identity()

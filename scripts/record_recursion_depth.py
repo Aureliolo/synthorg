@@ -77,6 +77,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
+from synthorg.providers.family import model_named
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
 
@@ -122,10 +123,8 @@ def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
     provider = config.providers.get(pair.provider)
     if provider is None:
         return None
-    for model in provider.models:
-        if pair.model_id in {model.id, model.alias}:
-            return model.metadata.family
-    return None
+    model = model_named(provider, pair.model_id)
+    return None if model is None else model.metadata.family
 
 
 def check_declared_families(
@@ -250,6 +249,7 @@ async def _record(
     *,
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
+    company_config: RootConfig,
 ) -> int:
     """Run the sweep for real and write the report.
 
@@ -259,28 +259,19 @@ async def _record(
     Raises:
         RecursionDepthNoCellsMeasuredError: Not one run was measured.
     """
-    # A run-scoped scratch root so two concurrent ``--record`` invocations never
-    # target the same workspace path: each unit's reset removes and re-copies a
-    # whole tree, which is only race-free within one process.
-    company_config = load_config(args.company_config)
     # Before the host, because everything it checks is a property of the
     # configuration or the machine and none of it becomes truer once a scratch
     # database, a gateway and a container are standing.
     await run_preflight(manifest=manifest, company_config=company_config)
+    # A run-scoped scratch root so two concurrent ``--record`` invocations never
+    # target the same workspace path: each unit's reset removes and re-copies a
+    # whole tree, which is only race-free within one process.
     run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
-    host_config = RecordingHostConfig(
-        company_config=company_config,
-        scratch_dir=run_work_root / "host",
-        label=_LABEL,
-        bind_host=args.bind_host,
-        bind_port=args.bind_port,
-        container_host=args.container_host,
-        sandbox_image=args.sandbox_image,
-        sidecar_image=args.sidecar_image,
-    )
     binder: HarnessBinder | None = None
     try:
-        async with RecordingGatewayHost(host_config) as host:
+        async with RecordingGatewayHost(
+            _host_config(args, company_config=company_config, work_root=run_work_root)
+        ) as host:
             binder = HarnessBinder(host=host)
             context = await _build_context(
                 host,
@@ -322,6 +313,31 @@ async def _record(
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
     return 0
+
+
+def _host_config(
+    args: argparse.Namespace, *, company_config: RootConfig, work_root: Path
+) -> RecordingHostConfig:
+    """Assemble the scratch backend the sweep dispatches through.
+
+    Args:
+        args: The parsed command line.
+        company_config: The config the run boots against.
+        work_root: This run's scratch root.
+
+    Returns:
+        The host configuration.
+    """
+    return RecordingHostConfig(
+        company_config=company_config,
+        scratch_dir=work_root / "host",
+        label=_LABEL,
+        bind_host=args.bind_host,
+        bind_port=args.bind_port,
+        container_host=args.container_host,
+        sandbox_image=args.sandbox_image,
+        sidecar_image=args.sidecar_image,
+    )
 
 
 async def _build_context(
@@ -660,16 +676,19 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     manifest = narrow(load_manifest(args.manifest), args.depths, args.max_sessions)
     spec = load_spec_brief(Path(manifest.spec_dir))
+    company_config = load_config(args.company_config)
     # Checked on the plan path too, not only before a record. The plan path is
     # what an operator runs first and is where they decide to spend, so a
     # contradiction found only under --record is found one decision too late.
-    check_declared_families(manifest, load_config(args.company_config))
+    check_declared_families(manifest, company_config)
 
     if not args.record:
         # The plan path boots nothing, opens no port and starts no container.
         print(describe_plan(manifest, spec))
         return 0
-    return asyncio.run(_record(args, manifest=manifest, spec=spec))
+    return asyncio.run(
+        _record(args, manifest=manifest, spec=spec, company_config=company_config)
+    )
 
 
 if __name__ == "__main__":

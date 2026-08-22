@@ -21,6 +21,7 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_NO_PROVIDER,
     SECURITY_LLM_EVAL_SAME_FAMILY,
 )
+from synthorg.observability.redaction import safe_error_description
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.family import get_family, shares_lineage
 from synthorg.providers.registry import ProviderRegistry
@@ -238,10 +239,12 @@ class _LlmEvaluatorSupportMixin:
                 default=str,
                 ensure_ascii=False,
             )
-        except TypeError, ValueError:
+        except (TypeError, ValueError) as exc:
             logger.debug(
                 SECURITY_LLM_EVAL_ERROR,
                 note="Failed to JSON-serialize arguments, using str() fallback",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return str(obj)
 

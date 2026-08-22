@@ -29,6 +29,12 @@ EXECUTION_LOOP_BUDGET_EXHAUSTED: Final[str] = "execution.loop.budget_exhausted"
 EXECUTION_LOOP_ERROR: Final[str] = "execution.loop.error"
 EXECUTION_LOOP_TOOL_REJECTED: Final[str] = "execution.loop.tool_rejected"
 EXECUTION_LOOP_UNAVAILABLE: Final[str] = "execution.loop.unavailable"
+EXECUTION_RESPONSE_CEILING_REFUSED: Final[str] = "execution.response_ceiling.refused"
+"""A resolved response ceiling was not a positive token count, so the shipped
+default was used instead. Logged at WARNING: every source of the value is
+constrained positive at its own boundary, so reaching this means a stored value
+outlived the constraint that admitted it, and passing it on would reach the
+driver as a ceiling of zero, which asks a model for no output at all."""
 
 EXECUTION_ENGINE_CREATED: Final[str] = "execution.engine.created"
 EXECUTION_ENGINE_START: Final[str] = "execution.engine.start"

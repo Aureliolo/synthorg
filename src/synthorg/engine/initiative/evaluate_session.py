@@ -345,6 +345,13 @@ class InitiativeEvaluator:
         )
         invoker = ToolInvoker(
             ToolRegistry([submit, *read_tools]),
+            # No permission checker and no security interceptor, because the
+            # registry above is CLOSED: one terminal submit tool plus the
+            # read-only tools the caller resolved, never a write tool. Both
+            # would be inert, and so would the lead's binding, whose only
+            # consumer is the interceptor's judge-independence comparison.
+            # Granting this session a tool that acts makes all three live
+            # decisions again.
             permission_checker=None,
             agent_id=str(lead.id),
             cost_tracker=self._cost_tracker,

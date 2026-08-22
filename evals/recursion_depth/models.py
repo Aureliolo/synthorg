@@ -29,6 +29,7 @@ from pydantic import (
     model_validator,
 )
 
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
 from synthorg.core.types import NotBlankStr
 
@@ -131,7 +132,7 @@ class UnitRecord(BaseModel):
     title: NotBlankStr
     kind: UnitKind
     depth: int = Field(ge=0)
-    claimed: tuple[NotBlankStr, ...] = ()
+    claimed: tuple[RequirementId, ...] = ()
     unresolved_claims: int = Field(default=0, ge=0)
     delivered: bool = False
     attempts: int = Field(default=0, ge=0)
@@ -188,7 +189,7 @@ class CellRecord(BaseModel):
     repetition: int = Field(ge=0)
     achieved_depth: int | None = None
     units: tuple[UnitRecord, ...] = ()
-    merged_passing: tuple[NotBlankStr, ...] = ()
+    merged_passing: tuple[RequirementId, ...] = ()
     unavailable_reason: str | None = None
 
     @model_validator(mode="after")

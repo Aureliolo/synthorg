@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import write_report
 from evals.recursion_depth.manifest import (
     Arm,
@@ -137,6 +138,42 @@ class TestTheJudgeMustBeIndependent:
                     }
                 )
             )
+
+    @pytest.mark.parametrize(
+        ("executor_family", "reviewer_family"),
+        [(None, None), ("example-family-a", None), (None, "example-family-a")],
+        ids=["neither-declared", "reviewer-silent", "executor-silent"],
+    )
+    def test_same_family_accepts_an_undeclared_family(
+        self, executor_family: str | None, reviewer_family: str | None
+    ) -> None:
+        """An absent family contradicts nothing, and the caveat is the same.
+
+        The asymmetry is deliberate and load-bearing: cross-family REFUSES an
+        undeclared family, because the claim it makes rests on the two names
+        being different and there is nothing to compare. Same-family claims
+        only that the run is caveated, which is true whatever the names are.
+        """
+        executor = {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+        }
+        reviewer = {
+            "provider": "example-provider",
+            "model_id": "example-expert-001",
+            "capability": "expert",
+        }
+        if executor_family is not None:
+            executor["family"] = executor_family
+        if reviewer_family is not None:
+            reviewer["family"] = reviewer_family
+
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(executor=executor, reviewer=reviewer)
+        )
+
+        assert manifest.caveat() is not None
 
     def test_one_provider_serving_two_families_is_cross_family(self) -> None:
         # The case an aggregating connection puts everyone in, and the one a
@@ -307,13 +344,13 @@ def _measured_cell(arm: Arm) -> CellRecord:
                 title=NotBlankStr("build it"),
                 kind=LEAF,
                 depth=1,
-                claimed=(NotBlankStr("R01"),),
+                claimed=(RequirementId("R01"),),
                 delivered=True,
                 attempts=1,
                 cost=0.5,
             ),
         ),
-        merged_passing=(NotBlankStr("R01"),),
+        merged_passing=(RequirementId("R01"),),
     )
 
 

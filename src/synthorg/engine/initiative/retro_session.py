@@ -211,6 +211,12 @@ class RetroDistiller:
             tools.append(recall_tool)
         invoker = ToolInvoker(
             ToolRegistry(tools),
+            # No permission checker and no security interceptor, because the
+            # toolkit above is CLOSED: one terminal submit tool plus an
+            # optional read-only recall. Both would be inert, and so would the
+            # lead's binding, whose only consumer is the interceptor's
+            # judge-independence comparison. Granting this session a tool that
+            # acts makes all three live decisions again.
             permission_checker=None,
             agent_id=str(lead.id),
             cost_tracker=self._cost_tracker,
