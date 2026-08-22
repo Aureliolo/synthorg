@@ -93,10 +93,17 @@ def matrix_identity(provenance: Provenance) -> Mapping[str, object]:
 
 
 def sessions_spent(state: ResumeState[CellRecord]) -> int:
-    """Agent sessions the resumed cells already consumed.
+    """Agent sessions every journalled cell already consumed.
 
     Re-booked against the sweep ceiling so a sweep resumed four times is
     bounded like one sweep rather than like each of its attempts.
+
+    Read off EVERY recorded cell, not just the measured ones. A cell that died
+    part-way still ran the sessions it ran, and that spend is gone from the
+    account whether or not the cell is attempted again; counting only what is
+    replayed would let a sweep that keeps failing and resuming spend several
+    times what its manifest allowed, which is the one thing the ceiling exists
+    to prevent.
 
     Args:
         state: What a previous attempt paid for.
@@ -104,7 +111,7 @@ def sessions_spent(state: ResumeState[CellRecord]) -> int:
     Returns:
         The session count.
     """
-    return sum(cell.total_attempts for cell in state.completed.values())
+    return sum(cell.total_attempts for cell in state.recorded)
 
 
 def open_cell_journal(

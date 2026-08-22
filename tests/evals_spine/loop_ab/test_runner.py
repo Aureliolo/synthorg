@@ -223,30 +223,45 @@ async def test_a_resumed_matrix_does_not_re_run_a_measured_row(
 ) -> None:
     """Reading a row back is the whole point; paying for it twice is not."""
     out_dir = tmp_path / "out"
+    dispatches: list[str] = []
+
+    async def _counting_provider(cell: CellRun) -> ScriptedProvider:
+        """Record that a cell actually dispatched, then answer as usual.
+
+        Returns:
+            The scripted provider.
+        """
+        dispatches.append(str(cell.loop_type))
+        return await _build_scripted_provider(cell)
+
     first = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work-1",
-        deps=_scripted_deps(project_repo),
+        deps=_scripted_deps(project_repo, build_provider=_counting_provider),
         provenance=_provenance(),
         out_dir=out_dir,
         resume=False,
     )
+    measured = {row.loop_type for row in first.rows if row.measurement is not None}
+    assert measured
+    dispatches.clear()
 
     second = await run_matrix(
         manifest=_manifest(),
         briefs=_simple_brief(),
         suite_root=_SUITE,
         work_root=tmp_path / "work-2",
-        deps=_scripted_deps(project_repo),
+        deps=_scripted_deps(project_repo, build_provider=_counting_provider),
         provenance=_provenance(),
         out_dir=out_dir,
         resume=True,
     )
 
-    measured = {row.loop_type for row in first.rows if row.measurement is not None}
-    assert measured
+    # The whole point: a cell already paid for is read back, not bought again.
+    # Row identity alone would pass on a resume that silently re-ran the lot.
+    assert not [loop for loop in dispatches if loop in measured]
     assert {row.loop_type for row in second.rows} == {
         row.loop_type for row in first.rows
     }

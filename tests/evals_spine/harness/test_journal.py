@@ -110,6 +110,35 @@ def _unavailable(*, depth_cap: int = 1, arm: Arm = Arm.UNGATED) -> CellRecord:
     )
 
 
+def _partly_spent_then_failed() -> CellRecord:
+    """Build a cell that ran units and then could not be measured.
+
+    The shape the ceiling has to see: unavailable, so it is retried, but
+    carrying real sessions that were already paid for.
+
+    Returns:
+        The cell.
+    """
+    return CellRecord(
+        depth_cap=2,
+        arm=Arm.GATED,
+        repetition=0,
+        units=(
+            UnitRecord(
+                unit_id=NotBlankStr("leaf-2"),
+                title=NotBlankStr("A leaf that ran before the cell died"),
+                kind=LEAF,
+                depth=1,
+                delivered=False,
+                attempts=3,
+                turns=9,
+                tokens=4000,
+            ),
+        ),
+        unavailable_reason="DecompositionError: the planner call failed",
+    )
+
+
 def _opened(
     tmp_path: Path, *, resume: bool, commit: str = "0" * 40
 ) -> tuple[RunJournal[CellRecord], ResumeState[CellRecord]]:
@@ -189,6 +218,20 @@ class TestResume:
         _, state = _opened(tmp_path, resume=True)
 
         assert sessions_spent(state) == 4
+
+    def test_a_failed_cells_sessions_are_re_booked_too(self, tmp_path: Path) -> None:
+        # It is attempted again, but the sessions it already burned are gone
+        # from the account either way. Counting only what is replayed lets a
+        # sweep that keeps failing and resuming outspend its own manifest.
+        journal, _ = _opened(tmp_path, resume=False)
+        journal.record(_measured())
+        journal.record(_partly_spent_then_failed())
+        journal.close()
+
+        _, state = _opened(tmp_path, resume=True)
+
+        assert len(state.completed) == 1
+        assert sessions_spent(state) == 5
 
     def test_a_journal_from_a_different_commit_is_refused(self, tmp_path: Path) -> None:
         # Cells measured before a change to the recursion point are cells about
@@ -309,6 +352,21 @@ class TestTheSweepsOwnEntryPoint:
 
 class TestRecordingIsOneOwner:
     """Remembering a cell and writing it down are never separable."""
+
+    def test_a_cell_the_journal_refuses_is_not_remembered_either(
+        self, tmp_path: Path
+    ) -> None:
+        # Otherwise the assembled report claims a cell the journal cannot
+        # show, and the journal is what an operator reads after a run they
+        # could not watch.
+        journal, _ = _opened(tmp_path, resume=False)
+        journal.close()
+        cells = RecordedCells(journal, SPEC)
+
+        with pytest.raises(ValueError, match="closed file"):
+            cells.add(_measured())
+
+        assert len(cells) == 0
 
     def test_adding_a_cell_journals_it(self, tmp_path: Path) -> None:
         # Four branches record a cell. A journal call beside each append is

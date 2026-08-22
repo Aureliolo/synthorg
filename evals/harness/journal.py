@@ -75,11 +75,22 @@ class JournalSpec[RecordT: BaseModel]:
 class ResumeState[RecordT: BaseModel]:
     """What a previous attempt at this matrix already paid for.
 
+    Two collections rather than one, because they answer different questions
+    and the second is NOT a subset view of the first. ``completed`` is what a
+    resume reads back instead of re-running. ``recorded`` is every row the
+    journal holds, which is what a spend ceiling has to be told about: a cell
+    that failed part-way still burned the sessions it burned, that money is
+    gone from the account whether or not the cell is attempted again, and a
+    ceiling re-armed from the measured rows alone lets a sweep resumed four
+    times spend several times what its manifest allowed.
+
     Attributes:
         completed: Records worth reading back, keyed by the spec's ``key_of``.
+        recorded: Every record the journal holds, in the order written.
     """
 
     completed: Mapping[str, RecordT]
+    recorded: tuple[RecordT, ...] = ()
 
     def holds(self, key: str) -> RecordT | None:
         """The recorded row for *key*, when there is one.
@@ -142,13 +153,19 @@ class RecordedCells[RecordT: BaseModel]:
         self._cells: list[RecordT] = []
 
     def add(self, record: RecordT) -> None:
-        """Remember *record* and put it on disk.
+        """Put *record* on disk, then remember it.
+
+        Written FIRST. A journal write that fails leaves the cell in neither
+        place rather than in memory alone, so the report this run assembles can
+        never claim a cell the journal cannot show. The reverse order is the
+        one that produces two disagreeing accounts of the same matrix, and the
+        journal is the one an operator reads after a run they could not watch.
 
         Args:
             record: A cell this recording just finished.
         """
-        self._cells.append(record)
         self._journal.record(record)
+        self._cells.append(record)
 
     def replay(self, record: RecordT) -> None:
         """Remember *record*, which is already on disk.
@@ -378,7 +395,8 @@ def open_journal[RecordT: BaseModel](
     state = ResumeState(
         completed={
             spec.key_of(record): record for record in records if spec.resumable(record)
-        }
+        },
+        recorded=tuple(records),
     )
     logger.info(
         EVALS_HARNESS_JOURNAL_RESUMED,
