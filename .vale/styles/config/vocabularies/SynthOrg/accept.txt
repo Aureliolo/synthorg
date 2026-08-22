@@ -521,6 +521,7 @@ file_system
 finalFocus
 firehose
 fireworks_ai
+flate
 fluentd
 flush_interval
 fluxbox

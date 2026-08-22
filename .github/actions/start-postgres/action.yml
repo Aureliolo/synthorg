@@ -21,7 +21,7 @@ inputs:
     description: Digest-pinned postgres image reference (single source of truth).
     required: false
     # renovate: datasource=docker depName=postgres
-    default: postgres:18-alpine@sha256:a1d02e4bd40c94d3bf2bdd3678c137388e76d9efcd23c285e9429d336a834b44
+    default: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
   user:
     description: POSTGRES_USER for the container.
     required: false

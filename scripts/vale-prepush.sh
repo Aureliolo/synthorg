@@ -85,8 +85,12 @@ if [ ! -s "${package_dir}/Acronyms.yml" ] ||
   echo "vale: Google style package absent or not at the pinned version, running 'vale sync'..."
   # The package is fetched from a CDN, so a single 5xx would otherwise
   # fail a push that has nothing wrong with it.
+  #
+  # --plain-progress replaces the redrawing progress bar with one line per
+  # package. The bar is written for a terminal, so in a CI log it lands as a
+  # run of partial frames around the one line that says what was installed.
   sync_attempt=1
-  until vale --config .vale.ini sync; do
+  until vale --config .vale.ini --plain-progress sync; do
     if [ "${sync_attempt}" -ge 3 ]; then
       echo "error: vale sync failed after 3 attempts" >&2
       exit 1

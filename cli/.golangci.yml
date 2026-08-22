@@ -28,7 +28,19 @@ linters:
     # Security scanner for the Docker-orchestrating CLI: subprocess
     # construction, file permissions, path handling, secret marshalling.
     - gosec
+    # Every Docker call takes a context, and the orchestrator loops over
+    # containers, volumes and images constantly. A context derived inside such
+    # a loop accumulates one cancel/timeout layer per iteration, so the
+    # deadline the first iteration sees is not the one the last one gets.
+    - fatcontext
   settings:
+    fatcontext:
+      # The bare linter only sees a context reassigned in a loop body. The
+      # two checks below reach the shapes this codebase actually writes: a
+      # context derived from an outer one inside a range, and one captured by
+      # a closure passed to a helper.
+      check-loops: true
+      check-function-literals: true
     gocyclo:
       min-complexity: 10
     funlen:
