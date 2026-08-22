@@ -107,6 +107,16 @@ Logged where the failure happens rather than only where it is caught, because
 by the time the runner files the cell the attempt's own execution id, the depth
 cap it was planning to, and the spend it booked on the way out are all several
 frames behind the exception."""
+EVALS_RECURSION_PLAN_BOOKING_FAILED: Final[str] = (
+    "evals.recursion_depth.plan_booking_failed"
+)
+"""Booking a failed attempt's spend raised, and the money went unrecorded.
+
+Its own event rather than a field on the failure above, because the two are
+independent facts about one attempt: the planning failure is why the cell has
+no tree, and this is why the cost the cell already incurred is missing from the
+report. Only a log records it, since the exception is deliberately swallowed so
+the planning failure stays the one the runner classifies on."""
 EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
 EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
 EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"

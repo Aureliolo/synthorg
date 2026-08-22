@@ -212,3 +212,42 @@ class TestFailedPlanningBooksItsSpend:
 
         assert spend.sessions == 1
         assert spend.tokens == 100
+
+    async def test_a_booking_that_raises_does_not_displace_the_planning_failure(
+        self,
+        ledger: ProgressTrackingLedger,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The runner classifies a cell by exception TYPE: `_plan_with_retry`
+        # retries only a `DecompositionError` and `_run_and_record` files a
+        # systemic failure on membership, so a drain that raised taking the
+        # planning failure's place would cost the cell its second attempt and
+        # hand the operator a reason that describes the bookkeeping rather
+        # than the run.
+        await ledger.record(_record(input_tokens=40, output_tokens=60))
+
+        async def _drain_fails() -> None:
+            msg = "the ledger could not drain"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(ledger, "drain_pending_records", _drain_fails)
+
+        def _fail(**_kwargs: object) -> DecompositionResult:
+            msg = "provider call failed"
+            raise DecompositionError(msg)
+
+        monkeypatch.setattr(planner_module, "build_tree", _fail)
+        spend = PlanningSpend()
+
+        with pytest.raises(DecompositionError):
+            await _planner(ledger).plan(
+                task=_objective(),
+                depth_cap=2,
+                execution_id="cell-plan",
+                spend=spend,
+            )
+
+        # Nothing booked, which is the honest reading: the drain that would
+        # have said what the attempt cost is the thing that failed.
+        assert spend.sessions == 0
+        assert spend.tokens == 0

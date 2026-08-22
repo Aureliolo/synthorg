@@ -43,7 +43,10 @@ from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.evals import EVALS_RECURSION_PLAN_FAILED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_PLAN_BOOKING_FAILED,
+    EVALS_RECURSION_PLAN_FAILED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -331,15 +334,22 @@ async def _shielded_book(
     execution_id: str,
     depth_cap: int,
 ) -> None:
-    """Book a failed attempt's spend, out of reach of a cancellation.
+    """Book a failed attempt's spend without displacing the failure.
 
-    Unshielded, a cancellation arriving while this awaits the drain raises out
-    of the handler it was called from, so the failure that was propagating
-    never reaches its own ``raise``: the runner classifies by exception type,
-    and it would see the cancellation instead, skipping the record of a cell
-    that had already spent. Shielding costs a bounded drain plus an in-memory
-    read before the cancellation resumes, and buys the one row this exists to
-    write.
+    ``asyncio.shield`` keeps the drain from being torn down when a cancellation
+    arrives at this await: the booking runs to completion, so ``spend`` ends up
+    carrying what the attempt cost instead of stopping mid-drain with the money
+    recorded nowhere. It does not hold the cancellation back, and it says
+    nothing about the other way this can go wrong.
+
+    That other way is a booking which RAISES, and it is logged rather than
+    allowed out, for the reason ``_book_planning_budget`` swallows its ceiling
+    breach one layer up: both callers are mid-``raise``, and the runner
+    classifies a cell by exception TYPE. ``_plan_with_retry`` retries only a
+    ``DecompositionError`` and ``_run_and_record`` files a systemic failure on
+    membership, so a drain that failed, or a negative delta reaching
+    ``spend.book``, would take the planning failure's place: the cell would
+    lose its second attempt and the operator would read the wrong reason.
 
     Args:
         tracker: The attempt's authoritative cost sink.
@@ -349,7 +359,17 @@ async def _shielded_book(
         execution_id: Which planning attempt this was.
         depth_cap: The ``max_depth`` it was planning to.
     """
-    await asyncio.shield(_book(tracker, spend, sessions=sessions))
+    try:
+        await asyncio.shield(_book(tracker, spend, sessions=sessions))
+    except Exception as booking:  # noqa: BLE001 -- the planning failure wins
+        logger.warning(
+            EVALS_RECURSION_PLAN_BOOKING_FAILED,
+            execution_id=execution_id,
+            depth_cap=depth_cap,
+            sessions=sessions,
+            error_type=type(booking).__name__,
+            error=safe_error_description(booking),
+        )
     logger.warning(
         EVALS_RECURSION_PLAN_FAILED,
         execution_id=execution_id,
