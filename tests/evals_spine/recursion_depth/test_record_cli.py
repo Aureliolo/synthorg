@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
+    _reclaim_workspaces,
+    _recording_slug,
     check_declared_families,
     describe_plan,
     main,
@@ -317,3 +319,50 @@ class TestStaging:
         # reads as a measured zero.
         with pytest.raises(ValueError, match="does not carry"):
             narrow(load_manifest(_MANIFEST), "1,4,9")
+
+
+class TestTheScratchRootAResumeContinuesWith:
+    """A journal buys nothing if the trees it indexes move every run."""
+
+    def test_the_same_output_directory_names_the_same_root(
+        self, tmp_path: Path
+    ) -> None:
+        # The resume path rebuilds each unit's tree path from the run root, so
+        # a per-invocation name would leave every resumed cell finding nothing
+        # and paying for what the last attempt already built.
+        assert _recording_slug(tmp_path / "out") == _recording_slug(tmp_path / "out")
+
+    def test_two_output_directories_name_different_roots(self, tmp_path: Path) -> None:
+        # What the per-invocation name used to buy: two recordings running at
+        # once must not reset each other's trees.
+        assert _recording_slug(tmp_path / "one") != _recording_slug(tmp_path / "two")
+
+    def test_the_root_is_one_path_segment(self, tmp_path: Path) -> None:
+        # An output directory is an absolute path carrying separators, and on
+        # this platform a drive letter; embedding it would build a tree nobody
+        # asked for.
+        slug = _recording_slug(tmp_path / "out")
+
+        assert "/" not in slug
+        assert "\\" not in slug
+
+    async def test_an_unfinished_run_keeps_its_trees(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Reclaiming on the way out of a failure destroys exactly what the
+        # next --resume continues with.
+        root = tmp_path / "run-abc"
+        (root / "unit").mkdir(parents=True)
+
+        await _reclaim_workspaces(root, keep=True)
+
+        assert root.is_dir()
+        assert "--resume" in capsys.readouterr().out
+
+    async def test_a_finished_run_reclaims_them(self, tmp_path: Path) -> None:
+        root = tmp_path / "run-abc"
+        (root / "unit").mkdir(parents=True)
+
+        await _reclaim_workspaces(root, keep=False)
+
+        assert not root.exists()
