@@ -89,8 +89,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_RECORDED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
+    EVALS_RECURSION_QUOTA_EXHAUSTED,
     EVALS_RECURSION_SESSION_CEILING,
 )
+from synthorg.providers.errors import ProviderQuotaExceededError
 
 logger = get_logger(__name__)
 
@@ -114,6 +116,118 @@ _CEILING_CAVEAT: str = (
     "repetitions the manifest asked for are not all present. Read the cell "
     "list, not the manifest, for what was actually measured."
 )
+
+_QUOTA_CAVEAT: str = (
+    "The sweep stopped early because the provider account ran out of quota, "
+    "so the depths and repetitions the manifest asked for are not all "
+    "present, and the cell it stopped on was cut off part-way rather than "
+    "measured. Read the cell list, not the manifest, for what was actually "
+    "measured, and re-run the remainder once the account's window resets."
+)
+
+
+def _quota_exhaustion(exc: BaseException) -> ProviderQuotaExceededError | None:
+    """Find a quota refusal anywhere in *exc*'s cause chain.
+
+    The refusal reaches this layer wrapped: the driver raises it, the
+    decomposition service re-raises a ``DecompositionError`` naming the task,
+    and only the chain still says what actually happened.
+
+    Returns:
+        The quota error, or ``None`` when this failure is not one.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, ProviderQuotaExceededError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _report_quota_exhaustion(
+    exc: BaseException, *, measured: int, remaining: int
+) -> bool:
+    """Say whether *exc* is the account running dry, and log it when it is.
+
+    Running out of quota is a property of the ACCOUNT, not of the cell that
+    happened to ask last, so every remaining cell would refuse in seconds and
+    be filed under a cell-shaped reason. One live sweep lost its whole
+    remaining matrix in sixteen seconds that way, and its report blamed
+    decomposition.
+
+    Returns:
+        True when the sweep should stop.
+    """
+    quota = _quota_exhaustion(exc)
+    if quota is None:
+        return False
+    logger.warning(
+        EVALS_RECURSION_QUOTA_EXHAUSTED,
+        measured_cells=measured,
+        remaining_cells=remaining,
+        error=safe_error_description(quota),
+    )
+    return True
+
+
+async def _run_and_record(
+    context: SweepContext,
+    cell: SweepCell,
+    records: list[CellRecord],
+    caveats: list[str],
+    *,
+    remaining: int,
+) -> bool:
+    """Run one planned cell, record it however it ends, and say whether to stop.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: The planned run.
+        records: Sink every outcome is appended to, measured or not.
+        caveats: Sink a stopping reason is appended to.
+        remaining: Planned cells after this one, for the stop log.
+
+    Returns:
+        True when the sweep must not continue.
+
+    Raises:
+        MemoryError: Never handled here.
+        RecursionError: Never handled here.
+    """
+    # Owned out here rather than inside the run, because a cell that raises
+    # part-way has still been paid for and the sweep's spend is the check on
+    # the whole result. A cell that built fourteen leaves before tripping the
+    # ceiling reported nothing at all while the money was gone.
+    units: list[UnitRecord] = []
+    try:
+        records.append(await _run_cell(context, cell, units))
+    except MemoryError, RecursionError:
+        raise
+    except RecursionDepthSessionCeilingError as exc:
+        # Stops the sweep without losing what it has already paid for.
+        logger.warning(
+            EVALS_RECURSION_SESSION_CEILING,
+            spent=context.budget.spent,
+            ceiling=context.manifest.max_sessions,
+            measured_cells=len(records),
+            error=safe_error_description(exc),
+        )
+        records.append(_unavailable(cell, exc, units))
+        caveats.append(_CEILING_CAVEAT)
+        return True
+    except _SYSTEMIC_FAILURES:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
+        records.append(_unavailable(cell, exc, units))
+        if not _report_quota_exhaustion(
+            exc, measured=len(records) - 1, remaining=remaining
+        ):
+            return False
+        caveats.append(_QUOTA_CAVEAT)
+        return True
+    return False
 
 
 class SessionBudget:
@@ -283,32 +397,12 @@ async def run_sweep(
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
-    for cell in planned_cells(context.manifest):
-        # Owned out here rather than inside the run, because a cell that raises
-        # part-way has still been paid for and the sweep's spend is the check on
-        # the whole result. A cell that built fourteen leaves before tripping
-        # the ceiling reported nothing at all while the money was gone.
-        units: list[UnitRecord] = []
-        try:
-            records.append(await _run_cell(context, cell, units))
-        except MemoryError, RecursionError:
-            raise
-        except RecursionDepthSessionCeilingError as exc:
-            # Stops the sweep without losing what it has already paid for.
-            logger.warning(
-                EVALS_RECURSION_SESSION_CEILING,
-                spent=context.budget.spent,
-                ceiling=context.manifest.max_sessions,
-                measured_cells=len(records),
-                error=safe_error_description(exc),
-            )
-            records.append(_unavailable(cell, exc, units))
-            caveats.append(_CEILING_CAVEAT)
+    planned = tuple(planned_cells(context.manifest))
+    for index, cell in enumerate(planned):
+        if await _run_and_record(
+            context, cell, records, caveats, remaining=len(planned) - index - 1
+        ):
             break
-        except _SYSTEMIC_FAILURES:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- recorded as an unavailable cell
-            records.append(_unavailable(cell, exc, units))
     measured = tuple(record for record in records if record.achieved_depth is not None)
     if not measured:
         msg = (

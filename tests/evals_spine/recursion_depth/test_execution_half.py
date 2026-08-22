@@ -78,12 +78,14 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
     ResolvedAgentCapabilityReader,
 )
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
+from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
@@ -1047,6 +1049,41 @@ class TestTheMatrix:
         report = await run_sweep(context, provenance=_provenance())
 
         assert set(report.caveats) == {SIZING_CAVEAT, ORACLE_CAVEAT}
+
+    async def test_a_depleted_account_stops_the_sweep_instead_of_shredding_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Quota is an ACCOUNT fact, so the cells after it are not measurements.
+
+        A live sweep filed its whole remaining matrix as unavailable in sixteen
+        seconds, each row blaming decomposition, because every one of them
+        asked a depleted account and was refused instantly.
+        """
+        depleted = ProviderQuotaExceededError("session usage limit reached")
+        refused = DecompositionError("LLM decomposition provider call failed")
+        refused.__cause__ = depleted
+        monkeypatch.setattr(
+            runner_module, "_build_tree_units", _assembles_then_dies(tmp_path, refused)
+        )
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _ScriptedPlanner(
+            answer=PlannedTree(result=_tree(), cost=1.0, sessions=1)
+        )
+        context = await _context(
+            tmp_path,
+            planner=planner,
+            manifest=_manifest(depths=(1, 2), repetitions={1: 1, 2: 1}),
+        )
+
+        report = await run_sweep(context, provenance=_provenance())
+
+        # Four planned; the second refused, so the third and fourth are never
+        # asked and never appear as cells nobody could tell apart from real
+        # unavailable ones.
+        assert len(planned_cells(context.manifest)) == 4
+        assert len(report.cells) == 2
+        assert len(report.unavailable_cells) == 1
+        assert any("ran out of quota" in one for one in report.caveats)
 
     async def test_a_cell_that_died_part_way_still_books_what_it_paid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

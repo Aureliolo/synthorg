@@ -74,5 +74,6 @@ EVALS_RECURSION_CELL_UNAVAILABLE: Final[str] = "evals.recursion_depth.cell_unava
 EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
+EVALS_RECURSION_QUOTA_EXHAUSTED: Final[str] = "evals.recursion_depth.quota_exhausted"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
 EVALS_RECURSION_PREFLIGHT_PASSED: Final[str] = "evals.recursion_depth.preflight_passed"
