@@ -49,9 +49,9 @@ They reach an agent through **two** prompt builders, because the product has
 two, and a directive present in one and absent from the other would mean an
 agent is judged at its boundary against rules its own prompt never carried:
 
-* the full agent prompt renders a `## House Writing Style` section after
+- the full agent prompt renders a `## House Writing Style` section after
   Personality and before Skills, via `adapter.inject_house_style_context`;
-* the compact persona prompt (`engine/agent_persona.py::render_agent_system_prompt`)
+- the compact persona prompt (`engine/agent_persona.py::render_agent_system_prompt`)
   renders the same directives through the same `build_house_style_section`,
   after the persona preamble and before the untrusted-content directive. Its
   consumers are the planning session, the evaluation session, the retro
