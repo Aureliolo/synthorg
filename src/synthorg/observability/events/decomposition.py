@@ -31,9 +31,17 @@ DECOMPOSITION_SESSION_DUPLICATE_SUBMIT: Final[str] = (
 DECOMPOSITION_SESSION_RESUMED: Final[str] = "decomposition.session.resumed"
 """A planning session that stopped without submitting was told so and continued.
 
-Carries the turns already spent against the cap, because the question this
-answers on a slow or expensive run is whether the session is converging on a
-plan or burning its budget being handed the same rejection."""
+Carries the resume count and the turns already spent against the cap, because
+the question this answers on a slow or expensive run is whether the session is
+converging on a plan or burning its budget being handed the same rejection."""
+
+DECOMPOSITION_SESSION_PLAN_REJECTED: Final[str] = "decomposition.session.plan_rejected"
+"""A submitted plan was refused, so the agent was handed the reason to fix.
+
+The refusal itself reaches the agent as the tool's own result and never has to
+be logged for it to act. This exists for the reader afterwards: the same
+rejection arriving turn after turn is what a session burning its budget without
+converging looks like, and nothing else records the reason each time."""
 
 # Coordination-constraints middleware received an empty plan text from
 # the LLM.  Caller falls back to a default plan; the event preserves the

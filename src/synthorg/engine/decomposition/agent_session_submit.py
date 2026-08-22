@@ -8,6 +8,7 @@ comes back as a tool error rather than an exception, which is what lets the
 session correct and resubmit on its next turn instead of ending on it.
 """
 
+import asyncio
 from typing import cast, override
 
 from pydantic import JsonValue
@@ -20,6 +21,7 @@ from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
+    DECOMPOSITION_SESSION_PLAN_REJECTED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -28,12 +30,50 @@ logger = get_logger(__name__)
 
 
 class PlanCapture:
-    """Mutable holder for the plan a session submits via the terminal tool."""
+    """The one plan a session submits, and the only writer of it.
 
-    __slots__ = ("plan",)
+    The check-and-set lives here rather than in the tool because it has to be
+    one step: a turn is free to emit two ``submit_decomposition_plan`` calls,
+    the invoker runs them as siblings in one task group against this one
+    instance, and a check in the tool would let both see an empty capture, so
+    the duplicate goes unreported and which plan survives is whichever task
+    finished last.
 
-    def __init__(self) -> None:
-        self.plan: DecompositionPlan | None = None
+    Read-only from outside for the same reason the write is guarded: the
+    session's loop asks this object whether it has a plan yet, and anything
+    able to clear it could put a delivered session back to undelivered.
+
+    Args:
+        parent_task_id: The objective being planned, for the duplicate warning.
+    """
+
+    __slots__ = ("_lock", "_parent_task_id", "_plan")
+
+    def __init__(self, parent_task_id: NotBlankStr) -> None:
+        self._plan: DecompositionPlan | None = None
+        self._parent_task_id = parent_task_id
+        self._lock = asyncio.Lock()
+
+    @property
+    def plan(self) -> DecompositionPlan | None:
+        """The plan submitted so far, or ``None`` while none has been."""
+        return self._plan
+
+    async def set(self, plan: DecompositionPlan) -> None:
+        """Accept *plan*, reporting it when it supersedes another.
+
+        Args:
+            plan: The plan the session just submitted.
+        """
+        async with self._lock:
+            if self._plan is not None:
+                logger.warning(
+                    DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
+                    parent_task_id=self._parent_task_id,
+                    previous_subtask_count=len(self._plan.subtasks),
+                    new_subtask_count=len(plan.subtasks),
+                )
+            self._plan = plan
 
 
 class SubmitDecompositionPlanTool(BaseTool):
@@ -90,6 +130,16 @@ class SubmitDecompositionPlanTool(BaseTool):
                 self._available_roles,
             )
         except DecompositionError as exc:
+            # Logged as well as returned: the rejection the agent reads is one
+            # tool result, and the question an expensive session raises later
+            # is whether it was handed the same one repeatedly, which only the
+            # log can answer.
+            logger.info(
+                DECOMPOSITION_SESSION_PLAN_REJECTED,
+                parent_task_id=self._parent_task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Plan rejected: {safe_error_description(exc)}. "
@@ -97,14 +147,7 @@ class SubmitDecompositionPlanTool(BaseTool):
                 ),
                 is_error=True,
             )
-        if self._capture.plan is not None:
-            logger.warning(
-                DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
-                parent_task_id=self._parent_task_id,
-                previous_subtask_count=len(self._capture.plan.subtasks),
-                new_subtask_count=len(plan.subtasks),
-            )
-        self._capture.plan = plan
+        await self._capture.set(plan)
         return ToolExecutionResult(
             content=(
                 f"Plan accepted with {len(plan.subtasks)} subtasks. You may stop now."

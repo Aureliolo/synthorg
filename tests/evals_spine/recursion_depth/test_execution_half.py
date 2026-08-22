@@ -6,7 +6,6 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
-import json
 import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -22,6 +21,7 @@ from evals.errors import (
     RecursionDepthNoCellsMeasuredError,
     RecursionDepthSessionCeilingError,
 )
+from evals.harness.journal import open_journal
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
@@ -34,7 +34,13 @@ from evals.recursion_depth.grading import (
     read_verdict,
     refuse_without_a_runner,
 )
-from evals.recursion_depth.journal import CellUnits
+from evals.recursion_depth.journal import (
+    PROGRESS_SPEC,
+    CellUnits,
+    cell_key,
+    matrix_identity,
+    progress_by_cell,
+)
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -1331,19 +1337,25 @@ class TestTheMatrix:
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
             await _swept(context, tmp_path)
 
-        rows = [
-            json.loads(line)
-            for line in (tmp_path / "out" / "progress.jsonl")
-            .read_text(encoding="utf-8")
-            .splitlines()
-        ]
-        plans = [row["unit"] for row in rows if "unit" in row]
+        # Read back through the reader a resume uses, not a hand-rolled parse:
+        # what matters is that the row this leaves behind is one the next
+        # process can actually load.
+        _, resumed = open_journal(
+            tmp_path / "out",
+            PROGRESS_SPEC,
+            identity=matrix_identity(_provenance()),
+            resume=True,
+        )
+        plans = [record.unit for record in resumed.recorded if record.unit.kind == PLAN]
         assert len(plans) == 1
         # Both bounded attempts ran, and both are booked: reading the last
         # ledger alone under-reports by exactly the attempts that failed.
-        assert plans[0]["attempts"] == 2
-        assert plans[0]["tokens"] == 8192
-        assert plans[0]["detail"]
+        assert plans[0].attempts == 2
+        assert plans[0].tokens == 8192
+        assert "provider call failed" in plans[0].detail
+        # No tree was journalled, so a resume restarts the cell whole rather
+        # than continuing from a plan it does not have.
+        assert progress_by_cell(resumed)[cell_key(1, Arm.GATED, 0)].plan is None
 
     async def test_a_measured_cell_books_what_planning_cost(
         self, tmp_path: Path, assembled_trees: None

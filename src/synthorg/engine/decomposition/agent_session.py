@@ -152,8 +152,11 @@ def _stopped_short(reason: TerminationReason) -> bool:
         # MAX_TURNS and BUDGET_EXHAUSTED are the bounds themselves, so another
         # turn is exactly what they refuse; STAGNATION means the loop is
         # already repeating itself, and re-prompting is one more repetition.
-        # ERROR / SHUTDOWN / PARKED / CANCELLED stopped the session from the
-        # outside, and nothing here can hand it back.
+        # ERROR is the loop giving up rather than the agent doing so, whether
+        # the provider failed or the corrections for unusable turns ran out;
+        # either way the next turn fails the same way. SHUTDOWN, PARKED and
+        # CANCELLED stopped the session from outside it, and nothing here can
+        # hand it back.
         case (
             TerminationReason.MAX_TURNS
             | TerminationReason.BUDGET_EXHAUSTED
@@ -378,7 +381,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
             return await self._fallback_plan(task, context)
 
-        capture = PlanCapture()
+        capture = PlanCapture(NotBlankStr(str(task.id)))
         result = await self._run_session(task, context, owner, provider, capture)
         plan = capture.plan
         if plan is None:
@@ -503,7 +506,13 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         continues, exactly as a coding loop that has just been handed a failing
         check does. The bounds keep their meaning, because the only terminations
         that re-enter are the ones the agent chose (:func:`_stopped_short`), and
-        a segment always consumes at least one turn.
+        reaching either of those costs a turn: the loop records the turn before
+        it can decide the response completed the run.
+
+        The one segment that can record no turn is one entered with the spend
+        ceiling already reached, which returns ``BUDGET_EXHAUSTED`` from its
+        first budget check. That is not resumable, so it ends the loop rather
+        than spinning in it.
 
         Args:
             task: The task being decomposed.
@@ -526,10 +535,12 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             max_turns=self._config.max_turns,
         )
         result = await self._run_segment(task, owner, ctx, invoker, provider)
+        resumes = 0
         while capture.plan is None:
-            resumed = self._resume_unsubmitted(task, owner, result)
+            resumed = self._resume_unsubmitted(task, owner, result, resumes)
             if resumed is None:
                 return result
+            resumes += 1
             result = await self._run_segment(task, owner, resumed, invoker, provider)
         return result
 
@@ -538,6 +549,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         task: Task,
         owner: AgentIdentity,
         result: ExecutionResult,
+        resumes: int,
     ) -> AgentContext | None:
         """Extend the session's context with the nudge, when one is warranted.
 
@@ -545,6 +557,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             task: The task being decomposed.
             owner: The staffed owner running the planning session.
             result: The segment that ended without a submitted plan.
+            resumes: How many times this session has already been told.
 
         Returns:
             The context to run the next segment with, or ``None`` when the
@@ -559,7 +572,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             DECOMPOSITION_SESSION_RESUMED,
             task_id=str(task.id),
             owner_id=str(owner.id),
-            termination=result.termination_reason.value,
+            # The count is what separates a session converging on a plan from
+            # one spending its budget being handed the same rejection; without
+            # it the two read identically, one line at a time.
+            resume_count=resumes + 1,
             turns_used=result.context.turn_count,
             max_turns=result.context.max_turns,
         )

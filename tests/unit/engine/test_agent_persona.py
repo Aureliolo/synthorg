@@ -19,6 +19,7 @@ from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.output_style.models import HouseStyleDirective
 from synthorg.engine.output_style.provider import (
     SnapshotHouseStyleProvider,
+    current_house_style_provider,
     set_house_style_provider,
 )
 from synthorg.engine.prompt_safety import (
@@ -33,15 +34,23 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _unbound_house_style() -> Iterator[None]:
-    """Leave the process-global house-style provider unbound for the next test.
+def _reset_house_style_ambient() -> Iterator[None]:
+    """Give every test here a clean provider, and hand back what was bound.
 
     The provider is a module global by design (org-wide policy visible across
-    every request coroutine), so a test that binds one would otherwise decide
-    what every later test's persona prompt says.
+    every request coroutine), and one xdist worker runs many files in sequence,
+    so the leak runs both ways: a provider left bound by an earlier file would
+    decide what these tests' prompts say, and forcing ``None`` on the way out
+    would stomp a real binding a later file depends on. Mirrors
+    ``tests/unit/engine/output_style/conftest.py``, which solves the same
+    problem for the same global.
     """
-    yield
+    previous = current_house_style_provider()
     set_house_style_provider(None)
+    try:
+        yield
+    finally:
+        set_house_style_provider(previous)
 
 
 _DEFAULT_TRAITS: tuple[NotBlankStr, ...] = (NotBlankStr("analytical"),)
@@ -131,6 +140,30 @@ class TestRenderAgentSystemPrompt:
 
         assert "House writing style" in prompt
         assert "- Never use em-dashes." in prompt
+
+    def test_the_enforced_rule_is_named_rather_than_a_blanket_claim(self) -> None:
+        """Only the em-dash ban is rejected at a boundary, so only it is claimed.
+
+        This renderer serves the retro and plan-review sessions too, and neither
+        of their submit tools runs a style guard, so a prompt promising that any
+        violation comes back to be fixed would be telling those sessions
+        something untrue of their own output path.
+        """
+        set_house_style_provider(
+            SnapshotHouseStyleProvider(
+                (
+                    HouseStyleDirective(
+                        id=NotBlankStr("concision"),
+                        text=NotBlankStr("Be concise and direct."),
+                    ),
+                )
+            )
+        )
+
+        prompt = render_agent_system_prompt(_identity())
+
+        assert "The em-dash ban is hard-enforced" in prompt
+        assert "expected and monitored" in prompt
 
     def test_only_the_directives_in_scope_for_the_agent_reach_the_prompt(self) -> None:
         set_house_style_provider(

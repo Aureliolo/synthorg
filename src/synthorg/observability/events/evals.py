@@ -99,6 +99,14 @@ EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_f
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
 EVALS_RECURSION_PREFLIGHT_PASSED: Final[str] = "evals.recursion_depth.preflight_passed"
 EVALS_RECURSION_PLAN_RETRIED: Final[str] = "evals.recursion_depth.plan_retried"
+
+EVALS_RECURSION_PLAN_FAILED: Final[str] = "evals.recursion_depth.plan_failed"
+"""One planning attempt produced no tree, and what it had already spent.
+
+Logged where the failure happens rather than only where it is caught, because
+by the time the runner files the cell the attempt's own execution id, the depth
+cap it was planning to, and the spend it booked on the way out are all several
+frames behind the exception."""
 EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
 EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
 EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"

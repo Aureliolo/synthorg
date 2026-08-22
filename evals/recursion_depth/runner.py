@@ -567,7 +567,8 @@ def _unavailable(
     Returns:
         The unavailable cell.
     """
-    reason = f"{type(exc).__name__}: {safe_error_description(exc)}"
+    # `safe_error_description` already leads with the exception type.
+    reason = safe_error_description(exc)
     logger.warning(
         EVALS_RECURSION_CELL_UNAVAILABLE,
         depth_cap=cell.depth_cap,
@@ -772,22 +773,60 @@ async def _plan_cell(
     except Exception as exc:
         # No tree, so no plan row: a journalled plan is what a resume takes the
         # cell up from, and this attempt left nothing to take up.
+        # `safe_error_description` already leads with the exception type, so
+        # naming it again would spend half the field's cap repeating itself.
         units.append(
-            _plan_unit(
-                context,
-                cell,
-                spend,
-                detail=f"{type(exc).__name__}: {safe_error_description(exc)}",
-            )
+            _plan_unit(context, cell, spend, detail=safe_error_description(exc))
         )
-        context.budget.spend(spend.sessions)
+        _book_planning_budget(context, spend, failure=exc)
         raise
     units.append(
         _plan_unit(context, cell, spend),
         plan=PlannedTreeRecord(root=root, result=tree),
     )
-    context.budget.spend(spend.sessions)
+    _book_planning_budget(context, spend, failure=None)
     return _ContinuedCell(root=root, tree=tree, produced={}, delivered={})
+
+
+def _book_planning_budget(
+    context: SweepContext, spend: PlanningSpend, *, failure: Exception | None
+) -> None:
+    """Book the planning sessions against the sweep's ceiling.
+
+    On the failure path the ceiling error must not become what propagates.
+    ``_run_and_record`` classifies by exception TYPE, and the two verdicts it
+    reaches are opposites: a ceiling breach stops the sweep and still writes
+    the report, while a systemic failure writes none at all. A planning failure
+    that happens to be the booking which crosses the ceiling would be filed as
+    the first, so an unreachable gateway or an unwritable journal would be
+    reported to the operator as "raise max_sessions" and, for the journal case,
+    answered by writing to the journal already known to be broken.
+
+    Args:
+        context: Everything the sweep is driven with.
+        spend: What the planning attempts booked.
+        failure: The planning failure already propagating, or ``None`` when
+            planning produced a tree and the ceiling may stop the sweep here.
+
+    Raises:
+        RecursionDepthSessionCeilingError: The sweep has spent its budget, and
+            no other failure is already on its way out.
+    """
+    try:
+        context.budget.spend(spend.sessions)
+    except RecursionDepthSessionCeilingError:
+        if failure is None:
+            raise
+        # Logged rather than raised: the breach is real and the sweep will
+        # reach it again on the next booking, but the failure already
+        # propagating is the one the operator needs to read.
+        logger.warning(
+            EVALS_RECURSION_SESSION_CEILING,
+            spent=context.budget.spent,
+            ceiling=context.manifest.max_sessions,
+            error_type=type(failure).__name__,
+            error=safe_error_description(failure),
+        )
 
 
 async def _run_cell(

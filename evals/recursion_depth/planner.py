@@ -14,9 +14,11 @@ every node and a cost panel that omitted them would understate the deep end
 exactly where the question is.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from evals.errors import RecursionDepthPlannerSubstitutedError
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import ModelPair
@@ -40,9 +42,13 @@ from synthorg.engine.decomposition.agent_session import (
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.evals import EVALS_RECURSION_PLAN_FAILED
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+logger = get_logger(__name__)
 
 #: The shipped planner: an owner-run session that reasons across turns and
 #: submits its plan through a terminal tool. The single-shot alternative is
@@ -102,11 +108,26 @@ class PlanningSpend:
     def book(self, *, cost: float, tokens: int, sessions: int) -> None:
         """Add one attempt's spend.
 
+        Refuses a negative delta here rather than letting it reach the
+        ``UnitRecord`` this eventually builds: that model's ``ge=0`` fields
+        catch it two modules and one exception boundary away from the call
+        that computed it, by which point the running total is already wrong
+        and nothing names which attempt corrupted it.
+
         Args:
             cost: What the attempt's ledger recorded.
             tokens: Input plus output tokens over the same records.
             sessions: How many planning sessions the attempt ran.
+
+        Raises:
+            ValueError: Any of the three deltas is negative.
         """
+        if cost < 0 or tokens < 0 or sessions < 0:
+            msg = (
+                f"planning spend cannot decrease: cost={cost}, "
+                f"tokens={tokens}, sessions={sessions}"
+            )
+            raise ValueError(msg)
         self._cost += cost
         self._tokens += tokens
         self._sessions += sessions
@@ -167,14 +188,14 @@ class AgentSessionPlanner:
             spend: Where this attempt's spend is booked, whether or not it
                 produces a tree.
 
+        Whatever planning raises propagates unchanged, because the runner takes
+        two classifications from the type itself: a systemic failure that stops
+        the sweep, and a decomposition failure that earns the second attempt.
+        Wrapping it would cost both, which is why the spend travels in *spend*
+        rather than on an exception of this module's own.
+
         Returns:
             The tree.
-
-        Raises:
-            Exception: Whatever planning raised, unchanged. Wrapping it would
-                cost the runner the two classifications it takes from the type
-                itself: a systemic failure that stops the sweep, and a
-                decomposition failure that earns the second attempt.
         """
         provider = await self.deps.build_provider(self._binding(task, execution_id))
         fallback = ProgressTrackingLedger()
@@ -212,12 +233,32 @@ class AgentSessionPlanner:
                     # shipped planner.
                     owner=self.roster.lead,
                 )
-            except Exception:
-                # One session is a floor and is deliberately one: the root
-                # planned or this failure did not come from the planner, and
-                # the levels below it cannot be counted without the tree the
-                # failure withheld. The money is exact either way.
-                await _book(tracker, spend, sessions=1)
+            except RecursionDepthPlannerSubstitutedError as substituted:
+                # The one refusal raised holding a finished tree: every level
+                # of it planned and was billed, and the floor below would
+                # under-book the sweep's ceiling by everything under the root.
+                await _shielded_book(
+                    tracker,
+                    spend,
+                    sessions=substituted.sessions,
+                    failure=substituted,
+                    execution_id=execution_id,
+                    depth_cap=depth_cap,
+                )
+                raise
+            except Exception as exc:
+                # A floor of one, because `decompose_task` attempts the root's
+                # own planning call before any recursion, so at least that
+                # session ran. What it split into cannot be counted without the
+                # tree the failure withheld, and the money is exact regardless.
+                await _shielded_book(
+                    tracker,
+                    spend,
+                    sessions=1,
+                    failure=exc,
+                    execution_id=execution_id,
+                    depth_cap=depth_cap,
+                )
                 raise
             # Counted from the tree rather than from the cap: a planner that
             # stopped splitting at three ran three levels of sessions whatever
@@ -279,6 +320,46 @@ class AgentSessionPlanner:
             TaskStructureClassifier(),
             config_resolver=self.config_resolver,
         )
+
+
+async def _shielded_book(
+    tracker: ProgressTrackingLedger,
+    spend: PlanningSpend,
+    *,
+    sessions: int,
+    failure: BaseException,
+    execution_id: str,
+    depth_cap: int,
+) -> None:
+    """Book a failed attempt's spend, out of reach of a cancellation.
+
+    Unshielded, a cancellation arriving while this awaits the drain raises out
+    of the handler it was called from, so the failure that was propagating
+    never reaches its own ``raise``: the runner classifies by exception type,
+    and it would see the cancellation instead, skipping the record of a cell
+    that had already spent. Shielding costs a bounded drain plus an in-memory
+    read before the cancellation resumes, and buys the one row this exists to
+    write.
+
+    Args:
+        tracker: The attempt's authoritative cost sink.
+        spend: Where the cell's planning spend accumulates.
+        sessions: How many planning sessions this attempt ran.
+        failure: What planning raised, for the log line.
+        execution_id: Which planning attempt this was.
+        depth_cap: The ``max_depth`` it was planning to.
+    """
+    await asyncio.shield(_book(tracker, spend, sessions=sessions))
+    logger.warning(
+        EVALS_RECURSION_PLAN_FAILED,
+        execution_id=execution_id,
+        depth_cap=depth_cap,
+        sessions=sessions,
+        cost=spend.cost,
+        tokens=spend.tokens,
+        error_type=type(failure).__name__,
+        error=safe_error_description(failure),
+    )
 
 
 async def _book(
