@@ -1,19 +1,6 @@
 /** Structural equality for API payloads. */
 
-function arraysEqual(a: unknown, b: unknown): boolean {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-  return a.every((item, i) => deepEqual(item, b[i]))
-}
-
-function recordsEqual(a: object, b: object): boolean {
-  const aRecord = a as Record<string, unknown>
-  const bRecord = b as Record<string, unknown>
-  const aKeys = Object.keys(aRecord)
-  if (aKeys.length !== Object.keys(bRecord).length) return false
-  return aKeys.every(
-    (key) => Object.hasOwn(bRecord, key) && deepEqual(aRecord[key], bRecord[key]),
-  )
-}
+import { isEqual } from 'es-toolkit'
 
 /**
  * Deep structural equality over JSON-shaped values (the result of
@@ -23,12 +10,12 @@ function recordsEqual(a: object, b: object): boolean {
  * returned identical data: writing a fresh object every poll notifies
  * every subscriber, re-rendering charts/gauges across the app and
  * producing a ResizeObserver re-measure wave each interval.
+ *
+ * Wraps es-toolkit rather than calling it directly so the comparison
+ * enters our code as `unknown`. The library types both parameters as
+ * `any`, which would let an unchecked value spread from a call site
+ * into stores that are otherwise strictly typed.
  */
 export function deepEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
-    return false
-  }
-  if (Array.isArray(a) || Array.isArray(b)) return arraysEqual(a, b)
-  return recordsEqual(a, b)
+  return isEqual(a, b)
 }
