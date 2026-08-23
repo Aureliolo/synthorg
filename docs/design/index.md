@@ -193,7 +193,7 @@ Queue: Hiring Queue
     ---
 
     Company types, organisational hierarchy, department configuration, template system,
-    and dynamic scaling.
+    and headcount changes.
 
 -   [**Communication**](communication.md)
 

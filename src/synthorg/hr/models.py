@@ -75,9 +75,6 @@ class HiringRequest(BaseModel):
         role: Desired role.
         required_skills: Skills the candidate must have.
         reason: Business justification.
-        agent_delegate: Existing agent assigned to absorb queued work
-            while this hire is being instantiated (the overflow handler
-            from the scaling decision); ``None`` when none was selected.
         budget_limit_monthly: Maximum monthly cost in the configured
             currency, if constrained.
         template_name: Template to use for candidate generation.
@@ -102,13 +99,6 @@ class HiringRequest(BaseModel):
         description="Required skills",
     )
     reason: NotBlankStr = Field(description="Business justification")
-    agent_delegate: NotBlankStr | None = Field(
-        default=None,
-        description=(
-            "Existing agent assigned to absorb queued work while this hire"
-            " instantiates (overflow handler from the scaling decision)"
-        ),
-    )
     budget_limit_monthly: float | None = Field(
         default=None,
         ge=0.0,

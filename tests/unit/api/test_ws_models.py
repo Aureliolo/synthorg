@@ -168,9 +168,9 @@ class TestWsOutboundEnvelope:
         # Reserved / future event types the strict union does not cover
         # must still be forwarded, not dropped.
         env = WsOutboundEnvelope.model_validate(
-            {"channel": "scaling", "event_type": "hr.scaling.triggered"}
+            {"channel": "agents", "event_type": "hr.agent.reserved_future"}
         )
-        assert env.event_type == "hr.scaling.triggered"
+        assert env.event_type == "hr.agent.reserved_future"
         assert env.payload == {}
 
     def test_ignores_version_and_timestamp_envelope_fields(self) -> None:

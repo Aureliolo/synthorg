@@ -998,15 +998,6 @@ async def _deactivate_run_recovery(app_state: AppState) -> None:
     await unwire_run_recovery(app_state)
 
 
-async def _activate_scaling(app_state: AppState) -> None:
-    """Wire the agent-scaling service."""
-    from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
-        wire_scaling,
-    )
-
-    await wire_scaling(app_state)
-
-
 async def _activate_quota_poller(app_state: AppState) -> None:
     """Wire the provider quota poller."""
     from synthorg.api.lifecycle_helpers.budget_wiring import (  # noqa: PLC0415
@@ -1769,19 +1760,6 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.SETTINGS_RESOLVER,
         ),
         activate=_activate_hiring,
-    ),
-    SubsystemSpec(
-        name="scaling_service",
-        provides=CapabilityId.SCALING_SERVICE,
-        requires=(
-            CapabilityId.PERSISTENCE,
-            CapabilityId.AGENT_REGISTRY,
-            # The scaler decides to hire; the pipeline that does the hiring
-            # has one owner, so the scaler waits for it rather than
-            # building a second.
-            CapabilityId.HIRING_SERVICE,
-        ),
-        activate=_activate_scaling,
     ),
     SubsystemSpec(
         name="review_staffing",

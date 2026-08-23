@@ -17,7 +17,6 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -27,7 +26,6 @@ from synthorg.meta.signals.coordination import CoordinationSignalAggregator
 from synthorg.meta.signals.errors import ErrorSignalAggregator
 from synthorg.meta.signals.evolution import EvolutionSignalAggregator
 from synthorg.meta.signals.performance import PerformanceSignalAggregator
-from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
@@ -53,7 +51,6 @@ _EMPTY_BUDGET = OrgBudgetSummary(
     orchestration_overhead=0.0,
 )
 _EMPTY_COORDINATION = OrgCoordinationSummary()
-_EMPTY_SCALING = OrgScalingSummary()
 _EMPTY_ERRORS = OrgErrorSummary()
 _EMPTY_EVOLUTION = OrgEvolutionSummary()
 _EMPTY_TELEMETRY = OrgTelemetrySummary()
@@ -91,9 +88,6 @@ class SnapshotBuilder:
         performance: Performance signal aggregator.
         budget: Budget signal aggregator.
         coordination: Coordination signal aggregator.
-        scaling: Scaling signal aggregator, or ``None`` when no scaling
-            service is wired (the snapshot then carries an empty scaling
-            summary).
         errors: Error signal aggregator.
         evolution: Evolution signal aggregator.
         telemetry: Telemetry signal aggregator.
@@ -105,13 +99,12 @@ class SnapshotBuilder:
             to pin ``until``.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         performance: PerformanceSignalAggregator,
         budget: BudgetSignalAggregator,
         coordination: CoordinationSignalAggregator,
-        scaling: ScalingSignalAggregator | None,
         errors: ErrorSignalAggregator,
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
@@ -121,7 +114,6 @@ class SnapshotBuilder:
         self._performance = performance
         self._budget = budget
         self._coordination = coordination
-        self._scaling = scaling
         self._errors = errors
         self._evolution = evolution
         self._telemetry = telemetry
@@ -174,17 +166,6 @@ class SnapshotBuilder:
                     domain="coord",
                 )
             )
-            scale_task = (
-                tg.create_task(
-                    _aggregate(
-                        self._scaling.aggregate(since=since, until=until),
-                        _EMPTY_SCALING,
-                        domain="scale",
-                    )
-                )
-                if self._scaling is not None
-                else None
-            )
             err_task = tg.create_task(
                 _aggregate(
                     self._errors.aggregate(since=since, until=until),
@@ -222,7 +203,6 @@ class SnapshotBuilder:
             performance=perf_task.result(),
             budget=budget_task.result(),
             coordination=coord_task.result(),
-            scaling=(scale_task.result() if scale_task is not None else _EMPTY_SCALING),
             errors=err_task.result(),
             evolution=evo_task.result(),
             telemetry=telem_task.result(),

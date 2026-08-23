@@ -1,11 +1,11 @@
 """SignalsService -- thin facade for MCP signal handlers.
 
-Composes the 7 per-domain aggregators with :class:`SnapshotBuilder`
+Composes the 6 per-domain aggregators with :class:`SnapshotBuilder`
 and the approval store to expose one callable surface:
 
-* 7 ``get_*`` methods return per-domain :class:`OrgErrorSummary` /
+* 6 ``get_*`` methods return per-domain :class:`OrgErrorSummary` /
   :class:`OrgBudgetSummary` / etc. for ``[since, until)`` windows.
-* :meth:`get_org_snapshot` fans the same window out to all 7
+* :meth:`get_org_snapshot` fans the same window out to all 6
   aggregators via :class:`SnapshotBuilder`.
 * :meth:`list_proposals` queries :class:`ApprovalStore` for items
   flagged with ``action_type=PROPOSAL_ACTION_TYPE``.
@@ -43,7 +43,6 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -52,7 +51,6 @@ from synthorg.meta.signals.coordination import CoordinationSignalAggregator
 from synthorg.meta.signals.errors import ErrorSignalAggregator
 from synthorg.meta.signals.evolution import EvolutionSignalAggregator
 from synthorg.meta.signals.performance import PerformanceSignalAggregator
-from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.snapshot import SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from synthorg.observability import get_logger
@@ -75,44 +73,38 @@ both.
 
 
 #: Canonical signal-domain order for the availability summary. Matches the
-#: seven aggregators the service composes.
+#: six aggregators the service composes.
 _SIGNAL_DOMAINS: Final[tuple[str, ...]] = (
     "performance",
     "budget",
     "coordination",
-    "scaling",
     "errors",
     "evolution",
     "telemetry",
 )
-_SCALING_DOMAIN: Final[str] = "scaling"
 
 
 class SignalsService:
-    """Facade over the 7 aggregators + snapshot builder + proposal store.
+    """Facade over the 6 aggregators + snapshot builder + proposal store.
 
     Args:
         performance: Per-domain aggregator.
         budget: Per-domain aggregator.
         coordination: Per-domain aggregator.
-        scaling: Per-domain aggregator, or ``None`` when no scaling
-            service is wired (the scaling domain then degrades to an
-            empty summary rather than 503-ing the whole facade).
         errors: Per-domain aggregator.
         evolution: Per-domain aggregator.
         telemetry: Per-domain aggregator.
-        snapshot_builder: Composite snapshot builder over all 7.
+        snapshot_builder: Composite snapshot builder over all 6.
         approval_store: Shared approval store used for proposal
             submission and listing (filtered by action_type).
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         performance: PerformanceSignalAggregator,
         budget: BudgetSignalAggregator,
         coordination: CoordinationSignalAggregator,
-        scaling: ScalingSignalAggregator | None,
         errors: ErrorSignalAggregator,
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
@@ -122,7 +114,6 @@ class SignalsService:
         self._performance = performance
         self._budget = budget
         self._coordination = coordination
-        self._scaling = scaling
         self._errors = errors
         self._evolution = evolution
         self._telemetry = telemetry
@@ -146,23 +137,18 @@ class SignalsService:
     def domain_availability(self) -> dict[str, bool]:
         """Report per-domain availability without running aggregation.
 
-        Every domain aggregates from an always-wired source except
-        ``scaling``, whose aggregator is absent (degraded to unavailable)
-        when no scaling service is wired. Cheap by design: the signals
-        overview must render domain badges without fanning a time window
-        out to all seven aggregators.
+        Every domain aggregates from an always-wired source, so each reads
+        available. Kept as a mapping rather than collapsed to a constant
+        because the signals overview renders one badge per domain, and a
+        domain that later degrades has one place to say so. Cheap by
+        design: the overview must render without fanning a time window out
+        to every aggregator.
 
         Returns:
             An ordered mapping of domain name to whether its aggregator is
             wired and can produce signals.
         """
-
-        def _available(domain: str) -> bool:
-            if domain == _SCALING_DOMAIN:
-                return self._scaling is not None
-            return True
-
-        return {domain: _available(domain) for domain in _SIGNAL_DOMAINS}
+        return dict.fromkeys(_SIGNAL_DOMAINS, True)
 
     async def get_org_snapshot(
         self,
@@ -170,7 +156,7 @@ class SignalsService:
         since: datetime,
         until: datetime | None = None,
     ) -> OrgSignalSnapshot:
-        """Build a composite snapshot across all 7 domains.
+        """Build a composite snapshot across all 6 domains.
 
         Returns:
             ``OrgSignalSnapshot`` instance.
@@ -215,22 +201,6 @@ class SignalsService:
             ``OrgCoordinationSummary`` instance.
         """
         return await self._coordination.aggregate(since=since, until=until)
-
-    async def get_scaling_history(
-        self,
-        *,
-        since: datetime,
-        until: datetime,
-    ) -> OrgScalingSummary:
-        """Scaling signal summary for the window.
-
-        Returns:
-            ``OrgScalingSummary`` instance, or an empty summary when no
-            scaling service is wired.
-        """
-        if self._scaling is None:
-            return OrgScalingSummary()
-        return await self._scaling.aggregate(since=since, until=until)
 
     async def get_error_patterns(
         self,

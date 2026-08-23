@@ -383,7 +383,7 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 ### SynthOrg MCP Tool Surface
 
-SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->247<!--/RS-->
+SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->242<!--/RS-->
 tools across <!--RS:mcp_domains-->22<!--/RS--> domain
 modules (agents, analytics, approvals, brain, budget, charter, cockpit,
 communication, coordination, docs, infrastructure, integrations, knowledge,

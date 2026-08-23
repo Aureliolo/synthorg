@@ -1,11 +1,9 @@
 """Unit tests for coordination-domain MCP handlers.
 
-Covers the nine handlers exposed by
+Covers the five handlers exposed by
 ``meta/mcp/handlers/coordination.py``:
 
 - coordination: ``get_task_metrics``, ``metrics_list``
-- scaling: ``list_decisions``, ``get_decision``, ``get_config``,
-  ``trigger``
 - ceremony policy: ``get``, ``get_resolved``, ``get_active_strategy``
 
 Each handler gets a focused test per branch (happy path, capability
@@ -26,7 +24,6 @@ from synthorg.api.state import AppState
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
@@ -296,161 +293,6 @@ class TestMetricsList:
 
         body = _parse(raw)
         assert body["status"] == "error"
-
-
-# ── Scaling ───────────────────────────────────────────────────────
-
-
-class TestScalingListDecisions:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        decision = SimpleNamespace(
-            model_dump=lambda mode="json": {"id": "d-1"},
-        )
-        service = AsyncMock()
-        service.list_decisions.return_value = ((decision,), 1)
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_list_decisions"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"offset": 0, "limit": 10},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == [{"id": "d-1"}]
-
-
-class TestScalingGetDecision:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        decision = SimpleNamespace(
-            model_dump=lambda mode="json": {"id": "d-42"},
-        )
-        service = AsyncMock()
-        service.get_decision.return_value = decision
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_get_decision"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"decision_id": "d-42"},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == {"id": "d-42"}
-
-    async def test_missing_decision_maps_to_not_found(
-        self,
-        actor: AgentIdentity,
-    ) -> None:
-        service = AsyncMock()
-        service.get_decision.return_value = None
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_get_decision"]
-
-        with structlog.testing.capture_logs() as events:
-            raw = await handler(
-                app_state=state,
-                arguments={"decision_id": "nonexistent"},
-                actor=actor,
-            )
-
-        body = _parse(raw)
-        assert body["domain_code"] == "not_found"
-        failed = [e for e in events if e.get("event") == MCP_HANDLER_INVOKE_FAILED]
-        assert failed
-        assert failed[-1].get("decision_id") == "nonexistent"
-
-
-class TestScalingGetConfig:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        config = SimpleNamespace(
-            model_dump=lambda mode="json": {"min": 1, "max": 10},
-        )
-        service = AsyncMock()
-        service.get_config.return_value = config
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_get_config"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == {"min": 1, "max": 10}
-
-
-class TestScalingTrigger:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        decision = SimpleNamespace(
-            model_dump=lambda mode="json": {"id": "d-new"},
-        )
-        service = AsyncMock()
-        service.trigger.return_value = (decision,)
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_trigger"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"agent_ids": ["agent-1", "agent-2"]},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == [{"id": "d-new"}]
-
-    @pytest.mark.parametrize(
-        "arguments",
-        [
-            {},
-            {"agent_ids": "not-a-list"},
-            {"agent_ids": []},
-            {"agent_ids": ["", "valid"]},
-        ],
-        ids=[
-            "missing_agent_ids",
-            "agent_ids_not_list",
-            "empty_list",
-            "blank_item",
-        ],
-    )
-    async def test_invalid_arguments_mapped(
-        self,
-        actor: AgentIdentity,
-        arguments: JsonDict,
-    ) -> None:
-        state = make_app_state(
-            slices={HrStateSlice: {"scaling_decision_service": AsyncMock()}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_scaling_trigger"]
-
-        raw = await handler(
-            app_state=state,
-            arguments=arguments,
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "error"
-        assert body["domain_code"] == "invalid_argument"
-        assert "ScalingTriggerArgs" in body.get("message", "")
 
 
 # ── Ceremony policy ──────────────────────────────────────────────

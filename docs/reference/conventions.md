@@ -544,7 +544,7 @@ Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
 tool_name=...)`. Do NOT emit custom `logger.error()` /
 `logger.warning()` calls from handlers -- these three helpers are
 the single source of truth so an event-name change touches one
-file, not <!--RS:mcp_tools-->247<!--/RS--> handler methods.
+file, not <!--RS:mcp_tools-->242<!--/RS--> handler methods.
 
 ## 16. Repository file structure
 
@@ -658,7 +658,7 @@ those as synonyms for the lifecycle pair documented here.
 
 Pluggable subsystems expose their construction surface through a
 sibling `factory.py`: `backup/factory.py`, `client/factory.py`,
-`engine/evolution/factory.py`, `hr/scaling/factory.py`,
+`engine/evolution/factory.py`,
 `memory/factory.py`, `notifications/factory.py`, plus equivalents
 under `engine/coordination/`, `engine/identity/store/`,
 `engine/middleware/`, `integrations/webhooks/verifiers/`, and
@@ -712,7 +712,7 @@ bounded-context-specific error meaningful only inside that subpackage.
 The 30+ instances of `<package>/errors.py` under `src/synthorg/`
 (`backup/errors.py`, `budget/errors.py`,
 `communication/meeting/errors.py`, `engine/middleware/errors.py`,
-`hr/scaling/errors.py`, `memory/org/errors.py`, etc.) all follow this
+`hr/errors.py`, `memory/org/errors.py`, etc.) all follow this
 rule. Subpackages without their own bounded-context errors raise from
 the parent package's `errors.py` instead.
 

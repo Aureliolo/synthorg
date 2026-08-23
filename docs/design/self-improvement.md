@@ -10,11 +10,10 @@ The meta-loop operates at the **company altitude** (distinct from per-agent evol
 
 ```mermaid
 flowchart TD
-    subgraph signals["Signal Aggregation (7 live domains)"]
+    subgraph signals["Signal Aggregation (6 live domains)"]
         P[Performance]
         B[Budget]
         C[Coordination]
-        S[Scaling]
         E[Errors]
         V[Evolution]
         T[Telemetry]
@@ -78,7 +77,6 @@ src/synthorg/meta/
     performance.py     -- PerformanceTracker wrapper
     budget.py          -- Budget analytics wrapper
     coordination.py    -- Coordination metrics wrapper
-    scaling.py         -- ScalingService wrapper
     errors.py          -- Classification pipeline wrapper
     evolution.py       -- EvolutionService wrapper
     telemetry.py       -- Telemetry pipeline wrapper
@@ -208,7 +206,7 @@ src/synthorg/meta/
 | Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
-| Signals consumed | seven live signal domains + offline benchmark | Performance, budget, coordination, scaling, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
+| Signals consumed | six live signal domains + offline benchmark | Performance, budget, coordination, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
 | Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
@@ -236,7 +234,6 @@ The nine `synthorg_signals_*` tools follow the shared args conventions:
 | Performance | `PerformanceTracker` | Quality, success rate, collaboration, trends (all windows) |
 | Budget | Budget pure functions | Spend, category breakdown, orchestration ratio, forecast |
 | Coordination | Coordination metrics | 9 composable metrics (Ec, O%, Ae, etc.) |
-| Scaling | `ScalingService` | Decision outcomes, success rate, signal patterns |
 | Errors | Classification pipeline | Category distribution, severity histogram, trends |
 | Evolution | `EvolutionService` | Proposal outcomes, approval rate, axis distribution |
 | Telemetry | Telemetry pipeline | Event counts, top event types, error events |
@@ -253,7 +250,6 @@ The nine `synthorg_signals_*` tools follow the shared args conventions:
 | `coordination_overhead` | WARNING | Coordination overhead % too high |
 | `straggler_bottleneck` | INFO | Straggler gap ratio consistently high |
 | `redundancy` | INFO | Work redundancy rate too high |
-| `scaling_failure` | WARNING | Scaling decisions failing too often |
 | `error_spike` | WARNING | Error findings exceed threshold |
 | `benchmark_regression` | CRITICAL | Newest golden-benchmark run dropped below its predecessor |
 
@@ -263,11 +259,10 @@ All thresholds are configurable via constructor arguments. `benchmark_regression
 
 The golden-company benchmark is the organisation's ground-truth quality measure, and its score across runs is the **learning curve**. Each benchmark run records a per-run scorecard summary into `meta.scorecard_history_dir`; `read_learning_curve` (`synthorg.meta.learning_curve`) assembles the chronological `LearningCurve` with run-over-run deltas and per-run regression flags. `GET /learning/curve` serves it read-only for the dashboard chart; an unset directory yields an empty curve (a legitimate "no benchmark history yet" state, not a failure).
 
-The curve is not just charted; the benchmark quality signal **drives** improvement through three feedback paths, each closing on a tested action rather than a write-only signal:
+The curve is not just charted; the benchmark quality signal **drives** improvement through two feedback paths, each closing on a tested action rather than a write-only signal:
 
-1. **Evolution**: `BenchmarkSignalAggregator` summarises the curve into `OrgSignalSnapshot.benchmark` (an optional, offline eighth aggregator on `SnapshotBuilder`). The `benchmark_regression` rule then fires CRITICAL on a regression and suggests the `PROMPT_TUNING` and `CODE_MODIFICATION` altitudes.
-2. **Scaling / hiring**: `BenchmarkSignalSource` (`hr/scaling/signals/benchmark.py`) emits `benchmark_score_trend` and `benchmark_is_regression` into the `ScalingContext`; `PerformancePruningStrategy` defers pruning while a regression is in progress (`defer_during_benchmark_regression`, default `True`) so the org does not shed capacity while quality is dropping.
-3. **Procedural memory and fine-tuning**: successful runs capture reusable lessons and failures capture corrected-failure lessons (see [Memory Learning](memory-learning.md)); the continual-improvement fine-tune harvests those plus accepted deliverables and curates them by the same benchmark score, promoting a new embedder only on a measured benchmark win.
+1. **Evolution**: `BenchmarkSignalAggregator` summarises the curve into `OrgSignalSnapshot.benchmark` (an optional, offline seventh aggregator on `SnapshotBuilder`). The `benchmark_regression` rule then fires CRITICAL on a regression and suggests the `PROMPT_TUNING` and `CODE_MODIFICATION` altitudes.
+2. **Procedural memory and fine-tuning**: successful runs capture reusable lessons and failures capture corrected-failure lessons (see [Memory Learning](memory-learning.md)); the continual-improvement fine-tune harvests those plus accepted deliverables and curates them by the same benchmark score, promoting a new embedder only on a measured benchmark win.
 
 Disabling a learning subsystem measurably flattens the curve; this is validated end to end under the simulation harness (a rising curve with learning enabled, a flat curve with it disabled), since a single release cannot demonstrate the effect on its own.
 
@@ -583,7 +578,7 @@ self_improvement:
 3. **Flow 0.7** (Plan approval; `source = PLAN_REVIEW`, `try_plan_review_resume`): the plan-review gate persisted a durable `Plan` and parked an approval item referencing its `plan_id`. On approve the decision is reflected onto the plan (`APPROVED`) before anything is built, so a dispatch failure marks the parent task `FAILED` rather than losing the decision; then, in order, answers decided against the plan are replayed onto it (`replay_decided_questions`), the questions nobody answered are closed (`retire_open_questions`, after the replay so a decision already taken lands before its row shuts), each decision item's resolved option is written to `chosen_option_id` (`record_resolved_decisions`, before anything reads it, so dispatch and completion cannot disagree about what was decided), the decisions are recorded into the project brain, the project is linked and the plan moves to `EXECUTING`, and only then is the durable plan rebuilt into a dispatchable subtask tree (so any operator edits made while it was under review are exactly what builds). On reject the parent task is cancelled and the plan is marked `REJECTED`. Owned here; every other source falls through. See [Plan Review](plan-review.md).
 4. **Flow 0.75** (Stalled initiative; `action_type = initiative:stalled`, `try_initiative_stall_resume`): an initiative with no automatic route left was put in front of the operator (see [Initiative tail](initiative-tail.md)). Keyed off the action type rather than the source, because the source is the `REVIEW_GATE` catch-all; it must claim the item ABOVE Flow 2, since the decision carries the objective task's id and an unclaimed item with a `task_id` reads down there as a completion review. Approve replans the initiative once on the operator's authority (their cap and master switch do not bound what they just asked for); reject fails the plan with its stall reason. Both re-confirm the stall against live state first, on the branch the recorded reason selects: an item-derived stall is re-derived over the items, and a tail-stage verdict is confirmed by the plan still sitting in the stage that produced it, because every item IS done in that case and deriving over items would answer "recovered" and quietly do nothing. Provenance is checked, not assumed: `POST /approvals` takes an action type and a metadata blob from any caller with write access, so an item whose `requested_by` is not the escalation is refused and logged. The MCP approvals door refuses this action type outright, since settling it lifts a limit the operator set. Owned here; every other action type falls through.
 5. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP act turns (a `/meta/chat/turn` classified `act`) park here.
-6. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / scaling / training / signals approvals; the decision drives the task's review transition. For a task-completion review the transition is `IN_REVIEW -> COMPLETED` (approve) or `IN_REVIEW -> IN_PROGRESS` (reject); for a **failed-run** review (`review:task_failed`) approve acknowledges the failure (the task stays `FAILED`) and reject retries (`FAILED -> ASSIGNED`). See [Security: Failed-run review decisions](security.md#failed-run-review-decisions).
+6. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / training / signals approvals; the decision drives the task's review transition. For a task-completion review the transition is `IN_REVIEW -> COMPLETED` (approve) or `IN_REVIEW -> IN_PROGRESS` (reject); for a **failed-run** review (`review:task_failed`) approve acknowledges the failure (the task stays `FAILED`) and reject retries (`FAILED -> ASSIGNED`). See [Security: Failed-run review decisions](security.md#failed-run-review-decisions).
 
 Each branch returns `True` once it owns the decision, suppressing fall-through. Source is the routing primary; the legacy parked-context probe is the fallback only when the just-decided approval cannot be re-read.
 

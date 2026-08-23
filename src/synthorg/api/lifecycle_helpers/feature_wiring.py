@@ -321,10 +321,9 @@ async def _wire_signals_service(
 
     Best-effort + idempotent. Gated on a connected persistence backend
     and a performance tracker (the one hard aggregator dependency); the
-    scaling service and the error / evolution / telemetry stores are
-    optional and degrade to empty per-domain summaries when absent, so
-    the signals MCP handlers and ``/meta/chat`` signal reads come online
-    rather than 503-ing.
+    error / evolution / telemetry stores are optional and degrade to
+    empty per-domain summaries when absent, so the signals MCP handlers
+    and ``/meta/chat`` signal reads come online rather than 503-ing.
 
     Raises:
         SubsystemDeclinedError: No persistence backend or no performance
@@ -396,7 +395,6 @@ async def _wire_signals_service(
             performance_tracker=performance_tracker,
             agent_ids_provider=agent_ids_provider,
             approval_store=effective_approval_store,
-            scaling_service=app_state.slice(HrStateSlice).scaling_service,
             error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
             evolution_store=evolution_outcome_store_of(app_state),
             budget_total_monthly=budget_total_monthly,

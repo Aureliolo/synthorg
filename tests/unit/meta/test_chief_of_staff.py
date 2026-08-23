@@ -38,7 +38,7 @@ class TestChiefOfStaffRole:
         assert "organizational_analysis" in REQUIRED_SKILLS
 
     def test_tool_access(self) -> None:
-        assert len(TOOL_ACCESS) == 9
+        assert len(TOOL_ACCESS) == 8
         assert all(t.startswith("synthorg_signals_") for t in TOOL_ACCESS)
 
     def test_role_definition_structure(self) -> None:

@@ -1,6 +1,6 @@
 ---
 title: Organisation & Templates
-description: Company types, organisational hierarchy, department configuration, template system, and dynamic scaling in the SynthOrg framework.
+description: Company types, organisational hierarchy, department configuration, template system, and headcount changes in the SynthOrg framework.
 ---
 
 # Organisation & Templates
@@ -215,16 +215,14 @@ Each department defines:
 
 ---
 
-## Dynamic Scaling
+## Changing Headcount
 
-The company can dynamically grow or shrink through several mechanisms:
+The roster changes through two mechanisms, both ending at an operator:
 
-- **Auto-scale**: the HR agent detects workload increases and proposes new
-  [hires](hr-lifecycle.md#hiring-process)
-- **Manual scale**: a human adds or removes agents via config or UI
-- **Budget-driven**: the CFO agent caps headcount based on budget constraints
-- **Skill-gap**: HR analyses team capabilities, identifies missing skills, and proposes
-  targeted hires
+- **Operator edit**: a human adds or removes agents via config or the dashboard
+- **Gate-role hire**: a task parks when no roster agent holds the role that must
+  judge it, and the review-staffing reconciler opens exactly one approval-gated
+  [hire](hr-lifecycle.md#hiring-process) for that role org-wide
 
 ---
 

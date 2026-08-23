@@ -95,7 +95,6 @@ import { qualityHandlers } from './quality'
 import { recommendationsHandlers } from './recommendations'
 import { reportsHandlers } from './reports'
 import { rolesHandlers } from './roles'
-import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
 import { ssrfViolationsHandlers } from './ssrf-violations'
@@ -171,7 +170,6 @@ export const defaultHandlers = [
   ...recommendationsHandlers,
   ...reportsHandlers,
   ...rolesHandlers,
-  ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,
   ...ssrfViolationsHandlers,

@@ -5129,108 +5129,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/scaling/decisions": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListDecisions */
-        readonly get: operations["ApiV1ScalingDecisionsListDecisions"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/scaling/evaluate": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** TriggerEvaluation */
-        readonly post: operations["ApiV1ScalingEvaluateTriggerEvaluation"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/scaling/priority": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        /** UpdatePriority */
-        readonly put: operations["ApiV1ScalingPriorityUpdatePriority"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/scaling/signals": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListSignals */
-        readonly get: operations["ApiV1ScalingSignalsListSignals"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/scaling/strategies": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListStrategies */
-        readonly get: operations["ApiV1ScalingStrategiesListStrategies"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/scaling/strategies/{strategy_name}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        /** UpdateStrategy */
-        readonly put: operations["ApiV1ScalingStrategiesStrategyNameUpdateStrategy"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/security/audit": {
         readonly parameters: {
             readonly query?: never;
@@ -8080,14 +7978,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[ScalingStrategyResponse] */
-        readonly ApiResponse_ScalingStrategyResponse_: {
-            readonly data: components["schemas"]["ScalingStrategyResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[SecretCaptureResponse] */
         readonly ApiResponse_SecretCaptureResponse_: {
             readonly data: components["schemas"]["SecretCaptureResponse"] | null;
@@ -8416,14 +8306,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[ScalingDecisionResponse, ...]] */
-        readonly "ApiResponse_tuple_ScalingDecisionResponse_..._": {
-            readonly data: readonly components["schemas"]["ScalingDecisionResponse"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[SettingDefinition, ...]] */
         readonly "ApiResponse_tuple_SettingDefinition_..._": {
             readonly data: readonly components["schemas"]["SettingDefinition"][] | null;
@@ -8435,14 +8317,6 @@ export type components = {
         /** ApiResponse[tuple[SettingEntry, ...]] */
         readonly "ApiResponse_tuple_SettingEntry_..._": {
             readonly data: readonly components["schemas"]["SettingEntry"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[tuple[str, ...]] */
-        readonly "ApiResponse_tuple_str_..._": {
-            readonly data: readonly string[] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8778,7 +8652,7 @@ export type components = {
          *         PARKED_CONTEXT: Backs a parked agent execution context (SecOps
          *             escalation or ``request_human_approval``); resumes the run.
          *         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
-         *             scaling, ...); drives the review-gate transition. Default.
+         *             ...); drives the review-gate transition. Default.
          *         CONVERSATIONAL_INTAKE: A work item proposed via the
          *             conversational interface; approval rebuilds the ``WorkItem``
          *             and runs it through the pipeline, rejection declines it.
@@ -12025,7 +11899,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -15001,51 +14875,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[ScalingDecisionResponse] */
-        readonly PaginatedResponse_ScalingDecisionResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["ScalingDecisionResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[ScalingSignalResponse] */
-        readonly PaginatedResponse_ScalingSignalResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["ScalingSignalResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[ScalingStrategyResponse] */
-        readonly PaginatedResponse_ScalingStrategyResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["ScalingStrategyResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** PaginatedResponse[SettingEntry] */
         readonly PaginatedResponse_SettingEntry_: {
             /** @default [] */
@@ -16245,11 +16074,6 @@ export type components = {
          * @enum {string}
          */
         readonly Priority: "critical" | "high" | "medium" | "low";
-        /** PriorityUpdateRequest */
-        readonly PriorityUpdateRequest: {
-            /** @description Strategy names in priority order (first = highest) */
-            readonly order: readonly string[];
-        };
         /** ProbeLocalResponse */
         readonly ProbeLocalResponse: {
             readonly errors: {
@@ -17993,59 +17817,6 @@ export type components = {
             /** @description Title of the reviewed task, when it is still readable */
             readonly task_title: string | null;
         };
-        /** ScalingDecisionResponse */
-        readonly ScalingDecisionResponse: {
-            /** @description Action type */
-            readonly action_type: string;
-            /** @description Strategy confidence */
-            readonly confidence: number;
-            /** @description ISO timestamp */
-            readonly created_at: string;
-            /** @description Decision identifier */
-            readonly id: string;
-            /** @description Decision rationale */
-            readonly rationale: string;
-            /**
-             * @description Signals that informed the decision
-             * @default []
-             */
-            readonly signals: readonly components["schemas"]["ScalingSignalResponse"][];
-            /** @description Strategy that proposed this */
-            readonly source_strategy: string;
-            /** @description Agent targeted for pruning */
-            readonly target_agent_id: string | null;
-            /** @description Department for the hire target */
-            readonly target_department: string | null;
-            /** @description Role to hire for */
-            readonly target_role: string | null;
-            /**
-             * @description Skills required for the hire target
-             * @default []
-             */
-            readonly target_skills: readonly string[];
-        };
-        /** ScalingSignalResponse */
-        readonly ScalingSignalResponse: {
-            /** @description Signal name */
-            readonly name: string;
-            /** @description Signal source */
-            readonly source: string;
-            /** @description Configured threshold for this signal */
-            readonly threshold: number | null;
-            /** @description ISO timestamp when collected */
-            readonly timestamp: string;
-            /** @description Current value */
-            readonly value: number;
-        };
-        /** ScalingStrategyResponse */
-        readonly ScalingStrategyResponse: {
-            /** @description Whether this strategy is active */
-            readonly enabled: boolean;
-            /** @description Strategy identifier */
-            readonly name: string;
-            /** @description Priority rank */
-            readonly priority: number;
-        };
         /** ScopeBoundaries */
         readonly ScopeBoundaries: {
             /** @default [] */
@@ -18875,11 +18646,6 @@ export type components = {
          * @enum {string}
          */
         readonly StrategicOutputMode: "option_expander" | "advisor" | "decision_maker" | "context_dependent";
-        /** StrategyUpdateRequest */
-        readonly StrategyUpdateRequest: {
-            /** @description Whether the strategy should be active */
-            readonly enabled: boolean;
-        };
         /** SubmitDecisionRequest */
         readonly SubmitDecisionRequest: {
             /** @description Operator decision payload */
@@ -32163,192 +31929,6 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingDecisionsListDecisions: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_ScalingDecisionResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingEvaluateTriggerEvaluation: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_ScalingDecisionResponse_..._"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingPriorityUpdatePriority: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["PriorityUpdateRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_str_..._"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingSignalsListSignals: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_ScalingSignalResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingStrategiesListStrategies: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_ScalingStrategyResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ScalingStrategiesStrategyNameUpdateStrategy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly strategy_name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["StrategyUpdateRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ScalingStrategyResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

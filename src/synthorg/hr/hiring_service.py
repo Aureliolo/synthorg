@@ -239,7 +239,6 @@ class HiringService:
         role: NotBlankStr,
         required_skills: tuple[NotBlankStr, ...] = (),
         reason: NotBlankStr,
-        agent_delegate: NotBlankStr | None = None,
         budget_limit_monthly: float | None = None,
         template_name: str | None = None,
     ) -> HiringRequest:
@@ -251,8 +250,6 @@ class HiringService:
             role: Desired role.
             required_skills: Required skills.
             reason: Business justification.
-            agent_delegate: Existing agent assigned to absorb queued work
-                while this hire instantiates (overflow handler).
             budget_limit_monthly: Optional monthly budget limit.
             template_name: Template for candidate generation.
 
@@ -261,16 +258,16 @@ class HiringService:
 
         Raises:
             HiringAlreadyInFlightError: If a hire for a gate role is already
-                on its way to an agent. Enforced here rather than at each
-                caller so the invariant has one owner: the staffing sweep
-                and the scaler both open hires, and only one of them checked.
+                on its way to an agent. Enforced here rather than at the
+                caller so the invariant has one owner, and so a caller added
+                later inherits it instead of re-deciding it.
             HiringError: If the related operation fails.
         """
         # Role-keyed, and held across the check AND the store: the guard below
-        # is a check-then-create, and the staffing sweep and the scaler both
-        # reach it concurrently. Unserialised, both observe no in-flight
-        # request and both create one, which is two approval items for the one
-        # role the invariant exists to keep singular.
+        # is a check-then-create, and the staffing sweep re-enters it on every
+        # pass while fanning out per role. Two overlapping passes unserialised
+        # both observe no in-flight request and both create one, which is two
+        # approval items for the one role the invariant keeps singular.
         async with self._role_locks.acquire(str(role)):
             if role_is_gate_role(str(role)) and (
                 in_flight := self.find_in_flight_request_for_role(str(role))
@@ -293,7 +290,6 @@ class HiringService:
                 role=role,
                 required_skills=required_skills,
                 reason=reason,
-                agent_delegate=agent_delegate,
                 budget_limit_monthly=budget_limit_monthly,
                 template_name=template_name,
                 created_at=datetime.now(UTC),

@@ -322,10 +322,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "requests.update_scope": (50, 60),
     # reviews
     "reviews.decide_stage": (50, 60),
-    # scaling
-    "scaling.trigger_evaluation": (10, 60),
-    "scaling.update_priority": (30, 60),
-    "scaling.update_strategy": (30, 60),
     # security
     "security.audit_query": (30, 60),
     "security.risk_override_create": (20, 60),

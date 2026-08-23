@@ -25,7 +25,7 @@ Maintainer notes:
   fields.
 * For events declared in :class:`WsEventType` but not yet wired by
   any Python emitter (~17 stub variants today, e.g. some HR /
-  scaling / review events), the model defines the minimum shape the
+  review events), the model defines the minimum shape the
   frontend handler expects. These variants are unreachable from
   Python today; the wire validator only fires on emit. Tightening
   these models happens when the corresponding emitter lands.

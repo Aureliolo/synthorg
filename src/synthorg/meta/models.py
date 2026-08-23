@@ -51,10 +51,8 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
-    ScalingDecisionSummary,
     TrendDirection,
 )
 
@@ -81,7 +79,6 @@ __all__ = [
     "OrgErrorSummary",
     "OrgEvolutionSummary",
     "OrgPerformanceSummary",
-    "OrgScalingSummary",
     "OrgSignalSnapshot",
     "OrgTelemetrySummary",
     "PromptChange",
@@ -98,6 +95,5 @@ __all__ = [
     "RolloutStrategyType",
     "RuleMatch",
     "RuleSeverity",
-    "ScalingDecisionSummary",
     "TrendDirection",
 ]

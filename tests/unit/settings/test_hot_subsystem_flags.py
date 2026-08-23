@@ -32,11 +32,10 @@ _HOT_KEYS: tuple[tuple[str, str], ...] = (
     ("knowledge", "synthesis_model"),
     ("knowledge", "synthesis_synthesizer"),
     ("knowledge", "synthesis_max_chunks"),
-    # HR ops loops (eval-loop master/cadence/window + scaling switch).
+    # HR ops loops (eval-loop master/cadence/window).
     ("hr", "eval_loop_cycle_enabled"),
     ("hr", "eval_loop_cycle_interval_seconds"),
     ("hr", "eval_loop_cycle_window_hours"),
-    ("hr", "scaling_enabled"),
     # Client simulations (intake + review pipeline choices).
     ("simulations", "intake_strategy"),
     ("simulations", "intake_model"),

@@ -13,7 +13,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     ProposalAltitude,
@@ -53,8 +52,6 @@ def _full_snapshot(  # noqa: PLR0913
     coordination_efficiency: float | None = 0.8,
     error_amplification: float | None = 1.2,
     message_density: float | None = 3.0,
-    scaling_total: int = 5,
-    scaling_success: float = 0.8,
     error_findings: int = 3,
     evolution_proposals: int = 2,
     approval_rate: float = 0.5,
@@ -84,10 +81,6 @@ def _full_snapshot(  # noqa: PLR0913
             message_density=message_density,
             straggler_gap_ratio=straggler,
             redundancy_rate=redundancy,
-        ),
-        scaling=OrgScalingSummary(
-            total_decisions=scaling_total,
-            success_rate=scaling_success,
         ),
         errors=OrgErrorSummary(total_findings=error_findings),
         evolution=OrgEvolutionSummary(
@@ -260,7 +253,7 @@ class TestMetricRegistry:
     """Tests for the METRIC_REGISTRY completeness."""
 
     def test_registry_has_expected_count(self) -> None:
-        assert len(METRIC_REGISTRY) == 25
+        assert len(METRIC_REGISTRY) == 23
 
     def test_all_paths_unique(self) -> None:
         paths = [m.path for m in METRIC_REGISTRY]
@@ -272,7 +265,6 @@ class TestMetricRegistry:
             "performance",
             "budget",
             "coordination",
-            "scaling",
             "errors",
             "evolution",
             "telemetry",

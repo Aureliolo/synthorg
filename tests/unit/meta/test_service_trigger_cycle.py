@@ -15,7 +15,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -44,7 +43,6 @@ def _snapshot() -> OrgSignalSnapshot:
             orchestration_overhead=0.5,
         ),
         coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
         errors=OrgErrorSummary(),
         evolution=OrgEvolutionSummary(),
         telemetry=OrgTelemetrySummary(),

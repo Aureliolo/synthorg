@@ -1,6 +1,6 @@
 """Coordination domain MCP tools.
 
-Covers coordination, coordination metrics, and scaling.
+Covers coordination, coordination metrics, and ceremony policy.
 """
 
 from typing import TYPE_CHECKING
@@ -11,12 +11,8 @@ from synthorg.meta.mcp.domains._simple_args import (
     CeremonyPolicyGetResolvedArgs,
     CoordinationGetTaskMetricsArgs,
     CoordinationMetricsListArgs,
-    ScalingGetConfigArgs,
-    ScalingGetDecisionArgs,
-    ScalingListDecisionsArgs,
-    ScalingTriggerArgs,
 )
-from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool, write_tool
+from synthorg.meta.mcp.tool_builder import PAGINATION_PROPERTIES, read_tool
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
@@ -59,45 +55,6 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             **PAGINATION_PROPERTIES,
         },
         args_model=CoordinationMetricsListArgs,
-    ),
-    # --- Scaling ---
-    read_tool(
-        "scaling",
-        "list_decisions",
-        "List scaling decisions.",
-        PAGINATION_PROPERTIES,
-        args_model=ScalingListDecisionsArgs,
-    ),
-    read_tool(
-        "scaling",
-        "get_decision",
-        "Get a scaling decision by ID.",
-        {
-            "decision_id": {"type": "string", "description": "Decision UUID"},
-        },
-        required=("decision_id",),
-        args_model=ScalingGetDecisionArgs,
-    ),
-    read_tool(
-        "scaling",
-        "get_config",
-        "Get the current scaling configuration.",
-        args_model=ScalingGetConfigArgs,
-    ),
-    write_tool(
-        "scaling",
-        "trigger",
-        "Trigger a scaling evaluation.",
-        {
-            "agent_ids": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 1,
-                "description": "Agents to evaluate for scaling (non-empty)",
-            },
-        },
-        required=("agent_ids",),
-        args_model=ScalingTriggerArgs,
     ),
     # --- Ceremony policy ---
     read_tool(

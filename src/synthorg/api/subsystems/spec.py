@@ -106,7 +106,6 @@ class CapabilityId(StrEnum):
     EVAL_LOOP = "eval_loop"
     PRUNING_SERVICE = "pruning_service"
     HIRING_SERVICE = "hiring_service"
-    SCALING_SERVICE = "scaling_service"
     REVIEW_STAFFING = "review_staffing"
     RUN_RECOVERY = "run_recovery"
     QUOTA_POLLER = "quota_poller"

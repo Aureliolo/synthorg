@@ -81,14 +81,6 @@ ACTIVITIES_INFLIGHT_MAX: Final[int] = 4
 # display in the dashboard.
 SINK_IDENTIFIER_FINGERPRINT_LENGTH: Final[int] = 16
 
-# Sort-to-end sentinel for ScalingStrategyResponse.priority when a
-# strategy is not present in the configured priority order. Larger
-# than any plausible operator-configured priority index (the order
-# tuple is bounded by the strategy registry size, which is order
-# tens, never hundreds), so it sorts unknown / disabled strategies
-# after every configured one.
-SCALING_STRATEGY_PRIORITY_FALLBACK: Final[int] = 999
-
 # ── Server (bootstrap-only) ──────────────────────────────────────
 
 # The 127.0.0.1 default is the safe local-dev bind; production

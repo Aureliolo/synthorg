@@ -24,7 +24,6 @@ export const ROUTES = {
   APPROVALS: '/approvals',
   PLANS: '/plans',
   PLAN_DETAIL: '/plans/:planId',
-  SCALING: '/scaling',
   META: '/meta',
   AGENTS: '/agents',
   AGENT_DETAIL: '/agents/:agentId',

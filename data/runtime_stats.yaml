@@ -1,9 +1,9 @@
 schema_version: 1
-last_generated_utc: '2026-08-23T10:28:07Z'
-generator_revision: 615acfc88
+last_generated_utc: '2026-08-23T15:58:47Z'
+generator_revision: 9df56f7e6
 stats:
   tests:
-    raw: 49473
+    raw: 49184
     rounded: 49000
     display: 49,000+
   providers_curated:
@@ -19,8 +19,8 @@ stats:
     raw: 132
     display: '132'
   mcp_tools:
-    raw: 247
-    display: '247'
+    raw: 242
+    display: '242'
   mcp_domains:
     raw: 22
     display: '22'

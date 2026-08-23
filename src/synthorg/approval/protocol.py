@@ -1,7 +1,7 @@
 """``ApprovalStoreProtocol`` -- the approval-store contract shared across layers.
 
 ``engine`` (agent execution), ``security`` (interceptors), ``hr``
-(hiring/promotion/pruning/training/scaling guards), and ``api`` all
+(hiring/promotion/pruning/training guards), and ``api`` all
 type their dependency on the approval store against this protocol so
 no caller needs to know the concrete ``ApprovalStore`` lives in
 ``synthorg.api.approval_store``.

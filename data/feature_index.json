@@ -390,10 +390,6 @@
       "mcp_tool_names": [
         "synthorg_coordination_get_task_metrics",
         "synthorg_coordination_metrics_list",
-        "synthorg_scaling_list_decisions",
-        "synthorg_scaling_get_decision",
-        "synthorg_scaling_get_config",
-        "synthorg_scaling_trigger",
         "synthorg_ceremony_policy_get",
         "synthorg_ceremony_policy_get_resolved",
         "synthorg_ceremony_policy_get_active_strategy"
@@ -719,7 +715,6 @@
         "AgentIdentityVersionController",
         "ActivityController",
         "PersonalityPresetController",
-        "ScalingController",
         "TrainingController",
         "QualityController",
         "CollaborationController"
@@ -730,7 +725,6 @@
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
-        "ScalingDecisionService",
         "HiringService",
         "RoleStaffingService",
         "try_org_hire_resume"
@@ -777,8 +771,6 @@
         "activity_feed_service",
         "agent_health_service",
         "hiring_service",
-        "scaling_service",
-        "scaling_decision_service",
         "pruning_service",
         "eval_loop_coordinator",
         "eval_loop_cycle_scheduler"
@@ -1006,7 +998,6 @@
         "synthorg_signals_get_performance",
         "synthorg_signals_get_budget",
         "synthorg_signals_get_coordination",
-        "synthorg_signals_get_scaling_history",
         "synthorg_signals_get_error_patterns",
         "synthorg_signals_get_evolution_outcomes",
         "synthorg_signals_get_proposals",
@@ -1549,6 +1540,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-20T15:59:05.378228Z",
+  "generated_at": "2026-08-23T16:16:27.079141Z",
   "schema_version": 1
 }

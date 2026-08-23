@@ -21,7 +21,6 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
 const PlansPage = lazy(() => import('@/pages/PlansPage'))
 const PlanDetailPage = lazy(() => import('@/pages/PlanDetailPage'))
-const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
 const ChatPage = lazy(() => import('@/pages/ChatPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
@@ -157,7 +156,6 @@ const appRoutes = [
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'plans', element: <PlansPage /> },
               { path: 'plans/:planId', element: <PlanDetailPage /> },
-              { path: 'scaling', element: <ScalingPage /> },
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
               { path: ROUTES.CHAT.slice(1), element: <ChatPage /> },
               // The charter interview moved into the Chat hub; keep old

@@ -15,7 +15,6 @@ from synthorg.meta.telemetry.recommender import (
     _QUALITY_DROP_DEFAULT,
     _REDUNDANCY_RATE_DEFAULT,
     _RULE_THRESHOLD_MAP,
-    _SCALING_FAILURE_RATE_DEFAULT,
     _STRAGGLER_GAP_RATIO_DEFAULT,
     _SUCCESS_RATE_DEFAULT,
     DefaultThresholdRecommender,
@@ -243,7 +242,6 @@ class TestRuleThresholdMapStructure:
             ("coordination_overhead", _OVERHEAD_PCT_DEFAULT),
             ("straggler_bottleneck", _STRAGGLER_GAP_RATIO_DEFAULT),
             ("redundancy", _REDUNDANCY_RATE_DEFAULT),
-            ("scaling_failure", _SCALING_FAILURE_RATE_DEFAULT),
             ("error_spike", _ERROR_FINDINGS_DEFAULT),
         ],
     )

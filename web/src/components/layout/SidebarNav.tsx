@@ -22,7 +22,6 @@ import {
   Package,
   Plug,
   Radio,
-  Scale,
   Settings,
   Shapes,
   ShieldAlert,
@@ -61,7 +60,6 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.REPORTS} icon={FileText} label="Reports" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={pendingCount} />
           <SidebarNavItem to={ROUTES.PLANS} icon={ListChecks} label="Plan Review" collapsed={collapsed} badge={planReviewCount} />
-          <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.META} icon={Orbit} label="Meta Loop" collapsed={collapsed} end />
         </SidebarNavGroup>
       </SidebarSection>

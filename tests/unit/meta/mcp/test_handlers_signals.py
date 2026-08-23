@@ -23,7 +23,6 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -52,7 +51,6 @@ def _empty_snapshot() -> OrgSignalSnapshot:
             orchestration_overhead=0.0,
         ),
         coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
         errors=OrgErrorSummary(),
         evolution=OrgEvolutionSummary(),
         telemetry=OrgTelemetrySummary(),
@@ -82,7 +80,6 @@ def fake_signals_service() -> AsyncMock:
         ),
     )
     service.get_coordination = AsyncMock(return_value=OrgCoordinationSummary())
-    service.get_scaling_history = AsyncMock(return_value=OrgScalingSummary())
     service.get_error_patterns = AsyncMock(return_value=OrgErrorSummary())
     service.get_evolution_outcomes = AsyncMock(return_value=OrgEvolutionSummary())
     service.list_proposals = AsyncMock(return_value=((), 0))
@@ -172,7 +169,6 @@ class TestPerDomainHandlers:
             "synthorg_signals_get_performance",
             "synthorg_signals_get_budget",
             "synthorg_signals_get_coordination",
-            "synthorg_signals_get_scaling_history",
             "synthorg_signals_get_error_patterns",
             "synthorg_signals_get_evolution_outcomes",
         ],

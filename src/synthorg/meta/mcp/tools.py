@@ -67,7 +67,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
         "name": f"{TOOL_PREFIX}_get_org_snapshot",
         "description": (
             "Get a complete org-wide signal snapshot combining "
-            "performance, budget, coordination, scaling, errors, "
+            "performance, budget, coordination, errors, "
             "evolution, and telemetry summaries."
         ),
         "parameters": _window_params(),
@@ -93,14 +93,6 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
         "description": (
             "Get org-wide coordination health metrics including "
             "efficiency, overhead, straggler gaps, and redundancy."
-        ),
-        "parameters": _window_params(),
-    },
-    {
-        "name": f"{TOOL_PREFIX}_get_scaling_history",
-        "description": (
-            "Get recent scaling decisions and their outcomes "
-            "(hired, pruned, deferred, rejected)."
         ),
         "parameters": _window_params(),
     },

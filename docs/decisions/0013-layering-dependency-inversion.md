@@ -151,7 +151,7 @@ sibling reworks build on, all seam wiring -- `orchestrator_strategy`,
 `replan_strategy` + the live middleware chain, `SignalsService`,
 `ConflictDetector` EMBEDDING / `TextEmbedder`, `CompositeSelector`,
 `PassthroughMemoryFilter`, `ClientReviewStage`, `EscalationChain`,
-`max_delegation_rounds`, `QualityErosionDetector`, and the scaling triggers --
+`max_delegation_rounds`, and `QualityErosionDetector` --
 moves to a dedicated pluggable-completion issue where the engine behaviour
 changes get focused review and test-driven coverage. The MCP args-model
 contract mismatches surfaced in section 1 are tracked there as well.

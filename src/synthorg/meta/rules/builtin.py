@@ -30,8 +30,6 @@ _DEFAULT_COORDINATION_COST_RATIO_THRESHOLD: Final[float] = 0.4
 _DEFAULT_COORDINATION_OVERHEAD_THRESHOLD_PCT: Final[float] = 35.0
 _DEFAULT_STRAGGLER_BOTTLENECK_THRESHOLD: Final[float] = 2.0
 _DEFAULT_REDUNDANCY_THRESHOLD: Final[float] = 0.3
-_DEFAULT_SCALING_FAILURE_THRESHOLD: Final[float] = 0.5
-_DEFAULT_SCALING_MIN_DECISIONS: Final[int] = 3
 _DEFAULT_ERROR_SPIKE_THRESHOLD: Final[int] = 10
 
 # ── Performance rules ──────────────────────────────────────────────
@@ -400,67 +398,6 @@ class RedundancyRule:
         return None
 
 
-# ── Scaling rules ──────────────────────────────────────────────────
-
-
-class ScalingFailureRule:
-    """Fires when scaling decisions have a high failure rate.
-
-    Args:
-        threshold: Max acceptable failure ratio (0-1, default 0.5).
-        min_decisions: Minimum decisions to evaluate (default 3).
-    """
-
-    def __init__(
-        self,
-        *,
-        threshold: float = _DEFAULT_SCALING_FAILURE_THRESHOLD,
-        min_decisions: int = _DEFAULT_SCALING_MIN_DECISIONS,
-    ) -> None:
-        self._threshold = threshold
-        self._min_decisions = min_decisions
-
-    @property
-    def name(self) -> NotBlankStr:
-        """Rule name."""
-        return NotBlankStr("scaling_failure")
-
-    @property
-    def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
-        return (ProposalAltitude.CONFIG_TUNING,)
-
-    def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if scaling decisions are failing too often.
-
-        Returns:
-            The ``RuleMatch`` value when present, ``None`` otherwise.
-        """
-        scaling = snapshot.scaling
-        if scaling.total_decisions < self._min_decisions:
-            return None
-        failure_rate = 1.0 - scaling.success_rate
-        if failure_rate > self._threshold:
-            return RuleMatch(
-                rule_name=self.name,
-                severity=RuleSeverity.WARNING,
-                description=(
-                    f"Scaling failure rate "
-                    f"{failure_rate:.1%} "
-                    f"exceeds threshold {self._threshold:.1%} "
-                    f"({scaling.total_decisions} decisions)"
-                ),
-                signal_context={
-                    "failure_rate": failure_rate,
-                    "success_rate": scaling.success_rate,
-                    "total_decisions": scaling.total_decisions,
-                    "threshold": self._threshold,
-                },
-                suggested_altitudes=self.target_altitudes,
-            )
-        return None
-
-
 # ── Error rules ────────────────────────────────────────────────────
 
 
@@ -530,7 +467,6 @@ def default_rules() -> tuple[SignalRule, ...]:
         CoordinationOverheadRule(),
         StragglerBottleneckRule(),
         RedundancyRule(),
-        ScalingFailureRule(),
         ErrorSpikeRule(),
         BenchmarkRegressionRule(),
     )

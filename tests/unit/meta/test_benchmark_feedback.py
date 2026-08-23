@@ -36,7 +36,6 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -46,7 +45,6 @@ from synthorg.meta.signals.coordination import CoordinationSignalAggregator
 from synthorg.meta.signals.errors import ErrorSignalAggregator
 from synthorg.meta.signals.evolution import EvolutionSignalAggregator
 from synthorg.meta.signals.performance import PerformanceSignalAggregator
-from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.snapshot import SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from tests._shared import mock_of
@@ -101,9 +99,6 @@ def _builder(history_dir: Path) -> SnapshotBuilder:
         ),
         coordination=mock_of[CoordinationSignalAggregator](
             aggregate=AsyncMock(return_value=OrgCoordinationSummary()),
-        ),
-        scaling=mock_of[ScalingSignalAggregator](
-            aggregate=AsyncMock(return_value=OrgScalingSummary()),
         ),
         errors=mock_of[ErrorSignalAggregator](
             aggregate=AsyncMock(return_value=OrgErrorSummary()),
@@ -186,7 +181,6 @@ def test_rule_needs_a_predecessor_run() -> None:
         performance=_EMPTY_PERFORMANCE,
         budget=_EMPTY_BUDGET,
         coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
         errors=OrgErrorSummary(),
         evolution=OrgEvolutionSummary(),
         telemetry=OrgTelemetrySummary(),

@@ -175,7 +175,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | hr/promotion/approval_protocol.py | 18 | `PromotionApprovalStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityApprovalStrategy` impl injected into the promotion service. |
 | hr/promotion/criteria_protocol.py | 16 | `PromotionCriteriaStrategy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdEvaluator` impl injected into the promotion service. |
 | hr/promotion/model_mapping_protocol.py | 15 | `ModelMappingStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityModelMapping` impl injected into the promotion service. |
-| hr/pruning/policy.py | 32 | `PruningPolicy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdPruningPolicy` + `TrendPruningPolicy` impls; `PruningService` + scaling consumer. |
+| hr/pruning/policy.py | 32 | `PruningPolicy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdPruningPolicy` + `TrendPruningPolicy` impls consumed by `PruningService`. |
 | hr/reassignment_protocol.py | 14 | `TaskReassignmentStrategy` | 1 | 0 | 0 | KEEP | #1864: `QueueReturnStrategy` default + `OffboardingService` injection. |
 | hr/evaluation/external_benchmark_protocol.py | 19 | `ExternalBenchmark` | 1 | 0 | 1 | KEEP | Plug-in `Benchmark`. |
 | hr/evaluation/metric_extractor_protocol.py | 156 | `MetricExtractor` | 1 | 0 | 9 | KEEP | Plug-in `Extractor`. |
@@ -184,10 +184,6 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | hr/persistence_protocol.py | 22 | `LifecycleEventRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
 | hr/persistence_protocol.py | 62 | `TaskMetricRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
 | hr/persistence_protocol.py | 100 | `CollaborationMetricRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
-| hr/scaling/protocols.py | 20 | `ScalingStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |
-| hr/scaling/protocols.py | 53 | `ScalingSignalSource` | 1 | 0 | 3 | KEEP | Plug-in `Source`. |
-| hr/scaling/protocols.py | 81 | `ScalingTrigger` | 1 | 0 | 3 | KEEP | Plug-in `Trigger`. |
-| hr/scaling/protocols.py | 107 | `ScalingGuard` | 1 | 0 | 3 | KEEP | Plug-in `Guard`. |
 | hr/training/protocol.py | 22 | `ContentExtractor` | 1 | 0 | 3 | KEEP | Plug-in `Extractor`. |
 | hr/training/protocol.py | 55 | `SourceSelector` | 1 | 0 | 3 | KEEP | Plug-in `Selector`. |
 | hr/training/protocol.py | 85 | `CurationStrategy` | 1 | 0 | 3 | KEEP | Plug-in `Strategy`. |
@@ -243,7 +239,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | meta/appliers/architecture_applier.py | 79 | `ArchitectureApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/appliers/prompt_applier.py | 35 | `PromptApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/evolution/outcome_store_protocol.py | 31 | `EvolutionOutcomeStore` | 1 | 0 | 3 | KEEP | Plug-in `Store`. |
-| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->247<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
+| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->242<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
 | meta/protocol.py | 38 | `SignalAggregator` | 1 | 0 | 4 | KEEP | Plug-in `Aggregator`. |
 | meta/protocol.py | 78 | `SignalRule` | 1 | 0 | 6 | KEEP | Plug-in `Rule`. |
 | meta/protocol.py | 108 | `ImprovementStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |

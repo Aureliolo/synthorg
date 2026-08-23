@@ -32,7 +32,6 @@ BUILTIN_RULE_NAMES: frozenset[str] = frozenset(
         "coordination_overhead",
         "straggler_bottleneck",
         "redundancy",
-        "scaling_failure",
         "error_spike",
     }
 )

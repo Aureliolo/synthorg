@@ -105,7 +105,7 @@ class TestSignalDomain:
     """Signal domain specific tests."""
 
     def test_signal_tool_count(self) -> None:
-        assert len(SIGNAL_MCP_TOOLS) == 9
+        assert len(SIGNAL_MCP_TOOLS) == 8
 
     def test_signal_names_match_legacy(self) -> None:
         """Signal tool names must match the existing synthorg_signals_ prefix."""
@@ -166,14 +166,14 @@ class TestWorkflowDomain:
 @pytest.mark.parametrize(
     ("domain_tools", "expected_min"),
     [
-        (SIGNAL_MCP_TOOLS, 9),  # 8 read + 1 write (submit_proposal)
+        (SIGNAL_MCP_TOOLS, 8),  # 7 read + 1 write (submit_proposal)
         (AGENT_TOOLS, 15),  # identity, personality, training, etc.
         (TASK_TOOLS, 8),  # tasks + activities CRUD
         (WORKFLOW_TOOLS, 15),  # workflows, subworkflows, executions, versions
         (APPROVAL_TOOLS, 5),  # approval lifecycle
         (BUDGET_TOOLS, 5),  # overview, limits, forecast
         (ORGANIZATION_TOOLS, 15),  # company, depts, teams
-        (COORDINATION_TOOLS, 8),  # metrics, scaling, ceremony
+        (COORDINATION_TOOLS, 5),  # metrics, ceremony
         (ANALYTICS_TOOLS, 7),  # metrics, reports, dashboards
         (MEMORY_TOOLS, 10),  # fine-tune, checkpoints, search
         (QUALITY_TOOLS, 8),  # reviews, evaluations, config

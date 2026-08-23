@@ -88,7 +88,6 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Ontology | `/ontology` | 10 routes under Ontology. |
 | Personalities | `/personalities` | 3 routes under Personalities. |
 | Roles | `/roles/{role_name}/versions` | 2 routes under Roles. |
-| Scaling | `/scaling` | 6 routes under Scaling. |
 | Training | `/agents/{agent_id}/training` | 5 routes under Training. |
 
 ### Work and coordination
