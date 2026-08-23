@@ -51,6 +51,7 @@ def test_the_collapse_artefact_is_recognised_wherever_it_sits(
         {"text": "a field merely named text"},
         {"description": "prose mentioning $text as a literal string"},
         {"subtasks": [{"description": "$text"}]},
+        {"subtasks": [{"estimated_hours": 3, "blocking": True, "parent": None}]},
     ],
     ids=[
         "empty",
@@ -59,6 +60,7 @@ def test_the_collapse_artefact_is_recognised_wherever_it_sits(
         "similar-key",
         "in-prose",
         "as-a-value",
+        "scalar-fields",
     ],
 )
 def test_an_intact_call_is_left_alone(arguments: dict[str, object]) -> None:
@@ -66,7 +68,9 @@ def test_an_intact_call_is_left_alone(arguments: dict[str, object]) -> None:
 
     Reading the value position too would make any plan whose text happens to
     quote the token unparseable-looking, and send a model to rewrite a correct
-    submission.
+    submission. A number, a boolean and a null are none of the three shapes the
+    walk descends into, so it has to answer for them rather than reach the end
+    of its own branches with nothing to say.
     """
     assert mangled_serialisation_hint(arguments) is None
 

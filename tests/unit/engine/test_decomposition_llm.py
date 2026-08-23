@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import cast
+from typing import cast, override
 
 import pytest
 from pydantic import JsonValue
@@ -30,9 +30,12 @@ from synthorg.engine.errors import (
     DecompositionSubtaskLimitError,
 )
 from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     TokenUsage,
     ToolCall,
+    ToolDefinition,
 )
 from tests._shared import as_uuid
 
@@ -634,6 +637,39 @@ class TestLlmDecompositionStrategy:
         with pytest.raises(DecompositionError) as exc_info:
             await strategy.decompose(task, ctx)
         assert isinstance(exc_info.value.__cause__, IndexError)
+
+    @pytest.mark.unit
+    async def test_a_domain_error_from_the_provider_is_not_wrapped_again(
+        self,
+    ) -> None:
+        """``CompletionProvider`` is a Protocol, so a decorator can raise ours.
+
+        Wrapping it a second time would bury the condition the inner error
+        names under a generic call-failed message, and the caller reads only
+        the outermost one.
+        """
+        raised = DecompositionError("the budget guard refused this call")
+
+        class _RefusingProvider(MockCompletionProvider):
+            @override
+            async def complete(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> CompletionResponse:
+                raise raised
+
+        strategy = LlmDecompositionStrategy(
+            provider=_RefusingProvider([]), model="test-model-001"
+        )
+
+        with pytest.raises(DecompositionError) as exc_info:
+            await strategy.decompose(_make_task(), _make_context())
+
+        assert exc_info.value is raised
 
     @pytest.mark.unit
     def test_protocol_conformance(self) -> None:

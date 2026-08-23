@@ -323,24 +323,12 @@ class LlmDecompositionStrategy:
                 )
                 continue
 
-            try:
-                self._validate_plan(plan, context)
-            except DecompositionSubtaskLimitError:
-                # Carries the produced count and the ceiling as attributes, so
-                # a caller can offer to raise the limit to the number actually
-                # planned. Retrying past it would replace that with a bare
-                # retries-exhausted error and lose both numbers.
-                raise
-            except DecompositionError as exc:
-                attempt += 1
-                last_error = safe_error_description(exc)
-                logger.warning(
-                    DECOMPOSITION_VALIDATION_ERROR,
-                    task_id=str(task.id),
-                    error_type=type(exc).__name__,
-                    error=last_error,
-                )
-                continue
+            # Propagates rather than retrying. The one condition this refuses
+            # carries the produced count and the ceiling as attributes, so a
+            # caller can offer to raise the limit to the number actually
+            # planned; another attempt would replace that with a bare
+            # retries-exhausted error and lose both numbers.
+            self._validate_plan(plan, context)
 
             # INFO, like every other state transition: a plan existing where
             # none did is the outcome, and logging it below the retry that
