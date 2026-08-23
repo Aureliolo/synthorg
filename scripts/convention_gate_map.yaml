@@ -50,6 +50,11 @@ mandatory_rules:
     header: Pure API Consumer
     gate: scripts/check_no_client_state_persistence.py
 
+  - id: web-claude-md::build-warning-gate
+    file: web/CLAUDE.md
+    header: Build Warning Gate
+    gate: web/vite-warning-gate.ts
+
   - id: claude-md::regional-defaults
     file: CLAUDE.md
     header: Regional Defaults

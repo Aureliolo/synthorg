@@ -14,6 +14,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "eslint.config.js",
+    "vite-warning-gate.ts",
     "test-infra/**/*.ts"
   ]
 }

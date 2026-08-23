@@ -13,10 +13,11 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 
 import asyncio
 import ipaddress
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
+import idna
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
@@ -30,10 +31,12 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.web import (
     WEB_DNS_FAILED,
+    WEB_HOSTNAME_CANONICALIZED,
     WEB_SSRF_BLOCKED,
     WEB_SSRF_DISABLED,
 )
 from synthorg.providers.url_utils import redact_url
+from synthorg.tools.hostname_idna import canonical_hostname, describe_idna_failure
 
 logger = get_logger(__name__)
 
@@ -116,13 +119,62 @@ class NetworkPolicy(BaseModel):
 
         Returns:
             Result of type ``object``.
+
+        Raises:
+            ValueError: If any entry is not a string, if the allowlist is a
+                mapping, or if it arrives in a form this cannot normalise.
+                Pydantic converts each to a ``ValidationError``, which is
+                what keeps a bad persisted allowlist inside the contract the
+                startup-path caller catches.
         """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
         raw = data["hostname_allowlist"]
-        if not isinstance(raw, tuple | list):
+        if isinstance(raw, str | bytes):
             return data
-        normalized = dedupe_preserving_order(normalize_ascii_lowercase(h) for h in raw)
+        # A mapping iterates its keys, so admitting one here would turn the
+        # keys of an operator's dict into allowlisted hosts. Pydantic refuses
+        # a mapping for a ``tuple[...]`` field on its own, and this validator
+        # must not widen what the field accepts.
+        if isinstance(raw, Mapping):
+            msg = "hostname_allowlist must not be a mapping"
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
+        # Pydantic fills a ``tuple[...]`` field from any collection, sets and
+        # frozensets included, so every one of those spellings has to reach
+        # the normalisation below or it lands in the allowlist in a form the
+        # request side can never match. ``Collection`` is the widest shape
+        # safe to read here: it is re-iterable, so consuming it does not empty
+        # the value Pydantic reads next. A one-shot iterable is refused rather
+        # than passed through, because passing it through is a silent bypass.
+        if not isinstance(raw, Collection):
+            msg = "hostname_allowlist must be a collection of strings"
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
+        # A ``mode="before"`` validator runs ahead of field validation, so an
+        # element that is not a string reaches ``str`` methods here and raises
+        # ``AttributeError``, which is outside the hierarchy Pydantic converts
+        # to ``ValidationError`` and outside what the startup-path caller
+        # catches. Refusing it as a ``ValueError`` keeps every bad allowlist
+        # inside the one contract both of those depend on.
+        if not all(isinstance(entry, str) for entry in raw):
+            msg = "hostname_allowlist entries must be strings"
+            raise ValueError(msg)
+        # Canonicalise before deduplicating so an operator's U-label entry
+        # keeps matching once the request side resolves to its A-label, and
+        # so alternate spellings of one host collapse to one entry rather
+        # than sitting in the tuple as separate near-misses.
+        #
+        # A bad entry raises ``idna.IDNAError``, which reaches Pydantic as a
+        # ``ValidationError`` only because it inherits from ``ValueError``
+        # through ``UnicodeError``. Rewrapping it in a type outside that
+        # hierarchy would escape the validator uncaught.
+        # A set states no order, so reading one in iteration order would store
+        # a tuple that differs between processes for the same configuration.
+        # Sorting the unordered forms keeps the field a function of its input;
+        # a sequence keeps the order the operator wrote.
+        entries = raw if isinstance(raw, Sequence) else sorted(raw)
+        normalized = dedupe_preserving_order(
+            canonical_hostname(normalize_ascii_lowercase(h)) for h in entries
+        )
         return {**data, "hostname_allowlist": normalized}
 
 
@@ -193,6 +245,13 @@ def extract_hostname(url: str) -> str | None:
     Supports standard URL schemes (``https://host/path``) and
     IPv6 literals (``https://[::1]/path``).
 
+    A hostname carrying whitespace or a non-printable character is refused
+    outright.  The platform resolver truncates at an embedded NUL, so a
+    hostname with one trailing reaches DNS as the name before it while
+    every string comparison above this layer sees two different ones;
+    refusing here keeps that divergence out rather than relying on what the
+    resolver happens to do with it.
+
     Args:
         url: URL string.
 
@@ -203,7 +262,11 @@ def extract_hostname(url: str) -> str | None:
         return None
     parsed = urlparse(url)
     hostname = parsed.hostname  # strips brackets from IPv6
-    return hostname or None
+    if not hostname:
+        return None
+    if any(char.isspace() or not char.isprintable() for char in hostname):
+        return None
+    return hostname
 
 
 # ── Scheme validation ──────────────────────────────────────────
@@ -439,7 +502,33 @@ async def validate_url_host(
         )
         return "Could not extract a hostname from the URL"
 
-    normalized = normalize_ascii_lowercase(hostname)
+    lowered = normalize_ascii_lowercase(hostname)
+    try:
+        normalized = canonical_hostname(lowered)
+    except idna.IDNAError as exc:
+        # The hostname is logged and the URL is not, matching every other
+        # refusal in this function: the authority can carry userinfo
+        # credentials and the hostname cannot. The rule that failed is a
+        # fixed identifier from the library's own vocabulary, so it names
+        # what to fix without quoting anything the caller supplied.
+        failure = describe_idna_failure(exc)
+        logger.warning(
+            WEB_SSRF_BLOCKED,
+            hostname=lowered,
+            reason="idna_invalid_hostname",
+            idna_failure=failure,
+        )
+        return f"Hostname is not a valid internationalised domain name: {failure}"
+
+    if normalized != lowered:
+        # An operator debugging why an allowlist entry did not match needs
+        # to see that the compared spelling is not the one they typed.
+        logger.debug(
+            WEB_HOSTNAME_CANONICALIZED,
+            hostname=lowered,
+            canonical=normalized,
+        )
+
     is_https = compare_ci(urlparse(url).scheme, "https")
 
     port: int | None = None

@@ -9,12 +9,13 @@ header becomes the only thing telling the origin which site was asked for.
 from collections.abc import Iterable
 from typing import override
 from unittest.mock import Mock
+from urllib.parse import urlparse
 
 import httpcore
 import pytest
 
 from synthorg.tools._dns_pinning import SOCKET_OPTION, PinnedDnsBackend
-from synthorg.tools.errors import ToolParameterError
+from synthorg.tools.errors import ToolExecutionError, ToolParameterError
 from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
@@ -29,8 +30,14 @@ def _validation(
     *,
     ips: tuple[str, ...] = ("93.184.216.34",),
     is_https: bool = False,
+    port: int | None = None,
 ) -> DnsValidationOk:
-    return DnsValidationOk(hostname=hostname, resolved_ips=ips, is_https=is_https)
+    return DnsValidationOk(
+        hostname=hostname,
+        resolved_ips=ips,
+        is_https=is_https,
+        port=port,
+    )
 
 
 class _RecordingBackend(httpcore.AsyncNetworkBackend):
@@ -128,6 +135,23 @@ class TestHostHeaderCarriesTheAuthority:
             pin_url("http://user:hunter2@/docs", {}, _validation("example.test"))
 
         assert "hunter2" not in str(excinfo.value)
+
+    def test_an_address_that_is_not_one_is_refused_rather_than_left_unpinned(
+        self,
+    ) -> None:
+        """Falling back to the hostname answers an unpinned request.
+
+        ``is_blocked_ip`` is fail-closed on an unparseable address, so nothing
+        reachable puts one in ``resolved_ips``; the invariant is asserted here
+        because the alternative behaviour is indistinguishable from success at
+        every layer above, which is what makes it worth a raise.
+        """
+        with pytest.raises(ToolParameterError, match="not one"):
+            pin_url(
+                "http://example.test/docs",
+                {},
+                _validation("example.test", ips=("not-an-address",)),
+            )
 
     def test_a_portless_url_sends_a_bare_host(self) -> None:
         _, headers = pin_url(
@@ -245,8 +269,15 @@ class TestHttpsPinsTheTransportInstead:
 
         assert dialled == [("93.184.216.34", 443)]
 
-    async def test_another_host_on_the_same_transport_is_left_alone(self) -> None:
-        """The pin is one name to one address, not a blanket redirect."""
+    async def test_another_host_is_refused_rather_than_resolved_unpinned(self) -> None:
+        """A name the backend was not pinned to must not be dialled at all.
+
+        Passing it through to the inner backend resolves a name nothing
+        checked, which is the rebinding window this transport exists to
+        close, and it does so silently: the request succeeds and reads as
+        pinned. The caller builds the URL from the validated hostname, so
+        reaching here at all means that invariant broke.
+        """
         dialled: list[tuple[str, int]] = []
         backend = PinnedDnsBackend(
             _RecordingBackend(dialled),
@@ -254,9 +285,10 @@ class TestHttpsPinsTheTransportInstead:
             ip="93.184.216.34",
         )
 
-        await backend.connect_tcp("other.test", 443)
+        with pytest.raises(ToolExecutionError):
+            await backend.connect_tcp("other.test", 443)
 
-        assert dialled == [("other.test", 443)]
+        assert dialled == []
 
     def test_plain_http_needs_none(self) -> None:
         # The URL was already rewritten to the address, so there is no name
@@ -313,3 +345,61 @@ class TestPinningRewritesOnlyWhatItCan:
         )
 
         assert url == "http://example.test/docs"
+
+
+@pytest.mark.unit
+class TestTheRequestCarriesTheValidatedHostname:
+    """One spelling end to end, so the pin matches what httpx dials.
+
+    httpx re-encodes whatever host the URL carries with its own IDNA
+    settings, which are not the ones the guard canonicalised with. Handing
+    it the A-label takes its pure-ASCII path, where no second encoding
+    happens at all, so the name checked and the name connected to are the
+    same string rather than two that usually agree.
+    """
+
+    def test_https_url_is_rewritten_to_the_validated_hostname(self) -> None:
+        url, _ = pin_url(
+            "https://exämple.test/docs",
+            {},
+            _validation("xn--exmple-cua.test", is_https=True),
+        )
+
+        assert url == "https://xn--exmple-cua.test/docs"
+
+    def test_the_host_header_carries_the_validated_hostname(self) -> None:
+        _, headers = pin_url(
+            "https://exämple.test/docs",
+            {},
+            _validation("xn--exmple-cua.test", is_https=True),
+        )
+
+        assert headers["Host"] == "xn--exmple-cua.test"
+
+    def test_a_stated_port_survives_the_rewrite(self) -> None:
+        url, headers = pin_url(
+            "https://exämple.test:8443/docs",
+            {},
+            _validation("xn--exmple-cua.test", port=8443, is_https=True),
+        )
+
+        assert url == "https://xn--exmple-cua.test:8443/docs"
+        assert headers["Host"] == "xn--exmple-cua.test:8443"
+
+    def test_userinfo_is_carried_across(self) -> None:
+        """Credentials are part of the request the caller authored."""
+        url, headers = pin_url(
+            "https://user:secret@exämple.test/docs",
+            {},
+            _validation("xn--exmple-cua.test", is_https=True),
+        )
+
+        assert url == "https://user:secret@xn--exmple-cua.test/docs"
+        assert headers["Host"] == "xn--exmple-cua.test"
+
+    def test_the_pinned_backend_accepts_the_rewritten_hostname(self) -> None:
+        """The rewrite and the pin must agree, or every request would raise."""
+        validation = _validation("xn--exmple-cua.test", is_https=True)
+        url, _ = pin_url("https://exämple.test/docs", {}, validation)
+
+        assert urlparse(url).hostname == validation.hostname

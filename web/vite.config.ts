@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
+import { failBuildOnWarning } from './vite-warning-gate'
 
 /**
  * Project root (directory containing this config file).  Using
@@ -178,7 +179,8 @@ export default defineConfig(async () => {
       // independently of it.
       assetsInlineLimit: (filePath: string): boolean | undefined =>
         /\.(woff2?|ttf|otf|eot)$/i.test(filePath) ? false : undefined,
-      rollupOptions: {
+      rolldownOptions: {
+        onLog: failBuildOnWarning,
         output: {
           manualChunks,
         },

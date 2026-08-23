@@ -9,15 +9,15 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
+from synthorg.tools._git_dns import is_blocked_clone_ip
 from synthorg.tools.git_url_validator import (
-    _BLOCKED_NETWORKS,
     DnsValidationOk,
     GitCloneNetworkPolicy,
     _extract_hostname,
-    _is_blocked_ip,
     is_allowed_clone_scheme,
     validate_clone_url_host,
 )
+from synthorg.tools.network_validator import BLOCKED_NETWORKS as _BLOCKED_NETWORKS
 
 from .conftest import dns_result as _dns_result
 from .conftest import dns_result_v6 as _dns_result_v6
@@ -92,7 +92,7 @@ class TestExtractHostname:
         assert _extract_hostname(url) is None
 
 
-# ── _is_blocked_ip ────────────────────────────────────────────────
+# ── is_blocked_clone_ip ───────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -173,7 +173,7 @@ class TestIsBlockedIp:
         ],
     )
     def test_blocked_addresses(self, addr: str) -> None:
-        assert _is_blocked_ip(addr) is True
+        assert is_blocked_clone_ip(addr) is True
 
     @pytest.mark.parametrize(
         "addr",
@@ -191,7 +191,7 @@ class TestIsBlockedIp:
         ],
     )
     def test_public_addresses(self, addr: str) -> None:
-        assert _is_blocked_ip(addr) is False
+        assert is_blocked_clone_ip(addr) is False
 
     @pytest.mark.parametrize(
         ("mapped", "expected"),
@@ -211,11 +211,11 @@ class TestIsBlockedIp:
         ],
     )
     def test_ipv6_mapped_ipv4(self, mapped: str, expected: bool) -> None:
-        assert _is_blocked_ip(mapped) is expected
+        assert is_blocked_clone_ip(mapped) is expected
 
     def test_unparseable_is_blocked(self) -> None:
         """Unparseable addresses are blocked (fail-closed)."""
-        assert _is_blocked_ip("not-an-ip") is True
+        assert is_blocked_clone_ip("not-an-ip") is True
 
 
 # ── is_allowed_clone_scheme ───────────────────────────────────────
@@ -339,6 +339,20 @@ class TestGitCloneNetworkPolicy:
             "git.other",
         )
 
+    def test_allowlist_stores_a_unicode_entry_as_its_a_label(self) -> None:
+        """The clone path canonicalises exactly as the web guard does."""
+        policy = GitCloneNetworkPolicy(hostname_allowlist=("gït.internal",))
+        assert policy.hostname_allowlist == ("xn--gt-tja.internal",)
+
+    def test_allowlist_keeps_an_underscore_host(self) -> None:
+        """Internal git hosts use characters IDNA would refuse."""
+        policy = GitCloneNetworkPolicy(hostname_allowlist=("git_server.internal",))
+        assert policy.hostname_allowlist == ("git_server.internal",)
+
+    def test_allowlist_rejects_an_unresolvable_a_label(self) -> None:
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(hostname_allowlist=("xn--bogus-.internal",))
+
     def test_allowlist_rejects_empty_string(self) -> None:
         """Empty string in allowlist is rejected (NotBlankStr)."""
         with pytest.raises(ValidationError):
@@ -361,6 +375,45 @@ class TestGitCloneNetworkPolicy:
 @pytest.mark.unit
 class TestValidateCloneUrlHost:
     """Async SSRF validation with mocked DNS."""
+
+    async def test_unicode_host_is_canonicalised(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The clone target reports the A-label the pin will be built from."""
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("https://exämple.com/repo.git", policy)
+        assert not isinstance(result, str)
+        assert result.hostname == "xn--exmple-cua.com"
+
+    async def test_invalid_a_label_host_refused(self) -> None:
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://xn--bogus-.com/repo.git", policy
+        )
+        assert isinstance(result, str)
+        assert "invalid_alabel" in result
+
+    async def test_underscore_host_beside_an_a_label_survives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://git_server.xn--mnchen-3ya.de/repo.git", policy
+        )
+        assert not isinstance(result, str)
+        assert result.hostname == "git_server.xn--mnchen-3ya.de"
 
     async def test_public_host_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Public host resolving to public IP returns DnsValidationOk."""
@@ -703,7 +756,7 @@ class TestValidateCloneUrlHostProperties:
     )
     def test_blocked_ipv4_always_detected(self, ip: ipaddress.IPv4Address) -> None:
         """Every IPv4 in a blocked range is detected."""
-        assert _is_blocked_ip(str(ip)) is True
+        assert is_blocked_clone_ip(str(ip)) is True
 
     @given(
         ip=st.one_of(
@@ -716,7 +769,7 @@ class TestValidateCloneUrlHostProperties:
     )
     def test_blocked_ipv6_always_detected(self, ip: ipaddress.IPv6Address) -> None:
         """Every IPv6 in a blocked range is detected."""
-        assert _is_blocked_ip(str(ip)) is True
+        assert is_blocked_clone_ip(str(ip)) is True
 
     @given(
         ip=st.ip_addresses(v=4).filter(
@@ -725,7 +778,7 @@ class TestValidateCloneUrlHostProperties:
     )
     def test_non_blocked_ipv4_never_flagged(self, ip: ipaddress.IPv4Address) -> None:
         """IPv4 outside blocked ranges is never flagged."""
-        assert _is_blocked_ip(str(ip)) is False
+        assert is_blocked_clone_ip(str(ip)) is False
 
     @given(
         ip=st.ip_addresses(v=6).filter(
@@ -743,7 +796,7 @@ class TestValidateCloneUrlHostProperties:
         """IPv6 outside blocked ranges is never flagged.
 
         Excludes IPv6-mapped IPv4 addresses (``::ffff:x.x.x.x``) that
-        map to blocked IPv4 ranges, since ``_is_blocked_ip`` unwraps
+        map to blocked IPv4 ranges, since ``is_blocked_clone_ip`` unwraps
         these before checking.
         """
-        assert _is_blocked_ip(str(ip)) is False
+        assert is_blocked_clone_ip(str(ip)) is False

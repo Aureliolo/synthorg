@@ -134,6 +134,11 @@
 (?i)finalized
 (?i)finalizes
 (?i)finalizing
+(?i)canonicalize
+(?i)canonicalized
+(?i)canonicalizes
+(?i)canonicalizing
+(?i)canonicalization
 (?i)normalize
 (?i)normalized
 (?i)normalizes

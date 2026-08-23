@@ -13,6 +13,7 @@ from synthorg.core.registry import StrategyRegistry
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.notifications._network_policy import build_sink_network_policy
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
     NotificationConfig,
@@ -30,26 +31,8 @@ from synthorg.observability.events.notification import (
 )
 from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
-from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
-
-
-def _build_network_policy(params: dict[str, str]) -> NetworkPolicy:
-    """Build the SSRF policy for a webhook sink from operator params.
-
-    The default policy is fail-closed (private/internal IPs blocked).
-    Operators running a self-hosted ntfy / Slack-compatible receiver on
-    an internal address opt in explicitly via a comma-separated
-    ``hostname_allowlist`` param so those hosts bypass the private-IP
-    block while still being DNS-pinned.
-
-    Returns:
-        A ``NetworkPolicy`` carrying the parsed allowlist (empty by
-        default).
-    """
-    allowlist = tuple(parse_comma_list_stripped(params.get("hostname_allowlist", "")))
-    return NetworkPolicy(hostname_allowlist=allowlist)
 
 
 def build_notification_dispatcher(
@@ -173,10 +156,6 @@ def _create_ntfy_sink(
     if bridge_config is not None:
         default_url = bridge_config.ntfy_default_url
     else:
-        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-            NotificationsBridgeConfig,
-        )
-
         default_url = NotificationsBridgeConfig().ntfy_default_url
         # Fallback signal for operators reading boot logs: the runtime
         # bridge config was unavailable, so the documented default
@@ -203,7 +182,9 @@ def _create_ntfy_sink(
         )
         return None
     token = params.get("token")
-    network_policy = _build_network_policy(params)
+    network_policy = build_sink_network_policy(params, sink_type="ntfy")
+    if network_policy is None:
+        return None
     if bridge_config is None:
         return NtfyNotificationSink(
             server_url=server_url,

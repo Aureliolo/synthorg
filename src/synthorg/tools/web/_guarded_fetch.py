@@ -10,9 +10,9 @@ fixed in one place and left wrong in the other.
 
 import asyncio
 from http import HTTPStatus
-from ipaddress import IPv6Address, ip_address
+from ipaddress import ip_address
 from typing import Final
-from urllib.parse import ParseResult, SplitResult, urlparse, urlunparse
+from urllib.parse import ParseResult, SplitResult, urlparse
 
 import httpx
 
@@ -22,6 +22,7 @@ from synthorg.core.resilience.retry_after import (
     parse_retry_after_seconds,
 )
 from synthorg.tools._dns_pinning import PinnedDnsTransport
+from synthorg.tools._url_authority import bracket_host, with_authority_host
 from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import DnsValidationOk
 
@@ -107,12 +108,21 @@ def pin_url(
     headers: dict[str, str],
     validation: DnsValidationOk,
 ) -> tuple[str, dict[str, str]]:
-    """Rewrite *url* to connect to the validated IP (plain HTTP only).
+    """Rewrite *url* to carry the validated hostname, and the validated IP.
 
     For plain HTTP the hostname is replaced with the first validated IP and
     ``Host`` is set, closing the DNS-rebinding TOCTOU gap. For HTTPS the
-    original URL is returned, because TLS SNI needs the hostname to validate
-    the certificate.
+    hostname stays, because TLS SNI needs it to validate the certificate.
+
+    Both spellings come from ``validation.hostname``, never from the URL's
+    own. httpx re-encodes whatever host the URL carries using its own IDNA
+    settings, which are not the ones the guard canonicalised with, so a URL
+    still spelling its host as a U-label would be dialled and pinned against
+    a second, independently derived name. An A-label takes httpx's
+    pure-ASCII path, where no re-encoding happens at all, which is what
+    makes the name checked here and the name connected to the same string
+    rather than two that usually agree. Userinfo is carried across
+    unchanged, since it is part of the request the caller authored.
 
     Returns:
         The request URL and a copied header mapping with ``Host`` normalised;
@@ -129,28 +139,36 @@ def pin_url(
             validator gives at its own hostless branch: redaction rebuilds
             around a parsed hostname and returns its input untouched when there
             is none, so echoing it back would copy out whatever sat in the
-            authority.
+            authority. Also raised when the address to pin to does not parse
+            as one, which is the same class of broken invariant:
+            ``is_blocked_ip`` is fail-closed on an unparseable address, so
+            every entry in ``resolved_ips`` already parsed once. The
+            alternative to raising is the one outcome worse than failing,
+            returning the hostname-bearing URL, which hands httpx a name to
+            re-resolve at connect time and so answers an unpinned request
+            that reads exactly like a pinned one.
     """
     parsed = urlparse(url)
     resolved = _host_and_port(parsed)
     if resolved is None:
         msg = "cannot pin a URL with no usable authority"
         raise ToolParameterError(msg)
-    host, port = resolved
+    _, port = resolved
+    validated_host = validation.hostname
     normalized_headers = {k: v for k, v in headers.items() if not compare_ci(k, "host")}
-    normalized_headers["Host"] = _render_authority(host, port)
+    normalized_headers["Host"] = _render_authority(bracket_host(validated_host), port)
 
+    canonical_url = with_authority_host(parsed, validated_host, port)
     if not validation.resolved_ips or validation.is_https:
-        return url, normalized_headers
+        return canonical_url, normalized_headers
 
     pinned_ip = validation.resolved_ips[0]
     try:
-        addr = ip_address(pinned_ip)
-    except ValueError:
-        return url, normalized_headers
-    pinned_host = f"[{pinned_ip}]" if isinstance(addr, IPv6Address) else pinned_ip
-    pinned_netloc = _render_authority(pinned_host, port)
-    return urlunparse(parsed._replace(netloc=pinned_netloc)), normalized_headers
+        ip_address(pinned_ip)
+    except ValueError as exc:
+        msg = "refusing to pin a request to an address that is not one"
+        raise ToolParameterError(msg) from exc
+    return with_authority_host(parsed, pinned_ip, port), normalized_headers
 
 
 async def stream_bounded(

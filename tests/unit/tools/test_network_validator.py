@@ -1,6 +1,7 @@
 """Unit tests for the shared network validator (SSRF prevention)."""
 
 import asyncio
+import copy
 import ipaddress
 from unittest.mock import AsyncMock, patch
 
@@ -52,6 +53,97 @@ class TestNetworkPolicy:
             hostname_allowlist=("example.com", "EXAMPLE.COM", "example.com"),
         )
         assert policy.hostname_allowlist == ("example.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_unicode_entry_stored_as_a_label(self) -> None:
+        policy = NetworkPolicy(hostname_allowlist=("exämple.com",))
+        assert policy.hostname_allowlist == ("xn--exmple-cua.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_underscore_host_survives(self) -> None:
+        """STD3 rules must not reach a host an operator can legitimately run."""
+        policy = NetworkPolicy(hostname_allowlist=("my_host.internal",))
+        assert policy.hostname_allowlist == ("my_host.internal",)
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_unresolvable_a_label(self) -> None:
+        with pytest.raises(ValidationError):
+            NetworkPolicy(hostname_allowlist=("xn--bogus-.com",))
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_a_non_string_entry_as_a_validation_error(self) -> None:
+        """The refusal has to stay inside the hierarchy both guards read.
+
+        This validator runs before field validation, so a non-string element
+        reaches ``str`` methods. Raising ``AttributeError`` there would leave
+        Pydantic unable to convert it and the startup-path caller unable to
+        catch it, so the process would go down on a persisted value.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(hostname_allowlist=(123,))  # type: ignore[arg-type]
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("wrap", [set, frozenset])
+    def test_allowlist_normalises_every_collection_pydantic_accepts(
+        self,
+        wrap: type[frozenset[str]] | type[set[str]],
+    ) -> None:
+        """A form that skips normalisation is an entry nothing can match.
+
+        Pydantic fills a tuple field from any collection, so an unordered one
+        reaching the field unnormalised would sit there uppercased and as a
+        U-label while the request side arrives lowercased and as an A-label.
+        """
+        policy = NetworkPolicy(
+            hostname_allowlist=wrap({"ExÄmple.COM"}),  # type: ignore[arg-type]
+        )
+        assert policy.hostname_allowlist == ("xn--exmple-cua.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_a_mapping(self) -> None:
+        """Iterating a mapping would allowlist its keys.
+
+        Pydantic refuses a mapping for this field on its own, so admitting one
+        here would widen what the field accepts rather than normalise it.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(
+                hostname_allowlist={"internal.corp": True},  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_a_form_it_cannot_normalise(self) -> None:
+        """An iterator is consumed by reading it, so it is refused, not passed.
+
+        Letting it through would hand Pydantic an unnormalised allowlist,
+        which is a silent bypass of every check this validator applies.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(
+                hostname_allowlist=iter(["example.com"]),  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.unit
+    def test_allowlist_collapses_alternate_spellings_of_one_host(self) -> None:
+        """Canonicalising must happen before the dedupe, not after it.
+
+        Reordering the two would store the same host several times and let
+        each spelling drift out of agreement with the request side.
+        """
+        policy = NetworkPolicy(
+            hostname_allowlist=(
+                "example.com",
+                "exämple.com",
+                "XN--exmple-cua.com",
+                "Exämple.COM",
+            ),
+        )
+        assert policy.hostname_allowlist == ("example.com", "xn--exmple-cua.com")
+
+    @pytest.mark.unit
+    def test_allowlist_keeps_a_mixed_label_host(self) -> None:
+        policy = NetworkPolicy(hostname_allowlist=("my_service.xn--mnchen-3ya.de",))
+        assert policy.hostname_allowlist == ("my_service.xn--mnchen-3ya.de",)
 
     @pytest.mark.unit
     def test_dns_timeout_bounds(self) -> None:
@@ -330,11 +422,123 @@ class TestValidateUrlHost:
         assert result.hostname == "8.8.8.8"
 
     @pytest.mark.unit
+    async def test_unicode_host_matches_its_a_label_allowlist_entry(self) -> None:
+        # The allowlist branch still resolves, to pin the IP, so this needs the
+        # resolver stubbed: unmocked it reaches real DNS from the unit suite,
+        # and the branch tolerates a lookup failure, so the test would pass
+        # either way and say nothing about what it claims to check.
+        policy = NetworkPolicy(hostname_allowlist=("xn--exmple-cua.com",))
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = [(0, 0, 0, "", ("93.184.216.34", 0))]
+            result = await validate_url_host("https://exämple.com/api", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "xn--exmple-cua.com"
+        assert result.resolved_ips == ("93.184.216.34",)
+
+    @pytest.mark.unit
+    async def test_invalid_a_label_host_refused(self) -> None:
+        policy = NetworkPolicy()
+        result = await validate_url_host("https://xn--bogus-.com/api", policy)
+        assert result == (
+            "Hostname is not a valid internationalised domain name: invalid_alabel"
+        )
+
+    @pytest.mark.unit
+    async def test_invalid_a_label_refused_with_blocking_disabled(self) -> None:
+        """Dev-mode "allow everything" must not also disable the IDNA guard.
+
+        The canonicalisation runs before the master switch, so a refactor
+        that moved it below would send a spoofed hostname straight to DNS
+        for every operator running with private-IP blocking off.
+        """
+        policy = NetworkPolicy(block_private_ips=False)
+        result = await validate_url_host("https://xn--bogus-.com/api", policy)
+        assert isinstance(result, str)
+        assert "invalid_alabel" in result
+
+    @pytest.mark.unit
+    async def test_invalid_a_label_refused_even_when_allowlisted(self) -> None:
+        policy = NetworkPolicy(hostname_allowlist=("example.com",))
+        result = await validate_url_host("https://xn--bogus-.com/api", policy)
+        assert isinstance(result, str)
+        assert "invalid_alabel" in result
+
+    @pytest.mark.unit
+    async def test_sibling_label_does_not_veto_its_neighbours(self) -> None:
+        """An underscore label beside an A-label must not refuse the host."""
+        policy = NetworkPolicy()
+        mock_results = [(0, 0, 0, "", ("93.184.216.34", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validate_url_host(
+                "https://my_service.xn--mnchen-3ya.de/api", policy
+            )
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "my_service.xn--mnchen-3ya.de"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("suffix", ["\x00", "\x00.evil.example", " "])
+    async def test_control_character_host_refused(self, suffix: str) -> None:
+        """The resolver truncates at a NUL; nothing above it does.
+
+        ``\\n``, ``\\r`` and ``\\t`` are absent from this list on purpose:
+        ``urlparse`` strips them before returning a hostname, so they never
+        reach the guard and asserting on them would pin the standard
+        library's behaviour rather than this function's.
+        """
+        policy = NetworkPolicy()
+        result = await validate_url_host(f"https://example.com{suffix}/api", policy)
+        # Every refusal is a string, a failed DNS lookup included, so asserting
+        # the type alone would pass on the outcome this test exists to rule
+        # out: the hostname reaching a real resolver.
+        assert result == "Could not extract a hostname from the URL"
+
+    @pytest.mark.unit
+    async def test_underscore_host_still_reaches_dns(self) -> None:
+        """The guard must not start refusing hosts it has always allowed."""
+        policy = NetworkPolicy()
+        mock_results = [(0, 0, 0, "", ("93.184.216.34", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validate_url_host("https://my_host.example/api", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "my_host.example"
+
+    @pytest.mark.unit
     async def test_allowlisted_host_bypasses_check(self) -> None:
+        """An allowlisted host still resolves, so the IP can be pinned.
+
+        The lookup is mocked because a unit test must not depend on what a
+        real resolver answers for ``internal.corp``.
+        """
         policy = NetworkPolicy(hostname_allowlist=("internal.corp",))
-        result = await validate_url_host("https://internal.corp/api", policy)
+        mock_results = [(0, 0, 0, "", ("93.184.216.34", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validate_url_host("https://internal.corp/api", policy)
         assert isinstance(result, DnsValidationOk)
         assert result.hostname == "internal.corp"
+        assert result.resolved_ips == ("93.184.216.34",)
+
+    @pytest.mark.unit
+    async def test_allowlisted_host_resolving_private_is_still_allowed(self) -> None:
+        """The allowlist exists for internal addresses, so it carries none.
+
+        A blocked address yields no pinned IPs rather than a refusal: the
+        entry is the operator saying this host is legitimately internal.
+        """
+        policy = NetworkPolicy(hostname_allowlist=("internal.corp",))
+        mock_results = [(0, 0, 0, "", ("10.0.0.5", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validate_url_host("https://internal.corp/api", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.resolved_ips == ()
 
     @pytest.mark.unit
     async def test_block_private_ips_disabled(self) -> None:
@@ -439,8 +643,6 @@ class TestNetworkPolicyBeforeValidatorImmutability:
 
     @pytest.mark.unit
     def test_normalize_does_not_mutate_input(self) -> None:
-        import copy
-
         original = {
             "hostname_allowlist": ["Example.COM", "Test.IO", "example.com"],
             "block_private_ips": True,
