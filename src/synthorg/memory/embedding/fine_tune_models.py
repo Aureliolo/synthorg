@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal, Self
+from typing import Final, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -17,6 +17,14 @@ from pydantic import (
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_validators import assert_safe_base_model
+
+#: Upper bound on mined hard negatives per query. Each one becomes its own
+#: column in the training table, so a large value both widens every row and
+#: fragments the training set into that many hardness buckets; past a handful
+#: the extra negatives are also no longer hard, since mining ranks by
+#: similarity and the tail is ordinary in-batch material. Bounded because the
+#: value arrives from an operator request and nothing downstream refuses it.
+MAX_HARD_NEGATIVE_TOP_K: Final[int] = 32
 
 
 class FineTuneDataSourceType(StrEnum):
@@ -138,6 +146,7 @@ class FineTuneRequest(BaseModel):
     top_k: int | None = Field(
         default=None,
         ge=1,
+        le=MAX_HARD_NEGATIVE_TOP_K,
         description="Override hard negative count per query",
     )
     batch_size: int | None = Field(
@@ -359,7 +368,12 @@ class FineTuneRunConfig(BaseModel):
     epochs: int = Field(default=3, ge=1, description="Training epochs")
     learning_rate: float = Field(default=1e-5, gt=0.0, description="Learning rate")
     temperature: float = Field(default=0.02, gt=0.0, description="InfoNCE temperature")
-    top_k: int = Field(default=4, ge=1, description="Hard negatives per query")
+    top_k: int = Field(
+        default=4,
+        ge=1,
+        le=MAX_HARD_NEGATIVE_TOP_K,
+        description="Hard negatives per query",
+    )
     batch_size: int = Field(default=128, ge=1, description="Training batch size")
     validation_split: float = Field(
         default=0.1,
@@ -543,51 +557,3 @@ class CheckpointRecord(BaseModel):
         default=None,
         description="Pre-deployment config backup (JSON)",
     )
-
-
-# ── Pre-flight validation ────────────────────────────────────────
-
-
-class PreflightCheck(BaseModel):
-    """Result of a single pre-flight validation check.
-
-    Attributes:
-        name: Check identifier.
-        status: Pass/warn/fail result.
-        message: Human-readable result description.
-        detail: Optional additional detail.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    name: NotBlankStr = Field(description="Check identifier")
-    status: Literal["pass", "warn", "fail"] = Field(description="Result")
-    message: NotBlankStr = Field(description="Result description")
-    detail: str | None = Field(default=None, description="Additional detail")
-
-
-class PreflightResult(BaseModel):
-    """Aggregated pre-flight validation results.
-
-    Attributes:
-        checks: Individual check results.
-        recommended_batch_size: VRAM-based batch size recommendation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    checks: tuple[PreflightCheck, ...] = Field(
-        default=(),
-        description="Individual check results",
-    )
-    recommended_batch_size: int | None = Field(
-        default=None,
-        ge=1,
-        description="VRAM-based batch size recommendation",
-    )
-
-    @computed_field
-    @property
-    def can_proceed(self) -> bool:
-        """True if no checks have ``"fail"`` status."""
-        return all(c.status != "fail" for c in self.checks)

@@ -47,8 +47,8 @@ from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneRun,
     FineTuneStatus,
-    PreflightResult,
 )
+from synthorg.memory.embedding.fine_tune_preflight_models import PreflightResult
 from synthorg.memory.fine_tune_plan import (
     ActiveEmbedderSnapshot,
     FineTunePlan,

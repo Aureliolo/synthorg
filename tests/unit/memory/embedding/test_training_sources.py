@@ -11,7 +11,7 @@ and artifact repos); only the LLM-driven capture upstream is out of scope here.
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Final, override
 
 import pytest
 
@@ -22,12 +22,14 @@ from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.consolidation.distillation import DISTILLATION_TAG
+from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.training_sources import (
     QueryPassagePair,
     TrainingPairSource,
     TrajectoryTrainingDataSource,
     _passes_curation,
 )
+from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.meta.learning_curve import ScorecardSummary, append_summary
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
@@ -223,6 +225,81 @@ async def test_harvests_pairs_from_all_three_sources() -> None:
         == "Handle the payment timeout"
     )
     assert by_source[TrainingPairSource.FAILURE_LESSON].positive_passage == _LESSON
+
+
+class _CancelsOnNthCheck(CancellationToken):
+    """Fires cancellation from inside the harvest, where the loops check it.
+
+    Cancelling up front would only ever reach the first check. Counting them
+    lets each loop's own check be the one that raises.
+    """
+
+    def __init__(self, nth: int) -> None:
+        super().__init__()
+        self.nth = nth
+        self.seen = 0
+        self.stages: list[str] = []
+
+    @override
+    def check(self, *, stage: str) -> None:
+        """Count this check, cancel once the target is reached, then defer.
+
+        Args:
+            stage: What was interrupted, recorded so the test can assert the
+                loops name themselves distinctly.
+        """
+        self.seen += 1
+        self.stages.append(stage)
+        if self.seen >= self.nth:
+            self.cancel()
+        super().check(stage=stage)
+
+
+#: Which check number each harvest loop's own ``cancellation.check`` is, in
+#: collect() order. One per loop, because each owns its check: a single count
+#: would leave the others asserted by nothing.
+_CHECK_AT_COLLECT_ENTRY: Final[int] = 1
+_CHECK_IN_ARTIFACT_HARVEST: Final[int] = 2
+_CHECK_IN_DISTILLATION_HARVEST: Final[int] = 3
+_CHECK_IN_FAILURE_HARVEST: Final[int] = 4
+
+
+@pytest.mark.parametrize(
+    "checks_before_cancel",
+    [
+        _CHECK_AT_COLLECT_ENTRY,
+        _CHECK_IN_ARTIFACT_HARVEST,
+        _CHECK_IN_DISTILLATION_HARVEST,
+        _CHECK_IN_FAILURE_HARVEST,
+    ],
+)
+async def test_collect_is_cancellable_in_every_harvest_loop(
+    checks_before_cancel: int,
+) -> None:
+    """Harvesting scans the org's whole history, so it must stop when asked.
+
+    Each loop carries its own check and names its own stage, because giving up
+    on a corpus scan and giving up on hours of GPU time are different losses
+    and the operator reads the difference in the log.
+    """
+    backend = await _seeded_backend()
+    token = _CancelsOnNthCheck(checks_before_cancel)
+
+    with pytest.raises(FineTuneCancelledError) as excinfo:
+        await _source(backend).collect(cancellation=token)
+
+    # The message names the stage that was interrupted, not just "cancelled".
+    assert "cancelled during" in str(excinfo.value)
+    assert token.stages[-1] in str(excinfo.value)
+
+
+async def test_collect_without_a_token_never_cancels() -> None:
+    """The token is optional; absent, every harvest runs to completion."""
+    backend = await _seeded_backend()
+
+    pairs = await _source(backend).collect(cancellation=None)
+
+    assert len(pairs) > 0
 
 
 async def test_curation_drops_items_graded_by_a_failing_run(tmp_path: Path) -> None:

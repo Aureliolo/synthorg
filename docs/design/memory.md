@@ -298,8 +298,9 @@ single except clause.
 | `MemoryNotFoundError` | A specific memory ID is not found |
 | `MemoryConfigError` | Memory configuration is invalid |
 | `MemoryCapabilityError` | An unsupported operation is attempted for a backend |
-| `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers) are missing |
+| `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers[train], datasets, accelerate, transformers) are missing |
 | `FineTuneCancelledError` | A fine-tuning pipeline run is cancelled |
+| `FineTuneTrainingDataError` | Stage 2's triples file is empty or malformed |
 
 ### Configuration
 
@@ -490,7 +491,9 @@ The pipeline requires no manual annotation and runs on a single GPU.
    passages become hard negatives. Inputs that overflow the token cap surface a
    `memory.fine_tune.encode_truncation_likely` WARNING so silent quality loss is visible
 3. **Contrastive fine-tuning**: biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
-   lr=1e-5). Single GPU, 1-2 hours for ~500 documents
+   lr=1e-5). Single GPU, 1-2 hours for ~500 documents. See
+   [Stage 3: contrastive training](#stage-3-contrastive-training) for the
+   trainer binding and how ragged hard-negative counts are handled
 4. **Evaluation**: NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
    the base model on held-out validation data, re-using the Stage 2 query / passage token
    caps so eval embeddings are tokenisation-consistent with mining
@@ -499,6 +502,42 @@ The pipeline requires no manual annotation and runs on a single GPU.
    retrieval benchmark); on a tie or loss the checkpoint is recorded inactive. On promotion,
    update the resolved `EmbedderConfig` to point to the fine-tuned model. See
    [Memory Learning &rarr; Checkpoint promotion gate](memory-learning.md#checkpoint-promotion-gate)
+
+#### Stage 3: contrastive training
+
+Training runs on `SentenceTransformerTrainer`, driving
+`MultipleNegativesRankingLoss` at `scale = 1 / tau` with batches sampled
+`NO_DUPLICATES`, the sampler upstream documents for in-batch-negative losses.
+The whole vendor training surface is confined to one adapter,
+`memory/embedding/fine_tune_trainer.py`, which resolves every symbol by module
+path and either yields all of them or raises `FineTuneDependencyError`.
+
+That import guard is what both dependency probes call, rather than merely
+importing the package. `datasets` and `accelerate` are not dependencies of
+`sentence-transformers` (they live in its `train` extra) nor of `transformers`,
+and the trainer refuses to run without them, so a probe that only proved the
+package imports would report a deployment ready and then lose the run two
+stages in. The fine-tune extras therefore pin `sentence-transformers[train]`,
+which is what supplies `accelerate`, and pin `datasets` and `transformers`
+directly on top of it, because the adapter imports both by name and a
+dependency we import is one we declare rather than inherit.
+
+Stage 2 emits **between zero and `top_k`** hard negatives per query, because
+its similarity margin can leave a query with nothing hard enough to keep. A
+training dataset is columnar, one set of features per column, so rows of
+differing width cannot share a table. Rows are bucketed by negative count into
+a multi-dataset training set, all buckets sharing one loss instance and drawn
+from proportionally, so a batch always has a uniform column count. Every row
+trains, at its own hardness, and no mined negative is discarded. Triples that
+arrive empty are refused rather than trained on: the resulting checkpoint would
+be indistinguishable from the base model, and the promotion gate would reject
+it hours later without saying why.
+
+Cancellation is checked on every step, not on an interval. The saving is one
+flag read against a forward and backward pass, and a run with fewer steps than
+the interval never reaches a multiple of it, so it could not be cancelled at
+all. Progress is read from the trainer's own step counters, which makes the
+`0.0..1.0` stream monotonic across every bucket and epoch by construction.
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
 `POST /admin/memory/fine-tune` (served by the memory sub-controllers under

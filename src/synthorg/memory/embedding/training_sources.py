@@ -1,10 +1,10 @@
 # module-kind: code
 """Real-trajectory training-data sourcing for the finetune pipeline.
 
-The embedding finetune used to scan a static document directory. This module
-harvests the org's REAL working history into ``{query, positive_passage}``
-pairs from three persisted sources, then curates them by the golden-benchmark
-score so the model learns from periods the org was demonstrably performing well:
+The alternative source to a static document directory: this module harvests the
+org's REAL working history into ``{query, positive_passage}`` pairs from three
+persisted sources, then curates them by the golden-benchmark score so the model
+learns from periods the org was demonstrably performing well:
 
 * **Accepted deliverables** -- artifacts of ``COMPLETED`` tasks (query = the
   task title, passage = the artifact's recorded description).
@@ -35,6 +35,7 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.distillation import DISTILLATION_TAG
 from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.meta.learning_curve import LearningCurvePoint, read_learning_curve
@@ -133,6 +134,25 @@ def _passes_curation(
     return points[-1].is_passing
 
 
+def _first_leaf(group: BaseExceptionGroup[BaseException]) -> BaseException:
+    """Return the leftmost non-group exception inside *group*.
+
+    ``except*`` preserves the nesting, so ``exceptions[0]`` can itself be
+    another group. Walk the leftmost spine so the caller re-raises a real
+    cause rather than a wrapper.
+
+    Args:
+        group: The group caught by an ``except*`` clause.
+
+    Returns:
+        The first leaf exception.
+    """
+    candidate: BaseException = group
+    while isinstance(candidate, BaseExceptionGroup) and candidate.exceptions:
+        candidate = candidate.exceptions[0]
+    return candidate
+
+
 def _task_id_from_distillation(content: str) -> str | None:
     """Extract the task id from a distillation entry's leading line.
 
@@ -198,9 +218,14 @@ class TrajectoryTrainingDataSource:
 
         Returns:
             Curated, de-duplicated training pairs.
+
+        Raises:
+            FineTuneCancelledError: If the token is set before or during any
+                harvest. Raised as the typed error even from the concurrent
+                harvests, which would otherwise surface it wrapped in a group.
         """
         if cancellation is not None:
-            cancellation.check()
+            cancellation.check(stage="training-source collection")
         completed = await self._task_repo.query(
             TaskFilterSpec(status=TaskStatus.COMPLETED),
             limit=self._max_tasks,
@@ -222,13 +247,23 @@ class TrajectoryTrainingDataSource:
 
         harvested: list[tuple[QueryPassagePair, datetime | None]] = []
         harvested.extend(await self._artifact_pairs(completed, cancellation))
-        async with asyncio.TaskGroup() as group:
-            agent_tasks = [
-                group.create_task(
-                    self._harvest_agent(agent_id, title_by_id, cancellation)
-                )
-                for agent_id in agent_ids
-            ]
+        try:
+            async with asyncio.TaskGroup() as group:
+                agent_tasks = [
+                    group.create_task(
+                        self._harvest_agent(agent_id, title_by_id, cancellation)
+                    )
+                    for agent_id in agent_ids
+                ]
+        except* FineTuneCancelledError as cancelled:
+            # A cancel raised inside the group arrives wrapped, and every
+            # caller of this stage handles the typed error, so a group would
+            # read as an ordinary harvest failure and be reported as one.
+            # The artifact harvest above runs outside the group and already
+            # propagates unchanged, so without this the same cancel means two
+            # different things depending on which loop happened to observe it.
+            cancel = _first_leaf(cancelled)
+            raise cancel from None
         for task in agent_tasks:
             harvested.extend(task.result())
 
@@ -302,7 +337,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for task in completed_tasks:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="artifact pair harvest")
             try:
                 artifacts = await self._artifact_repo.query(
                     ArtifactFilterSpec(task_id=str(task.id)),
@@ -351,7 +386,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="distillation pair harvest")
             task_id = _task_id_from_distillation(entry.content)
             title = title_by_id.get(task_id) if task_id else None
             # A blank title or passage would raise a ``NotBlankStr``
@@ -393,7 +428,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="failure pair harvest")
             source = entry.metadata.source
             if not source or not source.startswith(_FAILURE_SOURCE_PREFIX):
                 continue

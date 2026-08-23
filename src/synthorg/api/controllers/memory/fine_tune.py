@@ -7,6 +7,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 
 from synthorg.api.controllers.memory._preflight import (
+    _LOCAL_DEPENDENCY_IMPORT_CEILING_S,
     _PREFLIGHT_HARD_TIMEOUT_MARGIN_S,
     _recommend_batch_size,
     _resolve_fine_tune_thresholds,
@@ -34,8 +35,8 @@ from synthorg.core.domain_errors import (
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
-    PreflightResult,
 )
+from synthorg.memory.embedding.fine_tune_preflight_models import PreflightResult
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
@@ -308,6 +309,11 @@ class MemoryFineTuneController(Controller):
         hard_ceiling = (
             thresholds.preflight_walk_timeout_s + _PREFLIGHT_HARD_TIMEOUT_MARGIN_S
         )
+        if docker_probe is None:
+            # The in-process probe imports the whole ML stack inside this same
+            # job. Charged against the walk's budget it would exhaust it on
+            # every cold start and report an installed stack as unavailable.
+            hard_ceiling += _LOCAL_DEPENDENCY_IMPORT_CEILING_S
         try:
             async with asyncio.timeout(hard_ceiling):
                 checks, probe = await asyncio.to_thread(

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from litestar.datastructures import State
 
-from synthorg.api.controllers.memory import _preflight_probe
+from synthorg.api.controllers.memory import _preflight, _preflight_probe
 from synthorg.api.controllers.memory import fine_tune as fine_tune_module
 from synthorg.api.controllers.memory._preflight import _check_disk_space
 from synthorg.api.controllers.memory._preflight_probe import (
@@ -22,6 +22,7 @@ from synthorg.api.controllers.memory._preflight_probe import (
 )
 from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.memory.embedding import fine_tune as fine_tune_embedding
 from synthorg.memory.embedding.fine_tune_docker_runner import (
     FineTuneContainerRunner,
 )
@@ -30,6 +31,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
 )
 from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
+from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
@@ -135,6 +137,65 @@ class TestFailedProbeCaching:
         assert calls == ["example.test/fine-tune:1"]
 
 
+class TestLocalProbeDependencyFailures:
+    """Both dependency branches report, rather than one failing silently."""
+
+    def test_a_missing_dependency_is_reported_not_raised(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The commonest failure: the extra is simply not installed."""
+
+        def _absent() -> object:
+            msg = "sentence-transformers is not installed"
+            raise FineTuneDependencyError(msg)
+
+        monkeypatch.setattr(
+            fine_tune_embedding, "verify_fine_tune_dependencies", _absent
+        )
+
+        result = _preflight_probe.local_probe()
+
+        assert result.ok is False
+        assert "sentence-transformers" in (result.detail or "")
+
+    def test_an_unexpected_dependency_error_still_reports(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A half-installed stack raises shapes the typed branch never sees.
+
+        Left unhandled it would surface as a 500 rather than a preflight that
+        tells the operator what is wrong with their deployment.
+        """
+
+        def _explodes() -> object:
+            msg = "libtorch_cpu.so has the wrong ABI"
+            raise ValueError(msg)
+
+        monkeypatch.setattr(
+            fine_tune_embedding, "verify_fine_tune_dependencies", _explodes
+        )
+
+        result = _preflight_probe.local_probe()
+
+        assert result.ok is False
+        assert "dependency check failed" in (result.detail or "")
+
+    def test_a_critical_error_is_never_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``reraise_critical`` must still win over the reporting branch."""
+
+        def _fatal() -> object:
+            raise MemoryError
+
+        monkeypatch.setattr(
+            fine_tune_embedding, "verify_fine_tune_dependencies", _fatal
+        )
+
+        with pytest.raises(MemoryError):
+            _preflight_probe.local_probe()
+
+
 class TestDiskSpaceDegradation:
     def test_disk_usage_failure_degrades_to_warn(
         self, monkeypatch: pytest.MonkeyPatch
@@ -230,6 +291,16 @@ class TestRunPreflightHandler:
 
         monkeypatch.setattr(fine_tune_module, "resolve_probe_target", _fake_target)
         monkeypatch.setattr(fine_tune_module, "probe_fine_tune_image", _fake_probe)
+        # With no image the handler falls through to the in-process probe,
+        # which really imports torch, transformers and datasets. That is
+        # correct of the probe and wrong for a unit test: on a machine
+        # carrying the fine-tune extra it loads the whole ML stack and blows
+        # the wall-clock budget. This test is about which probe is chosen.
+        monkeypatch.setattr(
+            _preflight,
+            "local_probe",
+            lambda: ProbeResult(ok=True, detail="deps present"),
+        )
         controller = MemoryFineTuneController(owner=None)  # type: ignore[arg-type]
         response = await controller.run_preflight.fn(
             controller,

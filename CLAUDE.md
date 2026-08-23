@@ -85,6 +85,8 @@ uv run python -m pytest tests/ -m integration
 uv run python -m pytest tests/ -m e2e
 uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
 uv run python -m pytest tests/benchmarks/ --codspeed -n0
+uv sync --frozen --group fine-tune-cpu              # the extra-gated tests SKIP without this (~1.7 GB); `uv sync --frozen` restores the CI-equivalent env afterwards
+uv run python -m pytest tests/unit/memory/embedding/test_fine_tune_trainer.py -m unit -n0 --timeout=300
 uv run python -m evals --help                       # golden-company benchmark CLI (or `make benchmark`)
 make loop-ab                                        # print the inner-loop A/B matrix (no spend); `make loop-ab-record` measures for real
 make recursion-depth                                # print the recursion-depth sweep matrix and its projected session count (no spend); `make recursion-depth-record` measures for real
@@ -128,7 +130,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 ## Logging (detail in [sec-prompt-safety.md](docs/reference/sec-prompt-safety.md))
 
-- `from synthorg.observability import get_logger`; variable always `logger`. Never `import logging` / `print()` in app code.
+- `from synthorg.observability import get_logger`; variable always `logger`. Never `import logging` / `print()` in app code. Ruff `T20` enforces the `print()` half; the only sanctioned uses carry `# noqa: T201` and are entry points whose STDOUT IS a wire protocol somebody parses (`fine_tune_runner.py`'s `PROGRESS:` / `ERROR:` markers, `api/app.py`) or the logging plumbing itself (`observability/{setup,sinks,otlp_handler}.py`), which cannot route through a logger it is still building.
 - Event names from `observability.events.<domain>` constants; structured kwargs (`logger.info(EVENT, key=value)`).
 - Error paths log WARNING/ERROR with context before raising; state transitions log INFO via `*_STATUS_TRANSITIONED` AFTER the persistence write.
 - **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True` or `logger.exception(...)` (frame-locals serialise secrets), enforced by `check_logger_exception_str_exc.py`; never OTel `span.record_exception(exc)`, enforced by `check_otlp_span_redaction.py`.
@@ -152,6 +154,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Vendor-agnostic: the product privileges no LLM vendor, so project code/tests NEVER name one where a provider or model is being configured, dispatched to, defaulted to, or illustrated. Use `example-provider`, `test-provider`, `example-{basic,capable,expert}-001`. Allowed in `.claude/` and its `.opencode/` mirror (developer agent tooling, not product surface: an agent's `model:` names the model that actually runs it, so a placeholder there configures nothing), third-party imports, the declarative preset registries `providers/presets.py` + `tools/web/providers/presets.py` + `tools/web/providers/fetch_presets.py` + `integrations/connections/http_vendor.py`, `integrations/mcp_catalog/bundled.json`, `web/public/provider-logos/`. The rule targets vendor privilege, not the existence of proper nouns: citing third-party research (a published benchmark's result rows) names real models because a citation with the names stripped cannot be checked against its source. A citation stays a citation only while it reports; the moment it recommends, it is privileging a vendor and the rule applies again.
 - Hypothesis: 10 deterministic CI examples; failures are real bugs (fix + add `@example(...)`). Flaky: NEVER skip/xfail; fix fundamentally (`asyncio.Event().wait()`, not `sleep`).
 - Dual-backend conformance: `tests/conformance/persistence/` consumes the `backend` fixture (SQLite + Postgres); enforced by `check_dual_backend_test_parity.py`. Local Postgres: export `SYNTHORG_TEST_POSTGRES_*` to bypass testcontainers.
+- Optional-extra coverage: a test needing a package the default sync omits gates on AVAILABILITY (a real import, not `find_spec`: a half-installed package has a spec and raises when touched), never a blanket marker, and the gate is paired with a CI job that installs the extra, or the coverage silently never runs. The one such extra is fine-tune (`test-fine-tune-extra` -> `uv sync --group fine-tune-cpu`); it sets `SYNTHORG_REQUIRE_FINE_TUNE_EXTRA=1`, which turns the guard from skip into failure, and asserts the XML test report shows zero skips, because pytest exits 0 on a fully-skipped file. Add the real-import class ALONGSIDE the fast stand-in tests; do not make the whole module need the extra.
 
 ## Git
 

@@ -11,6 +11,10 @@ import pytest
 from synthorg.memory.embedding import fine_tune_docker_runner as runner_module
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
+from synthorg.memory.embedding.fine_tune_container_logs import (
+    _MAX_ERROR_LINES,
+    _MAX_ERROR_PAYLOAD_CHARS,
+)
 from synthorg.memory.embedding.fine_tune_docker_runner import (
     PROBE_ENV,
     STAGE_CONFIG_ENV,
@@ -293,6 +297,56 @@ class TestRunStage:
         ):
             await _run(_runner_with(monkeypatch, docker), progress=progress)
         assert progress == [0.25, 0.50, 0.75]
+
+    async def test_an_error_payload_is_truncated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The prefix is a convention, not a channel only the runner writes.
+
+        Markers are read off the combined stdout and stderr stream, so any
+        library in the container can emit a line starting with ``ERROR:``.
+        That container also holds the organisation's documents, so an
+        unbounded payload is both unreadable and a way for third-party output
+        to carry that text into the operator's failure message.
+        """
+        payload = "x" * (_MAX_ERROR_PAYLOAD_CHARS * 2)
+        container = FakeContainer(
+            log_lines=[f"ERROR: {payload}\n"],
+            exit_code=1,
+        )
+        docker = FakeDocker(FakeContainers(container))
+
+        with pytest.raises(FineTuneStageExecutionError) as excinfo:
+            await _run(_runner_with(monkeypatch, docker))
+
+        assert "x" * _MAX_ERROR_PAYLOAD_CHARS in str(excinfo.value)
+        assert "x" * (_MAX_ERROR_PAYLOAD_CHARS + 1) not in str(excinfo.value)
+
+    async def test_the_collected_error_lines_are_bounded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bounding each line still leaves the aggregate unbounded.
+
+        A stage runs for hours against a stream anything in the container can
+        write to, so a per-line cap alone lets the collected list, and the
+        message built from it, grow for the whole run.
+        """
+        overflow = _MAX_ERROR_LINES * 2
+        container = FakeContainer(
+            log_lines=[f"ERROR: failure {index}\n" for index in range(overflow)],
+            exit_code=1,
+        )
+        docker = FakeDocker(FakeContainers(container))
+
+        with pytest.raises(FineTuneStageExecutionError) as excinfo:
+            await _run(_runner_with(monkeypatch, docker))
+
+        message = str(excinfo.value)
+        # The earliest failures are the ones kept: the line that ended the
+        # stage is usually downstream of the one that started the cascade.
+        assert "failure 0" in message
+        assert f"failure {_MAX_ERROR_LINES - 1}" in message
+        assert f"failure {_MAX_ERROR_LINES}" not in message
 
     async def test_raising_progress_callback_does_not_abort_stage(
         self, monkeypatch: pytest.MonkeyPatch

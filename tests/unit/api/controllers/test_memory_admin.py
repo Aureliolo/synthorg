@@ -1,5 +1,7 @@
 """Tests for MemoryAdminController endpoints."""
 
+from unittest.mock import patch
+
 import pytest
 from pydantic import ValidationError
 
@@ -19,8 +21,9 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
 )
+from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.settings.definitions.memory_fine_tune import FINE_TUNE_DEFAULT_BATCH_SIZE
-from tests._shared import make_app_state
+from tests._shared import make_app_state, module_double, torch_double
 
 
 class _AllMemoryControllers(
@@ -283,12 +286,50 @@ class TestProbeDrivenChecks:
         assert "Cannot detect GPU" in check.message
 
     def test_local_probe_reports_missing_deps(self) -> None:
-        """Without the torch extras the local probe is honestly not ok."""
+        """Without the torch extras the local probe is honestly not ok.
+
+        The guard is patched rather than left to the ambient environment: on a
+        machine that HAS the fine-tune extra installed the probe legitimately
+        reports ok, so an unpatched assertion turns on what is on the box.
+        """
         from synthorg.api.controllers.memory._preflight_probe import local_probe
 
-        probe = local_probe()
+        with patch(
+            "synthorg.memory.embedding.fine_tune._import_torch",
+            side_effect=FineTuneDependencyError("torch is not installed"),
+        ):
+            probe = local_probe()
         assert probe.ok is False
-        assert probe.gpu is None
+        # The detail is what the dashboard renders, so it has to name what is
+        # missing rather than merely report that something is.
+        assert "torch" in probe.detail
+
+    def test_local_probe_reports_a_package_only_install_as_not_ok(self) -> None:
+        """Importing sentence-transformers is not the same as being able to train.
+
+        ``datasets`` and ``accelerate`` live in the ``train`` extra, so a bare
+        pin imports cleanly and still cannot reach stage 3. Preflight has to
+        say so before the run spends stages 1 and 2.
+        """
+        from synthorg.api.controllers.memory._preflight_probe import local_probe
+
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_torch",
+                return_value=torch_double(cuda=None),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=module_double("sentence_transformers"),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
+                side_effect=FineTuneDependencyError("datasets is not installed"),
+            ),
+        ):
+            probe = local_probe()
+        assert probe.ok is False
+        assert "datasets" in probe.detail
 
 
 @pytest.mark.unit

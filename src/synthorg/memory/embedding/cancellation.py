@@ -1,16 +1,26 @@
-"""Cancellation token for fine-tuning pipeline stages.
+"""Cooperative stage-control contracts for the fine-tuning pipeline.
 
-Provides a cooperative cancellation mechanism: the orchestrator
-sets the token, and each stage checks it between batches.
+Two halves of the same arrangement, travelling together through every stage
+signature: the orchestrator sets the cancellation token and each stage checks
+it between batches, and each stage reports how far it has got through the
+progress callback. Both live here because both are consumed by stage modules
+that the stage layer itself imports, so a home inside that layer would make
+the dependency run backwards.
 """
 
 import threading
+from collections.abc import Callable
 
 from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_FINE_TUNE_CANCELLED
 
 logger = get_logger(__name__)
+
+#: Called with a monotonic fraction in ``0.0..1.0``. Invoked from whichever
+#: worker thread the stage is running on, so an implementation that mutates
+#: event-loop state marshals it back itself.
+ProgressCallback = Callable[[float], None]
 
 
 class CancellationToken:
@@ -37,17 +47,26 @@ class CancellationToken:
         """Whether cancellation has been requested."""
         return self._event.is_set()
 
-    def check(self) -> None:
+    def check(self, *, stage: str) -> None:
         """Raise ``FineTuneCancelledError`` if cancelled.
 
         Call this between batches in each pipeline stage.
+
+        Args:
+            stage: What was interrupted, for the log record. Mandatory
+                because the stages differ by orders of magnitude in what a
+                cancellation costs: abandoning a corpus scan is seconds of
+                rework, abandoning contrastive training is hours of GPU time,
+                and one shared label cannot tell an operator which they lost.
 
         Raises:
             FineTuneCancelledError: If cancellation was requested.
         """
         if self._event.is_set():
-            msg = "Fine-tuning pipeline run was cancelled"
-            logger.warning(MEMORY_FINE_TUNE_CANCELLED, source="stage_check")
+            msg = f"Fine-tuning pipeline run was cancelled during {stage}"
+            logger.warning(
+                MEMORY_FINE_TUNE_CANCELLED, source="stage_check", stage=stage
+            )
             raise FineTuneCancelledError(msg)
 
     def wait(self, timeout: float | None = None) -> bool:

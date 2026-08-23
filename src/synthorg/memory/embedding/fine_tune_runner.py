@@ -99,13 +99,11 @@ def _run_probe() -> int:
         ``0`` on ``PROBE_OK``, ``1`` on ``PROBE_FAIL``.
     """
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
-        _import_sentence_transformers,
-        _import_torch,
+        verify_fine_tune_dependencies,
     )
 
     try:
-        torch = _import_torch()
-        _import_sentence_transformers()
+        torch = verify_fine_tune_dependencies()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         print(  # noqa: T201

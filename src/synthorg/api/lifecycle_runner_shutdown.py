@@ -28,6 +28,9 @@ from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.memory.embedding.fine_tune_orchestrator import (
+    FINE_TUNE_CANCEL_TIMEOUT_SECONDS,
+)
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -110,6 +113,29 @@ _DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS: Final[float] = (
     DEFAULT_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
 )
 
+# The fine-tune orchestrator drains its own background task on a 30s budget,
+# so the outer backstop exceeds that by the shared grace, the same shape the
+# other internally-draining services take. It is the longest single step here
+# and deliberately so: the stage it is interrupting runs on a worker thread
+# through hours of training and only stops at its next cooperative check.
+_FINE_TUNE_CANCEL_SHUTDOWN_SECONDS: Final[float] = (
+    FINE_TUNE_CANCEL_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
+
+# What the teardown may take, which is NOT the sum of the budgets above: those
+# are per-service worst cases that never all fire together, and summed they
+# reach 417s against a container that is killed long before.
+#
+# This is only the SECOND phase of the lifespan shutdown. The request drain
+# (``_DRAIN_TIMEOUT_SECONDS``, 25s) runs to completion first, because the drain
+# middleware intercepts ``lifespan.shutdown`` and finishes before the inner app
+# sees it. Uvicorn's ``timeout_graceful_shutdown`` bounds neither phase: it
+# caps the wait for in-flight connections, which happens before the lifespan
+# event is dispatched at all. So the deployment's grace period is the only
+# thing bounding 25s + this + ``_FLOOR_RESERVE_SECONDS``, and the shipped
+# compose files carry that sum plus headroom. All four move together.
+_TOTAL_SHUTDOWN_WINDOW_SECONDS: Final[float] = 75.0
+
 
 async def _run_shutdown(  # noqa: PLR0913
     tasks: _LifecycleTasks,
@@ -124,6 +150,13 @@ async def _run_shutdown(  # noqa: PLR0913
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
 ) -> None:
     """Run the ordered on-shutdown teardown.
+
+    Every step below carries a per-service budget that is individually sane,
+    and they run in series, so their worst case is the SUM: far past any
+    container's termination grace period. The caller runs this inside
+    :func:`shutdown_window`, which clamps each step to what is left of one
+    total, so the sequence reaches its own final steps (the ones that persist
+    state) rather than being SIGKILLed part-way through.
 
     Args:
         tasks: Shared mutable handles the startup runner populated.
@@ -238,6 +271,21 @@ async def _run_shutdown(  # noqa: PLR0913
     # to are disconnected below, so nothing is stranded mid-write (or leaked as
     # a pending task) at SIGTERM.
     await drain_initiative_tails(app_state)
+    # Cancel any in-flight fine-tune run before the memory teardown below.
+    # Nothing else in this teardown reaches it: the run is a background task
+    # driving a worker thread through hours of training, so at SIGTERM it
+    # would run on to the SIGKILL, taking the checkpoint it had not yet
+    # written with it. Cancelled here, the stage stops at its next
+    # cooperative check and the run's own handler records the outcome.
+    fine_tune_orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
+    if fine_tune_orchestrator is not None:
+        await _try_stop(
+            fine_tune_orchestrator.cancel(),
+            API_APP_SHUTDOWN,
+            "Failed to cancel the in-flight fine-tune run",
+            timeout=_FINE_TUNE_CANCEL_SHUTDOWN_SECONDS,
+            service="fine_tune_orchestrator",
+        )
     # Stop the consolidation driver before the backend it maintains, so a
     # tick in flight cannot outlive the store it writes to.
     consolidation_scheduler = app_state.slice(MemoryStateSlice).consolidation_scheduler

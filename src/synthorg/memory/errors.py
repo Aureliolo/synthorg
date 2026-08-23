@@ -9,6 +9,8 @@ namespace the domain-specific meaning is unambiguous; callers outside
 the package should import explicitly.
 """
 
+from typing import Final
+
 from synthorg.core.domain_errors import DomainError
 
 
@@ -106,11 +108,39 @@ class MemoryCapabilityError(MemoryError):
     """Raised when an unsupported operation is attempted for a backend."""
 
 
+#: How to get the fine-tune dependency set, in the two deployment shapes that
+#: can have it. Lives beside the error whose message it is, because three
+#: separate import guards across two modules quote it and a copy per guard is
+#: how install instructions come to disagree with each other.
+FINE_TUNE_DOCKER_DEP_HINT: Final[str] = (
+    "In a Docker-orchestrated install the backend spawns an ephemeral "
+    "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
+    "on demand. Enable without re-init: `synthorg config set sandbox true "
+    "&& synthorg config set fine_tuning true && synthorg config set "
+    "fine_tuning_variant gpu && synthorg stop && synthorg start` "
+    "(replace `gpu` with `cpu` on non-NVIDIA hosts). For hand-managed "
+    "compose deployments see "
+    "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
+)
+FINE_TUNE_INPROCESS_DEP_HINT: Final[str] = (
+    "For in-process execution install the extras directly: "
+    "`pip install 'synthorg[fine-tune-gpu]'` or "
+    "`pip install 'synthorg[fine-tune-cpu]'`."
+)
+
+
 class FineTuneDependencyError(MemoryError):
     """Raised when fine-tuning ML dependencies are not installed.
 
-    In the default Docker-orchestrated deployment ``torch`` and
-    ``sentence-transformers`` ship inside the
+    The dependency set is ``torch``, ``sentence-transformers[train]``,
+    ``datasets``, ``accelerate`` and ``transformers``. The last three are
+    load-bearing rather than incidental: ``datasets`` supplies the training
+    table, ``accelerate`` the trainer's device handling, and neither is a
+    dependency of ``sentence-transformers`` itself (both live in its ``train``
+    extra), so an install that pinned the bare package imports cleanly and
+    still cannot train.
+
+    In the default Docker-orchestrated deployment all of it ships inside the
     ``synthorg-fine-tune-gpu`` / ``synthorg-fine-tune-cpu`` container
     that the backend spawns on demand; this error indicates the
     feature is turned off for the current install (`synthorg config
@@ -138,4 +168,15 @@ class FineTuneDataSourceError(MemoryError):
 
     Trajectory mode requires a wired :class:`TrainingDataSource`; this signals
     the run was started in trajectory mode without one.
+    """
+
+
+class FineTuneTrainingDataError(MemoryError):
+    """Raised when the triples handed to contrastive training are unusable.
+
+    Two conditions reach it: the stage 2 output is empty, or a record in it
+    is damaged (a missing required field, or ``negatives`` that is not a
+    list). Either way the run trains on nothing usable and produces a
+    checkpoint the promotion gate scores and rejects hours later without
+    ever saying why. Failing here names the offending input instead.
     """

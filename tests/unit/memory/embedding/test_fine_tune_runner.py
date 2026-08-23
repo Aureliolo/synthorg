@@ -11,6 +11,8 @@ from synthorg.memory.embedding.fine_tune_runner import (
     _make_progress_printer,
     _run,
 )
+from synthorg.memory.errors import FineTuneDependencyError
+from tests._shared import module_double, torch_double
 
 pytestmark = pytest.mark.unit
 
@@ -186,13 +188,57 @@ class TestProbeMode:
     ) -> None:
         """Without the torch extras the probe prints PROBE_FAIL and exits 1.
 
-        The dev/test environment never installs the ML extras, so the
-        real import path exercises the failure branch honestly.
+        The guard is patched rather than left to the ambient environment: a
+        developer machine or CI job that HAS the extra installed would
+        otherwise take the success branch and the assertion would flip on
+        what happens to be on the box.
         """
         monkeypatch.setenv(_PROBE_ENV, "1")
-        assert _run() == 1
+        with patch(
+            "synthorg.memory.embedding.fine_tune._import_torch",
+            side_effect=FineTuneDependencyError("torch is not installed"),
+        ):
+            assert _run() == 1
         out = capsys.readouterr().out
         assert any(line.startswith("PROBE_FAIL") for line in out.splitlines())
+
+    def test_probe_fail_when_only_the_trainer_half_is_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A package-only install is not a ready deployment.
+
+        ``datasets`` and ``accelerate`` are absent from sentence-transformers'
+        own dependency list, so an install that pinned the bare package
+        imports fine and still cannot train. The probe has to fail here or the
+        run dies two stages later.
+        """
+        monkeypatch.setenv(_PROBE_ENV, "1")
+
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_torch",
+                return_value=torch_double(cuda=None),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=module_double("sentence_transformers"),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
+                side_effect=FineTuneDependencyError("datasets is not installed"),
+            ),
+        ):
+            assert _run() == 1
+        out = capsys.readouterr().out
+        # Named, not merely failed: with a `None` CUDA namespace the GPU
+        # branch below fails too, so a bare PROBE_FAIL assertion would pass
+        # on a probe that never asked the question this test is about.
+        assert any(
+            line.startswith("PROBE_FAIL") and "datasets" in line
+            for line in out.splitlines()
+        )
 
     def test_probe_ok_reports_gpu(
         self,
@@ -214,16 +260,17 @@ class TestProbeMode:
             def get_device_properties(index: int) -> _Props:
                 return _Props()
 
-        class _Torch:
-            cuda = _Cuda()
-
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_torch",
-                return_value=_Torch(),
+                return_value=torch_double(cuda=_Cuda()),
             ),
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=module_double("sentence_transformers"),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
                 return_value=object(),
             ),
         ):
@@ -242,16 +289,17 @@ class TestProbeMode:
             def is_available() -> bool:
                 return False
 
-        class _Torch:
-            cuda = _Cuda()
-
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_torch",
-                return_value=_Torch(),
+                return_value=torch_double(cuda=_Cuda()),
             ),
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=module_double("sentence_transformers"),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
                 return_value=object(),
             ),
         ):
@@ -272,16 +320,17 @@ class TestProbeMode:
                 msg = "driver mismatch"
                 raise RuntimeError(msg)
 
-        class _Torch:
-            cuda = _Cuda()
-
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_torch",
-                return_value=_Torch(),
+                return_value=torch_double(cuda=_Cuda()),
             ),
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
+                return_value=module_double("sentence_transformers"),
+            ),
+            patch(
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
                 return_value=object(),
             ),
         ):

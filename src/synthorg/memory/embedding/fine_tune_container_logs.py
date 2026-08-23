@@ -14,7 +14,7 @@ from typing import Final
 import aiodocker.containers
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.fine_tune import ProgressCallback
+from synthorg.memory.embedding.cancellation import ProgressCallback
 from synthorg.memory.errors import FineTuneStageExecutionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.fine_tune import (
@@ -28,6 +28,24 @@ logger = get_logger(__name__)
 _MARKER_PROGRESS: Final[str] = "PROGRESS:"
 _MARKER_ERROR: Final[str] = "ERROR:"
 _SHORT_ID_LEN: Final[int] = 12
+
+#: Ceiling on what one ``ERROR:`` line contributes to the operator-visible
+#: failure message. The marker protocol is ours, but the streams it is read
+#: from are shared with every library in the container, so any line beginning
+#: with the prefix is collected whether the runner wrote it or not. The
+#: container also holds the organisation's documents, so an unbounded payload
+#: is both an error message nobody can read and a way for third-party output
+#: to carry that text out. Truncated rather than dropped: a genuine traceback
+#: line is worth keeping even when something else made it long.
+_MAX_ERROR_PAYLOAD_CHARS: Final[int] = 500
+
+#: Ceiling on how many such lines one stage contributes. The per-line cap
+#: bounds a line; a stage runs for hours against streams anything in the
+#: container can write to, so without this the collected list and the message
+#: built from it grow without limit for exactly the reasons above. The FIRST
+#: lines are kept rather than the last: the failure that ended the stage is
+#: usually the one that started the cascade.
+_MAX_ERROR_LINES: Final[int] = 20
 
 
 async def stream_markers_until_exit(
@@ -78,7 +96,15 @@ def handle_marker_line(
     progress_callback: ProgressCallback | None,
     error_lines: list[str],
 ) -> None:
-    """Dispatch one stdout marker line from the stage container."""
+    """Dispatch one marker line from the stage container.
+
+    Read from the combined stdout and stderr stream, so the prefixes are a
+    convention the runner follows rather than a channel only it can write to:
+    anything in the container may emit a line that starts with one. Both
+    branches are therefore written to survive an impostor. A malformed
+    ``PROGRESS:`` payload is discarded as noise, and an ``ERROR:`` payload is
+    truncated before it reaches the operator's failure message.
+    """
     if line.startswith(_MARKER_PROGRESS):
         if progress_callback is None:
             return
@@ -108,7 +134,10 @@ def handle_marker_line(
                 error=safe_error_description(exc),
             )
     elif line.startswith(_MARKER_ERROR):
-        error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
+        if len(error_lines) >= _MAX_ERROR_LINES:
+            return
+        payload = line.removeprefix(_MARKER_ERROR).strip()
+        error_lines.append(payload[:_MAX_ERROR_PAYLOAD_CHARS])
 
 
 async def drain_probe_output(

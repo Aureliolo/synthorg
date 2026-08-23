@@ -26,6 +26,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRun,
     FineTuneStatus,
+)
+from synthorg.memory.embedding.fine_tune_preflight_models import (
     PreflightCheck,
     PreflightResult,
 )

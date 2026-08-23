@@ -549,7 +549,14 @@ repos:
         name: go test (CLI)
         entry: go -C cli test ./...
         language: system
-        files: ^cli/.*\.go$
+        # Wider than its two siblings, because the CLI's tests read more than
+        # its Go source: the compose template is embedded and compared against
+        # golden files, so a change to either fails `go test` while touching
+        # no `.go` file at all. Scoped to `.go` this hook stayed silent on a
+        # template edit and the golden mismatch surfaced in CI instead, on
+        # three runners. Lint and vet keep the narrow pattern: they read only
+        # Go source, so a template or golden edit cannot change their verdict.
+        files: ^cli/(.*\.(go|tmpl)|go\.(mod|sum)|testdata/.*)$
         pass_filenames: false
         stages: [pre-push]
 

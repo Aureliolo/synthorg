@@ -12,7 +12,10 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 
 from synthorg.api.bus_bridge import MessageBusBridge
-from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
+from synthorg.api.lifecycle_runner_shutdown import (
+    _TOTAL_SHUTDOWN_WINDOW_SECONDS,
+    _run_shutdown,
+)
 from synthorg.api.lifecycle_runner_startup import _run_startup
 from synthorg.api.lifecycle_runner_support import (
     _cancel_with_timeout,
@@ -20,6 +23,7 @@ from synthorg.api.lifecycle_runner_support import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.lifecycle_shared import shutdown_window
 from synthorg.api.state import AppState
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
@@ -149,16 +153,28 @@ def _build_lifecycle(  # noqa: PLR0913
         )
 
     async def on_shutdown() -> None:
-        await _run_shutdown(
-            tasks,
-            app_state,
-            persistence=persistence,
-            message_bus=message_bus,
-            bridge=bridge,
-            settings_dispatcher=settings_dispatcher,
-            task_engine=task_engine,
-            backup_service=backup_service,
-            approval_timeout_scheduler=approval_timeout_scheduler,
-        )
+        # One window for the whole teardown, opened here because this hook is
+        # what the orchestrator's termination grace period is actually racing.
+        # The per-service budgets inside are each sane and run in series, so
+        # their sum is far past any grace period; unclamped, SIGKILL lands
+        # mid-sequence and the steps that lose are the ones at the end, which
+        # are the ones that persist state.
+        deadline = app_state.clock.monotonic() + _TOTAL_SHUTDOWN_WINDOW_SECONDS
+
+        def _remaining() -> float:
+            return deadline - app_state.clock.monotonic()
+
+        with shutdown_window(_remaining):
+            await _run_shutdown(
+                tasks,
+                app_state,
+                persistence=persistence,
+                message_bus=message_bus,
+                bridge=bridge,
+                settings_dispatcher=settings_dispatcher,
+                task_engine=task_engine,
+                backup_service=backup_service,
+                approval_timeout_scheduler=approval_timeout_scheduler,
+            )
 
     return [on_startup], [on_shutdown]

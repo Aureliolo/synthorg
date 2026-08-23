@@ -69,8 +69,27 @@ build-backend = "hatchling.build"
 # PyPI (CUDA bundled, ~2.5 GB) or the PyTorch CPU index (~200 MB) via
 # [tool.uv.sources] below. The two extras are declared mutually exclusive in
 # [tool.uv] via its `conflicts = [...]` setting so uv locks them independently.
-fine-tune-gpu = ["torch==2.13.0", "sentence-transformers==6.0.0"]
-fine-tune-cpu = ["torch==2.13.0", "sentence-transformers==6.0.0"]
+#
+# The `train` extra is load-bearing, not decoration: `datasets` and
+# `accelerate` are absent from sentence-transformers' own dependency list and
+# from transformers' (they sit in `sentence-transformers[train]` and
+# `transformers[torch]` respectively), while `SentenceTransformerTrainer`
+# refuses to run without them. `datasets` and `transformers` are additionally
+# pinned in their own right because stage 3 imports `datasets.Dataset` and
+# `transformers.TrainerCallback` directly; `accelerate` is never imported by
+# our code, so the extra is the only place it needs to appear.
+fine-tune-gpu = [
+    "torch==2.13.0",
+    "sentence-transformers[train]==6.0.0",
+    "datasets==5.0.1",
+    "transformers==5.15.1",
+]
+fine-tune-cpu = [
+    "torch==2.13.0",
+    "sentence-transformers[train]==6.0.0",
+    "datasets==5.0.1",
+    "transformers==5.15.1",
+]
 telemetry = ["logfire==4.41.0"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
@@ -146,11 +165,15 @@ docs = [
 ]
 fine-tune-gpu = [
     "torch==2.13.0",
-    "sentence-transformers==6.0.0",
+    "sentence-transformers[train]==6.0.0",
+    "datasets==5.0.1",
+    "transformers==5.15.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
-    "sentence-transformers==6.0.0",
+    "sentence-transformers[train]==6.0.0",
+    "datasets==5.0.1",
+    "transformers==5.15.1",
 ]
 dev = [
     "commitizen==4.18.0",
@@ -648,6 +671,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "sentence_transformers.*"
+ignore_missing_imports = true
+
+# Pulled in by ``sentence-transformers[train]``; the contrastive-training
+# stage imports both directly and neither is present in the default sync.
+[[tool.mypy.overrides]]
+module = "datasets.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "transformers.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

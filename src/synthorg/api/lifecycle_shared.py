@@ -9,7 +9,9 @@ both import them without an import cycle.
 """
 
 import asyncio
-from collections.abc import Awaitable
+import contextlib
+from collections.abc import Awaitable, Callable, Iterator
+from contextvars import ContextVar
 from typing import Final, NamedTuple, Protocol
 
 from synthorg.api.bus_bridge import MessageBusBridge
@@ -37,6 +39,118 @@ logger = get_logger(__name__)
 # stream hub, tunnel provider) finish well inside it. A single bounded budget
 # keeps any one hung stop from blocking the rest of the reverse cleanup.
 _CLEANUP_STOP_TIMEOUT_SECONDS: Final[float] = DEFAULT_DRAIN_TIMEOUT_SECONDS
+
+# Seconds a step is still granted once the shared window is spent. Zero would
+# be the arithmetically honest answer and the wrong one: the steps at the end
+# of the teardown are the ones that persist state (the audit-chain flush, the
+# persistence disconnect), so they must be ATTEMPTED even when the services
+# ahead of them ran the window down. A floor buys them a real, if small, try.
+_EXHAUSTED_STEP_FLOOR_SECONDS: Final[float] = 0.5
+
+# Total the floor may add past the window, across every step that draws it.
+# The floor is what lets the sequence overrun, and a PER-STEP floor overruns by
+# however many steps happen to remain: the teardown has 33 of them, so half a
+# second each is 16.5s, past the margin the grace period leaves. Drawing the
+# floor from one reserve makes the overrun a property of this constant rather
+# than of how many services the teardown happens to stop, which is the only
+# form of it a deployment can size a grace period against.
+_FLOOR_RESERVE_SECONDS: Final[float] = 10.0
+
+# The smallest grant a step may receive, once even the reserve is spent. Zero
+# is not usable here: ``asyncio.wait_for`` with a non-positive timeout raises
+# without ever starting the coroutine, so a zero grant does not shorten the
+# tail steps, it SKIPS them, which is the outcome the floor exists to prevent.
+# A step that is merely slow gets nothing useful from this, but one that
+# completes without blocking (a healthy persistence disconnect) still runs.
+# It costs this much per remaining step, which is why it is this small.
+_MIN_STEP_GRANT_SECONDS: Final[float] = 0.05
+
+
+class _ShutdownWindow:
+    """The remaining teardown budget, plus the reserve the floor draws on.
+
+    Args:
+        remaining: Returns the seconds left in the window, measured against the
+            caller's own clock. Held as a callable rather than an instant
+            because the clock is a seam this leaf module must not reach for:
+            whoever opens the window owns it.
+    """
+
+    __slots__ = ("_remaining", "reserve_left")
+
+    def __init__(self, remaining: Callable[[], float]) -> None:
+        self._remaining = remaining
+        self.reserve_left = _FLOOR_RESERVE_SECONDS
+
+    def step_budget(self, timeout: float | None) -> float | None:
+        """Clamp one step's budget to what the window and reserve allow.
+
+        Args:
+            timeout: The step's own budget, or ``None`` for unbounded.
+
+        Returns:
+            The seconds this step may take.
+        """
+        left = self._remaining()
+        if left <= 0.0:
+            # Window spent: draw the floor from the reserve, so the overrun
+            # stays bounded by the reserve rather than by the step count.
+            drawn = min(_EXHAUSTED_STEP_FLOOR_SECONDS, self.reserve_left)
+            self.reserve_left -= drawn
+            # Never zero, or the tail is skipped rather than shortened.
+            left = max(drawn, _MIN_STEP_GRANT_SECONDS)
+        return left if timeout is None else min(timeout, left)
+
+
+# A context variable rather than a parameter threaded through every step,
+# because the population is DERIVED rather than listed. The window has to bind
+# every ``_try_stop`` in the teardown, and a step added later that nobody
+# remembered to thread would silently escape it, which is the failure this
+# exists to prevent. Ambient by construction cannot be forgotten.
+_active_window: ContextVar[_ShutdownWindow | None] = ContextVar(
+    "synthorg_shutdown_window", default=None
+)
+
+
+@contextlib.contextmanager
+def shutdown_window(remaining: Callable[[], float]) -> Iterator[None]:
+    """Bound every :func:`_try_stop` in this scope to one shared budget.
+
+    Per-service budgets are each individually sane and sum to far more than any
+    container's termination grace period, so on a slow stop SIGKILL arrives
+    mid-sequence and the steps that lose are the ones at the end. Clamping each
+    step to what is left of one window keeps the sequence reaching its own
+    final steps instead of being killed part-way through.
+
+    Args:
+        remaining: Returns the seconds left in the window, measured against the
+            caller's own clock.
+
+    Yields:
+        ``None``; the window is in force for the duration of the block.
+    """
+    token = _active_window.set(_ShutdownWindow(remaining))
+    try:
+        yield
+    finally:
+        _active_window.reset(token)
+
+
+def _windowed_timeout(timeout: float | None) -> float | None:
+    """Clamp a per-service budget to what is left of the shared window.
+
+    Args:
+        timeout: The step's own budget, or ``None`` for unbounded.
+
+    Returns:
+        The seconds this step may take: its own budget outside a window, and
+        inside one the smaller of that and what the window and its floor
+        reserve still allow.
+    """
+    window = _active_window.get()
+    if window is None:
+        return timeout
+    return window.step_budget(timeout)
 
 
 # Structural seam over the optional synthorg[distributed] JetStreamTaskQueue;
@@ -108,7 +222,8 @@ async def _try_stop(
         coro: The stop/disconnect coroutine to await.
         event: Log event name for the failure branch.
         error_msg: Human-readable context for the failure log.
-        timeout: Optional per-service budget (seconds).
+        timeout: Optional per-service budget (seconds), clamped to what is
+            left of any :func:`shutdown_window` in force.
         service: Optional service label for the structured log.
 
     Returns:
@@ -120,7 +235,8 @@ async def _try_stop(
         MemoryError: Re-raised unchanged (never swallowed).
         RecursionError: Re-raised unchanged (never swallowed).
     """
-    awaitable = asyncio.wait_for(coro, timeout=timeout) if timeout is not None else coro
+    budget = _windowed_timeout(timeout)
+    awaitable = asyncio.wait_for(coro, timeout=budget) if budget is not None else coro
     try:
         await awaitable
     except MemoryError, RecursionError:

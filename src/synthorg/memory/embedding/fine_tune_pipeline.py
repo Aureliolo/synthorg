@@ -18,10 +18,12 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
 from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
-    ProgressCallback,
     deploy_checkpoint,
 )
 from synthorg.memory.embedding.fine_tune_models import (

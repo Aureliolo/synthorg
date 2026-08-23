@@ -145,17 +145,29 @@ def local_probe() -> ProbeResult:
         every downstream check is backend-agnostic.
     """
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
-        _import_sentence_transformers,
-        _import_torch,
+        verify_fine_tune_dependencies,
     )
 
     try:
-        torch = _import_torch()
-        _import_sentence_transformers()
+        torch = verify_fine_tune_dependencies()
     except (ImportError, FineTuneDependencyError) as exc:
+        # The GPU branch below logs its own degradation; without this, the
+        # commoner failure by far is the one that leaves no trace at all.
+        logger.warning(
+            MEMORY_FINE_TUNE_PREFLIGHT_CHECK_DEGRADED,
+            check="dependencies",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ProbeResult(ok=False, detail=safe_error_description(exc))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        logger.warning(
+            MEMORY_FINE_TUNE_PREFLIGHT_CHECK_DEGRADED,
+            check="dependencies",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ProbeResult(
             ok=False,
             detail=f"dependency check failed: {safe_error_description(exc)}",

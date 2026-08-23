@@ -26,23 +26,37 @@ relies on.
 import asyncio
 import json
 import math
-from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NoReturn
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
 from synthorg.memory.embedding.fine_tune_query import (
     ExtractiveQueryGenerator,
     QueryGenerator,
 )
+from synthorg.memory.embedding.fine_tune_trainer import (
+    TRAINER_OUTPUT_SUBDIR,
+    ContrastiveHyperparameters,
+    import_trainer_api,
+    run_biencoder_training,
+    save_checkpoint,
+)
 from synthorg.memory.embedding.training_writer import split_and_write_pairs
-from synthorg.memory.errors import FineTuneDependencyError
-from synthorg.observability import get_logger
+from synthorg.memory.errors import (
+    FINE_TUNE_DOCKER_DEP_HINT,
+    FINE_TUNE_INPROCESS_DEP_HINT,
+    FineTuneDependencyError,
+)
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
+    MEMORY_FINE_TUNE_CHECKPOINT_DEPLOY_PARTIAL,
     MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
     MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
     MEMORY_FINE_TUNE_ENCODE_INVOKED,
@@ -55,8 +69,6 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_models import EvalMetrics
 
 logger = get_logger(__name__)
-
-ProgressCallback = Callable[[float], None]
 
 
 class FineTuneStage(StrEnum):
@@ -74,22 +86,6 @@ class FineTuneStage(StrEnum):
 
 # -- Lazy dependency helpers ------------------------------------------
 
-
-_DOCKER_DEP_HINT = (
-    "In a Docker-orchestrated install the backend spawns an ephemeral "
-    "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
-    "on demand. Enable without re-init: `synthorg config set sandbox true "
-    "&& synthorg config set fine_tuning true && synthorg config set "
-    "fine_tuning_variant gpu && synthorg stop && synthorg start` "
-    "(replace `gpu` with `cpu` on non-NVIDIA hosts). For hand-managed "
-    "compose deployments see "
-    "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
-)
-_INPROCESS_DEP_HINT = (
-    "For in-process execution install the extras directly: "
-    "`pip install 'synthorg[fine-tune-gpu]'` or "
-    "`pip install 'synthorg[fine-tune-cpu]'`."
-)
 
 _DEFAULT_CHUNK_SIZE_WORDS: Final[int] = 512
 _DEFAULT_VALIDATION_SPLIT: Final[float] = 0.1
@@ -171,7 +167,7 @@ async def _encode_query_passage_pair(
         Tuple ``(object, object)``.
     """
     if cancellation is not None:
-        cancellation.check()
+        cancellation.check(stage="query encoding")
     q_embs = await _encode_with_observability(
         model=model,
         texts=queries,
@@ -180,7 +176,7 @@ async def _encode_query_passage_pair(
         model_name=model_name,
     )
     if cancellation is not None:
-        cancellation.check()
+        cancellation.check(stage="passage encoding")
     p_embs = await _encode_with_observability(
         model=model,
         texts=passages,
@@ -189,7 +185,7 @@ async def _encode_query_passage_pair(
         model_name=model_name,
     )
     if cancellation is not None:
-        cancellation.check()
+        cancellation.check(stage="encoding")
     return q_embs, p_embs
 
 
@@ -264,6 +260,32 @@ async def _persist_triples(
     return triples_path
 
 
+def _dependency_missing(package: str, exc: Exception) -> NoReturn:
+    """Report an unusable fine-tune dependency and fail with install guidance.
+
+    Args:
+        package: What could not be imported.
+        exc: Why it could not.
+
+    Raises:
+        FineTuneDependencyError: Always.
+    """
+    msg = (
+        f"{package} is required for fine-tuning. "
+        f"{FINE_TUNE_DOCKER_DEP_HINT} {FINE_TUNE_INPROCESS_DEP_HINT}"
+    )
+    logger.warning(
+        MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
+        package=package,
+        # What actually broke. Without these, a missing wheel, a version
+        # assertion and a native library that will not load all log the same.
+        missing_module=getattr(exc, "name", None),
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+    raise FineTuneDependencyError(msg) from exc
+
+
 def _import_sentence_transformers() -> ModuleType:
     """Lazy-import sentence-transformers with friendly error.
 
@@ -271,20 +293,16 @@ def _import_sentence_transformers() -> ModuleType:
         Result of type ``ModuleType``.
 
     Raises:
-        FineTuneDependencyError: If the related operation fails.
+        FineTuneDependencyError: If the package is absent or unusable. The net
+            is wider than ``ImportError`` because a half-installed stack does
+            not report itself that way: the package resolves submodules
+            lazily and re-raises the underlying cause as ``RuntimeError``,
+            and a native extension that will not load surfaces as ``OSError``.
     """
     try:
         import sentence_transformers  # noqa: PLC0415
-    except ImportError as exc:
-        msg = (
-            "sentence-transformers is required for fine-tuning. "
-            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
-        )
-        logger.warning(
-            MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
-            package="sentence-transformers",
-        )
-        raise FineTuneDependencyError(msg) from exc
+    except (ImportError, RuntimeError, OSError) as exc:
+        _dependency_missing("sentence-transformers", exc)
     else:
         return sentence_transformers  # type: ignore[no-any-return]
 
@@ -296,22 +314,67 @@ def _import_torch() -> ModuleType:
         Result of type ``ModuleType``.
 
     Raises:
-        FineTuneDependencyError: If the related operation fails.
+        FineTuneDependencyError: If torch is absent or unusable. A torch
+            build whose native extension cannot load raises ``OSError``
+            rather than ``ImportError``, which is the shape a CUDA/driver
+            mismatch takes, so it is caught here and reported with guidance.
     """
     try:
         import torch  # type: ignore[import-not-found]  # noqa: PLC0415
-    except ImportError as exc:
-        msg = (
-            "torch is required for fine-tuning. "
-            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
-        )
-        logger.warning(
-            MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
-            package="torch",
-        )
-        raise FineTuneDependencyError(msg) from exc
+    except (ImportError, RuntimeError, OSError) as exc:
+        _dependency_missing("torch", exc)
     else:
         return torch  # type: ignore[no-any-return]
+
+
+def load_base_model(st: ModuleType, reference: str) -> object:
+    """Load a ``SentenceTransformer``, reaching the Hub only when it must.
+
+    ``local_files_only`` is derived from the reference rather than configured:
+    a reference naming a directory on this host is a checkpoint we produced,
+    and the library would still ask huggingface.co for its metadata, which
+    sends the path of a private on-disk model to a third party to answer a
+    question with no answer, and on a host with no egress makes every load
+    wait for the request to fail. A hub identifier still resolves normally,
+    including the download it needs on first use.
+
+    ``trust_remote_code`` is off unconditionally: a base model is operator
+    input, and this would execute code fetched with it.
+
+    Args:
+        st: The imported ``sentence_transformers`` module.
+        reference: A hub identifier or a local checkpoint directory.
+
+    Returns:
+        The loaded model.
+    """
+    return st.SentenceTransformer(
+        reference,
+        trust_remote_code=False,
+        local_files_only=Path(reference).is_dir(),
+    )
+
+
+def verify_fine_tune_dependencies() -> ModuleType:
+    """Resolve everything a fine-tune run needs, or raise naming what is absent.
+
+    Both dependency probes ask this rather than the narrower "does
+    sentence-transformers import": the training half of the extra is
+    separately installable and was separately missing, so the narrow question
+    reports ready for a stack that dies two stages into a run.
+
+    Returns:
+        The imported ``torch`` module, which each probe inspects for a GPU
+        immediately afterwards.
+
+    Raises:
+        FineTuneDependencyError: If any part of the fine-tune extra is absent
+            or unusable.
+    """
+    torch = _import_torch()
+    _import_sentence_transformers()
+    import_trainer_api()
+    return torch
 
 
 # -- Validation helpers -----------------------------------------------
@@ -330,6 +393,30 @@ def _require_not_blank(value: str, name: str) -> None:
             field=name,
             reason=msg,
         )
+        raise ValueError(msg)
+
+
+def _reject_below(value: int, *, minimum: int, field: str) -> None:
+    """Raise ``ValueError`` if *value* is under *minimum*.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
+    if value < minimum:
+        msg = f"{field} must be >= {minimum}"
+        logger.warning(MEMORY_FINE_TUNE_VALIDATION_FAILED, field=field, reason=msg)
+        raise ValueError(msg)
+
+
+def _reject_non_positive(value: float, *, field: str) -> None:
+    """Raise ``ValueError`` if *value* is not strictly positive.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
+    if value <= 0:
+        msg = f"{field} must be > 0"
+        logger.warning(MEMORY_FINE_TUNE_VALIDATION_FAILED, field=field, reason=msg)
         raise ValueError(msg)
 
 
@@ -443,7 +530,7 @@ async def generate_training_data(
     all_pairs: list[dict[str, str]] = []
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
-            cancellation.check()
+            cancellation.check(stage="training-data generation")
         chunks = _chunk_text(content, chunk_size)
         for chunk in chunks:
             query = await generator.generate(chunk)
@@ -496,14 +583,14 @@ async def mine_hard_negatives(
     _require_not_blank(base_model, "base_model")
     _require_not_blank(output_dir, "output_dir")
 
-    st = _import_sentence_transformers()
+    # Off the loop: the first import in the process loads torch, which is
+    # seconds of blocking work on the loop serving the whole backend.
+    st = await asyncio.to_thread(_import_sentence_transformers)
     queries, passages = await _load_query_passage_pairs(
         training_data_path,
         require_non_empty=False,
     )
-    model = await asyncio.to_thread(
-        st.SentenceTransformer, base_model, trust_remote_code=False
-    )
+    model = await asyncio.to_thread(load_base_model, st, base_model)
     triples = await _mine_negatives_from_pairs(
         model=model,
         model_name=base_model,
@@ -571,7 +658,7 @@ async def _select_hard_negatives(
     triples: list[dict[str, object]] = []
     for i, query in enumerate(queries):
         if cancellation is not None and i % _CANCELLATION_CHECK_INTERVAL == 0:
-            cancellation.check()
+            cancellation.check(stage="hard-negative mining")
         sims = await asyncio.to_thread(
             _cosine_similarities,
             query_embeddings[i],  # type: ignore[index]
@@ -677,94 +764,102 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     Raises:
         ValueError: If inputs are invalid.
         FineTuneDependencyError: If deps are missing.
+        FineTuneTrainingDataError: If the stage 2 triples are empty or a
+            record in them is damaged.
+        FineTuneCancelledError: If cancellation fires before or during the
+            training run.
+    """
+    hyperparameters = _validated_hyperparameters(
+        training_data_path=training_data_path,
+        base_model=base_model,
+        output_dir=output_dir,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        temperature=temperature,
+        batch_size=batch_size,
+    )
+
+    # Importing torch pulls a shared library and probes the CUDA runtime, which
+    # is seconds of blocking work. This coroutine runs on the loop serving the
+    # whole backend, so it goes to a thread like every other blocking call here.
+    st = await asyncio.to_thread(_import_sentence_transformers)
+    await asyncio.to_thread(_import_torch)
+    api = await asyncio.to_thread(import_trainer_api)
+    if cancellation is not None:
+        cancellation.check(stage="contrastive training dependency load")
+
+    triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
+    model = await asyncio.to_thread(load_base_model, st, base_model)
+    # Loading a checkpoint can take minutes; without this, a cancel issued
+    # during the load is not seen until the trainer's first callback.
+    if cancellation is not None:
+        cancellation.check(stage="contrastive training base-model load")
+
+    output_root = await _ensure_dir(output_dir)
+    checkpoint_dir = output_root / "checkpoint"
+    await asyncio.to_thread(checkpoint_dir.mkdir, exist_ok=True)
+
+    await asyncio.to_thread(
+        run_biencoder_training,
+        api=api,
+        model=model,
+        triples=triples,
+        trainer_output_dir=output_root / TRAINER_OUTPUT_SUBDIR,
+        hyperparameters=hyperparameters,
+        progress_callback=progress_callback,
+        cancellation=cancellation,
+    )
+
+    await asyncio.to_thread(save_checkpoint, model=model, destination=checkpoint_dir)
+    return checkpoint_dir
+
+
+def _validated_hyperparameters(
+    *,
+    training_data_path: str,
+    base_model: str,
+    output_dir: str,
+    epochs: int,
+    learning_rate: float,
+    temperature: float,
+    batch_size: int,
+) -> ContrastiveHyperparameters:
+    """Check every stage 3 input before anything expensive is imported.
+
+    ``ContrastiveHyperparameters`` states the same numeric bounds and enforces
+    them again on construction. They are checked here as well because that
+    model is not built until after torch and the trainer API have loaded,
+    which is seconds of work, and a caller who passed zero epochs should hear
+    about it before paying for any of it.
+
+    Args:
+        training_data_path: Path to the stage 2 triples.
+        base_model: Base embedding model identifier.
+        output_dir: Where the checkpoint is written.
+        epochs: Passes over the training set.
+        learning_rate: Optimiser learning rate.
+        temperature: InfoNCE temperature.
+        batch_size: Rows per training batch.
+
+    Returns:
+        The validated hyperparameters.
+
+    Raises:
+        ValueError: If any input is blank or out of range.
     """
     _require_not_blank(training_data_path, "training_data_path")
     _require_not_blank(base_model, "base_model")
     _require_not_blank(output_dir, "output_dir")
-    if epochs < 1:
-        msg = "epochs must be >= 1"
-        raise ValueError(msg)
-    if batch_size < 1:
-        msg = "batch_size must be >= 1"
-        raise ValueError(msg)
-    if learning_rate <= 0:
-        msg = "learning_rate must be > 0"
-        raise ValueError(msg)
-    if temperature <= 0:
-        msg = "temperature must be > 0"
-        raise ValueError(msg)
-
-    st = _import_sentence_transformers()
-    _import_torch()
-
-    triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
-    model = await asyncio.to_thread(
-        st.SentenceTransformer, base_model, trust_remote_code=False
-    )
-
-    examples = _build_training_examples(st, triples)
-    total_steps = math.ceil(len(examples) / batch_size) * epochs
-
-    checkpoint_dir = (await _ensure_dir(output_dir)) / "checkpoint"
-    await asyncio.to_thread(checkpoint_dir.mkdir, exist_ok=True)
-
-    step = 0
-
-    def _progress_hook(
-        score: float,  # noqa: ARG001
-        _epoch: int,
-        steps: int,  # noqa: ARG001
-    ) -> None:
-        """Trainer callback: check cancellation and report progress."""
-        nonlocal step
-        step += 1
-        if cancellation is not None and step % 10 == 0:
-            cancellation.check()
-        if progress_callback:
-            progress_callback(min(step / max(total_steps, 1), 1.0))
-
-    loss = st.losses.MultipleNegativesRankingLoss(
-        model=model,
-        scale=1.0 / temperature,
-    )
-    train_dataloader = st.datasets.NoDuplicatesDataLoader(
-        examples,
+    _reject_below(epochs, minimum=1, field="epochs")
+    _reject_below(batch_size, minimum=1, field="batch_size")
+    _reject_non_positive(learning_rate, field="learning_rate")
+    _reject_non_positive(temperature, field="temperature")
+    return ContrastiveHyperparameters(
+        epochs=epochs,
+        learning_rate=learning_rate,
+        temperature=temperature,
         batch_size=batch_size,
     )
-
-    await asyncio.to_thread(
-        model.fit,
-        train_objectives=[(train_dataloader, loss)],
-        epochs=epochs,
-        warmup_steps=min(100, total_steps // 10),
-        optimizer_params={"lr": learning_rate},
-        callback=_progress_hook,
-        show_progress_bar=False,
-    )
-
-    await asyncio.to_thread(model.save, str(checkpoint_dir))
-    return checkpoint_dir
-
-
-def _build_training_examples(
-    st: ModuleType,
-    triples: list[dict[str, object]],
-) -> list[object]:
-    """Build sentence-transformers InputExample from triples.
-
-    Returns:
-        List of ``object``.
-    """
-    examples = []
-    for triple in triples:
-        query = str(triple["query"])
-        positive = str(triple["positive"])
-        negatives = triple.get("negatives", [])
-        texts = [query, positive]
-        if isinstance(negatives, list):
-            texts.extend(str(n) for n in negatives)
-        examples.append(st.InputExample(texts=texts))
-    return examples
 
 
 # -- Stage 4: Evaluation ----------------------------------------------
@@ -842,19 +937,17 @@ async def _run_eval_pipeline(
     Returns:
         Result of type ``EvalMetrics``.
     """
-    st = _import_sentence_transformers()
+    # Off the loop: the first import in the process loads torch, which is
+    # seconds of blocking work on the loop serving the whole backend.
+    st = await asyncio.to_thread(_import_sentence_transformers)
     from synthorg.memory.embedding.fine_tune_models import (  # noqa: PLC0415
         EvalMetrics,
     )
 
-    finetuned = await asyncio.to_thread(
-        st.SentenceTransformer, checkpoint_path, trust_remote_code=False
-    )
-    base = await asyncio.to_thread(
-        st.SentenceTransformer, base_model, trust_remote_code=False
-    )
+    finetuned = await asyncio.to_thread(load_base_model, st, checkpoint_path)
+    base = await asyncio.to_thread(load_base_model, st, base_model)
     if cancellation is not None:
-        cancellation.check()
+        cancellation.check(stage="checkpoint evaluation")
     _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_LOAD)
     ft_q_embs, ft_p_embs = await _encode_query_passage_pair(
         model=finetuned,
@@ -1026,12 +1119,17 @@ async def deploy_checkpoint(
                 logger.warning(
                     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
                     key=key,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     # Only proceed with deployment if we have a settings service.
     if settings_service is None:
+        # Its own event, not the success one at a different level: an alert or
+        # a log search keyed on the deployed event cannot read severity, so
+        # sharing the name would report a half-finished deploy as a finished one.
         logger.warning(
-            MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
+            MEMORY_FINE_TUNE_CHECKPOINT_DEPLOY_PARTIAL,
             checkpoint_path=checkpoint_path,
             note="no settings service -- checkpoint deployed but config not updated",
         )

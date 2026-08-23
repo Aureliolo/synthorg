@@ -10,10 +10,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
 from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
-    ProgressCallback,
     generate_training_data,
 )
 from synthorg.memory.embedding.fine_tune_models import (
