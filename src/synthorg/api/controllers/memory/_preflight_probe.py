@@ -148,10 +148,18 @@ def local_probe() -> ProbeResult:
         _import_sentence_transformers,
         _import_torch,
     )
+    from synthorg.memory.embedding.fine_tune_trainer import (  # noqa: PLC0415
+        _import_trainer_api,
+    )
 
     try:
         torch = _import_torch()
         _import_sentence_transformers()
+        # The training half of the extra is separately installable and was
+        # separately missing: the trainer's `datasets` and `accelerate` are
+        # absent from sentence-transformers' own dependency list. Probing only
+        # the package reports ready for a stack that cannot reach stage 3.
+        _import_trainer_api()
     except (ImportError, FineTuneDependencyError) as exc:
         return ProbeResult(ok=False, detail=safe_error_description(exc))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

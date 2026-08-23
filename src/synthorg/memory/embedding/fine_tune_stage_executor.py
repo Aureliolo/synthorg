@@ -11,8 +11,11 @@ per stage, CLI-managed installs).
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.cancellation import CancellationToken
-from synthorg.memory.embedding.fine_tune import FineTuneStage, ProgressCallback
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_docker_runner import (
     FineTuneContainerRunner,
 )

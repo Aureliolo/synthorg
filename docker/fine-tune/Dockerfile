@@ -2,8 +2,10 @@
 # =============================================================================
 # SynthOrg Fine-Tune -- 2-stage build: builder -> apko-composed Wolfi runtime
 # =============================================================================
-# Stage 1 (builder): install torch + sentence-transformers + synthorg
-#   fine-tune modules into a venv.
+# Stage 1 (builder): install torch + sentence-transformers[train] + synthorg
+#   fine-tune modules into a venv. The `train` extra is what supplies
+#   `datasets` and `accelerate`; without them `SentenceTransformerTrainer`
+#   refuses to run and contrastive fine-tuning cannot start.
 # Stage 2 (runtime): apko-composed Wolfi base with BLAS/math libs.
 #
 # Two variants controlled by FINE_TUNE_EXTRA build-arg:
@@ -87,7 +89,7 @@ LABEL org.opencontainers.image.title="synthorg-${FINE_TUNE_EXTRA}" \
       org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.licenses="BUSL-1.1 AND BSD-3-Clause AND Apache-2.0 AND MIT AND PSF-2.0" \
       org.opencontainers.image.vendor="Aureliolo" \
-      io.synthorg.bundled-licenses="torch=BSD-3-Clause; sentence-transformers=Apache-2.0; transformers=Apache-2.0; numpy=BSD-3-Clause; tokenizers=Apache-2.0" \
+      io.synthorg.bundled-licenses="torch=BSD-3-Clause; sentence-transformers=Apache-2.0; transformers=Apache-2.0; numpy=BSD-3-Clause; tokenizers=Apache-2.0; datasets=Apache-2.0; accelerate=Apache-2.0; pyarrow=Apache-2.0; pandas=BSD-3-Clause; dill=BSD-3-Clause; multiprocess=BSD-3-Clause; xxhash=BSD-2-Clause" \
       io.synthorg.fine-tune.variant="${FINE_TUNE_EXTRA}"
 
 WORKDIR /app

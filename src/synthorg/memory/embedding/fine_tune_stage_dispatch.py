@@ -13,8 +13,11 @@ dispatchable here: data generation holds DB/LLM handles and deploy
 touches settings + persistence, so both always run in-process.
 """
 
-from synthorg.memory.embedding.cancellation import CancellationToken
-from synthorg.memory.embedding.fine_tune import FineTuneStage, ProgressCallback
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import FineTuneRunConfig
 
 CONTAINER_STAGES: frozenset[FineTuneStage] = frozenset(

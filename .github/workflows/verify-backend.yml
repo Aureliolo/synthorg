@@ -762,6 +762,104 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  # ── Python: Test (Fine-Tune Extra) ──
+  # The one job that installs an optional extra. Every other tier runs the
+  # default sync, which omits `fine-tune-cpu` / `fine-tune-gpu`, so no test
+  # anywhere else can import `sentence_transformers`, `torch` or `datasets`.
+  # That gap is why stage 3 shipped reading two module attributes that exist
+  # on no published version: the unit tier substituted a `SimpleNamespace` for
+  # the package and agreed with itself for two releases running.
+  #
+  # `fine-tune-cpu` rather than `-gpu`: [tool.uv.sources] routes torch to the
+  # PyTorch CPU index for that group (~1.7 GB against ~7 GB), and
+  # [tool.uv].conflicts declares the two mutually exclusive, so only one can
+  # be synced anyway.
+  #
+  # `-n0`: one test file has nothing to parallelise, and the job's wall-clock
+  # is dominated by the install, not the run.
+  test-fine-tune-extra:
+    name: Test Fine-Tune (real sentence-transformers)
+    needs: changes
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      COVERAGE_CORE: sysmon
+      PYTHONFAULTHANDLER: "1"
+      PYTHONUNBUFFERED: "1"
+      # Turns the availability guard from "skip" into "fail". A silent skip
+      # here would restore the exact blind spot this job exists to remove.
+      SYNTHORG_REQUIRE_FINE_TUNE_EXTRA: "1"
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Install the fine-tune (CPU) dependency group
+        run: uv sync --frozen --group fine-tune-cpu
+
+      - name: Run fine-tune trainer tests
+        run: |
+          uv run python -m pytest \
+            tests/unit/memory/embedding/test_fine_tune_trainer.py \
+            -m unit \
+            -n0 \
+            --session-timeout 600 \
+            --cov=synthorg \
+            --cov-report= \
+            --cov-fail-under=0 \
+            --junitxml=junit-fine-tune-extra.xml \
+            --durations=20 \
+            -v \
+            -s
+
+      # Same safety net as test-unit, plus the skip check: pytest exits 0 on a
+      # fully-skipped file, which is precisely the failure mode this job is
+      # here to prevent.
+      - name: Sanity check (junit shows tests > 0 and none skipped)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-fine-tune-extra.xml")
+          if not path.exists():
+              print("FAIL: junit-fine-tune-extra.xml not found", file=sys.stderr)
+              sys.exit(1)
+          total = skipped = 0
+          for ts in ET.parse(path).iter("testsuite"):
+              total += int(ts.get("tests", 0))
+              skipped += int(ts.get("skipped", 0))
+          print(f"junit total tests: {total} (skipped: {skipped})")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          if skipped:
+              print(
+                  f"FAIL: {skipped} test(s) skipped. This job installs the "
+                  "fine-tune extra so the real-import tests MUST run; a skip "
+                  "means the guard fired and the API surface went unchecked.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-fine-tune-extra
+          path: junit-fine-tune-extra.xml
+
   # ── Python: Test (Integration) ──
   # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3
   # minutes critical path. The ``start-postgres`` composite action
@@ -2018,7 +2116,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, type-check-pyright, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
+    needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, type-check-pyright, openapi-liveness, export-openapi, test-unit, test-fine-tune-extra, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -2039,6 +2137,7 @@ jobs:
             ${{ needs.openapi-liveness.result }}
             ${{ needs.export-openapi.result }}
             ${{ needs.test-unit.result }}
+            ${{ needs.test-fine-tune-extra.result }}
             ${{ needs.test-integration.result }}
             ${{ needs.test-e2e.result }}
             ${{ needs.test-conformance-sqlite.result }}

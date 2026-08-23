@@ -14,7 +14,7 @@ from typing import Final
 import aiodocker.containers
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.fine_tune import ProgressCallback
+from synthorg.memory.embedding.cancellation import ProgressCallback
 from synthorg.memory.errors import FineTuneStageExecutionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.fine_tune import (

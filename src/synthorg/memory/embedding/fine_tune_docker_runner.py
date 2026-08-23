@@ -31,8 +31,11 @@ from aiodocker.types import JSONObject
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import GeneralRetryHandler
-from synthorg.memory.embedding.cancellation import CancellationToken
-from synthorg.memory.embedding.fine_tune import FineTuneStage, ProgressCallback
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_container_config import (
     PROBE_CACHE_DIR,
     STAGE_CACHE_DIR,

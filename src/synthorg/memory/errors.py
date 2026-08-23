@@ -9,6 +9,8 @@ namespace the domain-specific meaning is unambiguous; callers outside
 the package should import explicitly.
 """
 
+from typing import Final
+
 from synthorg.core.domain_errors import DomainError
 
 
@@ -106,6 +108,27 @@ class MemoryCapabilityError(MemoryError):
     """Raised when an unsupported operation is attempted for a backend."""
 
 
+#: How to get the fine-tune dependency set, in the two deployment shapes that
+#: can have it. Lives beside the error whose message it is, because three
+#: separate import guards across two modules quote it and a copy per guard is
+#: how install instructions come to disagree with each other.
+FINE_TUNE_DOCKER_DEP_HINT: Final[str] = (
+    "In a Docker-orchestrated install the backend spawns an ephemeral "
+    "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
+    "on demand. Enable without re-init: `synthorg config set sandbox true "
+    "&& synthorg config set fine_tuning true && synthorg config set "
+    "fine_tuning_variant gpu && synthorg stop && synthorg start` "
+    "(replace `gpu` with `cpu` on non-NVIDIA hosts). For hand-managed "
+    "compose deployments see "
+    "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
+)
+FINE_TUNE_INPROCESS_DEP_HINT: Final[str] = (
+    "For in-process execution install the extras directly: "
+    "`pip install 'synthorg[fine-tune-gpu]'` or "
+    "`pip install 'synthorg[fine-tune-cpu]'`."
+)
+
+
 class FineTuneDependencyError(MemoryError):
     """Raised when fine-tuning ML dependencies are not installed.
 
@@ -138,4 +161,14 @@ class FineTuneDataSourceError(MemoryError):
 
     Trajectory mode requires a wired :class:`TrainingDataSource`; this signals
     the run was started in trajectory mode without one.
+    """
+
+
+class FineTuneTrainingDataError(MemoryError):
+    """Raised when the triples handed to contrastive training are unusable.
+
+    Training on nothing produces a checkpoint indistinguishable from the
+    base model, which the promotion gate would then score and reject
+    hours later without ever saying why. Failing here names the empty
+    input instead.
     """

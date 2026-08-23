@@ -339,6 +339,7 @@ MEMORY_FINE_TUNE_INVALID_REQUEST: Final[str] = "memory.fine_tune.invalid_request
 MEMORY_FINE_TUNE_RESUME_REJECTED: Final[str] = "memory.fine_tune.resume_rejected"
 MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
 MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
+MEMORY_FINE_TUNE_TRAINING_BUCKETED: Final[str] = "memory.fine_tune.training_bucketed"
 MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_saved"
 MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
     "memory.fine_tune.checkpoint_deployed"

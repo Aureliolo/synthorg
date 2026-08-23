@@ -24,22 +24,34 @@ relies on.
 """
 
 import asyncio
+import functools
 import json
 import math
-from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.embedding.cancellation import (
+    CancellationToken,
+    ProgressCallback,
+)
 from synthorg.memory.embedding.fine_tune_query import (
     ExtractiveQueryGenerator,
     QueryGenerator,
 )
+from synthorg.memory.embedding.fine_tune_trainer import (
+    TRAINER_OUTPUT_SUBDIR,
+    _import_trainer_api,
+    run_biencoder_training,
+)
 from synthorg.memory.embedding.training_writer import split_and_write_pairs
-from synthorg.memory.errors import FineTuneDependencyError
+from synthorg.memory.errors import (
+    FINE_TUNE_DOCKER_DEP_HINT,
+    FINE_TUNE_INPROCESS_DEP_HINT,
+    FineTuneDependencyError,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
@@ -55,8 +67,6 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_models import EvalMetrics
 
 logger = get_logger(__name__)
-
-ProgressCallback = Callable[[float], None]
 
 
 class FineTuneStage(StrEnum):
@@ -74,22 +84,6 @@ class FineTuneStage(StrEnum):
 
 # -- Lazy dependency helpers ------------------------------------------
 
-
-_DOCKER_DEP_HINT = (
-    "In a Docker-orchestrated install the backend spawns an ephemeral "
-    "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
-    "on demand. Enable without re-init: `synthorg config set sandbox true "
-    "&& synthorg config set fine_tuning true && synthorg config set "
-    "fine_tuning_variant gpu && synthorg stop && synthorg start` "
-    "(replace `gpu` with `cpu` on non-NVIDIA hosts). For hand-managed "
-    "compose deployments see "
-    "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
-)
-_INPROCESS_DEP_HINT = (
-    "For in-process execution install the extras directly: "
-    "`pip install 'synthorg[fine-tune-gpu]'` or "
-    "`pip install 'synthorg[fine-tune-cpu]'`."
-)
 
 _DEFAULT_CHUNK_SIZE_WORDS: Final[int] = 512
 _DEFAULT_VALIDATION_SPLIT: Final[float] = 0.1
@@ -278,7 +272,7 @@ def _import_sentence_transformers() -> ModuleType:
     except ImportError as exc:
         msg = (
             "sentence-transformers is required for fine-tuning. "
-            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
+            f"{FINE_TUNE_DOCKER_DEP_HINT} {FINE_TUNE_INPROCESS_DEP_HINT}"
         )
         logger.warning(
             MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
@@ -303,7 +297,7 @@ def _import_torch() -> ModuleType:
     except ImportError as exc:
         msg = (
             "torch is required for fine-tuning. "
-            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
+            f"{FINE_TUNE_DOCKER_DEP_HINT} {FINE_TUNE_INPROCESS_DEP_HINT}"
         )
         logger.warning(
             MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
@@ -696,75 +690,35 @@ async def contrastive_fine_tune(  # noqa: PLR0913
 
     st = _import_sentence_transformers()
     _import_torch()
+    api = _import_trainer_api()
 
     triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
     model = await asyncio.to_thread(
         st.SentenceTransformer, base_model, trust_remote_code=False
     )
 
-    examples = _build_training_examples(st, triples)
-    total_steps = math.ceil(len(examples) / batch_size) * epochs
-
-    checkpoint_dir = (await _ensure_dir(output_dir)) / "checkpoint"
+    output_root = await _ensure_dir(output_dir)
+    checkpoint_dir = output_root / "checkpoint"
     await asyncio.to_thread(checkpoint_dir.mkdir, exist_ok=True)
 
-    step = 0
-
-    def _progress_hook(
-        score: float,  # noqa: ARG001
-        _epoch: int,
-        steps: int,  # noqa: ARG001
-    ) -> None:
-        """Trainer callback: check cancellation and report progress."""
-        nonlocal step
-        step += 1
-        if cancellation is not None and step % 10 == 0:
-            cancellation.check()
-        if progress_callback:
-            progress_callback(min(step / max(total_steps, 1), 1.0))
-
-    loss = st.losses.MultipleNegativesRankingLoss(
-        model=model,
-        scale=1.0 / temperature,
-    )
-    train_dataloader = st.datasets.NoDuplicatesDataLoader(
-        examples,
-        batch_size=batch_size,
-    )
-
     await asyncio.to_thread(
-        model.fit,
-        train_objectives=[(train_dataloader, loss)],
-        epochs=epochs,
-        warmup_steps=min(100, total_steps // 10),
-        optimizer_params={"lr": learning_rate},
-        callback=_progress_hook,
-        show_progress_bar=False,
+        functools.partial(
+            run_biencoder_training,
+            api=api,
+            model=model,
+            triples=triples,
+            trainer_output_dir=output_root / TRAINER_OUTPUT_SUBDIR,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            temperature=temperature,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+            cancellation=cancellation,
+        )
     )
 
     await asyncio.to_thread(model.save, str(checkpoint_dir))
     return checkpoint_dir
-
-
-def _build_training_examples(
-    st: ModuleType,
-    triples: list[dict[str, object]],
-) -> list[object]:
-    """Build sentence-transformers InputExample from triples.
-
-    Returns:
-        List of ``object``.
-    """
-    examples = []
-    for triple in triples:
-        query = str(triple["query"])
-        positive = str(triple["positive"])
-        negatives = triple.get("negatives", [])
-        texts = [query, positive]
-        if isinstance(negatives, list):
-            texts.extend(str(n) for n in negatives)
-        examples.append(st.InputExample(texts=texts))
-    return examples
 
 
 # -- Stage 4: Evaluation ----------------------------------------------

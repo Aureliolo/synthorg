@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from litestar.datastructures import State
 
-from synthorg.api.controllers.memory import _preflight_probe
+from synthorg.api.controllers.memory import _preflight, _preflight_probe
 from synthorg.api.controllers.memory import fine_tune as fine_tune_module
 from synthorg.api.controllers.memory._preflight import _check_disk_space
 from synthorg.api.controllers.memory._preflight_probe import (
@@ -230,6 +230,16 @@ class TestRunPreflightHandler:
 
         monkeypatch.setattr(fine_tune_module, "resolve_probe_target", _fake_target)
         monkeypatch.setattr(fine_tune_module, "probe_fine_tune_image", _fake_probe)
+        # With no image the handler falls through to the in-process probe,
+        # which really imports torch, transformers and datasets. That is
+        # correct of the probe and wrong for a unit test: on a machine
+        # carrying the fine-tune extra it loads the whole ML stack and blows
+        # the wall-clock budget. This test is about which probe is chosen.
+        monkeypatch.setattr(
+            _preflight,
+            "local_probe",
+            lambda: ProbeResult(ok=True, detail="deps present"),
+        )
         controller = MemoryFineTuneController(owner=None)  # type: ignore[arg-type]
         response = await controller.run_preflight.fn(
             controller,
