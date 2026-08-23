@@ -38,6 +38,7 @@ from collections.abc import Sequence
 from typing import Final, Self, cast
 from urllib.parse import urlparse
 
+import idna
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
@@ -55,6 +56,7 @@ from synthorg.observability.events.git import (
     GIT_CLONE_SSRF_BLOCKED,
     GIT_CLONE_SSRF_DISABLED,
 )
+from synthorg.tools.hostname_idna import canonical_hostname, describe_idna_failure
 from synthorg.tools.network_validator import BLOCKED_NETWORKS
 
 _CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
@@ -135,13 +137,20 @@ class GitCloneNetworkPolicy(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_allowlist(self) -> Self:
-        """Lowercase and deduplicate allowlist entries.
+        """Lowercase, canonicalise and deduplicate allowlist entries.
+
+        Canonicalising matches what :func:`validate_clone_url` does to the
+        request side, so an operator's U-label entry keeps matching once the
+        clone target resolves to its A-label. Both SSRF paths answer the
+        same question the same way; the alternative is one of them quietly
+        comparing a different spelling from the other.
 
         Returns:
             Result of type ``Self``.
         """
         normalized = dedupe_preserving_order(
-            normalize_ascii_lowercase(h) for h in self.hostname_allowlist
+            canonical_hostname(normalize_ascii_lowercase(h))
+            for h in self.hostname_allowlist
         )
         if normalized != self.hostname_allowlist:
             object.__setattr__(self, "hostname_allowlist", normalized)
@@ -568,6 +577,21 @@ async def validate_clone_url_host(
             reason="hostname_contains_control_characters",
         )
         return f"Clone URL hostname contains invalid characters: {normalized!r}"
+
+    try:
+        normalized = canonical_hostname(normalized)
+    except idna.IDNAError as exc:
+        failure = describe_idna_failure(exc)
+        logger.warning(
+            GIT_CLONE_SSRF_BLOCKED,
+            hostname=normalized,
+            reason="idna_invalid_hostname",
+            idna_failure=failure,
+        )
+        return (
+            "Clone URL hostname is not a valid internationalised "
+            f"domain name: {failure}"
+        )
 
     is_https = url.startswith("https://")
     port: int | None = None

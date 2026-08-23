@@ -12,14 +12,14 @@ import pytest
 from synthorg.tools.hostname_idna import (
     canonical_hostname,
     describe_idna_failure,
-    needs_canonicalization,
+    needs_canonicalisation,
 )
 
 # ``ex<a-diaeresis>mple.com`` as a single precomposed U+00E4.
 PRECOMPOSED_HOST = "exämple.com"
 
 # The same name with U+0061 followed by combining diaeresis U+0308.
-DECOMPOSED_HOST = "exämple.com"
+DECOMPOSED_HOST = "exämple.com"
 
 # ``example.com`` with a Cyrillic U+0435 in place of the leading ASCII ``e``.
 # Being indistinguishable from ASCII ``e`` is the property under test, so the
@@ -28,11 +28,15 @@ CONFUSABLE_HOST = "еxample.com"  # noqa: RUF001
 
 EXPECTED_A_LABEL = "xn--exmple-cua.com"
 
-# ── needs_canonicalization ─────────────────────────────────────
+# An internal service label that IDNA rejects, beside an A-label sibling that
+# IDNA must still validate.
+MIXED_HOST = "my_service.xn--mnchen-3ya.de"
+
+# ── needs_canonicalisation ─────────────────────────────────────
 
 
-class TestNeedsCanonicalization:
-    """Tests for the narrow gate deciding whether IDNA has a say."""
+class TestNeedsCanonicalisation:
+    """Tests for the gate deciding whether IDNA has a say."""
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -40,15 +44,16 @@ class TestNeedsCanonicalization:
         [
             "example.com",
             "sub.example.co.uk",
-            "my_host.internal",
+            "my_service.internal",
             "127.0.0.1",
             "::1",
             "localhost",
             "host-with-dashes.example",
+            "example.com.",
         ],
     )
     def test_plain_ascii_is_left_alone(self, hostname: str) -> None:
-        assert needs_canonicalization(hostname) is False
+        assert needs_canonicalisation(hostname) is False
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -60,10 +65,17 @@ class TestNeedsCanonicalization:
             "xn--exmple-cua.com",
             "sub.xn--exmple-cua.com",
             "xn--bogus-.com",
+            MIXED_HOST,
         ],
     )
     def test_non_ascii_or_a_label_is_processed(self, hostname: str) -> None:
-        assert needs_canonicalization(hostname) is True
+        assert needs_canonicalisation(hostname) is True
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("hostname", ["XN--EXMPLE-CUA.com", "sub.Xn--Bogus-.com"])
+    def test_a_label_prefix_match_is_case_insensitive(self, hostname: str) -> None:
+        """An uppercase prefix is the same claim and must not skip validation."""
+        assert needs_canonicalisation(hostname) is True
 
 
 # ── canonical_hostname ─────────────────────────────────────────
@@ -75,7 +87,7 @@ class TestCanonicalHostname:
     @pytest.mark.unit
     @pytest.mark.parametrize(
         "hostname",
-        ["example.com", "my_host.internal", "127.0.0.1", "::1"],
+        ["example.com", "my_service.internal", "127.0.0.1", "::1", "example.com."],
     )
     def test_ascii_hostname_returned_unchanged(self, hostname: str) -> None:
         assert canonical_hostname(hostname) == hostname
@@ -100,15 +112,43 @@ class TestCanonicalHostname:
         assert canonical_hostname(EXPECTED_A_LABEL) == EXPECTED_A_LABEL
 
     @pytest.mark.unit
+    def test_uppercase_a_label_is_folded(self) -> None:
+        assert canonical_hostname("XN--EXMPLE-CUA.com") == EXPECTED_A_LABEL
+
+    @pytest.mark.unit
+    def test_sibling_label_does_not_veto_its_neighbours(self) -> None:
+        """An underscore label beside an A-label must survive both intact.
+
+        Encoding the joined hostname would refuse the whole name for a
+        character in a label that needed no canonicalising at all.
+        """
+        assert canonical_hostname(MIXED_HOST) == MIXED_HOST
+
+    @pytest.mark.unit
+    def test_only_the_labels_that_need_it_are_encoded(self) -> None:
+        assert canonical_hostname("my_service.münchen.de") == MIXED_HOST
+
+    @pytest.mark.unit
+    def test_trailing_dot_is_preserved(self) -> None:
+        assert canonical_hostname("münchen.de.") == "xn--mnchen-3ya.de."
+
+    @pytest.mark.unit
     def test_non_canonical_a_label_rejected(self) -> None:
         with pytest.raises(idna.IDNAError) as excinfo:
             canonical_hostname("xn--bogus-.com")
         assert excinfo.value.code == "invalid_alabel"
 
     @pytest.mark.unit
-    def test_empty_label_rejected(self) -> None:
+    def test_uppercase_non_canonical_a_label_rejected(self) -> None:
+        """The case-insensitive prefix test is what makes this reachable."""
         with pytest.raises(idna.IDNAError) as excinfo:
-            canonical_hostname("xn--exmple-cua..com")
+            canonical_hostname("XN--BOGUS-.COM")
+        assert excinfo.value.code == "invalid_alabel"
+
+    @pytest.mark.unit
+    def test_interior_empty_label_rejected(self) -> None:
+        with pytest.raises(idna.IDNAError) as excinfo:
+            canonical_hostname("münchen..de")
         assert excinfo.value.code == "empty_label"
 
 
@@ -119,18 +159,30 @@ class TestDescribeIdnaFailure:
     """Tests for the refusal reason rendered into the block log."""
 
     @pytest.mark.unit
-    def test_code_and_position_are_both_reported(self) -> None:
-        exc = idna.IDNAError("unused", code="disallowed_codepoint", position=3)
-        assert describe_idna_failure(exc) == "disallowed_codepoint at position 3"
-
-    @pytest.mark.unit
-    def test_code_alone_when_no_position_applies(self) -> None:
-        exc = idna.IDNAError("unused", code="invalid_alabel")
-        assert describe_idna_failure(exc) == "invalid_alabel"
-
-    @pytest.mark.unit
-    def test_falls_back_when_the_library_names_no_rule(self) -> None:
-        assert describe_idna_failure(idna.IDNAError("unused")) == "invalid_hostname"
+    @pytest.mark.parametrize(
+        ("code", "position", "expected"),
+        [
+            pytest.param(
+                "disallowed_codepoint",
+                3,
+                "disallowed_codepoint at position 3",
+                id="code-and-position",
+            ),
+            pytest.param("invalid_alabel", None, "invalid_alabel", id="code-only"),
+            pytest.param(None, None, "invalid_hostname", id="library-names-no-rule"),
+            pytest.param(
+                None, 2, "invalid_hostname at position 2", id="position-without-code"
+            ),
+        ],
+    )
+    def test_renders_the_failed_rule(
+        self,
+        code: str | None,
+        position: int | None,
+        expected: str,
+    ) -> None:
+        exc = idna.IDNAError("unused", code=code, position=position)  # type: ignore[arg-type]
+        assert describe_idna_failure(exc) == expected
 
     @pytest.mark.unit
     def test_offending_text_is_never_included(self) -> None:

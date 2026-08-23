@@ -8,6 +8,7 @@ all git tools.
 
 from pathlib import Path
 from typing import ClassVar, Final, override
+from urllib.parse import urlparse, urlunparse
 
 from pydantic import BaseModel
 
@@ -37,6 +38,34 @@ from synthorg.tools.sandbox.protocol import SandboxBackend
 logger = get_logger(__name__)
 
 _CLONE_TIMEOUT: Final[float] = 120.0
+
+
+def _with_validated_host(url: str, hostname: str) -> str:
+    """Rewrite *url*'s authority to carry *hostname*.
+
+    ``--resolve`` pins by matching the host curl parses out of the URL, so
+    a URL still spelling its host as a U-label matches no pin and is
+    resolved again unpinned. Rewriting it to the hostname the validator
+    canonicalised is what makes the pin apply to the request it was minted
+    for. Only HTTPS is rewritten: SCP-like and ssh targets carry no curl
+    resolve, and their host is checked by re-resolving the same string.
+
+    Args:
+        url: The clone URL as the caller wrote it.
+        hostname: The hostname the validator canonicalised and resolved.
+
+    Returns:
+        The URL with its host replaced, or *url* unchanged when it is not
+        an HTTPS URL.
+    """
+    if not url.startswith("https://"):
+        return url
+    parsed = urlparse(url)
+    bracketed = f"[{hostname}]" if ":" in hostname else hostname
+    authority = f"{bracketed}:{parsed.port}" if parsed.port is not None else bracketed
+    userinfo = parsed.netloc.rpartition("@")[0]
+    netloc = f"{userinfo}@{authority}" if userinfo else authority
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 class GitCloneTool(_BaseGitTool):
@@ -195,6 +224,7 @@ class GitCloneTool(_BaseGitTool):
             git_args.extend(["--depth", str(args.depth)])
 
         git_args.append("--")
+        url_index = len(git_args)
         git_args.append(url)
 
         if args.directory:
@@ -206,6 +236,11 @@ class GitCloneTool(_BaseGitTool):
         validation = await validate_clone_url_host(url, self._network_policy)
         if isinstance(validation, str):
             return ToolExecutionResult(content=validation, is_error=True)
+
+        # The URL git is handed carries the hostname the validator checked,
+        # so the curl resolve pin below matches the host curl parses out of
+        # it rather than a second spelling of the same name.
+        git_args[url_index] = _with_validated_host(url, validation.hostname)
 
         # TOCTOU DNS rebinding mitigation
         result = await self._apply_toctou_mitigation(git_args, validation)

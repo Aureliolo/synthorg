@@ -13,8 +13,10 @@ import { isEqual } from 'es-toolkit'
  *
  * Wraps es-toolkit rather than calling it directly so the comparison
  * enters our code as `unknown`. The library types both parameters as
- * `any`, which would let an unchecked value spread from a call site
- * into stores that are otherwise strictly typed.
+ * `any`, and `any` parameters are what collapse a generic's inferred
+ * type when the function is passed as a value into a typed slot (an
+ * equality-fn option, say). `unknown` parameters are contravariant and
+ * do not.
  */
 export function deepEqual(a: unknown, b: unknown): boolean {
   return isEqual(a, b)

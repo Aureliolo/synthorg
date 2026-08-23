@@ -771,6 +771,32 @@ endpoints (e.g., local providers, internal Git servers). DNS rebinding mitigatio
 the existing pattern from `git_url_validator`: resolved IPs are pinned and re-validated
 before connection.
 
+#### Hostname canonicalisation
+
+Both validation paths canonicalise a hostname to its IDNA A-label
+(`synthorg.tools.hostname_idna`) before comparing it against the allowlist,
+resolving it, or logging it, so one spelling is checked, dialled and recorded.
+Allowlist entries are canonicalised at policy construction, which means an
+operator's U-label entry keeps matching once the request side resolves to its
+A-label, and alternate spellings of one host collapse to a single entry.
+
+Canonicalisation is per label, never over the joined hostname: IDNA validates a
+domain as a unit, so encoding the whole string would let one label veto its
+siblings and refuse a legitimate internal name such as
+`my_service.xn--mnchen-3ya.de` for an underscore in a label that needed no
+canonicalising. A label that IDNA rejects blocks the request before DNS, under
+`reason="idna_invalid_hostname"`, and a hostname carrying whitespace or a
+non-printable character is refused during extraction rather than left to a
+resolver that truncates at an embedded NUL.
+
+The outbound request is then built from the canonical hostname rather than the
+caller's original URL. httpx re-encodes whatever host a URL carries using its
+own IDNA settings, which are not the ones used here, so handing it the A-label
+(which takes httpx's pure-ASCII path, where no re-encoding happens) is what
+keeps the name the guard validated and the name the socket connects to the same
+string. A pinned connection to any other host is refused rather than resolved
+unpinned.
+
 ### Quadratic Communication Enforcement
 
 The `MessageOverhead.is_quadratic` detection (see

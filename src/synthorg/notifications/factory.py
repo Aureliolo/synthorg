@@ -5,6 +5,8 @@ Builds ``NotificationDispatcher`` instances from
 for each configured sink.
 """
 
+from pydantic import ValidationError
+
 from synthorg.core.normalization import (
     normalize_ascii_lowercase_or_default,
     parse_comma_list_stripped,
@@ -21,7 +23,7 @@ from synthorg.notifications.config import (
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.protocol import NotificationSink
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
     NOTIFICATION_SINK_DEFAULT_FALLBACK,
@@ -35,7 +37,11 @@ from synthorg.tools.network_validator import NetworkPolicy
 logger = get_logger(__name__)
 
 
-def _build_network_policy(params: dict[str, str]) -> NetworkPolicy:
+def _build_network_policy(
+    params: dict[str, str],
+    *,
+    sink_type: str,
+) -> NetworkPolicy | None:
     """Build the SSRF policy for a webhook sink from operator params.
 
     The default policy is fail-closed (private/internal IPs blocked).
@@ -44,12 +50,32 @@ def _build_network_policy(params: dict[str, str]) -> NetworkPolicy:
     ``hostname_allowlist`` param so those hosts bypass the private-IP
     block while still being DNS-pinned.
 
+    An unusable allowlist disables this one sink rather than propagating.
+    ``NotificationSinkConfig.params`` is an untyped ``dict[str, str]``, so
+    an entry naming a host DNS could never carry was accepted at write
+    time; this call sits on the startup path, where a raise would take the
+    whole process down and leave no running API through which to correct
+    the value.
+
+    Args:
+        params: Adapter-specific parameters.
+        sink_type: Sink name, for the refusal log.
+
     Returns:
         A ``NetworkPolicy`` carrying the parsed allowlist (empty by
-        default).
+        default), or ``None`` when the configured allowlist is unusable.
     """
     allowlist = tuple(parse_comma_list_stripped(params.get("hostname_allowlist", "")))
-    return NetworkPolicy(hostname_allowlist=allowlist)
+    try:
+        return NetworkPolicy(hostname_allowlist=allowlist)
+    except ValidationError as exc:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type=sink_type,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 def build_notification_dispatcher(
@@ -173,10 +199,6 @@ def _create_ntfy_sink(
     if bridge_config is not None:
         default_url = bridge_config.ntfy_default_url
     else:
-        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-            NotificationsBridgeConfig,
-        )
-
         default_url = NotificationsBridgeConfig().ntfy_default_url
         # Fallback signal for operators reading boot logs: the runtime
         # bridge config was unavailable, so the documented default
@@ -203,7 +225,9 @@ def _create_ntfy_sink(
         )
         return None
     token = params.get("token")
-    network_policy = _build_network_policy(params)
+    network_policy = _build_network_policy(params, sink_type="ntfy")
+    if network_policy is None:
+        return None
     if bridge_config is None:
         return NtfyNotificationSink(
             server_url=server_url,

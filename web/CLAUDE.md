@@ -16,7 +16,7 @@ The dashboard is **only an API consumer** and persists **no application state cl
 ```bash
 npm --prefix web install                   # install deps
 npm --prefix web run dev                   # dev server (http://localhost:5173)
-npm --prefix web run build                 # production build
+npm --prefix web run build                 # production build (fails on any bundler warning; see below)
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type-check (pre-push runs ESLint but NOT tsc; run this yourself)
 npm --prefix web run test                  # Vitest unit (coverage scoped to files changed vs origin/main)
@@ -27,6 +27,17 @@ npm --prefix web run e2e                   # Playwright end-to-end flows (the su
 npm --prefix web run lighthouse            # Lighthouse audit (target 90+)
 npm --prefix web run storybook[:build]     # Storybook dev server (http://localhost:6006)
 ```
+
+## Build Warning Gate (MANDATORY)
+
+`npm run build` fails on any bundler warning. The handler is `failBuildOnWarning`
+in `web/vite-warning-gate.ts`, wired as `build.rolldownOptions.onLog` in
+`vite.config.ts`; Vite's own handler only prints warnings, so a name collision
+between star re-exports (`NAMESPACE_CONFLICT`) or a dropped sourcemap would
+otherwise scroll past a green build. Two codes are exempt and both for a stated
+reason: `CIRCULAR_DEPENDENCY` is owned by `npm run lint:circular`, and
+`THIS_IS_UNDEFINED` fires on transpiled dependency code we do not author. Fix the
+warning rather than widening `NON_BLOCKING_LOG_CODES`.
 
 ## Logging
 

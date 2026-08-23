@@ -31,6 +31,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.web import (
     WEB_DNS_FAILED,
+    WEB_HOSTNAME_CANONICALIZED,
     WEB_SSRF_BLOCKED,
     WEB_SSRF_DISABLED,
 )
@@ -124,10 +125,15 @@ class NetworkPolicy(BaseModel):
         raw = data["hostname_allowlist"]
         if not isinstance(raw, tuple | list):
             return data
-        # Canonicalise here rather than at comparison time so an operator's
-        # U-label entry keeps matching once the request side resolves to its
-        # A-label, and so an entry naming a host DNS could never carry is
-        # refused where somebody is present to read the error.
+        # Canonicalise before deduplicating so an operator's U-label entry
+        # keeps matching once the request side resolves to its A-label, and
+        # so alternate spellings of one host collapse to one entry rather
+        # than sitting in the tuple as separate near-misses.
+        #
+        # A bad entry raises ``idna.IDNAError``, which reaches Pydantic as a
+        # ``ValidationError`` only because it inherits from ``ValueError``
+        # through ``UnicodeError``. Rewrapping it in a type outside that
+        # hierarchy would escape the validator uncaught.
         normalized = dedupe_preserving_order(
             canonical_hostname(normalize_ascii_lowercase(h)) for h in raw
         )
@@ -201,6 +207,13 @@ def extract_hostname(url: str) -> str | None:
     Supports standard URL schemes (``https://host/path``) and
     IPv6 literals (``https://[::1]/path``).
 
+    A hostname carrying whitespace or a non-printable character is refused
+    outright.  The platform resolver truncates at an embedded NUL, so a
+    hostname with one trailing reaches DNS as the name before it while
+    every string comparison above this layer sees two different ones;
+    refusing here keeps that divergence out rather than relying on what the
+    resolver happens to do with it.
+
     Args:
         url: URL string.
 
@@ -211,7 +224,11 @@ def extract_hostname(url: str) -> str | None:
         return None
     parsed = urlparse(url)
     hostname = parsed.hostname  # strips brackets from IPv6
-    return hostname or None
+    if not hostname:
+        return None
+    if any(char.isspace() or not char.isprintable() for char in hostname):
+        return None
+    return hostname
 
 
 # ── Scheme validation ──────────────────────────────────────────
@@ -451,9 +468,11 @@ async def validate_url_host(
     try:
         normalized = canonical_hostname(lowered)
     except idna.IDNAError as exc:
-        # The URL is withheld for the reason the extraction branch above
-        # gives; the rule that failed is not sensitive and is the whole
-        # point of refusing here rather than letting the resolver decide.
+        # The hostname is logged and the URL is not, matching every other
+        # refusal in this function: the authority can carry userinfo
+        # credentials and the hostname cannot. The rule that failed is a
+        # fixed identifier from the library's own vocabulary, so it names
+        # what to fix without quoting anything the caller supplied.
         failure = describe_idna_failure(exc)
         logger.warning(
             WEB_SSRF_BLOCKED,
@@ -462,6 +481,15 @@ async def validate_url_host(
             idna_failure=failure,
         )
         return f"Hostname is not a valid internationalised domain name: {failure}"
+
+    if normalized != lowered:
+        # An operator debugging why an allowlist entry did not match needs
+        # to see that the compared spelling is not the one they typed.
+        logger.debug(
+            WEB_HOSTNAME_CANONICALIZED,
+            hostname=lowered,
+            canonical=normalized,
+        )
 
     is_https = compare_ci(urlparse(url).scheme, "https")
 

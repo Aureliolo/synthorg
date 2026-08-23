@@ -22,6 +22,11 @@ import httpcore
 import httpx
 
 from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.observability import get_logger
+from synthorg.observability.events.web import WEB_DNS_PIN_MISMATCH
+from synthorg.tools.errors import ToolExecutionError
+
+logger = get_logger(__name__)
 
 # Structural mirror of httpcore's ``SOCKET_OPTION`` (defined in the private
 # ``_backends.base`` module). Re-declaring the socket-option tuple union here
@@ -64,14 +69,31 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: Iterable[SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
-        """Connect tcp.
+        """Connect to the pinned address for the hostname this backend holds.
 
         Returns:
             Result of type ``httpcore.AsyncNetworkStream``.
+
+        Raises:
+            ToolExecutionError: When *host* is not the hostname this backend
+                was pinned to. Dialling it anyway would resolve a name
+                nothing checked, which is the rebinding window this backend
+                exists to close, and doing so silently is worse than
+                failing: the request would succeed and read as pinned. The
+                caller builds the URL from the same validated hostname, so a
+                mismatch is a broken invariant, not an input case.
         """
-        target = self._ip if normalize_ascii_lowercase(host) == self._hostname else host
+        requested = normalize_ascii_lowercase(host)
+        if requested != self._hostname:
+            logger.error(
+                WEB_DNS_PIN_MISMATCH,
+                pinned_hostname=self._hostname,
+                requested_hostname=requested,
+            )
+            msg = "refusing to connect to a host the guard did not validate"
+            raise ToolExecutionError(msg)
         return await self._inner.connect_tcp(
-            target,
+            self._ip,
             port,
             timeout=timeout,
             local_address=local_address,

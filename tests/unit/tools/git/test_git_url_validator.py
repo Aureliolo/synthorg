@@ -339,6 +339,20 @@ class TestGitCloneNetworkPolicy:
             "git.other",
         )
 
+    def test_allowlist_stores_a_unicode_entry_as_its_a_label(self) -> None:
+        """The clone path canonicalises exactly as the web guard does."""
+        policy = GitCloneNetworkPolicy(hostname_allowlist=("gït.internal",))
+        assert policy.hostname_allowlist == ("xn--gt-tja.internal",)
+
+    def test_allowlist_keeps_an_underscore_host(self) -> None:
+        """Internal git hosts use characters IDNA would refuse."""
+        policy = GitCloneNetworkPolicy(hostname_allowlist=("git_server.internal",))
+        assert policy.hostname_allowlist == ("git_server.internal",)
+
+    def test_allowlist_rejects_an_unresolvable_a_label(self) -> None:
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(hostname_allowlist=("xn--bogus-.internal",))
+
     def test_allowlist_rejects_empty_string(self) -> None:
         """Empty string in allowlist is rejected (NotBlankStr)."""
         with pytest.raises(ValidationError):
@@ -361,6 +375,45 @@ class TestGitCloneNetworkPolicy:
 @pytest.mark.unit
 class TestValidateCloneUrlHost:
     """Async SSRF validation with mocked DNS."""
+
+    async def test_unicode_host_is_canonicalised(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The clone target reports the A-label the pin will be built from."""
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("https://exämple.com/repo.git", policy)
+        assert not isinstance(result, str)
+        assert result.hostname == "xn--exmple-cua.com"
+
+    async def test_invalid_a_label_host_refused(self) -> None:
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://xn--bogus-.com/repo.git", policy
+        )
+        assert isinstance(result, str)
+        assert "invalid_alabel" in result
+
+    async def test_underscore_host_beside_an_a_label_survives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(spec=loop.getaddrinfo, return_value=_dns_result("93.184.216.34")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://git_server.xn--mnchen-3ya.de/repo.git", policy
+        )
+        assert not isinstance(result, str)
+        assert result.hostname == "git_server.xn--mnchen-3ya.de"
 
     async def test_public_host_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Public host resolving to public IP returns DnsValidationOk."""
