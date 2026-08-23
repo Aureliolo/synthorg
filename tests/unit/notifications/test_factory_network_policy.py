@@ -10,7 +10,8 @@ instead.
 
 import pytest
 
-from synthorg.notifications.factory import _build_network_policy, _create_ntfy_sink
+from synthorg.notifications._network_policy import build_sink_network_policy
+from synthorg.notifications.factory import _create_ntfy_sink
 
 
 @pytest.mark.unit
@@ -18,13 +19,13 @@ class TestBuildNetworkPolicy:
     """The allowlist reaches the policy, or the sink is refused."""
 
     def test_no_allowlist_yields_the_fail_closed_default(self) -> None:
-        policy = _build_network_policy({}, sink_type="ntfy")
+        policy = build_sink_network_policy({}, sink_type="ntfy")
         assert policy is not None
         assert policy.hostname_allowlist == ()
         assert policy.block_private_ips is True
 
     def test_entries_are_parsed_and_canonicalised(self) -> None:
-        policy = _build_network_policy(
+        policy = build_sink_network_policy(
             {"hostname_allowlist": "Git.INTERNAL, exämple.com"},
             sink_type="ntfy",
         )
@@ -33,14 +34,14 @@ class TestBuildNetworkPolicy:
 
     def test_an_unusable_entry_disables_the_policy_rather_than_raising(self) -> None:
         """A persisted value that cannot canonicalise must not escape here."""
-        policy = _build_network_policy(
+        policy = build_sink_network_policy(
             {"hostname_allowlist": "xn--bogus-.com"},
             sink_type="ntfy",
         )
         assert policy is None
 
     def test_an_underscore_host_is_still_usable(self) -> None:
-        policy = _build_network_policy(
+        policy = build_sink_network_policy(
             {"hostname_allowlist": "ntfy_internal.corp"},
             sink_type="ntfy",
         )

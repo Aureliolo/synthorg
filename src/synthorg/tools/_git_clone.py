@@ -22,6 +22,7 @@ from synthorg.observability.events.git import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools._git_args import GitCloneArgs
 from synthorg.tools._git_base import _BaseGitTool
+from synthorg.tools._git_dns import verify_dns_consistency
 from synthorg.tools._url_authority import with_authority_host
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_url_validator import (
@@ -32,7 +33,6 @@ from synthorg.tools.git_url_validator import (
     build_curl_resolve_value,
     is_allowed_clone_scheme,
     validate_clone_url_host,
-    verify_dns_consistency,
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
 

@@ -775,7 +775,7 @@ before connection.
 
 Both validation paths canonicalise a hostname to its IDNA A-label
 (`synthorg.tools.hostname_idna`) before comparing it against the allowlist,
-resolving it, or logging it, so one spelling is checked, dialled and recorded.
+resolving it, or logging it, so one spelling is checked, dialled, and recorded.
 Allowlist entries are canonicalised at policy construction, which means an
 operator's U-label entry keeps matching once the request side resolves to its
 A-label, and alternate spellings of one host collapse to a single entry.

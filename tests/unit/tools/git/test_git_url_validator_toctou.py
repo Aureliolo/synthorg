@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from synthorg.tools._git_dns import verify_dns_consistency
 from synthorg.tools.git_url_validator import (
     DnsValidationOk,
     build_curl_resolve_value,
-    verify_dns_consistency,
 )
 
 from .conftest import dns_result

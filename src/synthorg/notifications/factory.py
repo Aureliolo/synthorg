@@ -5,8 +5,6 @@ Builds ``NotificationDispatcher`` instances from
 for each configured sink.
 """
 
-from pydantic import ValidationError
-
 from synthorg.core.normalization import (
     normalize_ascii_lowercase_or_default,
     parse_comma_list_stripped,
@@ -15,6 +13,7 @@ from synthorg.core.registry import StrategyRegistry
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.notifications._network_policy import build_sink_network_policy
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
     NotificationConfig,
@@ -23,7 +22,7 @@ from synthorg.notifications.config import (
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.protocol import NotificationSink
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
     NOTIFICATION_SINK_DEFAULT_FALLBACK,
@@ -32,50 +31,8 @@ from synthorg.observability.events.notification import (
 )
 from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
-from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
-
-
-def _build_network_policy(
-    params: dict[str, str],
-    *,
-    sink_type: str,
-) -> NetworkPolicy | None:
-    """Build the SSRF policy for a webhook sink from operator params.
-
-    The default policy is fail-closed (private/internal IPs blocked).
-    Operators running a self-hosted ntfy / Slack-compatible receiver on
-    an internal address opt in explicitly via a comma-separated
-    ``hostname_allowlist`` param so those hosts bypass the private-IP
-    block while still being DNS-pinned.
-
-    An unusable allowlist disables this one sink rather than propagating.
-    ``NotificationSinkConfig.params`` is an untyped ``dict[str, str]``, so
-    an entry naming a host DNS could never carry was accepted at write
-    time; this call sits on the startup path, where a raise would take the
-    whole process down and leave no running API through which to correct
-    the value.
-
-    Args:
-        params: Adapter-specific parameters.
-        sink_type: Sink name, for the refusal log.
-
-    Returns:
-        A ``NetworkPolicy`` carrying the parsed allowlist (empty by
-        default), or ``None`` when the configured allowlist is unusable.
-    """
-    allowlist = tuple(parse_comma_list_stripped(params.get("hostname_allowlist", "")))
-    try:
-        return NetworkPolicy(hostname_allowlist=allowlist)
-    except ValidationError as exc:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type=sink_type,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
 
 
 def build_notification_dispatcher(
@@ -225,7 +182,7 @@ def _create_ntfy_sink(
         )
         return None
     token = params.get("token")
-    network_policy = _build_network_policy(params, sink_type="ntfy")
+    network_policy = build_sink_network_policy(params, sink_type="ntfy")
     if network_policy is None:
         return None
     if bridge_config is None:

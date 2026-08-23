@@ -366,6 +366,7 @@ budget_consumed
 budget_driven
 budget_percent
 builtins
+bundler
 burndown
 bursty
 busybox
@@ -830,6 +831,8 @@ ssl
 staffable
 stakes_aware
 standard_to_elevated
+sourcemap
+sourcemaps
 standups
 status_code
 stderr
@@ -891,6 +894,7 @@ toolsmith
 tooltip
 tooltips
 traceback
+transpiled
 trendslop
 triaged
 triaging

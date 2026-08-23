@@ -150,6 +150,11 @@
 (?i)finalised
 (?i)finalises
 (?i)finalising
+(?i)canonicalise
+(?i)canonicalised
+(?i)canonicalises
+(?i)canonicalising
+(?i)canonicalisation
 (?i)normalise
 (?i)normalised
 (?i)normalises
