@@ -54,6 +54,22 @@ class TestNetworkPolicy:
         assert policy.hostname_allowlist == ("example.com",)
 
     @pytest.mark.unit
+    def test_allowlist_unicode_entry_stored_as_a_label(self) -> None:
+        policy = NetworkPolicy(hostname_allowlist=("exämple.com",))
+        assert policy.hostname_allowlist == ("xn--exmple-cua.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_underscore_host_survives(self) -> None:
+        """STD3 rules must not reach a host an operator can legitimately run."""
+        policy = NetworkPolicy(hostname_allowlist=("my_host.internal",))
+        assert policy.hostname_allowlist == ("my_host.internal",)
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_unresolvable_a_label(self) -> None:
+        with pytest.raises(ValidationError):
+            NetworkPolicy(hostname_allowlist=("xn--bogus-.com",))
+
+    @pytest.mark.unit
     def test_dns_timeout_bounds(self) -> None:
         NetworkPolicy(dns_resolution_timeout=0.1)
         NetworkPolicy(dns_resolution_timeout=30.0)
@@ -328,6 +344,32 @@ class TestValidateUrlHost:
         result = await validate_url_host("http://8.8.8.8/dns", policy)
         assert isinstance(result, DnsValidationOk)
         assert result.hostname == "8.8.8.8"
+
+    @pytest.mark.unit
+    async def test_unicode_host_matches_its_a_label_allowlist_entry(self) -> None:
+        policy = NetworkPolicy(hostname_allowlist=("xn--exmple-cua.com",))
+        result = await validate_url_host("https://exämple.com/api", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "xn--exmple-cua.com"
+
+    @pytest.mark.unit
+    async def test_invalid_a_label_host_refused(self) -> None:
+        policy = NetworkPolicy()
+        result = await validate_url_host("https://xn--bogus-.com/api", policy)
+        assert isinstance(result, str)
+        assert "invalid_alabel" in result
+
+    @pytest.mark.unit
+    async def test_underscore_host_still_reaches_dns(self) -> None:
+        """The guard must not start refusing hosts it has always allowed."""
+        policy = NetworkPolicy()
+        mock_results = [(0, 0, 0, "", ("93.184.216.34", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validate_url_host("https://my_host.example/api", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "my_host.example"
 
     @pytest.mark.unit
     async def test_allowlisted_host_bypasses_check(self) -> None:

@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
+import idna
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
@@ -34,6 +35,7 @@ from synthorg.observability.events.web import (
     WEB_SSRF_DISABLED,
 )
 from synthorg.providers.url_utils import redact_url
+from synthorg.tools.hostname_idna import canonical_hostname, describe_idna_failure
 
 logger = get_logger(__name__)
 
@@ -122,7 +124,13 @@ class NetworkPolicy(BaseModel):
         raw = data["hostname_allowlist"]
         if not isinstance(raw, tuple | list):
             return data
-        normalized = dedupe_preserving_order(normalize_ascii_lowercase(h) for h in raw)
+        # Canonicalise here rather than at comparison time so an operator's
+        # U-label entry keeps matching once the request side resolves to its
+        # A-label, and so an entry naming a host DNS could never carry is
+        # refused where somebody is present to read the error.
+        normalized = dedupe_preserving_order(
+            canonical_hostname(normalize_ascii_lowercase(h)) for h in raw
+        )
         return {**data, "hostname_allowlist": normalized}
 
 
@@ -439,7 +447,22 @@ async def validate_url_host(
         )
         return "Could not extract a hostname from the URL"
 
-    normalized = normalize_ascii_lowercase(hostname)
+    lowered = normalize_ascii_lowercase(hostname)
+    try:
+        normalized = canonical_hostname(lowered)
+    except idna.IDNAError as exc:
+        # The URL is withheld for the reason the extraction branch above
+        # gives; the rule that failed is not sensitive and is the whole
+        # point of refusing here rather than letting the resolver decide.
+        failure = describe_idna_failure(exc)
+        logger.warning(
+            WEB_SSRF_BLOCKED,
+            hostname=lowered,
+            reason="idna_invalid_hostname",
+            idna_failure=failure,
+        )
+        return f"Hostname is not a valid internationalised domain name: {failure}"
+
     is_https = compare_ci(urlparse(url).scheme, "https")
 
     port: int | None = None
