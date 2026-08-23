@@ -396,6 +396,8 @@ async def _build_context(
     Raises:
         RecursionDepthCapabilityUnresolvedError: No capability policy could be
             built, which leaves the gated arm unable to staff a reviewer.
+        RecursionDepthCeilingUndeclaredError: A setting the sweep opens to its
+            ceiling has none to read, so the arming cannot be trusted.
     """
     app_state = host.app_state
     await seed_eval_project(host.project_repo)

@@ -47,7 +47,6 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_SETTINGS_ARMED,
     EVALS_RECURSION_TREE_BUILT,
 )
-from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -87,7 +86,12 @@ _TREE_TIMEOUT_SETTING: Final[str] = "decomposition_tree_timeout_seconds"
 #: This is a bound, not a budget: a planner that finishes sooner costs nothing
 #: extra, and the ceiling still exists to stop an unbounded wait on a provider
 #: that never answers.
-_PLANNING_TIMEOUT_SECONDS: Final[float] = 2400.0
+#: Chosen rather than opened to the ceiling, unlike its three siblings above,
+#: so it stays a literal: a value deliberately BELOW its setting's maximum has
+#: no definition to read it from. If the product ever lowers that maximum past
+#: it, the write is refused at the start of the run rather than silently
+#: clamped to a shorter ceiling than the sweep was tuned for.
+_PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 
 #: Decomposition self-correction attempts, raised above the product default.
 #:
@@ -182,7 +186,7 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
     )
 
 
-def _declared_maximum(key: str) -> float:
+def _declared_maximum(settings: SettingsService, key: str) -> float:
     """The largest value the coordination setting *key* accepts.
 
     Read off the definition rather than written down here, because a bound
@@ -190,21 +194,40 @@ def _declared_maximum(key: str) -> float:
     the settings service actually enforces, and the disagreement surfaces as a
     refused write in the middle of a paid sweep.
 
+    Read off the SERVICE's own registry rather than the module-level singleton,
+    because the singleton is populated by importing the ``definitions``
+    sub-package and nothing this module imports does that: it is currently
+    non-empty here only through an incidental chain out of the oracle, one
+    unrelated refactor from leaving every ceiling unreadable. The service's
+    registry is the authority that will accept or refuse the write, which is
+    the one this reads a bound in order to satisfy.
+
     Args:
+        settings: The service the armed values are written through.
         key: The coordination setting whose ceiling is wanted.
 
     Returns:
         The declared maximum.
 
     Raises:
-        RecursionDepthCeilingUndeclaredError: The setting is absent, or present
-            and unbounded, so there is no ceiling to read.
+        RecursionDepthCeilingUndeclaredError: The setting is not registered, or
+            is registered and unbounded. Two different faults, so two different
+            messages: the first usually means the definitions never loaded at
+            all, and reporting it as "declares no maximum" points the operator
+            at a definition that is perfectly correct.
     """
-    definition = get_registry().get("coordination", key)
-    if definition is None or definition.max_value is None:
+    definition = settings.registry.get("coordination", key)
+    if definition is None:
         msg = (
-            f"coordination.{key} is absent or declares no maximum, so the "
-            f"sweep cannot tell what the settings service will accept"
+            f"coordination.{key} is not registered with the settings service "
+            f"the sweep writes through, so there is no ceiling to read. When "
+            f"every ceiling reads this way the definitions were never loaded."
+        )
+        raise RecursionDepthCeilingUndeclaredError(msg)
+    if definition.max_value is None:
+        msg = (
+            f"coordination.{key} declares no maximum, so the sweep cannot tell "
+            f"what the settings service will accept"
         )
         raise RecursionDepthCeilingUndeclaredError(msg)
     return definition.max_value
@@ -228,6 +251,11 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     unavailable cell, which reads as "the planner could not decompose this"
     rather than "the harness could not finish a tree it was paying for".
 
+    The tree ceiling is armed at the widest value the setting accepts, which
+    ships as 24 hours. No per-tree bound is derivable, so the sweep does not
+    invent one: what actually bounds it is the per-session ceiling below, the
+    session budget, and the per-session token and cost ceilings.
+
     Callers must not dispatch work until this returns. The writes are
     sequential and not transactional, so a decomposition starting in between
     would observe a partly-armed configuration; the sole caller awaits this
@@ -237,10 +265,14 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     Args:
         settings: The booted application's settings service.
         enabled: Whether an oversized subtask is decomposed again.
+
+    Raises:
+        RecursionDepthCeilingUndeclaredError: A setting the sweep opens to its
+            ceiling has none to read.
     """
-    artifact_threshold = _declared_maximum(_OPEN_ARTIFACT_SETTING)
-    criteria_threshold = _declared_maximum(_OPEN_CRITERIA_SETTING)
-    tree_timeout = _declared_maximum(_TREE_TIMEOUT_SETTING)
+    artifact_threshold = _declared_maximum(settings, _OPEN_ARTIFACT_SETTING)
+    criteria_threshold = _declared_maximum(settings, _OPEN_CRITERIA_SETTING)
+    tree_timeout = _declared_maximum(settings, _TREE_TIMEOUT_SETTING)
     await settings.set(
         "coordination",
         "recursive_decomposition_enabled",
@@ -253,7 +285,7 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
         "coordination", _OPEN_CRITERIA_SETTING, str(int(criteria_threshold))
     )
     await settings.set(
-        "coordination", "decomposition_timeout_seconds", str(_PLANNING_TIMEOUT_SECONDS)
+        "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
     )
     await settings.set("coordination", _TREE_TIMEOUT_SETTING, str(tree_timeout))
     await settings.set(

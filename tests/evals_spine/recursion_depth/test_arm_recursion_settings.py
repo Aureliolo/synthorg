@@ -45,7 +45,9 @@ async def _writes(*, enabled: bool = True) -> list[tuple[str, str]]:
         A list rather than a dict because a dict keeps only the last write per
         key, which is exactly how a second write to one key would hide.
     """
-    settings = mock_of[SettingsService](set=AsyncMock(return_value=None))
+    settings = mock_of[SettingsService](
+        set=AsyncMock(return_value=None), registry=get_registry()
+    )
     await arm_recursion(settings, enabled=enabled)
     return [
         (call.args[1], call.args[2])
@@ -176,31 +178,48 @@ async def test_a_setting_opened_all_the_way_equals_its_declared_maximum(
     assert float(written[key]) == definition.max_value
 
 
+async def test_the_bound_is_read_off_the_service_that_will_accept_the_write() -> None:
+    """Not off the module-level singleton, which nothing here populates.
+
+    That singleton fills when the ``definitions`` sub-package is imported, and
+    nothing this module imports does: it is non-empty in a sweep only through
+    an incidental chain out of the oracle. Reading the SERVICE's registry ties
+    the bound to the authority that will accept or refuse the write, which is
+    the only reason the bound is wanted.
+    """
+    registry = mock_of[SettingsRegistry](get=lambda _ns, _key: None)
+    settings = mock_of[SettingsService](
+        set=AsyncMock(return_value=None), registry=registry
+    )
+
+    with pytest.raises(RecursionDepthCeilingUndeclaredError, match="not registered"):
+        await arm_recursion(settings, enabled=True)
+
+
 async def test_an_absent_setting_is_refused_rather_than_guessed() -> None:
     """Nothing to read is a refusal, because the alternative is a guess.
 
     A guessed ceiling would be discovered as a write the settings service
     rejects, which happens after the sweep has booted and begun spending.
     """
-    with pytest.raises(RecursionDepthCeilingUndeclaredError):
-        _declared_maximum("a_setting_that_does_not_exist")
+    settings = mock_of[SettingsService](registry=get_registry())
+
+    with pytest.raises(RecursionDepthCeilingUndeclaredError, match="not registered"):
+        _declared_maximum(settings, "a_setting_that_does_not_exist")
 
 
-async def test_an_unbounded_setting_is_refused_rather_than_guessed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_an_unbounded_setting_is_refused_rather_than_guessed() -> None:
     """The second way there is nothing to read: present, but with no maximum.
 
-    Distinct from absence, and reached through a different branch, so the
-    registry is stubbed to produce exactly that shape.
+    A different fault from absence and reported differently, because absence
+    across the board means the definitions never loaded while this one means a
+    definition that did load declares no ceiling.
     """
     real = get_registry().get("coordination", "decomposition_tree_timeout_seconds")
     assert real is not None
     unbounded = real.model_copy(update={"max_value": None})
     registry = mock_of[SettingsRegistry](get=lambda _ns, _key: unbounded)
-    monkeypatch.setattr(
-        "evals.recursion_depth.tree.get_registry", lambda: registry, raising=True
-    )
+    settings = mock_of[SettingsService](registry=registry)
 
-    with pytest.raises(RecursionDepthCeilingUndeclaredError):
-        _declared_maximum("decomposition_tree_timeout_seconds")
+    with pytest.raises(RecursionDepthCeilingUndeclaredError, match="no maximum"):
+        _declared_maximum(settings, "decomposition_tree_timeout_seconds")
