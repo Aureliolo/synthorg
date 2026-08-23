@@ -94,8 +94,22 @@ class TestNetworkPolicy:
         reaching the field unnormalised would sit there uppercased and as a
         U-label while the request side arrives lowercased and as an A-label.
         """
-        policy = NetworkPolicy(hostname_allowlist=wrap({"ExÄmple.COM"}))  # type: ignore[arg-type]
+        policy = NetworkPolicy(
+            hostname_allowlist=wrap({"ExÄmple.COM"}),  # type: ignore[arg-type]
+        )
         assert policy.hostname_allowlist == ("xn--exmple-cua.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_a_mapping(self) -> None:
+        """Iterating a mapping would allowlist its keys.
+
+        Pydantic refuses a mapping for this field on its own, so admitting one
+        here would widen what the field accepts rather than normalise it.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(
+                hostname_allowlist={"internal.corp": True},  # type: ignore[arg-type]
+            )
 
     @pytest.mark.unit
     def test_allowlist_rejects_a_form_it_cannot_normalise(self) -> None:
@@ -105,7 +119,9 @@ class TestNetworkPolicy:
         which is a silent bypass of every check this validator applies.
         """
         with pytest.raises(ValidationError):
-            NetworkPolicy(hostname_allowlist=iter(["example.com"]))  # type: ignore[arg-type]
+            NetworkPolicy(
+                hostname_allowlist=iter(["example.com"]),  # type: ignore[arg-type]
+            )
 
     @pytest.mark.unit
     def test_allowlist_collapses_alternate_spellings_of_one_host(self) -> None:

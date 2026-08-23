@@ -13,7 +13,7 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 
 import asyncio
 import ipaddress
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
@@ -121,25 +121,31 @@ class NetworkPolicy(BaseModel):
             Result of type ``object``.
 
         Raises:
-            ValueError: If any entry is not a string, or if the allowlist
-                arrives in a form this cannot normalise. Pydantic converts
-                both to a ``ValidationError``, which is what keeps a bad
-                persisted allowlist inside the contract the startup-path
-                caller catches.
+            ValueError: If any entry is not a string, if the allowlist is a
+                mapping, or if it arrives in a form this cannot normalise.
+                Pydantic converts each to a ``ValidationError``, which is
+                what keeps a bad persisted allowlist inside the contract the
+                startup-path caller catches.
         """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
         raw = data["hostname_allowlist"]
         if isinstance(raw, str | bytes):
             return data
-        # Pydantic fills a ``tuple[...]`` field from any collection, a set and
-        # a frozenset included, so narrowing this to sequences left those
-        # spellings skipping lowercase, canonicalisation and dedupe entirely
-        # and sitting in the allowlist in a form the request side can never
-        # match. ``Collection`` is the widest shape safe to read here: it is
-        # re-iterable, so consuming it does not empty the value Pydantic
-        # reads next. Anything else iterable is refused rather than passed
-        # through, because passing it through is the silent bypass.
+        # A mapping iterates its keys, so admitting one here would turn the
+        # keys of an operator's dict into allowlisted hosts. Pydantic refuses
+        # a mapping for a ``tuple[...]`` field on its own, and this validator
+        # must not widen what the field accepts.
+        if isinstance(raw, Mapping):
+            msg = "hostname_allowlist must not be a mapping"
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
+        # Pydantic fills a ``tuple[...]`` field from any collection, sets and
+        # frozensets included, so every one of those spellings has to reach
+        # the normalisation below or it lands in the allowlist in a form the
+        # request side can never match. ``Collection`` is the widest shape
+        # safe to read here: it is re-iterable, so consuming it does not empty
+        # the value Pydantic reads next. A one-shot iterable is refused rather
+        # than passed through, because passing it through is a silent bypass.
         if not isinstance(raw, Collection):
             msg = "hostname_allowlist must be a collection of strings"
             raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
