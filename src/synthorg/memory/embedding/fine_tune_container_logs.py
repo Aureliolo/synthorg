@@ -39,6 +39,14 @@ _SHORT_ID_LEN: Final[int] = 12
 #: line is worth keeping even when something else made it long.
 _MAX_ERROR_PAYLOAD_CHARS: Final[int] = 500
 
+#: Ceiling on how many such lines one stage contributes. The per-line cap
+#: bounds a line; a stage runs for hours against streams anything in the
+#: container can write to, so without this the collected list and the message
+#: built from it grow without limit for exactly the reasons above. The FIRST
+#: lines are kept rather than the last: the failure that ended the stage is
+#: usually the one that started the cascade.
+_MAX_ERROR_LINES: Final[int] = 20
+
 
 async def stream_markers_until_exit(
     container: aiodocker.containers.DockerContainer,
@@ -126,6 +134,8 @@ def handle_marker_line(
                 error=safe_error_description(exc),
             )
     elif line.startswith(_MARKER_ERROR):
+        if len(error_lines) >= _MAX_ERROR_LINES:
+            return
         payload = line.removeprefix(_MARKER_ERROR).strip()
         error_lines.append(payload[:_MAX_ERROR_PAYLOAD_CHARS])
 

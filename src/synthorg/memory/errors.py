@@ -174,8 +174,9 @@ class FineTuneDataSourceError(MemoryError):
 class FineTuneTrainingDataError(MemoryError):
     """Raised when the triples handed to contrastive training are unusable.
 
-    Training on nothing produces a checkpoint indistinguishable from the
-    base model, which the promotion gate would then score and reject
-    hours later without ever saying why. Failing here names the empty
-    input instead.
+    Two conditions reach it: the stage 2 output is empty, or a record in it
+    is damaged (a missing required field, or ``negatives`` that is not a
+    list). Either way the run trains on nothing usable and produces a
+    checkpoint the promotion gate scores and rejects hours later without
+    ever saying why. Failing here names the offending input instead.
     """

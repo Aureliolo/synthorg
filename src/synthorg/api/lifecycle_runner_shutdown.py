@@ -18,6 +18,7 @@ from synthorg.api.lifecycle_runner_support import (
     _LifecycleTasks,
     drain_simulation_background_tasks,
 )
+from synthorg.api.lifecycle_shared import shutdown_window
 from synthorg.api.lifecycle_shutdown_initiative import drain_initiative_tails
 from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.backup.service import BackupService
@@ -122,8 +123,74 @@ _FINE_TUNE_CANCEL_SHUTDOWN_SECONDS: Final[float] = (
     FINE_TUNE_CANCEL_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
 )
 
+# What the whole teardown may take, which is NOT the sum of the budgets above:
+# those are per-service worst cases that never all fire together, and summed
+# they reach 417s against a container that is killed long before. This is the
+# figure the deployment's termination grace period must cover, so it is stated
+# once here and the shipped compose files exceed it by a margin for the
+# per-step floor (see ``_EXHAUSTED_STEP_FLOOR_SECONDS``). Raising it is a
+# deployment change, not just a constant: both must move together.
+_TOTAL_SHUTDOWN_WINDOW_SECONDS: Final[float] = 75.0
+
 
 async def _run_shutdown(  # noqa: PLR0913
+    tasks: _LifecycleTasks,
+    app_state: AppState,
+    *,
+    persistence: PersistenceBackend | None,
+    message_bus: MessageBus | None,
+    bridge: MessageBusBridge | None,
+    settings_dispatcher: SettingsChangeDispatcher | None,
+    task_engine: TaskEngine | None,
+    backup_service: BackupService | None,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
+) -> None:
+    """Run the ordered teardown inside one bounded window.
+
+    Every step below carries a per-service budget that is individually sane,
+    and they run in series, so the worst case is their SUM: far past any
+    container's termination grace period. The steps that lost that race were
+    the ones at the end, which are exactly the steps that persist state. The
+    window clamps each step to what is left of one total, so the sequence
+    reaches its own final steps rather than being killed part-way through.
+
+    Args:
+        tasks: Shared mutable handles the startup runner populated.
+        app_state: Application state container.
+        persistence: Persistence backend (``None`` when unconfigured).
+        message_bus: Internal message bus (``None`` when unconfigured).
+        bridge: Message bus bridge to WebSocket channels.
+        settings_dispatcher: Settings change dispatcher.
+        task_engine: Centralized task state engine.
+        backup_service: Backup and restore service.
+        approval_timeout_scheduler: Background approval timeout checker.
+
+    Raises:
+        MemoryError: Re-raised unchanged from the cooperative-shutdown
+            guard (never swallowed).
+        RecursionError: Re-raised unchanged from the cooperative-shutdown
+            guard (never swallowed).
+    """
+    deadline = app_state.clock.monotonic() + _TOTAL_SHUTDOWN_WINDOW_SECONDS
+
+    def _remaining() -> float:
+        return deadline - app_state.clock.monotonic()
+
+    with shutdown_window(_remaining):
+        await _run_shutdown_steps(
+            tasks,
+            app_state,
+            persistence=persistence,
+            message_bus=message_bus,
+            bridge=bridge,
+            settings_dispatcher=settings_dispatcher,
+            task_engine=task_engine,
+            backup_service=backup_service,
+            approval_timeout_scheduler=approval_timeout_scheduler,
+        )
+
+
+async def _run_shutdown_steps(  # noqa: PLR0913
     tasks: _LifecycleTasks,
     app_state: AppState,
     *,

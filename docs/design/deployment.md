@@ -139,10 +139,14 @@ The sidecar is the one container that starts as UID 0, and only until its `netfi
 The backend tears down in three stages so requests are not cancelled mid-transaction during a rolling restart:
 
 1. **HTTP request drain (25 s budget)**: `RequestDrainMiddleware` (`src/synthorg/api/drain.py`) is wrapped around the Litestar ASGI app as the outermost layer. The first `on_shutdown` hook flips the drain gate; new requests after that return `503 Service Unavailable` with `Retry-After: 5`, while in-flight requests have up to 25 s to finish. A drain that exceeds the budget is logged at WARNING (`api.app.drain.timeout`) and service teardown begins regardless. The budget lives at `_DRAIN_TIMEOUT_SECONDS` in `src/synthorg/api/lifecycle.py`.
-2. **Service teardown (~42 s worst-case sum of nominal budgets)**: `_run_shutdown` first stops the background services (quota poller, self-improvement service `close()`), then `_safe_shutdown` runs the per-service shutdown budgets in `src/synthorg/api/lifecycle.py` in this order: approval timeout (1 s), meeting (2 s), TaskEngine drain (8 s nominal, 17 s outer cap with slack), perf (2 s), backup (5 s), settings (2 s), bridge (2 s), distributed backend bundle (3 s; its dead-letter consumer + heartbeat subscriber release the shared NATS connection before the queue drains), distributed queue (3 s), message bus (3 s), notification dispatcher (5 s, stopped after the bus drains so every event is generated but before persistence disconnects so a final delivery flush still reaches the DB), persistence (5 s). The A2A-client close is appended after `_safe_shutdown`, and the three integration draining services (OAuth manager, integration health prober, webhook bridge) drain concurrently via `asyncio.gather` so they cost one drain budget, not three. Most services return well under their cap in practice.
+2. **Service teardown (one 75 s window, not the sum of the budgets below)**: `_run_shutdown` first stops the background services (quota poller, self-improvement service `close()`), then `_safe_shutdown` runs the per-service shutdown budgets in `src/synthorg/api/lifecycle.py` in this order: approval timeout (1 s), meeting (2 s), TaskEngine drain (8 s nominal, 17 s outer cap with slack), perf (2 s), backup (5 s), settings (2 s), bridge (2 s), distributed backend bundle (3 s; its dead-letter consumer + heartbeat subscriber release the shared NATS connection before the queue drains), distributed queue (3 s), message bus (3 s), notification dispatcher (5 s, stopped after the bus drains so every event is generated but before persistence disconnects so a final delivery flush still reaches the DB), persistence (5 s). The A2A-client close is appended after `_safe_shutdown`, and the three integration draining services (OAuth manager, integration health prober, webhook bridge) drain concurrently via `asyncio.gather` so they cost one drain budget, not three. Most services return well under their cap in practice.
 3. **Uvicorn graceful close**: `uvicorn.run` is invoked with `timeout_graceful_shutdown=75`, which covers the drain budget plus the full service teardown sequence with ~8 s headroom over the worst case.
 
-**Recommended `terminationGracePeriodSeconds: 75`** for both Kubernetes pods and Docker Compose stacks. The per-service budgets enforce a fixed total worst-case drain of ~67 s (25 s HTTP drain plus the nominal teardown sequence); the 75 s graceful-shutdown ceiling reserves ~8 s of headroom so the orchestrator does not SIGKILL the process mid-teardown. Raising any individual budget narrows that headroom contract; the budgets are internal constants by design, not settings-registry tunables, because the orchestrator depends on the shape of the contract rather than its operator-tunability. Operators that consistently hit drain timeouts should raise the grace and document the incident motivating the change.
+**Recommended `terminationGracePeriodSeconds: 90`** for both Kubernetes pods and Docker Compose stacks, which is what the shipped `docker/compose.yml` and the CLI's generated stack both set.
+
+The total does not come from adding the per-service budgets up. Each is a worst case that fires only when that service hangs, they run in series, and summed they reach far more than any orchestrator will wait: on a slow stop SIGKILL then arrives mid-sequence, and the steps that lose are the ones at the end, which are exactly the steps that persist state (the audit-chain flush and the persistence disconnect). So `_run_shutdown` opens a single window of `_TOTAL_SHUTDOWN_WINDOW_SECONDS` (75 s, in `src/synthorg/api/lifecycle_runner_shutdown.py`) and every `_try_stop` inside it is clamped to what is left, which keeps the sequence reaching its own final steps rather than being killed part-way through. A step whose window is already spent still gets a small floor rather than zero, because those tail steps must be attempted rather than skipped; that floor is why the grace period exceeds the window instead of matching it.
+
+The window and the grace period are one contract expressed in two files, so they move together: raising the window without raising `stop_grace_period` in both compose files reintroduces exactly the mid-sequence SIGKILL it exists to prevent. The budgets are internal constants by design, not settings-registry tunables, because the orchestrator depends on the shape of the contract rather than its operator-tunability. Operators that consistently hit drain timeouts should raise the grace and document the incident motivating the change.
 
 Kubernetes example:
 
@@ -150,7 +154,7 @@ Kubernetes example:
 apiVersion: v1
 kind: Pod
 spec:
-  terminationGracePeriodSeconds: 75
+  terminationGracePeriodSeconds: 90
   containers:
     - name: backend
       image: ghcr.io/aureliolo/synthorg-backend@sha256:...
@@ -162,7 +166,7 @@ Docker Compose example:
 services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:...
-    stop_grace_period: 75s
+    stop_grace_period: 90s
     stop_signal: SIGTERM
 ```
 

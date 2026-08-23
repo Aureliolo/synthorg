@@ -764,6 +764,10 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     Raises:
         ValueError: If inputs are invalid.
         FineTuneDependencyError: If deps are missing.
+        FineTuneTrainingDataError: If the stage 2 triples are empty or a
+            record in them is damaged.
+        FineTuneCancelledError: If cancellation fires before or during the
+            training run.
     """
     hyperparameters = _validated_hyperparameters(
         training_data_path=training_data_path,
