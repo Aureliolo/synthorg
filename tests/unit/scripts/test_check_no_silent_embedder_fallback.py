@@ -284,11 +284,11 @@ def test_missing_tree_fails_closed(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 2
 
 
-def test_meeting_embedder_may_construct_the_builtin(tmp_path: Path) -> None:
-    """The meeting detector's ``hashing`` strategy is an operator's choice."""
+def test_memory_backend_wiring_may_construct_the_builtin(tmp_path: Path) -> None:
+    """Wiring builds the built-in only once resolution named it."""
     _write(
         tmp_path,
-        "communication/meeting/embedder.py",
+        "api/lifecycle_helpers/memory_backend_wiring.py",
         "def build():\n    return HashingTextEmbedder(dims=256)\n",
     )
     assert _load().main(["--repo-root", str(tmp_path)]) == 0

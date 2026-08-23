@@ -155,7 +155,6 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "oauth_state_service": (IntegrationsStateSlice, "oauth_state_service"),
         "health_prober_service": (IntegrationsStateSlice, "health_prober_service"),
         "tunnel_provider": (IntegrationsStateSlice, "tunnel_provider"),
-        "webhook_event_bridge": (IntegrationsStateSlice, "webhook_event_bridge"),
         "mcp_catalog_service": (IntegrationsStateSlice, "mcp_catalog_service"),
         "mcp_installations_repo": (IntegrationsStateSlice, "mcp_installations_repo"),
         "memory_backend": (MemoryStateSlice, "backend"),

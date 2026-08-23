@@ -4,8 +4,7 @@ Covers ``communication`` / ``integrations`` / ``infrastructure`` /
 ``memory`` (the largest set, ~95 tools combined).  Models are split
 across four submodules to keep each file under the 800-line guideline:
 
-* :mod:`._communication` -- messages, meetings, connections, webhooks,
-  tunnel.
+* :mod:`._communication` -- messages, connections, webhooks, tunnel.
 * :mod:`._integrations` -- mcp_catalog, oauth, clients, artifacts,
   ontology.
 * :mod:`._infrastructure` -- health, settings, providers, backup,

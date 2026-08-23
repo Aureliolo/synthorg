@@ -72,6 +72,14 @@ _RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
 # 5.0s default deadline; mirror that plus the shared grace.
 _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
 
+# SprintService's tail advancement walks a sprint through IN_REVIEW ->
+# RETROSPECTIVE -> COMPLETED off the completion path, one CAS hop at a time.
+# Its ``drain()`` awaits the in-flight tasks with no deadline of its own, so
+# the whole bound is this outer one: a hop interrupted between two CAS writes
+# leaves the sprint parked in the intermediate status with nothing that
+# re-triggers the walk.
+_SPRINT_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
+
 # Outer backstop for the objective / brownfield entry-task drain. The drain
 # is internally bounded by ``_ENTRY_TASK_DRAIN_GRACE_SECONDS`` (from
 # api/state.py) plus the cancel-and-await of stragglers; the outer budget
@@ -104,7 +112,7 @@ _COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
 # dispatchers, notification dispatcher) cancel-and-await quickly, so they
 # share the 2.0s janitor budget. Services that internally drain in-flight
 # work through the lifecycle-lock pattern (health probers, OAuth token
-# manager, webhook event bridge) can legitimately take up to
+# manager) can legitimately take up to
 # ``DEFAULT_DRAIN_TIMEOUT_SECONDS``, so their outer backstop exceeds the
 # inner drain by the shared grace. Every stop is bounded so a hung callee
 # cannot block the shutdown window past the orchestrator SIGKILL deadline.
@@ -243,6 +251,21 @@ async def _run_shutdown(  # noqa: PLR0913
             "Failed to drain in-flight gated-completion background tasks",
             timeout=_REVIEW_GATE_DRAIN_OUTER_SECONDS,
             service="review_gate_drain",
+        )
+    # Drain the sprint tail-advancement tasks for the same reason: they are
+    # spawned off the task-completion path and each walks the sprint one CAS
+    # hop at a time, so a cancel between hops parks it in an intermediate
+    # status that nothing re-enters once every task is already completed.
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    _sprint_service = app_state.slice(EngineStateSlice).sprint_service
+    if _sprint_service is not None:
+        await _try_stop(
+            _sprint_service.drain(),
+            API_APP_SHUTDOWN,
+            "Failed to drain in-flight sprint tail-advancement tasks",
+            timeout=_SPRINT_DRAIN_OUTER_SECONDS,
+            service="sprint_service_drain",
         )
     # Drain in-flight objective / brownfield entry-processing tasks (spawned
     # fire-and-forget off the work-entry path and tracked only in their
@@ -433,7 +456,7 @@ async def _run_shutdown(  # noqa: PLR0913
         # Structured fan-out/fan-in (project convention prefers ``TaskGroup``
         # over ``gather``). ``_try_stop`` swallows its own failures and returns
         # a bool, so no child task raises -- the group's first-exception
-        # cancellation never fires and all three drains run to completion.
+        # cancellation never fires and every drain runs to completion.
         async with asyncio.TaskGroup() as _drain_tg:
             for _stop_coro in _integration_draining_stops:
                 _ = _drain_tg.create_task(_stop_coro)

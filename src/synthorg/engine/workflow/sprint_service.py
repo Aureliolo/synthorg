@@ -58,7 +58,6 @@ from synthorg.engine.workflow.sprint_backlog import (
 )
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.engine.workflow.sprint_velocity import VelocityRecord, record_velocity
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -428,12 +427,25 @@ class SprintService:
         reviewing = await self._open_review_if_delivered(sprint)
         await self._finalize_if_delivered(reviewing)
 
-    async def _open_review_if_delivered(self, sprint: Sprint) -> Sprint:
-        """Advance ACTIVE to IN_REVIEW once the whole backlog is delivered.
+    @staticmethod
+    def _backlog_fully_delivered(sprint: Sprint) -> bool:
+        """Whether every task in *sprint*'s backlog has been completed.
 
         A sprint whose backlog is empty is not delivered: it has nothing
         to review, and treating "no tasks" as "all tasks done" would end
-        a sprint the moment it was created.
+        a sprint the moment it was created. The counts alone decide it
+        because ``Sprint``'s own validator holds ``completed_task_ids`` to
+        a duplicate-free subset of ``task_ids``.
+
+        Returns:
+            ``True`` when the backlog is non-empty and fully delivered.
+        """
+        if not sprint.task_ids:
+            return False
+        return len(sprint.completed_task_ids) >= len(sprint.task_ids)
+
+    async def _open_review_if_delivered(self, sprint: Sprint) -> Sprint:
+        """Advance ACTIVE to IN_REVIEW once the whole backlog is delivered.
 
         Returns:
             The sprint after the transition, or unchanged when the
@@ -441,9 +453,7 @@ class SprintService:
         """
         if sprint.status is not SprintStatus.ACTIVE:
             return sprint
-        if not sprint.task_ids:
-            return sprint
-        if len(sprint.completed_task_ids) < len(sprint.task_ids):
+        if not self._backlog_fully_delivered(sprint):
             return sprint
         if not await self._sprints.transition_if(
             NotBlankStr(sprint.id), sprint.status, SprintStatus.IN_REVIEW
@@ -464,9 +474,7 @@ class SprintService:
         """Walk IN_REVIEW -> RETROSPECTIVE -> COMPLETED when all tasks are done."""
         if sprint.status is not SprintStatus.IN_REVIEW:
             return
-        if not sprint.task_ids:
-            return
-        if len(sprint.completed_task_ids) < len(sprint.task_ids):
+        if not self._backlog_fully_delivered(sprint):
             return
         async with self._lock:
             if not await self._sprints.transition_if(
@@ -500,20 +508,6 @@ class SprintService:
                 )
                 return
         self._log_transition(completed, SprintStatus.IN_REVIEW)
-
-    async def _velocity_history(
-        self, project: NotBlankStr | None
-    ) -> tuple[VelocityRecord, ...]:
-        """Reconstruct velocity records from completed sprints, oldest-first.
-
-        Returns:
-            The velocity records for the project's completed sprints,
-            oldest-first (the order the rolling-average window expects).
-        """
-        completed = await self._sprints.query(
-            SprintFilterSpec(project=project, status=SprintStatus.COMPLETED)
-        )
-        return tuple(record_velocity(sprint) for sprint in reversed(completed))
 
     # -- Helpers -------------------------------------------------------
 

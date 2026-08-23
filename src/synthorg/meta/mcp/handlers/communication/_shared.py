@@ -1,8 +1,8 @@
 """Shared helpers and arg-validation constants for communication MCP handlers.
 
 The capability-gap mapper and required-arg extractors shared across the
-communication sub-domain handler modules (messages, meetings,
-connections, webhooks, tunnel).
+communication sub-domain handler modules (messages, connections,
+webhooks, tunnel).
 """
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError

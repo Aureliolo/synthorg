@@ -405,7 +405,7 @@ class TestBuiltinOperationalConfigs:
         ("solo_founder", "full", "event_driven", "kanban"),
         ("startup", "semi", "hybrid", "agile_kanban"),
         ("dev_shop", "semi", "hybrid", "agile_kanban"),
-        ("product_team", "semi", "meeting_based", "agile_kanban"),
+        ("product_team", "semi", "event_driven", "agile_kanban"),
         ("agency", "supervised", "hierarchical", "kanban"),
         ("research_lab", "full", "event_driven", "kanban"),
         ("full_company", "supervised", "hierarchical", "agile_kanban"),

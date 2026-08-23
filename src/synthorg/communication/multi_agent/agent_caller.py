@@ -1,17 +1,9 @@
-""":data:`AgentCaller` factories for multi-party conversations.
+""":data:`AgentCaller` factory for multi-party conversations.
 
 A conversation invokes agents through an :data:`AgentCaller` callable.
-This module provides the two implementations a composition root picks
-between:
-
-- :func:`build_agent_caller` -- the real caller. Composes an agent
-  registry (for identity lookup) with a :class:`ProviderRegistry` (for
-  LLM dispatch) and runs one ``provider.complete()`` call per
-  invocation.
-- :func:`build_unconfigured_agent_caller` -- built when those registries
-  are not available at wire time. It raises at call time rather than
-  answering with empty content, so an operator sees the absent
-  collaborator instead of a conversation that ran and said nothing.
+:func:`build_agent_caller` composes an agent registry (for identity
+lookup) with a :class:`ProviderRegistry` (for LLM dispatch) and runs one
+``provider.complete()`` call per invocation.
 
 One turn is one LLM call. Sequencing turns belongs to the conversation;
 this module runs a single agent's inference.
@@ -32,9 +24,9 @@ from synthorg.communication.multi_agent.models import AgentResponse
 from synthorg.communication.multi_agent.protocol import AgentCaller
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import DomainError, NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
@@ -56,6 +48,10 @@ class UnknownConversationAgentError(NotFoundError):
 
     Attributes:
         agent_id: The agent identifier that was not found in the registry.
+
+    Raises:
+        ValueError: If *agent_id* is blank. The annotation alone binds
+            only inside a Pydantic model.
     """
 
     default_message: ClassVar[str] = "Conversation agent not registered"
@@ -64,6 +60,7 @@ class UnknownConversationAgentError(NotFoundError):
     status_code: ClassVar[int] = 404
 
     def __init__(self, agent_id: NotBlankStr) -> None:
+        require_not_blank(agent_id, "agent_id")
         super().__init__(
             f"Agent {agent_id!r} is not registered in the agent registry; "
             f"cannot dispatch LLM call"
@@ -102,13 +99,16 @@ def build_agent_caller(
 
         Raises:
             UnknownConversationAgentError: If the agent id is not registered.
+            ValueError: If either identifier is blank. ``NotBlankStr`` only
+                binds inside a Pydantic model, so both are checked here or
+                a blank one reaches the registry lookup and the cost row
+                unexamined.
         """
-        typed_agent_id = NotBlankStr(agent_id)
-        # Validate the conversation id at the call boundary so a blank /
-        # whitespace-only id surfaces as a clean ``ValueError`` here rather
-        # than as a generic NotBlankStr failure inside
-        # ``cost_recording_scope``.
-        cleaned_conversation_id = NotBlankStr(conversation_id.strip())
+        typed_agent_id = require_not_blank(agent_id, "agent_id")
+        cleaned_conversation_id = require_not_blank(
+            conversation_id.strip(),
+            "conversation_id",
+        )
         logger.info(
             MULTI_AGENT_CALLED,
             agent_id=agent_id,
@@ -204,158 +204,7 @@ def _build_messages(
     ]
 
 
-class AgentCallerNotConfiguredError(DomainError):
-    """Raised when a conversation runs without an agent + provider registry.
-
-    Calling an agent requires the agent registry (for identity lookup)
-    and the provider registry (for LLM dispatch). When either is absent
-    at wire time, a conversation that tries to invoke an agent receives
-    this error rather than an empty response.
-
-    Attributes:
-        agent_id: The agent identifier the conversation tried to invoke.
-        missing_dependencies: Names of the dependencies that were
-            absent at wire time (e.g. ``("agent_registry",
-            "provider_registry")``).  Guaranteed non-empty: the error
-            is only meaningful when at least one dependency is missing.
-
-    Raises:
-        ValueError: If *missing_dependencies* is empty -- the error is
-            only meaningful when at least one dependency is missing.
-    """
-
-    default_message: ClassVar[str] = "Agent caller missing wire-time dependencies"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
-    status_code: ClassVar[int] = 500
-
-    def __init__(
-        self,
-        *,
-        agent_id: NotBlankStr,
-        missing_dependencies: tuple[str, ...],
-    ) -> None:
-        if not missing_dependencies:
-            msg = (
-                "AgentCallerNotConfiguredError requires at least one "
-                "entry in missing_dependencies"
-            )
-            raise ValueError(msg)
-        missing = ", ".join(missing_dependencies)
-        super().__init__(
-            f"Agent caller invoked for {agent_id!r} but the following "
-            f"dependencies were missing at wire time: {missing}.  Provide "
-            f"them via create_app(...) so turns can dispatch real LLM calls."
-        )
-        self.agent_id: NotBlankStr = agent_id
-        self.missing_dependencies: tuple[str, ...] = missing_dependencies
-
-
-class UnconfiguredAgentCaller:
-    """An :data:`AgentCaller` that refuses every turn, naming what is absent.
-
-    A named type rather than a closure because the holder of one is an
-    observable fact about the deployment: it can serve reads and cannot
-    run a conversation. A holder answers that from the caller itself, so
-    a probe cannot claim dispatch a boot never installed.
-
-    Attributes:
-        missing_dependencies: The collaborators absent when it was built.
-    """
-
-    __slots__ = ("missing_dependencies",)
-
-    def __init__(self, *, missing_dependencies: tuple[str, ...]) -> None:
-        """Bind the dependency names the refusal reports.
-
-        Checked here rather than in the factory alone, because this is the
-        one place every construction passes through. An instance built with
-        nothing missing refuses every turn while naming no reason, and the
-        refusal it raises validates the same tuple, so the only report an
-        operator gets arrives at the first turn instead of at wire time and
-        names the caller rather than the absent collaborator.
-
-        Args:
-            missing_dependencies: Names of the dependencies missing at wire
-                time. Must be non-empty.
-
-        Raises:
-            ValueError: If *missing_dependencies* is empty.
-        """
-        if not missing_dependencies:
-            msg = (
-                "UnconfiguredAgentCaller requires at least one entry in "
-                "missing_dependencies"
-            )
-            raise ValueError(msg)
-        self.missing_dependencies: tuple[str, ...] = missing_dependencies
-
-    async def __call__(
-        self,
-        agent_id: str,
-        _prompt: str,
-        _max_tokens: int,
-        conversation_id: str,
-    ) -> AgentResponse:
-        """Reject the turn.
-
-        Args:
-            agent_id: The agent whose turn it would have been.
-            _prompt: Unused; nothing is dispatched.
-            _max_tokens: Unused; nothing is dispatched.
-            conversation_id: The conversation the turn belongs to.
-
-        Raises:
-            AgentCallerNotConfiguredError: Always; the required
-                dependencies are missing.
-        """
-        logger.warning(
-            MULTI_AGENT_CALL_FAILED,
-            agent_id=agent_id,
-            conversation_id=conversation_id,
-            error_type="AgentCallerNotConfiguredError",
-            missing_dependencies=self.missing_dependencies,
-        )
-        raise AgentCallerNotConfiguredError(
-            agent_id=NotBlankStr(agent_id),
-            missing_dependencies=self.missing_dependencies,
-        )
-
-
-def build_unconfigured_agent_caller(
-    *,
-    missing_dependencies: tuple[str, ...],
-) -> AgentCaller:
-    """Return a caller that raises loudly if invoked.
-
-    Used when a conversation is wired before the agent / provider
-    registries are available. Surfaces the root cause to operators at
-    first use rather than silently succeeding with empty content.
-
-    Args:
-        missing_dependencies: Names of the dependencies missing at wire
-            time.  Must be non-empty.
-
-    Returns:
-        A refusing caller naming *missing_dependencies*.
-
-    Raises:
-        ValueError: If *missing_dependencies* is empty.
-    """
-    if not missing_dependencies:
-        msg = (
-            "build_unconfigured_agent_caller requires at least one "
-            "entry in missing_dependencies"
-        )
-        raise ValueError(msg)
-
-    return UnconfiguredAgentCaller(missing_dependencies=missing_dependencies)
-
-
 __all__ = [
-    "AgentCallerNotConfiguredError",
-    "UnconfiguredAgentCaller",
     "UnknownConversationAgentError",
     "build_agent_caller",
-    "build_unconfigured_agent_caller",
 ]

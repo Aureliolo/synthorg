@@ -1858,14 +1858,6 @@ class _FakeBackend:
         return _FakeProviderFailoverEventRepository()
 
     @property
-    def ceremony_scheduler_state(self) -> object:
-        return object()
-
-    @property
-    def meeting_cooldown(self) -> object:
-        return object()
-
-    @property
     def tracked_containers(self) -> object:
         return object()
 
@@ -1979,9 +1971,6 @@ class _FakeBackend:
         raise NotImplementedError(msg)
 
     def build_lockouts(self, auth_config: object) -> object:
-        return None
-
-    def build_escalations(self, *, notify_channel: str | None = None) -> object:
         return None
 
     def build_ontology_versioning(self) -> object:

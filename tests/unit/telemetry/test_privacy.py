@@ -87,7 +87,6 @@ class TestPrivacyScrubber:
             topology_parallel=1,
             topology_sequential=0,
             topology_auto=5,
-            meetings_held=2,
             delegations_executed=4,
             uptime_hours=24.0,
         )

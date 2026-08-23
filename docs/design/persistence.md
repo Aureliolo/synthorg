@@ -147,7 +147,7 @@ simply do not see.
 ### Cross-worker CAS on JSON-blob settings
 
 Where runtime state is persisted as a single JSON blob in a settings key
-(`coordination.dept_ceremony_policies` is the canonical example), concurrent
+(`coordination.company_departments` is the canonical example), concurrent
 writers across workers cannot rely on in-process locks. Instead the controller
 follows a bounded **compare-and-swap** loop:
 
@@ -157,14 +157,15 @@ follows a bounded **compare-and-swap** loop:
 3. `settings_service.set(..., expected_updated_at=updated_at)` writes the
    new value and raises `VersionConflictError` if the stored `updated_at`
    has advanced since step 1.
-4. On conflict, the controller re-reads and retries up to
-   `_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS` (`3`).  Persistent contention
-   surfaces as HTTP 409 `VersionConflictError` so the caller can retry with
-   fresh state rather than the loop spinning forever.
+4. On conflict, the writer re-reads and retries up to the budget resolved
+   from `coordination.company_departments_cas_retry_attempts` (falling back
+   to `3`).  Persistent contention surfaces as HTTP 409
+   `VersionConflictError` so the caller can retry with fresh state rather
+   than the loop spinning forever.
 
 Frontend callers that mutate CAS-backed settings must handle 409 explicitly
 (surface a retry toast or re-fetch + re-submit).  The pattern is implemented
-in `src/synthorg/api/controllers/departments/_shared.py::_mutate_dept_policies_with_retry`
+in `src/synthorg/organization/team_navigation.py::with_company_departments_cas`
 and should be reused verbatim for any future JSON-blob settings that are
 mutated from multiple workers.
 

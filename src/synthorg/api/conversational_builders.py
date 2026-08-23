@@ -64,7 +64,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     - the conversational repositories could not be built (persistence
       absent / not connected).
 
-    Per-agent dispatch reuses ``build_meeting_agent_caller`` so each
+    Per-agent dispatch reuses ``build_agent_caller`` so each
     participant answers on its own configured provider; participant
     identities are resolved against *agent_registry*.
 

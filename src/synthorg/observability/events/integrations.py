@@ -169,17 +169,6 @@ DEVTUNNELS_LOGIN_COMPLETED: Final[str] = (
     "integrations.tunnel.devtunnels.login_completed"
 )
 
-# -- Webhook bridge ------------------------------------------------------
-
-WEBHOOK_BRIDGE_STARTED: Final[str] = "integrations.webhook_bridge.started"
-WEBHOOK_BRIDGE_STOPPED: Final[str] = "integrations.webhook_bridge.stopped"
-WEBHOOK_BRIDGE_POLL_ERROR: Final[str] = "integrations.webhook_bridge.poll_error"
-WEBHOOK_BRIDGE_RESOLVE_FAILED: Final[str] = "integrations.webhook_bridge.resolve_failed"
-WEBHOOK_BRIDGE_PAUSED: Final[str] = "integrations.webhook_bridge.paused"
-WEBHOOK_BRIDGE_EVENT_FORWARDED: Final[str] = (
-    "integrations.webhook_bridge.event_forwarded"
-)
-
 # -- Rate limit coordination ---------------------------------------------
 
 RATE_LIMIT_ACQUIRE_PUBLISHED: Final[str] = "integrations.rate_limit.acquire_published"

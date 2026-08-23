@@ -10,7 +10,7 @@ budgets before launching parallel work rather than checking
 ``remaining`` inside concurrent tasks.
 """
 
-import dataclasses
+from typing import override
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.multi_agent import (
@@ -21,39 +21,58 @@ from synthorg.observability.events.multi_agent import (
 logger = get_logger(__name__)
 
 
-@dataclasses.dataclass
 class TokenTracker:
-    """Mutable token budget scoped to a single conversation run.
+    """Token budget scoped to a single conversation run.
 
-    Attributes:
-        budget: Total token budget for the conversation.
-        input_tokens: Total prompt tokens consumed so far.
-        output_tokens: Total response tokens generated so far.
+    Consumption only ever grows, and only through :meth:`record`, which
+    is where the non-negative check lives. The totals are therefore read
+    through properties rather than exposed as writable attributes: an
+    assignment could otherwise move a tally backwards and leave every
+    later ``remaining`` reading a budget nothing spent.
     """
 
-    budget: int
-    input_tokens: int = 0
-    output_tokens: int = 0
+    __slots__ = ("_budget", "_input_tokens", "_output_tokens")
 
-    def __post_init__(self) -> None:
-        """Validate budget is positive.
+    def __init__(self, *, budget: int) -> None:
+        """Open a run with *budget* tokens to spend.
+
+        Args:
+            budget: Total token budget for the conversation.
 
         Raises:
             ValueError: If ``budget`` is not positive.
         """
-        if self.budget <= 0:
-            msg = f"budget must be positive, got {self.budget}"
+        if budget <= 0:
+            msg = f"budget must be positive, got {budget}"
             raise ValueError(msg)
+        self._budget = budget
+        self._input_tokens = 0
+        self._output_tokens = 0
+
+    @property
+    def budget(self) -> int:
+        """Total token budget for the conversation."""
+        return self._budget
+
+    @property
+    def input_tokens(self) -> int:
+        """Total prompt tokens consumed so far."""
+        return self._input_tokens
+
+    @property
+    def output_tokens(self) -> int:
+        """Total response tokens generated so far."""
+        return self._output_tokens
 
     @property
     def used(self) -> int:
         """Total tokens consumed so far."""
-        return self.input_tokens + self.output_tokens
+        return self._input_tokens + self._output_tokens
 
     @property
     def remaining(self) -> int:
         """Tokens remaining in the budget."""
-        return max(0, self.budget - self.used)
+        return max(0, self._budget - self.used)
 
     @property
     def is_exhausted(self) -> bool:
@@ -86,13 +105,29 @@ class TokenTracker:
                 output_tokens=output_tokens,
             )
             raise ValueError(msg)
-        self.input_tokens += input_tokens
-        self.output_tokens += output_tokens
+        self._input_tokens += input_tokens
+        self._output_tokens += output_tokens
 
-        if self.used > self.budget:
+        if self.used > self._budget:
             logger.warning(
                 MULTI_AGENT_BUDGET_EXHAUSTED,
                 tokens_used=self.used,
-                token_budget=self.budget,
-                overage=self.used - self.budget,
+                token_budget=self._budget,
+                overage=self.used - self._budget,
             )
+
+    @override
+    def __repr__(self) -> str:
+        """Return the budget and what has been spent against it.
+
+        Returns:
+            A ``TokenTracker(...)`` string carrying budget and totals.
+        """
+        return (
+            f"TokenTracker(budget={self._budget}, "
+            f"input_tokens={self._input_tokens}, "
+            f"output_tokens={self._output_tokens})"
+        )
+
+
+__all__ = ["TokenTracker"]

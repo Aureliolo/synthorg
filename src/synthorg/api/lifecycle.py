@@ -80,10 +80,9 @@ logger = get_logger(__name__)
 # (most at ``_SERVICE_STOP_SHUTDOWN_SECONDS`` = 2 s; the draining services at
 # ``_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS``), so each adds at most a couple of
 # seconds and stays subsumed under the 75 s ceiling. To keep the aggregate
-# inside that ceiling the three independent integration draining services
-# (OAuth manager, integration health prober, webhook bridge) drain
-# CONCURRENTLY via ``asyncio.gather`` so their cost is one drain budget, not
-# three.
+# inside that ceiling the independent integration draining services
+# (OAuth manager, integration health prober) drain CONCURRENTLY in a
+# ``TaskGroup`` so their cost is one drain budget rather than the sum.
 #
 # Internal constants by design: per-service shutdown budgets enforce a fixed
 # total worst-case drain of ~65 s, matched in api/server.py by Litestar's 75 s

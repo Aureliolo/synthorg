@@ -271,7 +271,6 @@ class TestEveryHandlerEmitsCentralizedLogEvent:
         "synthorg_approvals_list",
         "synthorg_budget_get_config",
         "synthorg_company_get",
-        "synthorg_meetings_list",
         "synthorg_messages_list",
         "synthorg_connections_list",
         "synthorg_webhooks_list",

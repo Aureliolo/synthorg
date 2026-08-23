@@ -36,13 +36,11 @@ class _FakeService:
 
 class TestStartRuntimeBackgroundServices:
     async def test_all_services_start_cleanly(self) -> None:
-        bridge = _FakeService()
         prober = _FakeService()
         oauth = _FakeService()
         app_state = make_app_state(
             slices={
                 IntegrationsStateSlice: {
-                    "webhook_event_bridge": bridge,
                     "health_prober_service": prober,
                     "oauth_token_manager": oauth,
                 }
@@ -50,43 +48,40 @@ class TestStartRuntimeBackgroundServices:
         )
 
         await _start_runtime_background_services(_LifecycleTasks(), app_state)
-        assert bridge.started
         assert prober.started
         assert oauth.started
-        assert not bridge.stopped
         assert not prober.stopped
         assert not oauth.stopped
 
     async def test_non_critical_start_failure_is_swallowed(self) -> None:
         # A poll-loop that cannot start must not abort boot: the failure is
         # logged and swallowed, and the later services still start.
-        bridge = _FakeService(fail_start=ValueError("bridge down"))
+        prober = _FakeService(fail_start=ValueError("prober down"))
         oauth = _FakeService()
         app_state = make_app_state(
             slices={
                 IntegrationsStateSlice: {
-                    "webhook_event_bridge": bridge,
+                    "health_prober_service": prober,
                     "oauth_token_manager": oauth,
                 }
             },
         )
 
         await _start_runtime_background_services(_LifecycleTasks(), app_state)
-        assert not bridge.started
-        assert not bridge.stopped  # non-fatal: nothing to clean up
+        assert not prober.started
+        assert not prober.stopped  # non-fatal: nothing to clean up
         assert oauth.started
 
     async def test_critical_stops_already_started_services(self) -> None:
-        # The bridge starts, then the health prober's start raises a critical
-        # (MemoryError). The critical propagates, but the already-started
-        # bridge must be stopped by the bounded cleanup before it does.
-        bridge = _FakeService()
-        prober = _FakeService(fail_start=MemoryError("oom during start"))
-        oauth = _FakeService()
+        # The health prober starts, then the OAuth token manager's start
+        # raises a critical (MemoryError). The critical propagates, but the
+        # already-started prober must be stopped by the bounded cleanup
+        # before it does.
+        prober = _FakeService()
+        oauth = _FakeService(fail_start=MemoryError("oom during start"))
         app_state = make_app_state(
             slices={
                 IntegrationsStateSlice: {
-                    "webhook_event_bridge": bridge,
                     "health_prober_service": prober,
                     "oauth_token_manager": oauth,
                 }
@@ -95,10 +90,8 @@ class TestStartRuntimeBackgroundServices:
 
         with pytest.raises(MemoryError):
             await _start_runtime_background_services(_LifecycleTasks(), app_state)
-        # Earlier-started service cleaned up; the one that failed mid-start and
-        # the one never reached are not stopped.
-        assert bridge.started
-        assert bridge.stopped
-        assert not prober.stopped
-        assert not oauth.started
+        # Earlier-started service cleaned up; the one that failed mid-start
+        # is not stopped.
+        assert prober.started
+        assert prober.stopped
         assert not oauth.stopped

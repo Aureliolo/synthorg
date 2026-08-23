@@ -227,7 +227,7 @@ function SettingsNamespaceSections({ ctrl }: { ctrl: SettingsPageController }) {
         exit={{ opacity: 0 }}
         transition={anim.tween}
       >
-        <StaggerGroup className="space-y-[var(--spacing-section-gap)]">
+        <StaggerGroup className="space-y-section-gap">
           {NAMESPACE_ORDER.filter((ns) => filters.filteredByNamespace.has(ns))
             .filter((ns) => effectiveNamespace === null || ns === effectiveNamespace)
             .map((ns) => (

@@ -411,29 +411,7 @@ class _FailHopRepo(_FakeSprintRepo):
         return await super().transition_if(entity_id, from_state, to_state, **updates)
 
 
-def _completed_sprint(number: int) -> Sprint:
-    return Sprint(
-        id=f"s{number}",
-        project=NotBlankStr("proj-1"),
-        name=NotBlankStr(f"Sprint {number}"),
-        sprint_number=number,
-        status=SprintStatus.COMPLETED,
-        start_date="2026-01-01T00:00:00+00:00",
-        end_date="2026-01-14T00:00:00+00:00",
-    )
-
-
 class TestConcurrencyGuards:
-    async def test_velocity_history_reconstructed_oldest_first(self) -> None:
-        repo = _FakeSprintRepo()
-        await repo.save(_completed_sprint(1))
-        await repo.save(_completed_sprint(2))
-        service = _service(sprints=repo)
-        history = await service._velocity_history(NotBlankStr("proj-1"))
-        assert len(history) == 2
-        # Oldest-first: sprint 1's record must precede sprint 2's.
-        assert [record.sprint_number for record in history] == [1, 2]
-
     async def test_finalize_retro_cas_lost_leaves_sprint_in_retrospective(self) -> None:
         repo = _FailHopRepo(SprintStatus.RETROSPECTIVE, SprintStatus.COMPLETED)
 

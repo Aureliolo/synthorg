@@ -110,7 +110,8 @@ Weights must sum to 1.0. Composite score maps to cost tiers via thresholds.
 | `moderate` | 0.4 <= score < 0.7 | Full lens + constitutional review |
 | `generous` | >= 0.7 | Full lens + constitutional + impact scoring |
 
-Resolution: `ProgressiveTierResolver` (score-based) or `FixedTierResolver` (config-based).
+Resolution: `impact.py::_resolve_risk_tier`, reading the band thresholds from
+`ProgressiveConfig.thresholds`.
 
 ## Prompt Injection
 
@@ -211,23 +212,31 @@ All major components are pluggable behind `@runtime_checkable Protocol`:
 | `StrategicContextProvider` | ConfigContextProvider, MemoryContextProvider, CompositeContextProvider |
 | `ImpactScorer` | CompositeImpactScorer, ExplicitImpactScorer, HybridImpactScorer |
 | `ConfidenceFormatter` | StructuredFormatter, NarrativeFormatter, BothFormatter, ProbabilityFormatter |
-| `CostTierResolver` | FixedTierResolver, ProgressiveTierResolver |
+
+Risk tier resolution is not a pluggable seam: `impact.py::_resolve_risk_tier` maps a
+composite score onto its tier directly, so the tier and the score it derives
+from have one owner.
 
 ### Module Layout
 
 ```text
 engine/strategy/
-  __init__.py         -- Public exports
-  models.py           -- Config + domain models (frozen Pydantic)
-  lenses.py           -- StrategicLens enum + definitions
-  principles.py       -- Pack loading service
-  context.py          -- Context providers
-  impact.py           -- Impact scorers
-  confidence.py       -- Confidence formatters
-  output.py           -- Output mode handler
-  tiers.py            -- Cost tier resolvers
-  prompt_injection.py -- Prompt section builder
-  packs/              -- Built-in YAML principle packs
+  __init__.py                    -- Public exports
+  models.py                      -- Config + domain models (frozen Pydantic)
+  lenses.py                      -- StrategicLens enum + definitions
+  principles.py                  -- Pack loading service
+  active_principle.py            -- Active-principle resolution
+  active_principle_provider.py   -- Active-principle context provider
+  principle_override_provider.py -- Per-scope principle overrides
+  context.py                     -- Context providers
+  strategic_context_provider.py  -- Context provider protocol
+  adapter.py                     -- Strategy adapter for the engine
+  scoping.py                     -- Scope resolution
+  impact.py                      -- Impact scorers + risk tier resolution
+  confidence.py                  -- Confidence formatters
+  output.py                      -- Output mode handler
+  prompt_injection.py            -- Prompt section builder
+  packs/                         -- Built-in YAML principle packs
     default.yaml
     startup.yaml
     enterprise.yaml

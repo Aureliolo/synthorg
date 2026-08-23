@@ -475,7 +475,7 @@ or `docker/compose.yml`, or a worker-only one missing from
 Everything else is live, through whichever seam its consumer allows:
 
 - a per-request / per-call `ConfigResolver.get_*()` read (e.g.
-  `api.max_meeting_context_keys`, `api.readiness_probe_timeout_seconds`,
+  `api.readiness_probe_timeout_seconds`,
   `integrations.oauth_http_timeout_seconds`, and the `charter.interview_*` /
   `charter.default_currency` knobs the interview service resolves once per
   turn through an injected config provider);

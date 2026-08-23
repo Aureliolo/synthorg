@@ -1,13 +1,16 @@
 -- Drop the meeting / ceremony / conflict-resolution stack's tables and the
 -- settings rows its keys left behind.
 --
--- The three tables belonged to one stack an operator had to start by hand and
--- that nothing in the orchestration loop ever entered: a sprint's ceremonies
--- fired meetings, a structured-phases meeting detected disagreement, and the
--- disagreement reached a resolution service. ``conflict_escalations`` had a
--- single producer, the human-escalation resolver at the end of that chain, and
--- human decisions are already served by the approval store, which plan review,
--- initiative stall, org hire and the review gates all use.
+-- The three tables belonged to one chain: a sprint's ceremonies fired
+-- meetings, a structured-phases meeting detected disagreement, and the
+-- disagreement reached a resolution service. The chain was reachable without
+-- an operator (an ordinary task reaching ASSIGNED auto-created and started a
+-- sprint, which activated the ceremony scheduler) and still convened nothing
+-- across nine dogfood rounds and the depth-3 recursion sweep, because its
+-- ceremonies are calendar- and velocity-triggered. ``conflict_escalations``
+-- had a single producer, the human-escalation resolver at the end of that
+-- chain, and human decisions are already served by the approval store, which
+-- plan review, initiative stall, org hire and the review gates all use.
 -- ``ceremony_scheduler_state`` held per-sprint trigger counters, and
 -- ``meeting_cooldown`` one row per recurring meeting type so a restart could
 -- not re-fire a meeting inside its window. All three lose both writer and
