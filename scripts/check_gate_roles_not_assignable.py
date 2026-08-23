@@ -41,7 +41,7 @@ Two checks over ``src/synthorg/`` and ``evals/``:
    measuring it.
 
 The rule is about DERIVING a roster, not about passing one on. Nine of the
-twelve ``available_roles=`` sites in the tree are pass-throughs of a roster
+eleven ``available_roles=`` sites in the tree are pass-throughs of a roster
 built upstream (a parameter, a context field, a local), so a rule written
 against the keyword would be noise, and a value that reached one of them
 without passing through the owner had to be derived somewhere this catches.
@@ -321,6 +321,14 @@ def _functions(
 ) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     """Return every function in *tree* with its dotted qualname.
 
+    Descends through EVERY node rather than through class and function bodies
+    alone: a ``def`` inside an ``if``, a ``try`` or a ``with`` is a function
+    like any other, and stopping at those three statement types would leave a
+    whole shape of definition unscanned by a gate that carries no baseline and
+    no opt-out, whose only claim is that it sees everything. Only a scope
+    boundary extends the qualname prefix, so a function defined under a
+    conditional keeps the qualname of the scope it actually belongs to.
+
     Returns:
         ``(qualname, node)`` pairs, classes included, nested defs included.
     """
@@ -333,6 +341,8 @@ def _functions(
             elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                 found.append((f"{prefix}{child.name}", child))
                 walk(child, f"{prefix}{child.name}.")
+            else:
+                walk(child, prefix)
 
     walk(tree, "")
     return found

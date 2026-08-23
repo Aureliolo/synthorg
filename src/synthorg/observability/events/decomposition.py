@@ -69,7 +69,18 @@ DECOMPOSITION_SESSION_ARGUMENTS_MANGLED: Final[str] = (
 
 The transport's fault rather than the model's, so it is reported separately
 from a rejected plan: the plan was never read. Frequency is the point, since
-the fix belongs upstream of here if one model keeps producing it."""
+the fix belongs upstream of here if one model keeps producing it, so the line
+carries ``mangled_calls``: the running count within this session, which is the
+number the question is actually asked of."""
+
+DECOMPOSITION_SESSION_DIGEST_FALLBACK: Final[str] = (
+    "decomposition.session.digest_fallback"
+)
+"""A submission's arguments would not serialise, so the digest used their repr.
+
+Should not happen: these arguments are already decoded JSON by the time they
+reach the tool. A provider producing a shape that lands here repeatedly is a
+finding about that provider, and nothing else records it."""
 
 DECOMPOSITION_LLM_ARGUMENTS_MANGLED: Final[str] = "decomposition.llm.arguments_mangled"
 """The single-shot strategy's reply arrived with its list flattened.

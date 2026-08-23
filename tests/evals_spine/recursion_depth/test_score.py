@@ -16,9 +16,101 @@ from evals.recursion_depth.score import (
     curve_by_achieved_depth,
     curve_by_depth_cap,
 )
+from evals.recursion_depth.tree import achieved_levels
+from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
+
+
+def _planning_task(label: str) -> Task:
+    """Build a task a planning level can own.
+
+    Returns:
+        The task.
+    """
+    return Task(
+        id=as_uuid(f"task:{label}"),
+        title=NotBlankStr(label),
+        description=NotBlankStr(f"Do {label}."),
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.HIGH,
+        project=NotBlankStr(sid("project:recursion-depth-score")),
+        created_by=NotBlankStr("test"),
+        status=TaskStatus.CREATED,
+    )
+
+
+def _level(parent: Task, *, depth: int, remaining: int) -> DecompositionResult:
+    """Build the planning level at *depth* that split *parent*.
+
+    Recurses while *remaining* levels are left, each splitting a task the level
+    above it created, which is what the tree's own consistency rule requires.
+
+    Returns:
+        The level, carrying the rest of the chain below it.
+    """
+    label = f"level-{depth}"
+    split = _planning_task(label)
+    below = (
+        (_level(split, depth=depth + 1, remaining=remaining - 1),)
+        if remaining > 1
+        else ()
+    )
+    return DecompositionResult(
+        plan=DecompositionPlan(
+            parent_task_id=NotBlankStr(str(parent.id)),
+            subtasks=(
+                SubtaskDefinition(
+                    id=NotBlankStr(str(split.id)),
+                    title=NotBlankStr(label),
+                    description=NotBlankStr(f"Build {label}."),
+                    expected_artifacts=(NotBlankStr(f"{label}.py"),),
+                ),
+            ),
+            task_structure=TaskStructure.SEQUENTIAL,
+        ),
+        created_tasks=(split,),
+        depth=depth,
+        children=below,
+    )
+
+
+def _chain(levels: int) -> DecompositionResult:
+    """Build a tree of exactly *levels* planning levels, one branch wide.
+
+    Returns:
+        The root level.
+    """
+    return _level(_planning_task("root"), depth=0, remaining=levels)
+
+
+class TestTheLevelCount:
+    """``achieved_levels`` owns the index-to-count conversion, alone.
+
+    Asserted directly rather than through a run, because the conversion is one
+    ``+ 1`` and the whole depth axis rests on it: a run using its entire cap of
+    three reported two, which reads as a tree that stopped a level short, and
+    that is the reading an external reviewer took.
+    """
+
+    @pytest.mark.parametrize(("levels", "expected"), [(1, 1), (2, 2), (3, 3)])
+    def test_a_cap_spent_in_full_reports_the_cap(
+        self, levels: int, expected: int
+    ) -> None:
+        """A tree that never split is one level deep, never zero.
+
+        ``max_depth=3`` admits levels 0, 1 and 2, so a tree that used all three
+        reports three rather than the deepest index it happens to carry.
+        """
+        assert achieved_levels(_chain(levels)) == expected
 
 
 def _leaf(

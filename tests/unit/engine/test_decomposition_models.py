@@ -629,7 +629,15 @@ class TestRosterFromAgents:
 
     @pytest.mark.unit
     def test_a_roster_of_nothing_but_judges_is_empty(self) -> None:
-        """Empty means "no roster known", never "assign it to a judge"."""
+        """Nothing on this roster may own work, so it offers nothing.
+
+        The empty tuple here is ambiguous downstream, since an org with no
+        agents at all derives the same one and the routability check reads that
+        as "no roster known" and passes. What closes the gap is that the check
+        refuses a gate role before it consults any roster, which
+        ``TestAGateRoleIsNeverRoutable`` holds it to; this only asserts that the
+        derivation offers no judge.
+        """
         assert roster_from_agents([self._agent(COMPLETION_REVIEWER_ROLE_NAME)]) == ()
 
     @pytest.mark.unit

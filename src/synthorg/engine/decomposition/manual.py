@@ -4,7 +4,7 @@ Takes a pre-built ``DecompositionPlan`` at construction and returns it
 from ``decompose()``, validating against context limits.
 """
 
-from synthorg.core.plan_validation import describe_unroutable_role
+from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan

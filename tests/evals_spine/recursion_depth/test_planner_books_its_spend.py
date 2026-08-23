@@ -4,7 +4,7 @@
 Driven against the real ``AgentSessionPlanner`` rather than a scripted double,
 because the double books whatever the test tells it to: what needs covering is
 this class's own read of a real ledger on the path that raises, which is where
-a cell's spend was previously lost outright.
+a cell's spend is lost outright when it goes unbooked.
 """
 
 from collections.abc import AsyncIterator

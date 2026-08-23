@@ -10,10 +10,11 @@ model filled in correctly:
 
     {'$text': "...", 'item': {'$text': '...</item>', 'item': {...}}}
 
-Nothing in this codebase emits ``$text`` or parses XML, so the key cannot
-arrive from any legitimate caller: it is the transport's own artefact, and its
-presence identifies the failure exactly. Telling the model that its list was
-flattened, rather than that its arguments did not match the schema, is the
+Nothing in this codebase emits ``$text``, and nothing on the tool-call argument
+path parses XML, so the key cannot arrive from any legitimate caller: it is the
+transport's own artefact, and its presence identifies the failure exactly.
+Telling the model that its list was flattened, rather than that its arguments
+did not match the schema, is the
 difference between a corrected resubmission and a blind one; two of thirteen
 plan submissions in a live run arrived this way.
 """
@@ -50,7 +51,7 @@ def _carries_text_node(value: object, depth: int) -> bool:
     if depth > _MAX_DEPTH:
         return False
     if isinstance(value, Mapping):
-        if any(key == _TEXT_NODE_KEY for key in value):
+        if _TEXT_NODE_KEY in value:
             return True
         return any(_carries_text_node(item, depth + 1) for item in value.values())
     if isinstance(value, str | bytes):

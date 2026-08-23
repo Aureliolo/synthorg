@@ -301,7 +301,9 @@ async def run_merge(
     await asyncio.to_thread(mount_children, plan.workspace, plan.pieces)
     # After the children are mounted and before the first attempt, so what a
     # child already delivered is not credited to the assembly that received it.
-    baseline = probe_artifacts(_attempt_task(plan, ()), plan.workspace)
+    baseline = await asyncio.to_thread(
+        probe_artifacts, _attempt_task(plan, ()), plan.workspace
+    )
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
@@ -337,6 +339,10 @@ async def run_merge(
             break
         findings = _trim(review.findings)
     detail = await _undelivered_reason(deps, plan, turns=turns, baseline=baseline)
+    amendments = await asyncio.to_thread(count_amendments, plan.workspace)
+    final = await asyncio.to_thread(
+        probe_artifacts, _attempt_task(plan, ()), plan.workspace
+    )
     return MergeOutcome(
         workspace=plan.workspace,
         delivered=not detail,
@@ -348,10 +354,8 @@ async def run_merge(
         reviewer=review.reviewer,
         verdict=review.verdict,
         parked=review.parked,
-        amendments=count_amendments(plan.workspace),
-        undeclared_paths=probe_artifacts(
-            _attempt_task(plan, ()), plan.workspace
-        ).missing,
+        amendments=amendments,
+        undeclared_paths=final.missing,
         detail=detail,
     )
 
@@ -460,7 +464,9 @@ async def _undelivered_reason(
             "no assembly attempt ran a single turn, so nothing was assembled "
             "and this is not an assembly failure"
         )
-    if produced_nothing(_attempt_task(plan, ()), plan.workspace, baseline):
+    if await asyncio.to_thread(
+        produced_nothing, _attempt_task(plan, ()), plan.workspace, baseline
+    ):
         return "no assembly attempt changed anything the node declared"
     grader = deps.build_grader(plan.workspace)
     passed, report = await grader.own_tests_pass(plan.workspace.project_dir)

@@ -48,6 +48,7 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SPEND_ALL_DROPPED,
     EVALS_RECURSION_SPEND_DEDUPED,
     EVALS_RECURSION_UNIT_EXECUTED,
     EVALS_RECURSION_UNIT_STARTED,
@@ -226,6 +227,24 @@ class OpenSession:
         )
 
 
+def _split_by_category(
+    records: Sequence[CostRecord],
+) -> tuple[tuple[CostRecord, ...], tuple[CostRecord, ...]]:
+    """Split *records* into the accounts to count and the ones to drop.
+
+    Returns:
+        ``(counted, dropped)``, together holding every record exactly once.
+    """
+    counted: list[CostRecord] = []
+    dropped: list[CostRecord] = []
+    for record in records:
+        target = (
+            counted if record.call_category is LLMCallCategory.PRODUCTIVE else dropped
+        )
+        target.append(record)
+    return tuple(counted), tuple(dropped)
+
+
 def session_spend(
     records: Sequence[CostRecord], *, gateway_hosted: bool, label: str
 ) -> SessionSpend:
@@ -256,18 +275,28 @@ def session_spend(
     """
     counted = records
     if gateway_hosted:
-        counted = tuple(
-            record
-            for record in records
-            if record.call_category is LLMCallCategory.PRODUCTIVE
-        )
+        # Split on the predicate in one pass rather than by testing membership
+        # of the kept tuple: the predicate is what decides the split, and
+        # asking the tuple instead rests the answer on model equality, which
+        # is only unique here because an unrelated field defaults to a fresh
+        # uuid4 per record.
+        counted, dropped = _split_by_category(records)
         # Never silent. A category dropped here is either the duplicate this
         # exists to remove or a call that did not cross the gateway, and only
         # the log distinguishes them afterwards.
-        dropped = tuple(record for record in records if record not in counted)
         if dropped:
-            logger.info(
-                EVALS_RECURSION_SPEND_DEDUPED,
+            # An empty remainder is not a deduplication. Preferring one account
+            # of a call presumes a second survives, and this session would be
+            # carried forward as free having spent whatever the dropped set
+            # cost, in the rows that are the only record of it.
+            emit = logger.error if not counted else logger.info
+            event = (
+                EVALS_RECURSION_SPEND_ALL_DROPPED
+                if not counted
+                else EVALS_RECURSION_SPEND_DEDUPED
+            )
+            emit(
+                event,
                 label=label,
                 counted_records=len(counted),
                 dropped_records=len(dropped),

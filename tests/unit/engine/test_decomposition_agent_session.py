@@ -18,6 +18,7 @@ from synthorg.engine.decomposition.agent_session import (
     _stopped_short,
 )
 from synthorg.engine.decomposition.agent_session_submit import (
+    _REMEMBERED_REFUSALS,
     PlanCapture,
     SubmitDecompositionPlanTool,
 )
@@ -408,6 +409,23 @@ class TestSubmitDecompositionPlanTool:
         # agent knowing only that it repeated itself.
         assert "cannot depend on itself" in second.content
         assert capture.plan is None
+
+    async def test_a_repeat_still_reads_as_a_repeat_past_the_cap(self) -> None:
+        """The remembered set is bounded by eviction, not by giving up.
+
+        Declining to record once the set is full costs every answer after it,
+        so a model that had already cycled through that many distinct bad plans
+        could resend one verbatim for ever and be told each time that it was
+        new. Evicting the oldest instead costs only the answer nobody is still
+        waiting on. What a bounded set cannot do is remember a digest across
+        that many newer ones, and nothing here asks it to.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        for index in range(_REMEMBERED_REFUSALS):
+            assert await capture.record_refusal(f"exhausted-{index}") == 1
+
+        assert await capture.record_refusal("the plan that comes back") == 1
+        assert await capture.record_refusal("the plan that comes back") == 2
 
     async def test_key_order_alone_is_not_a_correction(self) -> None:
         """A serialiser that reordered keys resubmitted the same plan."""

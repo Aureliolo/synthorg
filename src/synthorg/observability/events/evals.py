@@ -134,6 +134,16 @@ live run journalled a planning unit at twice what it spent. Dropping is logged
 rather than silent because the dropped set is either that duplicate or a call
 that never crossed the gateway, and afterwards only this line tells them apart:
 these session rows are the sweep's spend ledger of record."""
+EVALS_RECURSION_SPEND_ALL_DROPPED: Final[str] = (
+    "evals.recursion_depth.spend_all_dropped"
+)
+"""A session's whole ledger was dropped, so its spend is recorded as nothing.
+
+Not the dedupe above: preferring one account of a call presumes another account
+survives, and here none did. The session made calls, they cost money, and the
+figure carried forward says it was free, which is the one reading that cannot
+be corrected later because nothing else records what a session spent. Loud
+because a cheap-looking unit is otherwise indistinguishable from a cheap one."""
 EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
 EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
 EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"

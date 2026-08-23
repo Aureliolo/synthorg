@@ -305,11 +305,10 @@ class CellProgressRecord(BaseModel):
     """One session of one run, on disk the moment it returns.
 
     A cell is hours of sessions and the cell record is written once, at the
-    end, so a cell killed part-way used to leave nothing: not what it built,
-    not what it spent, not the tree it was building against. This is the row
-    that closes that window, and it is the SPEND ledger as well as the progress
-    log, because every session the sweep books is one of these and no session
-    is anything else.
+    end, so without this row a cell killed part-way leaves nothing behind: not
+    what it built, not what it spent, not the tree it was building against.
+    It is the SPEND ledger as well as the progress log, because every session
+    the sweep books is one of these and no session is anything else.
 
     Attributes:
         depth_cap: The ``max_depth`` the run was allowed.

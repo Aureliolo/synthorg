@@ -137,8 +137,10 @@ paid run.
 The retry row is the one where the sweep's arming turned out to be measuring
 the product default rather than compensating for it. A subtree in a live run was
 refused four times and converged on the fifth, surviving only because the sweep
-arms six; at the shipped default of two it would have failed with the plan one
-attempt away, and a dogfood round records exactly that as "the replan then
+arms six. The setting counts RETRIES and the first ask is not one, so a value of
+N allows N+1 attempts: the shipped default of two allowed three, and that
+subtree would have failed two attempts short of the plan it went on to produce.
+A dogfood round records exactly that as "the replan then
 exhausted its decomposition retries". The product default is now five, so the
 gap the sweep opens is a margin rather than the difference between planning and
 not.

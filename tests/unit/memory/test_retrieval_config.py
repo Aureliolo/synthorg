@@ -415,6 +415,7 @@ class TestDiversityStrategyConsistency:
         assert len(events) == 0
 
 
+@pytest.mark.unit
 class TestHierarchicalOnlyFieldsUnderFlat:
     """A setting the flat retriever cannot apply is refused, not ignored."""
 
@@ -437,6 +438,29 @@ class TestHierarchicalOnlyFieldsUnderFlat:
         """
         with pytest.raises(ValidationError, match=r"the hierarchical supervisor"):
             MemoryRetrievalConfig.model_validate({field: value})
+
+    def test_every_offending_field_is_named_at_once(self) -> None:
+        """All three in one message, so one fix clears all three.
+
+        Reporting the first and refusing costs a whole boot cycle per field,
+        which is the same reason the graph validator reports every violation
+        together.
+        """
+        with pytest.raises(ValidationError) as raised:
+            MemoryRetrievalConfig.model_validate(
+                {
+                    "max_workers_per_query": 4,
+                    "reflective_retry_enabled": False,
+                    "max_retry_count": 5,
+                }
+            )
+
+        detail = str(raised.value)
+        assert "max_workers_per_query" in detail
+        assert "reflective_retry_enabled" in detail
+        assert "max_retry_count" in detail
+        # Plural, because three fields do not configure anything singular.
+        assert "configure the hierarchical supervisor" in detail
 
     @pytest.mark.parametrize(
         ("field", "value"),

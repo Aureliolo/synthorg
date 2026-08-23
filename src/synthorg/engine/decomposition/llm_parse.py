@@ -14,12 +14,12 @@ from typing import Final
 from pydantic import JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
-    describe_unroutable_role,
     describe_unstated_references,
 )
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure

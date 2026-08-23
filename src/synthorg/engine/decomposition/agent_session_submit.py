@@ -26,6 +26,7 @@ from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
+    DECOMPOSITION_SESSION_DIGEST_FALLBACK,
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
     DECOMPOSITION_SESSION_PLAN_REJECTED,
     DECOMPOSITION_SESSION_PLAN_RESUBMITTED,
@@ -60,13 +61,14 @@ class PlanCapture:
         parent_task_id: The objective being planned, for the duplicate warning.
     """
 
-    __slots__ = ("_lock", "_parent_task_id", "_plan", "_refused")
+    __slots__ = ("_lock", "_mangled", "_parent_task_id", "_plan", "_refused")
 
     def __init__(self, parent_task_id: NotBlankStr) -> None:
         self._plan: DecompositionPlan | None = None
         self._parent_task_id = parent_task_id
         self._lock = asyncio.Lock()
         self._refused: dict[str, int] = {}
+        self._mangled = 0
 
     @property
     def plan(self) -> DecompositionPlan | None:
@@ -105,10 +107,29 @@ class PlanCapture:
             means it is new.
         """
         async with self._lock:
-            seen = self._refused.get(digest, 0) + 1
-            if seen > 1 or len(self._refused) < _REMEMBERED_REFUSALS:
-                self._refused[digest] = seen
+            seen = self._refused.pop(digest, 0) + 1
+            # Bounded by eviction rather than by refusing to record, so the
+            # cap costs the OLDEST answer instead of every answer after it: a
+            # model cycling through distinct bad plans cannot grow the set,
+            # and a repeat still reads as a repeat past the cap. Re-inserting
+            # after the pop also makes a digest that just arrived the newest,
+            # so what falls out is what has not been seen for longest.
+            if len(self._refused) >= _REMEMBERED_REFUSALS:
+                del self._refused[next(iter(self._refused))]
+            self._refused[digest] = seen
             return seen
+
+    async def record_mangled(self) -> int:
+        """Count a call the transport mangled and answer the running total.
+
+        Under the same lock as its siblings, for the same reason.
+
+        Returns:
+            How many calls this session has now lost to the transport.
+        """
+        async with self._lock:
+            self._mangled += 1
+            return self._mangled
 
 
 class SubmitDecompositionPlanTool(BaseTool):
@@ -167,6 +188,7 @@ class SubmitDecompositionPlanTool(BaseTool):
             logger.warning(
                 DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
                 parent_task_id=self._parent_task_id,
+                mangled_calls=await self._capture.record_mangled(),
             )
             return ToolExecutionResult(content=mangled, is_error=True)
         try:
@@ -256,7 +278,16 @@ def _submission_digest(arguments: dict[str, object]) -> str:
     """
     try:
         payload = json.dumps(arguments, sort_keys=True, default=repr)
-    except TypeError, ValueError:
+    except (TypeError, ValueError) as exc:
+        # Logged because it should not happen: these arguments are already
+        # decoded JSON. A provider emitting a shape that reaches here
+        # repeatedly is a finding about that provider, and this is the only
+        # place it would be visible.
+        logger.debug(
+            DECOMPOSITION_SESSION_DIGEST_FALLBACK,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         payload = repr(sorted(arguments.items(), key=lambda item: item[0]))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 

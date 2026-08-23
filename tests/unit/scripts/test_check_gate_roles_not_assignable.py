@@ -205,6 +205,55 @@ def test_per_line_marker_suppresses(write_py: WritePy) -> None:
     assert _MODULE._scan_file(path, "sample.py") == []
 
 
+def test_a_marker_does_not_suppress_a_hit_it_is_not_attached_to(
+    write_py: WritePy,
+) -> None:
+    """Suppression is scoped to the return's own line span, not the file.
+
+    The complement of the test above, and the half that decides whether the
+    opt-out is safe: one justified derivation must not silence every other
+    derivation beside it, or a single marker disarms the module.
+    """
+    path = write_py(
+        "def rendered(agents):\n"
+        "    return sorted(\n"
+        "        {a.role for a in agents}\n"
+        "    )  # lint-allow: gate-role-assignable -- rendered in a report\n"
+        "\n"
+        "\n"
+        "def offered(agents):\n"
+        "    return sorted({a.role for a in agents})\n"
+    )
+    hits = _MODULE._scan_file(path, "sample.py")
+    assert [hit.qualname for hit in hits] == ["offered"]
+
+
+def test_a_function_defined_under_a_conditional_is_still_scanned(
+    write_py: WritePy,
+) -> None:
+    """A ``def`` in an ``if`` or a ``try`` is a function like any other.
+
+    Descending only into class and function bodies leaves a whole shape of
+    definition unscanned, which for a gate carrying no baseline and no opt-out
+    is the difference between reporting nothing and there being nothing.
+    """
+    path = write_py(
+        "import os\n"
+        "\n"
+        "if os.name == 'nt':\n"
+        "    def roles(agents):\n"
+        "        return sorted({a.role for a in agents})\n"
+        "else:\n"
+        "    try:\n"
+        "        def other(agents):\n"
+        "            return {a.role for a in agents}\n"
+        "    except ImportError:\n"
+        "        pass\n"
+    )
+    hits = _MODULE._scan_file(path, "sample.py")
+    assert sorted(hit.qualname for hit in hits) == ["other", "roles"]
+
+
 @pytest.mark.parametrize(
     "comment",
     [

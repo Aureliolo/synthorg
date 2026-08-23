@@ -240,7 +240,7 @@ class TestPlanMode:
         assert per_cell[0] < per_cell[2]
 
     def test_the_model_reproduces_the_shape_a_real_tree_had(self) -> None:
-        """Checked against the run this projection was rewritten from.
+        """Checked against the measured run the projection models.
 
         A cap-3 tree held 85 leaves across 25 nodes that planned and cost about
         158 sessions. The declared branching is rounded DOWN from the ~4.4 that

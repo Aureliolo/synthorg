@@ -447,6 +447,50 @@ class TestLlmDecompositionStrategy:
         assert provider.call_count == 3
 
     @pytest.mark.unit
+    async def test_a_mangled_reply_on_the_content_channel_is_seen_too(self) -> None:
+        """This strategy reads both channels, so both can arrive mangled.
+
+        A reply carrying no tool call is parsed from its content, and the same
+        collapse there would fall through to the ordinary schema error and
+        charge an attempt for a fault upstream of the model.
+        """
+        mangled = _make_content_response(
+            '{"$text": "", "item": {"$text": "</item>", "item": {"$text": ""}}}'
+        )
+        good = _make_tool_call_response(_valid_plan_args(subtask_count=1))
+        provider = MockCompletionProvider([mangled, good])
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=0),
+        )
+
+        plan = await strategy.decompose(_make_task(), _make_context())
+
+        # max_retries=0 is one attempt, so the good plan only arrives if the
+        # mangled round spent none of it.
+        assert isinstance(plan, DecompositionPlan)
+        assert provider.call_count == 2
+
+    @pytest.mark.unit
+    async def test_prose_mentioning_the_key_is_not_a_mangled_reply(self) -> None:
+        """The artefact is structural: a string is content, not a collapse."""
+        provider = MockCompletionProvider(
+            [_make_content_response('"a plan describing the $text field"')]
+        )
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=0),
+        )
+
+        with pytest.raises(DecompositionError, match="retries exhausted"):
+            await strategy.decompose(_make_task(), _make_context())
+
+        # One attempt, spent: nothing here bought a free round.
+        assert provider.call_count == 1
+
+    @pytest.mark.unit
     async def test_a_provider_mangling_every_reply_still_terminates(self) -> None:
         """The free rounds are bounded: a broken provider is not a loop."""
         mangled = [

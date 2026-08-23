@@ -7,10 +7,12 @@ handing "write it" to one agent and "test it" to another divides the context
 that makes either job possible and then asks them to coordinate it back.
 
 Whether a leaf DELIVERED is decided from the tree, never from what the session
-said about itself: the declared paths have to exist, and the tests the unit
-wrote for itself have to pass when run against its own tree. Only a delivered
-leaf's claims enter the survival denominator, because work that never worked
-cannot be work the merge lost.
+said about itself: the session took a turn, it changed something it declared,
+and the tests the unit wrote for itself pass when run against its own tree. It
+is not decided by the planner's declared list being complete, which is a
+plan-time guess about a tree that did not exist yet. Only a delivered leaf's
+claims enter the survival denominator, because work that never worked cannot be
+work the merge lost.
 
 The held-out oracle is not consulted here and its node ids never reach a brief.
 An agent told which test decides a requirement builds to the test: a published
@@ -18,6 +20,7 @@ run scored near-perfect against an exposed oracle while the library it
 delivered was dead outside the tested paths.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Final
 
@@ -215,7 +218,7 @@ async def run_leaf(
     # Before the session, because delivery is a question about what THIS run
     # produced: the workspace is recreated from the committed seed, and a
     # declaration the seed already satisfied is not work this unit did.
-    baseline = probe_artifacts(task, workspace)
+    baseline = await asyncio.to_thread(probe_artifacts, task, workspace)
     outcome = await run_session(
         deps,
         identity=owner,
@@ -225,6 +228,7 @@ async def run_leaf(
         limits=limits,
     )
     detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
+    final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
@@ -233,7 +237,7 @@ async def run_leaf(
         cost=outcome.cost,
         tokens=outcome.tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
-        undeclared_paths=probe_artifacts(task, workspace).missing,
+        undeclared_paths=final.missing,
         detail=detail,
     )
 
@@ -263,7 +267,7 @@ async def _undelivered_reason(
             f"the session ran no turns, so nothing was built and this is not a "
             f"delivery failure: it terminated {outcome.termination}"
         )
-    if produced_nothing(task, workspace, baseline):
+    if await asyncio.to_thread(produced_nothing, task, workspace, baseline):
         return "the session left every declared path exactly as it found it"
     grader = deps.build_grader(workspace)
     passed, report = await grader.own_tests_pass(workspace.project_dir)

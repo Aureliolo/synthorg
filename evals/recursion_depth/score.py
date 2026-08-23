@@ -1,10 +1,15 @@
 # module-kind: code
 """The measurement: what fraction of leaf work survives to a correct merge.
 
-For each leaf that DELIVERED (it produced its declared artifacts and its own
-tests passed in its own tree), the spec requirements it claimed are leaf work
-delivered. After the root merge, the held-out oracle runs against the final
-tree. The fraction of those claims still satisfied is the survival rate, which
+For each leaf that DELIVERED (it took a turn, it changed something it declared,
+and its own tests passed in its own tree), the spec requirements it claimed are
+leaf work delivered. Delivery is deliberately not "every declared path is
+present": that list is a plan-time guess, and judging the agent's work by it
+zeroed a unit that wrote its module, wrote a 31-test suite and ran it, over an
+absent empty package marker.
+
+After the root merge, the held-out oracle runs against the final tree. The
+fraction of those claims still satisfied is the survival rate, which
 is the ARIES deterioration ratio measured with the gate on and with it off.
 
 Two decisions in here carry the whole result.

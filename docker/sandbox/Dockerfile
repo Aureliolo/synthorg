@@ -26,12 +26,21 @@ USER 10001
 
 # Probed with the same python3 that serves it two lines below, which is the one
 # HTTP client this image is guaranteed to have: the Wolfi busybox below carries
-# no wget applet and apko.yaml adds no curl, so the shell one-liner this
-# replaced reported `wget: not found` on every probe and every sandbox
-# container ran permanently unhealthy (FailingStreak 30 in a measured run).
-# Probing through the server's own interpreter cannot drift either, because if
-# python3 were missing there would be nothing listening to probe.
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:15003/healthz', timeout=2).read()"]
+# no wget applet and apko.yaml adds no curl, so a shell one-liner calling wget
+# reports `wget: not found` on every probe and leaves every sandbox container
+# permanently unhealthy (FailingStreak 30 in a measured run). Probing through
+# the server's own interpreter cannot drift either, because if python3 were
+# missing there would be nothing listening to probe.
+#
+# -I is load-bearing, not tidiness. `python3 -c` puts the CWD at the head of
+# sys.path, WORKDIR is the agent-writable /workspace, so without it an agent
+# can drop a urllib.py there and have this run it every ten seconds. Isolated
+# mode drops that entry and PYTHONPATH with it. A shell probe never had the
+# exposure, since PATH lookup does not include the CWD.
+#
+# --timeout comfortably exceeds the inner timeout=2 so a slow response is
+# reported by the probe rather than killed by Docker mid-request.
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=5s \
+    CMD ["python3", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:15003/healthz', timeout=2).close()"]
 
 CMD ["sh", "-c", "python3 /usr/local/bin/healthz.py & sleep infinity"]

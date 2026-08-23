@@ -19,12 +19,12 @@ from collections.abc import Sequence
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
+from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
-    describe_unroutable_role,
     describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
