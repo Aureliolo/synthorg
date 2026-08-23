@@ -34,7 +34,10 @@ from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import DecompositionError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
-from synthorg.observability.events.evals import EVALS_RECURSION_SPEND_DEDUPED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SPEND_ALL_DROPPED,
+    EVALS_RECURSION_SPEND_DEDUPED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox import SandboxBackend
@@ -361,6 +364,37 @@ class TestOneAccountPerCall:
         assert len(dropped) == 1
         assert dropped[0]["dropped_categories"] == ["embedding"]
         assert dropped[0]["dropped_tokens"] == 3
+
+    def test_a_ledger_with_no_gateway_record_is_counted_whole(self) -> None:
+        """Preferring one account presumes a second, and here there is none.
+
+        The session made these calls and they cost money. Returning zero would
+        be as wrong as the double-count this preference exists to remove, and
+        wrong in the direction nothing later corrects: these rows are the only
+        record of what a session spent.
+        """
+        records = (
+            _record(
+                input_tokens=100,
+                output_tokens=200,
+                call_category=LLMCallCategory.SYSTEM,
+            ),
+            _record(
+                input_tokens=10,
+                output_tokens=20,
+                call_category=LLMCallCategory.EMBEDDING,
+            ),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            spent = session_spend(records, gateway_hosted=True, label="cell-plan")
+
+        assert spent.tokens == 330
+        # Loud regardless: the premise that every call crosses the hosted
+        # gateway did not hold, which nothing else would report.
+        assert [e["event"] for e in cap if "event" in e].count(
+            EVALS_RECURSION_SPEND_ALL_DROPPED
+        ) == 1
 
     def test_one_account_per_call_leaves_nothing_to_report(self) -> None:
         """No line when nothing was dropped: the noise would bury the finding."""

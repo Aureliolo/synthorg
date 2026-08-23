@@ -345,8 +345,9 @@ the oracle is proved discriminating by an empty tree, which fails all 42.
 
 A depth sweep's session count is a product of branching factors the manifest
 cannot predict, and the cost of being wrong about it is spend rather than a
-wrong answer. So plan mode prints a **floor** rather than an estimate, the
-manifest carries a hard `max_sessions` ceiling, and hitting it stops the sweep
+wrong answer. So plan mode prints what a **full tree** costs at a declared
+branching, the manifest carries a hard `max_sessions` ceiling, and hitting it
+stops the sweep
 and reports what was measured with a caveat saying so. `--depths` stages the
 bill: record the shallow end, read the curve forming, then pay for the deep end.
 `--max-sessions` lowers the ceiling, and it is folded into the manifest rather
@@ -355,7 +356,7 @@ enforces: a ceiling applied downstream of the plan shows the manifest's own
 number beside the flag that was meant to lower it, at the one moment the number
 is being relied on.
 
-The floor is derived from the TREE each cap admits, and this is the second
+The figure is derived from the TREE each cap admits, and this is the second
 attempt at it. The first counted one session per cell plus its merge attempts
 and then said "and one per leaf and per node on top of that", leaving the entire
 tree out of the arithmetic: for the recorded matrix it printed 42 against a real cost of
@@ -371,9 +372,16 @@ an assembly is two sessions (the merge and its review, in both arms). The
 branching is declared in the manifest and PRINTED beside the figure it produces,
 because a model whose input is hidden reads as a measurement, and it is rounded
 DOWN from what a real tree showed (85 leaves over 25 planning nodes at cap 3
-implies about 4.4) so the number stays a floor: the figure is the input to
-choosing `max_sessions`, and a floor that reads too low is the one that kills a
-paid run part-way.
+implies about 4.4).
+
+That figure is a scenario, not a bound in either direction, and reading it as
+one is how an operator gets surprised. `depth_cap` is a MAXIMUM the planner need
+not spend, so a tree that stops shallow costs less than this says; and the
+declared branching does not constrain the planner either, so a tree that
+branches wider costs more. What it answers is the question worth sizing a
+ceiling against, since the run that uses its whole cap is the expensive one.
+`max_sessions` is what makes being wrong in either direction survivable: too
+high and the sweep stops early with a caveat, too low and it never started.
 
 Once a journal exists the manifest is frozen, so this figure is chosen once. The
 journal header pins the manifest digest along with the commit, the spec, and both

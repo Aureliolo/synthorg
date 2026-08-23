@@ -313,6 +313,15 @@ def session_spend(
                     record.input_tokens + record.output_tokens for record in dropped
                 ),
             )
+            if all_dropped:
+                # Count them all rather than nothing. The preference exists to
+                # drop a SECOND account of a call, and with no first account
+                # left there is nothing to prefer: these records are the only
+                # account of what the session spent, exactly as they are with
+                # no gateway hosted. Reporting zero would be as wrong as the
+                # double-count, and wrong in the direction nothing later
+                # corrects, since the money is spent either way.
+                counted = records
     return SessionSpend(
         cost=sum(record.cost for record in counted),
         tokens=sum(record.input_tokens + record.output_tokens for record in counted),

@@ -228,6 +228,33 @@ def test_a_marker_does_not_suppress_a_hit_it_is_not_attached_to(
     assert [hit.qualname for hit in hits] == ["offered"]
 
 
+def test_a_roster_named_before_it_is_returned_is_still_a_derivation(
+    write_py: WritePy,
+) -> None:
+    """Splitting the derivation across two statements is the same derivation.
+
+    Reading only the return expression lets one line build the roster and the
+    next hand it back, which is the shape a refactor reaches for first.
+    """
+    path = write_py(
+        "def roles(agents):\n"
+        "    roles = {agent.role for agent in agents}\n"
+        "    return tuple(sorted(roles))\n"
+    )
+    hits = _MODULE._scan_file(path, "sample.py")
+    assert [hit.qualname for hit in hits] == ["roles"]
+
+
+def test_a_name_bound_to_something_else_is_not_a_roster(write_py: WritePy) -> None:
+    """The trace is about role comprehensions, not about every local."""
+    path = write_py(
+        "def titles(agents):\n"
+        "    names = {agent.name for agent in agents}\n"
+        "    return tuple(sorted(names))\n"
+    )
+    assert _MODULE._scan_file(path, "sample.py") == []
+
+
 def test_a_function_defined_under_a_conditional_is_still_scanned(
     write_py: WritePy,
 ) -> None:
@@ -325,8 +352,26 @@ def test_violation_returns_one(tmp_path: Path, write_py: WritePy) -> None:
             "def roster_from_agents(agents):\n"
             "    return tuple(sorted({a.role for a in agents}))\n"
         ),
+        # The guard is called, but by a helper the owner never invokes, so the
+        # roster it answers with has not passed through it.
+        (
+            "def roster_from_agents(agents):\n"
+            "    def _unused(role):\n"
+            "        return role_is_gate_role(role)\n"
+            "    return tuple(sorted({a.role for a in agents}))\n"
+        ),
+        # Two definitions: the guarded one is replaced by an unguarded one, and
+        # only the survivor decides what a planner is offered.
+        (
+            "def roster_from_agents(agents):\n"
+            "    kept = {a.role for a in agents if not role_is_gate_role(a.role)}\n"
+            "    return tuple(sorted(kept))\n"
+            "\n"
+            "def roster_from_agents(agents):\n"
+            "    return tuple(sorted({a.role for a in agents}))\n"
+        ),
     ],
-    ids=["present", "function-gone", "guard-gone"],
+    ids=["present", "function-gone", "guard-gone", "guard-unreachable", "shadowed"],
 )
 def test_owner_must_still_enforce(tmp_path: Path, body: str | None) -> None:
     """An owner that stopped excluding gate roles is a configuration error.

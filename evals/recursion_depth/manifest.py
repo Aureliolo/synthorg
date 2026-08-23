@@ -215,10 +215,13 @@ class RecursionDepthManifest(BaseModel):
             by the run itself. Declared rather than inferred, and printed
             beside the figure it produces, because the projection is a model
             and a model whose assumption is hidden reads as a measurement.
-            Deliberately rounded DOWN from what a real tree showed, so the
-            number stays a floor: it is the input to choosing
-            ``max_sessions``, and a floor that reads too high costs an
-            operator nothing while one that reads too low kills a paid run.
+            What it produces is the cost of the FULL tree a cap admits at this
+            branching, which is neither a floor nor a ceiling: a planner that
+            stops short of the cap spends less, and one that branches wider
+            than declared spends more. It is the scenario worth sizing
+            ``max_sessions`` against, because the run that uses its whole cap
+            is the expensive one, and the ceiling is what makes being wrong in
+            either direction survivable.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)

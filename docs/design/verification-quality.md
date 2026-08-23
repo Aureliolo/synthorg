@@ -312,10 +312,19 @@ atomic and due to execute, with titles like "Acceptance suite (verification
 gate)". Nothing rejected it: the no-self-review invariant is a `CHECK` on a
 verdict ROW, and this happens a layer earlier, while the plan is being written.
 
-`engine/decomposition/context.py::roster_from_agents` excludes gate roles, and
-it is the only place that can: `_role_field`, `_roster_guidance` and
-`describe_unroutable_role` are each pure functions over the roster they are
-handed, so all three inherit the answer rather than re-deciding it.
+`engine/decomposition/context.py::roster_from_agents` excludes gate roles from
+what a planner is OFFERED, and it is the only place that can: `_role_field` and
+`_roster_guidance` are pure functions over the roster they are handed, so both
+inherit the answer rather than re-deciding it.
+
+`describe_unroutable_role` is the exception, and deliberately: it calls
+`role_is_gate_role` directly, BEFORE it looks at `available_roles` at all.
+Inheriting there would leave the rule open in the state it most needs to hold.
+An org whose active agents are all judges derives an EMPTY roster, and an empty
+roster means "no roster known" and passes every declared owner, so the filter
+alone would wave through the very role it removed. Asking the question first
+also covers the paths no derivation reaches: an operator editing a plan item's
+owner by hand supplies the role directly.
 `scripts/check_gate_roles_not_assignable.py` holds the tree to one derivation of
 that roster, across `evals/` as well as `src/synthorg/`, because the rule first
 shipped enforced in the product and bypassed in the harness measuring it: the

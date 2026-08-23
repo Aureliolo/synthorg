@@ -292,6 +292,64 @@ def _derives_roster(value: ast.expr) -> bool:
     return False
 
 
+def _own_nodes(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+    """Return every node *scope* itself executes, nested scopes excluded.
+
+    Returns:
+        The nodes reachable without entering another function or class.
+    """
+    found: list[ast.AST] = []
+    stack: list[ast.AST] = list(scope.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+        ):
+            continue
+        found.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _roster_locals(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Return the local names *scope* binds to a role comprehension.
+
+    A derivation split across two statements is the same derivation: naming
+    the comprehension and returning the name is not a different act from
+    returning it directly, and reading only the return expression would let
+    one line break the rule and the next carry it out.
+
+    Returns:
+        Every local name assigned a role collection in this scope's own body.
+    """
+    names: set[str] = set()
+    for node in _own_nodes(scope):
+        if isinstance(node, ast.Assign) and _derives_roster(node.value):
+            names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and node.value is not None
+            and isinstance(node.target, ast.Name)
+            and _derives_roster(node.value)
+        ):
+            names.add(node.target.id)
+    return names
+
+
+def _returns_roster(value: ast.expr, roster_locals: set[str]) -> bool:
+    """Return True iff *value* answers with a roster, named or inline.
+
+    Returns:
+        ``True`` for a role comprehension and for a name bound to one.
+    """
+    if _derives_roster(value):
+        return True
+    inner = _unwrap(value)
+    return isinstance(inner, ast.Name) and inner.id in roster_locals
+
+
 def _returned_values(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Return]:
     """Return every ``return`` belonging to *scope*'s own body.
 
@@ -365,10 +423,22 @@ def _check_owner(project_root: Path) -> None:
     if not owners:
         msg = f"{_OWNER_REL} no longer defines {_OWNER_FUNC}()"
         raise OwnerError(msg)
+    # Exactly one, because a second definition SHADOWS the first and only the
+    # last one executed decides what the roster contains. Accepting the set
+    # would let a guarded definition vouch for an unguarded one that replaced
+    # it, which reads as compliance and answers with judges.
+    if len(owners) != 1:
+        msg = (
+            f"{_OWNER_REL} defines {_OWNER_FUNC}() {len(owners)} times, so which "
+            f"one answers is decided by import order rather than by this gate"
+        )
+        raise OwnerError(msg)
+    # The owner's OWN body, not `ast.walk`: a call sitting in a nested helper
+    # that nothing invokes satisfies a subtree search while the roster the
+    # owner actually returns never passes through the guard at all.
     guarded = any(
         isinstance(node, ast.Call) and _called_name(node) == _OWNER_GUARD
-        for owner in owners
-        for node in ast.walk(owner)
+        for node in _own_nodes(owners[0])
     )
     if not guarded:
         msg = (
@@ -393,8 +463,9 @@ def _scan_file(path: Path, rel: str) -> list[_Hit]:
     for qualname, func in _functions(tree):
         if rel == _OWNER_REL and qualname == _OWNER_FUNC:
             continue
+        roster_locals = _roster_locals(func)
         for stmt in _returned_values(func):
-            if stmt.value is None or not _derives_roster(stmt.value):
+            if stmt.value is None or not _returns_roster(stmt.value, roster_locals):
                 continue
             # Matched anywhere in the statement's line span: a trailing comment
             # on a wrapped return sits on its LAST line, not its first.

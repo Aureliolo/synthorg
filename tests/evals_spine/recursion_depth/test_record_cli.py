@@ -191,18 +191,21 @@ class TestPlanMode:
         assert main([]) == 0
         assert "Recursion-depth recording plan" in capsys.readouterr().out
 
-    def test_it_states_the_session_floor_and_the_ceiling(self) -> None:
+    def test_it_names_the_scenario_and_the_ceiling(self) -> None:
         # A depth sweep's session count is a product of branching factors the
-        # manifest cannot predict, so the figure is a floor and the ceiling is
-        # what actually bounds the spend.
+        # manifest cannot predict, so the figure is what a FULL tree costs at
+        # the declared branching rather than a bound in either direction, and
+        # the ceiling is what actually bounds the spend. Presenting it as a
+        # floor invites an operator to read a number the run can exceed.
         manifest = load_manifest(_MANIFEST)
 
         plan = describe_plan(manifest, _spec())
 
-        assert "at least" in plan
+        assert "full tree" in plan
+        assert "at least" not in plan
         assert str(manifest.max_sessions) in plan
 
-    def test_the_floor_is_derived_from_the_tree_each_cap_admits(self) -> None:
+    def test_the_projection_is_derived_from_the_tree_each_cap_admits(self) -> None:
         """The whole tree is counted, not summarised as a sentence about it.
 
         A figure that scales only with the number of runs is the one an
@@ -213,14 +216,14 @@ class TestPlanMode:
 
         plan = describe_plan(manifest, _spec())
 
-        floor = sum(
+        projected = sum(
             manifest.projected_sessions(cell.depth_cap)
             for cell in planned_cells(manifest)
         )
         per_run = len(planned_cells(manifest)) * (1 + manifest.merge_attempts * 2)
 
-        assert floor > per_run * 10
-        assert f"{floor:,}" in plan
+        assert projected > per_run * 10
+        assert f"{projected:,}" in plan
 
     def test_the_projection_prints_the_assumption_it_rests_on(self) -> None:
         """A model whose input is hidden reads as a measurement."""

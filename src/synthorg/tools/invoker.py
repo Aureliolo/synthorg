@@ -684,6 +684,18 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         if sub_constraint_error is not None:
             return sub_constraint_error
 
+        # Before validation, not after: a transport that corrupts a call
+        # usually destroys the required fields with it, so the schema refuses
+        # the payload first and whatever the tool would have said about the
+        # corruption is never reached.
+        transport_fault = await tool_or_error.transport_fault(tool_call.arguments)
+        if transport_fault is not None:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=transport_fault,
+                is_error=True,
+            )
+
         param_outcome = self._validate_params(tool_or_error, tool_call)
         if isinstance(param_outcome, ToolResult):
             return param_outcome

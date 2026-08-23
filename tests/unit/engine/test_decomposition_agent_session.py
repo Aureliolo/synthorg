@@ -11,6 +11,7 @@ from synthorg.budget.session_budget import SessionCeilings
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition import agent_session_submit as submit_module
 from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
@@ -38,8 +39,14 @@ from synthorg.engine.output_style.provider import (
     current_house_style_provider,
     set_house_style_provider,
 )
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_SESSION_DIGEST_FALLBACK,
+)
+from synthorg.providers.models import ToolCall
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -49,6 +56,13 @@ from tests._shared.scripted_provider import (
 )
 
 pytestmark = pytest.mark.unit
+
+#: The shape a live run produced twice: repeated fields collapsed into nested
+#: text nodes, which is valid JSON carrying no ``subtasks`` at all.
+_MANGLED_ARGS: dict[str, JsonValue] = {
+    "$text": "",
+    "item": {"$text": "</item>", "item": {"$text": ""}},
+}
 
 
 def _task() -> Task:
@@ -427,6 +441,29 @@ class TestSubmitDecompositionPlanTool:
         assert await capture.record_refusal("the plan that comes back") == 1
         assert await capture.record_refusal("the plan that comes back") == 2
 
+    async def test_an_unserialisable_submission_still_gets_a_digest(self) -> None:
+        """A digest that cannot be computed must not collide with a real one.
+
+        These arguments are already decoded JSON, so this should not happen; it
+        is logged for the provider that makes it happen anyway, and the
+        submission was going to be refused regardless.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        circular: dict[str, object] = {}
+        circular["self"] = circular
+
+        digest = submit_module._submission_digest
+        with structlog.testing.capture_logs() as cap:
+            first = await capture.record_refusal(digest(circular))
+            second = await capture.record_refusal(digest(circular))
+
+        assert (first, second) == (1, 2)
+        assert [
+            entry
+            for entry in cap
+            if entry.get("event") == DECOMPOSITION_SESSION_DIGEST_FALLBACK
+        ]
+
     async def test_key_order_alone_is_not_a_correction(self) -> None:
         """A serialiser that reordered keys resubmitted the same plan."""
         capture = PlanCapture(sid("obj-1"))
@@ -461,16 +498,37 @@ class TestSubmitDecompositionPlanTool:
         capture = PlanCapture(sid("obj-1"))
         tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
 
-        result = await tool.execute(
-            arguments={
-                "$text": "",
-                "item": {"$text": "</item>", "item": {"$text": ""}},
-            }
+        detail = await tool.transport_fault(_MANGLED_ARGS)
+
+        assert detail is not None
+        assert "JSON array" in detail
+        assert "serialisation fault" in detail
+        assert capture.plan is None
+
+    async def test_the_collapse_is_answered_before_the_schema_refuses_it(
+        self,
+    ) -> None:
+        """Driven through the invoker, because the ORDER is the whole fix.
+
+        The collapse destroys ``subtasks``, which the schema requires, so
+        validation refuses the payload before ``execute`` runs. Detection sited
+        there is unreachable, and a test calling ``execute`` directly agrees
+        with it: the model receives a generic missing-parameter error naming a
+        field it filled in correctly.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        invoker = ToolInvoker(ToolRegistry([tool]))
+
+        result = await invoker.invoke(
+            ToolCall(id="call-1", name=tool.name, arguments=_MANGLED_ARGS)
         )
 
         assert result.is_error
         assert "JSON array" in result.content
-        assert "serialisation fault" in result.content
+        # The schema error is what this replaces, so its wording must not be
+        # what came back.
+        assert "required property" not in result.content
         assert capture.plan is None
 
 

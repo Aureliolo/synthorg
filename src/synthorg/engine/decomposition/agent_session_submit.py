@@ -11,6 +11,7 @@ session correct and resubmit on its next turn instead of ending on it.
 import asyncio
 import hashlib
 import json
+from collections.abc import Mapping
 from typing import Final, cast, override
 
 from pydantic import JsonValue
@@ -168,6 +169,30 @@ class SubmitDecompositionPlanTool(BaseTool):
         self._available_roles = available_roles
 
     @override
+    async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
+        """Answer a collapsed call before the schema gets to refuse it.
+
+        The collapse destroys ``subtasks``, so schema validation rejects the
+        payload and ``execute`` is never reached: answering from there put the
+        correction on a path nothing could take. The refusal the model would
+        otherwise receive names a required field it filled in correctly, which
+        sends it to rewrite a plan that was never the problem.
+
+        Returns:
+            The re-serialisation instruction, or ``None`` when the arguments
+            arrived intact.
+        """
+        mangled = mangled_serialisation_hint(arguments)
+        if mangled is None:
+            return None
+        logger.warning(
+            DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
+            parent_task_id=self._parent_task_id,
+            mangled_calls=await self._capture.record_mangled(),
+        )
+        return mangled
+
+    @override
     async def execute(
         self,
         *,
@@ -179,18 +204,6 @@ class SubmitDecompositionPlanTool(BaseTool):
             A success result naming the accepted subtask count, or an error
             result describing why the plan was rejected so the agent retries.
         """
-        mangled = mangled_serialisation_hint(arguments)
-        if mangled is not None:
-            # Answered before parsing, because the plan was never read: the
-            # transport flattened the call, so a schema error here would name a
-            # field the model filled in correctly and send it to rewrite work
-            # that was never wrong.
-            logger.warning(
-                DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
-                parent_task_id=self._parent_task_id,
-                mangled_calls=await self._capture.record_mangled(),
-            )
-            return ToolExecutionResult(content=mangled, is_error=True)
         try:
             plan = args_to_decomposition_plan(
                 cast("dict[str, JsonValue]", arguments),

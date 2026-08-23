@@ -191,14 +191,15 @@ def check_declared_families(
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
     """Render the matrix a record run would execute.
 
-    The session count is a floor rather than an estimate, because the branching
-    a planner chooses is not knowable from the manifest, which is exactly why
-    ``max_sessions`` exists. The floor is derived from the TREE each cap admits
-    rather than from the size of the matrix: a depth sweep's sessions come from
-    the tree, so a matrix-shaped figure is the one an operator sizes a ceiling
-    from and loses a paid run to. Against a real cap-3 cost of about 158
-    sessions PER CELL, a ceiling of 30 bought a planned 85-leaf tree, six built
-    units and nothing measured.
+    The session count is what a FULL tree costs at the declared branching, not
+    a bound in either direction: a planner that stops short of the cap spends
+    less, and one that branches wider spends more, neither of which the
+    manifest can predict, which is exactly why ``max_sessions`` exists. It is
+    derived from the TREE each cap admits rather than from the size of the
+    matrix: a depth sweep's sessions come from the tree, so a matrix-shaped
+    figure is the one an operator sizes a ceiling from and loses a paid run to.
+    Against a real cap-3 cost of about 158 sessions PER CELL, a ceiling of 30
+    bought a planned 85-leaf tree, six built units and nothing measured.
 
     The assumption is printed beside the figure rather than buried, because a
     model whose input is hidden reads as a measurement.
@@ -211,7 +212,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         A human-readable plan.
     """
     cells = planned_cells(manifest)
-    floor = sum(manifest.projected_sessions(cell.depth_cap) for cell in cells)
+    projected = sum(manifest.projected_sessions(cell.depth_cap) for cell in cells)
     per_cell = {depth: manifest.projected_sessions(depth) for depth in manifest.depths}
     lines = [
         "Recursion-depth recording plan",
@@ -228,7 +229,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         "",
         f"  runs          : {len(cells)}",
         (
-            f"  sessions      : at least {floor:,} "
+            f"  sessions      : {projected:,} for a full tree "
             "("
             + ", ".join(f"cap {d}: {per_cell[d]:,}/cell" for d in manifest.depths)
             + ")"
