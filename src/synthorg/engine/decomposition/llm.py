@@ -370,11 +370,15 @@ class LlmDecompositionStrategy:
             f"LLM decomposition retries exhausted after "
             f"{attempts} attempts for task {task.id!r}{mangled}{cause}"
         )
+        # Structured rather than the assembled message: the three facts a
+        # reader needs are separately queryable, and ``last_error`` is already
+        # the redacted description its own handler produced.
         logger.warning(
             DECOMPOSITION_FAILED,
             task_id=str(task.id),
-            error=msg,
+            attempts=attempts,
             mangled_rounds=mangled_rounds,
+            error=last_error,
         )
         raise DecompositionError(msg)
 

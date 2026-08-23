@@ -140,7 +140,7 @@ refused four times and converged on the fifth, surviving only because the sweep
 arms six. The setting counts RETRIES and the first ask is not one, so a value of
 N allows N+1 attempts: the shipped default of two allowed three, and that
 subtree would have failed two attempts short of the plan it went on to produce.
-A dogfood round records exactly that as "the replan then
+An earlier round records exactly that as "the replan then
 exhausted its decomposition retries". The product default is now five, so the
 gap the sweep opens is a margin rather than the difference between planning and
 not.
@@ -358,7 +358,7 @@ is being relied on.
 The floor is derived from the TREE each cap admits, and this is the second
 attempt at it. The first counted one session per cell plus its merge attempts
 and then said "and one per leaf and per node on top of that", leaving the entire
-tree uncomputed: for the recorded matrix it printed 42 against a real cost of
+tree out of the arithmetic: for the recorded matrix it printed 42 against a real cost of
 roughly 158 sessions PER CELL, so a ceiling chosen from it was about four times
 too small. Launched at 30, that run planned an 85-leaf tree, built six units and
 stopped with **zero cells measured**, which is the whole failure mode
@@ -376,7 +376,7 @@ choosing `max_sessions`, and a floor that reads too low is the one that kills a
 paid run part-way.
 
 Once a journal exists the manifest is frozen, so this figure is chosen once. The
-journal header pins the manifest digest along with the commit, the spec and both
+journal header pins the manifest digest along with the commit, the spec, and both
 pairs, and a resume against a changed manifest is refused rather than mixing two
 matrices into one curve. `--max-sessions` is the only lever a resume has, and it
 works precisely because it is folded into the manifest object without touching

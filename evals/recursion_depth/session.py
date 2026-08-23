@@ -289,10 +289,11 @@ def session_spend(
             # of a call presumes a second survives, and this session would be
             # carried forward as free having spent whatever the dropped set
             # cost, in the rows that are the only record of it.
-            emit = logger.error if not counted else logger.info
+            all_dropped = not counted
+            emit = logger.error if all_dropped else logger.info
             event = (
                 EVALS_RECURSION_SPEND_ALL_DROPPED
-                if not counted
+                if all_dropped
                 else EVALS_RECURSION_SPEND_DEDUPED
             )
             emit(
