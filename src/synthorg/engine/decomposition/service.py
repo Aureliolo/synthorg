@@ -13,6 +13,7 @@ from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
+from synthorg.engine.decomposition._ceilings import ceiling_seconds, timeout_failure
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
 from synthorg.engine.decomposition._recursion import (
     RecursionBudget,
@@ -34,12 +35,11 @@ from synthorg.engine.decomposition.protocol import (
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
-from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
-    DECOMPOSITION_CEILING_UNREADABLE,
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_DEPTH_EXHAUSTED,
     DECOMPOSITION_FAILED,
@@ -48,7 +48,6 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SUBTASK_CREATED,
     DECOMPOSITION_SUBTASK_OVERSIZED,
 )
-from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -232,14 +231,9 @@ class DecompositionService:
             raise
 
     def _timeout_failure(
-        self,
-        task: Task,
-        exc: TimeoutError,
-        *,
-        expired: bool,
-        ceiling: str,
+        self, task: Task, exc: TimeoutError, *, expired: bool, ceiling: str
     ) -> DecompositionError:
-        """Classify a ``TimeoutError`` and log it, returning what to raise.
+        """Classify a ``TimeoutError`` against the scope that caught it.
 
         Args:
             task: The task being decomposed, for the log line.
@@ -248,22 +242,15 @@ class DecompositionService:
             ceiling: Which ceiling this site guards, for the log line.
 
         Returns:
-            The error to raise: the non-retryable type when the ceiling fired,
-            the ordinary one when something inside timed out on its own.
+            What to raise.
         """
-        msg = (
-            f"Decomposition outran its {ceiling} wall-clock ceiling"
-            if expired
-            else "A call inside the decomposition timed out"
-        )
-        logger.warning(
-            DECOMPOSITION_FAILED,
+        return timeout_failure(
+            exc,
             task_id=str(task.id),
             strategy=self._strategy.get_strategy_name(),
-            error_type=type(exc).__name__,
-            error=msg,
+            expired=expired,
+            ceiling=ceiling,
         )
-        return DecompositionTimeoutError(msg) if expired else DecompositionError(msg)
 
     def set_config_resolver(self, resolver: ConfigResolverProtocol) -> None:
         """Adopt the resolver the ceiling is read through.
@@ -279,57 +266,20 @@ class DecompositionService:
         """
         self._config_resolver = resolver
 
-    async def _ceiling_seconds(self, key: str, default: float) -> float:
-        """Read the wall-clock ceiling *key* in force for this decomposition.
-
-        Read per call rather than captured at construction, so an operator
-        raising a ceiling for a slow provider applies to the next decomposition
-        instead of the next restart.
-
-        Only the two failures the resolver documents fall back: the key is not
-        registered, or its stored value is not a float. Both are facts about
-        the setting, unchanged until someone changes it, and the default is the
-        honest answer to either. Anything else, a dead settings store above
-        all, propagates: it is transient, the ceiling is re-read per node of a
-        recursion, and swallowing it silently substitutes a bound nobody chose
-        for as long as the store stays down. A sweep arming a ceiling in the
-        tens of thousands of seconds and quietly getting the default back is
-        exactly the failure the arming exists to prevent.
-
-        Args:
-            key: The coordination setting naming the ceiling.
-            default: The definition's own default, in force when there is no
-                resolver (a harness) or the setting cannot answer.
-
-        Returns:
-            The ceiling, in seconds.
-        """
-        resolver = self._config_resolver
-        if resolver is None:
-            return default
-        try:
-            return await resolver.get_float("coordination", key)
-        except (SettingNotFoundError, ValueError) as exc:
-            # lint-allow: swallow-ok -- a ceiling the setting cannot answer for
-            # is the definition's default by construction, and a bound still
-            # stands, so the unbounded wait this exists to prevent cannot happen
-            logger.warning(
-                DECOMPOSITION_CEILING_UNREADABLE,
-                setting=key,
-                fallback_seconds=default,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return default
-
     async def _timeout_seconds(self) -> float:
         """Read the per-session ceiling in force for this decomposition.
 
+        Read per call rather than captured at construction, so an operator
+        raising it for a slow provider applies to the next decomposition
+        instead of the next restart.
+
         Returns:
             The ceiling, in seconds.
         """
-        return await self._ceiling_seconds(
-            "decomposition_timeout_seconds", _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+        return await ceiling_seconds(
+            self._config_resolver,
+            "decomposition_timeout_seconds",
+            _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
         )
 
     async def _tree_timeout_seconds(self) -> float:
@@ -338,8 +288,10 @@ class DecompositionService:
         Returns:
             The ceiling, in seconds.
         """
-        return await self._ceiling_seconds(
-            "decomposition_tree_timeout_seconds", _DEFAULT_TREE_TIMEOUT_SECONDS
+        return await ceiling_seconds(
+            self._config_resolver,
+            "decomposition_tree_timeout_seconds",
+            _DEFAULT_TREE_TIMEOUT_SECONDS,
         )
 
     async def _do_decompose(
