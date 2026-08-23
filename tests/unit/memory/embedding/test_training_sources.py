@@ -11,7 +11,7 @@ and artifact repos); only the LLM-driven capture upstream is out of scope here.
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import Final, override
 
 import pytest
 
@@ -240,6 +240,7 @@ class _CancelsOnNthCheck(CancellationToken):
         self.seen = 0
         self.stages: list[str] = []
 
+    @override
     def check(self, *, stage: str) -> None:
         """Count this check, cancel once the target is reached, then defer.
 

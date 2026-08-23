@@ -236,8 +236,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 600,
-      "loc": 516,
-      "ratio": 0.86,
+      "loc": 523,
+      "ratio": 0.872,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -914,8 +914,8 @@
     },
     "src/synthorg/memory/embedding/fine_tune.py": {
       "cap": 1100,
-      "loc": 945,
-      "ratio": 0.859,
+      "loc": 949,
+      "ratio": 0.863,
       "tier": "complex_service"
     },
     "src/synthorg/memory/embedding/fine_tune_models.py": {
@@ -929,6 +929,12 @@
       "loc": 572,
       "ratio": 0.953,
       "tier": "orchestrator"
+    },
+    "src/synthorg/memory/embedding/training_sources.py": {
+      "cap": 500,
+      "loc": 403,
+      "ratio": 0.806,
+      "tier": "code"
     },
     "src/synthorg/memory/retrieval/hierarchical/supervisor.py": {
       "cap": 500,
@@ -1783,7 +1789,7 @@
     "synthorg.llm.model_pins": 44,
     "synthorg.llm.prompt_purpose": 58,
     "synthorg.memory.embedding.fine_tune_models": 24,
-    "synthorg.memory.errors": 26,
+    "synthorg.memory.errors": 27,
     "synthorg.memory.injection": 20,
     "synthorg.memory.models": 81,
     "synthorg.memory.protocol": 77,
