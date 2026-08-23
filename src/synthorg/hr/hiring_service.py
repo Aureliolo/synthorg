@@ -19,7 +19,7 @@ from synthorg.hr.errors import (
     HiringError,
     InvalidCandidateError,
 )
-from synthorg.hr.hire_model_proposal import HireModelProposal, ProviderCatalogue
+from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.hr.hiring_approval_submission import (
     propose_models,
     recommended_ref,
@@ -37,14 +37,14 @@ from synthorg.hr.hiring_instantiation import (
     resolve_hire_model,
     try_onboard,
 )
-from synthorg.hr.hiring_request_durability import read_all, save_request
+from synthorg.hr.hiring_request_durability import merge_durable_into, save_request
 from synthorg.hr.hiring_request_queries import (
     approved_not_instantiated,
     by_approval_id,
     in_flight_for_role,
 )
 from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
-from synthorg.hr.models import CandidateCard, HiringRequest
+from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
@@ -61,7 +61,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_REQUEST_DISCARDED,
     HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
-    HR_HIRING_REQUESTS_HYDRATED,
 )
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
@@ -173,21 +172,13 @@ class HiringService:
 
     async def _hydrate_locked(self) -> None:
         """Perform the hydration pass; caller holds ``_hydrate_lock``."""
-        if self._request_repo is None:
-            # Nothing durable to reflect, so the in-memory set is already
-            # the whole truth and a later pass has nothing to recover.
-            self._hydrated = True
-            return
-        loaded = await read_all(self._request_repo)
-        # Merged, not replaced, and the in-memory entry wins: the paginated
-        # read above spans awaits, and a request created or transitioned
-        # during it is newer than anything the durable pages carry. Replacing
-        # the mapping would drop it, and the hire it represents would then be
-        # opened a second time by whatever next asked whether one was
-        # in flight.
-        self._requests = {**loaded, **self._requests}
+        # With no repository the in-memory set is already the whole truth,
+        # so the pass is done and a later one has nothing to recover.
+        if self._request_repo is not None:
+            self._requests = await merge_durable_into(
+                self._request_repo, self._requests
+            )
         self._hydrated = True
-        logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 
     async def _store(
         self,
@@ -380,7 +371,11 @@ class HiringService:
             # a model became configurable. Enterable, no exit, nothing watching.
             # Refusing instead leaves the staffing reconciler's next pass free
             # to open a real hire the moment one becomes proposable.
-            proposal = await self._propose_models(candidate)
+            proposal = await propose_models(
+                candidate,
+                catalogue=self._provider_catalogue,
+                resolver=self._config_resolver,
+            )
             require_proposable(request, proposal)
 
             previous_status = request.status
@@ -459,19 +454,6 @@ class HiringService:
         )
         return updated
 
-    async def _propose_models(self, candidate: CandidateCard) -> HireModelProposal:
-        """Offer the pairs this candidate could be hired onto.
-
-        Returns:
-            The proposal, empty and carrying its reason when the operator has
-            configured nothing this role can use.
-        """
-        return await propose_models(
-            candidate,
-            catalogue=self._provider_catalogue,
-            resolver=self._config_resolver,
-        )
-
     async def bind_model(self, request_id: str, model_ref: str) -> HiringRequest:
         """Record the pair an operator picked on the approval.
 
@@ -510,15 +492,7 @@ class HiringService:
             )
             raise HiringError(msg)
         async with self._request_locks.acquire(request_id):
-            request = self._requests.get(request_id)
-            if request is None:
-                msg = f"Hiring request {request_id!r} not found"
-                logger.warning(
-                    HR_HIRING_REQUEST_NOT_FOUND,
-                    request_id=request_id,
-                    error=msg,
-                )
-                raise HiringError(msg)
+            request = self._get_request(request_id)
             updated = request.model_copy(
                 update={"bound_model_ref": NotBlankStr(serialize_model_ref(parsed))}
             )

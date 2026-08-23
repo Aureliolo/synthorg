@@ -12,13 +12,17 @@ runs inside a request lock the rest of the pipeline queues behind.
 """
 
 import asyncio
+from collections.abc import Mapping
 from typing import Final
 
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.hr.errors import HiringError
 from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.hr import HR_HIRING_PERSIST_FAILED
+from synthorg.observability.events.hr import (
+    HR_HIRING_PERSIST_FAILED,
+    HR_HIRING_REQUESTS_HYDRATED,
+)
 from synthorg.persistence.hiring_request_protocol import HiringRequestRepository
 
 logger = get_logger(__name__)
@@ -52,6 +56,30 @@ async def read_all(repo: HiringRequestRepository) -> dict[str, HiringRequest]:
             break
         offset += _HYDRATE_PAGE_SIZE
     return loaded
+
+
+async def merge_durable_into(
+    repo: HiringRequestRepository,
+    live: Mapping[str, HiringRequest],
+) -> dict[str, HiringRequest]:
+    """Read the durable set and fold *live* over it.
+
+    Merged rather than replaced, and the live entry wins: the paginated read
+    spans awaits, so a request created or transitioned during it is newer than
+    anything the durable pages carry. Replacing the mapping would drop it, and
+    the hire it represents would then be opened a second time by whatever next
+    asked whether one was in flight.
+
+    Args:
+        repo: The durable store.
+        live: The in-memory set, which takes precedence on a key collision.
+
+    Returns:
+        The merged set, keyed by request id.
+    """
+    loaded = await read_all(repo)
+    logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
+    return {**loaded, **live}
 
 
 async def save_request(
@@ -91,4 +119,4 @@ async def save_request(
             raise HiringError(msg) from exc
 
 
-__all__ = ["read_all", "save_request"]
+__all__ = ["merge_durable_into", "read_all", "save_request"]

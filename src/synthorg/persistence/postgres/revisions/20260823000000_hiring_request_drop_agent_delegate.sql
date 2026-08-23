@@ -40,5 +40,6 @@ WHERE payload ? 'agent_delegate';
 
 UPDATE approvals
 SET status = 'expired'
-WHERE status = 'pending'
-      AND action_type LIKE 'scaling:%';
+WHERE
+    status = 'pending'
+    AND action_type LIKE 'scaling:%';
