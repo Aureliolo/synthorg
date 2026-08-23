@@ -152,7 +152,7 @@ async def test_tree_ceiling_admits_many_sessions() -> None:
 
     A tree recurses across many sessions, so the outer ceiling has to admit
     many of the inner one. Asserting the relationship rather than a number is
-    what keeps this true if either ceiling is retuned.
+    what keeps this true if either ceiling is re-tuned.
     """
     written = await _armed()
 
