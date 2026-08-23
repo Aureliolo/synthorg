@@ -23,6 +23,7 @@ from evals.recursion_depth.manifest import ModelPair
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
@@ -99,12 +100,16 @@ class SweepRoster:
     def roles(self) -> tuple[NotBlankStr, ...]:
         """The roles the planner may assign an owner from.
 
+        Through the product's own answer rather than a set comprehension of this
+        module's own, which is what let ``Completion Reviewer`` into the schema
+        enum the sweep's planner is offered: the reviewers ARE staffed, so any
+        rule reading the roster without asking what a role confers offers a
+        judge as an executor.
+
         Returns:
-            Each staffed role once, sorted.
+            Each staffed role once, sorted, gate roles excluded.
         """
-        return tuple(
-            sorted({agent.role for agent in (*self.builders, *self.reviewers)})
-        )
+        return roster_from_agents((*self.builders, *self.reviewers))
 
 
 def _identity(*, slug: str, name: str, role: str, pair: ModelPair) -> AgentIdentity:

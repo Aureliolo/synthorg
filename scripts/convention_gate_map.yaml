@@ -285,6 +285,11 @@ mandatory_rules:
     header: Roster-Held Gate Roles
     gate: scripts/check_no_synthetic_agent_identity.py
 
+  - id: claude-md::gate-roles-are-not-assignable
+    file: CLAUDE.md
+    header: Gate Roles Are Not Assignable
+    gate: scripts/check_gate_roles_not_assignable.py
+
   - id: claude-md::no-bound-pair-rewrite
     file: CLAUDE.md
     header: No Bound-Pair Rewrite

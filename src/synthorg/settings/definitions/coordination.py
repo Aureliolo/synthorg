@@ -419,7 +419,7 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_max_retries",
         type=SettingType.INTEGER,
-        default="2",
+        default="5",
         description=(
             "How many times a refused decomposition is re-asked for before"
             " the initiative fails. Each attempt is a self-correction, not a"
@@ -428,7 +428,15 @@ _r.register(
             " and raising this lets it finish. Worth raising for a model that"
             " plans well but is loose about the schema; the cost of the extra"
             " attempt is one planning call, against an initiative that fails"
-            " outright without it."
+            " outright without it. The default is five because a measured"
+            " subtree was refused four times and converged on the fifth, and"
+            " the total number of attempts is"
+            " one more than this (the first ask is not a retry), so five"
+            " leaves a single attempt of headroom over the worst case actually"
+            " observed. At the previous default of two, three attempts in all,"
+            " that subtree would have failed two attempts short of the plan it"
+            " went on to produce, and losing a whole initiative costs far more"
+            " than the planning calls that would have finished it."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,

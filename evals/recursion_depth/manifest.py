@@ -24,6 +24,7 @@ expected flat and are cheap; the transition ARIES reports sits at 3 to 4, which
 is where samples are worth paying for.
 """
 
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Final, Self
@@ -44,6 +45,11 @@ MIN_DEPTH: Final[int] = 1
 
 #: The deepest cap the sweep records.
 MAX_DEPTH: Final[int] = 6
+
+#: An assembly costs a merge session and the review that follows it. Two in
+#: BOTH arms by construction, since the ungated arm spends the identical budget
+#: blindly so repair cannot win by spending more.
+_SESSIONS_PER_ASSEMBLY: Final[int] = 2
 
 
 class Arm(StrEnum):
@@ -115,7 +121,9 @@ class ModelPair(BaseModel):
         return f"{self.provider}/{self.model_id}"
 
     @classmethod
-    def of(cls, identity: AgentIdentity) -> ModelPair:
+    def of(
+        cls, identity: AgentIdentity, declared: Sequence[ModelPair] = ()
+    ) -> ModelPair:
         """Read the pair an agent actually dispatches on.
 
         Read off the identity rather than off the manifest, because the
@@ -124,11 +132,23 @@ class ModelPair(BaseModel):
         failure that would bias the gated arm toward the null while every
         manifest-level field still read correctly.
 
+        ``family`` is the exception, because an ``AgentIdentity`` has no such
+        field: it is looked up in *declared* by exact ``provider/model_id``
+        key, never derived from the provider, since an aggregating connection
+        serves many families through one endpoint. Without this every per-unit
+        record wrote ``family: null`` while the manifest claimed
+        ``cross_family``, so the one claim a gated result rests on was
+        evidenced nowhere in the ledger. A pair matching nothing declared keeps
+        ``None``, which is itself the finding: something came up on a pair the
+        manifest never named.
+
         Args:
             identity: The agent whose binding is wanted.
+            declared: The manifest's own pairs, which carry the families.
 
         Returns:
-            Its ``(provider, model)`` pair and the rung it is graded at.
+            Its ``(provider, model)`` pair, the rung it is graded at, and the
+            family declared for it.
 
         Raises:
             RecursionDepthCapabilityUnresolvedError: The identity carries no
@@ -144,10 +164,18 @@ class ModelPair(BaseModel):
                 f"recorded"
             )
             raise RecursionDepthCapabilityUnresolvedError(msg)
+        provider = NotBlankStr(identity.model.provider)
+        model_id = NotBlankStr(identity.model.model_id)
+        families = {
+            (pair.provider, pair.model_id): pair.family
+            for pair in declared
+            if pair.family is not None
+        }
         return cls(
-            provider=NotBlankStr(identity.model.provider),
-            model_id=NotBlankStr(identity.model.model_id),
+            provider=provider,
+            model_id=model_id,
             capability=identity.model.capability,
+            family=families.get((provider, model_id)),
         )
 
 
@@ -182,6 +210,18 @@ class RecursionDepthManifest(BaseModel):
         max_sessions: The whole sweep's session ceiling. A depth sweep's
             session count is a product of branching factors nobody can predict
             from the manifest alone, and the cost of being wrong is spend.
+        projected_branching: How many subtasks a planning session is assumed
+            to produce, used ONLY to project the bill before a run and never
+            by the run itself. Declared rather than inferred, and printed
+            beside the figure it produces, because the projection is a model
+            and a model whose assumption is hidden reads as a measurement.
+            What it produces is the cost of the FULL tree a cap admits at this
+            branching, which is neither a floor nor a ceiling: a planner that
+            stops short of the cap spends less, and one that branches wider
+            than declared spends more. It is the scenario worth sizing
+            ``max_sessions`` against, because the run that uses its whole cap
+            is the expensive one, and the ceiling is what makes being wrong in
+            either direction survivable.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -198,6 +238,38 @@ class RecursionDepthManifest(BaseModel):
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
+    projected_branching: int = Field(ge=2, le=50)
+
+    def projected_sessions(self, depth_cap: int) -> int:
+        """How many sessions one cell at *depth_cap* is expected to cost.
+
+        A cap of ``d`` admits ``d`` levels of PLANNING (a node plans at
+        ``current_depth`` 0 through ``d - 1``, since ``has_room`` asks whether
+        ``current_depth + 1 < max_depth``), so at branching ``b`` the tree
+        holds ``b ** d`` leaves and ``(b ** d - 1) / (b - 1)`` nodes that
+        planned. Every node that planned also assembles what it planned, and an
+        assembly costs TWO sessions rather than one: the merge and the review
+        that follows it, in both arms by construction.
+
+        The tree is where a depth sweep's sessions come from, so a figure
+        scaling only with the number of runs is the one an operator sizes
+        ``max_sessions`` from and loses a paid run to. A real cap-3 run cost
+        about 158 sessions; a ceiling of 30, chosen against a matrix-shaped
+        figure of 42, bought a whole planned tree, six built units and nothing
+        measured.
+
+        Args:
+            depth_cap: The cap this cell runs at.
+
+        Returns:
+            The projected session count for one cell.
+        """
+        branching = self.projected_branching
+        # Annotated because ``int ** int`` widens to Any: the exponent could be
+        # negative, and this one is bounded at one by the caller's own field.
+        leaves: int = branching**depth_cap
+        planned = (leaves - 1) // (branching - 1)
+        return planned + leaves + _SESSIONS_PER_ASSEMBLY * planned
 
     @model_validator(mode="after")
     def _validate(self) -> Self:

@@ -33,7 +33,8 @@ from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
-    artifacts_present,
+    probe_artifacts,
+    produced_nothing,
     run_session,
 )
 from synthorg.core.agent import AgentIdentity
@@ -41,6 +42,7 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -130,8 +132,8 @@ class MergeOutcome:
     Attributes:
         workspace: The assembled tree, which its own parent assembles next and
             which, at the root, is what the held-out oracle grades.
-        delivered: Whether the declared paths exist and the merged tree's own
-            tests pass.
+        delivered: Whether an attempt changed something the node declared and
+            the merged tree's own tests pass.
         attempts: Sessions the merge consumed, repair rounds included.
         turns: Agent turns across the assembling sessions. A review's turns
             are not observable through the gate's dispatch seam, which answers
@@ -148,6 +150,9 @@ class MergeOutcome:
         verdict: The last verdict taken, absent in the ungated arm.
         parked: Whether the gate escalated with nobody to escalate to.
         amendments: How many child-interface changes the agent recorded.
+        undeclared_paths: Declared paths absent from the assembled tree.
+            Diagnosis, never a verdict, for the reason the leaf's own field
+            says.
         detail: Why it is not delivered, for a human reading the run.
     """
 
@@ -162,6 +167,7 @@ class MergeOutcome:
     verdict: str | None = None
     parked: bool = False
     amendments: int = 0
+    undeclared_paths: tuple[str, ...] = ()
     detail: str = ""
 
 
@@ -293,6 +299,11 @@ async def run_merge(
     """
     # Offloaded: a whole-tree copytree per child, on the gateway's loop.
     await asyncio.to_thread(mount_children, plan.workspace, plan.pieces)
+    # After the children are mounted and before the first attempt, so what a
+    # child already delivered is not credited to the assembly that received it.
+    baseline = await asyncio.to_thread(
+        probe_artifacts, _attempt_task(plan, ()), plan.workspace
+    )
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
@@ -327,7 +338,11 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    detail = await _undelivered_reason(deps, plan, turns=turns)
+    detail = await _undelivered_reason(deps, plan, turns=turns, baseline=baseline)
+    amendments = await asyncio.to_thread(count_amendments, plan.workspace)
+    final = await asyncio.to_thread(
+        probe_artifacts, _attempt_task(plan, ()), plan.workspace
+    )
     return MergeOutcome(
         workspace=plan.workspace,
         delivered=not detail,
@@ -335,11 +350,12 @@ async def run_merge(
         turns=turns,
         cost=cost,
         tokens=tokens,
-        executor=ModelPair.of(plan.owner),
+        executor=ModelPair.of(plan.owner, deps.declared_pairs),
         reviewer=review.reviewer,
         verdict=review.verdict,
         parked=review.parked,
-        amendments=count_amendments(plan.workspace),
+        amendments=amendments,
+        undeclared_paths=final.missing,
         detail=detail,
     )
 
@@ -424,7 +440,9 @@ def _deliverable_summary(plan: MergePlan) -> str:
     )
 
 
-async def _undelivered_reason(deps: SweepDeps, plan: MergePlan, *, turns: int) -> str:
+async def _undelivered_reason(
+    deps: SweepDeps, plan: MergePlan, *, turns: int, baseline: ArtifactPresence
+) -> str:
     """Say why the merged tree is not a delivery, or nothing when it is.
 
     A merge whose every attempt took no turn was refused before it began
@@ -435,6 +453,8 @@ async def _undelivered_reason(deps: SweepDeps, plan: MergePlan, *, turns: int) -
         deps: The sweep's injected collaborators.
         plan: The node being assembled.
         turns: Turns across every attempt.
+        baseline: What the workspace said before the first attempt, so the
+            question stays what THIS assembly produced.
 
     Returns:
         The reason, empty when the merge delivered.
@@ -444,8 +464,10 @@ async def _undelivered_reason(deps: SweepDeps, plan: MergePlan, *, turns: int) -
             "no assembly attempt ran a single turn, so nothing was assembled "
             "and this is not an assembly failure"
         )
-    if not artifacts_present(_attempt_task(plan, ()), plan.workspace):
-        return "declared artifacts are missing from the merged tree"
+    if await asyncio.to_thread(
+        produced_nothing, _attempt_task(plan, ()), plan.workspace, baseline
+    ):
+        return "no assembly attempt changed anything the node declared"
     grader = deps.build_grader(plan.workspace)
     passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
     if not passed:

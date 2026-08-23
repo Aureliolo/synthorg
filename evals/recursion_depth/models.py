@@ -94,10 +94,11 @@ class UnitRecord(BaseModel):
             survives here: a drift between the criterion template and the id
             pattern would deflate both halves toward zero and read on the
             chart exactly like a gate that does not help.
-        delivered: Whether it produced its declared artifacts and its own tests
+        delivered: Whether it changed something it declared and its own tests
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
-            merge lost.
+            merge lost. The declared list does not decide this; see
+            ``undeclared_paths``.
         attempts: How many sessions this unit consumed, repair and review
             included, which is the figure the equal-budget check reads.
         turns: Agent turns across the sessions that BUILT. A review's turns are
@@ -126,6 +127,16 @@ class UnitRecord(BaseModel):
             child's interface to make the pieces fit. Contracts do not survive
             implementation, so this is expected to be non-zero; a run reporting
             none is reporting that nothing was integrated.
+        undeclared_paths: Declared paths absent from the finished tree.
+            Diagnosis, and deliberately not a verdict, because the list is the
+            PLANNER's guess rather than the agent's work: it is written per
+            node at whatever granularity the planner chose, so deciding
+            delivery on it makes one output a delivery under a parent's
+            two-entry list and a non-delivery under the leaf's four-entry one.
+            A live run booked 598,585 tokens as no delivery over an absent
+            empty package marker its own passing suite proved it did not need.
+            Recorded because an over-declaring planner is worth seeing, and
+            separated because what it measures is the planner.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -147,6 +158,7 @@ class UnitRecord(BaseModel):
     verdict: NotBlankStr | None = None
     parked: bool = False
     amendments: int = Field(default=0, ge=0)
+    undeclared_paths: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _delivered_units_carry_no_reason(self) -> Self:
@@ -174,11 +186,18 @@ class CellRecord(BaseModel):
     or unavailable (carrying a reason), never both and never neither.
 
     Attributes:
-        depth_cap: The ``max_depth`` this run was allowed.
+        depth_cap: How many LEVELS of planning this run was allowed. The
+            product's ``max_depth`` is that count, not an edge count:
+            ``max_depth=3`` admits levels 0, 1 and 2.
         arm: Gated or ungated.
         repetition: Zero-based index within the cell.
-        achieved_depth: The deepest level the tree actually reached, which is
-            what the primary curve is plotted against.
+        achieved_depth: How many levels the tree actually used, in the SAME
+            unit as ``depth_cap``, so a cap spent in full reads equal to it
+            (``tree.achieved_levels`` owns the conversion). The unit is
+            load-bearing rather than cosmetic: this number IS the experiment's
+            independent variable, and reporting the deepest level's INDEX
+            beside a cap that counts levels makes a tree that used its whole
+            cap of three read as one that stopped a level short.
         units: Every unit of the run, leaves and merges.
         merged_passing: The spec requirements the final merged tree satisfies.
         unavailable_reason: Why this cell has no measurement.
@@ -286,11 +305,10 @@ class CellProgressRecord(BaseModel):
     """One session of one run, on disk the moment it returns.
 
     A cell is hours of sessions and the cell record is written once, at the
-    end, so a cell killed part-way used to leave nothing: not what it built,
-    not what it spent, not the tree it was building against. This is the row
-    that closes that window, and it is the SPEND ledger as well as the progress
-    log, because every session the sweep books is one of these and no session
-    is anything else.
+    end, so without this row a cell killed part-way leaves nothing behind: not
+    what it built, not what it spent, not the tree it was building against.
+    It is the SPEND ledger as well as the progress log, because every session
+    the sweep books is one of these and no session is anything else.
 
     Attributes:
         depth_cap: The ``max_depth`` the run was allowed.

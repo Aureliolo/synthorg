@@ -125,6 +125,25 @@ independent facts about one attempt: the planning failure is why the cell has
 no tree, and this is why the cost the cell already incurred is missing from the
 report. Only a log records it, since the exception is deliberately swallowed so
 the planning failure stays the one the runner classifies on."""
+EVALS_RECURSION_SPEND_DEDUPED: Final[str] = "evals.recursion_depth.spend_deduped"
+"""A session's ledger held more than one account of its calls, and one was read.
+
+With a gateway hosted, every call crosses it and it stamps ``PRODUCTIVE``, so
+anything else on the ledger is a second account of a call already counted; a
+live run journalled a planning unit at twice what it spent. Dropping is logged
+rather than silent because the dropped set is either that duplicate or a call
+that never crossed the gateway, and afterwards only this line tells them apart:
+these session rows are the sweep's spend ledger of record."""
+EVALS_RECURSION_SPEND_ALL_DROPPED: Final[str] = (
+    "evals.recursion_depth.spend_all_dropped"
+)
+"""No account of a session's calls carried the category the gateway stamps.
+
+Not the dedupe above: preferring one account of a call presumes another
+survives, and here none did, so the whole ledger is counted instead and the
+spend is right either way. Loud regardless, because the premise that every call
+crosses the hosted gateway did not hold for this session, and that is a fact
+about the run's wiring which nothing else would report."""
 EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
 EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
 EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"

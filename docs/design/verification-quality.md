@@ -287,6 +287,53 @@ not a peer, holding a role no operator could grant, and producing verdicts
 comparable with nothing.
 `scripts/check_no_synthetic_agent_identity.py` is what keeps it out.
 
+#### A gate role is staffed, and it is still not an executor
+
+Holding a gate role confers judging authority, and being staffed is what makes
+that authority real. The two facts pull in opposite directions everywhere a
+roster is read: the reviewers ARE on the roster, so any rule that lists staffed
+roles without asking what a role CONFERS hands the planner a judge to assign
+work to.
+
+That is what shipped. `DecompositionContext.available_roles` became the enum of
+the `required_role` field, which is required on every subtask, and the gate role
+led the list:
+
+```json
+"required_role": {
+  "type": "string",
+  "enum": ["Completion Reviewer", "Developer"],
+  "description": "The role accountable for this item, selected from the roles this organisation staffs."
+}
+```
+
+A live run assigned `Completion Reviewer` to 19 of 102 subtasks, 7 of them
+atomic and due to execute, with titles like "Acceptance suite (verification
+gate)". Nothing rejected it: the no-self-review invariant is a `CHECK` on a
+verdict ROW, and this happens a layer earlier, while the plan is being written.
+
+`engine/decomposition/context.py::roster_from_agents` excludes gate roles from
+what a planner is OFFERED, and it is the only place that can: `_role_field` and
+`_roster_guidance` are pure functions over the roster they are handed, so both
+inherit the answer rather than re-deciding it.
+
+`describe_unroutable_role` is the exception, and deliberately: it calls
+`role_is_gate_role` directly, BEFORE it looks at `available_roles` at all.
+Inheriting there would leave the rule open in the state it most needs to hold.
+An org whose active agents are all judges derives an EMPTY roster, and an empty
+roster means "no roster known" and passes every declared owner, so the filter
+alone would wave through the very role it removed. Asking the question first
+also covers the paths no derivation reaches: an operator editing a plan item's
+owner by hand supplies the role directly.
+`scripts/check_gate_roles_not_assignable.py` holds the tree to one derivation of
+that roster, across `evals/` as well as `src/synthorg/`, because the rule first
+shipped enforced in the product and bypassed in the harness measuring it: the
+recursion-depth sweep's own `SweepRoster.roles` carried a second copy of the
+comprehension, over builders and reviewers alike, and fed it straight to the
+sweep's planner. The consequence there is worse than a mis-assigned item, since
+plan-level verification landing in both arms contaminates the gated-versus-
+ungated contrast at source.
+
 Selection lives in `hr/role_staffing.py`, shared with the red-team gate so the
 two cannot drift, and the rule is declared and logged on every call:
 

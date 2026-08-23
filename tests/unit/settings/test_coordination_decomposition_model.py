@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.engine.decomposition.llm import LlmDecompositionConfig
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings import definitions as _settings_definitions  # noqa: F401
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
@@ -40,6 +41,23 @@ def test_decomposition_model_registered_mutable() -> None:
     assert defn is not None
     assert defn.default == ""
     assert defn.compose_set is False
+
+
+def test_decomposition_retries_allow_the_measured_convergence() -> None:
+    # Pinned to a number rather than read off the code, because the whole point
+    # of the value is the incident behind it: a subtree was refused four times
+    # and converged on the fifth, and the setting counts RETRIES while the loop
+    # runs 1 + max_retries, so five allows six and clears that by one. Reading
+    # the default dynamically would pass at any value, including the two that
+    # would have failed that subtree two attempts short of its plan.
+    defn = get_registry().get("coordination", "decomposition_max_retries")
+    assert defn is not None
+    assert defn.default == "5"
+    assert defn.max_value == 8
+    # The Pydantic fallback serves whenever no resolver is wired, so a
+    # disagreement here plans a different number of attempts depending on
+    # whether the settings store happened to be reachable.
+    assert LlmDecompositionConfig().max_retries == 5
 
 
 def test_routing_policy_defaults_to_llm_judged() -> None:

@@ -11,6 +11,7 @@ from synthorg.budget.session_budget import SessionCeilings
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition import agent_session_submit as submit_module
 from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
@@ -18,6 +19,7 @@ from synthorg.engine.decomposition.agent_session import (
     _stopped_short,
 )
 from synthorg.engine.decomposition.agent_session_submit import (
+    _REMEMBERED_REFUSALS,
     PlanCapture,
     SubmitDecompositionPlanTool,
 )
@@ -37,8 +39,14 @@ from synthorg.engine.output_style.provider import (
     current_house_style_provider,
     set_house_style_provider,
 )
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_SESSION_DIGEST_FALLBACK,
+)
+from synthorg.providers.models import ToolCall
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -48,6 +56,13 @@ from tests._shared.scripted_provider import (
 )
 
 pytestmark = pytest.mark.unit
+
+#: The shape a live run produced twice: repeated fields collapsed into nested
+#: text nodes, which is valid JSON carrying no ``subtasks`` at all.
+_MANGLED_ARGS: dict[str, JsonValue] = {
+    "$text": "",
+    "item": {"$text": "</item>", "item": {"$text": ""}},
+}
 
 
 def _task() -> Task:
@@ -384,6 +399,137 @@ class TestSubmitDecompositionPlanTool:
         await tool.execute(arguments=single)
         assert capture.plan is not None
         assert len(capture.plan.subtasks) == 1
+
+    async def test_an_unchanged_resubmission_is_refused_differently(self) -> None:
+        """Two of five repair rounds in a live run were byte-identical repeats.
+
+        Answering the second with the wording that already failed to land buys
+        the same turn again, so the refusal names the repeat and asks for a
+        specific change instead of "fix the issue".
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        rejected: dict[str, object] = dict(_self_dependent_plan_args())
+
+        first = await tool.execute(arguments=dict(rejected))
+        second = await tool.execute(arguments=dict(rejected))
+
+        assert first.is_error
+        assert second.is_error
+        assert "byte-identical" not in first.content
+        assert "byte-identical" in second.content
+        assert "Do not resend this plan" in second.content
+        # The reason still travels: a reframing that dropped it would leave the
+        # agent knowing only that it repeated itself.
+        assert "cannot depend on itself" in second.content
+        assert capture.plan is None
+
+    async def test_a_repeat_still_reads_as_a_repeat_past_the_cap(self) -> None:
+        """The remembered set is bounded by eviction, not by giving up.
+
+        Declining to record once the set is full costs every answer after it,
+        so a model that had already cycled through that many distinct bad plans
+        could resend one verbatim for ever and be told each time that it was
+        new. Evicting the oldest instead costs only the answer nobody is still
+        waiting on. What a bounded set cannot do is remember a digest across
+        that many newer ones, and nothing here asks it to.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        for index in range(_REMEMBERED_REFUSALS):
+            assert await capture.record_refusal(f"exhausted-{index}") == 1
+
+        assert await capture.record_refusal("the plan that comes back") == 1
+        assert await capture.record_refusal("the plan that comes back") == 2
+
+    async def test_an_unserialisable_submission_still_gets_a_digest(self) -> None:
+        """A digest that cannot be computed must not collide with a real one.
+
+        These arguments are already decoded JSON, so this should not happen; it
+        is logged for the provider that makes it happen anyway, and the
+        submission was going to be refused regardless.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        circular: dict[str, object] = {}
+        circular["self"] = circular
+
+        digest = submit_module._submission_digest
+        with structlog.testing.capture_logs() as cap:
+            first = await capture.record_refusal(digest(circular))
+            second = await capture.record_refusal(digest(circular))
+
+        assert (first, second) == (1, 2)
+        assert [
+            entry
+            for entry in cap
+            if entry.get("event") == DECOMPOSITION_SESSION_DIGEST_FALLBACK
+        ]
+
+    async def test_key_order_alone_is_not_a_correction(self) -> None:
+        """A serialiser that reordered keys resubmitted the same plan."""
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        rejected: dict[str, object] = dict(_self_dependent_plan_args())
+        reordered: dict[str, object] = dict(reversed(list(rejected.items())))
+
+        await tool.execute(arguments=rejected)
+        again = await tool.execute(arguments=reordered)
+
+        assert "byte-identical" in again.content
+
+    async def test_a_genuinely_changed_resubmission_is_refused_plainly(self) -> None:
+        """A model correcting itself must not be told it repeated itself."""
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+
+        first = await tool.execute(arguments=dict(_self_dependent_plan_args()))
+        second = await tool.execute(arguments={"subtasks": "not-a-list"})
+
+        assert first.is_error
+        assert second.is_error
+        assert "byte-identical" not in second.content
+
+    async def test_mangled_arguments_are_named_rather_than_parsed(self) -> None:
+        """The transport flattened the list, so the plan was never read.
+
+        A schema error here would name a field the model filled in correctly
+        and send it to rewrite work that was never wrong. Two of thirteen plan
+        submissions in a live run arrived in this shape.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+
+        detail = await tool.transport_fault(_MANGLED_ARGS)
+
+        assert detail is not None
+        assert "JSON array" in detail
+        assert "serialisation fault" in detail
+        assert capture.plan is None
+
+    async def test_the_collapse_is_answered_before_the_schema_refuses_it(
+        self,
+    ) -> None:
+        """Driven through the invoker, because the ORDER is the whole fix.
+
+        The collapse destroys ``subtasks``, which the schema requires, so
+        validation refuses the payload before ``execute`` runs. Detection sited
+        there is unreachable, and a test calling ``execute`` directly agrees
+        with it: the model receives a generic missing-parameter error naming a
+        field it filled in correctly.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        invoker = ToolInvoker(ToolRegistry([tool]))
+
+        result = await invoker.invoke(
+            ToolCall(id="call-1", name=tool.name, arguments=_MANGLED_ARGS)
+        )
+
+        assert result.is_error
+        assert "JSON array" in result.content
+        # The schema error is what this replaces, so its wording must not be
+        # what came back.
+        assert "required property" not in result.content
+        assert capture.plan is None
 
 
 class _FixedTool(BaseTool):

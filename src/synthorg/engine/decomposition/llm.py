@@ -8,8 +8,6 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.call_category import LLMCallCategory
-
 # ``CostTrackerProtocol``, ``CompletionProvider``, ``Task``,
 # ``DecompositionContext``, ``DecompositionPlan``, and
 # ``CompletionResponse`` appear in public annotations of
@@ -18,9 +16,13 @@ from synthorg.budget.call_category import LLMCallCategory
 # (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._llm_retry import (
+    ask_for_plan,
+    mangled_reply_hint,
+    with_retry_context,
+)
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
@@ -28,7 +30,6 @@ from synthorg.engine.decomposition.llm_parse import (
 )
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
-    build_retry_message,
     build_system_message,
     build_task_message,
 )
@@ -43,14 +44,13 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
+    DECOMPOSITION_LLM_ARGUMENTS_MANGLED,
     DECOMPOSITION_LLM_CALL_COMPLETE,
     DECOMPOSITION_LLM_CALL_START,
     DECOMPOSITION_LLM_PARSE_ERROR,
     DECOMPOSITION_LLM_RETRY,
     DECOMPOSITION_VALIDATION_ERROR,
 )
-from synthorg.providers.cost_recording import cost_recording_scope
-from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -66,6 +66,13 @@ _DECOMPOSITION_NS: Final[str] = "coordination"
 _MAX_OUTPUT_TOKENS_KEY: Final[str] = "decomposition_max_output_tokens"
 _MAX_RETRIES_KEY: Final[str] = "decomposition_max_retries"
 
+#: How many transport-mangled replies are re-asked for without spending one of
+#: the operator's planning attempts. Small and fixed rather than settings-backed
+#: because it bounds a fault nobody configures: a provider mangling every reply
+#: is a broken provider, and paying the whole retry ladder to establish that
+#: would cost exactly what this exists to save.
+_MAX_MANGLED_ROUNDS: Final[int] = 2
+
 
 class LlmDecompositionConfig(BaseModel):
     """Configuration for the LLM decomposition strategy.
@@ -78,10 +85,12 @@ class LlmDecompositionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    # Ceiling matches `coordination.decomposition_max_retries`, because the
-    # live setting is what actually decides the count and two ceilings that
-    # disagree would let an operator write a value this refuses.
-    max_retries: int = Field(default=2, ge=0, le=8, description="Max retry attempts")
+    # Default AND ceiling match `coordination.decomposition_max_retries`,
+    # because the live setting is what actually decides the count: a ceiling
+    # that disagrees lets an operator write a value this refuses, and a default
+    # that disagrees plans one number of attempts when the settings store is
+    # reachable and another when it is not.
+    max_retries: int = Field(default=5, ge=0, le=8, description="Max retry attempts")
     temperature: float = Field(
         default=0.2,
         ge=0.0,
@@ -225,29 +234,31 @@ class LlmDecompositionStrategy:
         last_error: str | None = None
         last_response: CompletionResponse | None = None
         attempts = 1 + await self._max_retries()
+        attempt = 0
+        mangled_rounds = 0
 
         # See docs/reference/retry-patterns.md: Pattern B -- semantic
         # self-correction. Each attempt re-prompts the LLM with prior-
         # attempt context; no temporal backoff between iterations.
-        for attempt in range(attempts):
-            if attempt > 0 and last_error is not None:
+        #
+        # A while loop rather than a range, because not every round is an
+        # attempt: a reply the transport mangled (see `_mangled_arguments`)
+        # never carried a plan to judge, so spending one of the operator's
+        # planning attempts on it charges the model for a fault upstream of it.
+        # Bounded separately below so a provider mangling every reply cannot
+        # loop.
+        while attempt < attempts:
+            # `last_error is not None` IS "this is not the first round": it
+            # starts unset and every continue above sets it, so a separate
+            # round counter would carry no information this does not.
+            if last_error is not None:
                 logger.info(
                     DECOMPOSITION_LLM_RETRY,
                     task_id=str(task.id),
                     attempt=attempt,
                     error=last_error,
                 )
-                # Include the failed assistant response for context
-                assistant_msg = ChatMessage(
-                    role=MessageRole.ASSISTANT,
-                    content=(last_response.content or "") if last_response else "",
-                    tool_calls=last_response.tool_calls if last_response else (),
-                )
-                messages = [
-                    *messages,
-                    assistant_msg,
-                    build_retry_message(last_error),
-                ]
+                messages = with_retry_context(messages, last_response, last_error)
 
             logger.debug(
                 DECOMPOSITION_LLM_CALL_START,
@@ -256,38 +267,15 @@ class LlmDecompositionStrategy:
                 attempt=attempt,
             )
 
-            try:
-                async with cost_recording_scope(
-                    cost_tracker=self._cost_tracker,
-                    task_id=str(task.id),
-                    # Per-task decomposition, not a system prompt class.
-                    purpose=None,
-                    call_category=LLMCallCategory.SYSTEM,
-                ):
-                    response = await self._provider.complete(
-                        messages,
-                        self._model,
-                        tools=[tool_def],
-                        config=comp_config,
-                    )
-            except DecompositionError:
-                raise
-            except Exception as exc:
-                # A provider/infrastructure failure (network error, exhausted
-                # provider retries, malformed response) is not a semantic parse
-                # error the self-correction loop can fix by re-prompting. Surface
-                # it as a typed DecompositionError so decomposition always
-                # terminates inside the domain hierarchy rather than letting a raw
-                # provider exception escape to the caller.
-                reraise_critical(exc)
-                msg = f"LLM decomposition provider call failed for task {task.id!r}"
-                logger.warning(
-                    DECOMPOSITION_FAILED,
-                    task_id=str(task.id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise DecompositionError(msg) from exc
+            response = await ask_for_plan(
+                provider=self._provider,
+                model=self._model,
+                cost_tracker=self._cost_tracker,
+                task=task,
+                messages=messages,
+                tool_def=tool_def,
+                config=comp_config,
+            )
             last_response = response
 
             logger.debug(
@@ -308,6 +296,23 @@ class LlmDecompositionStrategy:
                 # retries-exhausted error that says only that parsing failed.
                 raise
             except DecompositionError as exc:
+                mangled = mangled_reply_hint(response)
+                if mangled is not None and mangled_rounds < _MAX_MANGLED_ROUNDS:
+                    # Not an attempt: the reply never carried a plan, and the
+                    # correction it needs is about serialisation rather than
+                    # about the plan, so `last_error` becomes the re-issue
+                    # instruction instead of a schema error naming a field the
+                    # model filled in correctly.
+                    mangled_rounds += 1
+                    last_error = mangled
+                    logger.warning(
+                        DECOMPOSITION_LLM_ARGUMENTS_MANGLED,
+                        task_id=str(task.id),
+                        attempt=attempt,
+                        mangled_rounds=mangled_rounds,
+                    )
+                    continue
+                attempt += 1
                 last_error = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
@@ -318,23 +323,12 @@ class LlmDecompositionStrategy:
                 )
                 continue
 
-            try:
-                self._validate_plan(plan, context)
-            except DecompositionSubtaskLimitError:
-                # Carries the produced count and the ceiling as attributes, so
-                # a caller can offer to raise the limit to the number actually
-                # planned. Retrying past it would replace that with a bare
-                # retries-exhausted error and lose both numbers.
-                raise
-            except DecompositionError as exc:
-                last_error = safe_error_description(exc)
-                logger.warning(
-                    DECOMPOSITION_VALIDATION_ERROR,
-                    task_id=str(task.id),
-                    error_type=type(exc).__name__,
-                    error=last_error,
-                )
-                continue
+            # Propagates rather than retrying. The one condition this refuses
+            # carries the produced count and the ceiling as attributes, so a
+            # caller can offer to raise the limit to the number actually
+            # planned; another attempt would replace that with a bare
+            # retries-exhausted error and lose both numbers.
+            self._validate_plan(plan, context)
 
             # INFO, like every other state transition: a plan existing where
             # none did is the outcome, and logging it below the retry that
@@ -347,14 +341,32 @@ class LlmDecompositionStrategy:
             )
             return plan
 
+        # Carries the final cause, because the attempt count alone cannot
+        # separate the two failures this path now serves: a model that kept
+        # planning badly and a transport that kept mangling replies are fixed
+        # in different places, and this message is the only artefact a caller
+        # sees. Each intermediate attempt logs its own reason, but nobody
+        # reading a raised error has those to hand.
+        cause = f": {last_error}" if last_error else ""
+        mangled = (
+            f", plus {mangled_rounds} mangled transport "
+            f"{'reply' if mangled_rounds == 1 else 'replies'}"
+            if mangled_rounds
+            else ""
+        )
         msg = (
             f"LLM decomposition retries exhausted after "
-            f"{attempts} attempts for task {task.id!r}"
+            f"{attempts} attempts for task {task.id!r}{mangled}{cause}"
         )
+        # Structured rather than the assembled message: the three facts a
+        # reader needs are separately queryable, and ``last_error`` is already
+        # the redacted description its own handler produced.
         logger.warning(
             DECOMPOSITION_FAILED,
             task_id=str(task.id),
-            error=msg,
+            attempts=attempts,
+            mangled_rounds=mangled_rounds,
+            error=last_error,
         )
         raise DecompositionError(msg)
 

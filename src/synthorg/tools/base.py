@@ -6,6 +6,7 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 
 import copy
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import ClassVar
 
@@ -243,6 +244,31 @@ class BaseTool(ABC):
             l2_body=self.to_l2_body(),
             l3_resources=self.get_l3_resources(),
         )
+
+    async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
+        """Say why *arguments* could not have been what the model sent.
+
+        Consulted by the invoker BEFORE schema validation, which is the only
+        position from which it can answer at all: a payload the transport
+        corrupted usually loses the required fields, so the schema refuses it
+        first and the tool never runs. The refusal is then about a field the
+        model filled in correctly, and the model rewrites work that was never
+        wrong.
+
+        A tool overrides this only when it can recognise a corruption from the
+        argument SHAPE, independently of the schema. The default recognises
+        nothing, so the ordinary path is unchanged: validation decides, as it
+        did before.
+
+        Args:
+            arguments: The raw arguments, exactly as the provider decoded them.
+
+        Returns:
+            The correction to hand the model, or ``None`` when nothing about
+            the shape says the transport is at fault.
+        """
+        del arguments
+        return None
 
     @abstractmethod
     async def execute(

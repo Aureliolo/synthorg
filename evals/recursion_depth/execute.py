@@ -7,10 +7,12 @@ handing "write it" to one agent and "test it" to another divides the context
 that makes either job possible and then asks them to coordinate it back.
 
 Whether a leaf DELIVERED is decided from the tree, never from what the session
-said about itself: the declared paths have to exist, and the tests the unit
-wrote for itself have to pass when run against its own tree. Only a delivered
-leaf's claims enter the survival denominator, because work that never worked
-cannot be work the merge lost.
+said about itself: the session took a turn, it changed something it declared,
+and the tests the unit wrote for itself pass when run against its own tree. It
+is not decided by the planner's declared list being complete, which is a
+plan-time guess about a tree that did not exist yet. Only a delivered leaf's
+claims enter the survival denominator, because work that never worked cannot be
+work the merge lost.
 
 The held-out oracle is not consulted here and its node ids never reach a brief.
 An agent told which test decides a requirement builds to the test: a published
@@ -18,6 +20,7 @@ run scored near-perfect against an exposed oracle while the library it
 delivered was dead outside the tested paths.
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import Final
 
@@ -28,7 +31,8 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
     SweepDeps,
-    artifacts_present,
+    probe_artifacts,
+    produced_nothing,
     run_session,
 )
 from evals.recursion_depth.tree import SpecBrief
@@ -37,6 +41,7 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
@@ -72,7 +77,8 @@ class LeafOutcome:
 
     Attributes:
         workspace: The tree it left behind, which its parent merge assembles.
-        delivered: Whether its declared paths exist and its own tests pass.
+        delivered: Whether it changed anything it declared and its own tests
+            pass in its own tree.
         attempts: Sessions consumed. One: a leaf gets no repair round, because
             repair is the treatment being measured and giving it to leaves in
             both arms would move the difference off the merge.
@@ -80,6 +86,11 @@ class LeafOutcome:
         cost: What it spent.
         tokens: What it spent in tokens.
         executor: The pair it actually ran on.
+        undeclared_paths: Declared paths absent from the finished tree.
+            Diagnosis, never a verdict: the declaration is the planner's guess,
+            written per node at whatever granularity it chose, so an
+            over-declaring planner is worth seeing and must not be able to
+            zero a unit that did the work.
         detail: Why it is not delivered, for a human reading the run.
     """
 
@@ -90,6 +101,7 @@ class LeafOutcome:
     cost: float
     tokens: int = 0
     executor: ModelPair | None = None
+    undeclared_paths: tuple[str, ...] = ()
     detail: str = ""
 
 
@@ -203,6 +215,10 @@ async def run_leaf(
     Returns:
         The leaf's outcome.
     """
+    # Before the session, because delivery is a question about what THIS run
+    # produced: the workspace is recreated from the committed seed, and a
+    # declaration the seed already satisfied is not work this unit did.
+    baseline = await asyncio.to_thread(probe_artifacts, task, workspace)
     outcome = await run_session(
         deps,
         identity=owner,
@@ -211,7 +227,8 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    detail = await _undelivered_reason(deps, task, workspace, outcome)
+    detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
+    final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
@@ -219,13 +236,18 @@ async def run_leaf(
         turns=outcome.turns,
         cost=outcome.cost,
         tokens=outcome.tokens,
-        executor=ModelPair.of(owner),
+        executor=ModelPair.of(owner, deps.declared_pairs),
+        undeclared_paths=final.missing,
         detail=detail,
     )
 
 
 async def _undelivered_reason(
-    deps: SweepDeps, task: Task, workspace: CellWorkspace, outcome: SessionOutcome
+    deps: SweepDeps,
+    task: Task,
+    workspace: CellWorkspace,
+    outcome: SessionOutcome,
+    baseline: ArtifactPresence,
 ) -> str:
     """Say why *task*'s tree is not a delivery, or nothing when it is.
 
@@ -245,8 +267,8 @@ async def _undelivered_reason(
             f"the session ran no turns, so nothing was built and this is not a "
             f"delivery failure: it terminated {outcome.termination}"
         )
-    if not artifacts_present(task, workspace):
-        return "declared artifacts are missing from the tree"
+    if await asyncio.to_thread(produced_nothing, task, workspace, baseline):
+        return "the session left every declared path exactly as it found it"
     grader = deps.build_grader(workspace)
     passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:

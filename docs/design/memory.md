@@ -91,6 +91,37 @@ literature:
     ability to predict that at AUC 0.50, no better than chance. Abstention is a
     first-class success case.
 
+#### A retriever honours its settings or refuses them
+
+`MemoryRetrievalConfig.retriever` selects between a flat retriever and the
+hierarchical one, and three fields (`max_workers_per_query`,
+`reflective_retry_enabled`, `max_retry_count`) exist only for the second: the
+flat path has no supervisor to fan out, retry against, or bound. Setting one of
+them under `retriever: flat` is therefore refused at construction, not warned
+about.
+
+That is the general rule stated once. A setting an operator writes, that the
+system persists, that the dashboard shows back, and that nothing then applies is
+worse than one that never existed: it reads as configured. The two shapes are
+the only honest ones, and this is a configuration a retriever cannot honour, so
+it fails loud rather than accepting a value it will ignore. Making the flat path
+honour them is the alternative that was rejected: it would mean importing the
+whole supervisor apparatus, which is a different retrieval architecture, not a
+setting.
+
+The refusal is judged on VALUE, never on presence. A `model_dump()` /
+`model_validate()` round-trip marks every field as explicitly set, so a
+presence test refuses a config nobody touched: that is exactly the defect it
+replaced, where one field's warning fired fifty times in a single run against a
+value equal to its own default. A field equal to its default was not configured,
+whatever `model_fields_set` says about how it arrived.
+
+Where this can fire is bounded: neither `retriever` nor the three fields is a
+live setting, so no operator write reaches it. It is the static company-config
+at boot, and a failure there is booked by the subsystem reconciler as a failed
+activation, reported by `GET /subsystems`, and retried on the next pass, never
+a crash.
+
 ### Context budget
 
 Injected memory competes with the prompt, and past a point it actively harms

@@ -23,6 +23,7 @@ from evals.errors import (
 from evals.harness.binding import HarnessBinder
 from evals.harness.host import RecordingGatewayHost
 from evals.recursion_depth.manifest import Independence, load_manifest
+from evals.recursion_depth.runner import planned_cells
 from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
@@ -190,16 +191,72 @@ class TestPlanMode:
         assert main([]) == 0
         assert "Recursion-depth recording plan" in capsys.readouterr().out
 
-    def test_it_states_the_session_floor_and_the_ceiling(self) -> None:
+    def test_it_names_the_scenario_and_the_ceiling(self) -> None:
         # A depth sweep's session count is a product of branching factors the
-        # manifest cannot predict, so the figure is a floor and the ceiling is
-        # what actually bounds the spend.
+        # manifest cannot predict, so the figure is what a FULL tree costs at
+        # the declared branching rather than a bound in either direction, and
+        # the ceiling is what actually bounds the spend. Presenting it as a
+        # floor invites an operator to read a number the run can exceed.
         manifest = load_manifest(_MANIFEST)
 
         plan = describe_plan(manifest, _spec())
 
-        assert "at least" in plan
+        assert "full tree" in plan
+        assert "at least" not in plan
         assert str(manifest.max_sessions) in plan
+
+    def test_the_projection_is_derived_from_the_tree_each_cap_admits(self) -> None:
+        """The whole tree is counted, not summarised as a sentence about it.
+
+        A figure that scales only with the number of runs is the one an
+        operator sizes ``max_sessions`` from and then loses a paid run to: the
+        tree, not the matrix, is where a depth sweep's sessions come from.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        projected = sum(
+            manifest.projected_sessions(cell.depth_cap)
+            for cell in planned_cells(manifest)
+        )
+        per_run = len(planned_cells(manifest)) * (1 + manifest.merge_attempts * 2)
+
+        assert projected > per_run * 10
+        assert f"{projected:,}" in plan
+
+    def test_the_projection_prints_the_assumption_it_rests_on(self) -> None:
+        """A model whose input is hidden reads as a measurement."""
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        assert f"{manifest.projected_branching} subtasks per planning session" in plan
+
+    def test_the_per_cell_cost_grows_with_the_cap(self) -> None:
+        """The deep end is where a ceiling is chosen wrong and money is lost."""
+        manifest = load_manifest(_MANIFEST)
+
+        per_cell = [manifest.projected_sessions(cap) for cap in (1, 2, 3)]
+
+        assert per_cell == sorted(per_cell)
+        assert per_cell[0] < per_cell[2]
+
+    def test_the_model_reproduces_the_shape_a_real_tree_had(self) -> None:
+        """Checked against the measured run the projection models.
+
+        A cap-3 tree held 85 leaves across 25 nodes that planned and cost about
+        158 sessions. The declared branching is rounded DOWN from the ~4.4 that
+        implies, so the projection stays a floor: it must not read HIGHER than
+        what was actually measured, or an operator would size a ceiling off a
+        number no run has ever reached.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        projected = manifest.projected_sessions(3)
+
+        assert projected < 158
+        assert projected > 100
 
     def test_it_states_the_equal_attempt_budget(self) -> None:
         # Repair only in the gated arm would let it win by spending more, so

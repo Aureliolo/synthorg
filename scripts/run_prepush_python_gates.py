@@ -151,6 +151,7 @@ _GATES: tuple[str, ...] = (
     "check_cost_scope_purpose",
     "check_no_synthetic_cost_owner",
     "check_no_synthetic_agent_identity",
+    "check_gate_roles_not_assignable",
     "check_no_bound_pair_rewrite",
     "check_charter_authorised_initiative",
     "check_single_planning_strategy_writer",

@@ -23,10 +23,16 @@ from evals.errors import (
 )
 from evals.harness.journal import open_journal
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth import execute as execute_module
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.execute import UNIT_REPORT_PATH, leaf_brief, leaf_task
+from evals.recursion_depth.execute import (
+    UNIT_REPORT_PATH,
+    leaf_brief,
+    leaf_task,
+    run_leaf,
+)
 from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
     RUNNER_PROBE_ARGS,
@@ -82,10 +88,13 @@ from evals.recursion_depth.session import (
     SessionOutcome,
     SweepDeps,
     leaf_unit_key,
+    probe_artifacts,
+    produced_nothing,
 )
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import CapabilityLevel, NotBlankStr
@@ -514,7 +523,14 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[_Attempt]:
         return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
-    monkeypatch.setattr(merge_module, "artifacts_present", lambda _task, _ws: True)
+    # Stubbed to "it produced something", because these tests are about the
+    # loop's accounting rather than about what an offline tree holds. The
+    # delivery wiring this hides, including that the baseline is probed before
+    # the session, is covered against the real function in
+    # TestDeliveryIsAboutWorkNotTheDeclaration.
+    monkeypatch.setattr(
+        merge_module, "produced_nothing", lambda _task, _ws, _baseline: False
+    )
     return ran
 
 
@@ -725,6 +741,184 @@ class TestTheOwnTestGate:
 
         assert passed is True
         assert detail == ""
+
+
+class TestDeliveryIsAboutWorkNotTheDeclaration:
+    """Delivery follows the product's own "none, not some" artifact rule.
+
+    Asking whether ANY declared path is missing is the inverse of that rule,
+    and it turns delivery on the PLANNER's declaration rather than the agent's
+    work: the same output is a delivery under a parent's two-entry list and a
+    non-delivery under the leaf's four-entry one. One live unit wrote its
+    module, a 31-test suite and ran it, and was booked at 598,585 tokens as no
+    delivery over an absent empty ``tests/__init__.py``.
+    """
+
+    def _task(self, *declared: str) -> Task:
+        """Build a task declaring *declared*.
+
+        Returns:
+            The task.
+        """
+        return _task("Inference module").model_copy(
+            update={
+                "artifacts_expected": tuple(
+                    ExpectedArtifact(path=NotBlankStr(path), type=ArtifactType.CODE)
+                    for path in declared
+                )
+            }
+        )
+
+    def test_a_missing_package_marker_does_not_zero_a_unit(
+        self, tmp_path: Path
+    ) -> None:
+        """The measured case, verbatim: three of four paths written."""
+        task = self._task(
+            "src/inference.py",
+            "tests/test_inference.py",
+            "README.md",
+            "tests/__init__.py",
+        )
+        workspace = _workspace(tmp_path, "leaf")
+        baseline = probe_artifacts(task, workspace)
+        for path in ("src/inference.py", "tests/test_inference.py", "README.md"):
+            written = workspace.project_dir / path
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text("real work", encoding="utf-8")
+
+        assert produced_nothing(task, workspace, baseline) is False
+        # Still recorded, because a planner declaring what it does not need is
+        # worth seeing. It just does not decide.
+        assert probe_artifacts(task, workspace).missing == ("tests/__init__.py",)
+
+    async def test_the_baseline_is_taken_before_the_session_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through ``run_leaf``, because the ordering is the wiring, not the rule.
+
+        The pure-function tests either side of this one hold whatever order
+        ``run_leaf`` probes in. Taking the baseline AFTER the session compares
+        the tree with itself, so every leaf reads as having changed nothing and
+        the whole sweep delivers zero, which no assertion on ``produced_nothing``
+        alone can see.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _writes(_deps: SweepDeps, **_rest: object) -> SessionOutcome:
+            written = workspace.project_dir / "src/inference.py"
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text("real work", encoding="utf-8")
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _writes)
+
+        outcome = await run_leaf(
+            _deps(),
+            task=task,
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert outcome.delivered, outcome.detail
+
+    def test_a_session_that_wrote_nothing_still_does_not_deliver(
+        self, tmp_path: Path
+    ) -> None:
+        """The anti-vacuity half, which is the half that has to hold."""
+        task = self._task("src/inference.py", "tests/test_inference.py")
+        workspace = _workspace(tmp_path, "empty")
+
+        baseline = probe_artifacts(task, workspace)
+
+        assert produced_nothing(task, workspace, baseline) is True
+
+    def test_a_declaration_the_seed_already_satisfied_is_not_this_run_s_work(
+        self, tmp_path: Path
+    ) -> None:
+        """Why the baseline is taken before the session rather than assumed.
+
+        The workspace is recreated from a committed seed, so a path the seed
+        provides is present the moment the session opens. Judged on presence
+        alone, a unit that did nothing at all would read as a delivery.
+        """
+        task = self._task("README.md")
+        workspace = _workspace(tmp_path, "seeded")
+        seeded = workspace.project_dir / "README.md"
+        seeded.write_text("from the seed", encoding="utf-8")
+
+        baseline = probe_artifacts(task, workspace)
+
+        assert produced_nothing(task, workspace, baseline) is True
+
+    def test_changing_a_seeded_file_is_work(self, tmp_path: Path) -> None:
+        """Delivery is what this run CHANGED, not what the tree holds."""
+        task = self._task("README.md")
+        workspace = _workspace(tmp_path, "changed")
+        seeded = workspace.project_dir / "README.md"
+        seeded.write_text("from the seed", encoding="utf-8")
+        baseline = probe_artifacts(task, workspace)
+        seeded.write_text("rewritten by the agent", encoding="utf-8")
+
+        assert produced_nothing(task, workspace, baseline) is False
+
+
+class TestEveryUnitRecordsTheFamilyThatJudgedIt:
+    """The cross-family claim is what a gated result's credibility rests on.
+
+    Every per-unit record wrote ``family: null`` while the manifest declared
+    ``cross_family``, so the ledger could not evidence the one thing the
+    experiment turns on.
+    """
+
+    def _bound_to(self, pair: ModelPair) -> AgentIdentity:
+        """Build an identity dispatching on *pair*.
+
+        Returns:
+            The identity, carrying the pair and nothing about its family.
+        """
+        return _identity("Judge", pair.capability).model_copy(
+            update={
+                "model": _identity("Judge", pair.capability).model.model_copy(
+                    update={"provider": pair.provider, "model_id": pair.model_id}
+                )
+            }
+        )
+
+    def test_the_family_travels_from_the_manifest(self) -> None:
+        """Declared, and matched on the pair that actually ran."""
+        recorded = ModelPair.of(
+            self._bound_to(_CROSS_FAMILY_REVIEWER),
+            (_EXECUTOR, _CROSS_FAMILY_REVIEWER),
+        )
+
+        assert recorded.family == _CROSS_FAMILY_REVIEWER.family
+        # The whole point of recording it: the decorrelation the manifest
+        # claims is now evidenced per unit rather than only per sweep.
+        assert recorded.family != _EXECUTOR.family
+        assert recorded.model_id == _CROSS_FAMILY_REVIEWER.model_id
+
+    def test_a_pair_the_manifest_never_named_declares_no_family(self) -> None:
+        """Silence rather than a guess: that is itself the finding.
+
+        Deriving it from the provider would be worse than none, since one
+        connection serves many families through one endpoint, so the provider
+        answers a different question than the one decorrelation asks.
+        """
+        elsewhere = ModelPair(
+            provider=_EXECUTOR.provider,
+            model_id=NotBlankStr("example-basic-001"),
+            capability="basic",
+        )
+
+        recorded = ModelPair.of(self._bound_to(elsewhere), (_EXECUTOR, _REVIEWER))
+
+        assert recorded.family is None
+        assert recorded.provider == _EXECUTOR.provider
 
 
 @dataclass(frozen=True)
@@ -1072,6 +1266,7 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "unit_cost_ceiling": 1.0,
         "unit_token_ceiling": 1000,
         "max_sessions": 100,
+        "projected_branching": 4,
     }
     payload.update(overrides)
     return RecursionDepthManifest.model_validate(payload)

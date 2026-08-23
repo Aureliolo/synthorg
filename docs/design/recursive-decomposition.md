@@ -22,6 +22,24 @@ verifying at every merge holds the survival rate flat as recursion deepens, the
 11-to-25 coherent-unit ceiling is **per level** and depth buys scale. If it does
 not, the ceiling is global and this is a twenty-agent product.
 
+## Depth is counted in levels, on both sides
+
+`max_depth` is a count of PLANNING LEVELS, not a count of edges.
+`RecursionBudget.has_room` asks whether `current_depth + 1 < max_depth`, so a
+node plans at `current_depth` 0 through `max_depth - 1`: a cap of three means
+three levels of planning, the root plus two below it.
+
+The harness reports the same unit. It used to report `max_depth_reached`, which
+is the deepest node's zero-based INDEX, so a run that used its whole cap of
+three logged `achieved_depth=2` beside `depth_cap=3` and read as a tree that
+stopped a level short. `evals/recursion_depth/tree.py::achieved_levels` owns the
+conversion and is the only place it happens; a leaf's own `depth` is still an
+index, and `score.py::_DEPTH_OFFSET` is where that one is converted.
+
+For an experiment whose independent variable is depth this decides how the
+x-axis is labelled, so it is stated once here: **a cap of N fully used reports
+N.** The S2 review's "depth four" is `max_depth=4`.
+
 ## The recursion point
 
 `DecompositionResult` is a tree node. It carries its own `depth` and the
@@ -109,12 +127,23 @@ it measured is only interpretable against what it armed
 | `subtask_max_criteria` | 5 | its declared maximum | The same manipulation, on the other threshold |
 | `decomposition_timeout_seconds` | 600s | 2400s | Sized for a model that answers directly; every model worth sweeping reasons first, and losing an arm to a timing margin destroys the comparison rather than slowing it |
 | `decomposition_tree_timeout_seconds` | 3600s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
-| `decomposition_max_retries` | 2 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
+| `decomposition_max_retries` | 5 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
 
 The three armed at a declared maximum read it off the definition rather than
 copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
+
+The retry row is the one where the sweep's arming turned out to be measuring
+the product default rather than compensating for it. A subtree in a live run was
+refused four times and converged on the fifth, surviving only because the sweep
+arms six. The setting counts RETRIES and the first ask is not one, so a value of
+N allows N+1 attempts: the shipped default of two allowed three, and that
+subtree would have failed two attempts short of the plan it went on to produce.
+An earlier round records exactly that as "the replan then
+exhausted its decomposition retries". The product default is now five, so the
+gap the sweep opens is a margin rather than the difference between planning and
+not.
 
 Arming the per-session ceiling ALONE is worse than arming neither, and is the
 mistake this table exists to prevent: it raises what one session may spend while
@@ -162,8 +191,8 @@ anything, and `make recursion-depth-record` to measure for real.
    service. One session per node that plans.
 2. **Build every leaf.** One agent owns a unit end to end, its own tests
    included, in a workspace recreated from the committed seed. A leaf
-   **delivered** when its declared paths exist and its own tests pass in its
-   own tree.
+   **delivered** when it changed something it declared and its own tests pass
+   in its own tree (below).
 3. **Assemble every node, deepest first.** The children are copied under
    `.children/<slug>/` and the deliverable is the tree at the workspace root.
    The merging agent is told it may change a child's interface and is asked to
@@ -192,6 +221,31 @@ Delivery rather than standalone correctness is the denominator on purpose. A
 leaf's own tree usually cannot run the specification oracle at all: at depth 5
 a unit is one function and nothing above it exists yet. Requiring a standalone
 pass would empty the denominator exactly where the curve is most interesting.
+
+### What delivery is decided by, and what it is not
+
+Delivery is a question about the AGENT's work, so it is decided by what the run
+produced: the session took a turn, it changed something the unit declared, and
+the unit's own tests pass in its own tree. The middle condition goes through the
+product's own `ArtifactPresence.delivered_nothing_since`, against a probe taken
+before the session, so a path the recreated seed already provided is not
+credited to the run that received it.
+
+It is deliberately NOT decided by the planner's declared list being complete,
+and that is a correction rather than a preference. The harness asked whether ANY
+declared path was missing, which is the inverse of the rule stated in the module
+that owns it ("the 'none, not some' rule is this module's to state once"), and
+it made delivery turn on a plan-time guess written per node at whatever
+granularity the planner chose: the same output was a delivery under a parent's
+two-entry list and a non-delivery under the leaf's four-entry one. One live unit
+wrote its module, a 31-test suite and ran it, and was booked at 598,585 tokens
+as no delivery because an empty `tests/__init__.py` was absent, which resolves
+without one and which its own passing suite proved it did not need. At a
+delivered rate near a half that term dominated the curve rather than sitting in
+its tail.
+
+The declared list is still recorded, as `UnitRecord.undeclared_paths`, because a
+planner over-declaring is worth seeing. What it measures is the planner.
 
 ### Achieved depth, not the cap
 
@@ -291,8 +345,9 @@ the oracle is proved discriminating by an empty tree, which fails all 42.
 
 A depth sweep's session count is a product of branching factors the manifest
 cannot predict, and the cost of being wrong about it is spend rather than a
-wrong answer. So plan mode prints a **floor** rather than an estimate, the
-manifest carries a hard `max_sessions` ceiling, and hitting it stops the sweep
+wrong answer. So plan mode prints what a **full tree** costs at a declared
+branching, the manifest carries a hard `max_sessions` ceiling, and hitting it
+stops the sweep
 and reports what was measured with a caveat saying so. `--depths` stages the
 bill: record the shallow end, read the curve forming, then pay for the deep end.
 `--max-sessions` lowers the ceiling, and it is folded into the manifest rather
@@ -300,6 +355,43 @@ than applied to the run, so the figure the plan prints is the one the run
 enforces: a ceiling applied downstream of the plan shows the manifest's own
 number beside the flag that was meant to lower it, at the one moment the number
 is being relied on.
+
+The figure is derived from the TREE each cap admits, and this is the second
+attempt at it. The first counted one session per cell plus its merge attempts
+and then said "and one per leaf and per node on top of that", leaving the entire
+tree out of the arithmetic: for the recorded matrix it printed 42 against a real cost of
+roughly 158 sessions PER CELL, so a ceiling chosen from it was about four times
+too small. Launched at 30, that run planned an 85-leaf tree, built six units and
+stopped with **zero cells measured**, which is the whole failure mode
+`max_sessions` exists to make survivable and instead was the thing that fired.
+
+`RecursionDepthManifest.projected_sessions` states the model instead: at a
+declared `projected_branching` of `b`, a cap of `d` holds `b ** d` leaves and
+`(b ** d - 1) / (b - 1)` nodes that planned, each of which also assembles, and
+an assembly is two sessions (the merge and its review, in both arms). The
+branching is declared in the manifest and PRINTED beside the figure it produces,
+because a model whose input is hidden reads as a measurement, and it is rounded
+DOWN from what a real tree showed (85 leaves over 25 planning nodes at cap 3
+implies about 4.4).
+
+That figure is a scenario, not a bound in either direction, and reading it as
+one is how an operator gets surprised. `depth_cap` is a MAXIMUM the planner need
+not spend, so a tree that stops shallow costs less than this says; and the
+declared branching does not constrain the planner either, so a tree that
+branches wider costs more. What it answers is the question worth sizing a
+ceiling against, since the run that uses its whole cap is the expensive one.
+`max_sessions` is what makes being wrong in either direction survivable: set it
+too low and the sweep stops early with a caveat, which is the outcome this
+whole section exists to keep survivable.
+
+Once a journal exists the manifest is frozen, so this figure is chosen once. The
+journal header pins the manifest digest along with the commit, the spec, and both
+pairs, and a resume against a changed manifest is refused rather than mixing two
+matrices into one curve. `--max-sessions` is the only lever a resume has, and it
+works precisely because it is folded into the manifest object without touching
+the file the digest is taken over. Editing `manifest.yaml` to run a cheaper
+matrix forfeits the planning already paid for and means starting a new
+`--out-dir`; `--resume --help` says so.
 
 A unit is bounded twice, by `unit_cost_ceiling` and by `unit_token_ceiling`, and
 the second is not redundancy. A flat-rate connection attributes 0.0 to every
@@ -330,6 +422,24 @@ and retried again on the far side. A bad key fails identically every time, so
 all of that is latency. The probe is also the warm-up, which matters because a
 cold model load would otherwise land entirely on whichever cell is recorded
 first, and that is depth 1: the flattest, cheapest point on the curve.
+
+### Two things to read the results against
+
+Neither is a defect, and both change what a number means, so they belong beside
+the number rather than in a run log nobody opens afterwards.
+
+**Depth 3 is too shallow for this specification.** In the cap-3 run, 21 units hit
+`depth_exhausted` at `current_depth=2` carrying 5 to 12 objective criteria each
+against the atomicity limit of 1. At that cap the leaves are therefore NOT
+atomic, and a delivery difference between the arms is partly a difference in how
+oversized the units each arm was left holding were, rather than in what gating
+the merges did.
+
+**`docker.execute.failed` is not a health metric.** An agent probing what `int()`
+accepts logs one per deliberate `ValueError`. That is the tool reporting a
+non-zero exit from a command the agent meant to fail, which is correct
+behaviour and useless as a signal: the count moves with how thoroughly an agent
+explored, not with how badly a run went.
 
 ### What the run keeps
 

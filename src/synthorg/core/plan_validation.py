@@ -90,47 +90,6 @@ def validate_decision_options(
         raise ValueError(msg)
 
 
-def describe_unroutable_role(
-    *,
-    entity_id: str,
-    required_role: str | None,
-    available_roles: tuple[NotBlankStr, ...],
-) -> str | None:
-    """Describe why an owning role cannot be routed, or ``None`` when it can.
-
-    A plan item's owner is the role a dispatch looks up, so an invented one
-    (the near-miss "Backend Engineer" for an org staffing "Backend Developer")
-    produces an item with nobody behind it, discovered at dispatch if at all.
-
-    Returns a message rather than raising, because the same judgement is made
-    at two boundaries that report differently: decomposition turns it into a
-    correctable ``DecompositionError`` the planning session can resubmit
-    against, and the operator edit path into a validation failure. One
-    wording, two reports.
-
-    An empty roster means "no roster known" and passes: an org with no agents
-    has nothing to check against, and failing there would block a greenlight
-    for a reason unrelated to the plan.
-
-    Args:
-        entity_id: Identifier of the plan item / subtask, for the message.
-        required_role: The declared owner, or ``None`` when unowned.
-        available_roles: The roles the org actually staffs.
-
-    Returns:
-        A message naming the offending role and the valid set, or ``None``.
-    """
-    if not available_roles or required_role is None:
-        return None
-    if required_role in available_roles:
-        return None
-    valid = ", ".join(sorted(available_roles))
-    return (
-        f"{entity_id!r} names required_role {required_role!r}, which no agent "
-        f"holds, so the item cannot be routed. Available roles: {valid}"
-    )
-
-
 class PlanUnit(Protocol):
     """What the graph invariants read off one plan unit.
 

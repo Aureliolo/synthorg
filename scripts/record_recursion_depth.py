@@ -191,9 +191,18 @@ def check_declared_families(
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
     """Render the matrix a record run would execute.
 
-    The session count is deliberately given as a floor rather than an estimate:
-    it is a product of branching factors nobody can predict from the manifest,
-    which is exactly why ``max_sessions`` exists.
+    The session count is what a FULL tree costs at the declared branching, not
+    a bound in either direction: a planner that stops short of the cap spends
+    less, and one that branches wider spends more, neither of which the
+    manifest can predict, which is exactly why ``max_sessions`` exists. It is
+    derived from the TREE each cap admits rather than from the size of the
+    matrix: a depth sweep's sessions come from the tree, so a matrix-shaped
+    figure is the one an operator sizes a ceiling from and loses a paid run to.
+    Against a real cap-3 cost of about 158 sessions PER CELL, a ceiling of 30
+    bought a planned 85-leaf tree, six built units and nothing measured.
+
+    The assumption is printed beside the figure rather than buried, because a
+    model whose input is hidden reads as a measurement.
 
     Args:
         manifest: The recording matrix.
@@ -203,7 +212,8 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         A human-readable plan.
     """
     cells = planned_cells(manifest)
-    floor = len(cells) * (1 + manifest.merge_attempts * 2)
+    projected = sum(manifest.projected_sessions(cell.depth_cap) for cell in cells)
+    per_cell = {depth: manifest.projected_sessions(depth) for depth in manifest.depths}
     lines = [
         "Recursion-depth recording plan",
         "",
@@ -219,8 +229,16 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         "",
         f"  runs          : {len(cells)}",
         (
-            f"  sessions      : at least {floor}, and one per leaf and per "
-            "node on top of that"
+            f"  sessions      : {projected:,} for a full tree "
+            "("
+            + ", ".join(f"cap {d}: {per_cell[d]:,}/cell" for d in manifest.depths)
+            + ")"
+        ),
+        (
+            f"  assuming      : {manifest.projected_branching} subtasks per "
+            f"planning session, so a cap of d holds "
+            f"{manifest.projected_branching}^d leaves and plans at every node "
+            f"above them. A planner that splits wider costs more than this."
         ),
         (
             f"  ceiling       : {manifest.max_sessions} sessions, then the "
@@ -422,6 +440,10 @@ async def _build_context(
         # trees `--keep-workspaces` leaves and are read against them.
         transcript_root=work_root / "transcripts",
         stall_idle_seconds=args.stall_notify_seconds,
+        # The only place a model FAMILY is written down. A live identity has no
+        # such field, so every per-unit record read `family: null` and the
+        # cross_family claim the gated arm rests on was evidenced nowhere.
+        declared_pairs=(manifest.executor, manifest.reviewer),
     )
     limits = SessionLimits(
         max_turns=manifest.unit_max_turns,
@@ -453,6 +475,7 @@ def _build_deps(
     *,
     binder: HarnessBinder,
     transcript_root: Path,
+    declared_pairs: tuple[ModelPair, ...],
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
@@ -461,6 +484,13 @@ def _build_deps(
     teardown can drain what grading and the oracle opened: both run outside the
     session context that drains the agent's sandboxes, so nothing else awaits
     their containers.
+
+    Args:
+        host: The hosted gateway a unit's calls cross.
+        binder: What routes and authenticates each unit at that gateway.
+        transcript_root: Where per-session transcripts are written.
+        declared_pairs: The manifest's pairs, carrying the declared families.
+        stall_idle_seconds: Idle time after which a unit is reported stalled.
 
     Returns:
         The wired :class:`SweepDeps`.
@@ -488,6 +518,7 @@ def _build_deps(
         project_repo=host.project_repo,
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
+        declared_pairs=declared_pairs,
     )
 
 
@@ -675,7 +706,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Continue the sweep already journalled in --out-dir: cells it "
             "measured are read back rather than paid for again, and cells it "
             "recorded as unavailable are attempted afresh. Without this a "
-            "journal already in --out-dir is refused rather than overwritten."
+            "journal already in --out-dir is refused rather than overwritten. "
+            "THE MANIFEST IS FROZEN once a journal exists: the header pins its "
+            "digest along with the commit, the spec and both pairs, and a "
+            "resume against a changed manifest is refused rather than mixing "
+            "two matrices into one curve, which forfeits the planning already "
+            "paid for. --max-sessions is the only lever a resume has, because "
+            "it is folded into the manifest before the plan is printed rather "
+            "than applied to the run. Editing manifest.yaml to run a cheaper "
+            "matrix means starting a new --out-dir."
         ),
     )
     parser.add_argument(

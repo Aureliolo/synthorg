@@ -16,7 +16,7 @@ ledger would also let a later unit inherit an exhausted ceiling.
 """
 
 import contextlib
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import partial
@@ -32,18 +32,24 @@ from evals.harness.transcript import TranscriptRecorder
 from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.recursion_depth.grading import SandboxFactory, UnitGrader
+from evals.recursion_depth.manifest import ModelPair
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.expected_artifact_check import (
+    ArtifactPresence,
     missing_expected_artifacts,
     workspace_artifact_probe,
 )
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SPEND_ALL_DROPPED,
+    EVALS_RECURSION_SPEND_DEDUPED,
     EVALS_RECURSION_UNIT_EXECUTED,
     EVALS_RECURSION_UNIT_STARTED,
 )
@@ -125,6 +131,12 @@ class SweepDeps:
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.
+        declared_pairs: The manifest's own pairs, which is where a model FAMILY
+            is written down. A live identity carries no such field, so without
+            these every unit records ``family: null`` and the cross-family
+            claim a gated result rests on is evidenced nowhere. Looked up by
+            exact ``provider/model_id``, never derived from the provider: one
+            connection serves many families.
     """
 
     build_provider: ProviderFactory
@@ -138,6 +150,7 @@ class SweepDeps:
     project_repo: ProjectRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
+    declared_pairs: tuple[ModelPair, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,6 +204,7 @@ class OpenSession:
     engine: AgentEngine
     ledger: ProgressTrackingLedger
     label: str
+    gateway_hosted: bool
 
     async def spend(self) -> SessionSpend:
         """Read what this session has cost so far, in money and in tokens.
@@ -204,16 +218,114 @@ class OpenSession:
         tokens would describe different sets of calls.
 
         Returns:
-            What every record on the ledger adds up to.
+            What this session's calls add up to, each counted once.
         """
         await self.ledger.drain_pending_records()
         records = await collect_all_records(self.ledger)
-        return SessionSpend(
-            cost=sum(record.cost for record in records),
-            tokens=sum(
-                record.input_tokens + record.output_tokens for record in records
-            ),
+        return session_spend(
+            records, gateway_hosted=self.gateway_hosted, label=self.label
         )
+
+
+def _split_by_category(
+    records: Sequence[CostRecord],
+) -> tuple[tuple[CostRecord, ...], tuple[CostRecord, ...]]:
+    """Split *records* into the accounts to count and the ones to drop.
+
+    Returns:
+        ``(counted, dropped)``, together holding every record exactly once.
+    """
+    counted: list[CostRecord] = []
+    dropped: list[CostRecord] = []
+    for record in records:
+        target = (
+            counted if record.call_category is LLMCallCategory.PRODUCTIVE else dropped
+        )
+        target.append(record)
+    return tuple(counted), tuple(dropped)
+
+
+def session_spend(
+    records: Sequence[CostRecord], *, gateway_hosted: bool, label: str
+) -> SessionSpend:
+    """Add up one session's records, counting each CALL exactly once.
+
+    The single owner of that arithmetic, because two readers of one ledger is
+    how a figure comes to mean different things in the cost panel and in the
+    spend ceiling. A live run journalled a planning unit at twice what it
+    spent.
+
+    A hosted gateway is the recorder of RECORD: every call a sweep session
+    makes crosses it, and it stamps ``PRODUCTIVE``, so anything else on this
+    ledger is a second account of a call already counted rather than a call of
+    its own. Whether one is hosted is passed in rather than inferred from the
+    records, because the harness knows it as a fact and inferring it would mean
+    guessing which of two equal sums is the duplicate.
+
+    With no gateway there is nothing to prefer: every record is the only
+    account of its call, and the offline suite drives exactly that path.
+
+    Args:
+        records: What the session's ledger holds, already drained.
+        gateway_hosted: Whether this run's calls crossed a hosted gateway.
+        label: Names the session in the log line below.
+
+    Returns:
+        The session's cost and tokens.
+    """
+    counted = records
+    if gateway_hosted:
+        # Split on the predicate in one pass rather than by testing membership
+        # of the kept tuple: the predicate is what decides the split, and
+        # asking the tuple instead rests the answer on model equality, which
+        # is only unique here because an unrelated field defaults to a fresh
+        # uuid4 per record.
+        counted, dropped = _split_by_category(records)
+        # Never silent. A category dropped here is either the duplicate this
+        # exists to remove or a call that did not cross the gateway, and only
+        # the log distinguishes them afterwards.
+        if dropped:
+            # An empty remainder is not a deduplication. Preferring one account
+            # of a call presumes a second survives, and this session would be
+            # carried forward as free having spent whatever the dropped set
+            # cost, in the rows that are the only record of it.
+            all_dropped = not counted
+            emit = logger.error if all_dropped else logger.info
+            event = (
+                EVALS_RECURSION_SPEND_ALL_DROPPED
+                if all_dropped
+                else EVALS_RECURSION_SPEND_DEDUPED
+            )
+            emit(
+                event,
+                label=label,
+                counted_records=len(counted),
+                dropped_records=len(dropped),
+                dropped_categories=sorted(
+                    {
+                        record.call_category.value
+                        if record.call_category is not None
+                        else "uncategorised"
+                        for record in dropped
+                    }
+                ),
+                dropped_tokens=sum(
+                    record.input_tokens + record.output_tokens for record in dropped
+                ),
+            )
+            if all_dropped:
+                # Count them all rather than nothing. The preference exists to
+                # drop a SECOND account of a call, and with no first account
+                # left there is nothing to prefer: these records are the only
+                # account of what the session spent, exactly as they are with
+                # no gateway hosted. Reporting zero would be as wrong as the
+                # double-count, and wrong in the direction nothing later
+                # corrects, since the money is spent either way.
+                counted = records
+    return SessionSpend(
+        cost=sum(record.cost for record in counted),
+        tokens=sum(record.input_tokens + record.output_tokens for record in counted),
+    )
 
 
 def leaf_unit_key(task_id: str) -> str:
@@ -276,26 +388,61 @@ def built_unit_workspace(
     return existing_workspace(cell_key=f"{cell_key}/{unit_key}", work_root=work_root)
 
 
-def artifacts_present(task: Task, workspace: CellWorkspace) -> bool:
-    """Whether every path *task* declared exists in *workspace*.
+def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
+    """Ask *workspace* what it holds against *task*'s declared paths.
 
     Read off disk rather than from the session's account of itself: a run
     reports the tools it called, and whether those calls left the declared file
     behind is a different question that only the tree answers.
+
+    Taken once BEFORE a session and once after, because the question delivery
+    turns on is what this run produced rather than what the workspace happens
+    to contain: the seed is recreated per unit and a declaration satisfied by
+    the seed is not work.
 
     Args:
         task: The unit's task, carrying its declared artifacts.
         workspace: The tree it ran against.
 
     Returns:
-        Whether nothing declared is missing. A task declaring nothing probeable
-        is vacuously satisfied, which cannot happen here: the harness declares
-        an artifact for every unit precisely so the zero-artifact guard arms.
+        What each probeable declaration says right now.
     """
-    presence = missing_expected_artifacts(
+    return missing_expected_artifacts(
         task.artifacts_expected, workspace=workspace.project_dir
     )
-    return not presence.missing
+
+
+def produced_nothing(
+    task: Task, workspace: CellWorkspace, baseline: ArtifactPresence | None
+) -> bool:
+    """Whether this run left every declaration exactly as it found it.
+
+    The product's own rule, through the product's own helper, and deliberately
+    not a stricter one of this harness's own. ``ArtifactPresence`` states the
+    rule where it is defined ("the 'none, not some' rule is this module's to
+    state once"), and a harness measuring the product must not judge delivery
+    harder than the product does.
+
+    Asking instead whether ANY declared path was missing makes delivery turn on
+    the planner's declaration rather than on the agent's work. That declaration
+    is written per node at whatever granularity the planner chose, so one output
+    is a delivery under a parent's two-entry list and a non-delivery under the
+    leaf's four-entry one: a live run booked 598,585 tokens as no delivery over
+    an absent empty ``tests/__init__.py``, on a unit that had written its
+    module, a 31-test suite, and run it.
+
+    What a unit declared is still recorded, because a planner over-declaring is
+    worth seeing. It just does not decide.
+
+    Args:
+        task: The unit's task, carrying its declared artifacts.
+        workspace: The tree it ran against.
+        baseline: What the same probe said before the session ran.
+
+    Returns:
+        Whether nothing declared appeared, changed or was removed.
+    """
+    return probe_artifacts(task, workspace).delivered_nothing_since(baseline)
 
 
 def run_binding(
@@ -361,7 +508,12 @@ async def open_session(
             cost_tracker=fallback,
             extra_tools=extra_tools,
         )
-        yield OpenSession(engine=engine, ledger=ledger, label=binding.execution_id)
+        yield OpenSession(
+            engine=engine,
+            ledger=ledger,
+            label=binding.execution_id,
+            gateway_hosted=deps.open_run_ledger is not None,
+        )
 
 
 def watching(
@@ -600,11 +752,13 @@ __all__ = [
     "SweepDeps",
     "ToolRegistryFactory",
     "ToolReleaseHook",
-    "artifacts_present",
     "ledger_scope",
     "open_session",
+    "probe_artifacts",
+    "produced_nothing",
     "run_binding",
     "run_session",
+    "session_spend",
     "transcript_scope",
     "unit_workspace",
     "watching",
