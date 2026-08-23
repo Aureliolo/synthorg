@@ -286,7 +286,7 @@ The cycle only ever **proposes**: every authored-tool proposal still flows throu
 
 ## Proposal Lifecycle
 
-1. **Signal collection**: `SnapshotBuilder` runs the 7 core aggregators (plus an opt-in benchmark aggregator) in parallel
+1. **Signal collection**: `SnapshotBuilder` runs the 6 core aggregators (plus an opt-in benchmark aggregator) in parallel
 2. **Rule evaluation**: `RuleEngine` checks all enabled rules against the snapshot
 3. **Strategy dispatch**: Matching strategies generate proposals (rule-first hybrid)
 4. **Guard chain**: Sequential evaluation (scope, rollback plan, rate limit, approval gate)
@@ -620,7 +620,7 @@ factory pattern; durable backends ship behind the same protocol later):
 | `EvolutionOutcomeStore` | `synthorg.meta.evolution.outcome_store` | Ring-buffered applied/rolled-back proposal outcomes feeding `EvolutionSignalAggregator`. |
 | `TelemetryEventCounter` | `synthorg.telemetry.event_counter` | Rolling event counts by type feeding `TelemetrySignalAggregator`; registered as a `TelemetryCollector.subscribe(...)` consumer. |
 
-The facade layer composes the seven aggregators, `SnapshotBuilder`, and
+The facade layer composes the six aggregators, `SnapshotBuilder`, and
 the proposal approval store into a single `SignalsService` that shims
 the `synthorg_signals_*` tools. `AnalyticsService` and `ReportsService`
 layer on top: analytics is a stateless view over `SignalsService`
