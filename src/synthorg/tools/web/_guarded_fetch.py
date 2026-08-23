@@ -139,7 +139,14 @@ def pin_url(
             validator gives at its own hostless branch: redaction rebuilds
             around a parsed hostname and returns its input untouched when there
             is none, so echoing it back would copy out whatever sat in the
-            authority.
+            authority. Also raised when the address to pin to does not parse
+            as one, which is the same class of broken invariant:
+            ``is_blocked_ip`` is fail-closed on an unparseable address, so
+            every entry in ``resolved_ips`` already parsed once. The
+            alternative to raising is the one outcome worse than failing,
+            returning the hostname-bearing URL, which hands httpx a name to
+            re-resolve at connect time and so answers an unpinned request
+            that reads exactly like a pinned one.
     """
     parsed = urlparse(url)
     resolved = _host_and_port(parsed)
@@ -158,8 +165,9 @@ def pin_url(
     pinned_ip = validation.resolved_ips[0]
     try:
         ip_address(pinned_ip)
-    except ValueError:
-        return canonical_url, normalized_headers
+    except ValueError as exc:
+        msg = "refusing to pin a request to an address that is not one"
+        raise ToolParameterError(msg) from exc
     return with_authority_host(parsed, pinned_ip, port), normalized_headers
 
 

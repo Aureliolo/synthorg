@@ -71,6 +71,18 @@ class TestNetworkPolicy:
             NetworkPolicy(hostname_allowlist=("xn--bogus-.com",))
 
     @pytest.mark.unit
+    def test_allowlist_rejects_a_non_string_entry_as_a_validation_error(self) -> None:
+        """The refusal has to stay inside the hierarchy both guards read.
+
+        This validator runs before field validation, so a non-string element
+        reaches ``str`` methods. Raising ``AttributeError`` there would leave
+        Pydantic unable to convert it and the startup-path caller unable to
+        catch it, so the process would go down on a persisted value.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(hostname_allowlist=(123,))  # type: ignore[arg-type]
+
+    @pytest.mark.unit
     def test_allowlist_collapses_alternate_spellings_of_one_host(self) -> None:
         """Canonicalising must happen before the dedupe, not after it.
 
@@ -429,7 +441,10 @@ class TestValidateUrlHost:
         """
         policy = NetworkPolicy()
         result = await validate_url_host(f"https://example.com{suffix}/api", policy)
-        assert isinstance(result, str)
+        # Every refusal is a string, a failed DNS lookup included, so asserting
+        # the type alone would pass on the outcome this test exists to rule
+        # out: the hostname reaching a real resolver.
+        assert result == "Could not extract a hostname from the URL"
 
     @pytest.mark.unit
     async def test_underscore_host_still_reaches_dns(self) -> None:

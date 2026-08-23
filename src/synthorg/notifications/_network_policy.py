@@ -7,8 +7,6 @@ factory runs on the startup path, so anything raising out of here takes the
 API process with it.
 """
 
-from pydantic import ValidationError
-
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import NOTIFICATION_SINK_CONFIG_INVALID
@@ -36,6 +34,12 @@ def build_sink_network_policy(
     this runs on the startup path, where a raise would take the whole
     process down and leave no running API through which to correct it.
 
+    The catch is ``ValueError`` rather than ``ValidationError`` because that
+    is the contract the model's own refusals are expressed in, and Pydantic's
+    wrapper is one of them: it subclasses ``ValueError``. Naming the narrower
+    type would leave the process taken down by a refusal raised half a step
+    earlier than the one this guard was written for.
+
     Args:
         params: Adapter-specific parameters.
         sink_type: Sink name, for the refusal log.
@@ -47,7 +51,7 @@ def build_sink_network_policy(
     allowlist = tuple(parse_comma_list_stripped(params.get("hostname_allowlist", "")))
     try:
         return NetworkPolicy(hostname_allowlist=allowlist)
-    except ValidationError as exc:
+    except ValueError as exc:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type=sink_type,

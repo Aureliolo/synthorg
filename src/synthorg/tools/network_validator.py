@@ -119,12 +119,26 @@ class NetworkPolicy(BaseModel):
 
         Returns:
             Result of type ``object``.
+
+        Raises:
+            ValueError: If any entry is not a string. Pydantic converts this
+                to a ``ValidationError``, which is what keeps a bad persisted
+                allowlist inside the contract the startup-path caller catches.
         """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
         raw = data["hostname_allowlist"]
         if not isinstance(raw, tuple | list):
             return data
+        # A ``mode="before"`` validator runs ahead of field validation, so an
+        # element that is not a string reaches ``str`` methods here and raises
+        # ``AttributeError``, which is outside the hierarchy Pydantic converts
+        # to ``ValidationError`` and outside what the startup-path caller
+        # catches. Refusing it as a ``ValueError`` keeps every bad allowlist
+        # inside the one contract both of those depend on.
+        if not all(isinstance(entry, str) for entry in raw):
+            msg = "hostname_allowlist entries must be strings"
+            raise ValueError(msg)
         # Canonicalise before deduplicating so an operator's U-label entry
         # keeps matching once the request side resolves to its A-label, and
         # so alternate spellings of one host collapse to one entry rather

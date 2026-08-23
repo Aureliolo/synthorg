@@ -9,7 +9,7 @@ separator. A second copy of that assembly is a copy that can drift from the
 DNS-rebinding fix it exists to support.
 """
 
-from urllib.parse import ParseResult, SplitResult, urlunparse
+from urllib.parse import ParseResult, urlunparse
 
 
 def bracket_host(host: str) -> str:
@@ -23,7 +23,7 @@ def bracket_host(host: str) -> str:
 
 
 def with_authority_host(
-    parsed: ParseResult | SplitResult,
+    parsed: ParseResult,
     host: str,
     port: int | None,
 ) -> str:
@@ -33,8 +33,14 @@ def with_authority_host(
     userinfo *parsed* carried is kept, since it is part of the request the
     caller authored.
 
+    A ``SplitResult`` is refused at the type level rather than accepted and
+    handled: it is one field shorter, so ``urlunparse`` reads its fragment as
+    the params slot and raises. The sibling readers here take either, because
+    reading ``.hostname`` and ``.port`` needs no such agreement; only the
+    rebuild does.
+
     Args:
-        parsed: The caller's URL, already parsed.
+        parsed: The caller's URL, already parsed by ``urlparse``.
         host: The validated hostname or IP to carry in the rebuilt URL.
         port: The port to state explicitly, or ``None`` to state none.
 

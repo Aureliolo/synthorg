@@ -136,6 +136,23 @@ class TestHostHeaderCarriesTheAuthority:
 
         assert "hunter2" not in str(excinfo.value)
 
+    def test_an_address_that_is_not_one_is_refused_rather_than_left_unpinned(
+        self,
+    ) -> None:
+        """Falling back to the hostname answers an unpinned request.
+
+        ``is_blocked_ip`` is fail-closed on an unparseable address, so nothing
+        reachable puts one in ``resolved_ips``; the invariant is asserted here
+        because the alternative behaviour is indistinguishable from success at
+        every layer above, which is what makes it worth a raise.
+        """
+        with pytest.raises(ToolParameterError, match="not one"):
+            pin_url(
+                "http://example.test/docs",
+                {},
+                _validation("example.test", ips=("not-an-address",)),
+            )
+
     def test_a_portless_url_sends_a_bare_host(self) -> None:
         _, headers = pin_url(
             "http://example.test/docs",
