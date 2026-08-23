@@ -77,29 +77,20 @@ class PerformanceSummary(BaseModel):
         ge=0.0,
         le=10.0,
     )
-    collaboration_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=10.0,
-    )
     trend: TrendDirection | None = None
 
     @model_validator(mode="after")
-    def _trend_requires_at_least_one_score(self) -> Self:
-        """Require at least one component score whenever ``trend`` is set.
+    def _trend_requires_a_score(self) -> Self:
+        """Require a quality score whenever ``trend`` is set.
 
         Returns:
             The validated model instance.
 
         Raises:
-            ValueError: If ``trend`` is set but both scores are None.
+            ValueError: If ``trend`` is set but no score is.
         """
-        if (
-            self.trend is not None
-            and self.quality_score is None
-            and self.collaboration_score is None
-        ):
-            msg = "trend requires at least one score to be set"
+        if self.trend is not None and self.quality_score is None:
+            msg = "trend requires a quality score to be set"
             raise ValueError(msg)
         return self
 
@@ -302,7 +293,6 @@ class AgentObservabilityController(Controller):
         trend = _extract_quality_trend(snapshot)
         perf = PerformanceSummary(
             quality_score=snapshot.overall_quality_score,
-            collaboration_score=snapshot.overall_collaboration_score,
             trend=trend,
         )
 

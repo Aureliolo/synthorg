@@ -31,7 +31,6 @@ from synthorg.engine.workflow.subworkflow_service import SubworkflowService
 from synthorg.engine.workflow.validation_types import WorkflowValidationResult
 from synthorg.engine.workflow.version_service import WorkflowVersionService
 from synthorg.hr.activity_service import ActivityFeedService
-from synthorg.hr.performance.models import CollaborationCalibration
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.mcp.handlers import build_handler_map
@@ -93,13 +92,7 @@ def services(identity: AgentIdentity) -> SimpleNamespace:
     )
     ns.agent_registry = registry
 
-    tracker = AsyncMock(spec=PerformanceTracker)
-    tracker.get_collaboration_calibration.return_value = CollaborationCalibration(
-        agent_id=NotBlankStr(str(identity.id)),
-        strategy_name=NotBlankStr("test-strategy"),
-        sample_size=3,
-    )
-    ns.performance_tracker = tracker
+    ns.performance_tracker = AsyncMock(spec=PerformanceTracker)
 
     engine = AsyncMock(spec=TaskEngine)
     dummy_task = _sync_dumped({"id": "task-1", "title": "Test", "status": "pending"})
@@ -228,7 +221,6 @@ class TestLiveFacadesReturnWellFormedEnvelopes:
             "synthorg_agents_create",
             "synthorg_agents_update",
             "synthorg_autonomy_update",
-            "synthorg_collaboration_get_calibration",
             "synthorg_tasks_create",
             "synthorg_activities_list",
             "synthorg_workflows_create",
@@ -328,29 +320,6 @@ class TestHappyPathServiceInvocations:
         )
         assert body["status"] == "ok"
         services.self_improvement_service.trigger_cycle.assert_awaited_once()
-
-    async def test_collaboration_calibration_calls_service(
-        self,
-        app_state: AppState,
-        services: SimpleNamespace,
-        actor: AgentIdentity,
-    ) -> None:
-        handlers = build_handler_map()
-        body = _parse(
-            await handlers["synthorg_collaboration_get_calibration"](
-                app_state=app_state,
-                arguments={"agent_id": "agent-1"},
-                actor=actor,
-            )
-        )
-        assert body["status"] == "ok"
-        # Pin the routed argument: the handler must wrap ``agent_id``
-        # in ``NotBlankStr`` before calling the tracker. A regression
-        # that drops the wrapping or the agent_id entirely would slip
-        # past a bare ``assert_awaited_once`` check.
-        services.performance_tracker.get_collaboration_calibration.assert_awaited_once_with(
-            NotBlankStr("agent-1"),
-        )
 
     async def test_autonomy_update_routes_through_registry(
         self,

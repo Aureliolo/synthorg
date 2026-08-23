@@ -1,8 +1,7 @@
 # module-kind: declarative
 """Performance tracking domain models.
 
-Frozen Pydantic models for task metrics, collaboration metrics,
-quality/collaboration scoring results, trend detection, and
+Frozen Pydantic models for task metrics, trend detection, and
 rolling-window aggregates.
 """
 
@@ -14,7 +13,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
     model_validator,
 )
 
@@ -152,257 +150,6 @@ class TaskMetricRecord(BaseModel):
         return self
 
 
-class CollaborationMetricRecord(BaseModel):
-    """Record of a collaboration behavior data point.
-
-    Attributes:
-        id: Unique record identifier.
-        agent_id: Agent being measured.
-        recorded_at: When the observation was recorded.
-        delegation_success: Whether a delegation was successful.
-        delegation_response_seconds: Response time for a delegation.
-        conflict_constructiveness: How constructively conflict was handled.
-        discussion_contribution: Quality of contribution to a group discussion.
-        loop_triggered: Whether the agent triggered a delegation loop.
-        handoff_completeness: Completeness of task handoff (0.0-1.0).
-        interaction_summary: Text summary of the interaction for LLM
-            calibration (None if not available).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    id: UUID = Field(
-        default_factory=uuid4,
-        description="Unique record identifier",
-    )
-    agent_id: NotBlankStr = Field(description="Agent being measured")
-    recorded_at: AwareDatetime = Field(
-        description="When the observation was recorded",
-    )
-    delegation_success: bool | None = Field(
-        default=None,
-        description="Whether a delegation was successful",
-    )
-    delegation_response_seconds: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Response time for a delegation",
-    )
-    conflict_constructiveness: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="How constructively conflict was handled",
-    )
-    discussion_contribution: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Quality of contribution to a group discussion",
-    )
-    loop_triggered: bool = Field(
-        default=False,
-        description="Whether the agent triggered a delegation loop",
-    )
-    handoff_completeness: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Completeness of task handoff",
-    )
-    interaction_summary: NotBlankStr | None = Field(
-        default=None,
-        max_length=4096,
-        description="Text summary of the interaction for LLM calibration",
-    )
-
-
-class QualityScoreResult(BaseModel):
-    """Result of a quality scoring evaluation.
-
-    Attributes:
-        score: Overall quality score (0.0-10.0).
-        strategy_name: Name of the scoring strategy used.
-        breakdown: Score components as (name, value) pairs.
-        confidence: Confidence in the score (0.0-1.0).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    score: float = Field(ge=0.0, le=10.0, description="Overall quality score")
-    strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    breakdown: tuple[tuple[NotBlankStr, float], ...] = Field(
-        default=(),
-        description="Score components as (name, value) pairs",
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence in the score",
-    )
-
-
-class CollaborationScoreResult(BaseModel):
-    """Result of a collaboration scoring evaluation.
-
-    Attributes:
-        score: Overall collaboration score (0.0-10.0).
-        strategy_name: Name of the scoring strategy used.
-        component_scores: Per-component scores as (name, value) pairs.
-        confidence: Confidence in the score (0.0-1.0).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    score: float = Field(ge=0.0, le=10.0, description="Overall collaboration score")
-    strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    component_scores: tuple[tuple[NotBlankStr, float], ...] = Field(
-        default=(),
-        description="Per-component scores as (name, value) pairs",
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence in the score",
-    )
-    override_active: bool = Field(
-        default=False,
-        description="Whether a human override is active",
-    )
-
-
-class LlmCalibrationRecord(BaseModel):
-    """Record of an LLM calibration sample for collaboration scoring.
-
-    Attributes:
-        id: Unique record identifier.
-        agent_id: Agent being evaluated.
-        sampled_at: When the LLM evaluation occurred.
-        interaction_record_id: ID of the sampled CollaborationMetricRecord.
-        llm_score: LLM-assigned collaboration score (0.0-10.0).
-        behavioral_score: Behavioral strategy score at time of sampling.
-        drift: Absolute difference between LLM and behavioral scores (computed).
-        rationale: LLM's explanation for the score.
-        model_used: Which LLM model was used for evaluation.
-        cost: Numeric cost of the LLM call, denominated in ``currency``.
-        currency: ISO 4217 currency code for ``cost``.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    id: UUID = Field(
-        default_factory=uuid4,
-        description="Unique record identifier",
-    )
-    agent_id: NotBlankStr = Field(description="Agent being evaluated")
-    sampled_at: AwareDatetime = Field(
-        description="When the LLM evaluation occurred",
-    )
-    interaction_record_id: NotBlankStr = Field(
-        description="ID of the sampled CollaborationMetricRecord",
-    )
-    llm_score: float = Field(
-        ge=0.0,
-        le=10.0,
-        description="LLM-assigned collaboration score",
-    )
-    behavioral_score: float = Field(
-        ge=0.0,
-        le=10.0,
-        description="Behavioral strategy score at time of sampling",
-    )
-
-    @computed_field(description="Absolute difference between LLM and behavioral scores")
-    @property
-    def drift(self) -> float:
-        """Absolute difference between LLM and behavioral scores."""
-        return round(abs(self.llm_score - self.behavioral_score), 4)
-
-    rationale: NotBlankStr = Field(
-        max_length=2048,
-        description="LLM's explanation for the score",
-    )
-    model_used: NotBlankStr = Field(
-        description="Which LLM model was used for evaluation",
-    )
-    cost: float = Field(
-        ge=0.0,
-        description="Numeric cost of the LLM call, denominated in ``currency``",
-    )
-    currency: CurrencyCode = Field(
-        description="ISO 4217 currency code for ``cost``",
-    )
-
-
-class _BaseOverride(BaseModel):
-    """Shared base for human-applied score overrides.
-
-    Attributes:
-        id: Unique override identifier.
-        agent_id: Agent whose score is overridden.
-        score: Override score (0.0-10.0).
-        reason: Why the override was applied.
-        applied_by: Identity of the human who applied it.
-        applied_at: When the override was applied.
-        expires_at: When the override expires (None = indefinite).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    id: UUID = Field(
-        default_factory=uuid4,
-        description="Unique override identifier",
-    )
-    agent_id: NotBlankStr = Field(
-        description="Agent whose score is overridden",
-    )
-    score: float = Field(
-        ge=0.0,
-        le=10.0,
-        description="Override score",
-    )
-    reason: NotBlankStr = Field(
-        max_length=4096,
-        description="Why the override was applied",
-    )
-    applied_by: NotBlankStr = Field(
-        description="Identity of the human who applied it",
-    )
-    applied_at: AwareDatetime = Field(
-        description="When the override was applied",
-    )
-    expires_at: AwareDatetime | None = Field(
-        default=None,
-        description="When the override expires (None = indefinite)",
-    )
-
-    @model_validator(mode="after")
-    def _validate_expiration_ordering(self) -> Self:
-        """Ensure expires_at is strictly after applied_at when set.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if self.expires_at is not None and self.expires_at <= self.applied_at:
-            msg = (
-                f"expires_at ({self.expires_at}) must be after "
-                f"applied_at ({self.applied_at})"
-            )
-            raise ValueError(msg)
-        return self
-
-
-class CollaborationOverride(_BaseOverride):
-    """Human-applied override for an agent's collaboration score."""
-
-
-class QualityOverride(_BaseOverride):
-    """Human-applied override for an agent's quality score."""
-
-
 class TrendResult(BaseModel):
     """Result of a trend detection analysis.
 
@@ -442,7 +189,6 @@ class WindowMetrics(BaseModel):
         avg_completion_time_seconds: Average time, None if insufficient data.
         avg_tokens_per_task: Average tokens, None if insufficient data.
         success_rate: Task success rate (0.0-1.0), None if no tasks.
-        collaboration_score: Collaboration score, None if not computed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -484,12 +230,6 @@ class WindowMetrics(BaseModel):
         ge=0.0,
         le=1.0,
         description="Task success rate",
-    )
-    collaboration_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=10.0,
-        description="Collaboration score",
     )
 
     @model_validator(mode="after")
@@ -547,60 +287,6 @@ class WindowMetrics(BaseModel):
         return self
 
 
-class CollaborationCalibration(BaseModel):
-    """Stable, ops-facing readout of the collaboration scoring strategy.
-
-    Returned by ``PerformanceTracker.get_collaboration_calibration`` for
-    the MCP ``synthorg_collaboration_get_calibration`` tool. The shape
-    is intentionally curated -- callers see ``strategy_name`` and the
-    bounded ``component_weights`` tuple, but they do not see strategy-
-    private internals. Swapping the underlying
-    :class:`~synthorg.hr.performance.protocols.CollaborationScoringStrategy`
-    therefore does not change the envelope shape MCP consumers depend on.
-
-    Attributes:
-        agent_id: The agent the calibration was computed for.
-        strategy_name: Name of the active scoring strategy.
-        window_sizes: Rolling-window labels the strategy aggregates over.
-        component_weights: Ordered tuple of ``(component_name, weight)``
-            pairs, where ``component_name`` is a stable identifier like
-            ``"handoff_acceptance"``. A tuple-of-tuples (rather than a
-            dict) is used so the wire shape is fully ordered and stays
-            JSON-serialisable; callers that need lookup semantics should
-            convert via ``dict(component_weights)`` at the call site.
-        active_override: Currently-active human override, if any.
-        sample_size: Number of collaboration samples backing the active
-            window. ``0`` is valid (cold-start agents).
-        last_calibrated_at: Timestamp of the most recent calibration
-            sample, or ``None`` when no samples exist.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    agent_id: NotBlankStr = Field(description="Agent identifier")
-    strategy_name: NotBlankStr = Field(description="Active strategy name")
-    window_sizes: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Rolling-window labels aggregated over",
-    )
-    component_weights: tuple[tuple[NotBlankStr, float], ...] = Field(
-        default=(),
-        description="Per-component weights as (name, weight) pairs",
-    )
-    active_override: CollaborationOverride | None = Field(
-        default=None,
-        description="Active human override, when present",
-    )
-    sample_size: int = Field(
-        ge=0,
-        description="Number of collaboration samples available",
-    )
-    last_calibrated_at: AwareDatetime | None = Field(
-        default=None,
-        description="Timestamp of the most recent calibration sample",
-    )
-
-
 class AgentPerformanceSnapshot(BaseModel):
     """Complete performance snapshot for an agent at a point in time.
 
@@ -609,12 +295,9 @@ class AgentPerformanceSnapshot(BaseModel):
         computed_at: When this snapshot was computed.
         windows: Rolling window metrics.
         trends: Detected trends per metric.
-        overall_quality_score: Aggregate quality score.
-        overall_collaboration_score: Aggregate collaboration score.
-        human_feedback_score: Active human quality-override score
-            normalised to [0, 1], or ``None`` when no human override is
-            in effect. A direct human-feedback signal distinct from the
-            model-derived quality/collaboration scores.
+        overall_quality_score: Mean of the completion-oracle verdicts
+            recorded on the agent's tasks in range, or ``None`` when no
+            reviewed task is in range.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -633,17 +316,5 @@ class AgentPerformanceSnapshot(BaseModel):
         default=None,
         ge=0.0,
         le=10.0,
-        description="Aggregate quality score",
-    )
-    overall_collaboration_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=10.0,
-        description="Aggregate collaboration score",
-    )
-    human_feedback_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Active human quality-override score, normalised to [0, 1]",
+        description="Mean completion-oracle verdict score",
     )

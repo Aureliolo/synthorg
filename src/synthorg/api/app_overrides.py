@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService
-    from synthorg.hr.training.service import TrainingService
     from synthorg.persistence.artifact_storage import ArtifactStorageBackend
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.providers.health_tracker import ProviderHealthTracker
@@ -75,7 +74,6 @@ class AppOverrides:
     artifact_storage: ArtifactStorageBackend | None = None
     audit_log: AuditLog | None = None
     coordination_metrics_store: CoordinationMetricsStore | None = None
-    training_service: TrainingService | None = None
     event_stream_hub: EventStreamHub | None = None
     interrupt_store: InterruptStore | None = None
     client_simulation_state: ClientSimulationState | None = None

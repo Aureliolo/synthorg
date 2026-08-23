@@ -187,13 +187,6 @@ export const budgetConfigVersionsClient = createReadOnlyVersionHistoryClient<
 >('/budget/config')
 
 /**
- * Singleton evaluation-config versions client.  Read-only.
- */
-export const evaluationConfigVersionsClient = createReadOnlyVersionHistoryClient<
-  Record<string, unknown>
->('/evaluation/config')
-
-/**
  * Singleton company-structure versions client.  Read-only.
  */
 export const companyVersionsClient = createReadOnlyVersionHistoryClient<

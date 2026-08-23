@@ -33,19 +33,6 @@ vi.mock('@/pages/agents/TaskHistory', () => ({
 vi.mock('@/pages/agents/ActivityLog', () => ({
   ActivityLog: () => <div data-testid="activity-log" />,
 }))
-// Stub TrainingSection so its useEffect doesn't kick off real HTTP calls
-// into the training store; those calls would race the test's
-// assertions and noise the output without adding coverage.
-vi.mock('@/pages/agents/TrainingSection', () => ({
-  TrainingSection: () => <div data-testid="training-section" />,
-}))
-// QualityScoreOverride fires a `getQualityOverride` axios GET in a
-// useEffect on mount. Without a mock the request hits the real client,
-// UNDICI leaks the pending fetch past teardown.
-vi.mock('@/pages/agents/QualityScoreOverride', () => ({
-  QualityScoreOverride: () => <div data-testid="quality-score-override" />,
-}))
-
 
 const defaultHookReturn: UseAgentDetailDataReturn = {
   agent: makeAgent('alice'),
@@ -117,14 +104,6 @@ describe('AgentDetailPage', () => {
     renderDetail()
     expect(screen.getByText('Partial failure')).toBeInTheDocument()
     expect(screen.getByTestId('identity-header')).toBeInTheDocument()
-  })
-
-  it('composes the mocked TrainingSection for an agent', () => {
-    renderDetail()
-    // Guards against regressions where AgentDetailPage removes or
-    // re-routes the per-agent training panel. The mock is declared
-    // above; this assertion checks the composition still happens.
-    expect(screen.getByTestId('training-section')).toBeInTheDocument()
   })
 
   it('shows WebSocket disconnect warning when not connected', () => {

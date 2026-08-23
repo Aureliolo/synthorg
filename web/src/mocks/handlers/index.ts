@@ -58,7 +58,6 @@ import { charterHandlers } from './charter'
 import { chatQuestionsHandlers } from './chat-questions'
 import { clientsHandlers } from './clients'
 import { cockpitHandlers } from './cockpit'
-import { collaborationHandlers } from './collaboration'
 import { companyHandlers } from './company'
 import { connectionsHandlers } from './connections'
 import { coordinationHandlers } from './coordination'
@@ -88,7 +87,6 @@ import { projectBrainHandlers } from './projectBrain'
 import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
-import { qualityHandlers } from './quality'
 import { recommendationsHandlers } from './recommendations'
 import { reportsHandlers } from './reports'
 import { rolesHandlers } from './roles'
@@ -100,7 +98,6 @@ import { subsystemHandlers } from './subsystems'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
 import { templatePacksHandlers } from './template-packs'
-import { trainingHandlers } from './training'
 import { tunnelDefaultHandlers } from './tunnel'
 import { usersHandlers } from './users'
 import { webhooksHandlers } from './webhooks'
@@ -130,7 +127,6 @@ export const defaultHandlers = [
   ...chatQuestionsHandlers,
   ...clientsHandlers,
   ...cockpitHandlers,
-  ...collaborationHandlers,
   ...companyHandlers,
   ...connectionsHandlers,
   ...coordinationHandlers,
@@ -160,7 +156,6 @@ export const defaultHandlers = [
   ...projectDocsHandlers,
   ...projectsHandlers,
   ...providersHandlers,
-  ...qualityHandlers,
   ...recommendationsHandlers,
   ...reportsHandlers,
   ...rolesHandlers,
@@ -172,7 +167,6 @@ export const defaultHandlers = [
   ...subworkflowsHandlers,
   ...tasksHandlers,
   ...templatePacksHandlers,
-  ...trainingHandlers,
   ...tunnelDefaultHandlers,
   ...usersHandlers,
   ...webhooksHandlers,

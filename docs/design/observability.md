@@ -27,34 +27,21 @@ performance:
     - "90d"
   improving_threshold: 0.05       # Slope threshold for improving trend
   declining_threshold: -0.05      # Slope threshold for declining trend
-  quality_judge_model: null       # Model ID for LLM quality judge (null = disabled)
-  quality_judge_provider: null    # Provider name (null = auto from first available)
-  quality_ci_weight: 0.4          # Weight for CI signal; LLM weight is its complement
-  llm_sampling_rate: 0.01         # Fraction of events sampled by LLM calibration
-  llm_sampling_model: null        # Model for calibration sampling (null = disabled)
-  collaboration_weights: null      # Custom weights for collaboration scoring (null = defaults)
-  calibration_retention_days: 90  # Days to retain calibration records
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `quality_judge_model` | `string` or `null` | `null` | Model ID for quality LLM judge. `null` disables the judge. |
-| `quality_judge_provider` | `string` or `null` | `null` | Provider name for the judge. Requires `quality_judge_model`. |
-| `quality_ci_weight` | `float` | `0.4` | Weight for CI signal (0.0--1.0). The LLM-judge weight is the derived complement. |
-| `quality_llm_weight` | `float` (derived) | `0.6` | Read-only complement `1 - quality_ci_weight`; not set directly. |
 | `min_data_points` | `int` | `5` | Minimum data points for meaningful metric aggregation. |
 | `windows` | `list[string]` | `["7d", "30d", "90d"]` | Time window labels for rolling metrics (at least one required). |
 | `improving_threshold` | `float` | `0.05` | Slope above which a metric trend is classified as "improving". |
 | `declining_threshold` | `float` | `-0.05` | Slope below which a metric trend is classified as "declining". |
-| `collaboration_weights` | `object` or `null` | `null` | Custom weights for collaboration scoring components. `null` uses defaults. |
-| `llm_sampling_rate` | `float` | `0.01` | Fraction of task events sampled for LLM calibration. |
-| `llm_sampling_model` | `string` or `null` | `null` | Model ID for LLM calibration sampling. `null` disables sampling. |
-| `calibration_retention_days` | `int` | `90` | Days to retain calibration records before expiry. |
+
+The tracker configures no scorer: a task's `quality_score` is the completion
+oracle's verdict, stamped at write time. See
+[HR & Agent Lifecycle](hr-lifecycle.md#performance-tracking).
 
 !!! note "Validation Rules"
-    - `quality_llm_weight` is derived as `1 - quality_ci_weight`, so the composite weights always sum to `1.0`
     - `improving_threshold` must be strictly greater than `declining_threshold`
-    - `quality_judge_provider` requires `quality_judge_model` to be set
 
 ## Structured Logging
 

@@ -40,7 +40,6 @@ def _snapshot() -> OrgSignalSnapshot:
         performance=OrgPerformanceSummary(
             avg_quality_score=7.0,
             avg_success_rate=0.8,
-            avg_collaboration_score=6.0,
             agent_count=10,
         ),
         budget=OrgBudgetSummary(

@@ -205,8 +205,8 @@ async def install_runtime_services(
     await hydrate_cost_window(app_state)
     _try_wire_ssrf_violation_recorder(app_state)
     # Attach durable metric repos to the performance tracker now that the
-    # backend is connected; a restart otherwise discards all recorded
-    # task/collaboration performance metrics.
+    # backend is connected; a restart otherwise discards every recorded
+    # task metric.
     _try_wire_performance_persistence(app_state)
     # Make the audit hash chain durable: hydrate from storage + drain new
     # appends; a restart otherwise loses the tamper-evident chain.

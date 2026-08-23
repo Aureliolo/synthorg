@@ -27,7 +27,6 @@ class OnboardingStep(StrEnum):
     COMPANY_CONTEXT = "company_context"
     PROJECT_BRIEFING = "project_briefing"
     TEAM_INTRODUCTIONS = "team_introductions"
-    LEARNED_FROM_SENIORS = "learned_from_seniors"
 
 
 class LifecycleEventType(StrEnum):

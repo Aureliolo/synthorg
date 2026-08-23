@@ -26,7 +26,6 @@ const ChatPage = lazy(() => import('@/pages/ChatPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const ModelRecommendationsPage = lazy(() => import('@/pages/ModelRecommendationsPage'))
-const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
 const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const SsrfViolationsPage = lazy(() => import('@/pages/security/SsrfViolationsPage'))
@@ -55,7 +54,6 @@ const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
 const AdminBackupsPage = lazy(() => import('@/pages/AdminBackupsPage'))
 const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
 const CompanyVersionsPage = lazy(() => import('@/pages/CompanyVersionsPage'))
-const EvaluationVersionsPage = lazy(() => import('@/pages/EvaluationVersionsPage'))
 const FineTuningPage = lazy(() => import('@/pages/FineTuningPage'))
 const ClientListPage = lazy(() => import('@/pages/ClientListPage'))
 const ClientDetailPage = lazy(() => import('@/pages/ClientDetailPage'))
@@ -166,7 +164,6 @@ const appRoutes = [
                 element: <ModelRecommendationsPage />,
               },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
-              { path: ROUTES.TRAINING.slice(1), element: <TrainingPage /> },
               { path: 'messages', element: <MessagesPage /> },
               { path: 'providers', element: <ProvidersPage /> },
               // Registered before ':providerName' so the literal segment is not
@@ -205,7 +202,6 @@ const appRoutes = [
               { path: ROUTES.ADMIN_BACKUPS.slice(1), element: <AdminBackupsPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },
               { path: 'org/versions', element: <CompanyVersionsPage /> },
-              { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },
               { path: 'clients', element: <ClientListPage /> },
               { path: 'clients/requests', element: <RequestQueuePage /> },
               { path: 'clients/simulations', element: <SimulationDashboardPage /> },

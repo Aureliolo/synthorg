@@ -17,7 +17,7 @@ The taxonomy grounds the judgement in what the prompt asks the model to do:
 - ``synthesise_generate_author`` to ``expert``: open-ended synthesis,
   generation, authoring, code modification, and planning.
 
-The pin-validation benchmark (:mod:`synthorg.hr.evaluation.pin_validation_benchmark`)
+The pin-validation benchmark (:mod:`synthorg.llm.pin_validation.benchmark`)
 consumes this policy to validate each prompt class against its pinned rung, and
 each prompt class's ``ModelPinMetadata`` takes its rung from here.
 An import-time drift guard rejects any :class:`PromptPurposeId` missing a
@@ -130,10 +130,6 @@ _CAPABILITY_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptWorkKind], ..
     (PromptPurposeId.CLASSIFICATION_NUMERICAL_DRIFT, _CAPABLE),
     (PromptPurposeId.CLASSIFICATION_CONTEXT_OMISSION, _CAPABLE),
     (PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE, _CAPABLE),
-    (PromptPurposeId.HR_TRAINING_CURATION, _EXPERT),
-    (PromptPurposeId.HR_CALIBRATION, _BASIC),
-    (PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS, _CAPABLE),
-    (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, _EXPERT),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, _EXPERT),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, _BASIC),
     (PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION, _BASIC),

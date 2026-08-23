@@ -33,7 +33,6 @@ def _snap(
         performance=OrgPerformanceSummary(
             avg_quality_score=quality,
             avg_success_rate=success,
-            avg_collaboration_score=6.0,
             agent_count=10,
         ),
         budget=OrgBudgetSummary(

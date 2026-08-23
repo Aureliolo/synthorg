@@ -95,7 +95,6 @@ Each already has a construction site (so the discovery gate passes it) and
 | `SubworkflowService` | the subworkflow feature prerequisite is absent |
 | `WorkflowVersionService` | persistence lacks the workflow-version repo |
 | `AgentVersionService` | persistence lacks the agent-version repo |
-| `TrainingService` | the training feature prerequisite is absent |
 | `SelfImprovementService` (`meta.py::_WHY_SELF_IMPROVEMENT`, `synthorg_meta_*`) | the self-improvement meta loop is not enabled for the deployment |
 
 ## INTENTIONAL-BACKEND-DEPENDENT (documented)

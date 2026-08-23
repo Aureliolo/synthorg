@@ -1,6 +1,6 @@
 ---
 title: HR & Agent Lifecycle
-description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, firing, performance tracking, evaluation loop, agent evolution, and the five-pillar evaluation framework.
+description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, firing, performance tracking, and agent evolution.
 ---
 
 # HR & Agent Lifecycle
@@ -123,7 +123,7 @@ The HR system manages the agent workforce dynamically:
    runs onboarding; a rejection moves it to REJECTED and registers nobody. A
    failure to instantiate is surfaced, never swallowed, because a hire that
    silently did not land is indistinguishable from one nobody approved
-5. Onboarding includes: company context, project briefing, team introductions, learned from seniors (training mode)
+5. Onboarding includes: company context, project briefing, team introductions
 
 ### What model a new hire runs on
 
@@ -178,39 +178,6 @@ approval store has none, and the sweep then still releases what it can and
 still names the unstaffed role, it just cannot ask for anybody.
 See [Nobody holds the role](verification-quality.md#nobody-holds-the-role).
 
-### Training Mode
-
-Training mode is a pluggable knowledge-transfer pipeline that seeds newly hired agents with
-curated senior experience at onboarding time. It runs as the `LEARNED_FROM_SENIORS` onboarding
-step.
-
-**Pipeline:**
-
-1. **Source selection**: select senior agents as knowledge sources (pluggable: role top
-   performers, department diversity sampling, user-curated list, or composite)
-2. **Extraction**: extract procedural memories, semantic knowledge, and tool usage patterns
-   from source agents in parallel
-3. **Curation**: reduce candidates to a ranked subset (pluggable: relevance score or LLM-curated)
-4. **Guard chain**: sanitization (mandatory, non-bypassable), volume caps (per-content-type
-   hard limits), review gate (human approval via ApprovalStore)
-5. **Storage**: seed approved items into the new agent's memory backend with training tags
-
-**Per-hire customisation:**
-
-- `override_sources`: explicit agent IDs bypassing the selector
-- `content_types`: enable/disable specific extractors
-- `custom_caps`: override default volume caps per content type
-- `skip_training`: bypass the step entirely
-
-**Safe defaults:** RoleTopPerformers (top 3), RelevanceScoreCuration, all guards enabled,
-human review required. Idempotent by plan ID.
-
-Selecting the `llm_curated` strategy is two decisions, not one: the curator dispatches
-on `hr.training_curation_model`, an explicit `(provider, model)` pair with no default,
-re-read per curation call. With the pair unset the strategy degrades to relevance
-scoring and logs why, rather than curating what a new hire learns on a connection
-nobody chose for it.
-
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
     - **D8.1: Source.** Templates + LLM customisation. Templates for common roles
@@ -231,7 +198,7 @@ nobody chose for it.
 The pruning service automates performance-driven agent removal with mandatory human approval.
 
 - **`PruningPolicy`** protocol with two implementations:
-  - `ThresholdPruningPolicy`: prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
+  - `ThresholdPruningPolicy`: prunes agents whose mean completion-oracle verdict sits below the quality threshold for N+ consecutive windows (7d/30d/90d).
   - `TrendPruningPolicy`: prunes agents with declining Theil-Sen trend across all three windows.
 - **`PruningService`** runs as a periodic background task, evaluates all active agents, and creates CRITICAL-risk approval items for eligible candidates.
 - On human approval, delegates to `OffboardingService` with `FiringReason.PERFORMANCE`.
@@ -277,66 +244,37 @@ Performance data is exposed via three API sub-routes on `/api/v1/agents/{agent_i
 
 | Sub-route | Response model | Description |
 |-----------|---------------|-------------|
-| `GET /performance` | `AgentPerformanceSummary` | Flat summary: tasks completed (total/7d/30d), success rate, cost per task, quality/collaboration scores, trend direction (plus raw window metrics and trend results) |
+| `GET /performance` | `AgentPerformanceSummary` | Flat summary: tasks completed (total/7d/30d), success rate, cost per task, quality score, trend direction (plus raw window metrics and trend results) |
 | `GET /activity` | `PaginatedResponse[ActivityEvent]` | Paginated chronological timeline merging lifecycle events, task metrics, cost records, tool invocations, and delegation records (most recent first). Supports typed `ActivityEventType` enum filtering (invalid values return 400). Cost events are redacted for read-only roles. Response includes `degraded_sources` field for partial data detection |
 | `GET /history` | `ApiResponse[tuple[CareerEvent, ...]]` | Career-relevant lifecycle events (hired, fired, promoted, demoted, onboarded) in chronological order |
 
-The framework tracks detailed per-agent metrics:
+The tracker is a LEDGER, not a judge. `TaskActivityObserver` writes one
+`TaskMetricRecord` per terminal run, and the record's `quality_score` is the
+completion oracle's own verdict, resolved from `completion_oracle_reports` at
+write time. The oracle grades a deliverable against its own acceptance criteria
+at the `IN_REVIEW` gate, strictly before the terminal transition, so the verdict
+is already filed when the metric row is written.
+
+That keeps "how good was this work" under a single owner. The tracker reads the
+verdict and never derives one, so a task nobody reviewed carries no score at all
+(`None`, read as unmeasured) rather than a fabricated number.
+
+The translation is deterministic and lives in
+`hr/performance/oracle_quality.py`: the verdict picks the band
+(`approve` / `approve_with_notes` / `reject`), and each finding at or above HIGH
+severity discounts within it, floored at zero. `escalate` resolves to `None`,
+because no confident verdict was reached.
 
 ```yaml
 agent_metrics:
   tasks_completed: 42
   tasks_failed: 2
-  average_quality_score: 8.5     # from code reviews, peer feedback
+  average_quality_score: 8.5     # mean completion-oracle verdict
   average_cost_per_task: 0.45
   average_completion_time: "2h"
-  collaboration_score: 7.8       # peer ratings
-  last_review_date: "2026-02-20"
 ```
 
-???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D2, D3, D11, D12)"
-
-    **D2: Quality Scoring.** Pluggable `QualityScoringStrategy` protocol. Initial
-    strategy: layered combination, comprising:
-
-    1. **FREE:** Objective CI signals (test pass/fail, lint, coverage delta)
-    2. **Small daily cost (illustrative):** Small-model LLM judge (different family
-       than agent) evaluates output vs acceptance criteria (actual spend is in the
-       operator's configured currency and provider)
-    3. **On-demand:** Human override via API, highest weight
-
-    All three layers are implemented via `CompositeQualityStrategy`
-    (configurable CI/LLM weights, human override short-circuits with
-    highest priority).  Human override CRUD is exposed at
-    `/agents/{agent_id}/quality/override`.  Config fields:
-    `quality_judge_model`, `quality_judge_provider`, `quality_ci_weight`,
-    `quality_llm_weight` in `PerformanceConfig`.  Future strategies:
-    CI-only, LLM-only, human-only.
-
-    ---
-
-    **D3: Collaboration Scoring.** Pluggable `CollaborationScoringStrategy` protocol.
-    Initial strategy: automated behavioural telemetry, computed as:
-
-    ```
-    collaboration_score = weighted_average(
-        delegation_success_rate,
-        delegation_response_latency,
-        conflict_constructiveness,
-        discussion_contribution_rate,
-        loop_prevention_score,
-        handoff_completeness
-    )
-    ```
-
-    Weights are configurable per-role. Periodic LLM sampling (1%, configurable)
-    for calibration is implemented via `LlmCalibrationSampler` (opt-in,
-    requires `llm_sampling_model` config). Human override via API is
-    implemented via `CollaborationOverrideStore` + `CollaborationController`
-    at `/agents/{agent_id}/collaboration`. Future strategies: LLM evaluation,
-    peer ratings, human-provided.
-
-    ---
+???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D11, D12)"
 
     **D11: Rolling Windows.** Pluggable `MetricsWindowStrategy` protocol. Initial
     strategy: multiple simultaneous windows:
@@ -355,12 +293,6 @@ agent_metrics:
     trends as improving/stable/declining. Theil-Sen has 29.3% outlier breakdown (tolerates
     ~1 in 3 bad data points). Minimum 5 data points. Future strategies:
     period-over-period, OLS regression, threshold-only.
-
-## Evaluation Loop
-
-The closed-loop evaluation framework continuously measures agent performance and identifies improvement opportunities, built on top of the five-pillar evaluation, performance tracking, and trajectory scoring described elsewhere on this page. It captures traces, tags behaviour, enriches each turn with five-pillar evaluation, and proposes targeted fixes validated on the next run. The framework has its own design page: [Evaluation Loop](evaluation-loop.md).
-
----
 
 ## Agent Evolution
 
@@ -486,63 +418,6 @@ evolution:
     API or dashboard UI; it is configured in the application code that wires the
     service.
 
-## Five-Pillar Evaluation Framework
-
-Performance data is also evaluated through a structured five-pillar framework
-([InfoQ: Evaluating AI Agents](https://www.infoq.com/articles/evaluating-ai-agents-lessons-learned/)):
-
-| Pillar | Measures | Data Sources |
-|--------|----------|--------------|
-| **Intelligence/Accuracy** | Quality of task output, reasoning coherence | `QualityScoreResult`, `LlmCalibrationRecord` |
-| **Performance/Efficiency** | Cost, latency, token usage | `WindowMetrics` (cost, time, tokens) |
-| **Reliability/Resilience** | Consistency, failure recovery, streaks | `TaskMetricRecord` sequences |
-| **Responsibility/Governance** | Compliance, trust stability, autonomy adherence | Audit log, trust system, autonomy system |
-| **User Experience** | Clarity, helpfulness, tone, satisfaction | `InteractionFeedback` records |
-
-Each pillar and its individual metrics can be independently enabled/disabled via
-`EvaluationConfig`. Disabled pillars/metrics have their weight redistributed
-proportionally to remaining enabled ones. All pillars ship enabled by default with
-recommended weights (equal 0.2 each).
-
-The `EvaluationService` orchestrates scoring, delegating to a pluggable
-`PillarScoringStrategy` per pillar. The default per-pillar strategy is
-`ConfigurablePillarScorer` composed with the corresponding per-pillar
-`MetricExtractor` (one extractor per file under
-`hr/evaluation/extractors/`). The composite owns the shared
-"redistribute weights → weighted-average → clamp → confidence → log →
-`PillarScore`" pipeline so each extractor stays focused on the
-per-pillar data extraction. Human-calibrated LLM labelling uses the
-existing `LlmCalibrationSampler` infrastructure; calibration drift
-above a configurable threshold reduces the intelligence pillar's
-confidence (via the extractor's `confidence_multiplier`), signalling
-the need for more human labels.
-
-???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
-
-    **D24: Five-Pillar Evaluation.** Pluggable `PillarScoringStrategy` protocol with
-    single `EvaluationContext` bag. The default per-pillar strategy is
-    `ConfigurablePillarScorer` composed with a per-pillar `MetricExtractor`:
-
-    - **Intelligence**: `IntelligenceMetricExtractor` blends CI quality score (70%)
-      with LLM calibration score (30%). High calibration drift reduces confidence
-      via the extractor's drift multiplier.
-    - **Efficiency**: `EfficiencyMetricExtractor` normalises cost (40%), time (30%),
-      and token (30%) sub-metrics from the 30d window (with 7d fallback). The cost
-      and time sub-metrics are runtime-gated by the `hr.evaluation_cost_enabled`
-      and `hr.evaluation_latency_enabled` kill switches via the optional
-      `ConfigResolver`.
-    - **Resilience**: `ResilienceMetricExtractor`; success rate (40%), recovery rate
-      (25%), quality consistency (20%), streak bonus (15%).
-    - **Governance**: `GovernanceMetricExtractor`; audit compliance (50%), trust
-      level (30%), autonomy compliance (20%).
-    - **Experience**: `ExperienceMetricExtractor`; clarity (25%), helpfulness (25%),
-      trust (20%), tone (15%), satisfaction (15%). Custom confidence saturation at
-      `min_feedback_count * 3` data points.
-
-    All metrics toggleable via `EvaluationConfig` per-pillar sub-configs. Weight
-    redistribution follows the `BehavioralTelemetryStrategy` pattern. Pull-based
-    evaluation (no background daemon).
-
 ---
 
 ## HR Service Layer
@@ -555,7 +430,6 @@ MCP handlers and REST controllers never reach into HR repositories directly; eve
 | `AgentHealthService` | `src/synthorg/hr/health/service.py` | Derives a compact `AgentHealthReport` (`healthy` / `degraded` / `unavailable`) from the tightest populated `PerformanceTracker` window. Rejects reports where `recent_failed_count > recent_task_count` via a cross-field validator. |
 | `AgentVersionService` | `src/synthorg/hr/identity/version_service.py` | Reads paged identity-version history for `synthorg_agents_get_history`. Lifted out of the REST controller so the MCP surface doesn't depend on HTTP request/response shapes. |
 | `PersonalityService` | `src/synthorg/hr/personalities/service.py` | Thin facade over `PersonalityPresetService` for MCP list/get endpoints. |
-| `TrainingService` (extended) | `src/synthorg/hr/training/service.py` | Already owned the training pipeline; now additionally owns a bounded in-memory session store (FIFO, cap 500) used by `synthorg_training_list_sessions` / `_get_session` / `_start_session`. |
 
 ## See Also
 

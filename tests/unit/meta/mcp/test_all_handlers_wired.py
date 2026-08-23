@@ -27,10 +27,6 @@ from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import (
-    CollaborationCalibration,
-    CollaborationScoreResult,
-)
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.security.autonomy.models import AutonomyUpdateResult
@@ -131,18 +127,6 @@ def fake_app_state() -> AppState:
 
     performance_tracker = AsyncMock()
     performance_tracker.get_snapshot.return_value = None
-    performance_tracker.get_collaboration_score.return_value = CollaborationScoreResult(
-        score=0.0,
-        strategy_name="test-strategy",
-        confidence=0.5,
-    )
-    performance_tracker.get_collaboration_calibration.return_value = (
-        CollaborationCalibration(
-            agent_id=NotBlankStr("agent-1"),
-            strategy_name=NotBlankStr("test-strategy"),
-            sample_size=0,
-        )
-    )
 
     cost_tracker = AsyncMock()
     cost_tracker.get_records.return_value = ()

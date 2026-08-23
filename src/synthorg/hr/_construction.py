@@ -27,7 +27,6 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
         HrStateSlice.model_construct(
             agent_registry=deps.agent_registry,
             performance_tracker=performance_tracker,
-            training_service=deps.training_service,
             agent_health_service=(
                 AgentHealthService(performance_tracker=performance_tracker)
                 if performance_tracker is not None

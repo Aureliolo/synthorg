@@ -53,7 +53,6 @@ class OrgPerformanceSummary(BaseModel):
     Attributes:
         avg_quality_score: Org average quality (0-10).
         avg_success_rate: Org average success rate (0-1).
-        avg_collaboration_score: Org average collaboration (0-10).
         metrics: Per-metric summaries with trends.
         agent_count: Number of active agents.
         department_summaries: Per-department metric rollups.
@@ -63,7 +62,6 @@ class OrgPerformanceSummary(BaseModel):
 
     avg_quality_score: float = Field(ge=0.0, le=10.0)
     avg_success_rate: float = Field(ge=0.0, le=1.0)
-    avg_collaboration_score: float = Field(ge=0.0, le=10.0)
     metrics: tuple[MetricSummary, ...] = ()
     agent_count: int = Field(ge=0)
     department_summaries: dict[str, dict[str, float]] = Field(

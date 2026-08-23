@@ -23,7 +23,6 @@ from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.hr.persistence_protocol import (
-    CollaborationMetricRepository,
     LifecycleEventRepository,
     TaskMetricRepository,
 )
@@ -113,10 +112,6 @@ from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 from synthorg.persistence.task_protocol import TaskRepository
-from synthorg.persistence.training_protocol import (
-    TrainingPlanRepository,
-    TrainingResultRepository,
-)
 from synthorg.persistence.user_protocol import (
     ApiKeyFilterSpec,
     ApiKeyRepository,
@@ -166,10 +161,7 @@ if TYPE_CHECKING:
     from synthorg.execution.parked_context import ParkedContext
     from synthorg.hr.enums import LifecycleEventType
     from synthorg.hr.models import AgentLifecycleEvent
-    from synthorg.hr.performance.models import (
-        CollaborationMetricRecord,
-        TaskMetricRecord,
-    )
+    from synthorg.hr.performance.models import TaskMetricRecord
     from synthorg.knowledge.models import ChunkProvenanceRow, KnowledgeSource
     from synthorg.persistence.flight_recorder_protocol import (
         FlightRecorderFrame,
@@ -344,22 +336,6 @@ class _FakeTaskMetricRepository:
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,
     ) -> tuple[TaskMetricRecord, ...]:
-        return ()
-
-
-class _FakeCollaborationMetricRepository:
-    async def save(
-        self,
-        record: CollaborationMetricRecord,
-    ) -> None:
-        pass
-
-    async def query(
-        self,
-        *,
-        agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
-    ) -> tuple[CollaborationMetricRecord, ...]:
         return ()
 
 
@@ -1630,10 +1606,6 @@ class _FakeBackend:
         return _FakeResumeIntentRepository()
 
     @property
-    def collaboration_metrics(self) -> _FakeCollaborationMetricRepository:
-        return _FakeCollaborationMetricRepository()
-
-    @property
     def audit_entries(self) -> _FakeAuditRepository:
         return _FakeAuditRepository()
 
@@ -1817,10 +1789,6 @@ class _FakeBackend:
         return object()
 
     @property
-    def evaluation_config_versions(self) -> object:
-        return object()
-
-    @property
     def budget_config_versions(self) -> object:
         return object()
 
@@ -1876,14 +1844,6 @@ class _FakeBackend:
     @property
     def webhook_receipts(self) -> object:
         return object()
-
-    @property
-    def training_plans(self) -> object:
-        return _FakeTrainingPlanRepository()
-
-    @property
-    def training_results(self) -> object:
-        return _FakeTrainingResultRepository()
 
     @property
     def custom_rules(self) -> object:
@@ -2050,14 +2010,6 @@ class TestProtocolCompliance:
 
     def test_fake_task_metric_repo_is_task_metric_repository(self) -> None:
         assert isinstance(_FakeTaskMetricRepository(), TaskMetricRepository)
-
-    def test_fake_collab_metric_repo_is_collaboration_metric_repository(
-        self,
-    ) -> None:
-        assert isinstance(
-            _FakeCollaborationMetricRepository(),
-            CollaborationMetricRepository,
-        )
 
     def test_fake_parked_context_repo_is_parked_context_repository(
         self,
@@ -2273,102 +2225,3 @@ class TestProtocolCompliance:
             _FakeWorkflowExecutionRepository(),
             WorkflowExecutionRepository,
         )
-
-    def test_fake_training_plan_repo_is_training_plan_repository(
-        self,
-    ) -> None:
-        assert isinstance(
-            _FakeTrainingPlanRepository(),
-            TrainingPlanRepository,
-        )
-
-    def test_fake_training_result_repo_is_training_result_repository(
-        self,
-    ) -> None:
-        assert isinstance(
-            _FakeTrainingResultRepository(),
-            TrainingResultRepository,
-        )
-
-
-class _FakeTrainingPlanRepository:
-    async def save(self, entity: object) -> None:
-        del entity
-
-    async def get(self, entity_id: NotBlankStr) -> object | None:
-        del entity_id
-        return None
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        del entity_id
-        return False
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del limit, offset
-        return ()
-
-    async def query(
-        self,
-        filter_spec: object,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del filter_spec, limit, offset
-        return ()
-
-    async def count(self, filter_spec: object) -> int:
-        del filter_spec
-        return 0
-
-    async def latest_pending(self, agent_id: NotBlankStr) -> object | None:
-        del agent_id
-        return None
-
-    async def latest_by_agent(self, agent_id: NotBlankStr) -> object | None:
-        del agent_id
-        return None
-
-    async def list_by_agent(
-        self,
-        agent_id: NotBlankStr,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-    ) -> tuple[object, ...]:
-        del agent_id, limit
-        return ()
-
-
-class _FakeTrainingResultRepository:
-    async def save(self, entity: object) -> None:
-        del entity
-
-    async def get(self, entity_id: NotBlankStr) -> object | None:
-        del entity_id
-        return None
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        del entity_id
-        return False
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del limit, offset
-        return ()
-
-    async def get_by_plan(self, plan_id: NotBlankStr) -> object | None:
-        del plan_id
-        return None
-
-    async def get_latest(self, agent_id: NotBlankStr) -> object | None:
-        del agent_id
-        return None

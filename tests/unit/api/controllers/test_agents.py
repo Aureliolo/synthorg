@@ -272,7 +272,6 @@ class TestAgentPerformance:
         assert data["tasks_completed_30d"] == 0
         assert data["success_rate_percent"] is None
         assert data["quality_score"] is None
-        assert data["collaboration_score"] is None
 
     async def test_performance_agent_not_found(
         self,
@@ -555,10 +554,6 @@ class TestAgentHealth:
             perf["quality_score"],
             (int, float),
         )
-        assert perf["collaboration_score"] is None or isinstance(
-            perf["collaboration_score"],
-            (int, float),
-        )
         # trend is a TrendDirection string or None
         valid_trends = {t.value for t in TrendDirection}
         assert perf["trend"] is None or perf["trend"] in valid_trends
@@ -635,7 +630,6 @@ class TestHealthModels:
 
         ps = PerformanceSummary(
             quality_score=5.0,
-            collaboration_score=8.0,
             trend=TrendDirection.IMPROVING,
         )
         assert ps.quality_score == 5.0

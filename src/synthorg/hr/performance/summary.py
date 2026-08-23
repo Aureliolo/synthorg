@@ -38,7 +38,6 @@ class AgentPerformanceSummary(BaseModel):
         cost_per_task: Average cost per task in the configured display currency
             (30d window, falling back to 7d).
         quality_score: Overall quality score (0.0-10.0).
-        collaboration_score: Overall collaboration score (0.0-10.0).
         trend_direction: Primary trend direction.
         windows: Rolling window metrics from snapshot.
         trends: Trend results from snapshot.
@@ -83,12 +82,6 @@ class AgentPerformanceSummary(BaseModel):
         ge=0.0,
         le=10.0,
         description="Overall quality score",
-    )
-    collaboration_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=10.0,
-        description="Overall collaboration score",
     )
     trend_direction: TrendDirection = Field(description="Primary trend direction")
     windows: tuple[WindowMetrics, ...] = Field(
@@ -173,7 +166,6 @@ def extract_performance_summary(
         ),
         cost_per_task=primary.avg_cost_per_task if primary else None,
         quality_score=snapshot.overall_quality_score,
-        collaboration_score=snapshot.overall_collaboration_score,
         trend_direction=_primary_trend_direction(snapshot),
         windows=snapshot.windows,
         trends=snapshot.trends,

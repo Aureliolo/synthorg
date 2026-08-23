@@ -62,10 +62,9 @@ The same index also lives in `src/synthorg/persistence/sqlite/schema.sql`.  Both
 
 ### #127: Lifecycle lock false positives
 
-The audit listed two services as missing the canonical lifecycle pattern:
+The audit listed one surviving service as missing the canonical lifecycle pattern:
 
 - **`src/synthorg/communication/conflict_resolution/escalation/sweeper.py`**: already compliant. `_lifecycle_lock` at line 80, `_stop_failed` at line 87, drain timeout at line 88, full canonical pattern in `start()` (lines 90-123) and `stop()` (lines 125-215).
-- **`src/synthorg/hr/training/service.py`**: has no `start()` / `stop()` methods. `TrainingService` is a stateless pipeline orchestrator (with idempotency state); the canonical lifecycle pattern does not apply. The audit was misclassifying the service.
 
 The other six services flagged by agent 127 (health_prober, monitor, scheduler, pruning service, ngrok_adapter, continuous mode) **are** non-compliant and are addressed in this PR.
 

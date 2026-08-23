@@ -15,11 +15,8 @@ import { ToolBadges } from './agents/ToolBadges'
 import { CareerTimeline } from './agents/CareerTimeline'
 import { TaskHistory } from './agents/TaskHistory'
 import { ActivityLog } from './agents/ActivityLog'
-import { QualityScoreOverride } from './agents/QualityScoreOverride'
 import { GateVerdictsPanel } from './agents/GateVerdictsPanel'
 import { gateForRole } from './agents/useGateVerdicts'
-import { CollaborationPanel } from './agents/CollaborationPanel'
-import { TrainingSection } from './agents/TrainingSection'
 import { AgentMemoryAdmin } from './agents/AgentMemoryAdmin'
 import {
   useAgentDetailPageController,
@@ -134,15 +131,6 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
           <GateVerdictsPanel agentId={agent.id} gate={gate} />
         </ErrorBoundary>
       )}
-      <ErrorBoundary level="section">
-        <QualityScoreOverride agentId={agent.id} />
-      </ErrorBoundary>
-      <ErrorBoundary level="section">
-        <CollaborationPanel agentId={agent.id} />
-      </ErrorBoundary>
-      <ErrorBoundary level="section">
-        <TrainingSection agentId={agent.id} />
-      </ErrorBoundary>
       <ErrorBoundary level="section">
         <AgentMemoryAdmin agentId={agent.id} />
       </ErrorBoundary>

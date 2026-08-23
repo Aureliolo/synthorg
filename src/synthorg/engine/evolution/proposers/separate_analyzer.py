@@ -151,15 +151,26 @@ def _summarise_tasks(
     recent = tasks[-cap:]
     lines: list[str] = []
     for record in recent:
+        # Every telemetry column here is optional on the record, so each is
+        # rendered through the same absent-safe path: a format spec applied to
+        # ``None`` raises, and a task that never reached review carries no
+        # quality, duration, turn or token figure at all.
         quality = (
             f"{record.quality_score:.2f}" if record.quality_score is not None else "n/a"
         )
+        duration = (
+            f"{record.duration_seconds:.0f}s"
+            if record.duration_seconds is not None
+            else "n/a"
+        )
+        turns = record.turns_used if record.turns_used is not None else "n/a"
+        tokens = record.tokens_used if record.tokens_used is not None else "n/a"
         outcome = "success" if record.is_success else "failure"
         lines.append(
             f"  - task_id={record.task_id} type={record.task_type.value} "
             f"outcome={outcome} quality={quality} "
-            f"duration={record.duration_seconds:.0f}s "
-            f"turns={record.turns_used} tokens={record.tokens_used}"
+            f"duration={duration} "
+            f"turns={turns} tokens={tokens}"
         )
     return "\n".join(lines)
 
@@ -224,11 +235,7 @@ def _build_user_message(
 
     perf_str = "No performance data"
     if context.performance_snapshot:
-        perf_str = (
-            f"Quality: {context.performance_snapshot.overall_quality_score}, "
-            f"Collaboration: "
-            f"{context.performance_snapshot.overall_collaboration_score}"
-        )
+        perf_str = f"Quality: {context.performance_snapshot.overall_quality_score}"
 
     tasks_block = _summarise_tasks(
         context.recent_task_results,

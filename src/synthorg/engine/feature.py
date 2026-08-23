@@ -23,9 +23,6 @@ from synthorg._core.features import (
 from synthorg.api.controllers.board import BoardController
 from synthorg.api.controllers.brownfield import BrownfieldController
 from synthorg.api.controllers.decomposition import DecompositionController
-from synthorg.api.controllers.evaluation_config_versions import (
-    EvaluationConfigVersionController,
-)
 from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.plan_comments import PlanCommentController
 from synthorg.api.controllers.plans import PlanController
@@ -56,7 +53,6 @@ FEATURE: FeatureModule = FeatureManifest(
         WorkflowVersionController,
         WorkflowExecutionController,
         SubworkflowController,
-        EvaluationConfigVersionController,
         DecompositionController,
         PlanController,
         PlanCommentController,
@@ -76,12 +72,10 @@ FEATURE: FeatureModule = FeatureManifest(
     ghost_wired_symbols=(
         "PlanningToolProvider",
         "TaskAssignmentService",
-        "EvaluationVersionService",
         "SubworkflowService",
         "build_evolution_service",
         "build_recovery_strategy",
         "InMemoryErrorTaxonomyStore",
-        "PerformanceTrackerSink",
         "NotificationDispatcherSink",
         "AgentEngine",
         "IntakeEngine",

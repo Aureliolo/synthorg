@@ -63,7 +63,6 @@ class DepartmentHealth(BaseModel):
         avg_performance_score: Mean quality score across agents.
         department_cost_7d: Total cost in the last 7 days.
         cost_trend: Daily spend sparkline for the last 7 days.
-        collaboration_score: Mean collaboration score across agents.
         total_runs: Terminal task runs by this department in the health window.
         task_success_rate: Fraction of terminal runs that produced output
             (0-1), or None below the minimum-runs gate.
@@ -99,12 +98,6 @@ class DepartmentHealth(BaseModel):
     )
     cost_trend: tuple[TrendDataPoint, ...] = Field(
         description="7-day daily spend sparkline",
-    )
-    collaboration_score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=10.0,
-        description="Mean collaboration score (0-10)",
     )
     total_runs: int = Field(
         default=0,
@@ -461,9 +454,6 @@ def _build_health_from_data(  # noqa: PLR0913
         ),
         department_cost_7d=aggregate.total_cost,
         cost_trend=aggregate.trend,
-        collaboration_score=_mean_optional(
-            [s.overall_collaboration_score for s in snapshots],
-        ),
         total_runs=total_runs,
         task_success_rate=success_rate,
         utilization_degraded=utilization_degraded,

@@ -1,10 +1,9 @@
 """Concurrency regression tests for PerformanceTracker.
 
 These tests pin the invariant that ``record_coordination_contributions``
-(synchronous) and ``record_collaboration_event`` (async) hold
-``_metrics_lock`` while mutating shared dicts, so a future ``await`` inside
-either body cannot open a data race against ``record_task_metric`` or the
-inflection cache.
+holds ``_metrics_lock`` while mutating shared dicts, so a future ``await``
+inside its body cannot open a data race against ``record_task_metric`` or
+the inflection cache.
 """
 
 import asyncio
@@ -17,7 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.attribution import AgentContribution
 from synthorg.hr.performance.tracker import PerformanceTracker
 
-from .conftest import make_collab_metric, make_task_metric
+from .conftest import make_task_metric
 
 _AGENT_ID = "agent-conc-001"
 
@@ -58,25 +57,6 @@ class TestTrackerConcurrency:
                 _ = tg.create_task(_record(i))
 
         assert len(tracker._contributions[_AGENT_ID]) == n_calls * contribs_per_call
-
-    async def test_concurrent_record_collaboration_event_no_lost_writes(
-        self,
-    ) -> None:
-        tracker = PerformanceTracker()
-        n_events = 50
-
-        async def _record(i: int) -> None:
-            record = make_collab_metric(
-                agent_id=_AGENT_ID,
-                handoff_completeness=float(i % 10) / 10.0,
-            )
-            await tracker.record_collaboration_event(record)
-
-        async with asyncio.TaskGroup() as tg:
-            for i in range(n_events):
-                _ = tg.create_task(_record(i))
-
-        assert len(tracker._collab_metrics[_AGENT_ID]) == n_events
 
     async def test_mixed_workload_record_task_and_coordination_race_free(
         self,

@@ -60,7 +60,6 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `LLMGenerator._build_prompt` (`client/generators/llm.py`)
 - `AgentIntake._build_prompt` (`engine/intake/strategies/agent_intake.py`)
 - `LLMSynthesisOp._build_user_prompt` and `._build_system_prompt` (`memory/consolidation/llm_op.py`): wraps each entry under `TAG_MEMORY_ENTRY`; trajectory-context entries reuse the same tag.
-- `LlmCalibrationSampler._build_prompt` (`hr/performance/llm_calibration_sampler.py`): wraps the free-form `interaction_summary` under `TAG_TASK_DATA`; bounded numeric metrics are emitted as plain text.
 - `SuccessMemoryProposer._build_user_message` and module `_SYSTEM_PROMPT` (`memory/procedural/success_proposer.py`): execution context is fenced under `TAG_TASK_DATA`.
 - `SafetyClassifier._build_messages` (`security/safety_classifier.py`): the action `description` (only attacker-controllable field) is fenced under `TAG_TASK_DATA`; bounded label fields (tool name, action type, risk level) stay `html.escape`d. The system prompt is computed lazily via `_system_prompt()` to avoid a circular import through `synthorg.engine.__init__`.
 - Group-conversation prompt builders (peer-contribution wrapping):

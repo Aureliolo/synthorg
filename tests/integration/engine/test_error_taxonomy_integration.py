@@ -23,17 +23,13 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.engine.classification.pipeline import classify_execution_errors
-from synthorg.engine.classification.sinks import (
-    NotificationDispatcherSink,
-    PerformanceTrackerSink,
-)
+from synthorg.engine.classification.sinks import NotificationDispatcherSink
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.notifications.models import Notification
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -716,29 +712,22 @@ class TestDelegationProtocolViolationIntegration:
 class TestClassificationSinksFlowThrough:
     """Findings flow from the pipeline to configured sinks.
 
-    Covers the acceptance criterion "findings flow through to
-    the performance tracker and notification dispatcher".
+    Covers the acceptance criterion "findings flow through to the
+    notification dispatcher".
     """
 
-    async def test_findings_reach_performance_tracker_and_dispatcher(
+    async def test_findings_reach_dispatcher(
         self,
         mock_dispatcher: AsyncMock,
     ) -> None:
-        """Both sinks must see the generated findings.
+        """The notification sink must see the generated findings.
 
-        Uses a live ``PerformanceTracker`` (in-memory) and spies on
-        its ``record_collaboration_event`` method, plus the shared
-        ``mock_dispatcher`` fixture (an ``AsyncMock`` covering the full
-        ``NotificationDispatcher`` interface) so we can assert on
-        ``dispatch`` calls without pulling in a real sink.
+        Uses the shared ``mock_dispatcher`` fixture (an ``AsyncMock``
+        covering the full ``NotificationDispatcher`` interface) so we can
+        assert on ``dispatch`` calls without pulling in a real sink.
         """
-        tracker = PerformanceTracker()
-        record_spy = AsyncMock(wraps=tracker.record_collaboration_event)
-        tracker.record_collaboration_event = record_spy  # type: ignore[method-assign]
-
         dispatcher = mock_dispatcher
 
-        performance_sink = PerformanceTrackerSink(tracker=tracker)
         notification_sink = NotificationDispatcherSink(
             dispatcher=dispatcher,
             min_severity=ErrorSeverity.HIGH,
@@ -748,7 +737,7 @@ class TestClassificationSinksFlowThrough:
 
         # A realistic coordination-failure conversation: a tool
         # error plus an ERROR finish reason produces two HIGH
-        # findings that should fan out to both sinks.
+        # findings that should reach the sink.
         messages = _coordination_failure_messages("FAILED: build error")
         turns = (
             _turn(turn_number=1),
@@ -761,17 +750,12 @@ class TestClassificationSinksFlowThrough:
             "agent-sink-test",
             "task-sink-test",
             config=config,
-            sinks=(performance_sink, notification_sink),
+            sinks=(notification_sink,),
         )
 
         assert result is not None
         assert result.has_findings
-        finding_count = result.finding_count
-        assert finding_count >= 1
-
-        # Performance tracker received one collaboration event
-        # per finding.
-        assert record_spy.await_count == finding_count
+        assert result.finding_count >= 1
 
         # Notification dispatcher was invoked for HIGH findings.
         assert dispatcher.dispatch.await_count >= 1

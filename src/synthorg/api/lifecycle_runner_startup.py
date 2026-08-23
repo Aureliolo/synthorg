@@ -65,10 +65,8 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.state import (
     HrStateSlice,
     agent_registry_of,
-    training_service_of,
 )
 from synthorg.integrations.state import IntegrationsStateSlice
-from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -523,25 +521,6 @@ async def _run_startup(  # noqa: PLR0913
         # cleanup entirely, leaking every service wired above it.
         await _abort_wired(exc, detail="memory_backend_auto_wire_failed")
         raise
-
-    # When an external caller already supplied a ``TrainingService`` to
-    # ``create_app()``, we skip the auto-wire below but the injected service
-    # still owns a live ``MemoryBackend``. Publish it ONLY when durable
-    # wiring produced nothing, so the DELETE memory controller and MCP tool
-    # path see ``has_memory_backend == True`` on an injected-service
-    # deployment rather than surfacing 501 / unsupported.
-    hr_slice = app_state.slice(HrStateSlice)
-    if (
-        hr_slice.training_service is not None
-        and app_state.slice(MemoryStateSlice).backend is None
-    ):
-        injected_backend = getattr(
-            training_service_of(app_state),
-            "_memory_backend",
-            None,
-        )
-        if injected_backend is not None:
-            app_state.wire(MemoryStateSlice, backend=injected_backend)
 
     await _maybe_bootstrap_agents(app_state)
     await _maybe_promote_first_owner(app_state)

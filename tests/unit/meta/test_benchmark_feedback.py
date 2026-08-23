@@ -57,7 +57,6 @@ _MAX_TOTAL = 100
 _EMPTY_PERFORMANCE = OrgPerformanceSummary(
     avg_quality_score=0.0,
     avg_success_rate=0.0,
-    avg_collaboration_score=0.0,
     agent_count=0,
 )
 _EMPTY_BUDGET = OrgBudgetSummary(

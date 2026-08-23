@@ -30,7 +30,6 @@ from synthorg.settings.subscribers import (
     ChiefOfStaffAlertsSettingsSubscriber,
     CompressionSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
-    EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
     FlightRecorderSettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
@@ -188,10 +187,6 @@ def _build_settings_dispatcher(
             settings_service=settings_service,
         ),
         EngineTimeoutEnforcementSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        EvalLoopSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

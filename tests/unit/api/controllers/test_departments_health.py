@@ -207,7 +207,6 @@ class TestDepartmentHealth:
             assert data["utilization_percent"] == 0.0
             assert data["avg_performance_score"] is None
             assert data["department_cost_7d"] == 0.0
-            assert data["collaboration_score"] is None
 
     async def test_the_whole_org_reads_in_one_request(
         self,
@@ -341,10 +340,9 @@ class TestDepartmentHealth:
             assert data["department_cost_7d"] == pytest.approx(0.80)
             assert isinstance(data["cost_trend"], list)
             # A single recorded metric is below the snapshot min-data-points
-            # gate, so the derived scores are a deterministic no-data ``None``
+            # gate, so the derived score is a deterministic no-data ``None``
             # (not merely "present").
             assert data["avg_performance_score"] is None
-            assert data["collaboration_score"] is None
 
     async def test_other_department_agents_excluded(
         self,

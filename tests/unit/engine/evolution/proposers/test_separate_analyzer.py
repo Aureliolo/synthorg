@@ -65,7 +65,6 @@ class TestSeparateAnalyzerProposer:
         """Create a mock performance snapshot."""
         snapshot = MagicMock(spec=AgentPerformanceSnapshot)
         snapshot.overall_quality_score = 7.5
-        snapshot.overall_collaboration_score = 8.0
         return snapshot
 
     @pytest.fixture
@@ -379,6 +378,31 @@ class TestBuildUserMessageContentSummaries:
             complexity=Complexity.MEDIUM,
         )
 
+    def _unmeasured_task(self, *, task_id: str) -> TaskMetricRecord:
+        """A task recorded from a state transition: outcome only, no telemetry.
+
+        This is what production actually writes, so it is the shape the
+        summary has to render.
+
+        Returns:
+            A ``TaskMetricRecord`` with every optional column unset.
+        """
+        from datetime import UTC, datetime
+
+        from synthorg.budget.currency import DEFAULT_CURRENCY
+        from synthorg.core.task_enums import Complexity, TaskType
+        from synthorg.hr.performance.models import TaskMetricRecord
+
+        return TaskMetricRecord(
+            agent_id=NotBlankStr("agent-summary"),
+            task_id=NotBlankStr(task_id),
+            task_type=TaskType.DEVELOPMENT,
+            completed_at=datetime(2026, 4, 20, 12, 0, tzinfo=UTC),
+            is_success=True,
+            currency=DEFAULT_CURRENCY,
+            complexity=Complexity.MEDIUM,
+        )
+
     def _memory(
         self,
         *,
@@ -416,6 +440,31 @@ class TestBuildUserMessageContentSummaries:
         assert msg.endswith("\n</task-fact>")
         assert "(none)" in msg
         assert "No performance data" in msg
+
+    def test_unmeasured_telemetry_renders_rather_than_raising(self) -> None:
+        """Every optional column unset must render, not crash the proposer.
+
+        A format spec applied to ``None`` raises ``TypeError``, and this
+        proposer is the default composite's failure proposer, so any agent
+        with a recorded task took the whole run down with it.
+        """
+        from synthorg.engine.evolution.proposers.separate_analyzer import (
+            _build_user_message,
+        )
+
+        context = EvolutionContext(
+            agent_id=NotBlankStr("a"),
+            identity=self._identity(),
+            performance_snapshot=None,
+            recent_task_results=(self._unmeasured_task(task_id="task-0"),),
+            recent_procedural_memories=(),
+        )
+        msg = _build_user_message(NotBlankStr("a"), context)
+        assert "task_id=task-0" in msg
+        assert "quality=n/a" in msg
+        assert "duration=n/a" in msg
+        assert "turns=n/a" in msg
+        assert "tokens=n/a" in msg
 
     def test_summaries_include_per_item_fields(self) -> None:
         """Each task line carries id/type/outcome/quality/duration/turns."""

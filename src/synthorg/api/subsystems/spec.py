@@ -97,8 +97,6 @@ class CapabilityId(StrEnum):
     COMPANY_READ_SERVICE = "company_read_service"
     PLAN_ITEM_REPLY_SERVICE = "plan_item_reply_service"
     ANALYTICS_COLLECTOR = "analytics_collector"
-    TRAINING_SERVICE = "training_service"
-    EVAL_LOOP = "eval_loop"
     PRUNING_SERVICE = "pruning_service"
     HIRING_SERVICE = "hiring_service"
     REVIEW_STAFFING = "review_staffing"

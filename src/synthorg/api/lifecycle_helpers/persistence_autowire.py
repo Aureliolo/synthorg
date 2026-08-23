@@ -69,46 +69,6 @@ async def _wire_oauth_state_service(
         )
 
 
-async def _wire_training_plan_service(
-    app_state: AppState,
-    persistence: PersistenceBackend | None,
-) -> None:
-    """Wire ``TrainingPlanService`` once persistence is connected.
-
-    Centralises every plan-CRUD write the controller previously made
-    directly so audit logging cannot regress when a new write path lands.
-    """
-    if persistence is None or not getattr(persistence, "is_connected", False):
-        return
-    if (
-        app_state.slice(HrStateSlice).training_plan_service is not None
-        or not hasattr(persistence, "training_plans")
-        or not hasattr(persistence, "training_results")
-    ):
-        return
-    try:
-        from synthorg.hr.training.plan_service import (  # noqa: PLC0415
-            TrainingPlanService,
-        )
-
-        app_state.wire(
-            HrStateSlice,
-            training_plan_service=TrainingPlanService(
-                plan_repo=persistence.training_plans,
-                result_repo=persistence.training_results,
-            ),
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="training_plan_service")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.error(
-            API_SERVICE_AUTO_WIRE_FAILED,
-            service="training_plan_service",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
 async def _wire_workflow_rollback_service(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -311,45 +271,6 @@ async def _wire_subworkflow_service(
         )
 
 
-async def _wire_evaluation_version_service(
-    app_state: AppState,
-    persistence: PersistenceBackend | None,
-) -> None:
-    """Wire ``EvaluationVersionService`` once persistence is connected.
-
-    Mirrors the workflow-version wiring for the evaluation-config version
-    history MCP handlers, gated on the same persistence readiness.
-    """
-    if persistence is None or not getattr(persistence, "is_connected", False):
-        return
-    if app_state.slice(
-        EngineStateSlice
-    ).evaluation_version_service is not None or not hasattr(
-        persistence, "evaluation_config_versions"
-    ):
-        return
-    try:
-        from synthorg.engine.quality.mcp_services import (  # noqa: PLC0415
-            EvaluationVersionService,
-        )
-
-        app_state.wire(
-            EngineStateSlice,
-            evaluation_version_service=EvaluationVersionService(
-                persistence=persistence,
-            ),
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="evaluation_version_service")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.error(
-            API_SERVICE_AUTO_WIRE_FAILED,
-            service="evaluation_version_service",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
 async def _wire_personality_service(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -449,13 +370,11 @@ async def wire_persistence_services(
     and leaves the rest to run.
     """
     await _wire_oauth_state_service(app_state, persistence)
-    await _wire_training_plan_service(app_state, persistence)
     await _wire_workflow_rollback_service(app_state, persistence)
     await _wire_workflow_service(app_state, persistence)
     await _wire_workflow_version_service(app_state, persistence)
     await _wire_agent_version_service(app_state, persistence)
     await _wire_subworkflow_service(app_state, persistence)
-    await _wire_evaluation_version_service(app_state, persistence)
     await _wire_personality_service(app_state, persistence)
     await _wire_activity_feed_service(app_state, persistence)
     await wire_persistence_facades(app_state)

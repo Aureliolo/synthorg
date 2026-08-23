@@ -126,20 +126,3 @@ class TestReviews:
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_found"
-
-
-class TestEvaluationVersions:
-    async def test_list(self, fake_app_state: AppState) -> None:
-        handler = QUALITY_HANDLERS["synthorg_evaluation_versions_list"]
-        response = await handler(app_state=fake_app_state, arguments={})
-        payload = json.loads(response)
-        assert payload["status"] == "ok"
-        assert payload["data"] == []
-
-    async def test_get_not_found(self, fake_app_state: AppState) -> None:
-        handler = QUALITY_HANDLERS["synthorg_evaluation_versions_get"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={"version_id": "v1"},
-        )
-        assert json.loads(response)["domain_code"] == "not_found"

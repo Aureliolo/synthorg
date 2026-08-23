@@ -23,9 +23,7 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.persistence_protocol import (
-    CollaborationMetricRepository,
     LifecycleEventRepository,
     TaskMetricRepository,
 )
@@ -161,10 +159,6 @@ from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
-from synthorg.persistence.training_protocol import (
-    TrainingPlanRepository,
-    TrainingResultRepository,
-)
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
@@ -195,7 +189,6 @@ class _BackendRepositoryAccessors:
     _lifecycle_transitions: LifecycleTransitionRepository | None
     _deleted_entities: DeletedEntityRepository | None
     _task_metrics: TaskMetricRepository | None
-    _collaboration_metrics: CollaborationMetricRepository | None
     _parked_contexts: ParkedContextRepository | None
     _resume_intents: ResumeIntentRepository | None
     _audit_entries: AuditRepository | None
@@ -236,7 +229,6 @@ class _BackendRepositoryAccessors:
     _subworkflows: SubworkflowRepository | None
     _workflow_versions: VersionRepository[WorkflowDefinition] | None
     _identity_versions: VersionRepository[AgentIdentity] | None
-    _evaluation_config_versions: VersionRepository[EvaluationConfig] | None
     _budget_config_versions: VersionRepository[BudgetConfig] | None
     _company_versions: VersionRepository[Company] | None
     _role_versions: VersionRepository[Role] | None
@@ -252,8 +244,6 @@ class _BackendRepositoryAccessors:
     _connection_secrets: ConnectionSecretRepository | None
     _oauth_states: OAuthStateRepository | None
     _webhook_receipts: WebhookReceiptRepository | None
-    _training_plans: TrainingPlanRepository | None
-    _training_results: TrainingResultRepository | None
     _custom_rules: CustomRuleRepository | None
     _sessions: SessionRepository | None
     _refresh_tokens: RefreshTokenRepository | None
@@ -339,13 +329,6 @@ class _BackendRepositoryAccessors:
     def task_metrics(self) -> TaskMetricRepository:
         """Repository for TaskMetricRecord persistence."""
         return self._require_connected(self._task_metrics, "task_metrics")
-
-    @property
-    def collaboration_metrics(self) -> CollaborationMetricRepository:
-        """Repository for CollaborationMetricRecord persistence."""
-        return self._require_connected(
-            self._collaboration_metrics, "collaboration_metrics"
-        )
 
     @property
     def parked_contexts(self) -> ParkedContextRepository:
@@ -605,16 +588,6 @@ class _BackendRepositoryAccessors:
         )
 
     @property
-    def evaluation_config_versions(
-        self,
-    ) -> VersionRepository[EvaluationConfig]:
-        """Repository for EvaluationConfig version snapshot persistence."""
-        return self._require_connected(
-            self._evaluation_config_versions,
-            "evaluation_config_versions",
-        )
-
-    @property
     def budget_config_versions(
         self,
     ) -> VersionRepository[BudgetConfig]:
@@ -732,22 +705,6 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._webhook_receipts,
             "webhook_receipts",
-        )
-
-    @property
-    def training_plans(self) -> TrainingPlanRepository:
-        """Repository for training plan persistence."""
-        return self._require_connected(
-            self._training_plans,
-            "training_plans",
-        )
-
-    @property
-    def training_results(self) -> TrainingResultRepository:
-        """Repository for training result persistence."""
-        return self._require_connected(
-            self._training_results,
-            "training_results",
         )
 
     @property

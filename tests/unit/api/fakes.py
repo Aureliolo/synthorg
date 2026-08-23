@@ -41,10 +41,7 @@ from synthorg.engine.completion_oracle.review_models import (
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
-from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,
-    TaskMetricRecord,
-)
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
@@ -420,30 +417,6 @@ class FakeTaskMetricRepository:
             result = [r for r in result if r.completed_at >= since]
         if until is not None:
             result = [r for r in result if r.completed_at <= until]
-        return tuple(result[:limit])
-
-
-class FakeCollaborationMetricRepository:
-    """In-memory collaboration metric repository for tests."""
-
-    def __init__(self) -> None:
-        self._records: list[CollaborationMetricRecord] = []
-
-    async def save(self, record: CollaborationMetricRecord) -> None:
-        self._records.append(record)
-
-    async def query(
-        self,
-        *,
-        agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
-        limit: int = 100,
-    ) -> tuple[CollaborationMetricRecord, ...]:
-        result = self._records
-        if agent_id is not None:
-            result = [r for r in result if r.agent_id == agent_id]
-        if since is not None:
-            result = [r for r in result if r.recorded_at >= since]
         return tuple(result[:limit])
 
 

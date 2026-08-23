@@ -44,10 +44,8 @@ def build_classification(
     """
     from synthorg.engine.classification.sinks import (  # noqa: PLC0415
         NotificationDispatcherSink,
-        PerformanceTrackerSink,
     )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.notifications.state import NotificationsStateSlice  # noqa: PLC0415
 
     config = app_state.config.coordination.error_taxonomy
@@ -67,9 +65,6 @@ def build_classification(
     store = app_state.slice(EngineStateSlice).error_taxonomy_store
     if store is not None:
         sinks.append(store)
-    tracker = app_state.slice(HrStateSlice).performance_tracker
-    if tracker is not None:
-        sinks.append(PerformanceTrackerSink(tracker))
     dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
     if dispatcher is not None:
         sinks.append(NotificationDispatcherSink(dispatcher))

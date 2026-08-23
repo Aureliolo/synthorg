@@ -47,10 +47,9 @@ class TestOnboardingStep:
         assert OnboardingStep.COMPANY_CONTEXT.value == "company_context"
         assert OnboardingStep.PROJECT_BRIEFING.value == "project_briefing"
         assert OnboardingStep.TEAM_INTRODUCTIONS.value == "team_introductions"
-        assert OnboardingStep.LEARNED_FROM_SENIORS.value == "learned_from_seniors"
 
     def test_completeness(self) -> None:
-        assert len(OnboardingStep) == 4
+        assert len(OnboardingStep) == 3
 
 
 @pytest.mark.unit

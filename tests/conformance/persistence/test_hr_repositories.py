@@ -1,8 +1,8 @@
 """Conformance tests for HR repository implementations.
 
 Tests run against both SQLite and Postgres backends via the ``backend``
-parametrized fixture. Covers LifecycleEventRepository, TaskMetricRepository,
-and CollaborationMetricRepository.
+parametrized fixture. Covers LifecycleEventRepository and
+TaskMetricRepository.
 """
 
 from datetime import UTC, datetime
@@ -14,10 +14,7 @@ from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
-from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,
-    TaskMetricRecord,
-)
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
 from tests.unit.persistence.conftest import make_task
@@ -323,127 +320,3 @@ class TestTaskMetricRepository:
             await backend.task_metrics.query(since=naive)
         with pytest.raises(QueryError):
             await backend.task_metrics.query(until=naive)
-
-
-@pytest.mark.integration
-class TestCollaborationMetricRepository:
-    """Conformance tests for CollaborationMetricRepository."""
-
-    async def test_save_and_query_collaboration_metrics(
-        self,
-        backend: PersistenceBackend,
-    ) -> None:
-        """Save and query collaboration metrics."""
-        repo = backend.collaboration_metrics
-        now = datetime.now(UTC)
-        metric = CollaborationMetricRecord(
-            id=as_uuid("cm-001"),
-            agent_id="agent-001",
-            recorded_at=now,
-            delegation_success=True,
-            delegation_response_seconds=5.2,
-            conflict_constructiveness=0.8,
-            discussion_contribution=0.9,
-            loop_triggered=False,
-            handoff_completeness=0.95,
-        )
-
-        await repo.save(metric)
-        records = await repo.query()
-
-        assert len(records) >= 1
-        saved = records[0]
-        assert saved.id == as_uuid("cm-001")
-        assert saved.agent_id == "agent-001"
-        assert saved.delegation_success is True
-        assert saved.loop_triggered is False
-
-    async def test_query_metrics_by_agent(
-        self,
-        backend: PersistenceBackend,
-    ) -> None:
-        """Query collaboration metrics filtered by agent ID."""
-        repo = backend.collaboration_metrics
-        now = datetime.now(UTC)
-        metric = CollaborationMetricRecord(
-            id=as_uuid("cm-agent"),
-            agent_id="agent-y",
-            recorded_at=now,
-            delegation_success=False,
-            delegation_response_seconds=10.0,
-            conflict_constructiveness=0.5,
-            discussion_contribution=0.6,
-            loop_triggered=True,
-            handoff_completeness=0.7,
-        )
-
-        await repo.save(metric)
-        records = await repo.query(agent_id="agent-y")
-
-        assert len(records) >= 1
-        assert all(r.agent_id == "agent-y" for r in records)
-
-    async def test_query_metrics_with_nullable_fields(
-        self,
-        backend: PersistenceBackend,
-    ) -> None:
-        """Query metrics with nullable fields set to None."""
-        repo = backend.collaboration_metrics
-        now = datetime.now(UTC)
-        metric = CollaborationMetricRecord(
-            id=as_uuid("cm-nullable"),
-            agent_id="agent-001",
-            recorded_at=now,
-            delegation_success=None,
-            delegation_response_seconds=None,
-            conflict_constructiveness=None,
-            discussion_contribution=None,
-            loop_triggered=False,
-            handoff_completeness=None,
-        )
-
-        await repo.save(metric)
-        records = await repo.query(agent_id="agent-001")
-
-        assert len(records) >= 1
-        saved = next(r for r in records if r.id == as_uuid("cm-nullable"))
-        assert saved.delegation_success is None
-        assert saved.delegation_response_seconds is None
-        assert saved.loop_triggered is False
-
-    async def test_query_metrics_since_timestamp(
-        self,
-        backend: PersistenceBackend,
-    ) -> None:
-        """Query metrics with since timestamp filter."""
-        repo = backend.collaboration_metrics
-        now = datetime.now(UTC)
-        metric = CollaborationMetricRecord(
-            id=as_uuid("cm-since"),
-            agent_id="agent-001",
-            recorded_at=now,
-            delegation_success=True,
-            delegation_response_seconds=5.0,
-            conflict_constructiveness=0.8,
-            discussion_contribution=0.9,
-            loop_triggered=False,
-            handoff_completeness=0.95,
-        )
-
-        await repo.save(metric)
-        from datetime import timedelta
-
-        past = now - timedelta(hours=1)
-        records = await repo.query(since=past)
-
-        assert len(records) >= 1
-
-    async def test_query_rejects_naive_since(
-        self,
-        backend: PersistenceBackend,
-    ) -> None:
-        """A naive ``since`` is rejected so the cut-off cannot drift."""
-        with pytest.raises(QueryError):
-            await backend.collaboration_metrics.query(
-                since=datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
-            )

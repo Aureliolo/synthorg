@@ -5,13 +5,7 @@ from datetime import UTC, datetime
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,
-    CollaborationOverride,
-    LlmCalibrationRecord,
-    QualityOverride,
-    TaskMetricRecord,
-)
+from synthorg.hr.performance.models import TaskMetricRecord
 
 
 def make_task_metric(  # noqa: PLR0913
@@ -43,98 +37,6 @@ def make_task_metric(  # noqa: PLR0913
         tokens_used=tokens_used,
         quality_score=quality_score,
         complexity=complexity,
-    )
-
-
-def make_collab_metric(  # noqa: PLR0913
-    *,
-    agent_id: str = "agent-001",
-    recorded_at: datetime | None = None,
-    delegation_success: bool | None = None,
-    delegation_response_seconds: float | None = None,
-    conflict_constructiveness: float | None = None,
-    discussion_contribution: float | None = None,
-    loop_triggered: bool = False,
-    handoff_completeness: float | None = None,
-    interaction_summary: NotBlankStr | None = None,
-) -> CollaborationMetricRecord:
-    """Build a CollaborationMetricRecord with sensible defaults."""
-    return CollaborationMetricRecord(
-        agent_id=NotBlankStr(agent_id),
-        recorded_at=recorded_at or datetime.now(UTC),
-        delegation_success=delegation_success,
-        delegation_response_seconds=delegation_response_seconds,
-        conflict_constructiveness=conflict_constructiveness,
-        discussion_contribution=discussion_contribution,
-        loop_triggered=loop_triggered,
-        handoff_completeness=handoff_completeness,
-        interaction_summary=interaction_summary,
-    )
-
-
-def make_calibration_record(  # noqa: PLR0913
-    *,
-    agent_id: str = "agent-001",
-    interaction_record_id: str = "record-001",
-    sampled_at: datetime | None = None,
-    llm_score: float = 7.5,
-    behavioral_score: float = 6.0,
-    rationale: str = "Good collaboration",
-    model_used: str = "test-basic-001",
-    cost: float = 0.001,
-    currency: str = "USD",
-) -> LlmCalibrationRecord:
-    """Build an LlmCalibrationRecord with sensible defaults."""
-    return LlmCalibrationRecord(
-        agent_id=NotBlankStr(agent_id),
-        sampled_at=sampled_at or datetime.now(UTC),
-        interaction_record_id=NotBlankStr(interaction_record_id),
-        llm_score=llm_score,
-        behavioral_score=behavioral_score,
-        rationale=NotBlankStr(rationale),
-        model_used=NotBlankStr(model_used),
-        cost=cost,
-        currency=currency,
-    )
-
-
-def make_collaboration_override(
-    *,
-    agent_id: str = "agent-001",
-    score: float = 8.0,
-    reason: str = "Exceptional mentoring",
-    applied_by: str = "manager-alice",
-    applied_at: datetime | None = None,
-    expires_at: datetime | None = None,
-) -> CollaborationOverride:
-    """Build a CollaborationOverride with sensible defaults."""
-    return CollaborationOverride(
-        agent_id=NotBlankStr(agent_id),
-        score=score,
-        reason=NotBlankStr(reason),
-        applied_by=NotBlankStr(applied_by),
-        applied_at=applied_at or datetime.now(UTC),
-        expires_at=expires_at,
-    )
-
-
-def make_quality_override(
-    *,
-    agent_id: str = "agent-001",
-    score: float = 8.0,
-    reason: str = "Excellent task output quality",
-    applied_by: str = "manager-alice",
-    applied_at: datetime | None = None,
-    expires_at: datetime | None = None,
-) -> QualityOverride:
-    """Build a QualityOverride with sensible defaults."""
-    return QualityOverride(
-        agent_id=NotBlankStr(agent_id),
-        score=score,
-        reason=NotBlankStr(reason),
-        applied_by=NotBlankStr(applied_by),
-        applied_at=applied_at or datetime.now(UTC),
-        expires_at=expires_at,
     )
 
 

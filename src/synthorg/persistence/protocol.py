@@ -18,9 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.persistence_protocol import (
-    CollaborationMetricRepository,
     LifecycleEventRepository,
     TaskMetricRepository,
 )
@@ -191,10 +189,6 @@ from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
-from synthorg.persistence.training_protocol import (
-    TrainingPlanRepository,
-    TrainingResultRepository,
-)
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
     UserRepository,
@@ -242,7 +236,6 @@ class PersistenceBackend(Protocol):
         lifecycle_events: Repository for AgentLifecycleEvent persistence.
         lifecycle_transitions: Repository for plan and project status changes.
         task_metrics: Repository for TaskMetricRecord persistence.
-        collaboration_metrics: Repository for CollaborationMetricRecord persistence.
         parked_contexts: Repository for ParkedContext persistence.
         resume_intents: Repository for in-flight approval resume intents.
         audit_entries: Repository for AuditEntry persistence.
@@ -269,8 +262,6 @@ class PersistenceBackend(Protocol):
             snapshot persistence.
         identity_versions: Repository for AgentIdentity version snapshot
             persistence.
-        evaluation_config_versions: Repository for EvaluationConfig version
-            snapshot persistence.
         budget_config_versions: Repository for BudgetConfig version snapshot
             persistence.
         company_versions: Repository for Company version snapshot persistence.
@@ -302,8 +293,6 @@ class PersistenceBackend(Protocol):
             -- atomic claim/complete/fail primitive shared by webhook
             receivers, the backup endpoint, and any other retry-prone
             surface that needs cross-restart deduplication.
-        training_plans: Repository for training plan persistence.
-        training_results: Repository for training result persistence.
         custom_rules: Repository for custom signal rule persistence.
     """
 
@@ -471,11 +460,6 @@ class PersistenceBackend(Protocol):
     @property
     def task_metrics(self) -> TaskMetricRepository:
         """Repository for TaskMetricRecord persistence."""
-        ...
-
-    @property
-    def collaboration_metrics(self) -> CollaborationMetricRepository:
-        """Repository for CollaborationMetricRecord persistence."""
         ...
 
     @property
@@ -664,13 +648,6 @@ class PersistenceBackend(Protocol):
         ...
 
     @property
-    def evaluation_config_versions(
-        self,
-    ) -> VersionRepository[EvaluationConfig]:
-        """Repository for EvaluationConfig version snapshot persistence."""
-        ...
-
-    @property
     def budget_config_versions(
         self,
     ) -> VersionRepository[BudgetConfig]:
@@ -765,16 +742,6 @@ class PersistenceBackend(Protocol):
     @property
     def principle_overrides(self) -> PrincipleOverrideRepository:
         """Repository for rollback-restored principle overrides."""
-        ...
-
-    @property
-    def training_plans(self) -> TrainingPlanRepository:
-        """Repository for training plan persistence."""
-        ...
-
-    @property
-    def training_results(self) -> TrainingResultRepository:
-        """Repository for training result persistence."""
         ...
 
     @property

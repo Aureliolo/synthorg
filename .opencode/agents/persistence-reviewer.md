@@ -81,7 +81,7 @@ Repositories: scan for `logger.info`, `logger.warning`, `logger.error` calls ins
 
 ### 7. Currency invariants (MEDIUM)
 
-- Every cost-bearing Pydantic model (`CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, `AgentRuntimeState`) MUST carry `currency: CurrencyCode`. Flag missing fields.
+- Every cost-bearing Pydantic model (`CostRecord`, `TaskMetricRecord`, `AgentRuntimeState`) MUST carry `currency: CurrencyCode`. Flag missing fields.
 - Aggregation sites (`CostTracker`, `ReportGenerator`, `CostOptimizer`, HR `WindowMetrics`) MUST enforce same-currency invariant; mixing raises `MixedCurrencyAggregationError` (HTTP 409). Flag aggregations that don't check.
 - Money fields drop `_usd` suffix; type carries semantics. Flag any `*_usd` field name in models, DTOs, TS types, or DB columns.
 

@@ -7,7 +7,6 @@ import {
   FileText,
   FolderKanban,
   GitBranch,
-  GraduationCap,
   Inbox,
   KanbanSquare,
   KeyRound,
@@ -66,7 +65,6 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
       <SidebarSection label="Workspace" collapsed={collapsed} withTopBorder>
         <SidebarNavGroup>
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
-          <SidebarNavItem to={ROUTES.TRAINING} icon={GraduationCap} label="Training" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.LEARNING_CURVE} icon={LineChart} label="Learning" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.WORKFLOWS} icon={Workflow} label="Workflows" collapsed={collapsed} />

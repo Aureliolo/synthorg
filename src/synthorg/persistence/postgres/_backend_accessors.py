@@ -21,9 +21,7 @@ from synthorg.core.company import Company
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.persistence_protocol import (
-    CollaborationMetricRepository,
     LifecycleEventRepository,
     TaskMetricRepository,
 )
@@ -187,12 +185,6 @@ from synthorg.persistence.postgres.seen_claims_repo import (
 from synthorg.persistence.postgres.session_repo import (
     PostgresSessionRepository,
 )
-from synthorg.persistence.postgres.training_plan_repo import (
-    PostgresTrainingPlanRepository,
-)
-from synthorg.persistence.postgres.training_result_repo import (
-    PostgresTrainingResultRepository,
-)
 from synthorg.persistence.postgres.webhook_receipt_repo import (
     PostgresWebhookReceiptRepository,
 )
@@ -232,10 +224,6 @@ from synthorg.persistence.subworkflow_protocol import SubworkflowRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
-)
-from synthorg.persistence.training_protocol import (
-    TrainingPlanRepository,
-    TrainingResultRepository,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
@@ -280,7 +268,6 @@ class _PostgresBackendRepositoryAccessors:
     _lifecycle_transitions: LifecycleTransitionRepository | None
     _deleted_entities: DeletedEntityRepository | None
     _task_metrics: TaskMetricRepository | None
-    _collaboration_metrics: CollaborationMetricRepository | None
     _parked_contexts: ParkedContextRepository | None
     _resume_intents: ResumeIntentRepository | None
     _audit_entries: AuditRepository | None
@@ -305,7 +292,6 @@ class _PostgresBackendRepositoryAccessors:
     _subworkflows: SubworkflowRepository | None
     _workflow_versions: VersionRepository[WorkflowDefinition] | None
     _identity_versions: VersionRepository[AgentIdentity] | None
-    _evaluation_config_versions: VersionRepository[EvaluationConfig] | None
     _budget_config_versions: VersionRepository[BudgetConfig] | None
     _company_versions: VersionRepository[Company] | None
     _role_versions: VersionRepository[Role] | None
@@ -318,8 +304,6 @@ class _PostgresBackendRepositoryAccessors:
     _capability_source_statuses: CapabilitySourceStatusRepository | None
     _provider_failover_events: ProviderFailoverEventRepository | None
     _tracked_containers: TrackedContainerRepository | None
-    _training_plans: PostgresTrainingPlanRepository | None
-    _training_results: PostgresTrainingResultRepository | None
     _sessions: PostgresSessionRepository | None
     _refresh_tokens: PostgresRefreshTokenRepository | None
     _idempotency_keys: PostgresIdempotencyRepository | None
@@ -410,13 +394,6 @@ class _PostgresBackendRepositoryAccessors:
     def task_metrics(self) -> TaskMetricRepository:
         """Repository for TaskMetricRecord persistence."""
         return self._require_connected(self._task_metrics, "task_metrics")
-
-    @property
-    def collaboration_metrics(self) -> CollaborationMetricRepository:
-        """Repository for CollaborationMetricRecord persistence."""
-        return self._require_connected(
-            self._collaboration_metrics, "collaboration_metrics"
-        )
 
     @property
     def parked_contexts(self) -> ParkedContextRepository:
@@ -639,15 +616,6 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(self._identity_versions, "identity_versions")
 
     @property
-    def evaluation_config_versions(
-        self,
-    ) -> VersionRepository[EvaluationConfig]:
-        """Repository for EvaluationConfig version snapshot persistence."""
-        return self._require_connected(
-            self._evaluation_config_versions, "evaluation_config_versions"
-        )
-
-    @property
     def budget_config_versions(self) -> VersionRepository[BudgetConfig]:
         """Repository for BudgetConfig version snapshot persistence."""
         return self._require_connected(
@@ -763,22 +731,6 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._webhook_receipts,
             "webhook_receipts",
-        )
-
-    @property
-    def training_plans(self) -> TrainingPlanRepository:
-        """Repository for training plan persistence."""
-        return self._require_connected(
-            self._training_plans,
-            "training_plans",
-        )
-
-    @property
-    def training_results(self) -> TrainingResultRepository:
-        """Repository for training result persistence."""
-        return self._require_connected(
-            self._training_results,
-            "training_results",
         )
 
     @property

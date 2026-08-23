@@ -557,24 +557,6 @@ async def _run_shutdown(  # noqa: PLR0913
             note="sink uninstalled",
         )
 
-    hr_slice = app_state.slice(HrStateSlice)
-    if hr_slice.eval_loop_cycle_scheduler is not None:
-        await _try_stop(
-            hr_slice.eval_loop_cycle_scheduler.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop eval-loop cycle scheduler",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="eval_loop_cycle_scheduler",
-        )
-    if hr_slice.eval_loop_coordinator is not None:
-        # Clear coordinator + scheduler so wire_eval_loop re-wires on the next
-        # lifespan entry (its idempotency guard checks ``eval_loop_coordinator``).
-        app_state.wire(
-            HrStateSlice,
-            eval_loop_coordinator=None,
-            eval_loop_cycle_scheduler=None,
-        )
-
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
 
     budget_slice = app_state.slice(BudgetStateSlice)

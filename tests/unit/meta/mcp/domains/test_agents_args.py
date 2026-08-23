@@ -9,7 +9,6 @@ from synthorg.meta.mcp.domains._agents_args import (
     AgentsGetArgs,
     AgentsListArgs,
     AutonomyUpdateArgs,
-    TrainingStartSessionArgs,
 )
 
 pytestmark = pytest.mark.unit
@@ -56,31 +55,6 @@ class TestAgentsCRUD:
         with pytest.raises(ValidationError):
             AgentsDeleteArgs.model_validate(
                 {"agent_name": "alice", "confirm": False, "reason": "x"},
-            )
-
-
-class TestTrainingStartSessionArgs:
-    def test_content_types_are_closed(self) -> None:
-        args = TrainingStartSessionArgs(
-            new_agent_id="a1",
-            new_agent_role="r",
-            enabled_content_types=("procedural", "semantic"),
-        )
-        assert "procedural" in args.enabled_content_types
-
-    def test_content_types_reject_unknown(self) -> None:
-        """Closed-set guard: arbitrary strings are rejected.
-
-        Without this case the closed-set assertion would still pass
-        even if ``enabled_content_types`` ever widened to ``str``.
-        """
-        with pytest.raises(ValidationError):
-            TrainingStartSessionArgs.model_validate(
-                {
-                    "new_agent_id": "a1",
-                    "new_agent_role": "r",
-                    "enabled_content_types": ("procedural", "unknown_type"),
-                },
             )
 
 

@@ -63,7 +63,6 @@ def _evaluation(*, agent_id: str = "agent-1") -> PruningEvaluation:
             windows=(),
             trends=(),
             overall_quality_score=2.5,
-            overall_collaboration_score=4.0,
         ),
         evaluated_at=_NOW,
     )

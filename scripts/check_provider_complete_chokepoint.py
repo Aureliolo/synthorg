@@ -36,10 +36,10 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         "src/synthorg/providers/health_prober.py",
         # Pin-validation probe: a deterministic, zero-spend completion run
         # against the pinned tier to grade drift. Opening a cost scope here
-        # would emit a phantom CostRecord (non-zero tokens, zero cost) every
-        # eval cycle, polluting the cost-by-purpose telemetry it has no part
-        # in -- the probe is infrastructure validation, not agent work.
-        "src/synthorg/hr/evaluation/pin_probe_runner.py",
+        # would emit a phantom CostRecord (non-zero tokens, zero cost) on
+        # every gate run, polluting the cost-by-purpose telemetry it has no
+        # part in -- the probe is infrastructure validation, not agent work.
+        "src/synthorg/llm/pin_validation/probe_runner.py",
         # Docstring examples / non-runtime references.
         "src/synthorg/providers/registry.py",
     }

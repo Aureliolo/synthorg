@@ -1,6 +1,6 @@
 """Tests for entity-specific version repository instantiations.
 
-Validates that WorkflowDefinition, BudgetConfig, EvaluationConfig,
+Validates that WorkflowDefinition, BudgetConfig,
 Company, and Role models survive JSON round-trip serialization through
 the generic SQLiteVersionRepository.
 """
@@ -154,34 +154,6 @@ async def test_budget_config_roundtrip() -> None:
         assert loaded is not None
         assert loaded.snapshot.total_monthly == config.total_monthly
         assert loaded.snapshot.currency == config.currency
-
-
-# ── EvaluationConfig round-trip ─────────────────────────────────
-
-
-@pytest.mark.unit
-async def test_evaluation_config_roundtrip() -> None:
-    """EvaluationConfig survives serialization with defaults."""
-    from synthorg.hr.evaluation.config import EvaluationConfig
-
-    config = EvaluationConfig()
-
-    async with aiosqlite.connect(":memory:") as db:
-        repo = await _make_repo(
-            db,
-            "eval_versions",
-            EvaluationConfig,
-        )
-        snap = _make_snapshot("default", config)
-        inserted = await repo.save_version(snap)
-        assert inserted is True
-
-        loaded = await repo.get_version("default", 1)
-        assert loaded is not None
-        assert (
-            loaded.snapshot.calibration_drift_threshold
-            == config.calibration_drift_threshold
-        )
 
 
 # ── Company round-trip ─────────────────────────────────────────

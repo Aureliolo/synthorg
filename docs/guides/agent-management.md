@@ -7,7 +7,7 @@ description: Hire, fire, promote, and customise agents via the REST API. Covers 
 
 SynthOrg treats agents as real employees: they get hired, promoted, and fired through operator workflows. This guide covers the lifecycle surface the REST API exposes (hire, update, fire), and documents the archival and rehire paths as manual two-step procedures, noting at each point which automation the DELETE flow does not yet invoke.
 
-For the architecture (identity versioning, evolution, five-pillar evaluation), see [Agents](../design/agents.md) and [HR & Agent Lifecycle](../design/hr-lifecycle.md).
+For the architecture (identity versioning, evolution, performance tracking), see [Agents](../design/agents.md) and [HR & Agent Lifecycle](../design/hr-lifecycle.md).
 
 ---
 

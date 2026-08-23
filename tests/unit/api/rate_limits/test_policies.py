@@ -151,7 +151,6 @@ _EXPENSIVE_ENDPOINT_POLICY_DEFAULTS: dict[str, tuple[int, int]] = {
     "artifacts.create": (60, 60),
     "auth.ws_ticket": (20, 60),
     "clients.create": (10, 60),
-    "collaboration.override": (20, 60),
     "company.reorder_departments": (10, 60),
     # SSE event-stream gate. Exercised end-to-end by the generic
     # per_op_rate_limit middleware tests; the value is pinned here so

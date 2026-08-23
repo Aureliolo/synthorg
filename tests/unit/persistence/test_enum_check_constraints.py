@@ -48,7 +48,6 @@ from synthorg.engine.strategy.active_principle import (
 from synthorg.engine.strategy.models import PrincipleSeverity
 from synthorg.engine.workflow.enums import WorkflowExecutionStatus, WorkflowType
 from synthorg.engine.workflow.sprint_lifecycle import SprintStatus
-from synthorg.hr.training.models import TrainingPlanStatus
 from synthorg.integrations.connections.models import (
     AuthMethod,
     ConnectionStatus,
@@ -135,7 +134,6 @@ _ENUM_CHECKED_COLUMNS: Final[tuple[tuple[str, str, type[StrEnum]], ...]] = (
     ("subworkflows", "workflow_type", WorkflowType),
     ("task_metrics", "run_outcome", RunOutcome),
     ("tasks", "blocked_reason", BlockedReason),
-    ("training_plans", "status", TrainingPlanStatus),
     ("upgrade_recommendations", "status", RecommendationStatus),
     ("workflow_definitions", "workflow_type", WorkflowType),
     ("workflow_executions", "status", WorkflowExecutionStatus),

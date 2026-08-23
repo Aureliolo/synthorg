@@ -155,7 +155,6 @@ The `SettingsChangeDispatcher` polls the `#settings` message bus channel and rou
 
 - `ProviderSettingsSubscriber`: rebuilds the provider registry on `retry_max_attempts` change and triggers a runtime-services rebuild so the running engine adopts the new cap
 - `BackupSettingsSubscriber`: toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change, re-points the backup path on `path` change, and re-applies the `compression` / `on_shutdown` / `on_startup` config flags onto the live service
-- `EvalLoopSettingsSubscriber`: re-resolves the `hr.eval_loop_*` model / provider / mode keys and swaps the rebuilt pattern-identifier + fix-proposer strategies onto the live eval-loop coordinator
 - `CapabilityPolicySettingsSubscriber`: re-resolves the `engine.capability_floor_*`, `engine.reasoning_effort_*`, `engine.red_team_min_stakes` and `engine.capability_park_min_stakes` keys and calls `set_config` on the one shared `CapabilityPolicy`, so selection, coordination routing, dispatch and both review gates adopt the new ladder together rather than one at a time
 - `GithubApiUrlSettingsSubscriber`: re-binds `integrations.github_api_url` onto the GitHub health checker
 - `ObservabilityBridgeSettingsSubscriber`: re-applies `audit_chain_signing_timeout_seconds` onto the live audit sink (plus the HTTP-log batch knobs)

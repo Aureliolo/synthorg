@@ -323,9 +323,7 @@ def resolve_currency(cost_tracker: CostTrackerProtocol) -> CurrencyCode:
 
     Reads ``budget_config.currency`` when a budget config is attached;
     otherwise falls back to :data:`DEFAULT_CURRENCY`.  Mirrors the
-    existing convention in
-    :mod:`synthorg.engine.cost_recording` and
-    :mod:`synthorg.hr.performance.llm_judge_quality_strategy`.
+    existing convention in :mod:`synthorg.engine.cost_recording`.
 
     Args:
         cost_tracker: Tracker whose budget config drives the currency.

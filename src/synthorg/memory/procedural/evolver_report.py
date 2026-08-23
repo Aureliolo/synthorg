@@ -18,8 +18,9 @@ from synthorg.memory.procedural.supersession import (
 class EvolverReport(BaseModel):
     """Summary of a single skill evolution cycle.
 
-    Consumed by the R3 ``EvalLoopCoordinator`` for org learning
-    metrics and audit.
+    Returned by
+    :class:`~synthorg.memory.procedural.evolver.AutonomousSkillEvolver`
+    as the audit record of what one cycle examined and emitted.
 
     Attributes:
         cycle_id: Unique cycle identifier.

@@ -22,9 +22,8 @@ What a pin records:
   against, not a per-call operational ceiling (which is a separate, configurable
   concern).
 - ``model_version_pinned_at``: a static committed validation date (:data:`_PINNED_AT`).
-  It is excluded from the drift fingerprint, so the live "last re-validated"
-  stamp (``ModelPinValidationRow.validated_at`` in the ledger) advances
-  independently.
+  It is excluded from the drift fingerprint, so re-dating the population does not
+  itself read as drift.
 
 An import-time guard rejects any :class:`PromptPurposeId` missing a spec,
 mirroring the policy and purpose-registry guards, so a purpose added without a
@@ -49,8 +48,8 @@ from synthorg.llm.model_capability_policy import (
 from synthorg.llm.prompt_purpose import PromptPurposeId
 
 #: Date this per-class pin population was validated against the golden. Advanced
-#: by hand when a pin is re-validated; the live "last re-validated" stamp lives
-#: in the ledger and is excluded from the drift fingerprint.
+#: by hand when a pin is re-validated; excluded from the drift fingerprint so
+#: re-dating it is not itself drift.
 _PINNED_AT: Final[datetime] = parse_iso_utc("2026-06-28T00:00:00Z")
 
 #: Deterministic sampling baseline for a system prompt class.
@@ -145,10 +144,6 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.CLASSIFICATION_NUMERICAL_DRIFT, PinSpec()),
     (PromptPurposeId.CLASSIFICATION_CONTEXT_OMISSION, PinSpec()),
     (PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE, PinSpec()),
-    (PromptPurposeId.HR_TRAINING_CURATION, PinSpec(temperature=0.3)),
-    (PromptPurposeId.HR_CALIBRATION, PinSpec(temperature=0.3)),
-    (PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS, PinSpec()),
-    (PromptPurposeId.HR_EVAL_FIX_PROPOSAL, PinSpec(temperature=0.3)),
     (PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR, PinSpec(temperature=0.7)),
     (PromptPurposeId.PROVIDERS_TEST_CONNECTION, PinSpec()),
     (PromptPurposeId.PROVIDERS_CAPABILITY_CLASSIFICATION, PinSpec()),

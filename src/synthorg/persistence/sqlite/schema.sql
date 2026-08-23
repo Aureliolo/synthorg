@@ -29,11 +29,6 @@
 --       tasks.{task_structure, reviewers, dependencies,
 --              artifacts_expected, acceptance_criteria,
 --              delegation_chain},
---       training_plans.{enabled_content_types, volume_caps,
---                       override_sources},
---       training_results.{source_agents_used, items_extracted,
---                         items_after_curation, items_after_guards,
---                         items_stored, pending_approvals, errors},
 --       users.{org_roles, scoped_departments},
 --       custom_rules.target_altitudes,
 --       conflict_escalations.conflict_json,
@@ -259,25 +254,6 @@ ON task_metrics (agent_id, completed_at);
 -- A referencing column with no index makes every delete of the referenced
 -- row a full scan of this table.
 CREATE INDEX idx_tm_task_id ON task_metrics (task_id);
-
--- ── Collaboration metrics ─────────────────────────────────────
-CREATE TABLE collaboration_metrics (
-    id TEXT NOT NULL PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    recorded_at TEXT NOT NULL,
-    delegation_success INTEGER,
-    delegation_response_seconds REAL,
-    conflict_constructiveness REAL,
-    discussion_contribution REAL,
-    loop_triggered INTEGER NOT NULL DEFAULT 0,
-    handoff_completeness REAL
-);
-
-CREATE INDEX idx_cm_agent_id ON collaboration_metrics (agent_id);
-CREATE INDEX idx_cm_recorded_at
-ON collaboration_metrics (recorded_at);
-CREATE INDEX idx_cm_agent_recorded
-ON collaboration_metrics (agent_id, recorded_at);
 
 -- ── Parked contexts ───────────────────────────────────────────
 CREATE TABLE parked_contexts (
@@ -1225,25 +1201,6 @@ ON agent_identity_versions (entity_id, saved_at DESC);
 CREATE INDEX idx_aiv_content_hash
 ON agent_identity_versions (entity_id, content_hash);
 
--- ── Evaluation config versions ────────────────────────────────────
-
-CREATE TABLE evaluation_config_versions (
-    entity_id TEXT NOT NULL CHECK (LENGTH(entity_id) > 0),
-    version INTEGER NOT NULL CHECK (version >= 1),
-    content_hash TEXT NOT NULL CHECK (LENGTH(content_hash) > 0),
-    snapshot TEXT NOT NULL CHECK (LENGTH(snapshot) > 0),
-    saved_by TEXT NOT NULL CHECK (LENGTH(saved_by) > 0),
-    saved_at TEXT NOT NULL CHECK (
-        saved_at LIKE '%+00:00' OR saved_at LIKE '%Z'
-    ),
-    PRIMARY KEY (entity_id, version)
-);
-
-CREATE INDEX idx_ecv_entity_saved
-ON evaluation_config_versions (entity_id, saved_at DESC);
-CREATE INDEX idx_ecv_content_hash
-ON evaluation_config_versions (entity_id, content_hash);
-
 -- ── Budget config versions ───────────────────────────────────────
 
 CREATE TABLE budget_config_versions (
@@ -1597,61 +1554,6 @@ CREATE TABLE mcp_installations (
 
 CREATE INDEX idx_mcp_installations_connection
 ON mcp_installations (connection_name);
-
--- ── Training plans ──────────────────────────────────────────────
--- Stores training plan configuration for agent onboarding.
--- Plans transition from pending -> executed|failed after execution.
-CREATE TABLE training_plans (
-    id TEXT NOT NULL PRIMARY KEY,
-    new_agent_id TEXT NOT NULL,
-    new_agent_role TEXT NOT NULL,
-    new_agent_department TEXT,
-    source_selector_type TEXT NOT NULL DEFAULT 'role_top_performers',
-    enabled_content_types TEXT NOT NULL DEFAULT '[]',
-    curation_strategy_type TEXT NOT NULL DEFAULT 'relevance',
-    volume_caps TEXT NOT NULL DEFAULT '[]',
-    override_sources TEXT NOT NULL DEFAULT '[]',
-    skip_training INTEGER NOT NULL DEFAULT 0,
-    require_review INTEGER NOT NULL DEFAULT 1,
-    status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'executed', 'failed')),
-    created_at TEXT NOT NULL,
-    executed_at TEXT,
-    CHECK (
-        (status = 'pending' AND executed_at IS NULL)
-        OR (status != 'pending' AND executed_at IS NOT NULL)
-    )
-);
-
-CREATE INDEX idx_training_plans_agent_status
-ON training_plans (new_agent_id, status);
-CREATE INDEX idx_training_plans_created
-ON training_plans (created_at);
-
--- ── Training results ────────────────────────────────────────────
--- Stores training execution outcomes with per-stage pipeline counts.
-CREATE TABLE training_results (
-    id TEXT NOT NULL PRIMARY KEY,
-    plan_id TEXT NOT NULL REFERENCES training_plans (id),
-    new_agent_id TEXT NOT NULL,
-    source_agents_used TEXT NOT NULL DEFAULT '[]',
-    items_extracted TEXT NOT NULL DEFAULT '[]',
-    items_after_curation TEXT NOT NULL DEFAULT '[]',
-    items_after_guards TEXT NOT NULL DEFAULT '[]',
-    items_stored TEXT NOT NULL DEFAULT '[]',
-    approval_item_id TEXT,
-    pending_approvals TEXT NOT NULL DEFAULT '[]',
-    review_pending INTEGER NOT NULL DEFAULT 0,
-    errors TEXT NOT NULL DEFAULT '[]',
-    started_at TEXT NOT NULL,
-    completed_at TEXT NOT NULL,
-    CHECK (completed_at >= started_at)
-);
-
-CREATE UNIQUE INDEX idx_training_results_plan
-ON training_results (plan_id);
-CREATE INDEX idx_training_results_agent
-ON training_results (new_agent_id, completed_at DESC);
 
 -- ── Custom signal rules ─────────────────────────────────────────
 
@@ -2706,17 +2608,6 @@ CREATE INDEX idx_agent_contributions_agent
 ON agent_contributions (agent_id, id DESC);
 CREATE INDEX idx_agent_contributions_subtask
 ON agent_contributions (subtask_id, id DESC);
-
--- Prompt-class pin-validation results: one row per prompt_class_id,
--- written by the pin-validation benchmark on a clean drift grade so
--- validated_at records when the pin was last validated against its
--- capability.
-CREATE TABLE model_pin_validations (
-    prompt_class_id TEXT NOT NULL PRIMARY KEY
-    CHECK (LENGTH(TRIM(prompt_class_id)) > 0),
-    validated_at TEXT NOT NULL,
-    capability TEXT NOT NULL CHECK (capability IN ('basic', 'capable', 'expert'))
-);
 
 -- Agile sprint records: one row per time-boxed work cycle for an
 -- agile_kanban project. Backs the /sprints API and the SprintService that

@@ -116,7 +116,7 @@ Rungs per registered prompt purpose, grouped by rung.
 | `system:research:triage` | Triage a research brief into actionable directions. |
 | `system:cos:routing` | Route a chief-of-staff request to a capability. |
 | `system:intake` | Clarify an incoming request during intake. |
-| `system:hr:calibration` | Sample calibration judgements for performance scoring. |
+| `system:cos:turn_intent` | Classify an operator turn into a chief-of-staff intent. |
 | `system:providers:test_connection` | Probe a provider connection with a minimal completion. |
 | `system:providers:capability_classification` | Recommend a capability rung for a configured model from its metadata. |
 
@@ -127,12 +127,19 @@ Rungs per registered prompt purpose, grouped by rung.
 | `system:security:llm_evaluator` | Evaluate a security policy question with an LLM judge. |
 | `system:vision_verify` | Verify a review artefact with a vision model. |
 | `system:red_team:grounding` | Ground red-team probes against the target substrate. |
+| `system:red_team:grounding_entailment` | Decide whether a claim is entailed by its cited source. |
+| `system:classification:logical_contradiction` | Classify a run for self-contradictory reasoning. |
+| `system:classification:numerical_drift` | Classify a run for numeric values drifting across turns. |
+| `system:classification:context_omission` | Classify a run for context the agent failed to carry. |
+| `system:classification:coordination_failure` | Classify a run for a breakdown between collaborating agents. |
 | `system:memory:consolidate` | Consolidate raw memories into durable entries. |
 | `system:memory:compress` | Compress memory artefacts to reclaim context budget. |
 | `system:procedural:success_proposer` | Propose procedural memories from successful runs. |
 | `system:procedural:propose` | Propose a procedural memory from a task trace. |
 | `system:cos:chat` | Answer an operator question about the organisation. |
 | `system:cos:narrative` | Narrate organisational state for the operator. |
+| `system:cos:multi_voice` | Voice a chief-of-staff answer as the roles it draws on. |
+| `system:plan_review:item_reply` | Reply to an operator comment on a plan item. |
 | `system:steering:propose` | Propose a steering intervention for a running task. |
 | `system:evolution:propose` | Propose an evolution to an agent's behaviour. |
 | `system:workspace` | Answer a semantic query over a task workspace. |
@@ -152,21 +159,23 @@ Rungs per registered prompt purpose, grouped by rung.
 | `system:toolsmith:author` | Author a new tool definition for the toolsmith. |
 | `system:meta:code_modification` | Modify code as part of a self-improvement strategy. |
 | `system:client:requirement_generator` | Generate client requirements for a synthetic project. |
-| `system:hr:training_curation` | Curate training examples from agent transcripts. |
 
 ## Pin-validation benchmark
 
-The policy is not advisory: the `model-pin-validation`
-[`ExternalBenchmark`](../design/evaluation-loop.md#external-benchmarks)
-exercises it on every eval cycle. For each prompt class it builds the
-canonical pin (the policy rung plus the deterministic sampling
-parameters), runs a canonical probe against the pinned rung through a
-deterministic provider, and grades **drift** by comparing a live
+The policy is not advisory: `ModelPinValidationBenchmark`
+(`synthorg.llm.pin_validation.benchmark`) exercises it. For each prompt
+class it builds the canonical pin (the policy rung plus the deterministic
+sampling parameters), runs a canonical probe against the pinned rung
+through a deterministic provider, and grades **drift** by comparing a live
 fingerprint, `sha256(model_id | temperature | top_p | max_tokens | output)`,
-against a committed golden snapshot (`pin_golden.json`). The sampling
-floats are serialised by their exact `float.hex()` representation in the
-digest, so every distinct sampling value hashes differently and the
+against a committed golden snapshot (`llm/pin_validation/golden.json`). The
+sampling floats are serialised by their exact `float.hex()` representation
+in the digest, so every distinct sampling value hashes differently and the
 digest stays bit-reproducible across runs and platforms.
+
+The probe runs offline against a scripted provider, so it costs nothing
+and makes no provider call. It is a config-lint over the shipped pins,
+not a measurement of a live model.
 
 A mismatch (a capability reassignment, a sampling change, or a probe-pipeline
 change) fails the grade until the golden is deliberately regenerated with
@@ -174,13 +183,9 @@ change) fails the grade until the golden is deliberately regenerated with
 independent snapshot, the check is a genuine regression gate, not a
 "pin checks the pin" tautology.
 
-On a clean grade the benchmark stamps `validated_at` for the prompt class
-through the `ModelPinValidationLedger` (a one-row-per-class
-`ModelPinValidationRepository` record). That `validated_at` is the durable
-"last validated against its capability" timestamp the audit dashboard reads,
-the live counterpart to a prompt class's static
-`ModelPinMetadata.model_version_pinned_at`. The stamp is failure-tolerant: a
-persistence failure is logged but never flips a clean drift verdict.
+The provenance record is the committed golden plus its git history: the
+snapshot names what every pin fingerprinted to, and the commit that
+changed it names who changed it and when.
 
 ## Changing a pin
 
@@ -188,9 +193,7 @@ Reassigning a capability is a deliberate act:
 
 1. Edit the entry in `synthorg.llm.model_capability_policy`.
 2. Run `uv run python scripts/refresh_model_pin_golden.py` to regenerate
-   the golden snapshot. Both the `pin-drift-regression` CI canary
-   (`scripts/check_pin_golden_fresh.py`) and the pin-validation benchmark
-   fail until you do, so a capability or pin change cannot land without a
-   fresh golden.
-3. Commit both changes together. The next eval cycle re-validates the pin
-   and refreshes its `validated_at`.
+   the golden snapshot. The `pin-drift-regression` CI canary
+   (`scripts/check_pin_golden_fresh.py`) fails until you do, so a
+   capability or pin change cannot land without a fresh golden.
+3. Commit both changes together.

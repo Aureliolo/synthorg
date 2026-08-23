@@ -40,7 +40,6 @@ from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdap
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.training.service import TrainingService
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -89,7 +88,6 @@ class ConstructionDeps:
     coordination_metrics_store: CoordinationMetricsStore | None = None
     performance_tracker: PerformanceTracker | None = None
     agent_registry: AgentRegistryService | None = None
-    training_service: TrainingService | None = None
     delegation_record_store: DelegationRecordStore | None = None
     tool_invocation_tracker: ToolInvocationTracker | None = None
     artifact_storage: ArtifactStorageBackend | None = None

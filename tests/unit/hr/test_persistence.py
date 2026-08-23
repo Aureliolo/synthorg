@@ -9,12 +9,8 @@ from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
-from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,
-    TaskMetricRecord,
-)
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.persistence.sqlite.hr_repositories import (
-    SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
@@ -75,29 +71,6 @@ def _make_task_metric(  # noqa: PLR0913
         tokens_used=tokens_used,
         quality_score=quality_score,
         complexity=complexity,
-    )
-
-
-def _make_collab_metric(
-    *,
-    agent_id: str = "agent-001",
-    delegation_success: bool | None = True,
-    delegation_response_seconds: float | None = 5.0,
-    conflict_constructiveness: float | None = 0.8,
-    discussion_contribution: float | None = 0.7,
-    loop_triggered: bool = False,
-    handoff_completeness: float | None = 0.9,
-    recorded_at: datetime | None = None,
-) -> CollaborationMetricRecord:
-    return CollaborationMetricRecord(
-        agent_id=NotBlankStr(agent_id),
-        recorded_at=recorded_at or datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
-        delegation_success=delegation_success,
-        delegation_response_seconds=delegation_response_seconds,
-        conflict_constructiveness=conflict_constructiveness,
-        discussion_contribution=discussion_contribution,
-        loop_triggered=loop_triggered,
-        handoff_completeness=handoff_completeness,
     )
 
 
@@ -310,93 +283,3 @@ class TestSQLiteTaskMetricRepository:
         records = await repo.query(since=since, until=until)
         assert len(records) == 1
         assert records[0].task_id == "task-mid"
-
-
-# ── SQLiteCollaborationMetricRepository ───────────────────────────
-
-
-@pytest.mark.unit
-class TestSQLiteCollaborationMetricRepository:
-    async def test_save_and_query_all(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        record = _make_collab_metric()
-        await repo.save(record)
-
-        records = await repo.query()
-        assert len(records) == 1
-        assert records[0].agent_id == "agent-001"
-        assert records[0].delegation_success is True
-        assert records[0].loop_triggered is False
-
-    async def test_query_filter_by_agent_id(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        await repo.save(_make_collab_metric(agent_id="agent-001"))
-        await repo.save(_make_collab_metric(agent_id="agent-002"))
-
-        records = await repo.query(agent_id="agent-001")
-        assert len(records) == 1
-        assert records[0].agent_id == "agent-001"
-
-    async def test_query_empty(self, db: aiosqlite.Connection) -> None:
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        records = await repo.query()
-        assert records == ()
-
-    async def test_round_trip_nullable_fields(self, db: aiosqlite.Connection) -> None:
-        """Nullable float/bool fields survive round-trip as None."""
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        record = _make_collab_metric(
-            delegation_success=None,
-            delegation_response_seconds=None,
-            conflict_constructiveness=None,
-            discussion_contribution=None,
-            handoff_completeness=None,
-        )
-        await repo.save(record)
-
-        records = await repo.query()
-        assert records[0].delegation_success is None
-        assert records[0].delegation_response_seconds is None
-        assert records[0].conflict_constructiveness is None
-        assert records[0].discussion_contribution is None
-        assert records[0].handoff_completeness is None
-
-    async def test_round_trip_loop_triggered_true(
-        self, db: aiosqlite.Connection
-    ) -> None:
-        """Boolean loop_triggered=True survives SQLite integer round-trip."""
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        record = _make_collab_metric(loop_triggered=True)
-        await repo.save(record)
-
-        records = await repo.query()
-        assert records[0].loop_triggered is True
-
-    async def test_query_filter_by_since(self, db: aiosqlite.Connection) -> None:
-        """Records before 'since' are excluded."""
-        repo = SQLiteCollaborationMetricRepository(
-            db, write_context=make_private_write_context()
-        )
-        old_record = _make_collab_metric(
-            recorded_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
-        )
-        new_record = _make_collab_metric(
-            recorded_at=datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC),
-        )
-        await repo.save(old_record)
-        await repo.save(new_record)
-
-        cutoff = datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
-        records = await repo.query(since=cutoff)
-        assert len(records) == 1
-        assert records[0].recorded_at >= cutoff

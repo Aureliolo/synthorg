@@ -415,14 +415,6 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda _s: _analytics_collector_configured(),
     ),
     Capability(
-        id=CapabilityId.TRAINING_SERVICE,
-        present=lambda s: s.slice(HrStateSlice).training_service is not None,
-    ),
-    Capability(
-        id=CapabilityId.EVAL_LOOP,
-        present=lambda s: s.slice(HrStateSlice).eval_loop_coordinator is not None,
-    ),
-    Capability(
         id=CapabilityId.PRUNING_SERVICE,
         present=lambda s: s.slice(HrStateSlice).pruning_service is not None,
     ),

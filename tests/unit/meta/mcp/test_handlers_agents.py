@@ -24,11 +24,7 @@ import structlog.testing
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import (
-    AgentPerformanceSnapshot,
-    CollaborationCalibration,
-    CollaborationScoreResult,
-)
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
@@ -68,16 +64,6 @@ def fake_performance_tracker(identity: AgentIdentity) -> AsyncMock:
     tracker.get_snapshot.return_value = AgentPerformanceSnapshot(
         agent_id=NotBlankStr(str(identity.id)),
         computed_at=datetime.now(UTC),
-    )
-    tracker.get_collaboration_score.return_value = CollaborationScoreResult(
-        score=0.75,
-        strategy_name="test-strategy",
-        confidence=0.9,
-    )
-    tracker.get_collaboration_calibration.return_value = CollaborationCalibration(
-        agent_id=NotBlankStr(str(identity.id)),
-        strategy_name=NotBlankStr("test-strategy"),
-        sample_size=0,
     )
     return tracker
 
@@ -272,7 +258,6 @@ class TestWriteHandlersValidateInputs:
         [
             "synthorg_agents_update",
             "synthorg_autonomy_update",
-            "synthorg_collaboration_get_calibration",
         ],
     )
     async def test_empty_args_returns_invalid_argument(

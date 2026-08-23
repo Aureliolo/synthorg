@@ -13,7 +13,6 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import BudgetVersionsPage from '@/pages/BudgetVersionsPage'
 import CompanyVersionsPage from '@/pages/CompanyVersionsPage'
-import EvaluationVersionsPage from '@/pages/EvaluationVersionsPage'
 import WorkflowVersionsPage from '@/pages/WorkflowVersionsPage'
 import WorkflowExecutionsPage from '@/pages/WorkflowExecutionsPage'
 import WebhookReceiptsPage from '@/pages/WebhookReceiptsPage'
@@ -43,13 +42,6 @@ describe('new-surface pages render', () => {
     renderAt(<CompanyVersionsPage />, '/org/versions', '/org/versions')
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Company structure history/i })).toBeInTheDocument()
-    })
-  })
-
-  it('EvaluationVersionsPage renders the title', async () => {
-    renderAt(<EvaluationVersionsPage />, '/evaluation/versions', '/evaluation/versions')
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Evaluation configuration history/i })).toBeInTheDocument()
     })
   })
 

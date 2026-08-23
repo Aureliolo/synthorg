@@ -152,14 +152,6 @@ METRIC_REGISTRY: tuple[MetricDescriptor, ...] = (
         max_value=1.0,
     ),
     MetricDescriptor(
-        path="performance.avg_collaboration_score",
-        label="Average Collaboration Score",
-        domain="performance",
-        value_type="float",
-        min_value=0.0,
-        max_value=10.0,
-    ),
-    MetricDescriptor(
         path="performance.agent_count",
         label="Active Agent Count",
         domain="performance",

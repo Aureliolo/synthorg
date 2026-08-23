@@ -74,10 +74,9 @@ def format_snapshot(snapshot: OrgSignalSnapshot) -> str:
     """Format a snapshot into a readable summary string.
 
     When there are no active agents the performance summary is the empty
-    sentinel, so its quality / success / collaboration numbers are not
-    measured data. They are rendered as an explicit "no measured data"
-    line rather than as literal zeros the model might report as a real
-    outcome.
+    sentinel, so its quality and success numbers are not measured data.
+    They are rendered as an explicit "no measured data" line rather than
+    as literal zeros the model might report as a real outcome.
 
     Returns:
         Resulting string.
@@ -89,7 +88,6 @@ def format_snapshot(snapshot: OrgSignalSnapshot) -> str:
         lines = [
             f"Quality: {perf.avg_quality_score:.1f}/10",
             f"Success Rate: {perf.avg_success_rate:.0%}",
-            f"Collaboration: {perf.avg_collaboration_score:.1f}/10",
             f"Active Agents: {perf.agent_count}",
         ]
     else:

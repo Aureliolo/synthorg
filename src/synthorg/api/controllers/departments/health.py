@@ -100,8 +100,8 @@ class DepartmentHealthController(Controller):
     ) -> ApiResponse[DepartmentHealth]:
         """Get department health aggregation.
 
-        Aggregates agent count, utilization, cost, performance, and
-        collaboration data for the named department.
+        Aggregates agent count, utilization, cost and performance data
+        for the named department.
 
         Args:
             state: Application state.

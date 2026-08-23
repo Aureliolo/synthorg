@@ -48,7 +48,6 @@ class PromptPurposeCategory(StrEnum):
     RESEARCH = "research"
     META = "meta"
     ENGINE = "engine"
-    HR = "hr"
     CLIENT = "client"
     PROVIDER = "providers"
     COMMUNICATION = "communication"
@@ -110,11 +109,6 @@ class PromptPurposeId(StrEnum):
     CLASSIFICATION_CONTEXT_OMISSION = "system:classification:context_omission"
     CLASSIFICATION_COORDINATION_FAILURE = "system:classification:coordination_failure"
 
-    HR_TRAINING_CURATION = "system:hr:training_curation"
-    HR_CALIBRATION = "system:hr:calibration"
-    HR_EVAL_PATTERN_ANALYSIS = "system:hr:eval_pattern_analysis"
-    HR_EVAL_FIX_PROPOSAL = "system:hr:eval_fix_proposal"
-
     CLIENT_REQUIREMENT_GENERATOR = "system:client:requirement_generator"
 
     PROVIDERS_TEST_CONNECTION = "system:providers:test_connection"
@@ -140,8 +134,8 @@ class PromptPurposeRegistry:
     """Registry mapping :class:`PromptPurposeId` to :class:`PromptPurpose`.
 
     Internal storage is read-only (``MappingProxyType``) and mutated via
-    copy-on-write in :meth:`register`, mirroring
-    :class:`ExternalBenchmarkRegistry`.
+    copy-on-write in :meth:`register`, so a reader holding the mapping
+    cannot observe a registration mid-write.
     """
 
     def __init__(self) -> None:
@@ -428,26 +422,6 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.CLASSIFICATION_COORDINATION_FAILURE,
         PromptPurposeCategory.ENGINE,
         "Detect multi-agent coordination failures in a transcript.",
-    ),
-    (
-        PromptPurposeId.HR_TRAINING_CURATION,
-        PromptPurposeCategory.HR,
-        "Curate training examples from agent transcripts.",
-    ),
-    (
-        PromptPurposeId.HR_CALIBRATION,
-        PromptPurposeCategory.HR,
-        "Sample calibration judgements for performance scoring.",
-    ),
-    (
-        PromptPurposeId.HR_EVAL_PATTERN_ANALYSIS,
-        PromptPurposeCategory.HR,
-        "Identify cross-agent weakness patterns from evaluation reports.",
-    ),
-    (
-        PromptPurposeId.HR_EVAL_FIX_PROPOSAL,
-        PromptPurposeCategory.HR,
-        "Propose remediation actions for identified weakness patterns.",
     ),
     (
         PromptPurposeId.CLIENT_REQUIREMENT_GENERATOR,

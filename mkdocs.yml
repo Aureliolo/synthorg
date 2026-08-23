@@ -162,7 +162,6 @@ nav:
       - design/index.md
       - Agents: design/agents.md
       - HR & Agent Lifecycle: design/hr-lifecycle.md
-      - Evaluation Loop: design/evaluation-loop.md
       - Organization: design/organization.md
       - Communication: design/communication.md
       - Communication A2A Gateway: design/communication-a2a.md

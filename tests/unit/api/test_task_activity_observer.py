@@ -103,6 +103,7 @@ def _observer(
     artifact_count: int = 0,
     list_error: Exception | None = None,
     resolve_agent: object = None,
+    resolve_quality: object = None,
 ) -> TaskActivityObserver:
     lister: object
     if list_error is not None:
@@ -118,6 +119,7 @@ def _observer(
         list_artifacts=lister,  # type: ignore[arg-type]
         record_metric=recorder,
         resolve_agent=resolve_agent,  # type: ignore[arg-type]
+        resolve_quality=resolve_quality,  # type: ignore[arg-type]
     )
 
 
@@ -258,7 +260,7 @@ class TestTaskActivityObserver:
     async def test_record_carries_unmeasured_telemetry(self) -> None:
         # A transition-sourced record has the reliability outcome but no
         # measured cost / latency / tokens: those stay None, never a
-        # fabricated zero, so the efficiency pillar reads them as unmeasured.
+        # fabricated zero, so a consumer reads them as unmeasured.
         channels, recorder = _FakeChannels(), _Recorder()
         await _observer(channels, recorder, artifact_count=2)(
             _event(
@@ -329,3 +331,67 @@ class TestTaskActivityObserver:
         )
         assert len(channels.published) == 1
         assert recorder.records == []
+
+
+@pytest.mark.unit
+class TestOracleFedQualityScore:
+    """``quality_score`` is the completion oracle's verdict, never derived."""
+
+    async def test_the_resolved_score_is_stamped_onto_the_record(self) -> None:
+        seen: list[str] = []
+
+        async def _resolve(task: Task) -> float | None:
+            seen.append(str(task.id))
+            return 7.5
+
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, artifact_count=1, resolve_quality=_resolve)(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        assert recorder.records[0].quality_score == pytest.approx(7.5)
+        assert seen == [str(as_uuid("task-1"))]
+
+    async def test_an_unreviewed_task_records_no_score(self) -> None:
+        async def _resolve(_task: Task) -> float | None:
+            return None
+
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, artifact_count=1, resolve_quality=_resolve)(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        assert recorder.records[0].quality_score is None
+
+    async def test_no_resolver_records_no_score(self) -> None:
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, artifact_count=1)(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        assert recorder.records[0].quality_score is None
+
+    async def test_a_resolver_fault_leaves_the_score_unmeasured(self) -> None:
+        # The authoritative gate already ran and acted on its verdict, so a
+        # read fault here must cost the score and nothing else: the outcome
+        # record still lands rather than being suppressed.
+        async def _raise(_task: Task) -> float | None:
+            msg = "archive unavailable"
+            raise RuntimeError(msg)
+
+        channels, recorder = _FakeChannels(), _Recorder()
+        await _observer(channels, recorder, artifact_count=1, resolve_quality=_raise)(
+            _event(
+                new_status=TaskStatus.IN_REVIEW,
+                previous_status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        assert len(recorder.records) == 1
+        assert recorder.records[0].quality_score is None
+        assert recorder.records[0].is_success is True

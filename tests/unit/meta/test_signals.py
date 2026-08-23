@@ -49,20 +49,17 @@ def _week_ago() -> datetime:
 def _make_mock_tracker(
     *,
     quality: float = 7.5,
-    collab: float = 6.0,
     windows: tuple[tuple[str, float, float], ...] = (("7d", 0.85, 7.5),),
 ) -> MagicMock:
     """Create a mock PerformanceTracker.
 
     Args:
         quality: Overall quality score.
-        collab: Overall collaboration score.
         windows: Tuples of (window_size, success_rate, avg_quality).
     """
     tracker = MagicMock()
     snapshot = MagicMock()
     snapshot.overall_quality_score = quality
-    snapshot.overall_collaboration_score = collab
     mock_windows = []
     for ws, sr, aq in windows:
         w = MagicMock()
@@ -110,13 +107,11 @@ class TestPerformanceSignalAggregator:
         assert result.agent_count == 1
         assert result.avg_quality_score == 7.5
         assert result.avg_success_rate == 0.85
-        assert result.avg_collaboration_score == 6.0
 
     async def test_multiple_agents_averaged(self) -> None:
         tracker = mock_of[PerformanceTracker]()
         s1 = MagicMock()
         s1.overall_quality_score = 8.0
-        s1.overall_collaboration_score = 7.0
         w1 = MagicMock()
         w1.window_size = "7d"
         w1.success_rate = 0.90
@@ -125,7 +120,6 @@ class TestPerformanceSignalAggregator:
 
         s2 = MagicMock()
         s2.overall_quality_score = 6.0
-        s2.overall_collaboration_score = 5.0
         w2 = MagicMock()
         w2.window_size = "7d"
         w2.success_rate = 0.80

@@ -1,9 +1,9 @@
 """Quality domain MCP handlers.
 
-9 tools across quality scores (3), reviews (4), and evaluation-config
-version history (2).  All handlers shim through the corresponding
-facade on :class:`AppState`; capability gaps surface as typed
-``not_supported`` envelopes via :class:`CapabilityNotSupportedError`.
+7 tools across quality scores (3) and reviews (4).  All handlers shim
+through the corresponding facade on :class:`AppState`; capability gaps
+surface as typed ``not_supported`` envelopes via
+:class:`CapabilityNotSupportedError`.
 """
 
 from collections.abc import Mapping
@@ -15,13 +15,11 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.engine.state import evaluation_version_service_of
 from synthorg.infrastructure.state import (
     quality_facade_service_of,
     review_facade_service_of,
 )
 from synthorg.meta.mcp.domains._simple_args import (
-    EvaluationVersionsGetArgs,
     QualityGetAgentQualityArgs,
     QualityListScoresArgs,
     ReviewsCreateArgs,
@@ -316,66 +314,6 @@ async def _reviews_update(
     return ok(record.to_dict())
 
 
-# ── evaluation versions ────────────────────────────────────────────
-
-
-async def _evaluation_versions_list(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """List evaluation-config version snapshots.
-
-    Returns:
-        Resulting string.
-    """
-    tool = "synthorg_evaluation_versions_list"
-    try:
-        versions = await evaluation_version_service_of(app_state).list_versions()
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok([_to_jsonable(v) for v in versions])
-
-
-async def _evaluation_versions_get(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Fetch a single evaluation-config version by ID.
-
-    Returns:
-        Resulting string.
-    """
-    tool = "synthorg_evaluation_versions_get"
-    try:
-        version_id = typed_args(arguments, EvaluationVersionsGetArgs).version_id
-        version = await evaluation_version_service_of(app_state).get_version(
-            version_id,
-        )
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    if version is None:
-        missing = NotFoundError(f"Evaluation version {version_id} not found")
-        log_handler_invoke_failed(tool, missing, version_id=version_id)
-        return err(missing, domain_code="not_found")
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(_to_jsonable(version))
-
-
 QUALITY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_quality_get_summary": _quality_get_summary,
@@ -385,7 +323,5 @@ QUALITY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
         "synthorg_reviews_get": _reviews_get,
         "synthorg_reviews_create": _reviews_create,
         "synthorg_reviews_update": _reviews_update,
-        "synthorg_evaluation_versions_list": _evaluation_versions_list,
-        "synthorg_evaluation_versions_get": _evaluation_versions_get,
     },
 )

@@ -78,7 +78,6 @@ API -> CLI
 | `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics) |
 | `/api/v1/providers/*` | Provider CRUD, presets, model discovery, discovery SSRF allowlist, local model management (pull with SSE progress, delete, per-model config) |
 | `/api/v1/providers/model-refresh/*` | Upgrade recommendations (`GET /recommendations`, approve/reject), manual `POST /refresh` (CEO/manager), `GET /status` |
-| `/api/v1/agents/{agent_id}/training/*` | Per-agent training mode: create/list training plans, plan detail, results |
 | `GET /api/v1/projects/{project_id}/docs/{slug}/receipt` | Deliverable receipt with provenance; `/receipt/validate` re-checks integrity |
 | `/api/v1/setup/*` | First-run setup wizard |
 | `/api/v1/personalities/*` | Personality preset discovery and custom preset CRUD |
