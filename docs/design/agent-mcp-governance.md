@@ -11,7 +11,7 @@ per agent and hardened against supply-chain and blast-radius risk.
 (`SANDBOXED < RESTRICTED < STANDARD < ELEVATED`). ELEVATED is the top:
 the surface an agent can drive without a per-call approval. The problem
 this design closes: previously *every* ELEVATED agent saw the whole
-~247-tool MCP surface (fire staff, deploy, delete, mutate the org), so a
+~243-tool MCP surface (fire staff, deploy, delete, mutate the org), so a
 prompt-injection hijacking any ELEVATED agent could reach the highest
 blast-radius tools.
 
