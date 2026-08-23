@@ -41,6 +41,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_single_planning_strategy_writer.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
@@ -153,7 +154,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->129<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->131<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

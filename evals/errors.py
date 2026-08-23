@@ -382,6 +382,21 @@ class RecursionDepthGateUnbuildableError(EvalError):
     )
 
 
+class RecursionDepthCeilingUndeclaredError(EvalError):
+    """Raised when a setting the sweep opens to its ceiling has no ceiling.
+
+    Several of the values a sweep arms ARE their setting's declared maximum,
+    so the sweep reads that maximum off the definition rather than copying it
+    and letting the two drift. Two ways there is nothing to read: the setting
+    is absent, or it is present and unbounded. Guessing either would surface
+    as a write refused partway through a paid sweep.
+    """
+
+    default_message: ClassVar[str] = (
+        "A setting the sweep opens to its ceiling is absent or unbounded"
+    )
+
+
 class RecursionDepthCapabilityUnresolvedError(EvalError):
     """Raised when a sweep cannot resolve the one capability policy.
 
@@ -433,6 +448,7 @@ __all__ = [
     "OracleUnusableError",
     "ProvenanceUnavailableError",
     "RecursionDepthCapabilityUnresolvedError",
+    "RecursionDepthCeilingUndeclaredError",
     "RecursionDepthGateUnbuildableError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",

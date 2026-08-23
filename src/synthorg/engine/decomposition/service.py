@@ -13,6 +13,7 @@ from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
+from synthorg.engine.decomposition._ceilings import ceiling_seconds, timeout_failure
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
 from synthorg.engine.decomposition._recursion import (
     RecursionBudget,
@@ -180,9 +181,13 @@ class DecompositionService:
             Decomposition result with created tasks and dependency edges.
 
         Raises:
-            DecompositionError: When any one planning session outruns
+            DecompositionTimeoutError: When any one planning session outruns
                 ``coordination.decomposition_timeout_seconds``, or the whole
                 tree outruns ``coordination.decomposition_tree_timeout_seconds``.
+                Its own type because neither ceiling moves on a retry.
+            DecompositionError: When something inside timed out on its own
+                without either ceiling firing, which IS worth retrying, and for
+                every other decomposition failure.
         """
         logger.info(
             DECOMPOSITION_STARTED,
@@ -191,28 +196,29 @@ class DecompositionService:
             current_depth=context.current_depth,
         )
 
+        budget = await resolve_recursion_budget(self._config_resolver)
+        # The outer of the two ceilings, and the only one that bounds a
+        # CALLER. The inner one below bounds a planning session, and a
+        # recursion runs one per node, so the number of sessions is the
+        # branching factor to the power of the depth and no per-session
+        # budget bounds the call at all. Two of the four callers are
+        # request handlers.
+        scope = asyncio.timeout(await self._tree_timeout_seconds())
         try:
-            budget = await resolve_recursion_budget(self._config_resolver)
-            # The outer of the two ceilings, and the only one that bounds a
-            # CALLER. The inner one below bounds a planning session, and a
-            # recursion runs one per node, so the number of sessions is the
-            # branching factor to the power of the depth and no per-session
-            # budget bounds the call at all. Two of the four callers are
-            # request handlers.
-            async with asyncio.timeout(await self._tree_timeout_seconds()):
+            async with scope:
                 return await self._do_decompose(
                     task, await self._grounded(task, context), budget
                 )
         except TimeoutError as exc:
-            msg = "Decomposition outran its wall-clock ceiling"
-            logger.warning(
-                DECOMPOSITION_FAILED,
-                task_id=str(task.id),
-                strategy=self._strategy.get_strategy_name(),
-                error_type=type(exc).__name__,
-                error=msg,
-            )
-            raise DecompositionError(msg) from exc
+            # Asked of the scope, not inferred from the type: this handler also
+            # sees a TimeoutError that something INSIDE raised without any
+            # ceiling firing, and the two deserve opposite answers. A ceiling
+            # is unchanged on the next attempt, so a retry pays it again to
+            # reach the same place; a call that timed out on its own is the
+            # ordinary transient a retry exists for.
+            raise self._timeout_failure(
+                task, exc, expired=scope.expired(), ceiling="whole-tree"
+            ) from exc
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -223,6 +229,28 @@ class DecompositionService:
                 error=safe_error_description(exc),
             )
             raise
+
+    def _timeout_failure(
+        self, task: Task, exc: TimeoutError, *, expired: bool, ceiling: str
+    ) -> DecompositionError:
+        """Classify a ``TimeoutError`` against the scope that caught it.
+
+        Args:
+            task: The task being decomposed, for the log line.
+            exc: What was caught.
+            expired: Whether the ceiling's own scope is what fired.
+            ceiling: Which ceiling this site guards, for the log line.
+
+        Returns:
+            What to raise.
+        """
+        return timeout_failure(
+            exc,
+            task_id=str(task.id),
+            strategy=self._strategy.get_strategy_name(),
+            expired=expired,
+            ceiling=ceiling,
+        )
 
     def set_config_resolver(self, resolver: ConfigResolverProtocol) -> None:
         """Adopt the resolver the ceiling is read through.
@@ -239,67 +267,32 @@ class DecompositionService:
         self._config_resolver = resolver
 
     async def _timeout_seconds(self) -> float:
-        """Read the wall-clock ceiling in force for this decomposition.
+        """Read the per-session ceiling in force for this decomposition.
 
         Read per call rather than captured at construction, so an operator
-        raising the ceiling for a slow provider applies to the next
-        decomposition instead of the next restart.
+        raising it for a slow provider applies to the next decomposition
+        instead of the next restart.
 
         Returns:
-            The configured ceiling, or the definition's default when there is
-            no resolver (a harness) or it cannot answer. Falling back to the
-            default keeps a bound in force: the failure this exists to prevent
-            is an unbounded wait, and a settings read that failed is no reason
-            to grant one.
+            The ceiling, in seconds.
         """
-        resolver = self._config_resolver
-        if resolver is None:
-            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
-        try:
-            return await resolver.get_float(
-                "coordination", "decomposition_timeout_seconds"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read; the bound
-            # still stands on the definition's own default, so the failure
-            # this method exists to prevent cannot happen either way
-            reraise_critical(exc)
-            logger.warning(
-                DECOMPOSITION_FAILED,
-                note="decomposition timeout unreadable; the default ceiling stands",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+        return await ceiling_seconds(
+            self._config_resolver,
+            "decomposition_timeout_seconds",
+            _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
+        )
 
     async def _tree_timeout_seconds(self) -> float:
         """Read the whole-tree ceiling in force for this decomposition.
 
         Returns:
-            The configured ceiling, or the definition's default when there is
-            no resolver or it cannot answer, for the reason its per-session
-            sibling falls back: a settings read that failed is no reason to
-            grant an unbounded wait.
+            The ceiling, in seconds.
         """
-        resolver = self._config_resolver
-        if resolver is None:
-            return _DEFAULT_TREE_TIMEOUT_SECONDS
-        try:
-            return await resolver.get_float(
-                "coordination", "decomposition_tree_timeout_seconds"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read; the bound
-            # still stands on the definition's own default, so the failure
-            # this method exists to prevent cannot happen either way
-            reraise_critical(exc)
-            logger.warning(
-                DECOMPOSITION_FAILED,
-                note="tree timeout unreadable; the default ceiling stands",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return _DEFAULT_TREE_TIMEOUT_SECONDS
+        return await ceiling_seconds(
+            self._config_resolver,
+            "decomposition_tree_timeout_seconds",
+            _DEFAULT_TREE_TIMEOUT_SECONDS,
+        )
 
     async def _do_decompose(
         self,
@@ -317,6 +310,13 @@ class DecompositionService:
         Returns:
             Decomposition result with created tasks, dependency edges, and the
             decomposition of each subtask that was split further.
+
+        Raises:
+            DecompositionTimeoutError: The per-session ceiling fired, which the
+                next attempt would reach identically.
+            TimeoutError: Something inside timed out on its own, left as it was
+                raised so the caller's handler classifies it against its own
+                scope rather than inheriting this one's verdict.
         """
         # 1. Decompose via strategy.
         #
@@ -330,8 +330,20 @@ class DecompositionService:
         # branching factor to the power of the depth, so any multiple is a
         # guess that kills a legitimate deep tree and discards every level it
         # had already paid for.
-        async with asyncio.timeout(await self._timeout_seconds()):
-            plan = await self._strategy.decompose(task, context)
+        scope = asyncio.timeout(await self._timeout_seconds())
+        try:
+            async with scope:
+                plan = await self._strategy.decompose(task, context)
+        except TimeoutError as exc:
+            # Classified here rather than left to the caller's handler, which
+            # can only ask its OWN scope: this ceiling firing is as unretryable
+            # as the tree one, and to that handler it is indistinguishable from
+            # a call that timed out on its own.
+            if scope.expired():
+                raise self._timeout_failure(
+                    task, exc, expired=True, ceiling="planning-session"
+                ) from exc
+            raise
 
         # 2. Resolve the structure. The planner reasoned over the whole
         # objective, so its declaration stands; the keyword heuristic is

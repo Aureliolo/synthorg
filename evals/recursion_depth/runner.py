@@ -109,7 +109,7 @@ from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_CONTINUED,
@@ -606,6 +606,12 @@ async def _plan_with_retry(
     cannot produce a tree twice is telling the operator something, and a
     third attempt buys the same answer more slowly.
 
+    A wall-clock timeout is the one decomposition failure NOT retried, because
+    the ceiling is unchanged on the next attempt and that ceiling is the whole
+    price: retrying it pays for the same outcome twice over, and the ceilings a
+    sweep arms are large enough that the second attempt is measured in hours.
+    Everything else the planner raises is worth another roll.
+
     Args:
         context: Everything the sweep is driven with.
         cell: Which run this is.
@@ -617,7 +623,10 @@ async def _plan_with_retry(
         The tree.
     """
     retry = GeneralRetryHandler(
-        retryable=lambda exc: isinstance(exc, DecompositionError),
+        retryable=lambda exc: (
+            isinstance(exc, DecompositionError)
+            and not isinstance(exc, DecompositionTimeoutError)
+        ),
         max_attempts=_PLAN_ATTEMPTS,
         base=_PLAN_RETRY_BASE_SECONDS,
         cap=_PLAN_RETRY_CAP_SECONDS,
