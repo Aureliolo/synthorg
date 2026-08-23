@@ -162,7 +162,7 @@ class CollaborationMetricRecord(BaseModel):
         delegation_success: Whether a delegation was successful.
         delegation_response_seconds: Response time for a delegation.
         conflict_constructiveness: How constructively conflict was handled.
-        meeting_contribution: Quality of meeting contribution.
+        discussion_contribution: Quality of contribution to a group discussion.
         loop_triggered: Whether the agent triggered a delegation loop.
         handoff_completeness: Completeness of task handoff (0.0-1.0).
         interaction_summary: Text summary of the interaction for LLM
@@ -194,11 +194,11 @@ class CollaborationMetricRecord(BaseModel):
         le=1.0,
         description="How constructively conflict was handled",
     )
-    meeting_contribution: float | None = Field(
+    discussion_contribution: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Quality of meeting contribution",
+        description="Quality of contribution to a group discussion",
     )
     loop_triggered: bool = Field(
         default=False,

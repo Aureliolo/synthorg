@@ -17,7 +17,7 @@ describe('getMessageTypeLabel', () => {
   it('returns human-readable labels for all types', () => {
     expect(getMessageTypeLabel('task_update')).toBe('Task Update')
     expect(getMessageTypeLabel('delegation')).toBe('Delegation')
-    expect(getMessageTypeLabel('meeting_contribution')).toBe('Meeting')
+    expect(getMessageTypeLabel('escalation')).toBe('Escalation')
     expect(getMessageTypeLabel('hr_notification')).toBe('HR Notice')
   })
 })

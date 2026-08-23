@@ -26,7 +26,6 @@ import {
   ScrollText,
   Settings,
   Shield,
-  Target,
   TestTubes,
   TrendingUp,
   Type,
@@ -96,7 +95,6 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   research: <FlaskConical className="size-4" />,
   knowledge: <BookOpen className="size-4" />,
   communication: <MessagesSquare className="size-4" />,
-  strategy: <Target className="size-4" />,
   a2a: <Waypoints className="size-4" />,
   integrations: <Plug className="size-4" />,
   meta: <Bot className="size-4" />,
@@ -149,15 +147,6 @@ function getFooterAction(ns: SettingNamespace): React.ReactNode {
         to={ROUTES.SETTINGS_SINKS}
         title="Log Sinks"
         description="Configure log outputs, rotation, and routing"
-      />
-    )
-  }
-  if (ns === 'coordination') {
-    return (
-      <SettingsActionCard
-        to={ROUTES.SETTINGS_CEREMONY_POLICY}
-        title="Ceremony Policy"
-        description="Configure scheduling strategies, velocity, and department overrides"
       />
     )
   }

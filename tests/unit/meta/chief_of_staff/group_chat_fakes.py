@@ -10,7 +10,7 @@ round-robin round and inspect every prompt and persisted turn.
 from datetime import datetime
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.communication.meeting.models import AgentResponse
+from synthorg.communication.multi_agent import AgentResponse
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -232,9 +232,9 @@ class ScriptedAgentCaller:
         self.calls: list[tuple[str, str, int, str]] = []
 
     async def __call__(
-        self, agent_id: str, prompt: str, max_tokens: int, meeting_id: str
+        self, agent_id: str, prompt: str, max_tokens: int, conversation_id: str
     ) -> AgentResponse:
-        self.calls.append((agent_id, prompt, max_tokens, meeting_id))
+        self.calls.append((agent_id, prompt, max_tokens, conversation_id))
         if agent_id in self._raise_for:
             msg = f"scripted failure for {agent_id}"
             raise RuntimeError(msg)

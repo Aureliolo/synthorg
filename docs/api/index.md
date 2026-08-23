@@ -26,7 +26,7 @@ This section documents every public class, function, and model in the SynthOrg f
 
 | Module | Description |
 |--------|-------------|
-| [Communication](communication.md) | Message bus, delegation, conflict resolution, meetings |
+| [Communication](communication.md) | Message bus, delegation, loop prevention, event stream |
 | [Memory](memory.md) | Persistent agent memory, retrieval pipeline, org memory |
 | [Knowledge](knowledge.md) | Knowledge and provenance substrate: source ingestion, chunking, retrieval |
 | [Research](research.md) | Research runs: retrieval, credibility triage, synthesis |

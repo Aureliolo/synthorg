@@ -1,26 +1,9 @@
 """Workflow type models, state machines, and configuration.
 
 Provides Kanban board and Agile sprint workflow types that layer on top
-of the existing task lifecycle state machine.  Includes pluggable ceremony
-scheduling strategies and velocity calculators.
+of the existing task lifecycle state machine.
 """
 
-from synthorg.engine.workflow.ceremony_bridge import (
-    build_trigger_event_name,
-    ceremony_to_meeting_type,
-)
-from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
-from synthorg.engine.workflow.ceremony_policy import (
-    STRATEGY_DEFAULT_VELOCITY_CALC,
-    CeremonyPolicyConfig,
-    CeremonyStrategyType,
-    ResolvedCeremonyPolicy,
-    resolve_ceremony_policy,
-)
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
-from synthorg.engine.workflow.ceremony_strategy import (
-    CeremonySchedulingStrategy,
-)
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.engine.workflow.kanban_board import (
     KanbanConfig,
@@ -41,10 +24,7 @@ from synthorg.engine.workflow.sprint_backlog import (
     complete_task_in_sprint,
     remove_task_from_sprint,
 )
-from synthorg.engine.workflow.sprint_config import (
-    SprintCeremonyConfig,
-    SprintConfig,
-)
+from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import (
     VALID_SPRINT_TRANSITIONS,
     Sprint,
@@ -56,84 +36,27 @@ from synthorg.engine.workflow.sprint_velocity import (
     calculate_average_velocity,
     record_velocity,
 )
-from synthorg.engine.workflow.strategies import (
-    BudgetDrivenStrategy,
-    CalendarStrategy,
-    EventDrivenStrategy,
-    ExternalTriggerStrategy,
-    HybridStrategy,
-    MilestoneDrivenStrategy,
-    TaskDrivenStrategy,
-    ThroughputAdaptiveStrategy,
-)
-from synthorg.engine.workflow.strategy_migration import (
-    StrategyMigrationInfo,
-    detect_strategy_migration,
-    format_migration_warning,
-    format_reorder_prompt,
-    notify_strategy_migration,
-)
-from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
-from synthorg.engine.workflow.velocity_calculators import (
-    CalendarVelocityCalculator,
-    MultiDimensionalVelocityCalculator,
-    TaskDrivenVelocityCalculator,
-)
-from synthorg.engine.workflow.velocity_types import (
-    VelocityCalcType,
-    VelocityMetrics,
-)
 
 __all__ = [
     "COLUMN_TO_STATUSES",
     "STATUS_TO_COLUMN",
-    "STRATEGY_DEFAULT_VELOCITY_CALC",
     "VALID_COLUMN_TRANSITIONS",
     "VALID_SPRINT_TRANSITIONS",
-    "BudgetDrivenStrategy",
-    "CalendarStrategy",
-    "CalendarVelocityCalculator",
-    "CeremonyEvalContext",
-    "CeremonyPolicyConfig",
-    "CeremonyScheduler",
-    "CeremonySchedulingStrategy",
-    "CeremonyStrategyType",
-    "EventDrivenStrategy",
-    "ExternalTriggerStrategy",
-    "HybridStrategy",
     "KanbanColumn",
     "KanbanConfig",
     "KanbanWipLimit",
-    "MilestoneDrivenStrategy",
-    "MultiDimensionalVelocityCalculator",
-    "ResolvedCeremonyPolicy",
     "Sprint",
-    "SprintCeremonyConfig",
     "SprintConfig",
     "SprintStatus",
-    "StrategyMigrationInfo",
-    "TaskDrivenStrategy",
-    "TaskDrivenVelocityCalculator",
-    "ThroughputAdaptiveStrategy",
-    "VelocityCalcType",
-    "VelocityCalculator",
-    "VelocityMetrics",
     "VelocityRecord",
     "WipCheckResult",
     "WorkflowConfig",
     "add_task_to_sprint",
-    "build_trigger_event_name",
     "calculate_average_velocity",
-    "ceremony_to_meeting_type",
     "check_wip_limit",
     "complete_task_in_sprint",
-    "detect_strategy_migration",
-    "format_migration_warning",
-    "format_reorder_prompt",
-    "notify_strategy_migration",
     "record_velocity",
     "remove_task_from_sprint",
-    "resolve_ceremony_policy",
     "resolve_task_transitions",
     "validate_column_transition",
     "validate_sprint_transition",

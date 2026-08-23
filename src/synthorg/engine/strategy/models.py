@@ -48,32 +48,7 @@ class ContextSource(StrEnum):
 
     CONFIG = "config"
     MEMORY = "memory"
-    MEETING = "meeting"
     COMPOSITE = "composite"
-
-
-class ConsensusAction(StrEnum):
-    """Action to take when consensus velocity is too high."""
-
-    DEVIL_ADVOCATE = "devil_advocate"
-    SLOW_DOWN = "slow_down"
-    ESCALATE = "escalate"
-
-
-class ConflictDetectionStrategy(StrEnum):
-    """Strategy for detecting strategic conflicts."""
-
-    AUTO = "auto"
-    MANUAL = "manual"
-    DISABLED = "disabled"
-
-
-class PremortemParticipation(StrEnum):
-    """Who participates in premortem analysis."""
-
-    ALL = "all"
-    STRATEGIC = "strategic"
-    NONE = "none"
 
 
 class ImpactDimension(StrEnum):
@@ -140,61 +115,6 @@ class ConfidenceConfig(BaseModel):
     )
 
 
-class ConsensusVelocityConfig(BaseModel):
-    """Configuration for consensus velocity detection.
-
-    When agents reach consensus too quickly (above threshold),
-    the configured action is triggered to slow down groupthink.
-
-    Attributes:
-        action: Action to take when consensus is too fast.
-        threshold: Consensus velocity threshold (0.0-1.0).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    action: ConsensusAction = Field(
-        default=ConsensusAction.DEVIL_ADVOCATE,
-        description="Action when consensus velocity exceeds threshold",
-    )
-    threshold: float = Field(
-        default=0.85,
-        ge=0.0,
-        le=1.0,
-        description="Consensus velocity threshold (0.0-1.0)",
-    )
-
-
-class PremortemConfig(BaseModel):
-    """Premortem analysis configuration.
-
-    Attributes:
-        participants: Who participates in premortem analysis.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    participants: PremortemParticipation = Field(
-        default=PremortemParticipation.ALL,
-        description="Who participates in premortem analysis",
-    )
-
-
-class ConflictDetectionConfig(BaseModel):
-    """Strategic conflict detection configuration.
-
-    Attributes:
-        strategy: Detection strategy to use.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    strategy: ConflictDetectionStrategy = Field(
-        default=ConflictDetectionStrategy.AUTO,
-        description="Conflict detection strategy",
-    )
-
-
 class StrategicContextConfig(BaseModel):
     """Static strategic context from configuration.
 
@@ -206,9 +126,6 @@ class StrategicContextConfig(BaseModel):
         maturity_stage: Company maturity stage.
         industry: Industry sector.
         competitive_position: Market position.
-        meeting_lookback: How many recent completed meetings the
-            ``MEETING`` source inspects when deriving an internal-alignment
-            qualifier on the competitive position.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -228,11 +145,6 @@ class StrategicContextConfig(BaseModel):
     competitive_position: NotBlankStr = Field(
         default="challenger",
         description="Market competitive position",
-    )
-    meeting_lookback: int = Field(
-        default=5,
-        ge=1,
-        description="Recent completed meetings inspected by the MEETING source",
     )
 
 
@@ -468,19 +380,12 @@ class StrategyConfig(BaseModel):
     depth).  Added to :class:`~synthorg.config.schema.RootConfig` as the
     ``strategy`` field.
 
-    Consensus-velocity and premortem policy are deliberately absent:
-    they are organisation-wide operator settings
-    (``strategy.consensus_velocity_*``, ``strategy.premortem_*``),
-    resolved live when the meeting protocol registry is built, so an
-    operator can change them without a redeploy.
-
     Attributes:
         output_mode: Default strategic output mode for agents.
         cost_tier: Default cost tier preset.
         default_lenses: Strategic lenses to apply by default.
         constitutional_principles: Principle pack configuration.
         confidence: Confidence calibration output configuration.
-        conflict_detection: Strategic conflict detection configuration.
         context: Strategic context configuration.
         progressive: Progressive cost tier resolution configuration.
     """
@@ -506,10 +411,6 @@ class StrategyConfig(BaseModel):
     confidence: ConfidenceConfig = Field(
         default_factory=ConfidenceConfig,
         description="Confidence calibration configuration",
-    )
-    conflict_detection: ConflictDetectionConfig = Field(
-        default_factory=ConflictDetectionConfig,
-        description="Strategic conflict detection configuration",
     )
     context: StrategicContextConfig = Field(
         default_factory=StrategicContextConfig,

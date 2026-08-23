@@ -246,24 +246,6 @@ def test_record_approval_decision_rejects_unknown_outcome() -> None:
         collector.record_approval_decision(outcome="bogus")
 
 
-# -- record_escalation_outcome -----------------------------------------------
-
-
-def test_record_escalation_outcome_increments_counter() -> None:
-    collector = PrometheusCollector()
-    collector.record_escalation_outcome(outcome="resolved")
-    samples = _samples(collector, "synthorg_escalation_outcomes")
-    assert any(
-        labels == {"outcome": "resolved"} and value == 1.0 for labels, value in samples
-    )
-
-
-def test_record_escalation_outcome_rejects_unknown_outcome() -> None:
-    collector = PrometheusCollector()
-    with pytest.raises(ValueError, match="Unknown"):
-        collector.record_escalation_outcome(outcome="bogus")
-
-
 # -- record_blueprint_instantiation ------------------------------------------
 
 

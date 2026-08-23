@@ -224,7 +224,7 @@ def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see l
     themselves and only need exception-to-log routing.  Typical
     targets are long-lived *named* tasks whose lifecycle matches the
     owning subsystem (task-engine processing loop, bus-bridge poll
-    loop, meeting scheduler tick), but the callback is safe for any
+    loop), but the callback is safe for any
     :class:`asyncio.Task`.  The returned callback:
 
     * Ignores ``CancelledError`` (normal shutdown).

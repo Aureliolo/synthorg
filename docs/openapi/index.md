@@ -32,7 +32,7 @@ When running the server locally you also get two kinds of side paths: documentat
 |---|---|
 | `/api/v1/healthz` | Liveness probe; always returns 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
 | `/api/v1/readyz` | Readiness probe; returns 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
-| `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, meetings, task lifecycle) |
+| `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, messages, task lifecycle) |
 
 The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime. The generated `reference.html` carries SEO metadata (descriptive `<title>`, `<meta description>`, `<link rel="canonical">`, and a screen-reader-only `<h1>`) so search engines can surface it as the primary "SynthOrg REST API" landing page; `openapi.json` is intentionally kept out of the sitemap because Google does not render raw JSON in search results.
 
@@ -83,7 +83,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Charter | `/meta/charters` | 4 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
-| Departments | `/departments` | 9 routes under Departments. |
+| Departments | `/departments` | 8 routes under Departments. |
 | Evaluation | `/evaluation/config/versions` | 2 routes under Evaluation. |
 | Ontology | `/ontology` | 10 routes under Ontology. |
 | Personalities | `/personalities` | 3 routes under Personalities. |
@@ -99,9 +99,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Artifacts | `/artifacts` | 3 routes under Artifacts. |
 | Brownfield Intake | `/brownfield/import` | Brownfield Intake endpoint. |
 | Deliverable Receipts | `/projects/{project_id}/docs/{slug}/receipt` | 2 routes under Deliverable Receipts. |
-| Escalations | `/conflicts/escalations` | 4 routes under Escalations. |
 | Kanban Board | `/board` | 2 routes under Kanban Board. |
-| Meetings | `/meetings` | 3 routes under Meetings. |
 | Messages | `/messages` | 3 routes under Messages. |
 | Objectives | `/objectives` | Objectives endpoint. |
 | Peer-Review Verdicts | `/completion-oracle/reports` | 2 routes under Peer-Review Verdicts. |
@@ -134,7 +132,6 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Backups | `/admin/backups` | 3 routes under Backups. |
 | Budget | `/budget` | 15 routes under Budget. |
 | Capabilities | `/capabilities` | Capabilities endpoint. |
-| Ceremony Policy | `/ceremony-policy` | 3 routes under Ceremony Policy. |
 | Cockpit | `/cockpit` | 8 routes under Cockpit. |
 | Coordination | `/coordination/metrics, /tasks/{task_id}/coordinate` | 2 routes under Coordination. |
 | Cost Forecast | `/budget` | 6 routes under Cost Forecast. |
@@ -195,7 +192,7 @@ Workflow definitions and tasks use a different optimistic-concurrency mechanism:
 
 ### WebSocket events
 
-Real-time updates (approval requests, meeting state, task transitions, routing decisions) are pushed over `/api/v1/ws`. After authenticating with a ws-ticket, clients send JSON messages to subscribe or unsubscribe from named channels (with optional payload filters), and the server pushes `WsEvent` JSON payloads on subscribed channels. Event types are tagged via a `type` field on each payload.
+Real-time updates (approval requests, message activity, task transitions, routing decisions) are pushed over `/api/v1/ws`. After authenticating with a ws-ticket, clients send JSON messages to subscribe or unsubscribe from named channels (with optional payload filters), and the server pushes `WsEvent` JSON payloads on subscribed channels. Event types are tagged via a `type` field on each payload.
 
 ---
 

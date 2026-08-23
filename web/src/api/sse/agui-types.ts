@@ -29,7 +29,6 @@ export const AguiEventType = {
   ApprovalResumed: 'approval_resumed',
   InfoRequestInterrupt: 'info_request_interrupt',
   InfoRequestResumed: 'info_request_resumed',
-  Dissent: 'synthorg:dissent',
 } as const
 
 export type AguiEventType = (typeof AguiEventType)[keyof typeof AguiEventType]

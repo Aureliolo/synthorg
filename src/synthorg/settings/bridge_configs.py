@@ -44,8 +44,6 @@ class CommunicationBridgeConfig(BaseModel):
 
     bus_bridge_poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
     bus_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
-    webhook_bridge_poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
-    webhook_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
     nats_history_batch_size: int = Field(default=100, ge=10, le=1000)
     nats_history_fetch_timeout_seconds: float = Field(default=0.5, ge=0.1, le=5.0)
     delegation_record_store_max_size: int = Field(default=10_000, ge=100, le=1_000_000)
@@ -207,8 +205,7 @@ class ApiBridgeConfig(BaseModel):
 
     Covers WebSocket ticket cleanup + per-user limit, Litestar brotli
     threshold + request body cap, fallback per-connection max RPM, and
-    the four controller query clamps (lifecycle, audit, metrics,
-    meeting context).
+    the three controller query clamps (lifecycle, audit, metrics).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -232,15 +229,11 @@ class ApiBridgeConfig(BaseModel):
     max_lifecycle_events_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
     max_audit_records_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
     max_metrics_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
-    max_meeting_context_keys: int = Field(default=20, ge=5, le=100)
     rate_limit_gc_every_n_acquires: int = Field(default=1024, ge=64, le=65_536)
     rate_limit_gc_min_horizon_seconds: int = Field(default=60, ge=1, le=3600)
     rate_limit_inflight_gc_every_n_acquires: int = Field(default=1024, ge=64, le=65_536)
     rate_limit_inflight_min_retry_after_seconds: int = Field(default=1, ge=1, le=300)
     lifecycle_task_engine_shutdown_seconds: float = Field(default=8.0, ge=1.0, le=120.0)
-    lifecycle_meeting_scheduler_shutdown_seconds: float = Field(
-        default=2.0, ge=0.5, le=60.0
-    )
     lifecycle_performance_tracker_shutdown_seconds: float = Field(
         default=2.0, ge=0.5, le=60.0
     )

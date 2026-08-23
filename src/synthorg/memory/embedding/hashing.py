@@ -14,9 +14,8 @@ failure the memory health surface was built to expose, and a substitution
 would reintroduce it one layer down. The only path here is an operator
 choosing it, which ``check_no_silent_embedder_fallback.py`` enforces.
 
-Serves both embedder ports from one implementation: the synchronous
-``embed`` the meeting conflict detectors call, and the asynchronous
-``embed_many`` the memory substrate calls.
+Serves the memory substrate's asynchronous ``embed_many`` port over a
+synchronous per-text ``embed``, so one implementation covers both shapes.
 """
 
 import hashlib

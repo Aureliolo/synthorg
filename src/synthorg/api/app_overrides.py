@@ -29,8 +29,6 @@ if TYPE_CHECKING:
     from synthorg.communication.delegation.record_store import DelegationRecordStore
     from synthorg.communication.event_stream.interrupt import InterruptStore
     from synthorg.communication.event_stream.stream import EventStreamHub
-    from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
-    from synthorg.communication.meeting.scheduler import MeetingScheduler
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
     from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
@@ -68,8 +66,6 @@ class AppOverrides:
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     agent_registry: AgentRegistryService | None = None
-    meeting_orchestrator: MeetingOrchestrator | None = None
-    meeting_scheduler: MeetingScheduler | None = None
     performance_tracker: PerformanceTracker | None = None
     settings_service: SettingsService | None = None
     provider_registry: ProviderRegistry | None = None

@@ -293,29 +293,6 @@ class TestTemplateDepartmentConfig:
                 head_merge_id="cto-1",
             )
 
-    def test_ceremony_policy_none_by_default(self) -> None:
-        d = TemplateDepartmentConfig(name="eng")
-        assert d.ceremony_policy is None
-
-    def test_ceremony_policy_accepted(self) -> None:
-        d = TemplateDepartmentConfig(
-            name="eng",
-            ceremony_policy={"strategy": "calendar"},
-        )
-        assert d.ceremony_policy == {"strategy": "calendar"}
-
-    def test_ceremony_policy_complex_dict_accepted(self) -> None:
-        d = TemplateDepartmentConfig(
-            name="marketing",
-            ceremony_policy={
-                "strategy": "event_driven",
-                "auto_transition": True,
-                "transition_threshold": 0.8,
-            },
-        )
-        assert d.ceremony_policy is not None
-        assert d.ceremony_policy["transition_threshold"] == 0.8
-
 
 # ── TemplateMetadata ─────────────────────────────────────────────
 

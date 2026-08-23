@@ -77,12 +77,8 @@ rather than the `docker` CLI, so no `docker` entry can appear.
 
 ## Construction-phase ordering invariants
 
-- `agent_registry` must be built BEFORE `auto_wire_meetings`.
-- `auto_wire_meetings` builds the orchestrator with NO protocol registry. The factories bake in organisation-wide strategy policy read from settings, which do not exist at construction time, so the `meeting_protocol_registry` subsystem installs them on the first reconcile pass (after `auto_wire_settings` composes the resolver) and installs a replacement when that policy changes. A meeting run before that pass raises `MeetingProtocolNotFoundError` naming the subsystem rather than running on boot defaults.
 - `tunnel_provider` is wired unconditionally (not gated by `integrations.enabled`).
 - `message_bus.set_quadratic_alert_sink(DispatcherQuadraticAlertSink(...))` is called after the notification dispatcher is built, binding the in-memory bus's quadratic-fan-out enforcer to the dispatcher through the `MessageBus` protocol seam (the NATS backend is a no-op). This is a protocol call, not an `isinstance(InMemoryMessageBus)` + concrete-attr read.
-- `ConflictResolutionService` is built and installed on `CommunicationStateSlice` by `wire_conflict_resolution_service` (`api/_comms_conflict_wiring.py`): the hierarchy comes from the boot company snapshot and the human resolver reuses the already-wired escalation store/processor/registry. The shared `LlmJudgeEvaluator` is built here too, from the provider that serves the pinned `CONFLICT_JUDGE` model (`resolve_feature_provider`, not a naive first pick); a missing/non-serving provider leaves the judge unwired and the debate/hybrid resolvers fall back to authority.
-- `_wire_meeting_conflict_bridge` runs AFTER `wire_conflict_resolution_service` in the same pass (the bridge needs the built service) and AFTER `auto_wire_meetings` (it installs the bridge on the orchestrator via `set_conflict_escalation_hook`). It also stores the bridge on `CommunicationStateSlice.conflict_escalation_bridge` so the on-startup resolver rebind (`_wire_resolver_dependents`) can inject the persistence-backed resolver, making the `meeting_conflict_escalation_enabled` kill switch honour dashboard overrides. A no-op when either the orchestrator or the service is absent.
 - `PeerDiscoveryClient` is built from the peer registry + SSRF network validator and placed on `A2aStateSlice.peer_discovery` so the gateway's `skills/query` / `skills/negotiate` handlers can resolve learned peers.
 
 ## On-startup ordering invariants

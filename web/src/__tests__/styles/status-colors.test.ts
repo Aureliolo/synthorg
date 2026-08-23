@@ -1,7 +1,4 @@
-import {
-  ESCALATION_STATUS_BADGE_COLORS,
-  ROLE_BADGE_COLORS,
-} from '@/styles/status-colors'
+import { ROLE_BADGE_COLORS } from '@/styles/status-colors'
 
 // The TypeScript compile-time `Record<EnumValue, string>` constraint
 // is the primary drift guard for these maps; this file pins a
@@ -17,22 +14,8 @@ describe('status-colors', () => {
     }
   })
 
-  it('ESCALATION_STATUS_BADGE_COLORS covers every EscalationStatus', () => {
-    const expected = ['pending', 'decided', 'expired', 'cancelled'] as const
-    expect(Object.keys(ESCALATION_STATUS_BADGE_COLORS).sort()).toEqual(
-      [...expected].sort(),
-    )
-    for (const status of expected) {
-      expect(ESCALATION_STATUS_BADGE_COLORS[status]).toMatch(/text-|bg-/)
-    }
-  })
-
   it('uses no hex colour literals', () => {
-    const allValues = [
-      ...Object.values(ROLE_BADGE_COLORS),
-      ...Object.values(ESCALATION_STATUS_BADGE_COLORS),
-    ]
-    for (const value of allValues) {
+    for (const value of Object.values(ROLE_BADGE_COLORS)) {
       expect(value).not.toMatch(/#[0-9a-fA-F]{3,8}/)
     }
   })

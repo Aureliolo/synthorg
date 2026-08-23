@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     #   cycle (providers/__init__ eagerly re-exports BaseCompletionProvider,
     #   which imports budget.cost_record back).
     # - ``communication.delegation.*`` triggers the communication<->engine
-    #   cold-import cycle (communication/__init__ pulls meeting -> engine ->
+    #   cold-import cycle (communication/__init__ pulls engine ->
     #   classification -> delegation back through communication.config).
     from synthorg.budget.cost_record import CostRecord
     from synthorg.communication.delegation.record_store import (

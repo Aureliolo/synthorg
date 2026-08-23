@@ -279,7 +279,7 @@ Templates pre-populate agents, departments, and workflows. You can customise any
 | `solo_founder` | 2 | Full | Kanban | Event-driven |
 | `startup` | 5 | Semi | Agile/Kanban | Hybrid |
 | `dev_shop` | 6-10 | Semi | Kanban | Hybrid |
-| `product_team` | 8-12 | Semi | Agile/Kanban | Meeting-based |
+| `product_team` | 8-12 | Semi | Agile/Kanban | Event-driven |
 | `agency` | 4-8 | Supervised | Pipeline | Hierarchical |
 | `full_company` | 8-15 | Semi | Agile | Hybrid |
 | `research_lab` | 5-10 | Full | Kanban | Event-driven |

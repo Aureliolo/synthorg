@@ -7,10 +7,11 @@ and ``engine.agent_max_response_tokens`` otherwise. ``None`` on the binding is
 what tells those apart, which is why the field is optional rather than carrying
 a flat default that no caller ever overrode.
 
-A meeting turn is deliberately outside this ladder and stays with its own owner
-in :mod:`synthorg.communication.meeting.agent_caller`: there the MEETING states
-the cap, because the turn is one contribution to a bounded conversation rather
-than an agent working, and the agent's own binding only tightens it further.
+A multi-party conversation turn is deliberately outside this ladder and stays
+with its own owner in :mod:`synthorg.communication.multi_agent.agent_caller`:
+there the CONVERSATION states the cap, because the turn is one contribution to
+a bounded exchange rather than an agent working, and the agent's own binding
+only tightens it further.
 """
 
 from typing import Final

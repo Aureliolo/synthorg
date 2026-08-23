@@ -61,14 +61,14 @@ TAG_CRITERIA_JSON: Final[str] = "criteria-json"
 """Wrap the JSON envelope the LLM decomposer ships to the model."""
 
 TAG_PEER_CONTRIBUTION: Final[str] = "peer-contribution"
-"""Wrap a contribution emitted by another agent during a meeting.
+"""Wrap a contribution emitted by another agent in a multi-party exchange.
 
 Distinct from :data:`TAG_UNTRUSTED_ARTIFACT` (grader artifact payloads)
 and :data:`TAG_TOOL_RESULT` (tool output): peer contributions are the
-free-form natural-language outputs of upstream meeting turns.  The
-agent that produced the content may itself have been prompt-injected
-by an attacker-controlled task field, so each peer turn is treated as
-untrusted input by every downstream meeting prompt.
+free-form natural-language outputs of upstream turns.  The agent that
+produced the content may itself have been prompt-injected by an
+attacker-controlled task field, so each peer turn is treated as
+untrusted input by every downstream prompt.
 """
 
 TAG_MEMORY_ENTRY: Final[str] = "memory-entry"
@@ -148,19 +148,6 @@ instructions are fenced rather than followed.
 
 Distinct from :data:`TAG_BRAIN_STATE`: knowledge is the curated reference
 corpus (project + global), not the long-horizon project-brain decision log.
-"""
-
-TAG_CONFLICT_POSITION: Final[str] = "conflict-position"
-"""Wrap an agent's stated position + reasoning in a conflict-resolution judge prompt.
-
-The LLM judge (``LlmJudgeEvaluator``) reads each disputing agent's position to
-pick a winner. The position text is the free-form output of an upstream agent
-that may itself have been prompt-injected, so each position is fenced as
-untrusted input.
-
-Distinct from :data:`TAG_PEER_CONTRIBUTION` (collaborative meeting turns): a
-conflict position is an adversarial stance an agent is defending in a
-structured dispute, presented to an impartial judge rather than to peers.
 """
 
 TAG_DECISION_OPTION: Final[str] = "decision-option"

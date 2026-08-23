@@ -255,7 +255,6 @@ class _SessionSummaryParams:
     topology_parallel: int = 0
     topology_sequential: int = 0
     topology_auto: int = 0
-    meetings_held: int = 0
     delegations_executed: int = 0
 
 
@@ -729,7 +728,6 @@ class TelemetryCollector:
             topology_parallel=p.topology_parallel,
             topology_sequential=p.topology_sequential,
             topology_auto=p.topology_auto,
-            meetings_held=p.meetings_held,
             delegations_executed=p.delegations_executed,
             uptime_hours=round(uptime, 2),
         )

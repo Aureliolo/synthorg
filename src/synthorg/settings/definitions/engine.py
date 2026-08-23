@@ -1252,7 +1252,7 @@ _r.register(
 # ── Agile Sprints ───────────────────────────────────────────────
 # Gates the sprint service for agile_kanban orgs: when on, delivery
 # creates a real sprint, pulls tasks into its backlog, and advances the
-# lifecycle through the ceremony scheduler. Read per task-state event so a
+# lifecycle as the backlog is delivered. Read per task-state event so a
 # runtime change applies to the next event with no restart.
 
 _r.register(

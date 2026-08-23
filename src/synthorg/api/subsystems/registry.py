@@ -145,51 +145,6 @@ async def _deactivate_memory_backend(app_state: AppState) -> None:
     await unwire_memory_backend(app_state)
 
 
-async def _activate_meeting_protocol_registry(app_state: AppState) -> None:
-    """Install the meeting protocol factories on the orchestrator."""
-    from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
-        wire_meeting_protocol_registry,
-    )
-
-    await wire_meeting_protocol_registry(app_state)
-
-
-async def _activate_meeting_agent_dispatch(app_state: AppState) -> None:
-    """Install real LLM dispatch on the meeting orchestrator."""
-    from synthorg.api.lifecycle_helpers.meeting_dispatch_wiring import (  # noqa: PLC0415
-        wire_meeting_agent_dispatch,
-    )
-
-    await wire_meeting_agent_dispatch(app_state)
-
-
-async def _activate_ceremony_scheduler(app_state: AppState) -> None:
-    """Build and start the meeting + ceremony schedulers."""
-    from synthorg.api.lifecycle_helpers.ceremony_wiring import (  # noqa: PLC0415
-        wire_ceremony_scheduler,
-    )
-
-    await wire_ceremony_scheduler(app_state)
-
-
-async def _activate_webhook_event_bridge(app_state: AppState) -> None:
-    """Build and start the webhook-to-ceremony event bridge."""
-    from synthorg.api.lifecycle_helpers.webhook_bridge_wiring import (  # noqa: PLC0415
-        wire_webhook_event_bridge,
-    )
-
-    await wire_webhook_event_bridge(app_state)
-
-
-async def _deactivate_meeting_protocol_registry(app_state: AppState) -> None:
-    """Uninstall the meeting protocol factories."""
-    from synthorg.api.lifecycle_helpers.meeting_protocol_wiring import (  # noqa: PLC0415
-        unwire_meeting_protocol_registry,
-    )
-
-    await unwire_meeting_protocol_registry(app_state)
-
-
 async def _activate_capability_evidence_seed(app_state: AppState) -> None:
     """Seed the bundled capability snapshot into the score table."""
     from synthorg.api.lifecycle_helpers.capability_evidence_wiring import (  # noqa: PLC0415
@@ -1105,66 +1060,6 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_capability_evidence_seed,
     ),
-    # The consensus-velocity and premortem hooks are baked into the
-    # factories at activation, so an operator's edit needs a replacement
-    # rather than a nudge. Waiting on the resolver rather than reading
-    # the boot config when it is absent is deliberate: a snapshot taken
-    # with no resolver reads as "no reading", and settings_drift skips
-    # those positions, so the first real reading would never count as a
-    # change and the process would serve boot defaults for its lifetime.
-    SubsystemSpec(
-        name="meeting_protocol_registry",
-        provides=CapabilityId.MEETING_PROTOCOL_REGISTRY,
-        requires=(
-            CapabilityId.SETTINGS_RESOLVER,
-            CapabilityId.MEETING_ORCHESTRATOR,
-        ),
-        activate=_activate_meeting_protocol_registry,
-        deactivate=_deactivate_meeting_protocol_registry,
-        settings=(
-            "strategy.consensus_velocity_action",
-            "strategy.consensus_velocity_threshold",
-            "strategy.premortem_participants",
-        ),
-        rebuild_on_change=True,
-    ),
-    SubsystemSpec(
-        name="meeting_agent_dispatch",
-        provides=CapabilityId.MEETING_AGENT_DISPATCH,
-        # The caller is composed from both registries, so naming them is
-        # what turns "meetings never dispatched" into a reported wait.
-        requires=(
-            CapabilityId.AGENT_REGISTRY,
-            CapabilityId.PROVIDER_REGISTRY,
-            CapabilityId.MEETING_ORCHESTRATOR,
-        ),
-        activate=_activate_meeting_agent_dispatch,
-    ),
-    SubsystemSpec(
-        name="ceremony_scheduler",
-        provides=CapabilityId.CEREMONY_SCHEDULER,
-        # Dispatch is required rather than merely hoped for: a scheduler
-        # running ceremonies through a caller that refuses every turn
-        # produces background noise and no meeting.
-        requires=(
-            CapabilityId.PERSISTENCE,
-            CapabilityId.AGENT_REGISTRY,
-            CapabilityId.MEETING_ORCHESTRATOR,
-            CapabilityId.MEETING_AGENT_DISPATCH,
-        ),
-        activate=_activate_ceremony_scheduler,
-    ),
-    SubsystemSpec(
-        name="webhook_event_bridge",
-        provides=CapabilityId.WEBHOOK_EVENT_BRIDGE,
-        # Forwards verified deliveries into the active sprint's strategy,
-        # which the ceremony scheduler holds.
-        requires=(
-            CapabilityId.MESSAGE_BUS,
-            CapabilityId.CEREMONY_SCHEDULER,
-        ),
-        activate=_activate_webhook_event_bridge,
-    ),
     SubsystemSpec(
         name="evolution_outcomes",
         provides=CapabilityId.EVOLUTION_OUTCOMES,
@@ -1440,15 +1335,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="sprint_service",
         provides=CapabilityId.SPRINT_SERVICE,
-        # The ceremony scheduler is what advances a sprint's ceremonies, so
-        # it is declared rather than discovered: an undeclared wait shows as
-        # prose in a decline reason nobody can act on, while a declared one
-        # is the unmet capability ``GET /subsystems`` names.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.TASK_ENGINE,
             CapabilityId.SETTINGS_RESOLVER,
-            CapabilityId.CEREMONY_SCHEDULER,
         ),
         activate=_activate_sprint_service,
     ),
@@ -1804,9 +1694,9 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="strategy_context",
         provides=CapabilityId.STRATEGY_CONTEXT,
-        # The memory backend and the meeting orchestrator are optional reads,
-        # not requirements: a boot without memory resolves a thinner context
-        # rather than none, so only the bus is declared.
+        # The memory backend is an optional read, not a requirement: a boot
+        # without memory resolves a thinner context rather than none, so only
+        # the bus is declared.
         requires=(CapabilityId.MESSAGE_BUS,),
         activate=_activate_strategy_context,
     ),

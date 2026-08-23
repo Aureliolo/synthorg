@@ -17,7 +17,6 @@ from typing import Final, NamedTuple, Protocol
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
@@ -286,24 +285,16 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_distributed_task_queue: bool = False,
     distributed_backend_services: _AsyncStartStop | None = None,
     started_distributed_backend_services: bool = False,
-    meeting_scheduler: MeetingScheduler | None = None,
-    started_meeting_scheduler: bool = False,
     backup_service: BackupService | None = None,
     started_backup_service: bool = False,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
     started_approval_timeout_scheduler: bool = False,
     event_stream_hub: _AsyncStartStop | None = None,
     started_event_stream_hub: bool = False,
-    escalation_notify_subscriber: _AsyncStartStop | None = None,
-    started_escalation_notify_subscriber: bool = False,
-    escalation_sweeper: _AsyncStartStop | None = None,
-    started_escalation_sweeper: bool = False,
     oauth_token_manager: _AsyncStartStop | None = None,
     started_oauth_token_manager: bool = False,
     integration_health_prober: _AsyncStartStop | None = None,
     started_integration_health_prober: bool = False,
-    webhook_event_bridge: _AsyncStartStop | None = None,
-    started_webhook_event_bridge: bool = False,
     provider_health_prober: _AsyncStartStop | None = None,
     started_provider_health_prober: bool = False,
     chat_inbound_consumer: _AsyncStartStop | None = None,
@@ -333,20 +324,6 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             runtime_budget,
         ),
         _StopStep(
-            started_escalation_notify_subscriber,
-            escalation_notify_subscriber,
-            "Cleanup: failed to stop escalation notify subscriber",
-            "escalation_notify_subscriber",
-            runtime_budget,
-        ),
-        _StopStep(
-            started_escalation_sweeper,
-            escalation_sweeper,
-            "Cleanup: failed to stop escalation sweeper",
-            "escalation_sweeper",
-            runtime_budget,
-        ),
-        _StopStep(
             started_oauth_token_manager,
             oauth_token_manager,
             "Cleanup: failed to stop OAuth token manager",
@@ -358,13 +335,6 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             integration_health_prober,
             "Cleanup: failed to stop integration health prober",
             "integration_health_prober",
-            runtime_budget,
-        ),
-        _StopStep(
-            started_webhook_event_bridge,
-            webhook_event_bridge,
-            "Cleanup: failed to stop webhook event bridge",
-            "webhook_event_bridge",
             runtime_budget,
         ),
         _StopStep(
@@ -394,11 +364,6 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             started_backup_service,
             backup_service,
             "Cleanup: failed to stop backup service",
-        ),
-        _StopStep(
-            started_meeting_scheduler,
-            meeting_scheduler,
-            "Cleanup: failed to stop meeting scheduler",
         ),
         _StopStep(
             started_task_engine, task_engine, "Cleanup: failed to stop task engine"

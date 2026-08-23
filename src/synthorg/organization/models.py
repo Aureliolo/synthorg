@@ -6,21 +6,11 @@ without importing from the API layer. The ``synthorg.api.dto_org``
 module re-exports these for HTTP controllers.
 """
 
-import copy
-from typing import Self
-
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.company_departments import Team
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 
 
 class UpdateCompanyRequest(BaseModel):
@@ -102,37 +92,6 @@ class UpdateDepartmentRequest(BaseModel):
         description="New default autonomy level; omit to leave unchanged.",
     )
     teams: tuple[Team, ...] | None = Field(default=None, max_length=64)
-    # Stored as a raw dict at the domain level for YAML-level flexibility
-    # (see ``Department.ceremony_policy``); validated against
-    # ``CeremonyPolicyConfig`` but not coerced to the typed model.
-    ceremony_policy: dict[str, object] | None = None
-
-    @field_validator("ceremony_policy", mode="before")
-    @classmethod
-    def _validate_ceremony_policy(
-        cls, v: dict[str, object] | None
-    ) -> dict[str, object] | None:
-        """Validate ceremony_policy against CeremonyPolicyConfig schema.
-
-        Returns:
-            The input value unchanged once validated (``None`` passes
-            through; a dict is checked against ``CeremonyPolicyConfig``
-            but not coerced to the typed model).
-        """
-        if v is not None:
-            CeremonyPolicyConfig.model_validate(v)
-        return v
-
-    @model_validator(mode="after")
-    def _deep_copy_ceremony_policy(self) -> Self:
-        """Deep-copy ``ceremony_policy`` so the frozen model cannot be aliased.
-
-        Returns:
-            The instance with ``ceremony_policy`` deep-copied (``None``
-            stays ``None``).
-        """
-        object.__setattr__(self, "ceremony_policy", copy.deepcopy(self.ceremony_policy))
-        return self
 
 
 class ReorderDepartmentsRequest(BaseModel):

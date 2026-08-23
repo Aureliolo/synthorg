@@ -138,9 +138,7 @@ class CapabilitiesController(Controller):
         # capability-gating contract. ``webhooks`` mirrors the
         # WebhooksController readiness predicate in ``create_app()``
         # (``integrations.enabled`` AND ``connection_catalog`` AND
-        # ``message_bus``); reading the bridge accessor instead would
-        # diverge because the bridge requires ``ceremony_scheduler``
-        # while the controller does not. The A2A peer registry is read
+        # ``message_bus``). The A2A peer registry is read
         # through its slice (``None`` until the gateway is wired) to
         # avoid the 503 the bridge accessor raises inside the
         # response path.

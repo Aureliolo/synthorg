@@ -16,7 +16,6 @@
 # which needs explicit user approval:
 #   uv run python scripts/check_argument_count_suppression.py --update
 evals/run.py::run_benchmark_async::12
-src/synthorg/api/_comms_conflict_wiring.py::wire_conflict_resolution_service::9
 src/synthorg/api/app_builders.py::build_chief_of_staff_proposer::9
 src/synthorg/api/controllers/_department_health.py::_build_health_from_data::12
 src/synthorg/api/controllers/activities/feed.py::ActivityController.list_activities::7
@@ -33,17 +32,14 @@ src/synthorg/api/controllers/project_docs.py::ProjectDocsController.list_docs::6
 src/synthorg/api/controllers/project_knowledge.py::ProjectKnowledgeController.list_sources::6
 src/synthorg/api/controllers/tasks.py::TaskController.list_tasks::6
 src/synthorg/api/conversational_builders.py::build_group_chat_service::9
-src/synthorg/api/lifecycle.py::_safe_shutdown::12
+src/synthorg/api/lifecycle.py::_safe_shutdown::11
 src/synthorg/api/lifecycle_assembly.py::assemble_lifespan_hooks::15
 src/synthorg/api/lifecycle_builder.py::_build_lifecycle::10
 src/synthorg/api/lifecycle_runner_shutdown.py::_run_shutdown::9
 src/synthorg/api/lifecycle_runner_startup.py::_run_startup::15
-src/synthorg/api/lifecycle_shared.py::_cleanup_on_failure::36
+src/synthorg/api/lifecycle_shared.py::_cleanup_on_failure::28
 src/synthorg/api/litestar_assembly.py::build_litestar::9
 src/synthorg/budget/_enforcer_helpers.py::_build_checker_closure::14
-src/synthorg/communication/meeting/_phase_runners.py::StructuredPhaseRunnersMixin._run_discussion::11
-src/synthorg/communication/meeting/_phase_runners.py::StructuredPhaseRunnersMixin._run_discussion_round::10
-src/synthorg/communication/meeting/round_robin.py::RoundRobinProtocol._execute_turn::9
 src/synthorg/deliverable_receipts/builder.py::ReceiptBuilder.__init__::9
 src/synthorg/engine/_agent_engine_callables.py::HandleFatalError.__call__::11
 src/synthorg/engine/_review_completion_gates.py::run_completion_gates::16
@@ -154,7 +150,6 @@ tests/unit/budget/test_enforcer.py::_make_budget_config::9
 tests/unit/core/test_task_properties.py::TestTaskRoundtripProperties.test_model_dump_validate_roundtrip::6
 tests/unit/engine/test_agent_engine_stakes_park.py::_MockEngine._handle_fatal_error::11
 tests/unit/engine/test_coordination_service.py::_make_coordinator::9
-tests/unit/engine/workflow/strategies/conftest.py::make_context::10
 tests/unit/hr/conftest.py::make_hiring_request::11
 tests/unit/hr/evaluation/conftest.py::make_interaction_feedback::9
 tests/unit/hr/performance/conftest.py::make_calibration_record::9

@@ -1,11 +1,10 @@
 """Communication domain MCP tools.
 
-Covers messages, meetings, connections, webhooks, and tunnel.
+Covers messages, connections, webhooks, and tunnel.
 """
 
 from typing import TYPE_CHECKING
 
-from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
@@ -14,11 +13,6 @@ from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsGetArgs,
     ConnectionsListArgs,
     ConnectionsRequestSecretCaptureArgs,
-    MeetingsCreateArgs,
-    MeetingsDeleteArgs,
-    MeetingsGetArgs,
-    MeetingsListArgs,
-    MeetingsUpdateArgs,
     MessagesDeleteArgs,
     MessagesGetArgs,
     MessagesListArgs,
@@ -93,76 +87,6 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("message_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MessagesDeleteArgs,
-    ),
-    # --- Meetings ---
-    read_tool(
-        "meetings",
-        "list",
-        "List meeting records.",
-        {
-            "status": {
-                "type": "string",
-                "description": "Filter by status",
-                "enum": [s.value for s in MeetingStatus],
-            },
-            "meeting_type": {
-                "type": "string",
-                "description": "Filter by meeting type",
-            },
-            **PAGINATION_PROPERTIES,
-        },
-        args_model=MeetingsListArgs,
-    ),
-    read_tool(
-        "meetings",
-        "get",
-        "Get a meeting record by ID.",
-        {
-            "meeting_id": {"type": "string", "description": "Meeting UUID"},
-        },
-        required=("meeting_id",),
-        args_model=MeetingsGetArgs,
-    ),
-    write_tool(
-        "meetings",
-        "create",
-        "Create a meeting record.",
-        {
-            "title": {"type": "string", "description": "Meeting title"},
-            "participants": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Participant names",
-            },
-        },
-        required=("title",),
-        args_model=MeetingsCreateArgs,
-    ),
-    write_tool(
-        "meetings",
-        "update",
-        "Update a meeting record.",
-        {
-            "meeting_id": {"type": "string", "description": "Meeting UUID"},
-            "updates": {"type": "object", "description": "Fields to update"},
-        },
-        required=("meeting_id", "updates"),
-        args_model=MeetingsUpdateArgs,
-    ),
-    admin_tool(
-        "meetings",
-        "delete",
-        "Delete a meeting record (destructive; requires confirm).",
-        {
-            "meeting_id": {
-                "type": "string",
-                "description": "Meeting UUID",
-                "minLength": 1,
-            },
-            **ADMIN_GUARDRAIL_PROPERTIES,
-        },
-        required=("meeting_id", *ADMIN_GUARDRAIL_REQUIRED),
-        args_model=MeetingsDeleteArgs,
     ),
     # --- Connections ---
     read_tool(

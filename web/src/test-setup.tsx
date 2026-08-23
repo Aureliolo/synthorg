@@ -15,7 +15,7 @@ import { usePlanForecastStore } from '@/stores/planForecast'
 import { usePlansStore } from '@/stores/plans'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
-// NOTE: meetings and approvals stores are intentionally NOT
+// NOTE: the approvals store is intentionally NOT
 // imported (statically OR dynamically) from this global setup file
 // because doing so transitively loads `@/api/client` and runs its
 // import-time side effects -- the module-level `axios.create(...)`

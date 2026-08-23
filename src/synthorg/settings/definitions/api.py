@@ -766,24 +766,6 @@ _r.register(
     )
 )
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="max_meeting_context_keys",
-        type=SettingType.INTEGER,
-        default="20",
-        description=(
-            "Maximum number of context keys attached to a single meeting."
-            " Resolved per request when a meeting is triggered, so an"
-            " operator change takes effect without a restart."
-        ),
-        group="Query Limits",
-        level=SettingLevel.ADVANCED,
-        min_value=5,
-        max_value=100,
-    )
-)
-
 # ── Cache, WS auth, cleanup, urgency ─────────────────────────────
 
 _r.register(
@@ -1134,22 +1116,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=120.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="lifecycle_meeting_scheduler_shutdown_seconds",
-        type=SettingType.FLOAT,
-        default="2.0",
-        description=(
-            "Lifecycle shutdown: soft deadline for the meeting scheduler stop step."
-        ),
-        group="Lifecycle Shutdown",
-        level=SettingLevel.ADVANCED,
-        min_value=0.5,
-        max_value=60.0,
     )
 )
 

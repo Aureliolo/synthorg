@@ -31,7 +31,6 @@ Callable[[], float] = time.monotonic`` parameter rather than a full
 - ``src/synthorg/communication/loop_prevention/circuit_breaker.py``
 - ``src/synthorg/communication/loop_prevention/dedup.py``
 - ``src/synthorg/communication/loop_prevention/rate_limit.py``
-- ``src/synthorg/communication/meeting/scheduler.py``
 
 Their time use is narrow (monotonic ticks only; no UTC wall-clock,
 no async sleep) so the protocol's three orthogonal sources buy

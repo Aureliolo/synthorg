@@ -286,29 +286,17 @@
     {
       "controllers": [
         "MessageController",
-        "MeetingController",
-        "CeremonyPolicyController",
         "EventStreamController",
-        "InterruptController",
-        "EscalationsController"
+        "InterruptController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/communication",
-      "ghost_wired_symbols": [
-        "ConsensusVelocityDetector",
-        "DefaultPremortemExecutor",
-        "ProgressiveTierResolver"
-      ],
+      "ghost_wired_symbols": [],
       "mcp_tool_names": [
         "synthorg_messages_list",
         "synthorg_messages_get",
         "synthorg_messages_send",
         "synthorg_messages_delete",
-        "synthorg_meetings_list",
-        "synthorg_meetings_get",
-        "synthorg_meetings_create",
-        "synthorg_meetings_update",
-        "synthorg_meetings_delete",
         "synthorg_connections_list",
         "synthorg_connections_field_metadata",
         "synthorg_connections_get",
@@ -326,10 +314,6 @@
       ],
       "name": "communication",
       "protocol_exports": [
-        "ConflictDetector",
-        "ConflictResolver",
-        "JudgeEvaluator",
-        "MeetingProtocol",
         "MessageBus",
         "MessageHandler"
       ],
@@ -337,20 +321,9 @@
       "state_slice_fields": [
         "message_bus",
         "message_service",
-        "meeting_orchestrator",
-        "meeting_scheduler",
-        "meeting_event_publisher",
-        "meeting_service",
         "event_stream_hub",
         "interrupt_store",
-        "delegation_record_store",
-        "escalation_store",
-        "escalation_registry",
-        "escalation_processor",
-        "escalation_sweeper",
-        "escalation_notify_subscriber",
-        "conflict_resolution_service",
-        "conflict_escalation_bridge"
+        "delegation_record_store"
       ]
     },
     {
@@ -384,15 +357,11 @@
       "depends_on": [],
       "directory": "src/synthorg/coordination",
       "ghost_wired_symbols": [
-        "CoordinationService",
-        "CeremonyPolicyService"
+        "CoordinationService"
       ],
       "mcp_tool_names": [
         "synthorg_coordination_get_task_metrics",
-        "synthorg_coordination_metrics_list",
-        "synthorg_ceremony_policy_get",
-        "synthorg_ceremony_policy_get_resolved",
-        "synthorg_ceremony_policy_get_active_strategy"
+        "synthorg_coordination_metrics_list"
       ],
       "name": "coordination",
       "protocol_exports": [],
@@ -400,8 +369,7 @@
       "state_slice_fields": [
         "metrics_store",
         "baseline_store",
-        "coordination_service",
-        "ceremony_policy_service"
+        "coordination_service"
       ]
     },
     {
@@ -596,7 +564,6 @@
         "evaluation_version_service",
         "error_taxonomy_store",
         "evolution_service",
-        "ceremony_scheduler",
         "kanban_board_service",
         "sprint_service",
         "project_rollup_service",
@@ -827,7 +794,6 @@
         "secret_capture_service",
         "oauth_token_manager",
         "oauth_state_service",
-        "webhook_event_bridge",
         "webhook_service",
         "tunnel_provider",
         "tunnel_service",
@@ -1114,7 +1080,6 @@
         "CompanyVersionController",
         "DepartmentController",
         "DepartmentHealthController",
-        "DepartmentCeremonyPolicyController",
         "TeamController",
         "RoleVersionController",
         "TemplatePackController"
@@ -1540,6 +1505,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-23T16:16:27.079141Z",
+  "generated_at": "2026-08-23T21:58:28.394302Z",
   "schema_version": 1
 }

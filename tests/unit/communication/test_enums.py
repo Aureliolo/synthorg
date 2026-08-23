@@ -14,7 +14,7 @@ from synthorg.communication.enums import (
 @pytest.mark.unit
 class TestMessageType:
     def test_member_count(self) -> None:
-        assert len(MessageType) == 12
+        assert len(MessageType) == 10
 
     def test_values(self) -> None:
         assert MessageType.TASK_UPDATE.value == "task_update"
@@ -25,7 +25,6 @@ class TestMessageType:
         assert MessageType.DELEGATION.value == "delegation"
         assert MessageType.STATUS_REPORT.value == "status_report"
         assert MessageType.ESCALATION.value == "escalation"
-        assert MessageType.MEETING_CONTRIBUTION.value == "meeting_contribution"
         assert MessageType.HR_NOTIFICATION.value == "hr_notification"
         assert MessageType.CONTEXT_INJECTION.value == "context_injection"
 
@@ -65,12 +64,11 @@ class TestChannelType:
 @pytest.mark.unit
 class TestCommunicationPattern:
     def test_member_count(self) -> None:
-        assert len(CommunicationPattern) == 4
+        assert len(CommunicationPattern) == 3
 
     def test_values(self) -> None:
         assert CommunicationPattern.EVENT_DRIVEN.value == "event_driven"
         assert CommunicationPattern.HIERARCHICAL.value == "hierarchical"
-        assert CommunicationPattern.MEETING_BASED.value == "meeting_based"
         assert CommunicationPattern.HYBRID.value == "hybrid"
 
 

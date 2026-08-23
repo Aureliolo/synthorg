@@ -80,12 +80,9 @@ one level up in `src/synthorg/persistence/`:
 | `_generics.py`                         | Six generic categories (`SingletonRepository`, `IdKeyedRepository`, `FilteredQueryRepository`, `AppendOnlyRepository`, `StatefulRepository`, `MVCCRepository`) that concrete protocols compose via Protocol inheritance. See [ADR-0001](../decisions/0001-repository-protocol-consolidation.md) for the consolidation rationale and the per-entity migration inventory. |
 | `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
-| `ceremony_scheduler_state_protocol.py` | `CeremonySchedulerStateRepository`: per-sprint ceremony-trigger state (completion counters, fired-once flags, velocity history) so restarts re-hydrate position |
 | `codebase_structure_map_protocol.py`   | `CodebaseStructureMapRepository`: brownfield-intake structure map (modules, entry points, tests, build files, deps) for an imported codebase (1:1 per project) |
-| `escalation_protocol.py`               | Conflict-resolution escalation queue |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
 | `mcp_protocol.py`                      | MCP catalog installation repository |
-| `meeting_cooldown_protocol.py`         | `MeetingCooldownRepository`: per-meeting-type last-triggered timestamp for the recurring-meeting cooldown |
 | `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot |
 | `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
 | `plan_protocol.py`                     | `PlanRepository`: durable plan-review entity, CRUD + status/project/objective filtering, version-guarded updates |

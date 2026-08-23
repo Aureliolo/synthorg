@@ -107,10 +107,6 @@ template:
         - column: "review"
           limit: 2
       enforce_wip: true
-    sprint:
-      ceremony_policy:
-        strategy: "event_driven"
-        velocity_calculator: "points_per_sprint"
 
   workflow_handoffs:
     - from_department: "creative_marketing"

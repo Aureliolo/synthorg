@@ -1,7 +1,7 @@
 """Domain event payloads.
 
 Covers artifact, project, memory fine-tune, client, request, review,
-simulation, interrupt/dissent.  The second half of the WebSocket
+simulation, interrupt.  The second half of the WebSocket
 discriminated-union surface; see ``synthorg.api.ws_payloads.__init__``
 for the union + re-exports.
 """
@@ -484,7 +484,7 @@ class WsSimulationFailedPayload(_SimulationEventBase):
     error: str | None = None
 
 
-# ── Interrupt / dissent domain ──────────────────────────────────────
+# ── Interrupt domain ────────────────────────────────────────────────
 
 
 class WsInterruptCreatedPayload(BaseModel):
@@ -506,17 +506,6 @@ class WsInterruptResumedPayload(BaseModel):
     event_type: Literal[WsEventType.INTERRUPT_RESUMED] = WsEventType.INTERRUPT_RESUMED
     interrupt_id: NotBlankStr
     task_id: NotBlankStr
-
-
-class WsDissentPublishedPayload(BaseModel):
-    """Payload for ``dissent.published`` -- not yet emitted by Python."""
-
-    model_config = PAYLOAD_CONFIG
-
-    event_type: Literal[WsEventType.DISSENT_PUBLISHED] = WsEventType.DISSENT_PUBLISHED
-    task_id: NotBlankStr
-    agent_id: NotBlankStr
-    message: NotBlankStr
 
 
 # ── Steering domain ─────────────────────────────────────────────────

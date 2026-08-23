@@ -15,7 +15,6 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-  Video,
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { titleForPath } from '@/router/route-titles'
@@ -206,7 +205,6 @@ function _buildGlobalNavCommands(
     { id: 'nav-approvals', label: 'Approvals', icon: ShieldCheck, action: () => navigate(ROUTES.APPROVALS), group: 'Navigation' },
     { id: 'nav-agents', label: 'Agents', icon: Users, action: () => navigate(ROUTES.AGENTS), group: 'Navigation' },
     { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
-    { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
     { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
     { id: 'nav-meta', label: 'Meta Loop', icon: Sparkles, action: () => navigate(ROUTES.META), group: 'Navigation', keywords: ['meta', 'governance', 'self-improvement', 'loop'] },
     { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },

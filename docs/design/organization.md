@@ -14,7 +14,7 @@ SynthOrg provides pre-built company templates for common organisational patterns
 | **Solo Builder** | 3-4 | autonomous | full | event_driven | kanban | Quick prototypes, solo projects |
 | **Tech Startup** | 4-7 | autonomous | semi | hybrid | agile_kanban | Small projects, MVPs |
 | **Engineering Squad** | 6-10 | cost_disciplined | semi | hybrid | agile_kanban | Software throughput on a budget |
-| **Product Studio** | 9-14 | knowledge_heavy | semi | meeting_based | agile_kanban | Discovery-led product development |
+| **Product Studio** | 9-14 | knowledge_heavy | semi | event_driven | agile_kanban | Discovery-led product development |
 | **Agency** | 10-15 | supervised_client_facing | supervised | hierarchical | kanban | Creative and marketing client work |
 | **Enterprise Org** | 20-50 | supervised_client_facing | supervised | hierarchical | agile_kanban | Enterprise simulation |
 | **Research Lab** | 5-10 | research_autonomous | full | event_driven | kanban | Autonomous research and analysis |
@@ -336,13 +336,6 @@ template:
       enforce_wip: true
     sprint:
       duration_days: {{ sprint_length | default(7) }}
-      ceremonies:
-        - name: "sprint_planning"
-          protocol: "structured_phases"
-          frequency: "weekly"
-        - name: "sprint_review"
-          protocol: "round_robin"
-          frequency: "weekly"
 
   workflow_handoffs:
     - from_department: "engineering"

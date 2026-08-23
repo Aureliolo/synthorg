@@ -78,7 +78,6 @@ function makeDept(
     display_name: displayName,
     autonomy_level: null,
     budget_percent: 0,
-    ceremony_policy: null,
     head,
     head_id: null,
     policies: {

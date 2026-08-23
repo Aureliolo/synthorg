@@ -178,7 +178,7 @@ class TestCollaborationMetricRecord:
             delegation_success=True,
             delegation_response_seconds=10.0,
             conflict_constructiveness=0.8,
-            meeting_contribution=0.9,
+            discussion_contribution=0.9,
             handoff_completeness=0.7,
         )
         assert record.agent_id == "agent-001"
@@ -186,7 +186,7 @@ class TestCollaborationMetricRecord:
         assert record.delegation_success is True
         assert record.delegation_response_seconds == 10.0
         assert record.conflict_constructiveness == 0.8
-        assert record.meeting_contribution == 0.9
+        assert record.discussion_contribution == 0.9
         assert record.loop_triggered is False
         assert record.handoff_completeness == 0.7
 
@@ -200,7 +200,7 @@ class TestCollaborationMetricRecord:
         assert record.delegation_success is None
         assert record.delegation_response_seconds is None
         assert record.conflict_constructiveness is None
-        assert record.meeting_contribution is None
+        assert record.discussion_contribution is None
         assert record.handoff_completeness is None
 
     @pytest.mark.parametrize(
@@ -208,8 +208,8 @@ class TestCollaborationMetricRecord:
         [
             ("conflict_constructiveness", -0.1),
             ("conflict_constructiveness", 1.1),
-            ("meeting_contribution", -0.1),
-            ("meeting_contribution", 1.1),
+            ("discussion_contribution", -0.1),
+            ("discussion_contribution", 1.1),
             ("handoff_completeness", -0.1),
             ("handoff_completeness", 1.1),
             ("delegation_response_seconds", -1.0),
@@ -237,8 +237,8 @@ class TestCollaborationMetricRecord:
         [
             ("conflict_constructiveness", 0.0),
             ("conflict_constructiveness", 1.0),
-            ("meeting_contribution", 0.0),
-            ("meeting_contribution", 1.0),
+            ("discussion_contribution", 0.0),
+            ("discussion_contribution", 1.0),
             ("handoff_completeness", 0.0),
             ("handoff_completeness", 1.0),
         ],

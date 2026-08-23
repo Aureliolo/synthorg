@@ -13,18 +13,14 @@ if TYPE_CHECKING:
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
-    """Populate the base communication slice (bus, meetings, event stream).
+    """Populate the base communication slice (bus, event stream).
 
-    The escalation stack and the message / meeting services are wired in a
-    later construction step that needs the settings config resolver.
+    The message service is wired in a later construction step that needs the
+    settings config resolver.
     """
-    meeting_wire = deps.meeting_wire
     app_state.swap_slice(
         CommunicationStateSlice.model_construct(
             message_bus=deps.phase1.message_bus,
-            meeting_orchestrator=meeting_wire.meeting_orchestrator,
-            meeting_scheduler=meeting_wire.meeting_scheduler,
-            meeting_event_publisher=deps.meeting_event_publisher,
             event_stream_hub=deps.event_stream_hub,
             interrupt_store=deps.interrupt_store,
             delegation_record_store=deps.delegation_record_store,

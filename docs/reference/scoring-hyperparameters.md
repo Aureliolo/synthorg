@@ -145,7 +145,6 @@ marker pointing at the canonical setting.
 | `memory.fine_tune.chunk_size` | 512 | Word-chunk size for synthetic-data generation. |
 | `communication.loop_prevention_window_seconds` | 60.0 | Per-pair delegation rate-limit window. |
 | `api.lifecycle.task_engine_shutdown_seconds` | 8.0 | Lifecycle stop step deadline (task engine). |
-| `api.lifecycle.meeting_scheduler_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (meeting scheduler). |
 | `api.lifecycle.performance_tracker_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (performance tracker). |
 | `api.lifecycle.backup_shutdown_seconds` | 5.0 | Lifecycle stop step deadline (backup service). |
 | `api.lifecycle.settings_dispatcher_shutdown_seconds` | 2.0 | Lifecycle stop step deadline (settings dispatcher). |

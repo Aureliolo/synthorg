@@ -1,7 +1,7 @@
 """Lifecycle event payloads.
 
 Covers task, agent, company, budget, message, system, approval,
-coordination, meeting.  The first half of the WebSocket
+coordination.  The first half of the WebSocket
 discriminated-union surface; see ``synthorg.api.ws_payloads.__init__``
 for the union + re-exports.
 """
@@ -476,55 +476,3 @@ class WsCoordinationFailedPayload(BaseModel):
     is_success: bool | None = None
     total_duration_seconds: float | None = Field(default=None, ge=0)
     error: str | None = None
-
-
-# ── Meeting domain ──────────────────────────────────────────────────
-
-
-class _MeetingEventBase(BaseModel):
-    """Shared shape for meeting lifecycle events.
-
-    Emitted via ``api/app_helpers.py:_make_meeting_publisher`` whose
-    callback receives ``(event_name, payload)`` from the meeting
-    orchestrator. The payload always identifies the meeting and the
-    triggering event class; per-status detail fields are optional.
-    """
-
-    model_config = PAYLOAD_CONFIG
-
-    meeting_id: NotBlankStr
-    meeting_type: NotBlankStr
-    project_id: NotBlankStr | None = None
-    department: NotBlankStr | None = None
-    participants: tuple[NotBlankStr, ...] = ()
-
-
-class WsMeetingStartedPayload(_MeetingEventBase):
-    """Payload for ``meeting.started``."""
-
-    event_type: Literal[WsEventType.MEETING_STARTED] = WsEventType.MEETING_STARTED
-
-
-class WsMeetingCompletedPayload(_MeetingEventBase):
-    """Payload for ``meeting.completed``.
-
-    Carries optional summary fields populated by the orchestrator on
-    success.
-    """
-
-    event_type: Literal[WsEventType.MEETING_COMPLETED] = WsEventType.MEETING_COMPLETED
-    duration_seconds: float | None = Field(default=None, ge=0)
-    summary: str | None = None
-
-
-class WsMeetingFailedPayload(_MeetingEventBase):
-    """Payload for ``meeting.failed``.
-
-    Mirrored by ``communication/meeting/scheduler.py``'s
-    ``_STATUS_TO_WS_EVENT`` for both ``failed`` and ``budget_exhausted``
-    terminal states.
-    """
-
-    event_type: Literal[WsEventType.MEETING_FAILED] = WsEventType.MEETING_FAILED
-    error: str | None = None
-    reason: NotBlankStr | None = None

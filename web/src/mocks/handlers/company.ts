@@ -35,7 +35,6 @@ function buildDepartment(
     budget_percent: 0,
     teams: [],
     autonomy_level: 'supervised',
-    ceremony_policy: null,
     reporting_lines: [],
     policies: {
       approval_chains: [],

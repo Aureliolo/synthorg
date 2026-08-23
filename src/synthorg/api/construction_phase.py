@@ -3,10 +3,10 @@
 
 ``create_app`` delegates the persistence-independent service construction to
 :func:`build_construction_services`: it builds ``AppState``, auto-wires the
-construction-phase / meeting / integration services, composes every feature's
+construction-phase / integration services, composes every feature's
 state slice, runs each feature's ``construction_wirer`` (via
 ``run_construction_wiring``),
-wires the communication-domain services + escalation stack, builds the
+wires the communication-domain services, builds the
 bridge / backup / settings-dispatcher / middleware, and returns the handful of
 collaborators the composition root threads into route assembly, the lifespan
 hooks, and the Litestar build. Keeping it here leaves ``create_app`` a thin
@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from litestar.channels import ChannelsPlugin
 from litestar.types import Middleware
 
-from synthorg.api._comms_conflict_wiring import wire_conflict_resolution_service
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
@@ -26,13 +25,12 @@ from synthorg.api.app_builders import (
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
-    _make_meeting_publisher,
     _make_submitted_callback,
     make_steering_notifier,
 )
 from synthorg.api.app_overrides import AppOverrides
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auto_wire import auto_wire_meetings, auto_wire_phase1
+from synthorg.api.auto_wire import auto_wire_phase1
 from synthorg.api.boot_persistence import BootPersistence
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import create_channels_plugin, make_plan_notifier
@@ -64,21 +62,9 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.conflict_resolution.escalation.factory import (
-    build_decision_processor,
-    build_escalation_notify_subscriber,
-    build_escalation_queue_store,
-)
-from synthorg.communication.conflict_resolution.escalation.registry import (
-    PendingFuturesRegistry,
-)
-from synthorg.communication.conflict_resolution.escalation.sweeper import (
-    EscalationExpirationSweeper,
-)
 from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
-from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.task_engine import TaskEngine
@@ -162,32 +148,23 @@ def _wire_quadratic_alert_sink(
 def _wire_communication_services(
     app_state: AppState,
     *,
-    effective_config: RootConfig,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
-    meeting_orchestrator: MeetingOrchestrator | None,
-    cost_tracker: CostTrackerProtocol | None,
-    agent_registry: AgentRegistryService,
 ) -> ConfigResolver | None:
-    """Wire the communication-domain + human-escalation services onto AppState.
+    """Wire the communication-domain services onto AppState.
 
-    Runs AFTER ``compose_settings_dependent_services`` so the escalation notify
-    subscriber can read the settings config resolver it composes. Mutates the
-    ``CommunicationStateSlice`` in place (the established wiring pattern) and
-    returns the resolver so the caller can thread it into the message-bus bridge.
+    Runs AFTER ``compose_settings_dependent_services`` so the resolver it
+    returns is the composed one. Mutates the ``CommunicationStateSlice`` in
+    place (the established wiring pattern) and returns the resolver so the
+    caller can thread it into the message-bus bridge.
 
     Args:
         app_state: The slice-populated application state to wire onto.
-        effective_config: The resolved root configuration.
         message_bus: The auto-wired message bus, or ``None``.
         persistence: The persistence backend (may be ``None``).
-        meeting_orchestrator: The auto-wired meeting orchestrator, or ``None``.
-        cost_tracker: The cost tracker the LLM judge attributes spend to.
-        agent_registry: The agent registry the meeting-conflict bridge reads
-            department/role from to build conflict positions.
 
     Returns:
-        The settings ``config_resolver`` for the bridge and later consumers.
+        The settings ``config_resolver`` for later consumers.
     """
     from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
@@ -201,95 +178,8 @@ def _wire_communication_services(
             CommunicationStateSlice,
             message_service=MessageService(bus=message_bus, persistence=persistence),
         )
-    if meeting_orchestrator is not None:
-        from synthorg.communication.meetings.service import (  # noqa: PLC0415
-            MeetingService,
-        )
 
-        app_state.wire(
-            CommunicationStateSlice,
-            meeting_service=MeetingService(orchestrator=meeting_orchestrator),
-        )
-
-    cr_config = effective_config.communication.conflict_resolution
-    escalation_config = cr_config.escalation
-    escalation_store = build_escalation_queue_store(escalation_config, persistence)
-    escalation_registry = PendingFuturesRegistry()
-    escalation_processor = build_decision_processor(escalation_config)
-    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
-    app_state.wire(
-        CommunicationStateSlice,
-        escalation_store=escalation_store,
-        escalation_processor=escalation_processor,
-        escalation_registry=escalation_registry,
-        escalation_sweeper=EscalationExpirationSweeper(
-            escalation_store,
-            interval_seconds=escalation_config.sweeper_interval_seconds,
-        ),
-        escalation_notify_subscriber=build_escalation_notify_subscriber(
-            escalation_config,
-            escalation_store,
-            escalation_registry,
-            reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
-            config_resolver=config_resolver,
-        ),
-    )
-    wire_conflict_resolution_service(
-        app_state,
-        effective_config=effective_config,
-        config=cr_config,
-        message_bus=message_bus,
-        escalation_store=escalation_store,
-        escalation_processor=escalation_processor,
-        escalation_registry=escalation_registry,
-        cost_tracker=cost_tracker,
-        config_resolver=config_resolver,
-    )
-    _wire_meeting_conflict_bridge(
-        app_state,
-        meeting_orchestrator=meeting_orchestrator,
-        agent_registry=agent_registry,
-        config_resolver=config_resolver,
-    )
-    return config_resolver
-
-
-def _wire_meeting_conflict_bridge(
-    app_state: AppState,
-    *,
-    meeting_orchestrator: MeetingOrchestrator | None,
-    agent_registry: AgentRegistryService,
-    config_resolver: ConfigResolver | None,
-) -> None:
-    """Install the meeting-to-conflict-resolution bridge on the orchestrator.
-
-    The conflict-resolution service is built later in this same wiring pass
-    than the orchestrator is constructed, so the bridge is installed via the
-    orchestrator's setter here. The bridge is also stored on the slice so the
-    startup resolver rebind (``_wire_resolver_dependents``) can reach it. A
-    no-op when either the orchestrator or the service is absent.
-    """
-    from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
-
-    conflict_service = app_state.slice(
-        CommunicationStateSlice
-    ).conflict_resolution_service
-    if meeting_orchestrator is None or conflict_service is None:
-        return
-    from synthorg.communication.meeting.conflict_escalation import (  # noqa: PLC0415
-        MeetingConflictEscalationBridge,
-    )
-
-    bridge = MeetingConflictEscalationBridge(
-        conflict_service=conflict_service,
-        agent_registry=agent_registry,
-        config_resolver=config_resolver,
-    )
-    meeting_orchestrator.set_conflict_escalation_hook(bridge)
-    app_state.wire(
-        CommunicationStateSlice,
-        conflict_escalation_bridge=bridge,
-    )
+    return app_state.slice(SettingsStateSlice).config_resolver
 
 
 def build_construction_services(
@@ -357,16 +247,6 @@ def build_construction_services(
         agent_registry = AgentRegistryService()
         logger.info(API_SERVICE_AUTO_WIRED, service="agent_registry")
 
-    # ── Meeting auto-wire: orchestrator + scheduler (construction-time) ──
-    meeting_wire = auto_wire_meetings(
-        effective_config=effective_config,
-        meeting_orchestrator=overrides.meeting_orchestrator,
-        meeting_scheduler=overrides.meeting_scheduler,
-        agent_registry=agent_registry,
-        provider_registry=provider_registry,
-    )
-    meeting_orchestrator = meeting_wire.meeting_orchestrator
-
     channels_plugin = create_channels_plugin()
     # An injected store is a deliberate substitution and owns its own
     # lifecycle hooks; only the default path wires the publishers, so a
@@ -379,14 +259,6 @@ def build_construction_services(
             on_expire=_make_expire_callback(channels_plugin, clock=boot_clock),
         )
     )
-
-    # The publisher is built here because only the composition root holds
-    # the channels plugin, and consumed by the ceremony_scheduler subsystem,
-    # which builds the scheduler once the provider registry exists. It
-    # travels on the slice rather than being poked into the scheduler after
-    # construction, so the two halves never disagree about which scheduler
-    # publishes.
-    meeting_event_publisher = _make_meeting_publisher(channels_plugin)
 
     # Auto-wire performance tracker with composite quality strategy when not
     # explicitly injected (production path).
@@ -452,8 +324,6 @@ def build_construction_services(
     construction_deps = ConstructionDeps(
         effective_config=effective_config,
         phase1=phase1,
-        meeting_wire=meeting_wire,
-        meeting_event_publisher=meeting_event_publisher,
         integrations=integrations,
         approval_store=approval_store,
         autonomy_change_strategy=autonomy_change_strategy,
@@ -567,17 +437,13 @@ def build_construction_services(
         )
         raise RuntimeError(msg)
 
-    # Communication-domain services + human-escalation queue. The escalation
-    # notify subscriber reads the settings config resolver composed just above,
-    # so this runs after ``compose_settings_dependent_services``.
+    # Communication-domain services. Runs after
+    # ``compose_settings_dependent_services`` so the resolver it hands back is
+    # the composed one the bus bridge needs.
     config_resolver = _wire_communication_services(
         app_state,
-        effective_config=effective_config,
         message_bus=message_bus,
         persistence=persistence,
-        meeting_orchestrator=meeting_orchestrator,
-        cost_tracker=phase1.cost_tracker,
-        agent_registry=agent_registry,
     )
 
     bridge = (

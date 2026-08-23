@@ -370,7 +370,7 @@ class PostgresCollaborationMetricRepository:
                     INSERT INTO collaboration_metrics (
                         id, agent_id, recorded_at, delegation_success,
                         delegation_response_seconds, conflict_constructiveness,
-                        meeting_contribution, loop_triggered, handoff_completeness
+                        discussion_contribution, loop_triggered, handoff_completeness
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
@@ -382,7 +382,7 @@ class PostgresCollaborationMetricRepository:
                         data["delegation_success"],
                         data["delegation_response_seconds"],
                         data["conflict_constructiveness"],
-                        data["meeting_contribution"],
+                        data["discussion_contribution"],
                         data["loop_triggered"],
                         data["handoff_completeness"],
                     ),
@@ -458,7 +458,7 @@ class PostgresCollaborationMetricRepository:
         sql = """\
 SELECT id, agent_id, recorded_at, delegation_success,
        delegation_response_seconds, conflict_constructiveness,
-       meeting_contribution, loop_triggered, handoff_completeness
+       discussion_contribution, loop_triggered, handoff_completeness
 FROM collaboration_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

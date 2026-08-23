@@ -11,8 +11,8 @@ against the `signing_secret` credential on an existing connection, and a
 connection without one has no reachable inbound path.
 
 Verified deliveries are published to the `#webhooks` channel on the message bus,
-where `ExternalTriggerStrategy` matches the event name against configured
-ceremony triggers. The payload itself is not forwarded into any prompt.
+where subscribers match on the event name. The payload itself is not forwarded
+into any prompt.
 
 ## Which connection types can receive one
 
@@ -93,7 +93,7 @@ curl -i http://localhost:8000/webhooks/primary/issues.opened \
 ```
 
 Note the path order: **connection name first, then event type**. The event type
-is yours to choose and is what ceremony triggers match on.
+is yours to choose and is what `#webhooks` subscribers match on.
 
 Expected:
 

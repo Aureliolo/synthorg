@@ -8,7 +8,7 @@ export type StatusPillTone = SemanticColor | 'text-secondary'
 /**
  * Canonical colour vocabulary for inline status pills. Mirrors the prior
  * per-component `BADGE_COLOR_CLASSES` maps so every pill (priority, approval
- * flags, meeting status, ...) shares one palette.
+ * flags, run status, ...) shares one palette.
  */
 const PILL_TONE_CLASSES: Record<StatusPillTone, string> = {
   danger: 'border-danger/30 bg-danger/10 text-danger',
@@ -21,7 +21,7 @@ const PILL_TONE_CLASSES: Record<StatusPillTone, string> = {
 export interface StatusPillProps {
   /** Semantic tone mapped to the shared palette. Mutually exclusive with `toneClassName`. */
   tone?: StatusPillTone | undefined
-  /** Raw colour classes for feature-specific palettes (e.g. meeting status). */
+  /** Raw colour classes for feature-specific palettes (e.g. run status). */
   toneClassName?: string | undefined
   /** Optional leading icon. */
   icon?: LucideIcon | undefined

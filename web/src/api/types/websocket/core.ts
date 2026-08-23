@@ -25,9 +25,6 @@ import type {
   WsCoordinationFailedPayload,
   WsCoordinationPhaseCompletedPayload,
   WsCoordinationStartedPayload,
-  WsMeetingCompletedPayload,
-  WsMeetingFailedPayload,
-  WsMeetingStartedPayload,
 } from './approval'
 import type {
   WsArtifactContentUploadedPayload,
@@ -56,7 +53,6 @@ import type {
   WsSystemStartupPayload,
 } from './system'
 import type {
-  WsDissentPublishedPayload,
   WsInterruptCreatedPayload,
   WsInterruptResumedPayload,
   WsRequestEventPayload,
@@ -76,12 +72,12 @@ import type {
 import type { WsEventType } from '../backend-enums.gen'
 
 // Synchronised with channel constants in `src/synthorg/api/channels.py`.
-// Admin-only channels (#dissent, #webhooks, #ratelimit) are not exposed
+// Admin-only channels (#webhooks, #ratelimit) are not exposed
 // to dashboard subscribers; the user-scoped `user:{id}` channel is
 // dynamic and matched by prefix server-side, not by name here.
 export const WS_CHANNELS = [
   'tasks', 'agents', 'budget', 'messages', 'system',
-  'approvals', 'plans', 'meetings', 'artifacts', 'projects',
+  'approvals', 'plans', 'artifacts', 'projects',
   'company', 'departments', 'clients', 'requests',
   'simulations', 'reviews', 'events', 'interrupts',
   'cockpit', 'workflows',
@@ -126,15 +122,14 @@ export interface WsEvent {
  * TypeScript types declare structural shape only; they do NOT prove a
  * value has been clamped against C0 controls, bidi-overrides, length
  * caps, or the enum allowlist. Stores that ingest these payloads
- * (approvals, meetings, messages, tasks, etc.) own the sanitisation
+ * (approvals, messages, tasks, etc.) own the sanitisation
  * step at the dispatch boundary.
  *
  * Map every {@link WsEventType} to its payload interface. The four
  * approval lifecycle events (`approval.submitted` / `approved` /
- * `rejected` / `expired`) and three meeting events share base shapes
- * mirrored from the Python ``_ApprovalEventBase`` / ``_MeetingEventBase``
- * helpers; the simulation, request, client, and memory.fine_tune
- * families do the same.
+ * `rejected` / `expired`) share a base shape mirrored from the Python
+ * ``_ApprovalEventBase`` helper; the simulation, request, client, and
+ * memory.fine_tune families do the same.
  *
  * Adding a new {@link WsEventType} member without an entry here is a
  * compile-time error via the exhaustiveness guards below: the primary
@@ -172,9 +167,6 @@ export interface WsEventPayloadMap {
   'coordination.phase_completed': WsCoordinationPhaseCompletedPayload
   'coordination.completed': WsCoordinationCompletedPayload
   'coordination.failed': WsCoordinationFailedPayload
-  'meeting.started': WsMeetingStartedPayload
-  'meeting.completed': WsMeetingCompletedPayload
-  'meeting.failed': WsMeetingFailedPayload
   'artifact.created': WsArtifactCreatedPayload
   'artifact.deleted': WsArtifactDeletedPayload
   'artifact.content_uploaded': WsArtifactContentUploadedPayload
@@ -211,7 +203,6 @@ export interface WsEventPayloadMap {
   'review.pipeline_completed': WsReviewPipelineCompletedPayload
   'interrupt.created': WsInterruptCreatedPayload
   'interrupt.resumed': WsInterruptResumedPayload
-  'dissent.published': WsDissentPublishedPayload
   'steering.directive.issued': WsSteeringDirectiveIssuedPayload
   'steering.supersession.proposed': WsSteeringSupersessionProposedPayload
   'steering.tasks.superseded': WsSteeringTasksSupersededPayload

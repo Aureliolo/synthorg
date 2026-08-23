@@ -45,16 +45,13 @@ PROJECTION_MAP: Mapping[str, AgUiEventType] = MappingProxyType(
         # Approval gate
         APPROVAL_GATE_CONTEXT_PARKED: AgUiEventType.APPROVAL_INTERRUPT,
         APPROVAL_GATE_CONTEXT_RESUMED: AgUiEventType.APPROVAL_RESUMED,
-        # Dissent: emitted directly by ConflictResolutionService via
-        # EventStreamHub.publish_raw() (not via projection) because
-        # it carries a structured DissentPayload.
     }
 )
 """Mapping from internal observability event constants to AG-UI types.
 
 Events not in this map are not projected to the SSE stream.
 TEXT_MESSAGE_CONTENT, TOOL_CALL_ARGS, TOOL_CALL_END,
-INFO_REQUEST_INTERRUPT, INFO_REQUEST_RESUMED, and DISSENT are
+INFO_REQUEST_INTERRUPT and INFO_REQUEST_RESUMED are
 emitted directly by their respective services (not via
 observability log projection) because they carry structured
 payloads that don't originate from a single log call.

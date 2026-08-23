@@ -9,14 +9,8 @@ from synthorg.communication.channel import Channel
 from synthorg.communication.config import (
     CommunicationConfig,
     HierarchyConfig,
-    MeetingsConfig,
     MessageBusConfig,
     MessageRetentionConfig,
-)
-from synthorg.communication.conflict_resolution.config import (
-    ConflictResolutionConfig,
-    DebateConfig,
-    HybridConfig,
 )
 from synthorg.communication.enums import (
     ChannelType,
@@ -29,8 +23,6 @@ from synthorg.communication.loop_prevention.config import (
     LoopPreventionConfig,
     RateLimitConfig,
 )
-from synthorg.communication.meeting.config import MeetingTypeConfig
-from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
@@ -93,19 +85,6 @@ class MessageBusConfigFactory(ModelFactory[MessageBusConfig]):
     nats = None
 
 
-class MeetingTypeConfigFactory(ModelFactory[MeetingTypeConfig]):
-    __model__ = MeetingTypeConfig
-    frequency = "daily"
-    trigger = None
-    # min_interval_seconds requires trigger-based meetings (validator).
-    min_interval_seconds = None
-
-
-class MeetingsConfigFactory(ModelFactory[MeetingsConfig]):
-    __model__ = MeetingsConfig
-    types = ()
-
-
 class HierarchyConfigFactory(ModelFactory[HierarchyConfig]):
     __model__ = HierarchyConfig
 
@@ -136,18 +115,6 @@ class DeliveryEnvelopeFactory(ModelFactory[DeliveryEnvelope]):
     message = MessageFactory
 
 
-class DebateConfigFactory(ModelFactory[DebateConfig]):
-    __model__ = DebateConfig
-
-
-class HybridConfigFactory(ModelFactory[HybridConfig]):
-    __model__ = HybridConfig
-
-
-class ConflictResolutionConfigFactory(ModelFactory[ConflictResolutionConfig]):
-    __model__ = ConflictResolutionConfig
-
-
 class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     __model__ = CommunicationConfig
     # Use the pinned MessageBusConfigFactory so polyfactory doesn't
@@ -155,9 +122,7 @@ class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     # NatsConfig.url now enforces a scheme allow-list at config load and
     # polyfactory's random string generator picks values that fail it.
     message_bus = MessageBusConfigFactory
-    meetings = MeetingsConfigFactory
     loop_prevention = LoopPreventionConfigFactory
-    conflict_resolution = ConflictResolutionConfigFactory
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────
@@ -193,16 +158,6 @@ def sample_channel() -> Channel:
         name="#engineering",
         type=ChannelType.TOPIC,
         subscribers=("sarah_chen", "backend_lead"),
-    )
-
-
-@pytest.fixture
-def sample_meeting_type() -> MeetingTypeConfig:
-    return MeetingTypeConfig(
-        name="daily_standup",
-        frequency=MeetingFrequency.PER_SPRINT_DAY,
-        participants=("engineering", "qa"),
-        duration_tokens=2000,
     )
 
 

@@ -118,7 +118,7 @@ class DecisionRecord(BaseModel):
     )
     risk_card: RiskCard | None = Field(
         default=None,
-        description="Risk assessment from premortem phase (if available)",
+        description="Risk assessment for the decision (if available)",
     )
     confidence_metadata: ConfidenceMetadata | None = Field(
         default=None,

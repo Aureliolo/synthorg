@@ -33,7 +33,7 @@ class TestBehavioralTelemetryStrategy:
                 delegation_success=True,
                 delegation_response_seconds=0.0,
                 conflict_constructiveness=1.0,
-                meeting_contribution=1.0,
+                discussion_contribution=1.0,
                 loop_triggered=False,
                 handoff_completeness=1.0,
             ),
@@ -59,7 +59,7 @@ class TestBehavioralTelemetryStrategy:
                 delegation_success=True,
                 # delegation_response_seconds=None -> skipped
                 conflict_constructiveness=1.0,
-                # meeting_contribution=None -> skipped
+                # discussion_contribution=None -> skipped
                 loop_triggered=False,
                 handoff_completeness=1.0,
             ),
@@ -76,7 +76,7 @@ class TestBehavioralTelemetryStrategy:
         # Only non-None components in breakdown
         component_names = {name for name, _ in result.component_scores}
         assert "delegation_response_latency" not in component_names
-        assert "meeting_contribution" not in component_names
+        assert "discussion_contribution" not in component_names
 
     async def test_all_components_none(self) -> None:
         """Only loop_prevention available -> max score 10.0 on single component."""
@@ -126,7 +126,7 @@ class TestBehavioralTelemetryStrategy:
                 delegation_success=True,
                 delegation_response_seconds=0.0,
                 conflict_constructiveness=1.0,
-                meeting_contribution=1.0,
+                discussion_contribution=1.0,
                 loop_triggered=False,
                 handoff_completeness=1.0,
             ),
@@ -136,7 +136,7 @@ class TestBehavioralTelemetryStrategy:
             "delegation_success": 0.50,
             "delegation_response_latency": 0.10,
             "conflict_constructiveness": 0.10,
-            "meeting_contribution": 0.10,
+            "discussion_contribution": 0.10,
             "loop_prevention": 0.10,
             "handoff_completeness": 0.10,
         }

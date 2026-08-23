@@ -80,10 +80,9 @@ const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_OPTIONS.map(
  * in the enum, so the dashboard must only offer known values.
  */
 const COMMUNICATION_PATTERN_OPTIONS = [
-  { value: 'hybrid', label: 'Hybrid: mix of event-driven, hierarchical, and meeting-based' },
+  { value: 'hybrid', label: 'Hybrid: mix of event-driven and hierarchical' },
   { value: 'event_driven', label: 'Event-driven: async messages on topic channels' },
   { value: 'hierarchical', label: 'Hierarchical: chain-of-command routing' },
-  { value: 'meeting_based', label: 'Meeting-based: scheduled synchronous ceremonies' },
 ] as const
 
 const VALID_COMM_PATTERNS: ReadonlySet<string> = new Set(

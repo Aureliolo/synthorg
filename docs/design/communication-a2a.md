@@ -131,7 +131,7 @@ a bidirectional reference for the gateway translation layer.
 | `DelegationResult` | `tasks/get` response | Task completion/status |
 | `TaskExecution` state | Task object + `status` | Ongoing task tracking |
 | MessageBus channels | - | No A2A equivalent; internal routing only |
-| Meeting protocols | - | No A2A equivalent; internal coordination only |
+| Group conversations | - | No A2A equivalent; internal coordination only |
 
 ## SSE Streaming
 

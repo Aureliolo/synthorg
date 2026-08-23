@@ -1,8 +1,8 @@
 # module-kind: tests
 """Acceptance: one human, several agents, attributed round-robin.
 
-Drives the REAL :class:`GroupChatService` over the REAL meeting agent
-caller (``build_meeting_agent_caller``) backed by a single
+Drives the REAL :class:`GroupChatService` over the REAL multi-agent
+caller (``build_agent_caller``) backed by a single
 ``ScriptedDriver`` -- zero LLM spend, full path (provider -> caller ->
 persona render -> service -> persistence). Three C-suite agents share
 one ``test-provider``, so the driver replays its three scripted
@@ -19,7 +19,7 @@ captured by a recording strategy wrapping the sequenced replay.
 import pytest
 
 from synthorg.communication.conversation.enums import ConversationRole
-from synthorg.communication.meeting.agent_caller import build_meeting_agent_caller
+from synthorg.communication.multi_agent import build_agent_caller
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
@@ -178,7 +178,7 @@ class TestGroupChatE2E:
         )
         provider = ScriptedDriver("test-provider", strategy=strategy)
         provider_registry = ProviderRegistry({"test-provider": provider})
-        agent_caller = build_meeting_agent_caller(
+        agent_caller = build_agent_caller(
             agent_registry=registry,
             provider_registry=provider_registry,
         )

@@ -1,11 +1,11 @@
 schema_version: 1
-last_generated_utc: '2026-08-23T15:58:47Z'
-generator_revision: 9df56f7e6
+last_generated_utc: '2026-08-23T21:58:20Z'
+generator_revision: 8645e2d2b
 stats:
   tests:
-    raw: 49184
-    rounded: 49000
-    display: 49,000+
+    raw: 47360
+    rounded: 47000
+    display: 47,000+
   providers_curated:
     raw: 21
     display: '21'
@@ -19,14 +19,14 @@ stats:
     raw: 132
     display: '132'
   mcp_tools:
-    raw: 242
-    display: '242'
+    raw: 234
+    display: '234'
   mcp_domains:
     raw: 22
     display: '22'
   settings_namespaces:
-    raw: 36
-    display: '36'
+    raw: 35
+    display: '35'
 sources:
   tests: uv run python -m pytest --collect-only -q
   providers_curated: synthorg.providers.presets.list_featured_presets

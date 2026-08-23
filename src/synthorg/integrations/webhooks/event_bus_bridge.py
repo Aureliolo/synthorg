@@ -1,7 +1,7 @@
 """Webhook event bus bridge.
 
-Publishes verified webhook events onto the SynthOrg message bus
-so that ``ExternalTriggerStrategy`` and other consumers can react.
+Publishes verified webhook events onto the SynthOrg message bus so
+subscribers of the ``#webhooks`` channel can react.
 """
 
 import copy

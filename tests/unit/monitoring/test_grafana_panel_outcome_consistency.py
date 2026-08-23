@@ -19,7 +19,6 @@ import pytest
 from synthorg.observability.prometheus_labels import (
     VALID_APPROVAL_OUTCOMES,
     VALID_BLUEPRINT_OUTCOMES,
-    VALID_ESCALATION_OUTCOMES,
 )
 from tests._shared import JsonDict
 
@@ -35,7 +34,6 @@ _DASHBOARD_PATH = (
 # Map ``metric_name`` -> ``frozenset`` allowlist for each panel we pin.
 _METRIC_TO_ALLOWLIST: dict[str, frozenset[str]] = {
     "synthorg_approval_decisions_total": VALID_APPROVAL_OUTCOMES,
-    "synthorg_escalation_outcomes_total": VALID_ESCALATION_OUTCOMES,
     "synthorg_blueprint_instantiations_total": VALID_BLUEPRINT_OUTCOMES,
 }
 
@@ -64,9 +62,7 @@ def _panel_metric(panel: JsonDict) -> str | None:
     return None
 
 
-_ALL_KNOWN_OUTCOMES: frozenset[str] = (
-    VALID_APPROVAL_OUTCOMES | VALID_ESCALATION_OUTCOMES | VALID_BLUEPRINT_OUTCOMES
-)
+_ALL_KNOWN_OUTCOMES: frozenset[str] = VALID_APPROVAL_OUTCOMES | VALID_BLUEPRINT_OUTCOMES
 
 
 def _outcomes_in_description(description: str, allowlist: frozenset[str]) -> set[str]:

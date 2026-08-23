@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from synthorg._core.features import discover_features
 from synthorg.api.auth.service import AuthService
-from synthorg.api.auto_wire import MeetingWireResult, Phase1Result
+from synthorg.api.auto_wire import Phase1Result
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.integrations_wiring import IntegrationsBundle
 from synthorg.api.state import AppState
@@ -33,7 +33,6 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
-from synthorg.communication.meeting.scheduler import MeetingEventPublisher
 from synthorg.config.schema import RootConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
@@ -62,19 +61,18 @@ class ConstructionDeps:
     Built once by ``create_app`` from the construction-phase auto-wiring
     (the persistence-independent services) and passed to
     :func:`run_construction_wiring`. Each feature's ``construction_wirer``
-    plucks the fields it needs and swaps its populated slice in. The three
-    auto-wire result bundles (``phase1`` / ``meeting_wire`` / ``integrations``)
-    are nested so a wirer reads them by provenance.
+    plucks the fields it needs and swaps its populated slice in. The two
+    auto-wire result bundles (``phase1`` / ``integrations``) are nested so a
+    wirer reads them by provenance.
 
     A frozen dataclass (not a Pydantic model) so it carries the plain
-    service references -- including the ``Phase1Result`` / ``MeetingWireResult``
-    NamedTuples -- without Pydantic introspecting their nested forward refs;
+    service references -- including the ``Phase1Result`` NamedTuple --
+    without Pydantic introspecting their nested forward refs;
     ``frozen=True`` keeps the bundle immutable between wirers.
     """
 
     effective_config: RootConfig
     phase1: Phase1Result
-    meeting_wire: MeetingWireResult
     integrations: IntegrationsBundle
     approval_store: ApprovalStoreProtocol
     autonomy_change_strategy: AutonomyChangeStrategy
@@ -83,7 +81,6 @@ class ConstructionDeps:
     event_stream_hub: EventStreamHub
     interrupt_store: InterruptStore
     cursor_secret: CursorSecret
-    meeting_event_publisher: MeetingEventPublisher | None = None
     persistence: PersistenceBackend | None = None
     persistence_expected: bool = False
     settings_service: SettingsService | None = None

@@ -83,7 +83,7 @@ the class, and `EntityDefinition` objects are built on first access via
 
 ## Core Entities
 
-The following 12 models are registered at startup:
+The following 11 models are registered at startup:
 
 | Entity | Model | Source |
 |--------|-------|--------|
@@ -96,7 +96,6 @@ The following 12 models are registered at startup:
 | Approval | `core.approval.ApprovalItem` | AUTO |
 | CostRecord | `budget.cost_record.CostRecord` | AUTO |
 | Message | `communication.message.Message` | AUTO |
-| Meeting | `communication.meeting.models.MeetingRecord` | AUTO |
 | OrgFact | `memory.org.models.OrgFact` | AUTO |
 | DecisionRecord | `engine.decisions.DecisionRecord` | AUTO |
 

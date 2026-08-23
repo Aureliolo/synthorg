@@ -186,7 +186,6 @@ ENFORCED SettingsReadService #2535 -- constructed in api/lifecycle_helpers/setti
 ENFORCED ConnectionService #2535 -- constructed in integrations/_construction.py::wire_construction over the enabled-gated connection catalog; backs the synthorg_connections_* MCP tools
 ENFORCED WebhookService #2535 -- constructed in api/lifecycle_runner_support.py::_wire_webhook_request_services over an in-process definition store; backs the synthorg_webhooks_* MCP tools
 ENFORCED CoordinationService #2535 -- constructed in coordination/_construction.py::wire_construction over the coordination metrics store; backs the synthorg_coordination_* MCP read tools
-ENFORCED CeremonyPolicyService #2535 -- constructed in coordination/_construction.py::wire_construction over the app state; backs the synthorg_ceremony_policy_* MCP read tools
 ENFORCED AgentHealthService #2535 -- constructed in hr/_construction.py::wire_construction over the performance tracker; backs the synthorg_agents_get_health MCP tool
 ENFORCED PersonalityService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_personality_service over the custom-preset repo; backs the synthorg_personalities_* MCP tools
 ENFORCED ActivityFeedService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_activity_feed_service over the lifecycle-event repo + performance tracker; backs the synthorg_agents_get_activity + synthorg_activities_list MCP tools
@@ -212,9 +211,6 @@ ENFORCED build_rollback_executor #2436 -- called in api/lifecycle_helpers/meta_a
 ENFORCED TaskAssignmentService #2460 -- constructed in engine/pipeline/factory.py::build_work_pipeline from the task_assignment.strategy map; the solo-path assignment service adding status validation + project-team filter (unknown strategy now fails the build).
 ENFORCED AstSemanticAnalyzer #2460 -- constructed in workers/_coordinator_assembly.py::_build_workspace_strategy and threaded into the planner-worktrees workspace strategy as its semantic analyzer.
 ENFORCED DiskQuotaWatcher #2460 -- constructed in workers/_coordinator_assembly.py::_build_workspace_strategy from ws_config.planner_worktrees; the per-worktree disk-quota watcher signalling warning/exceeded.
-ENFORCED ConsensusVelocityDetector #2460 -- constructed in api/_meeting_strategy_dispatch.py::build_consensus_hook and injected into StructuredPhasesProtocol so premature-consensus forces the discussion round.
-ENFORCED DefaultPremortemExecutor #2460 -- constructed in api/_meeting_strategy_dispatch.py::build_premortem_hook and injected into StructuredPhasesProtocol so the synthesis gains a premortem section.
-ENFORCED ProgressiveTierResolver #2460 -- constructed in api/_meeting_strategy_dispatch.py::build_budget_scaler and passed to MeetingScheduler as the progressive-tier budget scaler.
 ENFORCED build_recovery_strategy #2478 -- called by workers/_engine_assembly.py::_build_recovery_strategy, which threads the configured EngineRecoveryConfig (plus the backend checkpoint/heartbeat repos) into the boot AgentEngine's crash-recovery strategy.
 ENFORCED _wire_alert_repo N/A -- called by api/lifecycle_helpers/feature_wiring.py right after _wire_ab_test_repo and before _wire_org_inflection_monitor; boots the durable org-alert repository (SQLite/Postgres) backing PersistentAlertSink and GET /meta/alerts.
 ENFORCED SQLiteAlertRepository N/A -- constructed in api/lifecycle_helpers/meta_wiring.py::_build_alert_repo for the sqlite backend; backs PersistentAlertSink and GET /meta/alerts.

@@ -986,8 +986,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._project_cost_claim_seen_stub: AsyncMock | None = None
         self._fine_tune_checkpoints_stub: AsyncMock | None = None
         self._fine_tune_runs_stub: AsyncMock | None = None
-        self._meeting_cooldown_stub: AsyncMock | None = None
-        self._ceremony_scheduler_state_stub: AsyncMock | None = None
         self._tracked_container_stub: AsyncMock | None = None
         self._idempotency_keys_stub: AsyncMock | None = None
         self._seen_claims_stub: AsyncMock | None = None
@@ -1574,39 +1572,6 @@ class FakePersistenceBackend(PersistenceBackend):
 
     @property
     @override
-    def meeting_cooldown(self) -> AsyncMock:
-        """Cached fake meeting cooldown repository."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.persistence.meeting_cooldown_protocol import (
-            MeetingCooldownRepository,
-        )
-
-        if self._meeting_cooldown_stub is None:
-            stub = AsyncMock(spec=MeetingCooldownRepository)
-            stub.load_all.return_value = ()
-            self._meeting_cooldown_stub = stub
-        return self._meeting_cooldown_stub
-
-    @property
-    @override
-    def ceremony_scheduler_state(self) -> AsyncMock:
-        """Cached fake ceremony scheduler state repository."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.persistence.ceremony_scheduler_state_protocol import (
-            CeremonySchedulerStateRepository,
-        )
-
-        if self._ceremony_scheduler_state_stub is None:
-            stub = AsyncMock(spec=CeremonySchedulerStateRepository)
-            stub.get.return_value = None
-            stub.list_items.return_value = ()
-            self._ceremony_scheduler_state_stub = stub
-        return self._ceremony_scheduler_state_stub
-
-    @property
-    @override
     def tracked_containers(self) -> AsyncMock:
         """Cached fake tracked-container repository."""
         from unittest.mock import AsyncMock
@@ -1730,19 +1695,6 @@ class FakePersistenceBackend(PersistenceBackend):
         stub.record_failure.return_value = False
         stub.lockout_duration_seconds = 0
         return stub
-
-    @override
-    def build_escalations(
-        self,
-        *,
-        notify_channel: str | None = None,
-    ) -> AsyncMock:
-        """Fake escalation repository builder."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.persistence.escalation_protocol import EscalationQueueRepository
-
-        return AsyncMock(spec=EscalationQueueRepository)
 
     @override
     def build_ontology_versioning(self) -> AsyncMock:

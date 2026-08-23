@@ -4,8 +4,8 @@ A single place that turns an :class:`AgentIdentity` into a compact
 ``system`` prompt (role, department, personality) carrying the house-style
 directives in scope for the agent and the canonical
 ``untrusted_content_directive``. Used by the planning, evaluation, retro and
-plan-review sessions, the meeting agent caller, the concern-routed proposer
-responder, and the multi-agent group chat, so every persona-driven LLM call
+plan-review sessions, the multi-agent conversation caller, the concern-routed
+proposer responder, and the group chat, so every persona-driven LLM call
 fences untrusted content identically and is told the style rules its output
 is judged against.
 """

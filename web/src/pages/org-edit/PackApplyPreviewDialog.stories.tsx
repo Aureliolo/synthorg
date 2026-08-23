@@ -5,7 +5,6 @@ import type { Department } from '@/api/types/org'
 
 const baseDept = {
   autonomy_level: null,
-  ceremony_policy: null,
   head: null,
   head_id: null,
   policies: {

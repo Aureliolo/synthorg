@@ -74,7 +74,7 @@ describe('format helpers', () => {
     }
   })
 
-  // Real WS payloads (sanitizeApproval / sanitizeMeeting / sanitizeTask)
+  // Real WS payloads (sanitizeApproval / sanitizeTask)
   // can produce null/undefined timestamps; the helper short-circuits to
   // ``'--'`` early. Bench measures the null-check branch cost.
   bench('formatRelativeTime x100 (null/undefined fast path)', () => {

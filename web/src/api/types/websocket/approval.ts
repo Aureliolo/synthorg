@@ -1,4 +1,4 @@
-/** Approval, coordination, and meeting WebSocket payload interfaces. */
+/** Approval and coordination WebSocket payload interfaces. */
 
 import type { ApprovalResponse } from '@/api/types/approvals'
 
@@ -41,22 +41,4 @@ export interface WsCoordinationFailedPayload {
   is_success?: boolean | null
   total_duration_seconds?: number | null
   error?: string | null
-}
-
-export interface WsMeetingStartedPayload {
-  meeting_id: string
-  meeting_type: string
-  project_id?: string | null
-  department?: string | null
-  readonly participants: readonly string[]
-}
-
-export interface WsMeetingCompletedPayload extends WsMeetingStartedPayload {
-  duration_seconds?: number | null
-  summary?: string | null
-}
-
-export interface WsMeetingFailedPayload extends WsMeetingStartedPayload {
-  error?: string | null
-  reason?: string | null
 }

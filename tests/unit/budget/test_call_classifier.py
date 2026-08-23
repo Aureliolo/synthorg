@@ -18,7 +18,7 @@ def _ctx(  # noqa: PLR0913
     task_id: str = "task-1",
     is_delegation: bool = False,
     is_review: bool = False,
-    is_meeting: bool = False,
+    is_group_discussion: bool = False,
     is_planning_phase: bool = False,
     is_system_prompt: bool = False,
     is_embedding_operation: bool = False,
@@ -32,7 +32,7 @@ def _ctx(  # noqa: PLR0913
         task_id=task_id,
         is_delegation=is_delegation,
         is_review=is_review,
-        is_meeting=is_meeting,
+        is_group_discussion=is_group_discussion,
         is_planning_phase=is_planning_phase,
         is_system_prompt=is_system_prompt,
         is_embedding_operation=is_embedding_operation,
@@ -118,7 +118,7 @@ class TestRulesBasedClassifier:
 
     def test_meeting_maps_to_coordination(self) -> None:
         assert (
-            self.classifier.classify(_ctx(is_meeting=True))
+            self.classifier.classify(_ctx(is_group_discussion=True))
             == LLMCallCategory.COORDINATION
         )
 
@@ -193,7 +193,7 @@ class TestClassifyCallConvenienceFunction:
             ({"is_embedding_operation": True}, LLMCallCategory.EMBEDDING),
             ({"is_delegation": True}, LLMCallCategory.COORDINATION),
             ({"is_review": True}, LLMCallCategory.COORDINATION),
-            ({"is_meeting": True}, LLMCallCategory.COORDINATION),
+            ({"is_group_discussion": True}, LLMCallCategory.COORDINATION),
             ({"is_planning_phase": True}, LLMCallCategory.SYSTEM),
             ({"is_system_prompt": True}, LLMCallCategory.SYSTEM),
             ({"is_quality_judge": True}, LLMCallCategory.SYSTEM),

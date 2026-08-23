@@ -292,8 +292,6 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             updates["autonomy_level"] = data.autonomy_level
         if "teams" in data.model_fields_set:
             updates["teams"] = tuple(data.teams) if data.teams else ()
-        if "ceremony_policy" in data.model_fields_set:
-            updates["ceremony_policy"] = data.ceremony_policy
         return updates
 
     @override

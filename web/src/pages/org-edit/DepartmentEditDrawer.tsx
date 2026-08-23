@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, Users } from 'lucide-react'
 import type { DepartmentHealth } from '@/api/types/analytics'
-import type { CeremonyPolicyConfig } from '@/api/types/ceremony-policy'
 import type {
   CompanyConfig,
   CreateTeamRequest,
@@ -14,7 +13,6 @@ import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
-import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
 import { TeamListSection } from './TeamListSection'
 import { useDrawerDelete } from './use-drawer-delete'
 
@@ -36,8 +34,6 @@ export interface DepartmentEditDrawerProps {
 interface DepartmentEditForm {
   budgetPercent: string
   setBudgetPercent: (value: string) => void
-  ceremonyPolicy: CeremonyPolicyConfig | null
-  setCeremonyPolicy: (policy: CeremonyPolicyConfig | null) => void
   submitError: string | null
   projectedTotal: number
   budgetWouldExceed: boolean
@@ -51,7 +47,6 @@ interface DepartmentEditForm {
 function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEditForm {
   const { department, config, onUpdate, onDelete, onClose } = props
   const [budgetPercent, setBudgetPercent] = useState('0')
-  const [ceremonyPolicy, setCeremonyPolicy] = useState<CeremonyPolicyConfig | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const del = useDrawerDelete(department?.name, onDelete, onClose)
   const { setDeleteOpen, setDeleting } = del
@@ -62,7 +57,6 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
       prevDepartmentRef.current = department
       if (department) {
         setBudgetPercent(String(department.budget_percent))
-        setCeremonyPolicy(department.ceremony_policy ?? null)
         setSubmitError(null)
       }
       setDeleteOpen(false)
@@ -88,21 +82,16 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
       return
     }
     // `autonomy_level` is intentionally omitted: this drawer only edits
-    // budget and ceremony policy, so sending null would wipe a value
-    // managed by the dedicated agent autonomy editor on every save.
-    const result = await onUpdate(department.name, {
-      budget_percent: pct,
-      ceremony_policy: ceremonyPolicy,
-    })
+    // budget, so sending null would wipe a value managed by the dedicated
+    // agent autonomy editor on every save.
+    const result = await onUpdate(department.name, { budget_percent: pct })
     // Store owns the toast; close only on success.
     if (result !== null) onClose()
-  }, [department, budgetPercent, ceremonyPolicy, onUpdate, onClose])
+  }, [department, budgetPercent, onUpdate, onClose])
 
   return {
     budgetPercent,
     setBudgetPercent,
-    ceremonyPolicy,
-    setCeremonyPolicy,
     submitError,
     projectedTotal,
     budgetWouldExceed: projectedTotal > 100.01,
@@ -177,12 +166,6 @@ function DepartmentEditBody({
         value={form.budgetPercent}
         onChange={(e) => form.setBudgetPercent(e.target.value)}
         hint="Percentage of company budget (0-100)"
-      />
-
-      <DepartmentCeremonyOverride
-        policy={form.ceremonyPolicy}
-        onChange={form.setCeremonyPolicy}
-        disabled={saving}
       />
 
       <DepartmentBudgetHint

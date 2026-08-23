@@ -54,7 +54,6 @@ import { boardHandlers } from './board'
 import { brownfieldHandlers } from './brownfield'
 import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
-import { ceremonyPolicyHandlers } from './ceremony-policy'
 import { charterHandlers } from './charter'
 import { chatQuestionsHandlers } from './chat-questions'
 import { clientsHandlers } from './clients'
@@ -66,7 +65,6 @@ import { coordinationHandlers } from './coordination'
 import { customRulesHandlers } from './custom-rules'
 import { decompositionHandlers } from './decomposition'
 import { deliverableReceiptsHandlers } from './deliverableReceipts'
-import { escalationsHandlers } from './escalations'
 import { experimentsHandlers } from './experiments'
 import { fineTuningHandlers } from './fine-tuning'
 import { gateVerdictsHandlers } from './gate-verdicts'
@@ -76,7 +74,6 @@ import { interruptsHandlers } from './interrupts'
 import { knowledgeHandlers } from './knowledge'
 import { learningHandlers } from './learning'
 import { mcpCatalogDefaultHandlers } from './mcp-catalog'
-import { meetingsHandlers } from './meetings'
 import { memoryHandlers } from './memory'
 import { messagesHandlers } from './messages'
 import { metaHandlers } from './meta'
@@ -129,7 +126,6 @@ export const defaultHandlers = [
   ...brownfieldHandlers,
   ...budgetHandlers,
   ...capabilitiesHandlers,
-  ...ceremonyPolicyHandlers,
   ...charterHandlers,
   ...chatQuestionsHandlers,
   ...clientsHandlers,
@@ -141,7 +137,6 @@ export const defaultHandlers = [
   ...customRulesHandlers,
   ...decompositionHandlers,
   ...deliverableReceiptsHandlers,
-  ...escalationsHandlers,
   ...experimentsHandlers,
   ...fineTuningHandlers,
   ...gateVerdictsHandlers,
@@ -151,7 +146,6 @@ export const defaultHandlers = [
   ...knowledgeHandlers,
   ...learningHandlers,
   ...mcpCatalogDefaultHandlers,
-  ...meetingsHandlers,
   ...memoryHandlers,
   ...messagesHandlers,
   ...metaHandlers,

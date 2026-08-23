@@ -12,7 +12,6 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
-from synthorg.organization.state import OrganizationStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 
@@ -88,36 +87,6 @@ async def fetch_workflow_definitions(
         )
         return None
     return frozenset(str(d.id) for d in definitions)
-
-
-async def fetch_departments(app_state: AppState) -> frozenset[str] | None:
-    """Pull the active department-name set from the department service.
-
-    Same return contract as :func:`fetch_workflow_definitions`:
-    empty frozenset for "service not wired", real set on success,
-    ``None`` on exception so the merge step preserves the previous
-    allowlist.
-
-    Returns:
-        ``frozenset()`` when the department service is not wired, the
-        live frozenset of department-name strings on success, or
-        ``None`` on a fetch exception.
-    """
-    try:
-        dept_service = app_state.slice(OrganizationStateSlice).department_service
-        if dept_service is None:
-            return frozenset()
-        records, _ = await dept_service.list_departments()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        log_exception_redacted(
-            logger,
-            METRICS_SCRAPE_FAILED,
-            exc,
-            component="department_service",
-        )
-        return None
-    return frozenset(str(r.name) for r in records)
 
 
 def fetch_provider_names(app_state: AppState) -> frozenset[str] | None:

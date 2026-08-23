@@ -2,7 +2,7 @@
 """Acceptance: agent-initiated invite, human consent, handover.
 
 Drives the REAL :class:`GroupChatService` + :class:`GroupInviteCoordinator`
-over the REAL meeting agent caller (``build_meeting_agent_caller``)
+over the REAL multi-agent caller (``build_agent_caller``)
 backed by a single ``ScriptedDriver`` -- zero LLM spend, full path
 (provider -> caller -> persona render -> service -> coordinator ->
 persistence). Consent is granted through the REAL
@@ -31,7 +31,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalSource
-from synthorg.communication.meeting.agent_caller import build_meeting_agent_caller
+from synthorg.communication.multi_agent import build_agent_caller
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
@@ -131,7 +131,7 @@ def _build_service(
         store (the latter two shared with the coordinator).
     """
     provider = ScriptedDriver("test-provider", strategy=strategy)
-    agent_caller = build_meeting_agent_caller(
+    agent_caller = build_agent_caller(
         agent_registry=registry,
         provider_registry=ProviderRegistry({"test-provider": provider}),
     )

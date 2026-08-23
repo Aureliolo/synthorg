@@ -2,11 +2,11 @@
 """On-startup wiring for the ambient strategic-context provider.
 
 Resolves a :class:`StrategicContext` snapshot from the configured
-``ContextSource`` (config / memory / meeting / composite) via
-:func:`build_context`, binding the live memory backend and meeting
-orchestrator, and publishes it on the process-global ambient holder the
-synchronous prompt path reads. Refreshed once at boot; the snapshot is
-slow-changing organisation-wide state.
+``ContextSource`` (config / memory / composite) via
+:func:`build_context`, binding the live memory backend, and publishes it
+on the process-global ambient holder the synchronous prompt path reads.
+Refreshed once at boot; the snapshot is slow-changing organisation-wide
+state.
 
 Best-effort: a resolver failure leaves the ambient provider unbound so
 the prompt path falls back to the static config context rather than
@@ -27,7 +27,6 @@ async def wire_strategy_context(app_state: AppState) -> None:
     Args:
         app_state: The application state holding config + collaborators.
     """
-    from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
     from synthorg.engine.strategy.context import build_context  # noqa: PLC0415
     from synthorg.engine.strategy.models import StrategicContext  # noqa: PLC0415
     from synthorg.engine.strategy.strategic_context_provider import (  # noqa: PLC0415
@@ -40,9 +39,6 @@ async def wire_strategy_context(app_state: AppState) -> None:
         return await build_context(
             app_state.config.strategy,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
-            meeting_records=app_state.slice(
-                CommunicationStateSlice
-            ).meeting_orchestrator,
         )
 
     provider = CachedStrategicContextProvider(resolver=_resolve)

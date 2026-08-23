@@ -28,14 +28,13 @@ class TestAgUiEventType:
             (AgUiEventType.APPROVAL_RESUMED, "approval_resumed"),
             (AgUiEventType.INFO_REQUEST_INTERRUPT, "info_request_interrupt"),
             (AgUiEventType.INFO_REQUEST_RESUMED, "info_request_resumed"),
-            (AgUiEventType.DISSENT, "synthorg:dissent"),
         ],
     )
     def test_member_value(self, member: AgUiEventType, expected: str) -> None:
         assert member.value == expected
 
     def test_all_members_count(self) -> None:
-        assert len(AgUiEventType) == 17
+        assert len(AgUiEventType) == 16
 
 
 @pytest.mark.unit

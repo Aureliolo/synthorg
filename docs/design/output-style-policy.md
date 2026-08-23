@@ -55,7 +55,7 @@ agent is judged at its boundary against rules its own prompt never carried:
   renders the same directives through the same `build_house_style_section`,
   after the persona preamble and before the untrusted-content directive. Its
   consumers are the planning session, the evaluation session, the retro
-  session, the plan-review session, the meeting agent caller, and the chat
+  session, the plan-review session, the multi-agent caller, and the chat
   action.
 
 The provider is a process-global ambient snapshot (`provider.py`), set at boot

@@ -151,7 +151,6 @@ nav:
       - Notifications & Events: guides/notifications-and-events.md
       - Webhook Management: guides/webhook-management.md
       - A2A Federation: guides/a2a-federation.md
-      - Ceremony Scheduling Tuning: guides/ceremony-scheduling-tuning.md
       - Workflow API Tutorial: guides/workflow-api.md
       - REST API Examples: guides/rest-api-examples.md
       - Human Interaction & API: guides/human-interaction.md
@@ -221,7 +220,6 @@ nav:
       - Page Structure & IA: design/page-structure.md
       - UX Guidelines: design/ux-guidelines.md
       - UX Research: design/ux-research.md
-      - Ceremony Scheduling: design/ceremony-scheduling.md
       - Web HTTP Adapter: design/web-http-adapter.md
       - Web Active-Handle Detection: design/web-active-handle-detection.md
       - Internationalization: design/internationalization.md

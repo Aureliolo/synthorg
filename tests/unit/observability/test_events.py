@@ -36,28 +36,6 @@ from synthorg.observability.events.config import (
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
 )
-from synthorg.observability.events.conflict import (
-    CONFLICT_AMBIGUOUS_RESULT,
-    CONFLICT_AUTHORITY_DECIDED,
-    CONFLICT_AUTHORITY_FALLBACK,
-    CONFLICT_CROSS_DEPARTMENT,
-    CONFLICT_DEBATE_JUDGE_DECIDED,
-    CONFLICT_DEBATE_STARTED,
-    CONFLICT_DETECTED,
-    CONFLICT_DISSENT_QUERIED,
-    CONFLICT_DISSENT_RECORDED,
-    CONFLICT_ESCALATED,
-    CONFLICT_HIERARCHY_ERROR,
-    CONFLICT_HYBRID_AUTO_RESOLVED,
-    CONFLICT_HYBRID_REVIEW,
-    CONFLICT_LCM_LOOKUP,
-    CONFLICT_NO_RESOLVER,
-    CONFLICT_RESOLUTION_FAILED,
-    CONFLICT_RESOLUTION_STARTED,
-    CONFLICT_RESOLVED,
-    CONFLICT_STRATEGY_ERROR,
-    CONFLICT_VALIDATION_ERROR,
-)
 from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_HIERARCHY_BUILT,
@@ -254,7 +232,6 @@ class TestEventConstants:
             "communication",
             "company",
             "config",
-            "conflict",
             "consolidation",
             "coordination",
             "correlation",
@@ -275,10 +252,10 @@ class TestEventConstants:
             "idempotency",
             "inflection",
             "mcp",
-            "meeting",
             "memory",
             "metrics",
             "middleware",
+            "multi_agent",
             "org_memory",
             "parallel",
             "performance",
@@ -640,28 +617,6 @@ class TestEventConstants:
         assert INTAKE_REQUEST_ACCEPTED == "intake.request.accepted"
         assert INTAKE_REQUEST_REJECTED == "intake.request.rejected"
 
-    def test_conflict_events_exist(self) -> None:
-        assert CONFLICT_DETECTED == "conflict.detected"
-        assert CONFLICT_RESOLUTION_STARTED == "conflict.resolution.started"
-        assert CONFLICT_RESOLVED == "conflict.resolved"
-        assert CONFLICT_RESOLUTION_FAILED == "conflict.resolution.failed"
-        assert CONFLICT_ESCALATED == "conflict.escalated"
-        assert CONFLICT_DISSENT_RECORDED == "conflict.dissent.recorded"
-        assert CONFLICT_AUTHORITY_DECIDED == "conflict.authority.decided"
-        assert CONFLICT_DEBATE_STARTED == "conflict.debate.started"
-        assert CONFLICT_DEBATE_JUDGE_DECIDED == "conflict.debate.judge_decided"
-        assert CONFLICT_HYBRID_REVIEW == "conflict.hybrid.review"
-        assert CONFLICT_HYBRID_AUTO_RESOLVED == "conflict.hybrid.auto_resolved"
-        assert CONFLICT_CROSS_DEPARTMENT == "conflict.cross_department"
-        assert CONFLICT_LCM_LOOKUP == "conflict.lcm_lookup"
-        assert CONFLICT_DISSENT_QUERIED == "conflict.dissent.queried"
-        assert CONFLICT_VALIDATION_ERROR == "conflict.validation.error"
-        assert CONFLICT_NO_RESOLVER == "conflict.no_resolver"
-        assert CONFLICT_AUTHORITY_FALLBACK == "conflict.authority_fallback"
-        assert CONFLICT_AMBIGUOUS_RESULT == "conflict.ambiguous_result"
-        assert CONFLICT_HIERARCHY_ERROR == "conflict.hierarchy.error"
-        assert CONFLICT_STRATEGY_ERROR == "conflict.strategy.error"
-
     def test_task_assignment_events_exist(self) -> None:
         assert TASK_ASSIGNMENT_STARTED == "task_assignment.started"
         assert TASK_ASSIGNMENT_COMPLETE == "task_assignment.complete"
@@ -675,48 +630,20 @@ class TestEventConstants:
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"
 
-    def test_meeting_events_exist(self) -> None:
-        from synthorg.observability.events.meeting import (
-            MEETING_ACTION_ITEM_EXTRACTED,
-            MEETING_AGENT_CALLED,
-            MEETING_AGENT_RESPONDED,
-            MEETING_BUDGET_EXHAUSTED,
-            MEETING_COMPLETED,
-            MEETING_CONFLICT_DETECTED,
-            MEETING_CONTRIBUTION_RECORDED,
-            MEETING_FAILED,
-            MEETING_PHASE_COMPLETED,
-            MEETING_PHASE_STARTED,
-            MEETING_PROTOCOL_NOT_FOUND,
-            MEETING_STARTED,
-            MEETING_SUMMARY_GENERATED,
-            MEETING_SUMMARY_SKIPPED,
-            MEETING_SYNTHESIS_SKIPPED,
-            MEETING_TASK_CREATED,
-            MEETING_TASK_CREATION_FAILED,
-            MEETING_TOKENS_RECORDED,
-            MEETING_VALIDATION_FAILED,
+    def test_multi_agent_events_exist(self) -> None:
+        from synthorg.observability.events.multi_agent import (
+            MULTI_AGENT_BUDGET_EXHAUSTED,
+            MULTI_AGENT_CALL_FAILED,
+            MULTI_AGENT_CALLED,
+            MULTI_AGENT_RESPONDED,
+            MULTI_AGENT_VALIDATION_FAILED,
         )
 
-        assert MEETING_STARTED == "meeting.lifecycle.started"
-        assert MEETING_COMPLETED == "meeting.lifecycle.completed"
-        assert MEETING_FAILED == "meeting.lifecycle.failed"
-        assert MEETING_BUDGET_EXHAUSTED == "meeting.lifecycle.budget_exhausted"
-        assert MEETING_PHASE_STARTED == "meeting.phase.started"
-        assert MEETING_PHASE_COMPLETED == "meeting.phase.completed"
-        assert MEETING_AGENT_CALLED == "meeting.agent.called"
-        assert MEETING_AGENT_RESPONDED == "meeting.agent.responded"
-        assert MEETING_CONTRIBUTION_RECORDED == "meeting.contribution.recorded"
-        assert MEETING_CONFLICT_DETECTED == "meeting.conflict.detected"
-        assert MEETING_SUMMARY_GENERATED == "meeting.summary.generated"
-        assert MEETING_ACTION_ITEM_EXTRACTED == "meeting.action_item.extracted"
-        assert MEETING_TASK_CREATED == "meeting.task.created"
-        assert MEETING_TASK_CREATION_FAILED == "meeting.task.creation_failed"
-        assert MEETING_VALIDATION_FAILED == "meeting.validation.failed"
-        assert MEETING_PROTOCOL_NOT_FOUND == "meeting.protocol.not_found"
-        assert MEETING_SYNTHESIS_SKIPPED == "meeting.synthesis.skipped"
-        assert MEETING_SUMMARY_SKIPPED == "meeting.summary.skipped"
-        assert MEETING_TOKENS_RECORDED == "meeting.tokens.recorded"
+        assert MULTI_AGENT_CALLED == "multi_agent.agent.called"
+        assert MULTI_AGENT_RESPONDED == "multi_agent.agent.responded"
+        assert MULTI_AGENT_CALL_FAILED == "multi_agent.agent.call_failed"
+        assert MULTI_AGENT_BUDGET_EXHAUSTED == "multi_agent.budget.exhausted"
+        assert MULTI_AGENT_VALIDATION_FAILED == "multi_agent.validation.failed"
 
     def test_workspace_events_exist(self) -> None:
         assert WORKSPACE_SETUP_START == "workspace.setup.start"

@@ -48,9 +48,6 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=(
-        "CoordinationService",
-        "CeremonyPolicyService",
-    ),
+    ghost_wired_symbols=("CoordinationService",),
     depends_on=(),
 )

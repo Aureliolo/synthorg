@@ -144,7 +144,7 @@ describe('wsEventToActivityItem (properties)', () => {
   it('always produces a valid ActivityItem', () => {
     const arbWsEvent: fc.Arbitrary<WsEvent> = fc.record({
       event_type: fc.constantFrom(...WS_EVENT_TYPES),
-      channel: fc.constantFrom('tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings'),
+      channel: fc.constantFrom('tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'plans'),
       timestamp: arbIsoTimestamp,
       payload: fc.record({
         agent_name: fc.option(fc.string({ minLength: 1, maxLength: 30 }), { nil: undefined }),

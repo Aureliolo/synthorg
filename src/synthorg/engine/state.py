@@ -1,9 +1,9 @@
 """Engine feature state slice (engine core / work pipeline).
 
 Holds the task engine, work pipeline, workflow services (definition,
-version, execution, subworkflow), evaluation version service, the
-ceremony scheduler, and the work-entry adapters (intake / objective /
-brownfield / task board). All fields are ``None`` until wired; readers
+version, execution, subworkflow), evaluation version service, and the
+work-entry adapters (intake / objective / brownfield / task board).
+All fields are ``None`` until wired; readers
 guard accordingly. The workflow rollback service lives on the api-core
 slice (it is an api-layer service) to keep this package free of an api
 dependency; the steering directive and flight recorder are owned by the
@@ -41,9 +41,6 @@ from synthorg.engine.review_staffing.scheduler import ReviewStaffingScheduler
 from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.run_recovery.scheduler import RunRecoveryScheduler
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.workflow.ceremony_scheduler import (
-    CeremonyScheduler,
-)
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
@@ -75,7 +72,6 @@ class EngineStateSlice(BaseFeatureStateSlice):
     evaluation_version_service: EvaluationVersionService | None = None
     error_taxonomy_store: ErrorTaxonomyStore | None = None
     evolution_service: EvolutionService | None = None
-    ceremony_scheduler: CeremonyScheduler | None = None
     kanban_board_service: KanbanBoardService | None = None
     sprint_service: SprintService | None = None
     project_rollup_service: ProjectRollupService | None = None

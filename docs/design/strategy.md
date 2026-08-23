@@ -4,10 +4,7 @@
 
 **Module**: `src/synthorg/engine/strategy/`
 
-Covers the core models, config, and prompt integration documented on this page,
-plus meeting integration: the strategy subsystem's premortem and
-consensus-velocity hooks are bound to the meeting package through
-`src/synthorg/api/_meeting_strategy_dispatch.py`.
+Covers the core models, config, and prompt integration documented on this page.
 
 ---
 
@@ -111,7 +108,7 @@ Weights must sum to 1.0. Composite score maps to cost tiers via thresholds.
 |------|----------------|----------------|
 | `minimal` | < 0.4 | Basic lens evaluation |
 | `moderate` | 0.4 <= score < 0.7 | Full lens + constitutional review |
-| `generous` | >= 0.7 | Full lens + constitutional + premortem |
+| `generous` | >= 0.7 | Full lens + constitutional + impact scoring |
 
 Resolution: `ProgressiveTierResolver` (score-based) or `FixedTierResolver` (config-based).
 
@@ -170,35 +167,16 @@ strategy:
       generous: 0.7
 ```
 
-## Meeting Policy Is Operator Settings
-
-Consensus-velocity and premortem policy are organisation-wide and change
-without a redeploy, so they are settings rather than boot config. They are
-absent from `StrategyConfig`. Declaring them in `config.yaml` is a load
-error rather than a value that validates and reaches nothing.
-
-| Setting | Type | Default |
-|---------|------|---------|
-| `strategy.consensus_velocity_action` | enum (`devil_advocate`, `slow_down`, `escalate`) | `devil_advocate` |
-| `strategy.consensus_velocity_threshold` | float 0.0-1.0 | `0.85` |
-| `strategy.premortem_participants` | enum (`all`, `strategic`, `none`) | `all` |
-
-The `meeting_protocol_registry` subsystem resolves all three when it
-activates and bakes them into the protocol factories, so it declares them
-with `rebuild_on_change=True`: a write drives a reconcile pass that
-replaces the registry, and the next meeting runs on the new policy. See
-[Subsystem Reconciliation](subsystem-reconciliation.md).
-
 ## Decision Records
 
 `DecisionRecord` includes three optional strategy metadata fields.
 All are nullable and default to `None` (or `()` for tuples); they
 are only populated when the strategy module is active during the
-meeting that produces the decision.
+session that produces the decision.
 
 ### RiskCard
 
-Per-decision risk metadata (populated by premortem phase):
+Per-decision risk metadata:
 
 - `decision_type`: Type of decision
 - `reversibility`: easily_reversible / moderate / locked_in
@@ -258,4 +236,4 @@ engine/strategy/
 
 ## References
 
-- Meeting integration binding: `src/synthorg/api/_meeting_strategy_dispatch.py`
+- Prompt injection entry point: `src/synthorg/engine/strategy/prompt_injection.py`

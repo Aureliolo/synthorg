@@ -744,7 +744,6 @@ waves; it runs small coordination groups drawn from the roster.
 | Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
 | Per plan-review panel (stakeholder leads reviewing a gated plan) | **4 default, 8 hard cap** | `coordination.plan_review_panel_size` |
 | Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
-| Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication-coordination.md#meeting-protocol)) |
 | Per-company / org roster | **No hard bound** | Organisational-simulation fidelity, not per-task reasoning efficiency |
 
 ### Multi-Agent Coordination Pipeline
@@ -941,14 +940,13 @@ routing decisions and wave outcomes:
 
 ## Coordination Service Layer
 
-MCP tools for coordination and ceremony policy route through dedicated service facades instead of reaching into the coordinator + scheduler directly, so the handler layer stays thin and audit logging + pagination stay uniform across every read.
+MCP tools for coordination route through dedicated service facades instead of reaching into the coordinator directly, so the handler layer stays thin and audit logging + pagination stay uniform across every read.
 
 | Service | Module | Role |
 |---|---|---|
 | `CoordinationService` | `src/synthorg/coordination/service.py` | Read-only facade over `coordination_metrics_store`. Powers `synthorg_coordination_get_task_metrics` (newest-first lookup for a given `task_id`, or `None` mapped to a `not_found` envelope) and `synthorg_coordination_metrics_list` (paged metrics with `(items, total)` return shape). Triggering coordination is intentionally out of scope on the MCP surface; callers trigger runs over REST (`POST /tasks/{task_id}/coordinate`) and inspect the resulting metrics via MCP. |
-| `CeremonyPolicyService` | `src/synthorg/coordination/ceremony_policy/service.py` | Glue between MCP handlers and the ceremony policy helpers in `api/controllers/ceremony_policy.py` + `engine/workflow/ceremony_policy.py`. Exposes `get_config`, `get_resolved`, and `get_active_strategy`. Returns a frozen `ActiveCeremonyStrategy` model that enforces the `strategy`/`sprint_id` coupling invariant via a cross-field validator: both fields are always either both set (a sprint is active and locked to a strategy) or both `None`. |
 
-The services import `AppState` for re-use of the existing 3-level resolution (`settings_service` + `config_resolver` + `ceremony_scheduler`) rather than introducing a parallel protocol stack.
+The service imports `AppState` for re-use of the existing resolution stack (`settings_service` + `config_resolver`) rather than introducing a parallel protocol stack.
 
 ### Runtime Coordinator Boot Modes
 

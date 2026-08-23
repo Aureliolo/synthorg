@@ -29,7 +29,6 @@ from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability._prometheus_label_fetchers import (
     agent_ids_from_agents,
-    fetch_departments,
     fetch_model_ids,
     fetch_provider_names,
     fetch_workflow_definitions,
@@ -358,27 +357,24 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
 
         Orchestrates three steps that each live in their own helper so
         this body stays under the 50-line ceiling: derive
-        ``agent_ids``, fan out the workflow + department fetches in
-        parallel, then merge under the process-global snapshot lock.
-        Each source's ``*_seeded`` flag flips ``True`` the first time
-        *its own* source produces a usable result and stays ``True``
-        thereafter, so a transient outage in one registry does not
-        suppress the unrelated allowlists.
+        ``agent_ids``, fetch the workflow definitions, then merge under
+        the process-global snapshot lock. Each source's ``*_seeded``
+        flag flips ``True`` the first time *its own* source produces a
+        usable result and stays ``True`` thereafter, so a transient
+        outage in one registry does not suppress the unrelated
+        allowlists.
         """
         agent_ids = agent_ids_from_agents(agents)
         provider_names = fetch_provider_names(app_state)
         model_ids = fetch_model_ids(app_state)
-        async with asyncio.TaskGroup() as tg:
-            wf_task = tg.create_task(fetch_workflow_definitions(app_state))
-            dept_task = tg.create_task(fetch_departments(app_state))
+        wf_ids = await fetch_workflow_definitions(app_state)
         # Tool names are not fetched here: each ``ToolRegistry`` registers its
         # own as it is built, which is both when the valid set changes and
         # the only moment the set is knowable. A scrape-time pull had nowhere
         # to read them from and returned the empty set forever.
         await self._merge_and_update_snapshot(
             agent_ids=agent_ids,
-            wf_ids=wf_task.result(),
-            dept_ids=dept_task.result(),
+            wf_ids=wf_ids,
             provider_names=provider_names,
             model_ids=model_ids,
         )
@@ -388,7 +384,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         *,
         agent_ids: frozenset[str] | None,
         wf_ids: frozenset[str] | None,
-        dept_ids: frozenset[str] | None,
         provider_names: frozenset[str] | None,
         model_ids: frozenset[str] | None,
     ) -> None:
@@ -414,9 +409,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             merged_workflow_ids = (
                 wf_ids if wf_ids is not None else previous.workflow_definition_ids
             )
-            merged_departments = (
-                dept_ids if dept_ids is not None else previous.departments
-            )
             merged_providers = (
                 provider_names if provider_names is not None else previous.providers
             )
@@ -427,7 +419,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 _LabelSnapshot(
                     agent_ids=merged_agent_ids,
                     workflow_definition_ids=merged_workflow_ids,
-                    departments=merged_departments,
                     providers=merged_providers,
                     model_ids=merged_model_ids,
                     agent_ids_seeded=previous.agent_ids_seeded
@@ -435,8 +426,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     workflow_definition_ids_seeded=(
                         previous.workflow_definition_ids_seeded or (wf_ids is not None)
                     ),
-                    departments_seeded=previous.departments_seeded
-                    or (dept_ids is not None),
                     providers_seeded=previous.providers_seeded
                     or (provider_names is not None),
                     model_ids_seeded=previous.model_ids_seeded
@@ -627,7 +616,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             On registry-fetch failure: ``None``. The caller keeps
             the previous label snapshot's agent_ids rather than
             blanking the allowlist, matching the behaviour of the
-            workflow / department fetchers in
+            workflow fetcher in
             :meth:`_rebuild_label_snapshot`.
         """
         if app_state.slice(HrStateSlice).agent_registry is None:

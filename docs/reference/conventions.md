@@ -433,8 +433,7 @@ would under `SystemClock`).
 
 ### Grandfathered callable shape
 
-`loop_prevention/{circuit_breaker,dedup,rate_limit}.py` and
-`communication/meeting/scheduler.py` deliberately use the
+`loop_prevention/{circuit_breaker,dedup,rate_limit}.py` deliberately use the
 `clock: Callable[[], float] = time.monotonic` shape rather than the `Clock`
 Protocol: the churn of converting ~30 test sites passing callables <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
 outweighs the testability win, so this is a permanent carve-out. New code uses
@@ -456,7 +455,7 @@ Domains exposing constants (the
 inventory; the names below are an illustrative subset, not the full
 set of top-level and nested domain modules):
 `api`, `tool`, `workflow_execution`, `approval_gate`, `hr`,
-`workers`, `meeting`, `engine`, `escalation`, `settings`,
+`workers`, `multi_agent`, `engine`, `settings`,
 `memory`, `persistence`, `mcp`, `metrics`, `tracing`, `telemetry`,
 `classification`, `verification`, `rollout`, `chief_of_staff`,
 `analytics`, `integrations`, `a2a`, `budget`, `quota`, `coordination`,
@@ -493,7 +492,7 @@ Every status enum hop (including non-terminal ones like
 `PRUNING_REQUEST_STATUS_TRANSITIONED`.
 
 Subsystems that already have terminal-state events
-(`MEETING_COMPLETED`, `WORKFLOW_EXEC_FAILED`, ...) keep those for
+(`WORKFLOW_EXEC_FAILED`, `SPRINT_TASK_COMPLETED`, ...) keep those for
 final-hop summaries. The transition log fires AFTER the persistence
 write succeeds, so the audit trail captures only transitions that
 actually landed; if pre-decision visibility is needed, emit a
@@ -544,7 +543,7 @@ Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
 tool_name=...)`. Do NOT emit custom `logger.error()` /
 `logger.warning()` calls from handlers -- these three helpers are
 the single source of truth so an event-name change touches one
-file, not <!--RS:mcp_tools-->242<!--/RS--> handler methods.
+file, not <!--RS:mcp_tools-->234<!--/RS--> handler methods.
 
 ## 16. Repository file structure
 
@@ -645,7 +644,6 @@ distinct from `save` (persist) and `delete` (remove).
 | Method | Where | Notes |
 |--------|-------|-------|
 | `activate_workflow` | `WorkflowExecutionController.activate_workflow` (`src/synthorg/api/controllers/workflow_executions.py`) | Spawns a workflow execution loop. The corresponding teardown verb in this controller is `WorkflowExecutionController.cancel_execution`: workflow runtimes are cancelled rather than "deactivated" because `cancel_*` is the lifecycle-end verb when an entity carries an in-flight execution that may need to surface a cancellation outcome. |
-| `activate_sprint` / `deactivate_sprint` | `CeremonyScheduler.activate_sprint` / `CeremonyScheduler.deactivate_sprint` (`src/synthorg/engine/workflow/ceremony_scheduler.py`) | Sprint window open / close. |
 | `deactivate_client` | `ClientController.deactivate_client` (`src/synthorg/api/controllers/clients.py`), `ClientFacadeService.deactivate_client` (`src/synthorg/integrations/mcp_services.py`) | Disables an integration client without deletion. |
 | `deactivate_all` | `FineTuneCheckpointRepository.deactivate_all` (`src/synthorg/persistence/fine_tune_protocol.py`, both backends) | Bulk deactivate of fine-tune jobs. |
 
@@ -711,7 +709,7 @@ a subpackage gets its own `errors.py` when it owns at least one
 bounded-context-specific error meaningful only inside that subpackage.
 The 30+ instances of `<package>/errors.py` under `src/synthorg/`
 (`backup/errors.py`, `budget/errors.py`,
-`communication/meeting/errors.py`, `engine/middleware/errors.py`,
+`engine/middleware/errors.py`,
 `hr/errors.py`, `memory/org/errors.py`, etc.) all follow this
 rule. Subpackages without their own bounded-context errors raise from
 the parent package's `errors.py` instead.

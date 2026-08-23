@@ -1406,57 +1406,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/ceremony-policy": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetProjectPolicy */
-        readonly get: operations["ApiV1CeremonyPolicyGetProjectPolicy"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/ceremony-policy/active": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetActiveStrategy */
-        readonly get: operations["ApiV1CeremonyPolicyActiveGetActiveStrategy"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/ceremony-policy/resolved": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetResolvedPolicy */
-        readonly get: operations["ApiV1CeremonyPolicyResolvedGetResolvedPolicy"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/clients": {
         readonly parameters: {
             readonly query?: never;
@@ -1768,74 +1717,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/conflicts/escalations": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListEscalations */
-        readonly get: operations["ApiV1ConflictsEscalationsListEscalations"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/conflicts/escalations/{escalation_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetEscalation */
-        readonly get: operations["ApiV1ConflictsEscalationsEscalationIdGetEscalation"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/conflicts/escalations/{escalation_id}/cancel": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** CancelEscalation */
-        readonly post: operations["ApiV1ConflictsEscalationsEscalationIdCancelCancelEscalation"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/conflicts/escalations/{escalation_id}/decision": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** SubmitDecision */
-        readonly post: operations["ApiV1ConflictsEscalationsEscalationIdDecisionSubmitDecision"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/connections": {
         readonly parameters: {
             readonly query?: never;
@@ -2079,25 +1960,6 @@ export type paths = {
         readonly head?: never;
         /** UpdateDepartment */
         readonly patch: operations["ApiV1DepartmentsNameUpdateDepartment"];
-        readonly trace?: never;
-    };
-    readonly "/api/v1/departments/{name}/ceremony-policy": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetDepartmentCeremonyPolicy */
-        readonly get: operations["ApiV1DepartmentsNameCeremonyPolicyGetDepartmentCeremonyPolicy"];
-        /** UpdateDepartmentCeremonyPolicy */
-        readonly put: operations["ApiV1DepartmentsNameCeremonyPolicyUpdateDepartmentCeremonyPolicy"];
-        readonly post?: never;
-        /** DeleteDepartmentCeremonyPolicy */
-        readonly delete: operations["ApiV1DepartmentsNameCeremonyPolicyDeleteDepartmentCeremonyPolicy"];
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
         readonly trace?: never;
     };
     readonly "/api/v1/departments/{name}/health": {
@@ -2645,58 +2507,6 @@ export type paths = {
          * @description Serves the governed forge / chat tools over MCP JSON-RPC to an embedded harness. Authenticated by the per-run gateway bearer.
          */
         readonly post: operations["ApiV1McpGatewayHandle"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meetings": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListMeetings */
-        readonly get: operations["ApiV1MeetingsListMeetings"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meetings/{meeting_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetMeeting */
-        readonly get: operations["ApiV1MeetingsMeetingIdGetMeeting"];
-        readonly put?: never;
-        readonly post?: never;
-        /** DeleteMeeting */
-        readonly delete: operations["ApiV1MeetingsMeetingIdDeleteMeeting"];
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meetings/trigger": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** TriggerMeeting */
-        readonly post: operations["ApiV1MeetingsTriggerTriggerMeeting"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6455,14 +6265,6 @@ export type components = {
              */
             readonly met: boolean;
         };
-        /** ActionItem */
-        readonly ActionItem: {
-            /** @description Agent responsible for the action */
-            readonly assignee_id: string | null;
-            /** @description What needs to be done */
-            readonly description: string;
-            readonly priority: components["schemas"]["Priority"];
-        };
         /** ActivateWorkflowRequest */
         readonly ActivateWorkflowRequest: {
             /** @description Runtime context for condition evaluation */
@@ -6478,16 +6280,6 @@ export type components = {
             readonly name: string;
             readonly role: string;
             readonly unavailable: components["schemas"]["AgentUnavailability"] | null;
-        };
-        /** ActiveCeremonyStrategyResponse */
-        readonly ActiveCeremonyStrategyResponse: {
-            /** @description Active sprint ID, null if no sprint running */
-            readonly sprint_id: string | null;
-            /**
-             * @description Active sprint strategy, null if no sprint running
-             * @enum {string|null}
-             */
-            readonly strategy: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven" | null;
         };
         /** ActiveEmbedderResponse */
         readonly ActiveEmbedderResponse: {
@@ -7024,14 +6816,6 @@ export type components = {
             readonly role: components["schemas"]["HumanRole"];
             readonly user_id: string;
         };
-        /** ApiResponse[ActiveCeremonyStrategyResponse] */
-        readonly ApiResponse_ActiveCeremonyStrategyResponse_: {
-            readonly data: components["schemas"]["ActiveCeremonyStrategyResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[ActiveEmbedderResponse] */
         readonly ApiResponse_ActiveEmbedderResponse_: {
             readonly data: components["schemas"]["ActiveEmbedderResponse"] | null;
@@ -7458,14 +7242,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[EscalationResponse] */
-        readonly ApiResponse_EscalationResponse_: {
-            readonly data: components["schemas"]["EscalationResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[ExperimentAssignment] */
         readonly ApiResponse_ExperimentAssignment_: {
             readonly data: components["schemas"]["ExperimentAssignment"] | null;
@@ -7669,14 +7445,6 @@ export type components = {
         /** ApiResponse[LivingDocumentRow] */
         readonly ApiResponse_LivingDocumentRow_: {
             readonly data: components["schemas"]["LivingDocumentRow"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[MeetingResponse] */
-        readonly ApiResponse_MeetingResponse_: {
-            readonly data: components["schemas"]["MeetingResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7933,14 +7701,6 @@ export type components = {
         /** ApiResponse[ReportResponse] */
         readonly ApiResponse_ReportResponse_: {
             readonly data: components["schemas"]["ReportResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[ResolvedCeremonyPolicyResponse] */
-        readonly ApiResponse_ResolvedCeremonyPolicyResponse_: {
-            readonly data: components["schemas"]["ResolvedCeremonyPolicyResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8290,14 +8050,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[MeetingResponse, ...]] */
-        readonly "ApiResponse_tuple_MeetingResponse_..._": {
-            readonly data: readonly components["schemas"]["MeetingResponse"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[PackInfoResponse, ...]] */
         readonly "ApiResponse_tuple_PackInfoResponse_..._": {
             readonly data: readonly components["schemas"]["PackInfoResponse"][] | null;
@@ -8341,16 +8093,6 @@ export type components = {
         /** ApiResponse[TurnResult] */
         readonly ApiResponse_TurnResult_: {
             readonly data: components["schemas"]["TurnResult"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[Union[dict[str, object], NoneType]] */
-        readonly ApiResponse_Union_dict_str_object_NoneType_: {
-            readonly data: {
-                readonly [key: string]: unknown;
-            } | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9394,11 +9136,6 @@ export type components = {
             readonly prompt_class_alerts: components["schemas"]["PromptClassAlertConfig"];
             readonly retry_alerts: components["schemas"]["RetryAlertConfig"];
         };
-        /** CancelEscalationRequest */
-        readonly CancelEscalationRequest: {
-            /** @description Why the operator is abandoning this escalation */
-            readonly reason: string;
-        };
         /** CancelTaskRequest */
         readonly CancelTaskRequest: {
             /** @description Reason for cancellation */
@@ -9619,45 +9356,6 @@ export type components = {
              */
             readonly transport: "stdio" | "streamable_http";
         };
-        /** CeremonyPolicyConfig */
-        readonly CeremonyPolicyConfig: {
-            /** @description Whether to auto-transition sprints */
-            readonly auto_transition?: boolean | null;
-            /**
-             * @description Scheduling strategy type
-             * @enum {string|null}
-             */
-            readonly strategy?: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven" | null;
-            /** @description Strategy-specific configuration parameters */
-            readonly strategy_config?: {
-                readonly [key: string]: unknown;
-            } | null;
-            /** @description Fraction of tasks complete to trigger auto-transition */
-            readonly transition_threshold?: number | null;
-            /**
-             * @description Velocity calculator type
-             * @enum {string|null}
-             */
-            readonly velocity_calculator?: "task_driven" | "calendar" | "multi_dimensional" | "budget" | "points_per_sprint" | null;
-        };
-        /**
-         * CeremonyStrategyType
-         * @description Supported ceremony scheduling strategies.
-         *
-         *     Each maps to a ``CeremonySchedulingStrategy`` implementation.
-         *
-         *     Members:
-         *         TASK_DRIVEN: Ceremonies at task-count milestones.
-         *         CALENDAR: Traditional time-based scheduling.
-         *         HYBRID: Calendar + task-driven, whichever fires first.
-         *         EVENT_DRIVEN: Ceremonies subscribe to engine events with debounce.
-         *         BUDGET_DRIVEN: Ceremonies at cost-consumption thresholds.
-         *         THROUGHPUT_ADAPTIVE: Ceremonies when throughput rate changes.
-         *         EXTERNAL_TRIGGER: Ceremonies on external signals.
-         *         MILESTONE_DRIVEN: Ceremonies at semantic project milestones.
-         * @enum {string}
-         */
-        readonly CeremonyStrategyType: "task_driven" | "calendar" | "hybrid" | "event_driven" | "budget_driven" | "throughput_adaptive" | "external_trigger" | "milestone_driven";
         /** ChangePasswordRequest */
         readonly ChangePasswordRequest: {
             readonly current_password: string;
@@ -10180,28 +9878,6 @@ export type components = {
             /** @description Operator-confirmed obsolete tasks to cancel */
             readonly task_ids: readonly string[];
         };
-        /** Conflict */
-        readonly Conflict: {
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly detected_at: string;
-            /**
-             * Format: uuid
-             * @description Unique conflict identifier
-             */
-            readonly id: string;
-            /** @description Whether the conflict spans multiple departments. */
-            readonly is_cross_department: boolean;
-            /** @description Agent positions (min 2) */
-            readonly positions: readonly components["schemas"]["ConflictPosition"][];
-            /** @description Brief dispute description */
-            readonly subject: string;
-            /** @description Related task ID */
-            readonly task_id: string | null;
-            readonly type: components["schemas"]["ConflictType"];
-        };
         /**
          * ConflictApproach
          * @description Conflict resolution approach used by an agent.
@@ -10209,32 +9885,6 @@ export type components = {
          * @enum {string}
          */
         readonly ConflictApproach: "avoid" | "accommodate" | "compete" | "compromise" | "collaborate";
-        /** ConflictPosition */
-        readonly ConflictPosition: {
-            /** @description Agent's department */
-            readonly agent_department: string;
-            /** @description Agent taking the position */
-            readonly agent_id: string;
-            /** @description Display name of the agent, as at the time of the stance */
-            readonly agent_name: string | null;
-            /** @description Agent role name */
-            readonly agent_role: string;
-            /** @description Summary of the stance */
-            readonly position: string;
-            /** @description Justification for the position */
-            readonly reasoning: string;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly timestamp: string;
-        };
-        /**
-         * ConflictType
-         * @description Conflict category
-         * @enum {string}
-         */
-        readonly ConflictType: "architecture" | "implementation" | "priority" | "resource" | "process" | "other";
         /** Connection */
         readonly Connection: {
             /** @default [] */
@@ -11377,10 +11027,6 @@ export type components = {
              * @default 0
              */
             readonly budget_percent: number;
-            /** @description Per-department ceremony policy override */
-            readonly ceremony_policy: {
-                readonly [key: string]: unknown;
-            } | null;
             /** @description Department head role name or identifier */
             readonly head: string | null;
             /** @description Optional unique identifier for the department head */
@@ -11899,7 +11545,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -11912,30 +11558,6 @@ export type components = {
             readonly retryable: boolean;
             readonly title: string;
             readonly type: string;
-        };
-        /** Escalation */
-        readonly Escalation: {
-            readonly conflict: components["schemas"]["Conflict"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly created_at: string;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly decided_at: string | null;
-            readonly decided_by: string | null;
-            readonly decision: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"] | null;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly expires_at: string | null;
-            /** Format: uuid */
-            readonly id: string;
-            readonly status: components["schemas"]["EscalationStatus"];
         };
         /** EscalationChainConfig */
         readonly EscalationChainConfig: {
@@ -11965,26 +11587,6 @@ export type components = {
             /** @description Target department */
             readonly to_department: string;
         };
-        /** EscalationResponse */
-        readonly EscalationResponse: {
-            /** @description ID of the conflict this escalation was raised for. */
-            readonly conflict_id: string;
-            readonly escalation: components["schemas"]["Escalation"];
-            readonly status: components["schemas"]["EscalationStatus"];
-        };
-        /**
-         * EscalationStatus
-         * @description Lifecycle state of an escalation row.
-         *
-         *     Members:
-         *         PENDING: Awaiting a human decision.
-         *         DECIDED: A decision has been applied.
-         *         EXPIRED: Timed out without a decision.
-         *         CANCELLED: Operator explicitly abandoned the escalation.
-         * @default pending
-         * @enum {string}
-         */
-        readonly EscalationStatus: "pending" | "decided" | "expired" | "cancelled";
         /** EscalationStep */
         readonly EscalationStep: {
             /** @description Escalation target role */
@@ -13431,214 +13033,6 @@ export type components = {
             readonly title: string;
         };
         /**
-         * MeetingAgenda
-         * @description Meeting agenda
-         */
-        readonly MeetingAgenda: {
-            /**
-             * @description Background context for the meeting
-             * @default
-             */
-            readonly context: string;
-            /**
-             * @description Ordered agenda items
-             * @default []
-             */
-            readonly items: readonly components["schemas"]["MeetingAgendaItem"][];
-            /** @description Meeting title */
-            readonly title: string;
-        };
-        /** MeetingAgendaItem */
-        readonly MeetingAgendaItem: {
-            /**
-             * @description Detailed topic description
-             * @default
-             */
-            readonly description: string;
-            /** @description Agent who presents this item */
-            readonly presenter_id: string | null;
-            /** @description Agenda topic title */
-            readonly title: string;
-        };
-        /** MeetingContribution */
-        readonly MeetingContribution: {
-            /** @description Contributing agent */
-            readonly agent_id: string;
-            /** @description Contribution content */
-            readonly content: string;
-            /**
-             * @description Prompt tokens consumed
-             * @default 0
-             */
-            readonly input_tokens: number;
-            /**
-             * @description Response tokens generated
-             * @default 0
-             */
-            readonly output_tokens: number;
-            readonly phase: components["schemas"]["MeetingPhase"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly timestamp: string;
-            /** @description Turn number */
-            readonly turn_number: number;
-        };
-        /** MeetingMinutes */
-        readonly MeetingMinutes: {
-            /**
-             * @description Extracted action items
-             * @default []
-             */
-            readonly action_items: readonly components["schemas"]["ActionItem"][];
-            readonly agenda: components["schemas"]["MeetingAgenda"];
-            /**
-             * @description Whether conflicts were detected
-             * @default false
-             */
-            readonly conflicts_detected: boolean;
-            /**
-             * @description All contributions in order
-             * @default []
-             */
-            readonly contributions: readonly components["schemas"]["MeetingContribution"][];
-            /**
-             * @description Decisions made
-             * @default []
-             */
-            readonly decisions: readonly string[];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly ended_at: string;
-            /** @description Meeting leader */
-            readonly leader_id: string;
-            /** @description Unique meeting ID */
-            readonly meeting_id: string;
-            /** @description Meeting participants */
-            readonly participant_ids: readonly string[];
-            readonly protocol_type: components["schemas"]["MeetingProtocolType"];
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly started_at: string;
-            /**
-             * @description Final summary
-             * @default
-             */
-            readonly summary: string;
-            /**
-             * @description Total prompt tokens
-             * @default 0
-             */
-            readonly total_input_tokens: number;
-            /**
-             * @description Total response tokens
-             * @default 0
-             */
-            readonly total_output_tokens: number;
-            /** @description Total tokens consumed (input + output). */
-            readonly total_tokens: number;
-        };
-        /**
-         * MeetingPhase
-         * @description Phase within a meeting protocol execution.
-         *
-         *     Phases are scoped to specific protocols:
-         *
-         *     - Round-robin: ``ROUND_ROBIN_TURN``, ``SUMMARY``
-         *     - Position papers: ``POSITION_PAPER``, ``SYNTHESIS``
-         *     - Structured phases: ``AGENDA_BROADCAST``, ``INPUT_GATHERING``,
-         *       ``DISCUSSION``, ``SYNTHESIS``
-         *
-         *     Attributes:
-         *         AGENDA_BROADCAST: Initial agenda distribution.
-         *         ROUND_ROBIN_TURN: Single turn in round-robin protocol.
-         *         POSITION_PAPER: Independent position paper submission.
-         *         INPUT_GATHERING: Parallel input collection in structured phases.
-         *         DISCUSSION: Conflict-driven discussion round.
-         *         SYNTHESIS: Leader synthesizes all inputs into decisions.
-         *         SUMMARY: Final summary generation.
-         *         PREMORTEM: Risk identification after synthesis.
-         *         DEVIL_ADVOCATE: Dissent injection on premature consensus.
-         * @enum {string}
-         */
-        readonly MeetingPhase: "agenda_broadcast" | "round_robin_turn" | "position_paper" | "input_gathering" | "discussion" | "synthesis" | "summary" | "premortem" | "devil_advocate";
-        /**
-         * MeetingProtocolType
-         * @description Strategy for conducting a meeting.
-         *
-         *     Members:
-         *         ROUND_ROBIN: Sequential turns, full transcript context.
-         *         POSITION_PAPERS: Parallel independent papers, then synthesis.
-         *         STRUCTURED_PHASES: Phased agenda with conditional discussion.
-         * @enum {string}
-         */
-        readonly MeetingProtocolType: "round_robin" | "position_papers" | "structured_phases";
-        /** MeetingResponse */
-        readonly MeetingResponse: {
-            /**
-             * @description Agent IDs sorted by contribution (descending)
-             * @default []
-             */
-            readonly contribution_rank: readonly string[];
-            /** @description Error description on failure */
-            readonly error_message: string | null;
-            /** @description Meeting duration in seconds (null if no minutes) */
-            readonly meeting_duration_seconds: number | null;
-            /** @description Unique meeting ID */
-            readonly meeting_id: string;
-            /** @description Meeting type from config */
-            readonly meeting_type_name: string;
-            /** @description Complete minutes on success */
-            readonly minutes: components["schemas"]["MeetingMinutes"] | null;
-            /** @description Display name of every agent this meeting references, keyed by id: speakers, agenda presenters and action-item assignees. An id absent from the map is one nothing could name, which the surface words itself rather than printing the key */
-            readonly participant_names: {
-                readonly [key: string]: string;
-            };
-            readonly protocol_type: components["schemas"]["MeetingProtocolType"];
-            readonly status: components["schemas"]["MeetingStatus"];
-            /**
-             * @description Action items that became tasks
-             * @default 0
-             */
-            readonly tasks_created: number;
-            /**
-             * @description Action items whose task creation failed
-             * @default 0
-             */
-            readonly tasks_failed: number;
-            /** @description Token budget allocated */
-            readonly token_budget: number;
-            /** @description Total tokens consumed per participant */
-            readonly token_usage_by_participant: {
-                readonly [key: string]: number;
-            };
-        };
-        /**
-         * MeetingStatus
-         * @description Lifecycle status of a meeting.
-         *
-         *     Currently produced by ``MeetingOrchestrator``:
-         *     ``COMPLETED``, ``FAILED``, ``BUDGET_EXHAUSTED``.
-         *
-         *     Reserved for future lifecycle management:
-         *     ``SCHEDULED``, ``IN_PROGRESS``, ``CANCELLED``.
-         *
-         *     Attributes:
-         *         SCHEDULED: Meeting is planned but not yet started.
-         *         IN_PROGRESS: Meeting is currently running.
-         *         COMPLETED: Meeting finished successfully.
-         *         FAILED: Meeting terminated due to an error.
-         *         CANCELLED: Meeting was cancelled before completion.
-         *         BUDGET_EXHAUSTED: Meeting stopped because token budget ran out.
-         * @enum {string}
-         */
-        readonly MeetingStatus: "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" | "budget_exhausted";
-        /**
          * MemoryCategory
          * @description Memory type categories for agent memory (§7.2).
          *
@@ -13801,7 +13195,7 @@ export type components = {
          *     Maps to the ``type`` field in the Communication design page.
          * @enum {string}
          */
-        readonly MessageType: "task_update" | "question" | "announcement" | "review_request" | "approval" | "delegation" | "status_report" | "escalation" | "meeting_contribution" | "hr_notification" | "dissent" | "context_injection";
+        readonly MessageType: "task_update" | "question" | "announcement" | "review_request" | "approval" | "delegation" | "status_report" | "escalation" | "hr_notification" | "context_injection";
         /** MetadataChange */
         readonly MetadataChange: {
             readonly field: string;
@@ -14530,21 +13924,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[EscalationResponse] */
-        readonly PaginatedResponse_EscalationResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["EscalationResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** PaginatedResponse[ExperimentAssignment] */
         readonly PaginatedResponse_ExperimentAssignment_: {
             /** @default [] */
@@ -14654,21 +14033,6 @@ export type components = {
         readonly PaginatedResponse_KnowledgeSource_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["KnowledgeSource"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[MeetingResponse] */
-        readonly PaginatedResponse_MeetingResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["MeetingResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -15895,12 +15259,6 @@ export type components = {
             /** @description The plan version this snapshot captures */
             readonly version: number;
         };
-        /**
-         * PolicyFieldOrigin
-         * @description Origin level for a resolved ceremony policy field.
-         * @enum {string}
-         */
-        readonly PolicyFieldOrigin: "project" | "department" | "default";
         /**
          * PostureName
          * @description Named operating postures a template can declare.
@@ -17190,15 +16548,6 @@ export type components = {
             /** @description Relative selection weight */
             readonly weight: number;
         };
-        /** RejectDecision */
-        readonly RejectDecision: {
-            readonly reasoning: string;
-            /**
-             * @default reject
-             * @constant
-             */
-            readonly type: "reject";
-        };
         /** RejectedProviderConfig */
         readonly RejectedProviderConfig: {
             /** @description Provider name the rejected entry was keyed by */
@@ -17381,25 +16730,6 @@ export type components = {
             readonly success_rate_weight: number;
             /** @default 0.2 */
             readonly weight: number;
-        };
-        /** ResolvedCeremonyPolicyResponse */
-        readonly ResolvedCeremonyPolicyResponse: {
-            readonly auto_transition: components["schemas"]["ResolvedPolicyField"];
-            readonly strategy: components["schemas"]["ResolvedPolicyField"];
-            readonly strategy_config: components["schemas"]["ResolvedPolicyField"];
-            readonly transition_threshold: components["schemas"]["ResolvedPolicyField"];
-            readonly velocity_calculator: components["schemas"]["ResolvedPolicyField"];
-        };
-        /**
-         * ResolvedPolicyField
-         * @description Ceremony scheduling strategy
-         */
-        readonly ResolvedPolicyField: {
-            readonly source: components["schemas"]["PolicyFieldOrigin"];
-            /** @description Resolved field value */
-            readonly value: string | {
-                readonly [key: string]: unknown;
-            } | boolean | number;
         };
         /** ResolveSsrfViolationRequest */
         readonly ResolveSsrfViolationRequest: {
@@ -17991,7 +17321,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard" | "design" | "output_style" | "strategy";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "self_improvement" | "chief_of_staff" | "knowledge" | "notifications" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo" | "appearance" | "org_chart" | "dashboard" | "design" | "output_style";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -18646,11 +17976,6 @@ export type components = {
          * @enum {string}
          */
         readonly StrategicOutputMode: "option_expander" | "advisor" | "decision_maker" | "context_dependent";
-        /** SubmitDecisionRequest */
-        readonly SubmitDecisionRequest: {
-            /** @description Operator decision payload */
-            readonly decision: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"];
-        };
         /** SubmitObjectiveAck */
         readonly SubmitObjectiveAck: {
             /** @description Lifecycle marker; always ``"accepted"`` on 202. */
@@ -19640,15 +18965,6 @@ export type components = {
             readonly metric: components["schemas"]["TrendMetric"];
             readonly period: components["schemas"]["TrendPeriod"];
         };
-        /** TriggerMeetingRequest */
-        readonly TriggerMeetingRequest: {
-            /** @description Event context for participant resolution and agenda */
-            readonly context?: {
-                readonly [key: string]: string | readonly string[];
-            };
-            /** @description Event trigger name */
-            readonly event_name: string;
-        };
         /**
          * TunnelCredentialKind
          * @description How a tunnel provider authenticates.
@@ -19842,9 +19158,6 @@ export type components = {
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             /** @description New org-budget share (0-100); omit to leave unchanged. */
             readonly budget_percent?: number | null;
-            readonly ceremony_policy?: {
-                readonly [key: string]: unknown;
-            } | null;
             /** @description New department head agent name; omit to leave unchanged. */
             readonly head?: string | null;
             readonly teams?: readonly components["schemas"]["Team"][] | null;
@@ -20121,22 +19434,6 @@ export type components = {
          * @enum {string}
          */
         readonly ValidationErrorCode: "unreachable_node" | "end_not_reachable" | "conditional_missing_true" | "conditional_missing_false" | "conditional_extra_outgoing" | "split_too_few_branches" | "task_missing_title" | "cycle_detected" | "subworkflow_ref_missing" | "subworkflow_version_unpinned" | "subworkflow_not_found" | "subworkflow_input_missing" | "subworkflow_input_unknown" | "subworkflow_input_type_mismatch" | "subworkflow_output_missing" | "subworkflow_output_unknown" | "subworkflow_output_type_mismatch" | "subworkflow_cycle_detected" | "verification_missing_pass" | "verification_missing_fail" | "verification_missing_refer" | "verification_duplicate_edge" | "verification_extra_outgoing" | "verification_edge_outside" | "verification_missing_config";
-        /**
-         * VelocityCalcType
-         * @description Supported velocity calculator types.
-         *
-         *     Each maps to a ``VelocityCalculator`` implementation that computes
-         *     velocity metrics in a strategy-appropriate unit.
-         *
-         *     Members:
-         *         TASK_DRIVEN: Points per task completed.
-         *         CALENDAR: Points per calendar day.
-         *         MULTI_DIMENSIONAL: Points per sprint with secondary dimensions.
-         *         BUDGET: Points per currency unit consumed.
-         *         POINTS_PER_SPRINT: Simple points per sprint, no normalization.
-         * @enum {string}
-         */
-        readonly VelocityCalcType: "task_driven" | "calendar" | "multi_dimensional" | "budget" | "points_per_sprint";
         /** VersionSnapshot[AgentIdentity] */
         readonly VersionSnapshot_AgentIdentity_: {
             /** @description SHA-256 hex digest of canonical JSON */
@@ -20328,16 +19625,6 @@ export type components = {
             readonly tasks_failed: number;
             /** @description Time window label */
             readonly window_size: string;
-        };
-        /** WinnerDecision */
-        readonly WinnerDecision: {
-            readonly reasoning: string;
-            /**
-             * @default winner
-             * @constant
-             */
-            readonly type: "winner";
-            readonly winning_agent_id: string;
         };
         /** WorkflowDefinition */
         readonly WorkflowDefinition: {
@@ -23949,85 +23236,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1CeremonyPolicyGetProjectPolicy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1CeremonyPolicyActiveGetActiveStrategy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ActiveCeremonyStrategyResponse_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1CeremonyPolicyResolvedGetResolvedPolicy: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Department to resolve against; omit for project policy. */
-                readonly department?: string | null;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ResolvedCeremonyPolicyResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1ClientsListClients: {
         readonly parameters: {
             readonly query?: {
@@ -24735,147 +23943,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1ConflictsEscalationsListEscalations: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-                /**
-                 * @description Lifecycle state of an escalation row.
-                 *
-                 *     Members:
-                 *         PENDING: Awaiting a human decision.
-                 *         DECIDED: A decision has been applied.
-                 *         EXPIRED: Timed out without a decision.
-                 *         CANCELLED: Operator explicitly abandoned the escalation.
-                 */
-                readonly status?: components["schemas"]["EscalationStatus"];
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_EscalationResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ConflictsEscalationsEscalationIdGetEscalation: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly escalation_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_EscalationResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ConflictsEscalationsEscalationIdCancelCancelEscalation: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly escalation_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CancelEscalationRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_EscalationResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1ConflictsEscalationsEscalationIdDecisionSubmitDecision: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly escalation_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SubmitDecisionRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_EscalationResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1ConnectionsListConnections: {
         readonly parameters: {
             readonly query?: {
@@ -25540,99 +24607,6 @@ export interface operations {
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1DepartmentsNameCeremonyPolicyGetDepartmentCeremonyPolicy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Union_dict_str_object_NoneType_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1DepartmentsNameCeremonyPolicyUpdateDepartmentCeremonyPolicy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CeremonyPolicyConfig"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1DepartmentsNameCeremonyPolicyDeleteDepartmentCeremonyPolicy: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, nothing follows */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -26620,132 +25594,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MeetingsListMeetings: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-                /** @description Filter by meeting type (STAND_UP, RETRO, etc.). */
-                readonly meeting_type?: string | null;
-                /** @description Filter to meetings in this status. */
-                readonly status?: "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" | "budget_exhausted" | null;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_MeetingResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MeetingsMeetingIdGetMeeting: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly meeting_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_MeetingResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MeetingsMeetingIdDeleteMeeting: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly meeting_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_NoneType_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MeetingsTriggerTriggerMeeting: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["TriggerMeetingRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_MeetingResponse_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

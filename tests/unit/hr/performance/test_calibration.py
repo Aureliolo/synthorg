@@ -29,7 +29,7 @@ def _make_metric(agent_id: str, recorded_at: datetime) -> CollaborationMetricRec
         delegation_success=True,
         delegation_response_seconds=30.0,
         conflict_constructiveness=0.8,
-        meeting_contribution=0.75,
+        discussion_contribution=0.75,
         loop_triggered=False,
         handoff_completeness=0.9,
     )

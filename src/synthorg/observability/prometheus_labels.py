@@ -35,7 +35,7 @@ def require_label(label: str, value: str, valid: frozenset[str]) -> None:
     transports, ...): the WARN payload includes the full sorted
     allowed set so an operator can see the expected vocabulary
     inline. For registry-bound labels (agent_ids,
-    workflow_definition_ids, departments) where the allowlist can
+    workflow_definition_ids) where the allowlist can
     grow to hundreds of entries, use :func:`require_label_summary`
     instead -- sorting and serializing the full set on every
     rejection is wasteful at scale.
@@ -244,15 +244,6 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
 VALID_APPROVAL_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"approved", "rejected", "expired"}
 )
-VALID_ESCALATION_OUTCOMES: Final[frozenset[str]] = frozenset(
-    {
-        "resolved",
-        "escalated_to_human",
-        "auto_resolved",
-        "notify_failed",
-        "sweeper_failed",
-    }
-)
 VALID_BLUEPRINT_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"success", "validation_error", "not_found", "unknown_error"}
 )
@@ -291,7 +282,6 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "self_improvement",
         "settings",
         "simulations",
-        "strategy",
         "telemetry",
         "tools",
         "workers",
@@ -332,7 +322,7 @@ VALID_PG_BACKENDS: Final[frozenset[str]] = frozenset({"primary", "replica"})
 # -- Snapshot-backed registry-bound label validation -----------------------
 # Push-time ``record_*`` methods on the Prometheus collector are
 # synchronous, but the runtime registries that own the truth about
-# valid agent / workflow / department label values are async-only and
+# valid agent / workflow label values are async-only and
 # lock-guarded. Awaiting from a sync metric path is impossible, so we
 # keep a process-global ``_LabelSnapshot`` of the relevant frozensets
 # and refresh it from the existing async ``PrometheusCollector.refresh()``
@@ -373,19 +363,16 @@ class _LabelSnapshot:
     lands.
 
     Per-source readiness is tracked with one boolean per registry
-    so a transient workflow-repository or department-service outage
-    does not suppress the unrelated agent-id allowlist (or vice
-    versa).
+    so a transient workflow-repository outage does not suppress the
+    unrelated agent-id allowlist (or vice versa).
     """
 
     agent_ids: frozenset[str] = frozenset()
     workflow_definition_ids: frozenset[str] = frozenset()
-    departments: frozenset[str] = frozenset()
     providers: frozenset[str] = frozenset()
     model_ids: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
-    departments_seeded: bool = False
     providers_seeded: bool = False
     model_ids_seeded: bool = False
 
@@ -414,8 +401,8 @@ def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
     """Replace the active label snapshot.
 
     Intended caller: :meth:`PrometheusCollector.refresh` once it has
-    queried the registries for live agent ids, workflow definition
-    ids, and departments. Rebinding a module global is a single
+    queried the registries for live agent ids and workflow
+    definition ids. Rebinding a module global is a single
     atomic bytecode op under the GIL, so concurrent readers either
     see the old or new snapshot reference -- never a torn
     ``(seeded, frozenset)`` pair. The validators below capture the
@@ -493,16 +480,6 @@ def validate_workflow_definition_id(value: str) -> None:
     require_label_summary(
         "workflow_definition_id", value, snapshot.workflow_definition_ids
     )
-
-
-def validate_department(value: str) -> None:
-    """Raise ``ValueError`` if *value* is not a known department.
-
-    Fails closed in every state (see :func:`validate_agent_id` for
-    the bootstrap rationale).
-    """
-    snapshot = _snapshot
-    require_label_summary("department", value, snapshot.departments)
 
 
 # The ``tool_name`` allowlist is the one bounded label this module does not

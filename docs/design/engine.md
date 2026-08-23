@@ -274,8 +274,7 @@ below), never on a timer. The `Sprint` model tracks task IDs, story
 points (committed and completed), dates, and duration. Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
 added during PLANNING).  `SprintConfig` defines sprint duration, task limits,
-velocity window, and ceremony configurations that integrate with the meeting
-protocol system (`MeetingProtocolType` and `MeetingFrequency`).
+and the velocity window.
 `VelocityRecord` captures delivery metrics from completed sprints with a
 rolling average calculation.
 
@@ -285,23 +284,19 @@ and driven at runtime by the `SprintService`. For an org whose
 `engine.workflow_type` is `agile_kanban` (with `engine.sprint_enabled` on),
 the service registers as a `TaskEngine` observer: it auto-creates and starts
 a sprint when work begins, pulls the project's open tasks into the backlog,
-and on each task completion marks the task done and forwards to the
-`CeremonyScheduler`, which fires ceremonies and auto-transitions the sprint.
+and on each task completion marks the task done and advances the sprint
+itself: ACTIVE to IN_REVIEW once the whole backlog is delivered, then on to
+COMPLETED. An empty backlog is not delivered, so a sprint is never ended the
+moment it is created.
 The `/sprints` REST surface exposes explicit create / add-task / start /
 advance control, and the Kanban board applies an advisory gate: a move into
 In-Progress is rejected for a task outside the active sprint backlog.
 
 Builtin templates declare a `workflow_config` section with default
-Kanban/Sprint sub-configurations (WIP limits, sprint duration, ceremonies).
+Kanban/Sprint sub-configurations (WIP limits, sprint duration).
 The template renderer maps these into the root `WorkflowConfig` during
 rendering. Template variables (`sprint_length`, `wip_limit`) allow users
 to customise workflow settings at template instantiation time.
-
-!!! info "Ceremony Scheduling"
-    Sprint ceremony runtime scheduling (including pluggable strategies,
-    velocity calculation, 3-level config resolution, and sprint auto-transition)
-    is documented on the dedicated [Ceremony Scheduling](ceremony-scheduling.md)
-    design page.
 
 ---
 

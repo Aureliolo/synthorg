@@ -7,7 +7,7 @@ output cap that reserves room for the estimated input prompt before
 dispatch.
 """
 
-from synthorg.communication.meeting._token_tracker import TokenTracker
+from synthorg.communication.multi_agent import TokenTracker
 from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.meta.chief_of_staff.enums import GroupChatTruncationReason
 from synthorg.meta.chief_of_staff.group_models import AttributedContribution

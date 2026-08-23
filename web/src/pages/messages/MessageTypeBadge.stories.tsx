@@ -20,7 +20,6 @@ const ALL_TYPES: MessageType[] = [
   'delegation',
   'status_report',
   'escalation',
-  'meeting_contribution',
   'hr_notification',
 ]
 

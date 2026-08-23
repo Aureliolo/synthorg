@@ -1,4 +1,4 @@
-/** Request, review, simulation, interrupt, and dissent WebSocket payload interfaces. */
+/** Request, review, simulation, and interrupt WebSocket payload interfaces. */
 
 export interface WsRequestEventPayload {
   request_id: string
@@ -58,10 +58,4 @@ export interface WsInterruptCreatedPayload {
 export interface WsInterruptResumedPayload {
   interrupt_id: string
   task_id: string
-}
-
-export interface WsDissentPublishedPayload {
-  task_id: string
-  agent_id: string
-  message: string
 }

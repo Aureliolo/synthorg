@@ -84,7 +84,6 @@ The dashboard subscribes to real-time events over `/api/v1/ws`. External consume
 | `approvals` | `ApprovalRequested`, `ApprovalApproved`, `ApprovalRejected`, `ApprovalExpired`, `ApprovalInterrupt`, `ApprovalResumed` | `ApprovalGate`, `EventStreamHub` |
 | `clients` | `ClientCreated`, `ClientUpdated`, `ClientDeleted` | `ClientController` |
 | `budget` | `BudgetThresholdWarn`, `BudgetThresholdCritical`, `BudgetThresholdHardStop` | `BudgetEnforcer` |
-| `meetings` | `MeetingScheduled`, `MeetingStarted`, `MeetingTranscript`, `MeetingCompleted` | `MeetingScheduler`, `MeetingOrchestrator` |
 | `activity` | unified activity feed stream (lifecycle, task, cost, tool, delegation) | `ActivityFeedService` |
 | `settings` | `SettingChanged` | `SettingsChangeDispatcher` |
 

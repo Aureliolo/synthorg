@@ -28,14 +28,13 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 | Component | Import | Use for |
 |-----------|--------|---------|
 | `StatusBadge` | `@/components/ui/status-badge` | Agent / task / system status indicators (coloured dot + optional built-in `label`). Default emits `role="img"` with an aria-label. Pass `decorative` when the badge is visually labelled by adjacent text (emits `aria-hidden`); pass `announce` for live WS updates (emits `role="status"` + `aria-live="polite"`). |
-| `StatusPill` | `@/components/ui/status-pill` | Canonical inline status pill (`rounded-full` / `text-micro` / `px-2 py-0.5`) for priority, approval flags, meeting status, etc. Pass `tone` for the shared `PILL_TONE_CLASSES` palette (`danger` / `warning` / `accent` / `success` / `text-secondary`) or `toneClassName` for a feature-specific colour set; optional leading `icon`. |
+| `StatusPill` | `@/components/ui/status-pill` | Canonical inline status pill (`rounded-full` / `text-micro` / `px-2 py-0.5`) for priority, approval flags, etc. Pass `tone` for the shared `PILL_TONE_CLASSES` palette (`danger` / `warning` / `accent` / `success` / `text-secondary`) or `toneClassName` for a feature-specific colour set; optional leading `icon`. |
 | `TaskStatusIndicator` | `@/components/ui/task-status-indicator` | Task status dot with optional label and pulse animation (accepts `TaskStatus`). |
 | `PriorityBadge` | `@/components/ui/task-status-indicator` | Task priority coloured pill badge (critical / high / medium / low). |
 | `ProviderHealthBadge` | `@/components/ui/provider-health-badge` | Provider health status indicator (up / degraded / down / unknown coloured dot + optional label). |
 | `ConnectionHealthBadge` | `@/components/ui/connection-health-badge` | Integration connection health (healthy / degraded / unhealthy / unknown); thin wrapper over `ProviderHealthBadge` that owns the enum mapping. |
 | `ProjectStatusBadge` | `@/components/ui/project-status-badge` | Project status dot with optional label (planning / active / integrating / evaluating / on_hold / completed / cancelled, semantic colours). |
 | `ContentTypeBadge` | `@/components/ui/content-type-badge` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, etc.). |
-| `PolicySourceBadge` | `@/components/ui/policy-source-badge` | Ceremony policy field source indicator (project / department / default origin pill). |
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair. |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop. |
 

@@ -2,7 +2,6 @@
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
 from litestar import Litestar
@@ -141,40 +140,6 @@ class TestCreateApp:
         # Use a non-docs endpoint -- /docs paths relax COOP for Scalar UI.
         response = await async_test_client.get("/api/v1/healthz")
         assert response.headers.get(header) == expected
-
-    def test_agent_registry_built_before_auto_wire_meetings(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
-        cost_tracker: CostTracker,
-        root_config: RootConfig,
-    ) -> None:
-        """Regression: the registry must exist when auto_wire_meetings runs.
-
-        Moving the registry build after auto_wire_meetings made the meeting
-        orchestrator receive `None`, which then 500s on the first request.
-        """
-        import synthorg.api.construction_phase as construction_module
-        from synthorg.api.auto_wire import auto_wire_meetings as _original_auto_wire
-
-        captured: dict[str, object] = {}
-
-        def _capturing(**kwargs: Any) -> Any:  # type: ignore[explicit-any]  # forwards **kwargs verbatim to the wrapped wiring fn
-            captured["agent_registry"] = kwargs.get("agent_registry")
-            return _original_auto_wire(**kwargs)
-
-        monkeypatch.setattr(construction_module, "auto_wire_meetings", _capturing)
-
-        create_app(
-            config=root_config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=cost_tracker,
-        )
-
-        assert "agent_registry" in captured
-        assert captured["agent_registry"] is not None
 
 
 @pytest.mark.unit
@@ -362,7 +327,6 @@ class TestAppLifecycle:
         # Should not raise even when disconnect fails
         await _safe_shutdown(
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=None,
             settings_dispatcher=None,
@@ -518,7 +482,6 @@ class TestAppLifecycle:
         # Should not raise even when task engine stop fails
         await _safe_shutdown(
             task_engine=mock_te,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=None,
             settings_dispatcher=None,
@@ -526,58 +489,6 @@ class TestAppLifecycle:
             message_bus=None,
             persistence=None,
         )
-
-    async def test_shutdown_stops_the_scheduler_its_subsystem_started(
-        self,
-        root_config: RootConfig,
-    ) -> None:
-        """Teardown reads the live slice, not what construction held.
-
-        The scheduler is built and started by the ``ceremony_scheduler``
-        subsystem, on a pass that runs after the startup runner. A
-        shutdown reading the construction-time value would find ``None``
-        and leave the poll loop running past the lifespan.
-        """
-        from unittest.mock import AsyncMock, MagicMock
-
-        from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.lifecycle_runner_shutdown import _run_shutdown
-        from synthorg.api.lifecycle_runner_support import _LifecycleTasks
-        from synthorg.communication.meeting.scheduler import (
-            MeetingScheduler,
-        )
-        from synthorg.communication.state import CommunicationStateSlice
-        from tests.unit.api.conftest import FakePersistenceBackend
-
-        persistence = FakePersistenceBackend()
-        mock_sched = MagicMock(spec=MeetingScheduler)
-        mock_sched.stop = AsyncMock(spec=MeetingScheduler.stop)
-
-        app_state = make_app_state(
-            config=root_config,
-            approval_store=ApprovalStore(),
-            persistence=persistence,
-        )
-        # Wired AFTER the state the shutdown runner was handed, which is the
-        # whole point: the runner has to reach the slice when it runs, not
-        # carry a value read when it was set up. Resolving the scheduler here
-        # and passing it in would assert only that ``_safe_shutdown`` stops
-        # what it is given, and would pass unchanged against the
-        # construction-time capture this test exists to rule out.
-        app_state.wire(CommunicationStateSlice, meeting_scheduler=mock_sched)
-
-        await _run_shutdown(
-            _LifecycleTasks(),
-            app_state,
-            persistence=None,
-            message_bus=None,
-            bridge=None,
-            settings_dispatcher=None,
-            task_engine=None,
-            backup_service=None,
-            approval_timeout_scheduler=None,
-        )
-        mock_sched.stop.assert_awaited_once()
 
     async def test_approval_timeout_scheduler_lifecycle(
         self,
@@ -622,7 +533,6 @@ class TestAppLifecycle:
 
         await _safe_shutdown(
             task_engine=None,
-            meeting_scheduler=None,
             backup_service=None,
             approval_timeout_scheduler=mock_sched,
             settings_dispatcher=None,

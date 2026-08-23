@@ -425,9 +425,7 @@ model, and knowing which models those are is the shipped-table approach this
 section replaced.
 
 This binding is the only embedding model the product serves retrieval from,
-and nothing else is selectable: a meeting's conflict detectors score positions
-with the built-in lexical embedder, chosen for that job rather than offered as
-one option among several. A second locally-loaded embedder selected from
+and nothing else is selectable. A second locally-loaded embedder selected from
 somewhere else would be a second surface for the same decision.
 
 Fine-tuning is the one place a model is loaded locally, and where that happens

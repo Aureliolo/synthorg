@@ -47,8 +47,8 @@ logger = get_logger(__name__)
 
 # Per-task shutdown budgets for the three janitor loops launched by the
 # lifecycle builder. These are passive wake-poll-sleep loops so 2.0s matches the
-# budget already used for the meeting scheduler / settings dispatcher /
-# bus-bridge in ``api/lifecycle.py``. Wrapping the cancel-and-await with
+# budget already used for the settings dispatcher / bus-bridge in
+# ``api/lifecycle.py``. Wrapping the cancel-and-await with
 # ``asyncio.wait_for`` keeps shutdown bounded even when a task body shields
 # ``CancelledError`` (third-party callees, hung I/O); the orchestrator's SIGKILL
 # deadline must not slip past ``graceful_shutdown`` (75s in api/server.py).
@@ -99,7 +99,7 @@ _SIMULATION_TASK_DRAIN_OUTER_SECONDS: Final[float] = (
 _COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
 
 # Per-service stop budgets for the remaining background services. Passive
-# wake-poll-sleep loops (event-stream hub, escalation sweeper/subscriber,
+# wake-poll-sleep loops (event-stream hub,
 # org-inflection / toolsmith / model-refresh schedulers, settings + cost
 # dispatchers, notification dispatcher) cancel-and-await quickly, so they
 # share the 2.0s janitor budget. Services that internally drain in-flight
@@ -402,40 +402,12 @@ async def _run_shutdown(  # noqa: PLR0913
             service="health_prober",
         )
         tasks.health_prober = None
-    # Stop integration background services (reverse start order).
-    if communication.escalation_notify_subscriber is not None:
-        await _try_stop(
-            communication.escalation_notify_subscriber.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop escalation notify subscriber",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="escalation_notify_subscriber",
-        )
-    if communication.escalation_sweeper is not None:
-        await _try_stop(
-            communication.escalation_sweeper.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop escalation sweeper",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="escalation_sweeper",
-        )
-    # Cancel any unresolved pending futures so coroutines awaiting operator
-    # decisions get a clean CancelledError (instead of hanging past shutdown)
-    # and the registry map is emptied.
-    if communication.escalation_registry is not None:
-        await _try_stop(
-            communication.escalation_registry.close(),
-            API_APP_SHUTDOWN,
-            "Failed to close escalation pending-futures registry",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="escalation_registry",
-        )
-    # The three integration draining services (OAuth token manager,
-    # integration health prober, webhook event bridge) are independent
-    # background loops with no inter-stop ordering dependency, so they drain
-    # concurrently: the aggregate wall-clock is one drain budget rather than
-    # three, keeping the worst case inside the SIGKILL deadline. Each retains
-    # its own bounded ``_try_stop`` timeout.
+    # The integration draining services (OAuth token manager, integration
+    # health prober) are independent background loops with no inter-stop
+    # ordering dependency, so they drain concurrently: the aggregate
+    # wall-clock is one drain budget rather than two, keeping the worst case
+    # inside the SIGKILL deadline. Each retains its own bounded
+    # ``_try_stop`` timeout.
     _integration_draining_stops: list[Coroutine[object, object, bool]] = []
     if integrations.oauth_token_manager is not None:
         _integration_draining_stops.append(
@@ -455,16 +427,6 @@ async def _run_shutdown(  # noqa: PLR0913
                 "Failed to stop integration health prober",
                 timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
                 service="integration_health_prober",
-            )
-        )
-    if integrations.webhook_event_bridge is not None:
-        _integration_draining_stops.append(
-            _try_stop(
-                integrations.webhook_event_bridge.stop(),
-                API_APP_SHUTDOWN,
-                "Failed to stop webhook event bridge",
-                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-                service="webhook_event_bridge",
             )
         )
     if _integration_draining_stops:
@@ -692,10 +654,6 @@ async def _run_shutdown(  # noqa: PLR0913
             )
     await _safe_shutdown(
         task_engine=task_engine,
-        # Read live: the ceremony_scheduler subsystem builds and starts it on
-        # a reconcile pass, so the value construction held is never the one
-        # that needs stopping.
-        meeting_scheduler=app_state.slice(CommunicationStateSlice).meeting_scheduler,
         backup_service=backup_service,
         approval_timeout_scheduler=approval_timeout_scheduler,
         settings_dispatcher=settings_dispatcher,

@@ -21,7 +21,6 @@ src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_ev
 src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_evidence_package::signed_bytes::1
 src/synthorg/ontology/decorator.py::_annotation_to_str::__args__::1
 src/synthorg/ontology/decorator.py::_annotation_to_str::__origin__::1
-src/synthorg/persistence/postgres/_escalation_notify.py::subscribe::autocommit::1
 src/synthorg/persistence/postgres/_integrity.py::constraint_name::constraint_name::1
 src/synthorg/persistence/postgres/_integrity.py::constraint_name::diag::1
 src/synthorg/persistence/postgres/_memory_vector_index.py::DenseIndexLifecycleMixin._build_dense_column::autocommit::1
@@ -33,7 +32,6 @@ src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConv
 src/synthorg/persistence/postgres/conversation_participant_repo.py::PostgresConversationParticipantRepository.save_many::diag::1
 src/synthorg/persistence/postgres/custom_rule_repo.py::PostgresCustomRuleRepository.save::constraint_name::1
 src/synthorg/persistence/postgres/decision/_cas.py::_CasMixin._execute_insert::constraint_name::1
-src/synthorg/persistence/postgres/escalation_repo.py::PostgresEscalationRepository.create::constraint_name::1
 src/synthorg/persistence/postgres/mcp_installation_repo.py::PostgresMcpInstallationRepository.save::constraint_name::1
 src/synthorg/persistence/postgres/mcp_installation_repo.py::PostgresMcpInstallationRepository.save::diag::1
 src/synthorg/persistence/postgres/tool_blueprint_repo.py::PostgresDynamicToolRepository.save::constraint_name::1

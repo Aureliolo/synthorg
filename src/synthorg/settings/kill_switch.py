@@ -1,9 +1,9 @@
 """Shared resolver-backed kill-switch helper.
 
 Many subsystems advertise a boolean kill switch in the registry that
-gates a hot-path call: evolution triggers, training ingestion, meeting
-scheduling, evaluation metric recording, request rate limiting, memory
-consolidation, escalation sweeping.  Each gate has the same shape --
+gates a hot-path call: evolution triggers, training ingestion,
+evaluation metric recording, request rate limiting, memory
+consolidation.  Each gate has the same shape --
 read the flag once at the entry point, log a single
 ``KILL_SWITCH_ENGAGED`` audit line when the gate trips, fall back to a
 safe default on resolver outage so a transient settings failure cannot

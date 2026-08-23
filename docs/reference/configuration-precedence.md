@@ -346,7 +346,6 @@ Used by:
 
 - `AuthConfig.exclude_paths` (`None` = auto-derive from API prefix)
 - `CoordinationSectionConfig.max_concurrency_per_wave` (`None` = unlimited)
-- `CeremonyPolicyConfig.{strategy, velocity_calculator, auto_transition, transition_threshold}` (`None` = inherit from level up)
 
 ### Selecting between the three resolution helpers
 
@@ -742,8 +741,7 @@ Reference implementations (symbol-only references; line numbers churn):
 `api.lifecycle_helpers._audit_retention_loop`,
 `api.webhook_cleanup._webhook_receipt_cleanup_loop`,
 `providers.health_prober.ProviderHealthProber._run_loop`,
-`notifications.dispatcher.NotificationDispatcher.dispatch`,
-`communication.conflict_resolution.escalation.sweeper.EscalationExpirationSweeper._run`.
+`notifications.dispatcher.NotificationDispatcher.dispatch`.
 
 Per-line opt-out:
 `# lint-allow: long-running-loop-kill-switch -- <reason>` on the

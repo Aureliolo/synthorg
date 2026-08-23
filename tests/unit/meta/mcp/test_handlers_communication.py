@@ -1,6 +1,6 @@
 """Unit tests for the communication MCP handlers.
 
-Covers the messages, meetings, connections, webhooks, and tunnel tools.
+Covers the messages, connections, webhooks, and tunnel tools.
 Uses AsyncMock-backed facades so tests exercise handler parsing +
 envelope shaping without standing up real services.
 """
@@ -12,12 +12,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.state import AppState
-from synthorg.communication.mcp_errors import CapabilityNotSupportedError
-from synthorg.communication.meeting.enums import (
-    MeetingProtocolType,
-    MeetingStatus,
-)
-from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -57,17 +51,6 @@ def _connection(name: str = "c1") -> Connection:
     )
 
 
-def _meeting(meeting_id: str = "m-1") -> MeetingRecord:
-    return MeetingRecord(
-        meeting_id=NotBlankStr(meeting_id),
-        meeting_type_name=NotBlankStr("standup"),
-        protocol_type=MeetingProtocolType.ROUND_ROBIN,
-        status=MeetingStatus.FAILED,
-        error_message=NotBlankStr("test failure"),
-        token_budget=1000,
-    )
-
-
 def _webhook(name: str = "wh") -> WebhookDefinition:
     return WebhookDefinition(
         name=NotBlankStr(name),
@@ -88,24 +71,6 @@ def fake_message_service() -> AsyncMock:
     # happy-path destructive-op tests succeed. Per-test overrides set
     # False to simulate not-found.
     service.delete_message = AsyncMock(return_value=True)
-    return service
-
-
-@pytest.fixture
-def fake_meeting_service() -> AsyncMock:
-    service = AsyncMock()
-    service.list_meetings = AsyncMock(return_value=((), 0))
-    service.get_meeting = AsyncMock(return_value=None)
-    service.create_meeting = AsyncMock(
-        side_effect=CapabilityNotSupportedError("meeting_create", "reason"),
-    )
-    service.update_meeting = AsyncMock(
-        side_effect=CapabilityNotSupportedError("meeting_update", "reason"),
-    )
-    # ``delete_meeting`` is now a real operation; default to True so
-    # the happy-path destructive-op test succeeds. Per-test overrides
-    # set False to simulate not-found.
-    service.delete_meeting = AsyncMock(return_value=True)
     return service
 
 
@@ -146,7 +111,6 @@ def fake_tunnel_service() -> AsyncMock:
 @pytest.fixture
 def fake_app_state(
     fake_message_service: AsyncMock,
-    fake_meeting_service: AsyncMock,
     fake_connection_service: AsyncMock,
     fake_webhook_service: AsyncMock,
     fake_tunnel_service: AsyncMock,
@@ -155,7 +119,6 @@ def fake_app_state(
         slices={
             CommunicationStateSlice: {
                 "message_service": fake_message_service,
-                "meeting_service": fake_meeting_service,
             },
             IntegrationsStateSlice: {
                 "connection_service": fake_connection_service,
@@ -277,122 +240,6 @@ class TestMessagesHandlers:
             app_state=fake_app_state,
             arguments={
                 "message_id": "m-1",
-                "confirm": True,
-                "reason": "cleanup",
-            },
-            actor=make_test_actor(),
-        )
-        payload = json.loads(response)
-        assert payload["status"] == "error"
-
-
-# ── Meetings ────────────────────────────────────────────────────────
-
-
-class TestMeetingsHandlers:
-    async def test_list_happy_path(
-        self,
-        fake_app_state: AppState,
-        fake_meeting_service: AsyncMock,
-    ) -> None:
-        fake_meeting_service.list_meetings = AsyncMock(
-            return_value=((_meeting(),), 1),
-        )
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_list"]
-        response = await handler(app_state=fake_app_state, arguments={})
-        payload = json.loads(response)
-        assert payload["status"] == "ok"
-
-    async def test_list_status_filter_invalid(
-        self,
-        fake_app_state: AppState,
-    ) -> None:
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_list"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={"status": "bogus"},
-        )
-        assert json.loads(response)["status"] == "error"
-
-    async def test_get_not_found(
-        self,
-        fake_app_state: AppState,
-    ) -> None:
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_get"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={"meeting_id": "m-xxx"},
-        )
-        assert json.loads(response)["domain_code"] == "not_found"
-
-    async def test_create_capability_gap(
-        self,
-        fake_app_state: AppState,
-    ) -> None:
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_create"]
-        response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["domain_code"] == "not_supported"
-
-    async def test_delete_requires_guardrails(
-        self,
-        fake_app_state: AppState,
-    ) -> None:
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
-        response = await handler(app_state=fake_app_state, arguments={})
-        assert json.loads(response)["domain_code"] == "guardrail_violated"
-
-    async def test_delete_happy_path_returns_removed_true(
-        self,
-        fake_app_state: AppState,
-    ) -> None:
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={
-                "meeting_id": "m-1",
-                "confirm": True,
-                "reason": "operator user-deletion cleanup",
-            },
-            actor=make_test_actor(),
-        )
-        payload = json.loads(response)
-        assert payload["status"] == "ok"
-        assert payload["data"]["removed"] is True
-
-    async def test_delete_returns_removed_false_when_not_found(
-        self,
-        fake_app_state: AppState,
-        fake_meeting_service: AsyncMock,
-    ) -> None:
-        fake_meeting_service.delete_meeting = AsyncMock(return_value=False)
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={
-                "meeting_id": "missing",
-                "confirm": True,
-                "reason": "cleanup",
-            },
-            actor=make_test_actor(),
-        )
-        payload = json.loads(response)
-        assert payload["status"] == "ok"
-        assert payload["data"]["removed"] is False
-
-    async def test_delete_unexpected_service_exception_returns_error(
-        self,
-        fake_app_state: AppState,
-        fake_meeting_service: AsyncMock,
-    ) -> None:
-        """An unexpected exception bubbles into the generic error envelope."""
-        fake_meeting_service.delete_meeting = AsyncMock(
-            side_effect=RuntimeError("orchestrator unavailable"),
-        )
-        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={
-                "meeting_id": "m-1",
                 "confirm": True,
                 "reason": "cleanup",
             },

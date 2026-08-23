@@ -374,11 +374,11 @@ class SQLiteCollaborationMetricRepository:
 INSERT INTO collaboration_metrics (
     id, agent_id, recorded_at, delegation_success,
     delegation_response_seconds, conflict_constructiveness,
-    meeting_contribution, loop_triggered, handoff_completeness
+    discussion_contribution, loop_triggered, handoff_completeness
 ) VALUES (
     :id, :agent_id, :recorded_at, :delegation_success,
     :delegation_response_seconds, :conflict_constructiveness,
-    :meeting_contribution, :loop_triggered, :handoff_completeness
+    :discussion_contribution, :loop_triggered, :handoff_completeness
 )""",
                     data,
                 )
@@ -456,7 +456,7 @@ INSERT INTO collaboration_metrics (
         sql = """\
 SELECT id, agent_id, recorded_at, delegation_success,
        delegation_response_seconds, conflict_constructiveness,
-       meeting_contribution, loop_triggered, handoff_completeness
+       discussion_contribution, loop_triggered, handoff_completeness
 FROM collaboration_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

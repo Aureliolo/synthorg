@@ -6,8 +6,7 @@ shape is too small to justify its own module:
 * ``meta`` (6 tools)
 * ``budget`` + ``budget_versions`` (5 tools)
 * ``analytics`` + ``metrics`` + ``reports`` (8 tools)
-* ``coordination`` + ``coordination_metrics`` + ``ceremony_policy``
-  (5 tools)
+* ``coordination`` + ``coordination_metrics`` (2 tools)
 * ``quality`` + ``reviews`` + ``evaluation_versions`` (9 tools)
 * ``signals`` (8 tools)
 * ``approvals`` (5 tools)
@@ -244,7 +243,7 @@ class ReportsGenerateArgs(_ArgsBase):
     )
 
 
-# ── coordination / ceremony policy ─────────────────────────────────
+# ── coordination ────────────────────────────────────────────────────
 
 
 class CoordinationGetTaskMetricsArgs(_ArgsBase):
@@ -274,23 +273,6 @@ class CoordinationMetricsListArgs(PaginationFields):
         """
         _check_time_window_ordering(self.since, self.until)
         return self
-
-
-class CeremonyPolicyGetArgs(_ArgsBase):
-    """Args for ``ceremony_policy.get``: no fields."""
-
-
-class CeremonyPolicyGetResolvedArgs(_ArgsBase):
-    """Args for ``ceremony_policy.get_resolved``."""
-
-    department: NotBlankStr | None = Field(
-        default=None,
-        description="Department name (optional)",
-    )
-
-
-class CeremonyPolicyGetActiveStrategyArgs(_ArgsBase):
-    """Args for ``ceremony_policy.get_active_strategy``: no fields."""
 
 
 # ── quality / reviews / evaluation_versions ─────────────────────────
@@ -482,9 +464,6 @@ __all__ = [
     "BudgetListRecordsArgs",
     "BudgetVersionsGetArgs",
     "BudgetVersionsListArgs",
-    "CeremonyPolicyGetActiveStrategyArgs",
-    "CeremonyPolicyGetArgs",
-    "CeremonyPolicyGetResolvedArgs",
     "CoordinationGetTaskMetricsArgs",
     "CoordinationMetricsListArgs",
     "EvaluationVersionsGetArgs",

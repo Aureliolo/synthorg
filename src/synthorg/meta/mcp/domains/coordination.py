@@ -1,14 +1,11 @@
 """Coordination domain MCP tools.
 
-Covers coordination, coordination metrics, and ceremony policy.
+Covers coordination and coordination metrics.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.domains._simple_args import (
-    CeremonyPolicyGetActiveStrategyArgs,
-    CeremonyPolicyGetArgs,
-    CeremonyPolicyGetResolvedArgs,
     CoordinationGetTaskMetricsArgs,
     CoordinationMetricsListArgs,
 )
@@ -55,30 +52,5 @@ COORDINATION_TOOLS: tuple[MCPToolDef, ...] = (
             **PAGINATION_PROPERTIES,
         },
         args_model=CoordinationMetricsListArgs,
-    ),
-    # --- Ceremony policy ---
-    read_tool(
-        "ceremony_policy",
-        "get",
-        "Get the project-level ceremony policy.",
-        args_model=CeremonyPolicyGetArgs,
-    ),
-    read_tool(
-        "ceremony_policy",
-        "get_resolved",
-        "Get resolved ceremony policy for a department.",
-        {
-            "department": {
-                "type": "string",
-                "description": "Department name (optional)",
-            },
-        },
-        args_model=CeremonyPolicyGetResolvedArgs,
-    ),
-    read_tool(
-        "ceremony_policy",
-        "get_active_strategy",
-        "Get the active ceremony strategy.",
-        args_model=CeremonyPolicyGetActiveStrategyArgs,
     ),
 )

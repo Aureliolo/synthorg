@@ -180,13 +180,6 @@ Channel-filtered message feed for inspecting agent-to-agent communications. Two-
 **API endpoints**: `GET /messages`, `GET /messages/channels`
 **WS channels**: `messages`
 
-#### Meetings (`/meetings`)
-
-Meeting history list with status/type filters. Click opens meeting detail (`/meetings/{id}`) with transcript and outcomes. "Trigger Meeting" action creates event-based meetings.
-
-**API endpoints**: `GET /meetings`, `GET /meetings/{id}`, `POST /meetings/trigger`
-**WS channels**: `meetings`
-
 #### Providers (`/providers`)
 
 LLM provider management. CRUD cards for configured providers with health status display (up/degraded/down/unknown) and 24-hour health metrics (average response time, error rate percentage, call count, total tokens, cost). Connection test button. Preset-based creation flow with subscription auth support requiring ToS acceptance for applicable providers. Model auto-discovery with capability badges (tools, vision, streaming) per model. Provider list supports filtering and sorting by health status, name, and model count. Provider detail/edit at `/providers/{name}`.
@@ -248,15 +241,13 @@ Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES`
 
 The **observability namespace** includes a dedicated **Sinks** sub-page (`/settings/observability/sinks`) for managing log sink configuration. The sinks page displays all active sinks (console and file) as cards showing identifier, log level, format, rotation policy, and routing prefixes. Operators can edit sink overrides and define custom sinks with a test-before-save workflow.
 
-The **coordination namespace** includes a dedicated **Ceremony Policy** sub-page (`/settings/coordination/ceremony-policy`) for managing ceremony scheduling configuration. The page displays strategy selection (8 strategy types with descriptions and velocity unit indicator), velocity-calculator selection (paired to strategy via defaults), strategy-specific config panels, auto-transition toggle and threshold, department overrides with inherit/override toggles, per-ceremony overrides, and a strategy change warning banner. A resolved-policy view (populated from `GET /ceremony-policy/resolved`) annotates each field with a `PolicySourceBadge` showing the origin level (project, department, or default). Department overrides are read and written through `GET /departments/{name}/ceremony-policy` and `PUT /departments/{name}/ceremony-policy`, which store data in the `dept_ceremony_policies` JSON setting and resolve against the project-level policy.
-
 The **memory namespace** includes a dedicated **Fine-Tuning** sub-page (`/settings/memory/fine-tuning`) for managing the domain-specific embedding fine-tuning pipeline. The page displays pipeline status (5-stage stepper with live progress bar), run history, preflight validation (dependencies, GPU, documents, disk space), and controls for starting/cancelling fine-tuning runs with optional advanced parameter overrides (epochs, learning rate, batch size). A **Checkpoints** section lists all fine-tuned model checkpoints with evaluation metrics (NDCG@10, Recall@10), deploy/rollback/delete actions (deploy activates the checkpoint and updates embedder settings; rollback restores the pre-deployment backup config; delete is rejected for the active checkpoint), and an active-checkpoint indicator. All checkpoint actions require CEO or SYSTEM role.
 
 The **backup namespace** covers backup configuration settings (schedule, retention, path) and links to a dedicated **Admin Backups** page at `/admin/backups` (a standalone admin route, reached via a Settings action card from the backup namespace). That page surfaces the full backup lifecycle: create, cursor-paginated list, restore (which swaps the database underneath the process, so the notice says to restart it), and delete.
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Settings the deployment fixes (`compose_set`: the container was created with the value, a dashboard write is rejected) are moved out of the inline groups into a per-namespace collapsed **"Advanced · set by the deployment"** disclosure, marked read-only and badged, so an operator can inspect the value without mistaking an enabled-looking input for something editable. This is distinct from the basic/advanced *visibility* toggle above. Every setting outside that disclosure applies without a restart once its consumer is wired, on the next call for a per-operation read and on the next dispatch poll for a subscriber-applied one; there is no third state and no restart notice.
 
-**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /settings/security/export`, `POST /settings/security/import`, `GET /security/audit`, `GET /coordination/metrics`, `GET /ceremony-policy`, `GET /ceremony-policy/resolved?department=`, `GET /ceremony-policy/active`, `GET /departments/{name}/ceremony-policy`, `PUT /departments/{name}/ceremony-policy`, `DELETE /departments/{name}/ceremony-policy`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /settings/security/export`, `POST /settings/security/import`, `GET /security/audit`, `GET /coordination/metrics`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (system-level notifications)
 
 #### Documentation (`/docs/`)
@@ -364,7 +355,6 @@ Sidebar layout (220px expanded, 56px icon rail):
   - Subworkflows, `Layers`, `/subworkflows`
   - Artifacts, `Package`, `/artifacts`
   - Messages, `MessageSquare`, `/messages` (badge: unread count)
-  - Meetings, `Video`, `/meetings`
   - Providers, `Cpu`, `/providers`
   - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
   - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
@@ -445,15 +435,12 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/messages?channel=:name&priority=:level` | Messages (filtered) | Filtered by priority |
 | `/messages?channel=:name&search=:query` | Messages (filtered) | Search by content/sender |
 | `/messages?channel=:name&message=:id` | Messages (detail) | Side drawer for message detail |
-| `/meetings` | Meetings | Meeting history |
-| `/meetings/:meetingId` | Meeting detail | Transcript and outcomes |
 | `/providers` | Providers | Provider list |
 | `/providers/:providerName` | Provider detail | Edit/test provider |
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
 | `/settings/security/sessions` | Active Sessions | Active-session list with per-row revoke (current device disabled); reached via a Settings action card from the security namespace |
-| `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection with resolved-policy source badges, department overrides with inherit/override toggle, per-ceremony overrides, velocity-calculator auto-selection per strategy |
 | `/settings/memory/fine-tuning` | Fine-Tuning | Embedding fine-tuning pipeline management (status, run history, preflight checks, start/cancel) |
 | `/admin/backups` | Admin Backups | System backup lifecycle: create, cursor-paginated list, restore (restart notice), delete; reached via a Settings action card from the backup namespace |
 | `/clients` | Client List | Synthetic-client roster with search/filter |
@@ -491,7 +478,6 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Agents** (list) | `agents` | Agent status changes |
 | **Agents** (detail) | `agents`, `tasks` | Agent status and task changes for selected agent |
 | **Messages** | `messages` | New messages sent |
-| **Meetings** | `meetings` | Meeting started/completed/failed |
 | **Projects** (list) | `projects` | Project creation events |
 | **Projects** (detail) | `projects`, `tasks` | Project and task changes |
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
@@ -552,7 +538,6 @@ Every backend controller has a home in the page structure. No orphans.
 | TaskController | Task Board |
 | BoardController | Task Board (WIP-limited Kanban view: `GET /board`, `POST /board/move`) |
 | MessageController | Messages |
-| MeetingController | Meetings |
 | BudgetController | Budget, Dashboard |
 | ForecastBudgetController | Budget forecast (`/budget/forecast`: approve / reject / raise-ceiling on a brief's projected spend) |
 | AnalyticsController | Dashboard, Budget |

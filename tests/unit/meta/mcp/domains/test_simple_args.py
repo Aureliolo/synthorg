@@ -19,7 +19,6 @@ from synthorg.meta.mcp.domains._simple_args import (
     BudgetGetAgentSpendingArgs,
     BudgetListRecordsArgs,
     BudgetVersionsGetArgs,
-    CeremonyPolicyGetResolvedArgs,
     MetaTriggerCycleArgs,
     ReportsGenerateArgs,
     ReviewsCreateArgs,
@@ -85,12 +84,6 @@ class TestAnalyticsArgs:
     def test_reports_generate(self) -> None:
         args = ReportsGenerateArgs(template="weekly")
         assert args.options is None
-
-
-class TestCoordinationArgs:
-    def test_ceremony_resolved_optional_dept(self) -> None:
-        args = CeremonyPolicyGetResolvedArgs()
-        assert args.department is None
 
 
 class TestQualityArgs:

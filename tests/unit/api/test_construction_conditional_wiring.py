@@ -9,7 +9,6 @@ present-path (facade wired) and absent-path (facade stays ``None``).
 
 import pytest
 
-from synthorg.api.auto_wire_meetings import MeetingWireResult
 from synthorg.api.auto_wire_phase1 import Phase1Result
 from synthorg.api.construction_wiring import ConstructionDeps
 from synthorg.api.cursor import CursorSecret
@@ -53,7 +52,6 @@ def _deps(
     return ConstructionDeps(
         effective_config=RootConfig(company_name="test"),
         phase1=mock_of[Phase1Result](),
-        meeting_wire=mock_of[MeetingWireResult](),
         integrations=IntegrationsBundle(health_prober_service=prober),
         approval_store=mock_of[ApprovalStoreProtocol](),
         autonomy_change_strategy=mock_of[AutonomyChangeStrategy](),

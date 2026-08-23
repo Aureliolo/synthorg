@@ -10,8 +10,6 @@ timeout configuration:
 - :class:`OAuthTokenManager.set_config_resolver` + ``start()`` resolves
   the OAuth HTTP timeout once and swaps the flow; a settings outage
   keeps the default flow in place without raising.
-- :class:`WebhookEventBridge.set_config_resolver` injects the resolver
-  used by the polling-loop helpers.
 - :class:`JetStreamMessageBus._resolve_history_params` reads the two
   NATS history settings directly via scalar accessors and falls back
   to defaults on a resolver error.
@@ -38,8 +36,6 @@ from litestar.channels import ChannelsPlugin
 
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
-from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.oauth.callback_handler import (
     resolve_oauth_http_timeout,
@@ -242,20 +238,6 @@ class TestOAuthTokenManagerConfigResolver:
         await mgr._resolve_loop_tuning()
         assert mgr._interval == interval
         assert mgr._threshold == threshold
-
-
-# ── WebhookEventBridge.set_config_resolver ─────────────────────
-
-
-class TestWebhookEventBridgeConfigResolver:
-    def test_set_config_resolver_stores_reference(self) -> None:
-        bridge = WebhookEventBridge(
-            bus=mock_of[MessageBus](),
-            ceremony_scheduler=MagicMock(spec=CeremonyScheduler),
-        )
-        resolver = mock_of[ConfigResolver]()
-        bridge.set_config_resolver(resolver)
-        assert bridge._config_resolver is resolver
 
 
 # ── MessageBusBridge resolver-fallback throttling ──────────────
