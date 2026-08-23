@@ -121,18 +121,12 @@ class ConfigTuningStrategy:
             "coordination_cost_ratio": lambda: self._propose_coordination_cost_fix(ctx),
             "coordination_overhead": lambda: self._propose_overhead_fix(ctx),
         }
+        # A rule absent from the map is not a fault and is not dropped: this
+        # is one strategy among several, and a detector with no config lever
+        # to pull (a straggler, a redundancy, a benchmark regression) is
+        # answered by a sibling strategy instead.
         builder = builders.get(rule_match.rule_name)
-        if builder is None:
-            # Not every rule has a config lever, so this is an ordinary
-            # outcome rather than a fault. Named anyway: a rule that fires
-            # and proposes nothing looks identical to one that never fired.
-            logger.debug(
-                META_PROPOSAL_GENERATED,
-                rule_name=rule_match.rule_name,
-                note="no config-tuning builder for this rule",
-            )
-            return None
-        return builder()
+        return builder() if builder else None
 
     def _propose_quality_fix(
         self,

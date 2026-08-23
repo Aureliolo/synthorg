@@ -418,18 +418,22 @@ class HiringService:
                     # only a request carrying no approval, and ``_store`` seats
                     # the approval-stamped copy in the cache before it raises.
                     # Undo both, then surface the original failure.
-                    self._requests[str(request.id)] = request
-                    await retire_unbacked_approval(
-                        self._approval_store, request=updated
-                    )
+                    # Logged before the compensation, not after: retiring the
+                    # approval can raise in its own right, and that would
+                    # replace the failure being compensated for with no record
+                    # that either happened.
                     logger.warning(
                         HR_HIRING_REQUEST_INVALID,
                         request_id=str(request.id),
                         role=str(request.role),
                         error=(
                             "approval submitted but the request did not"
-                            " persist; both undone"
+                            " persist; undoing both"
                         ),
+                    )
+                    self._requests[str(request.id)] = request
+                    await retire_unbacked_approval(
+                        self._approval_store, request=updated
                     )
                     raise
 

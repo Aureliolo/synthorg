@@ -3,7 +3,7 @@
 Houses args models for the smaller MCP domains where each tool's
 shape is too small to justify its own module:
 
-* ``meta`` (5 tools)
+* ``meta`` (6 tools)
 * ``budget`` + ``budget_versions`` (5 tools)
 * ``analytics`` + ``metrics`` + ``reports`` (8 tools)
 * ``coordination`` + ``coordination_metrics`` + ``ceremony_policy``
