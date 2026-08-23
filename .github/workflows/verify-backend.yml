@@ -833,18 +833,18 @@ jobs:
       - name: pip-audit (fine-tune extra)
         run: uv run pip-audit --ignore-vuln PYSEC-2022-42969
 
-      # --timeout=300 overrides pyproject's global 30s per-test cap. The first
-      # guarded test cold-imports torch, transformers and datasets inside the
-      # test body: shared libraries plus a CUDA-runtime probe, which on a cold
-      # runner page cache is comfortably past 30s. Left at the default this
-      # job would flake on a healthy install.
+      # The cold import of torch, transformers and datasets costs on the order
+      # of fifteen seconds: shared libraries plus a CUDA-runtime probe. The
+      # module pays it once at collection, so it falls outside both the per-test
+      # timeout and the six-second unit wall-clock guard, and the global caps
+      # below measure what the tests themselves do. --session-timeout still
+      # bounds the run as a whole, which is where that cost does land.
       - name: Run fine-tune trainer tests
         run: |
           uv run python -m pytest \
             tests/unit/memory/embedding/test_fine_tune_trainer.py \
             -m unit \
             -n0 \
-            --timeout=300 \
             --session-timeout 600 \
             --junitxml=junit-fine-tune-extra.xml \
             --durations=20 \

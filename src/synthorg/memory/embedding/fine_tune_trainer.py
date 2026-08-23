@@ -148,20 +148,28 @@ def import_trainer_api() -> TrainerApi:
             surfaces as ``OSError``. Both would otherwise escape untyped and
             reach an operator with none of the install guidance below.
     """
+    # Each import carries its own unresolvable-module suppression because the
+    # extra is absent from the type-check environment by design. mypy is told
+    # the same fact once, in its ``ignore_missing_imports`` overrides; pyright
+    # has no per-module equivalent, so the claim is made at each site.
     try:
-        from datasets import Dataset  # noqa: PLC0415
-        from sentence_transformers import (  # noqa: PLC0415
+        from datasets import (  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+            Dataset,
+        )
+        from sentence_transformers import (  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
             SentenceTransformerTrainer,
             SentenceTransformerTrainingArguments,
         )
-        from sentence_transformers.base.sampler import (  # noqa: PLC0415
+        from sentence_transformers.base.sampler import (  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
             BatchSamplers,
             MultiDatasetBatchSamplers,
         )
-        from sentence_transformers.sentence_transformer.losses import (  # noqa: PLC0415
+        from sentence_transformers.sentence_transformer.losses import (  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
             MultipleNegativesRankingLoss,
         )
-        from transformers import TrainerCallback  # noqa: PLC0415
+        from transformers import (  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+            TrainerCallback,
+        )
     except (ImportError, RuntimeError, OSError) as exc:
         _trainer_dependency_missing(exc)
     else:

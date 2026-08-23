@@ -88,6 +88,17 @@ def _missing_extra_packages() -> tuple[str, ...]:
     return tuple(missing)
 
 
+#: Probed once, at collection, because whether the extra is installed is a
+#: property of the environment rather than of any one test. Where it IS
+#: installed, importing the stack costs about thirteen seconds of cold
+#: torch/transformers/datasets loading, and asking per test hands that whole
+#: one-time cost to whichever test the collector happened to order first,
+#: which then trips the six-second per-test wall-clock guard on an accident of
+#: ordering. Collection sits outside every test's timing window, so the cost
+#: lands where it belongs.
+_MISSING_EXTRA_PACKAGES: Final[tuple[str, ...]] = _missing_extra_packages()
+
+
 def _require_fine_tune_extra() -> None:
     """Skip unless the fine-tune extra is installed, or fail if it must be.
 
@@ -96,10 +107,9 @@ def _require_fine_tune_extra() -> None:
             (the CI job sets ``SYNTHORG_REQUIRE_FINE_TUNE_EXTRA=1``) and a
             package is nonetheless absent.
     """
-    missing = _missing_extra_packages()
-    if not missing:
+    if not _MISSING_EXTRA_PACKAGES:
         return
-    detail = ", ".join(missing)
+    detail = ", ".join(_MISSING_EXTRA_PACKAGES)
     # Compared against "1" rather than read for truthiness, matching the
     # sibling probe flag: "0" must mean off, not "any non-empty string is on".
     if os.environ.get(_REQUIRE_EXTRA_ENV, "").strip() == "1":  # lint-allow: env-read
@@ -925,7 +935,7 @@ class TestTrainerApiImport:
         new surface.
         """
         _require_fine_tune_extra()
-        import sentence_transformers
+        import sentence_transformers  # pyright: ignore[reportMissingImports]
 
         with pytest.raises(AttributeError):
             getattr(sentence_transformers, attribute)
@@ -933,7 +943,7 @@ class TestTrainerApiImport:
     def test_the_real_state_object_carries_the_counters_read(self) -> None:
         """The stand-in above claims these two fields exist. Prove it."""
         _require_fine_tune_extra()
-        from transformers import TrainerState
+        from transformers import TrainerState  # pyright: ignore[reportMissingImports]
 
         state = TrainerState()
 
