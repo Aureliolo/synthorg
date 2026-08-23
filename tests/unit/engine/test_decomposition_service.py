@@ -54,6 +54,28 @@ class _NeverAnsweringStrategy:
         return True
 
 
+class _TimingOutStrategy:
+    """A planner whose own call times out while no ceiling fires.
+
+    The shape a provider socket timeout takes: a bare ``TimeoutError`` from
+    inside, reaching the same handler an expired ceiling reaches.
+    """
+
+    async def decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        msg = "the provider call timed out"
+        raise TimeoutError(msg)
+
+    def get_strategy_name(self) -> str:
+        return "timing-out"
+
+    def plans_any_task(self) -> bool:
+        return True
+
+
 def _make_task(
     task_id: str = "task-svc-1",
     *,
@@ -564,6 +586,25 @@ class TestOneDecompositionCannotRunForever:
 
         with pytest.raises(DecompositionTimeoutError):
             await service.decompose_task(_make_task(), DecompositionContext())
+
+    async def test_a_delegated_timeout_stays_retryable(self) -> None:
+        """A call that timed out on its own is not a ceiling that fired.
+
+        Both arrive at the same handler as ``TimeoutError``, and they deserve
+        opposite answers: a ceiling is unchanged on the next attempt, so a
+        retry pays it again to reach the same place, while a provider call that
+        timed out is the ordinary transient a retry exists for. Classifying on
+        the type alone would make every delegated timeout unretryable.
+        """
+        service = DecompositionService(
+            _TimingOutStrategy(),
+            TaskStructureClassifier(),
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            await service.decompose_task(_make_task(), DecompositionContext())
+
+        assert not isinstance(caught.value, DecompositionTimeoutError)
 
     async def test_a_settings_store_that_is_down_is_not_a_silent_downgrade(
         self,
