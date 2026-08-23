@@ -9,24 +9,37 @@ session correct and resubmit on its next turn instead of ending on it.
 """
 
 import asyncio
-from typing import cast, override
+import hashlib
+import json
+from typing import Final, cast, override
 
 from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._mangled_arguments import (
+    mangled_serialisation_hint,
+)
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
     DECOMPOSITION_SESSION_PLAN_REJECTED,
+    DECOMPOSITION_SESSION_PLAN_RESUBMITTED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
+
+#: How many distinct refused submissions a session is remembered by. A session
+#: is turn-bounded, so this only has to outlast one; it is a cap rather than a
+#: budget, so a model cycling through many distinct bad plans cannot grow the
+#: set without limit.
+_REMEMBERED_REFUSALS: Final[int] = 32
 
 
 class PlanCapture:
@@ -47,12 +60,13 @@ class PlanCapture:
         parent_task_id: The objective being planned, for the duplicate warning.
     """
 
-    __slots__ = ("_lock", "_parent_task_id", "_plan")
+    __slots__ = ("_lock", "_parent_task_id", "_plan", "_refused")
 
     def __init__(self, parent_task_id: NotBlankStr) -> None:
         self._plan: DecompositionPlan | None = None
         self._parent_task_id = parent_task_id
         self._lock = asyncio.Lock()
+        self._refused: dict[str, int] = {}
 
     @property
     def plan(self) -> DecompositionPlan | None:
@@ -74,6 +88,27 @@ class PlanCapture:
                     new_subtask_count=len(plan.subtasks),
                 )
             self._plan = plan
+
+    async def record_refusal(self, digest: str) -> int:
+        """Count this refused submission and answer how often it has arrived.
+
+        Under the same lock as :meth:`set` and for the same reason: a turn may
+        emit two calls, the invoker runs them as siblings against this one
+        instance, and a read-then-write in the tool would let both see a first
+        submission.
+
+        Args:
+            digest: What the submitted arguments hash to.
+
+        Returns:
+            How many times this exact submission has now been refused, so one
+            means it is new.
+        """
+        async with self._lock:
+            seen = self._refused.get(digest, 0) + 1
+            if seen > 1 or len(self._refused) < _REMEMBERED_REFUSALS:
+                self._refused[digest] = seen
+            return seen
 
 
 class SubmitDecompositionPlanTool(BaseTool):
@@ -123,6 +158,17 @@ class SubmitDecompositionPlanTool(BaseTool):
             A success result naming the accepted subtask count, or an error
             result describing why the plan was rejected so the agent retries.
         """
+        mangled = mangled_serialisation_hint(arguments)
+        if mangled is not None:
+            # Answered before parsing, because the plan was never read: the
+            # transport flattened the call, so a schema error here would name a
+            # field the model filled in correctly and send it to rewrite work
+            # that was never wrong.
+            logger.warning(
+                DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
+                parent_task_id=self._parent_task_id,
+            )
+            return ToolExecutionResult(content=mangled, is_error=True)
         try:
             plan = args_to_decomposition_plan(
                 cast("dict[str, JsonValue]", arguments),
@@ -130,29 +176,89 @@ class SubmitDecompositionPlanTool(BaseTool):
                 self._available_roles,
             )
         except DecompositionError as exc:
-            # Logged as well as returned: the rejection the agent reads is one
-            # tool result, and the question an expensive session raises later
-            # is whether it was handed the same one repeatedly, which only the
-            # log can answer.
-            logger.info(
-                DECOMPOSITION_SESSION_PLAN_REJECTED,
-                parent_task_id=self._parent_task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Plan rejected: {safe_error_description(exc)}. "
-                    "Fix the issue and call submit_decomposition_plan again."
-                ),
-                is_error=True,
-            )
+            return await self._refuse(arguments, exc)
         await self._capture.set(plan)
         return ToolExecutionResult(
             content=(
                 f"Plan accepted with {len(plan.subtasks)} subtasks. You may stop now."
             ),
         )
+
+    async def _refuse(
+        self, arguments: dict[str, object], exc: DecompositionError
+    ) -> ToolExecutionResult:
+        """Refuse the submission, reframing it when it is an unchanged repeat.
+
+        A byte-identical resubmission of a plan just refused carries no
+        information: it cannot be accepted, and answering it with the wording
+        that already failed to land buys the same turn again. Two of five
+        repair rounds on one parent in a live run were exactly this. So the
+        repeat is named, and the instruction becomes what to change rather than
+        the "fix the issue" the model has now been told twice.
+
+        Args:
+            arguments: The submission, as the session emitted it.
+            exc: Why it was refused.
+
+        Returns:
+            The refusal the agent reads.
+        """
+        reason = safe_error_description(exc)
+        seen = await self._capture.record_refusal(_submission_digest(arguments))
+        # Logged as well as returned: the rejection the agent reads is one tool
+        # result, and the question an expensive session raises later is whether
+        # it was handed the same one repeatedly, which only the log can answer.
+        logger.info(
+            DECOMPOSITION_SESSION_PLAN_REJECTED,
+            parent_task_id=self._parent_task_id,
+            error_type=type(exc).__name__,
+            error=reason,
+        )
+        if seen == 1:
+            return ToolExecutionResult(
+                content=(
+                    f"Plan rejected: {reason}. Fix the issue and call "
+                    "submit_decomposition_plan again."
+                ),
+                is_error=True,
+            )
+        logger.warning(
+            DECOMPOSITION_SESSION_PLAN_RESUBMITTED,
+            parent_task_id=self._parent_task_id,
+            submissions=seen,
+            error_type=type(exc).__name__,
+        )
+        return ToolExecutionResult(
+            content=(
+                f"Plan rejected again, and it was byte-identical to the one "
+                f"refused {seen - 1} time(s) already, so nothing about it can "
+                f"be accepted this time either. The refusal is unchanged: "
+                f"{reason}. Do not resend this plan. Change the specific item "
+                f"the refusal names, and if you cannot see what to change, "
+                f"restate the refusal in your own words first and then submit "
+                f"a plan that differs in that respect."
+            ),
+            is_error=True,
+        )
+
+
+def _submission_digest(arguments: dict[str, object]) -> str:
+    """Identify one submission by its content.
+
+    Key-order-independent, because two submissions differing only in the order
+    a serialiser emitted their keys are the same plan and would otherwise read
+    as a correction. Falls back to the repr for anything JSON cannot take: a
+    digest that cannot be computed must not collide with a real one, and an
+    un-serialisable submission was going to be refused anyway.
+
+    Returns:
+        A hex digest of the submitted arguments.
+    """
+    try:
+        payload = json.dumps(arguments, sort_keys=True, default=repr)
+    except TypeError, ValueError:
+        payload = repr(sorted(arguments.items(), key=lambda item: item[0]))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 __all__ = ["PlanCapture", "SubmitDecompositionPlanTool"]

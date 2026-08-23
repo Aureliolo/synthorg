@@ -35,9 +35,11 @@ type Splitter = Callable[[CellRecord], dict[int, tuple[set[str], set[str]]]]
 #: Says which bucket a run's own spend and session count belong in.
 type RunBucket = Callable[[CellRecord], int]
 
-#: A tree's root sits at level 0 internally and at depth 1 in the report: the
-#: question is asked in levels of decomposition, and a run that never split is
-#: one level deep rather than zero.
+#: A leaf's own ``depth`` is a level INDEX, zero at the root, and the report
+#: asks its question in levels: a run that never split is one level deep rather
+#: than zero. Applies to a unit's depth only. A cell's ``achieved_depth`` and
+#: its ``depth_cap`` are both level COUNTS already (see
+#: ``tree.achieved_levels``), so offsetting either would count one level twice.
 _DEPTH_OFFSET = 1
 
 
@@ -89,10 +91,15 @@ def curve_by_depth_cap(cells: Iterable[CellRecord]) -> tuple[DepthPoint, ...]:
 def _achieved_bucket(cell: CellRecord) -> int:
     """Where a run's own cost belongs on the achieved-depth curve.
 
+    No offset, unlike the per-leaf splitter above: ``achieved_depth`` already
+    counts LEVELS, the same unit the cap is in (``tree.achieved_levels`` owns
+    that conversion), while a leaf's own ``depth`` is a zero-based index.
+    Offsetting here would count one level twice.
+
     Returns:
-        The reported depth the tree reached.
+        The number of levels the tree reached.
     """
-    return (cell.achieved_depth or 0) + _DEPTH_OFFSET
+    return cell.achieved_depth or 0
 
 
 def _cap_bucket(cell: CellRecord) -> int:
@@ -208,14 +215,16 @@ def achieved_depth_histogram(cells: Iterable[CellRecord]) -> dict[str, int]:
 
     Returns:
         ``"cap=<n> <arm> reached=<m>"`` mapped to the run count, in a stable
-        order.
+        order. Both numbers count LEVELS, so a cap spent in full reads
+        ``cap=3 ... reached=3``.
     """
     counts: dict[str, int] = defaultdict(int)
     for cell in cells:
         if cell.achieved_depth is None:
             continue
-        reached = cell.achieved_depth + _DEPTH_OFFSET
-        counts[f"cap={cell.depth_cap} {cell.arm.value} reached={reached}"] += 1
+        counts[
+            f"cap={cell.depth_cap} {cell.arm.value} reached={cell.achieved_depth}"
+        ] += 1
     return dict(sorted(counts.items()))
 
 

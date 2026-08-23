@@ -5,11 +5,13 @@ import pytest
 
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.staffing import (
+    _BUILDER_ROLE,
     _RESPONSE_TOKEN_CEILING,
     SweepRoster,
     build_roster,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
@@ -112,3 +114,21 @@ async def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:
     for reviewer in roster.reviewers:
         assert reviewer.model.provider == _REVIEWER.provider
         assert reviewer.model.model_id == _REVIEWER.model_id
+
+
+async def test_the_planner_is_never_offered_the_reviewer_role() -> None:
+    """The reviewers are staffed, and still not something to assign work to.
+
+    This roster feeds the sweep's own planner, and the sweep is measuring what
+    gating a merge is worth. A plan item owned by the judging role puts
+    plan-level verification into BOTH arms, so the contrast is contaminated at
+    source rather than measured: exactly what a live run recorded, at 19 of 102
+    subtasks.
+    """
+    roster = await _roster()
+
+    assert roster.reviewers
+    assert COMPLETION_REVIEWER_ROLE_NAME in {
+        str(agent.role) for agent in roster.reviewers
+    }
+    assert roster.roles == (_BUILDER_ROLE,)

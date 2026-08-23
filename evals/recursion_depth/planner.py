@@ -26,6 +26,7 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
     ledger_scope,
+    session_spend,
     transcript_scope,
 )
 from evals.recursion_depth.staffing import SweepRoster
@@ -247,6 +248,7 @@ class AgentSessionPlanner:
                     failure=substituted,
                     execution_id=execution_id,
                     depth_cap=depth_cap,
+                    gateway_hosted=self.deps.open_run_ledger is not None,
                 )
                 raise
             except Exception as exc:
@@ -261,12 +263,19 @@ class AgentSessionPlanner:
                     failure=exc,
                     execution_id=execution_id,
                     depth_cap=depth_cap,
+                    gateway_hosted=self.deps.open_run_ledger is not None,
                 )
                 raise
             # Counted from the tree rather than from the cap: a planner that
             # stopped splitting at three ran three levels of sessions whatever
             # it was allowed to run.
-            await _book(tracker, spend, sessions=len(levels(result)))
+            await _book(
+                tracker,
+                spend,
+                sessions=len(levels(result)),
+                gateway_hosted=self.deps.open_run_ledger is not None,
+                label=execution_id,
+            )
         return result
 
     def _binding(self, task: Task, execution_id: str) -> RunBinding:
@@ -333,6 +342,7 @@ async def _shielded_book(
     failure: BaseException,
     execution_id: str,
     depth_cap: int,
+    gateway_hosted: bool,
 ) -> None:
     """Book a failed attempt's spend without displacing the failure.
 
@@ -358,9 +368,18 @@ async def _shielded_book(
         failure: What planning raised, for the log line.
         execution_id: Which planning attempt this was.
         depth_cap: The ``max_depth`` it was planning to.
+        gateway_hosted: Whether these calls crossed a hosted gateway.
     """
     try:
-        await asyncio.shield(_book(tracker, spend, sessions=sessions))
+        await asyncio.shield(
+            _book(
+                tracker,
+                spend,
+                sessions=sessions,
+                gateway_hosted=gateway_hosted,
+                label=execution_id,
+            )
+        )
     except Exception as booking:  # noqa: BLE001 -- the planning failure wins
         logger.warning(
             EVALS_RECURSION_PLAN_BOOKING_FAILED,
@@ -383,7 +402,12 @@ async def _shielded_book(
 
 
 async def _book(
-    tracker: ProgressTrackingLedger, spend: PlanningSpend, *, sessions: int
+    tracker: ProgressTrackingLedger,
+    spend: PlanningSpend,
+    *,
+    sessions: int,
+    gateway_hosted: bool,
+    label: str,
 ) -> None:
     """Book what *tracker* recorded for one planning attempt.
 
@@ -391,18 +415,22 @@ async def _book(
     background task, so reading straight after the last planning turn loses
     whatever is still in flight.
 
+    Summed through ``session_spend``, the same owner the execution half reads
+    its sessions through, so a planning session and a leaf session cannot come
+    to mean different things by the same number.
+
     Args:
         tracker: The attempt's authoritative cost sink.
         spend: Where the cell's planning spend accumulates.
         sessions: How many planning sessions this attempt ran.
+        gateway_hosted: Whether these calls crossed a hosted gateway, which
+            decides whether a second account of one call is on the ledger.
+        label: Names this attempt in the dedupe log line.
     """
     await tracker.drain_pending_records()
     records = await collect_all_records(tracker)
-    spend.book(
-        cost=sum(record.cost for record in records),
-        tokens=sum(record.input_tokens + record.output_tokens for record in records),
-        sessions=sessions,
-    )
+    booked = session_spend(records, gateway_hosted=gateway_hosted, label=label)
+    spend.book(cost=booked.cost, tokens=booked.tokens, sessions=sessions)
 
 
 def levels(result: DecompositionResult) -> tuple[DecompositionResult, ...]:

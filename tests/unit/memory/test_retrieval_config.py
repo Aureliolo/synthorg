@@ -413,3 +413,75 @@ class TestDiversityStrategyConsistency:
             and e.get("field") == "diversity_penalty_enabled"
         ]
         assert len(events) == 0
+
+
+class TestHierarchicalOnlyFieldsUnderFlat:
+    """A setting the flat retriever cannot apply is refused, not ignored."""
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_workers_per_query", 4),
+            ("reflective_retry_enabled", False),
+            ("max_retry_count", 5),
+        ],
+    )
+    def test_a_supervisor_setting_under_flat_raises(
+        self, field: str, value: object
+    ) -> None:
+        """The flat pipeline has no supervisor, so there is nothing to apply.
+
+        All three refuse together: they answer one question, and a validator
+        holding two answers to it is how one of them came to behave unlike its
+        siblings.
+        """
+        with pytest.raises(ValidationError, match=r"the hierarchical supervisor"):
+            MemoryRetrievalConfig.model_validate({field: value})
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_workers_per_query", 2),
+            ("reflective_retry_enabled", True),
+            ("max_retry_count", 2),
+        ],
+    )
+    def test_setting_one_to_its_own_default_asks_for_nothing(
+        self, field: str, value: object
+    ) -> None:
+        """Judged on the value, because a round-trip marks every field set.
+
+        ``model_dump()`` then ``model_validate()`` puts every field in
+        ``model_fields_set``, and a presence test read that as an operator
+        request: one live run logged the same warning fifty times about a
+        setting nobody had touched.
+        """
+        with structlog.testing.capture_logs() as cap:
+            config = MemoryRetrievalConfig.model_validate({field: value})
+
+        assert field in config.model_fields_set
+        assert not [e for e in cap if e.get("event") == CONFIG_VALIDATION_FAILED]
+
+    def test_a_dump_validate_round_trip_stays_silent(self) -> None:
+        """The shape that produced the noise, exercised end to end."""
+        original = MemoryRetrievalConfig(include_shared=True)
+
+        with structlog.testing.capture_logs() as cap:
+            restored = MemoryRetrievalConfig.model_validate(original.model_dump())
+
+        assert "reflective_retry_enabled" in restored.model_fields_set
+        assert not [e for e in cap if e.get("event") == CONFIG_VALIDATION_FAILED]
+
+    def test_the_hierarchical_retriever_accepts_all_three(self) -> None:
+        """They are refused for being inert, never for being wrong."""
+        config = MemoryRetrievalConfig(
+            retriever="hierarchical",
+            strategy=InjectionStrategy.CONTEXT,
+            max_workers_per_query=4,
+            reflective_retry_enabled=False,
+            max_retry_count=5,
+        )
+
+        assert config.max_workers_per_query == 4
+        assert config.reflective_retry_enabled is False
+        assert config.max_retry_count == 5

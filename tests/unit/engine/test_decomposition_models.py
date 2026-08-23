@@ -7,6 +7,10 @@ import pytest
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import PlanOption
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.role_catalog import (
+    COMPLETION_REVIEWER_ROLE_NAME,
+    RED_TEAM_ROLE_NAME,
+)
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -601,3 +605,36 @@ class TestRosterFromAgents:
     def test_no_agents_means_no_roster(self) -> None:
         """Empty is "no roster known", which leaves the owner a free string."""
         assert roster_from_agents([]) == ()
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "gate_role",
+        [COMPLETION_REVIEWER_ROLE_NAME, RED_TEAM_ROLE_NAME],
+        ids=["completion-reviewer", "red-team"],
+    )
+    def test_a_gate_role_is_staffed_and_still_not_assignable(
+        self, gate_role: str
+    ) -> None:
+        """Offered one, a planner takes it: 19 of 102 subtasks in a live run.
+
+        The holder is a real roster agent, so every roster read finds it. What
+        it may not be is the owner of a plan item, because then the party that
+        judges authors what it judges.
+        """
+        roster = roster_from_agents(
+            [self._agent("Backend Developer"), self._agent(gate_role)]
+        )
+
+        assert roster == ("Backend Developer",)
+
+    @pytest.mark.unit
+    def test_a_roster_of_nothing_but_judges_is_empty(self) -> None:
+        """Empty means "no roster known", never "assign it to a judge"."""
+        assert roster_from_agents([self._agent(COMPLETION_REVIEWER_ROLE_NAME)]) == ()
+
+    @pytest.mark.unit
+    def test_the_exclusion_survives_however_the_role_was_typed(self) -> None:
+        """Operator-typed, so the catalogue's own normalisation decides."""
+        roster = roster_from_agents([self._agent("  completion reviewer  ")])
+
+        assert roster == ()

@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
+import structlog.testing
 
 from evals.errors import RecursionDepthPlannerSubstitutedError
 from evals.harness.binding import RunBinding
@@ -20,8 +21,9 @@ from evals.recursion_depth import planner as planner_module
 from evals.recursion_depth.grading import UnitGrader
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.planner import AgentSessionPlanner, PlanningSpend
-from evals.recursion_depth.session import SessionLimits, SweepDeps
+from evals.recursion_depth.session import SessionLimits, SweepDeps, session_spend
 from evals.recursion_depth.staffing import SweepRoster
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import CurrencyCode
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -32,6 +34,7 @@ from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import DecompositionError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.role_staffing import RoleStaffingService
+from synthorg.observability.events.evals import EVALS_RECURSION_SPEND_DEDUPED
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox import SandboxBackend
@@ -85,11 +88,21 @@ def _objective() -> Task:
     )
 
 
-def _record(*, input_tokens: int, output_tokens: int) -> CostRecord:
+def _record(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    call_category: LLMCallCategory = LLMCallCategory.PRODUCTIVE,
+) -> CostRecord:
     """Build one call's cost record.
 
     Priced at zero on purpose: that is the flat-rate case, where the token
     count is the only figure that moves and the one a cost-only read misses.
+
+    Categorised ``PRODUCTIVE`` by default because that is what the hosted
+    gateway stamps, and the gateway is the recorder of record for a session
+    that crossed one. A record without the field models nothing that a run
+    produces.
 
     Returns:
         The record.
@@ -102,6 +115,7 @@ def _record(*, input_tokens: int, output_tokens: int) -> CostRecord:
         cost=0.0,
         currency=CurrencyCode("USD"),
         timestamp=datetime(2026, 8, 22, tzinfo=UTC),
+        call_category=call_category,
     )
 
 
@@ -115,8 +129,15 @@ def ledger() -> ProgressTrackingLedger:
     return ProgressTrackingLedger()
 
 
-def _planner(ledger: ProgressTrackingLedger) -> AgentSessionPlanner:
+def _planner(
+    ledger: ProgressTrackingLedger, *, gateway_hosted: bool = True
+) -> AgentSessionPlanner:
     """Build the planner under test over *ledger*.
+
+    Args:
+        ledger: The tracker the planner books against.
+        gateway_hosted: Whether to wire ``open_run_ledger``, which is what
+            tells the planner a gateway recorded these calls as well.
 
     Returns:
         The planner, wired to a provider that is never called (the tree build
@@ -135,7 +156,7 @@ def _planner(ledger: ProgressTrackingLedger) -> AgentSessionPlanner:
         build_tool_registry=lambda _workspace: mock_of[ToolRegistry](),
         build_grader=lambda _workspace: mock_of[UnitGrader](),
         build_sandbox=lambda root: mock_of[SandboxBackend](),
-        open_run_ledger=_open,
+        open_run_ledger=_open if gateway_hosted else None,
     )
     return AgentSessionPlanner(
         deps=deps,
@@ -251,3 +272,103 @@ class TestFailedPlanningBooksItsSpend:
         # have said what the attempt cost is the thing that failed.
         assert spend.sessions == 0
         assert spend.tokens == 0
+
+
+class TestOneAccountPerCall:
+    """These session rows are the sweep's spend ledger of record.
+
+    A live run journalled a planning unit at ``tokens: 836539`` against a true
+    figure of roughly half that, and a ledger holding two accounts of one call
+    is what that reads like: summed by category the two sets were identical to
+    the token.
+    """
+
+    async def test_a_second_account_of_one_call_is_not_a_second_call(
+        self,
+        ledger: ProgressTrackingLedger,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With a gateway hosted, its own record is the account of record."""
+        await ledger.record(_record(input_tokens=100, output_tokens=200))
+        await ledger.record(
+            _record(
+                input_tokens=100,
+                output_tokens=200,
+                call_category=LLMCallCategory.SYSTEM,
+            )
+        )
+
+        def _fail(**_kwargs: object) -> DecompositionResult:
+            msg = "provider call failed"
+            raise DecompositionError(msg)
+
+        monkeypatch.setattr(planner_module, "build_tree", _fail)
+        spend = PlanningSpend()
+
+        with pytest.raises(DecompositionError):
+            await _planner(ledger).plan(
+                task=_objective(),
+                depth_cap=2,
+                execution_id="cell-plan",
+                spend=spend,
+            )
+
+        assert spend.tokens == 300
+
+    def test_with_no_gateway_every_record_is_the_only_account(self) -> None:
+        """Offline there is nothing to prefer, so nothing may be dropped.
+
+        The strategy's own scope is the only recorder on that path and it
+        stamps SYSTEM, so a rule that preferred PRODUCTIVE unconditionally
+        would report every offline planning session as free. Read at the owner
+        rather than through the planner because offline the planner books
+        against a fallback ledger it creates itself, which no caller can seed.
+        """
+        records = (
+            _record(
+                input_tokens=100,
+                output_tokens=200,
+                call_category=LLMCallCategory.SYSTEM,
+            ),
+        )
+
+        spent = session_spend(records, gateway_hosted=False, label="offline")
+
+        assert spent.tokens == 300
+
+    def test_an_uncrossed_call_is_reported_rather_than_dropped_in_silence(
+        self,
+    ) -> None:
+        """The dropped set is either the duplicate or a real uncounted call.
+
+        Only the log tells them apart afterwards, and these rows are the
+        sweep's spend ledger of record.
+        """
+        records = (
+            _record(input_tokens=10, output_tokens=20),
+            _record(
+                input_tokens=1,
+                output_tokens=2,
+                call_category=LLMCallCategory.EMBEDDING,
+            ),
+        )
+
+        with structlog.testing.capture_logs() as cap:
+            spent = session_spend(records, gateway_hosted=True, label="cell-plan")
+
+        assert spent.tokens == 30
+        dropped = [e for e in cap if e.get("event") == EVALS_RECURSION_SPEND_DEDUPED]
+        assert len(dropped) == 1
+        assert dropped[0]["dropped_categories"] == ["embedding"]
+        assert dropped[0]["dropped_tokens"] == 3
+
+    def test_one_account_per_call_leaves_nothing_to_report(self) -> None:
+        """No line when nothing was dropped: the noise would bury the finding."""
+        with structlog.testing.capture_logs() as cap:
+            session_spend(
+                (_record(input_tokens=10, output_tokens=20),),
+                gateway_hosted=True,
+                label="cell-plan",
+            )
+
+        assert not [e for e in cap if e.get("event") == EVALS_RECURSION_SPEND_DEDUPED]

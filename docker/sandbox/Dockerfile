@@ -24,7 +24,14 @@ COPY --chown=10001:10001 docker/sandbox/healthz.py /usr/local/bin/healthz.py
 
 USER 10001
 
+# Probed with the same python3 that serves it two lines below, which is the one
+# HTTP client this image is guaranteed to have: the Wolfi busybox below carries
+# no wget applet and apko.yaml adds no curl, so the shell one-liner this
+# replaced reported `wget: not found` on every probe and every sandbox
+# container ran permanently unhealthy (FailingStreak 30 in a measured run).
+# Probing through the server's own interpreter cannot drift either, because if
+# python3 were missing there would be nothing listening to probe.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-    CMD ["/bin/sh", "-c", "wget -qO- http://127.0.0.1:15003/healthz || exit 1"]
+    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:15003/healthz', timeout=2).read()"]
 
 CMD ["sh", "-c", "python3 /usr/local/bin/healthz.py & sleep infinity"]

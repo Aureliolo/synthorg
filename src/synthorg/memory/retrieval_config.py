@@ -24,6 +24,17 @@ _DEFAULT_CANDIDATE_POOL_MULTIPLIER: Final[int] = 3
 _DEFAULT_MAX_WORKERS_PER_QUERY: Final[int] = 2
 _DEFAULT_RERANK_CACHE_TTL_SECONDS: Final[int] = 3600
 _DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
+_DEFAULT_REFLECTIVE_RETRY_ENABLED: Final[bool] = True
+
+#: The fields that configure the hierarchical supervisor, with the value that
+#: means "not asked for". Declared once so the three cannot drift into three
+#: different answers to one question, which is how one of them came to warn on
+#: its own default while its siblings did not.
+_HIERARCHICAL_ONLY_DEFAULTS: Final[dict[str, object]] = {
+    "max_workers_per_query": _DEFAULT_MAX_WORKERS_PER_QUERY,
+    "reflective_retry_enabled": _DEFAULT_REFLECTIVE_RETRY_ENABLED,
+    "max_retry_count": _DEFAULT_MAX_RETRY_COUNT,
+}
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -227,7 +238,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     reflective_retry_enabled: bool = Field(
-        default=True,
+        default=_DEFAULT_REFLECTIVE_RETRY_ENABLED,
         description=(
             "When True, the hierarchical supervisor evaluates result "
             "quality and retries with corrected queries on poor results."
@@ -526,41 +537,50 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_hierarchical_field_consistency(self) -> Self:
-        """Warn when hierarchical fields are set but retriever is flat.
+        """Refuse hierarchical-only tuning the flat retriever cannot apply.
+
+        These three configure the supervisor, and the flat pipeline has no
+        supervisor to configure: no worker fan-out to bound, and no quality
+        evaluation to retry from. Accepting a value and ignoring it is the
+        third category the settings rules exist to forbid, so this refuses
+        rather than warns, the way the retriever/strategy pair one validator
+        above already does.
+
+        Judged on the value rather than on presence, because a dump/validate
+        round-trip marks every field explicitly set: a value equal to its
+        default asks for nothing and is left alone, which is what the two
+        siblings always did and what ``reflective_retry_enabled`` alone did
+        not, so it warned fifty times in one run about a setting nobody had
+        touched.
 
         Returns:
             Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.retriever != "flat":
             return self
-        if (
-            "max_workers_per_query" in self.model_fields_set
-            and self.max_workers_per_query != _DEFAULT_MAX_WORKERS_PER_QUERY
-        ):
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="max_workers_per_query",
-                value=self.max_workers_per_query,
-                reason=("max_workers_per_query is ignored when retriever is 'flat'"),
-            )
-        if "reflective_retry_enabled" in self.model_fields_set:
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="reflective_retry_enabled",
-                value=self.reflective_retry_enabled,
-                reason=("reflective_retry_enabled is ignored when retriever is 'flat'"),
-            )
-        if (
-            "max_retry_count" in self.model_fields_set
-            and self.max_retry_count != _DEFAULT_MAX_RETRY_COUNT
-        ):
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="max_retry_count",
-                value=self.max_retry_count,
-                reason=("max_retry_count is ignored when retriever is 'flat'"),
-            )
-        return self
+        ignored = tuple(
+            name
+            for name, default in _HIERARCHICAL_ONLY_DEFAULTS.items()
+            if name in self.model_fields_set and getattr(self, name) != default
+        )
+        if not ignored:
+            return self
+        verb = "configures" if len(ignored) == 1 else "configure"
+        msg = (
+            f"{', '.join(ignored)} {verb} the hierarchical supervisor, which "
+            f"retriever='flat' does not build; set retriever='hierarchical' "
+            f"or leave the value unset"
+        )
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            field=",".join(ignored),
+            retriever=self.retriever,
+            reason=msg,
+        )
+        raise ValueError(msg)
 
     @model_validator(mode="after")
     def _validate_rerank_cache_ttl_consistency(self) -> Self:

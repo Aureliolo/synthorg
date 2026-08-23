@@ -51,6 +51,34 @@ be logged for it to act. This exists for the reader afterwards: the same
 rejection arriving turn after turn is what a session burning its budget without
 converging looks like, and nothing else records the reason each time."""
 
+DECOMPOSITION_SESSION_PLAN_RESUBMITTED: Final[str] = (
+    "decomposition.session.plan_resubmitted"
+)
+"""A refused plan came back byte-identical, so the refusal was reframed.
+
+An unchanged resubmission carries no information: it cannot be accepted, and
+answering it with the wording that already failed to land buys the same turn
+again. Two of five repair rounds on one parent in a live run were exactly this.
+Carries how many times this plan has now been submitted, because that count is
+what separates a model correcting itself from one that is stuck."""
+
+DECOMPOSITION_SESSION_ARGUMENTS_MANGLED: Final[str] = (
+    "decomposition.session.arguments_mangled"
+)
+"""A tool call arrived with its repeated fields collapsed into nesting.
+
+The transport's fault rather than the model's, so it is reported separately
+from a rejected plan: the plan was never read. Frequency is the point, since
+the fix belongs upstream of here if one model keeps producing it."""
+
+DECOMPOSITION_LLM_ARGUMENTS_MANGLED: Final[str] = "decomposition.llm.arguments_mangled"
+"""The single-shot strategy's reply arrived with its list flattened.
+
+The sibling of ``DECOMPOSITION_SESSION_ARGUMENTS_MANGLED`` on the other
+planning path. Carries the round count rather than the attempt, because this
+round deliberately does NOT spend one of the operator's planning attempts: the
+reply never carried a plan to judge."""
+
 # Coordination-constraints middleware received an empty plan text from
 # the LLM.  Caller falls back to a default plan; the event preserves the
 # failure mode for triage.

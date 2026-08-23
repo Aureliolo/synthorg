@@ -277,7 +277,7 @@ class OracleMergeReviewer:
             result.report.findings,
             spend,
             request,
-            reviewer=ModelPair.of(seat.judge),
+            reviewer=ModelPair.of(seat.judge, self.deps.declared_pairs),
         )
 
 

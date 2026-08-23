@@ -385,6 +385,76 @@ class TestSubmitDecompositionPlanTool:
         assert capture.plan is not None
         assert len(capture.plan.subtasks) == 1
 
+    async def test_an_unchanged_resubmission_is_refused_differently(self) -> None:
+        """Two of five repair rounds in a live run were byte-identical repeats.
+
+        Answering the second with the wording that already failed to land buys
+        the same turn again, so the refusal names the repeat and asks for a
+        specific change instead of "fix the issue".
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        rejected: dict[str, object] = dict(_self_dependent_plan_args())
+
+        first = await tool.execute(arguments=dict(rejected))
+        second = await tool.execute(arguments=dict(rejected))
+
+        assert first.is_error
+        assert second.is_error
+        assert "byte-identical" not in first.content
+        assert "byte-identical" in second.content
+        assert "Do not resend this plan" in second.content
+        # The reason still travels: a reframing that dropped it would leave the
+        # agent knowing only that it repeated itself.
+        assert "cannot depend on itself" in second.content
+        assert capture.plan is None
+
+    async def test_key_order_alone_is_not_a_correction(self) -> None:
+        """A serialiser that reordered keys resubmitted the same plan."""
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        rejected: dict[str, object] = dict(_self_dependent_plan_args())
+        reordered: dict[str, object] = dict(reversed(list(rejected.items())))
+
+        await tool.execute(arguments=rejected)
+        again = await tool.execute(arguments=reordered)
+
+        assert "byte-identical" in again.content
+
+    async def test_a_genuinely_changed_resubmission_is_refused_plainly(self) -> None:
+        """A model correcting itself must not be told it repeated itself."""
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+
+        first = await tool.execute(arguments=dict(_self_dependent_plan_args()))
+        second = await tool.execute(arguments={"subtasks": "not-a-list"})
+
+        assert first.is_error
+        assert second.is_error
+        assert "byte-identical" not in second.content
+
+    async def test_mangled_arguments_are_named_rather_than_parsed(self) -> None:
+        """The transport flattened the list, so the plan was never read.
+
+        A schema error here would name a field the model filled in correctly
+        and send it to rewrite work that was never wrong. Two of thirteen plan
+        submissions in a live run arrived in this shape.
+        """
+        capture = PlanCapture(sid("obj-1"))
+        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+
+        result = await tool.execute(
+            arguments={
+                "$text": "",
+                "item": {"$text": "</item>", "item": {"$text": ""}},
+            }
+        )
+
+        assert result.is_error
+        assert "JSON array" in result.content
+        assert "serialisation fault" in result.content
+        assert capture.plan is None
+
 
 class _FixedTool(BaseTool):
     """A no-op tool whose action type is derived from its category."""

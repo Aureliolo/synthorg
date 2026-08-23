@@ -77,3 +77,14 @@ unit_token_ceiling: 600000
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.
 max_sessions: 3000
+# What the plan projection assumes one planning session splits into. Used ONLY
+# to print the bill before a run; nothing in the run reads it, and the tree the
+# planner actually produces is whatever it produces.
+#
+# Rounded DOWN from a real cap-3 tree, which held 85 leaves and 25 nodes that
+# planned, so it fits a branching of about 4.4. Down rather than to nearest
+# because the figure is a FLOOR and it is the input to choosing max_sessions: a
+# floor that reads too low kills a paid run part-way, which is exactly what
+# happened when the previous projection printed 42 for the whole matrix against
+# a real ~158 per cell.
+projected_branching: 4

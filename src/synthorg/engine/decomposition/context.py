@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr, PersonaLabelStr
 
 
@@ -25,6 +26,13 @@ def roster_from_agents(agents: Sequence[AgentIdentity]) -> tuple[NotBlankStr, ..
     role nobody holds cannot own a plan item any more than an invented one
     can, so the planner is offered what can actually be dispatched to.
 
+    A gate role is held by ordinary roster agents and is therefore staffed, but
+    it JUDGES work rather than performing it, so it is not something a plan item
+    can be owned by. Offered one, a planner takes it: a live run put 19 of 102
+    subtasks under ``Completion Reviewer``, seven of them atomic and due to
+    execute, which makes the party that judges the author of what it judges and
+    puts plan-level verification inside every arm of an experiment measuring it.
+
     Args:
         agents: The agents available to the plan.
 
@@ -32,7 +40,11 @@ def roster_from_agents(agents: Sequence[AgentIdentity]) -> tuple[NotBlankStr, ..
         Each role once, sorted, so the prompt and the schema enum are stable
         across runs and a fingerprint test can pin them.
     """
-    return tuple(sorted({agent.role for agent in agents}))
+    return tuple(
+        sorted(
+            {agent.role for agent in agents if not role_is_gate_role(str(agent.role))}
+        )
+    )
 
 
 class DecompositionContext(BaseModel):

@@ -52,6 +52,16 @@ def _cell(
 ) -> CellRecord:
     """Build one measured run.
 
+    Args:
+        cap: How many levels the run was allowed.
+        arm: Which arm produced it.
+        achieved: How many levels it used, in the same unit as *cap*. A leaf's
+            own ``depth`` is still a zero-based INDEX, so a tree whose deepest
+            leaf sits at ``depth=1`` achieved two levels.
+        units: The run's units.
+        passing: What the merged tree satisfies.
+        repetition: Index within the cell.
+
     Returns:
         The cell record.
     """
@@ -71,7 +81,7 @@ class TestWhatEntersTheDenominator:
     def test_a_delivered_leaf_claim_that_survives_counts_once(self) -> None:
         cell = _cell(
             cap=2,
-            achieved=1,
+            achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01", "R02")),),
             passing=("R01",),
         )
@@ -87,7 +97,7 @@ class TestWhatEntersTheDenominator:
         # the denominator would report a merge failure for work nobody built.
         cell = _cell(
             cap=2,
-            achieved=1,
+            achieved=2,
             units=(
                 _leaf("a", depth=1, claimed=("R01",)),
                 _leaf("b", depth=1, claimed=("R02",), delivered=False),
@@ -105,7 +115,7 @@ class TestWhatEntersTheDenominator:
         # level by how repetitive the plan was.
         cell = _cell(
             cap=2,
-            achieved=1,
+            achieved=2,
             units=(
                 _leaf("a", depth=1, claimed=("R01",)),
                 _leaf("b", depth=1, claimed=("R01",)),
@@ -121,7 +131,7 @@ class TestWhatEntersTheDenominator:
         # An absence, not a zero: a zero says the merge lost everything.
         cell = _cell(
             cap=2,
-            achieved=1,
+            achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01",), delivered=False),),
             passing=(),
         )
@@ -141,7 +151,7 @@ class TestWhatEntersTheDenominator:
         )
         cell = _cell(
             cap=2,
-            achieved=1,
+            achieved=2,
             units=(merge, _leaf("a", depth=1, claimed=("R01",))),
             passing=("R01", "R09"),
         )
@@ -157,7 +167,7 @@ class TestWhatTheAxisMeans:
     def test_leaves_are_binned_on_their_own_level(self) -> None:
         cell = _cell(
             cap=4,
-            achieved=2,
+            achieved=3,
             units=(
                 _leaf("shallow", depth=0, claimed=("R01",)),
                 _leaf("deep", depth=2, claimed=("R02", "R03")),
@@ -174,7 +184,7 @@ class TestWhatTheAxisMeans:
     def test_the_cap_curve_pools_a_run_at_its_cap(self) -> None:
         cell = _cell(
             cap=4,
-            achieved=2,
+            achieved=3,
             units=(
                 _leaf("shallow", depth=0, claimed=("R01",)),
                 _leaf("deep", depth=2, claimed=("R02",)),
@@ -194,13 +204,13 @@ class TestWhatTheAxisMeans:
         cells = (
             _cell(
                 cap=4,
-                achieved=2,
+                achieved=3,
                 units=(_leaf("a", depth=2, claimed=("R01",)),),
                 passing=(),
             ),
             _cell(
                 cap=5,
-                achieved=2,
+                achieved=3,
                 repetition=1,
                 units=(_leaf("b", depth=2, claimed=("R02",)),),
                 passing=(),
@@ -219,14 +229,14 @@ class TestWhatTheAxisMeans:
             _cell(
                 cap=4,
                 arm=Arm.GATED,
-                achieved=3,
+                achieved=4,
                 units=(_leaf("a", depth=3, claimed=("R01",)),),
                 passing=(),
             ),
             _cell(
                 cap=4,
                 arm=Arm.UNGATED,
-                achieved=1,
+                achieved=2,
                 units=(_leaf("b", depth=1, claimed=("R02",)),),
                 passing=(),
             ),
@@ -245,14 +255,14 @@ class TestArmsAndCost:
         gated = _cell(
             cap=2,
             arm=Arm.GATED,
-            achieved=1,
+            achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01", "R02")),),
             passing=("R01", "R02"),
         )
         ungated = _cell(
             cap=2,
             arm=Arm.UNGATED,
-            achieved=1,
+            achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01", "R02")),),
             passing=("R01",),
         )
@@ -268,7 +278,7 @@ class TestArmsAndCost:
         # sweep's spend by the tree's height.
         cell = _cell(
             cap=3,
-            achieved=2,
+            achieved=3,
             units=(
                 _leaf("a", depth=0, claimed=("R01",)),
                 _leaf("b", depth=1, claimed=("R02",)),
@@ -287,7 +297,7 @@ class TestArmsAndCost:
         # ratio across two different denominators.
         cell = _cell(
             cap=3,
-            achieved=2,
+            achieved=3,
             units=(
                 _leaf("a", depth=0, claimed=("R01",)),
                 _leaf("b", depth=1, claimed=("R02",)),
@@ -309,7 +319,7 @@ class TestArmsAndCost:
         # these runs, which at the deep end are the most expensive in the sweep.
         cell = _cell(
             cap=5,
-            achieved=4,
+            achieved=5,
             units=(
                 _leaf("a", depth=3, claimed=("R01",), delivered=False),
                 _leaf("b", depth=4, claimed=("R02",), delivered=False),

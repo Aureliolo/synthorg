@@ -383,11 +383,34 @@ async def build_tree(
     logger.info(
         EVALS_RECURSION_TREE_BUILT,
         depth_cap=depth_cap,
-        achieved_depth=result.max_depth_reached,
+        achieved_depth=achieved_levels(result),
         leaf_count=len(result.leaf_tasks),
         node_count=len(result.all_tasks),
     )
     return result
+
+
+def achieved_levels(result: DecompositionResult) -> int:
+    """How many LEVELS of planning *result* actually used.
+
+    The single owner of the conversion, because the experiment's independent
+    variable is depth and the two halves of it were counted differently: a cap
+    is a level COUNT (``max_depth=3`` admits levels 0, 1 and 2, since
+    ``RecursionBudget.has_room`` asks whether ``current_depth + 1 <
+    max_depth``), while ``max_depth_reached`` is the INDEX of the deepest
+    level. A run using its whole cap of three therefore reported
+    ``achieved_depth=2``, which reads as a tree that stopped a level short.
+
+    Both count levels from here on. A tree that never split is one level deep
+    rather than zero, so a cap of N fully used reports N.
+
+    Args:
+        result: The tree that was built.
+
+    Returns:
+        The number of levels, from one.
+    """
+    return result.max_depth_reached + 1
 
 
 def _refuse_substituted_planner(result: DecompositionResult) -> None:
@@ -511,6 +534,7 @@ def merge_nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
 
 __all__ = [
     "SpecBrief",
+    "achieved_levels",
     "arm_recursion",
     "build_tree",
     "load_spec_brief",

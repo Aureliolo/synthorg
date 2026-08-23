@@ -421,6 +421,52 @@ class TestLlmDecompositionStrategy:
         assert provider.call_count == 2
 
     @pytest.mark.unit
+    async def test_a_mangled_reply_does_not_spend_a_planning_attempt(self) -> None:
+        """The transport flattened the list, so no plan was ever judged.
+
+        Charging the operator's one retry for a serialisation fault upstream of
+        the model is how a run that would have planned fails: with
+        ``max_retries=1`` the mangled reply plus a real parse failure would
+        exhaust the budget before the good plan arrives.
+        """
+        mangled = _make_tool_call_response(
+            {"$text": "", "item": {"$text": "</item>", "item": {"$text": ""}}}
+        )
+        bad = _make_content_response("{invalid json")
+        good = _make_tool_call_response(_valid_plan_args(subtask_count=1))
+        provider = MockCompletionProvider([mangled, bad, good])
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=1),
+        )
+
+        plan = await strategy.decompose(_make_task(), _make_context())
+
+        assert isinstance(plan, DecompositionPlan)
+        assert provider.call_count == 3
+
+    @pytest.mark.unit
+    async def test_a_provider_mangling_every_reply_still_terminates(self) -> None:
+        """The free rounds are bounded: a broken provider is not a loop."""
+        mangled = [
+            _make_tool_call_response({"$text": "", "item": {"$text": ""}})
+            for _ in range(8)
+        ]
+        provider = MockCompletionProvider(mangled)
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=1),
+        )
+
+        with pytest.raises(DecompositionError, match="retries exhausted"):
+            await strategy.decompose(_make_task(), _make_context())
+
+        # Two free rounds, then the two attempts the operator configured.
+        assert provider.call_count == 4
+
+    @pytest.mark.unit
     async def test_all_retries_exhausted(self) -> None:
         """All retries exhausted raises DecompositionError."""
         bad_responses = [_make_content_response("{bad}") for _ in range(3)]

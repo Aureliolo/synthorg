@@ -99,6 +99,7 @@ from evals.recursion_depth.session import (
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
+    achieved_levels,
     merge_nodes,
     objective_task,
     unit_definitions,
@@ -878,7 +879,7 @@ async def _run_cell(
         depth_cap=cell.depth_cap,
         arm=cell.arm,
         repetition=cell.repetition,
-        achieved_depth=started.tree.max_depth_reached,
+        achieved_depth=achieved_levels(started.tree),
         units=units.records,
         merged_passing=tuple(sorted(merged.passed)),
     )
@@ -1165,6 +1166,7 @@ def _leaf_record(
         tokens=leaf.tokens,
         executor=leaf.executor,
         detail=leaf.detail,
+        undeclared_paths=leaf.undeclared_paths,
     )
 
 
@@ -1192,6 +1194,7 @@ def _merge_record(
         verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
         parked=outcome.parked,
         amendments=outcome.amendments,
+        undeclared_paths=outcome.undeclared_paths,
     )
 
 
