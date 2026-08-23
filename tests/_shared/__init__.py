@@ -31,6 +31,7 @@ from tests._shared.meeting_protocols import (
     pin_protocol,
     pinned_protocol_registry,
 )
+from tests._shared.ml_doubles import module_double, torch_double
 from tests._shared.mock_of import mock_of
 from tests._shared.model_binding import (
     TEST_MODEL_ID,
@@ -97,6 +98,7 @@ __all__ = [
     "make_pipeline_result",
     "mock_of",
     "model_ref_resolver",
+    "module_double",
     "one_connection",
     "pin_protocol",
     "pinned_protocol_registry",
@@ -107,5 +109,6 @@ __all__ = [
     "sid",
     "staffing_with",
     "task_from_work_item",
+    "torch_double",
     "wire_decomposition_model",
 ]

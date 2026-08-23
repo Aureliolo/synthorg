@@ -339,7 +339,19 @@ MEMORY_FINE_TUNE_INVALID_REQUEST: Final[str] = "memory.fine_tune.invalid_request
 MEMORY_FINE_TUNE_RESUME_REJECTED: Final[str] = "memory.fine_tune.resume_rejected"
 MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
 MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
+MEMORY_FINE_TUNE_TRAINER_API_RESOLVED: Final[str] = (
+    "memory.fine_tune.trainer_api_resolved"
+)
+MEMORY_FINE_TUNE_MODEL_CARD_DISABLED: Final[str] = (
+    "memory.fine_tune.model_card_disabled"
+)
 MEMORY_FINE_TUNE_TRAINING_BUCKETED: Final[str] = "memory.fine_tune.training_bucketed"
+MEMORY_FINE_TUNE_NO_HARD_NEGATIVES: Final[str] = "memory.fine_tune.no_hard_negatives"
+MEMORY_FINE_TUNE_TRAINING_STARTED: Final[str] = "memory.fine_tune.training_started"
+MEMORY_FINE_TUNE_TRAINING_COMPLETED: Final[str] = "memory.fine_tune.training_completed"
+MEMORY_FINE_TUNE_CHECKPOINT_DEPLOY_PARTIAL: Final[str] = (
+    "memory.fine_tune.checkpoint_deploy_partial"
+)
 MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_saved"
 MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
     "memory.fine_tune.checkpoint_deployed"

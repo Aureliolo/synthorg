@@ -23,7 +23,7 @@ from synthorg.memory.embedding.fine_tune_models import (
 )
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.settings.definitions.memory_fine_tune import FINE_TUNE_DEFAULT_BATCH_SIZE
-from tests._shared import make_app_state
+from tests._shared import make_app_state, module_double, torch_double
 
 
 class _AllMemoryControllers(
@@ -300,7 +300,9 @@ class TestProbeDrivenChecks:
         ):
             probe = local_probe()
         assert probe.ok is False
-        assert probe.gpu is None
+        # The detail is what the dashboard renders, so it has to name what is
+        # missing rather than merely report that something is.
+        assert "torch" in probe.detail
 
     def test_local_probe_reports_a_package_only_install_as_not_ok(self) -> None:
         """Importing sentence-transformers is not the same as being able to train.
@@ -311,20 +313,17 @@ class TestProbeDrivenChecks:
         """
         from synthorg.api.controllers.memory._preflight_probe import local_probe
 
-        class _Torch:
-            cuda = None
-
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune._import_torch",
-                return_value=_Torch(),
+                return_value=torch_double(cuda=None),
             ),
             patch(
                 "synthorg.memory.embedding.fine_tune._import_sentence_transformers",
-                return_value=object(),
+                return_value=module_double("sentence_transformers"),
             ),
             patch(
-                "synthorg.memory.embedding.fine_tune_trainer._import_trainer_api",
+                "synthorg.memory.embedding.fine_tune.import_trainer_api",
                 side_effect=FineTuneDependencyError("datasets is not installed"),
             ),
         ):

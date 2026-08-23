@@ -7,6 +7,7 @@ of failed runs from the last completed stage.
 """
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -63,9 +64,16 @@ logger = get_logger(__name__)
 
 # Minimum interval between WS progress events.
 _PROGRESS_THROTTLE_SEC: Final[float] = 1.0
-# How long ``cancel`` waits for the in-flight pipeline task to stop before
-# returning anyway (recovery marks any still-active run FAILED on next boot).
-_CANCEL_TIMEOUT_SEC: Final[float] = 30.0
+
+#: The fraction a stage reports when it has finished. Never throttled: it is
+#: what the dashboard reads as "this stage is done", and a run that ends
+#: inside the throttle window would otherwise leave the bar parked short.
+_PROGRESS_COMPLETE: Final[float] = 1.0
+#: How long ``cancel`` waits for the in-flight pipeline task to stop before
+#: returning anyway (recovery marks any still-active run FAILED on next boot).
+#: Public because shutdown sizes its own backstop against it, and a second
+#: copy of this number is a second answer to how long a cancel may take.
+FINE_TUNE_CANCEL_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 async def _in_process_stage_executor(
@@ -340,7 +348,7 @@ class FineTuneOrchestrator:
         # lifecycle call for the whole timeout.
         if task is not None and not task.done():
             try:
-                async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
+                async with asyncio.timeout(FINE_TUNE_CANCEL_TIMEOUT_SECONDS):
                     await asyncio.shield(task)
             except TimeoutError:
                 logger.warning(
@@ -584,6 +592,12 @@ class FineTuneOrchestrator:
         run_id = run.id
         run_stage = run.stage
         last_emit = 0.0
+        # ``last_emit`` is read, compared and written by whichever worker
+        # thread the stage reports from. Stage runners happen to call back
+        # from one thread each today, but that is an invariant of the callers
+        # rather than of this callback, and the trainer's own callback fires
+        # from the training thread.
+        emit_lock = threading.Lock()
         loop = asyncio.get_running_loop()
         # Bind the clock once outside the worker-thread closure so each
         # callback invocation reads through a stable attribute.
@@ -624,10 +638,12 @@ class FineTuneOrchestrator:
         def _cb(progress: float) -> None:
             """Throttled progress callback: emit at most once per interval."""
             nonlocal last_emit
-            now = clock.monotonic()
-            if now - last_emit < _PROGRESS_THROTTLE_SEC:
-                return
-            last_emit = now
+            with emit_lock:
+                now = clock.monotonic()
+                throttled = now - last_emit < _PROGRESS_THROTTLE_SEC
+                if throttled and progress < _PROGRESS_COMPLETE:
+                    return
+                last_emit = now
             loop.call_soon_threadsafe(_update_on_loop, progress)
 
         return _cb

@@ -767,8 +767,8 @@ jobs:
   # default sync, which omits `fine-tune-cpu` / `fine-tune-gpu`, so no test
   # anywhere else can import `sentence_transformers`, `torch` or `datasets`.
   # That gap is why stage 3 shipped reading two module attributes that exist
-  # on no published version: the unit tier substituted a `SimpleNamespace` for
-  # the package and agreed with itself for two releases running.
+  # on no published version: nothing anywhere imported the real package, so
+  # the unreachable reads had no coverage at all.
   #
   # `fine-tune-cpu` rather than `-gpu`: [tool.uv.sources] routes torch to the
   # PyTorch CPU index for that group (~1.7 GB against ~7 GB), and
@@ -782,11 +782,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-24.04
+    # Sized on the install, which is the job: ~1.7 GB of wheels from two
+    # indices on a cold uv cache, measured at 4-6 minutes, against a test run
+    # of well under one. The remainder is headroom for a slow mirror, since
+    # the retry ladder below can spend up to its own 600s deadline before the
+    # step gives up.
     timeout-minutes: 20
     permissions:
       contents: read
     env:
-      COVERAGE_CORE: sysmon
       PYTHONFAULTHANDLER: "1"
       PYTHONUNBUFFERED: "1"
       # Turns the availability guard from "skip" into "fail". A silent skip
@@ -799,19 +803,49 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
-      - name: Install the fine-tune (CPU) dependency group
-        run: uv sync --frozen --group fine-tune-cpu
+      - uses: ./.github/actions/warm-typeguard-cache
 
+      # See test-unit for the rationale. This job is the only one that loads
+      # torch, tokenizers and pyarrow, three native extensions, so it is the
+      # likeliest place in the tree for a SIGSEGV to end a run with no Python
+      # traceback at all.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
+
+      # The heaviest network operation in this workflow, pulling from PyPI and
+      # the PyTorch CPU index. Every comparable operation here retries; without
+      # the ladder a single mirror hiccup fails the correctness gate.
+      - name: Install the fine-tune (CPU) dependency group
+        env:
+          RETRY_CMD_ATTEMPTS: "3"
+          RETRY_CMD_DEADLINE: "600"
+        run: >-
+          .github/scripts/retry_cmd.sh "uv sync fine-tune-cpu"
+          uv sync --frozen --group fine-tune-cpu
+
+      # Audits the extra's own dependency tree. The standalone python-audit job
+      # runs the default sync, so torch, transformers, datasets and everything
+      # they pull are outside every other audit in this workflow.
+      - name: pip-audit (fine-tune extra)
+        run: uv run pip-audit --ignore-vuln PYSEC-2022-42969
+
+      # --timeout=300 overrides pyproject's global 30s per-test cap. The first
+      # guarded test cold-imports torch, transformers and datasets inside the
+      # test body: shared libraries plus a CUDA-runtime probe, which on a cold
+      # runner page cache is comfortably past 30s. Left at the default this
+      # job would flake on a healthy install.
       - name: Run fine-tune trainer tests
         run: |
           uv run python -m pytest \
             tests/unit/memory/embedding/test_fine_tune_trainer.py \
             -m unit \
             -n0 \
+            --timeout=300 \
             --session-timeout 600 \
-            --cov=synthorg \
-            --cov-report= \
-            --cov-fail-under=0 \
             --junitxml=junit-fine-tune-extra.xml \
             --durations=20 \
             -v \
@@ -859,6 +893,18 @@ jobs:
         with:
           name: test-results-fine-tune-extra
           path: junit-fine-tune-extra.xml
+
+      # See test-unit for the rationale on ``!cancelled()`` over a
+      # failure-gated upload: a native crash can leave a core file while
+      # pytest still exits 0.
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-fine-tune-extra
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # ── Python: Test (Integration) ──
   # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3

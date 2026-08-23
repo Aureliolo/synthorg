@@ -25,13 +25,22 @@ def test_check_raises_after_cancel() -> None:
     token = CancellationToken()
     token.cancel()
     with pytest.raises(FineTuneCancelledError):
-        token.check()
+        token.check(stage="hard-negative mining")
+
+
+def test_check_names_the_interrupted_stage() -> None:
+    """An operator reading the failure needs to know what was lost."""
+    token = CancellationToken()
+    token.cancel()
+
+    with pytest.raises(FineTuneCancelledError, match="hard-negative mining"):
+        token.check(stage="hard-negative mining")
 
 
 def test_check_does_not_raise_before_cancel() -> None:
     token = CancellationToken()
     # Should be a no-op before cancel.
-    token.check()
+    token.check(stage="hard-negative mining")
 
 
 def test_wait_returns_true_when_already_cancelled() -> None:

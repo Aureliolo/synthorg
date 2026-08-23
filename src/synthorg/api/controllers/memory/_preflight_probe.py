@@ -145,25 +145,29 @@ def local_probe() -> ProbeResult:
         every downstream check is backend-agnostic.
     """
     from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
-        _import_sentence_transformers,
-        _import_torch,
-    )
-    from synthorg.memory.embedding.fine_tune_trainer import (  # noqa: PLC0415
-        _import_trainer_api,
+        verify_fine_tune_dependencies,
     )
 
     try:
-        torch = _import_torch()
-        _import_sentence_transformers()
-        # The training half of the extra is separately installable and was
-        # separately missing: the trainer's `datasets` and `accelerate` are
-        # absent from sentence-transformers' own dependency list. Probing only
-        # the package reports ready for a stack that cannot reach stage 3.
-        _import_trainer_api()
+        torch = verify_fine_tune_dependencies()
     except (ImportError, FineTuneDependencyError) as exc:
+        # The GPU branch below logs its own degradation; without this, the
+        # commoner failure by far is the one that leaves no trace at all.
+        logger.warning(
+            MEMORY_FINE_TUNE_PREFLIGHT_CHECK_DEGRADED,
+            check="dependencies",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ProbeResult(ok=False, detail=safe_error_description(exc))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        logger.warning(
+            MEMORY_FINE_TUNE_PREFLIGHT_CHECK_DEGRADED,
+            check="dependencies",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return ProbeResult(
             ok=False,
             detail=f"dependency check failed: {safe_error_description(exc)}",

@@ -351,6 +351,52 @@ class TestProgressThrottleClockSeam:
             await asyncio.sleep(0)
             assert emit_count == 1
 
+    async def test_completion_is_never_throttled(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+    ) -> None:
+        """A stage that finishes inside the window must still say so.
+
+        Dropped, the dashboard's bar stays parked wherever the last emit
+        landed for the whole of the next stage.
+        """
+        fake = FakeClock()
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+            clock=fake,
+        )
+        now = datetime.now(tz=UTC)
+        run = FineTuneRun(
+            id=as_uuid("terminal-progress-run"),
+            stage=FineTuneStage.TRAINING,
+            progress=0.0,
+            config=FineTuneRunConfig(
+                source_dir="/docs",
+                base_model="test-model",
+                output_dir="/out",
+            ),
+            started_at=now,
+            updated_at=now,
+        )
+        emitted: list[float | None] = []
+
+        def _spy_emit(event_type: str, emitted_run: FineTuneRun) -> None:
+            del event_type
+            emitted.append(emitted_run.progress)
+
+        with patch.object(orchestrator, "_emit_ws", side_effect=_spy_emit):
+            cb = orchestrator._make_progress_cb(run)
+            fake.advance(_PROGRESS_THROTTLE_SEC * 2)
+            cb(0.9)
+            await asyncio.sleep(0)
+            # Well inside the window the previous emit just opened.
+            cb(1.0)
+            await asyncio.sleep(0)
+
+        assert emitted == [pytest.approx(0.9), pytest.approx(1.0)]
+
 
 # -- Status -----------------------------------------------------------
 
@@ -696,7 +742,7 @@ def _mock_all_stages(
                 # immediately without the 0.01s polling loop the
                 # original test relied on.
                 await asyncio.to_thread(token.wait)
-                token.check()
+                token.check(stage="test stage")
             else:
                 await asyncio.Event().wait()
         # Filesystem-free: the request carries synthetic POSIX paths

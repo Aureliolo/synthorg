@@ -47,17 +47,26 @@ class CancellationToken:
         """Whether cancellation has been requested."""
         return self._event.is_set()
 
-    def check(self) -> None:
+    def check(self, *, stage: str) -> None:
         """Raise ``FineTuneCancelledError`` if cancelled.
 
         Call this between batches in each pipeline stage.
+
+        Args:
+            stage: What was interrupted, for the log record. Mandatory
+                because the stages differ by orders of magnitude in what a
+                cancellation costs: abandoning a corpus scan is seconds of
+                rework, abandoning contrastive training is hours of GPU time,
+                and one shared label cannot tell an operator which they lost.
 
         Raises:
             FineTuneCancelledError: If cancellation was requested.
         """
         if self._event.is_set():
-            msg = "Fine-tuning pipeline run was cancelled"
-            logger.warning(MEMORY_FINE_TUNE_CANCELLED, source="stage_check")
+            msg = f"Fine-tuning pipeline run was cancelled during {stage}"
+            logger.warning(
+                MEMORY_FINE_TUNE_CANCELLED, source="stage_check", stage=stage
+            )
             raise FineTuneCancelledError(msg)
 
     def wait(self, timeout: float | None = None) -> bool:

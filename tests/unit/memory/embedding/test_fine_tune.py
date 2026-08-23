@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Protocol, TypedDict, cast
 from unittest.mock import patch
 
@@ -23,10 +22,16 @@ from synthorg.memory.embedding.fine_tune import (
     generate_training_data,
 )
 from synthorg.memory.embedding.fine_tune_query import extractive_query
+from synthorg.memory.embedding.fine_tune_trainer import (
+    TRAINER_OUTPUT_SUBDIR,
+    ContrastiveHyperparameters,
+    TrainerApi,
+)
 from synthorg.memory.errors import (
     FineTuneCancelledError,
     FineTuneDependencyError,
 )
+from tests._shared import module_double
 
 
 class _FakeSentenceTransformersModule(Protocol):
@@ -91,8 +96,16 @@ class _RecordingEncoder:
 def _make_fake_st_module(
     calls: list[_EncodeCall],
 ) -> _FakeSentenceTransformersModule:
-    """Build a ``SimpleNamespace`` fake of the ``sentence_transformers`` module."""
-    fake = SimpleNamespace(
+    """Build a stand-in for the ``sentence_transformers`` module.
+
+    A real module object, not an attribute bag: the loader is annotated
+    ``ModuleType`` and typeguard enforces that at the boundary.
+
+    Returns:
+        The stand-in module.
+    """
+    fake = module_double(
+        "sentence_transformers",
         SentenceTransformer=lambda name, **_kwargs: _RecordingEncoder(name, calls),
     )
     return cast("_FakeSentenceTransformersModule", fake)
@@ -475,6 +488,183 @@ class TestContrastiveFineTune:
             # The parametrized (param, value) drives one hyperparameter
             # out of range; the dynamic key precludes a precise static type.
             await contrastive_fine_tune(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+class TestContrastiveFineTuneHappyPath:
+    """Stage 3 end to end with the vendor packages stood in for.
+
+    Every guard test above returns before a single import, so without this
+    the whole body of the stage, its thread hand-offs, its directory layout
+    and its checkpoint write, runs in no test at all.
+    """
+
+    async def _run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        **overrides: object,
+    ) -> tuple[Path, dict[str, object]]:
+        """Drive the stage against stand-ins.
+
+        Returns:
+            The checkpoint directory it returned, and what it recorded.
+        """
+        from synthorg.memory.embedding import fine_tune as fine_tune_module
+
+        recorded: dict[str, object] = {}
+
+        data_path = tmp_path / "triples.jsonl"
+        data_path.write_text(
+            "\n".join(
+                json.dumps({"query": f"q{i}", "positive": f"p{i}", "negatives": []})
+                for i in range(4)
+            ),
+            encoding="utf-8",
+        )
+
+        class _Model:
+            pass
+
+        model = _Model()
+
+        def _build_model(
+            name: str, *, trust_remote_code: bool, local_files_only: bool
+        ) -> _Model:
+            recorded["base_model"] = name
+            recorded["trust_remote_code"] = trust_remote_code
+            recorded["local_files_only"] = local_files_only
+            return model
+
+        def _train(**kwargs: object) -> None:
+            recorded["training"] = kwargs
+
+        def _save(*, model: object, destination: Path) -> None:
+            recorded["saved_model"] = model
+            recorded["saved_to"] = destination
+            destination.joinpath("model.safetensors").write_bytes(b"")
+
+        monkeypatch.setattr(
+            fine_tune_module,
+            "_import_sentence_transformers",
+            lambda: module_double(
+                "sentence_transformers", SentenceTransformer=_build_model
+            ),
+        )
+        monkeypatch.setattr(
+            fine_tune_module, "_import_torch", lambda: module_double("torch")
+        )
+        monkeypatch.setattr(
+            fine_tune_module, "import_trainer_api", lambda: cast("TrainerApi", object())
+        )
+        monkeypatch.setattr(fine_tune_module, "run_biencoder_training", _train)
+        monkeypatch.setattr(fine_tune_module, "save_checkpoint", _save)
+
+        settings: dict[str, object] = {
+            "training_data_path": str(data_path),
+            "base_model": "test-basic-001",
+            "output_dir": str(tmp_path / "run"),
+        }
+        settings.update(overrides)
+        checkpoint = await fine_tune_module.contrastive_fine_tune(**settings)  # type: ignore[arg-type]
+        return checkpoint, recorded
+
+    async def test_returns_the_checkpoint_directory_it_wrote(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        checkpoint, recorded = await self._run(tmp_path, monkeypatch)
+
+        assert checkpoint == tmp_path / "run" / "checkpoint"
+        assert checkpoint.is_dir()
+        assert recorded["saved_to"] == checkpoint
+
+    async def test_the_trained_model_is_the_one_saved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Saving a different object would write an untrained checkpoint."""
+        _, recorded = await self._run(tmp_path, monkeypatch)
+
+        training = recorded["training"]
+        assert isinstance(training, dict)
+        assert training["model"] is recorded["saved_model"]
+
+    async def test_the_base_model_is_loaded_without_remote_code(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A base model is operator-supplied, so it never runs its own code."""
+        _, recorded = await self._run(tmp_path, monkeypatch)
+
+        assert recorded["base_model"] == "test-basic-001"
+        assert recorded["trust_remote_code"] is False
+
+    async def test_a_hub_identifier_is_still_resolved_against_the_hub(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Only a local directory suppresses the lookup, not every load."""
+        _, recorded = await self._run(tmp_path, monkeypatch)
+
+        assert recorded["local_files_only"] is False
+
+    async def test_a_local_checkpoint_is_loaded_without_reaching_the_hub(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A path on this host has no hub metadata worth asking a third party for."""
+        local = tmp_path / "previous-checkpoint"
+        local.mkdir()
+
+        _, recorded = await self._run(tmp_path, monkeypatch, base_model=str(local))
+
+        assert recorded["local_files_only"] is True
+
+    async def test_the_triples_file_reaches_the_trainer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _, recorded = await self._run(tmp_path, monkeypatch)
+
+        training = recorded["training"]
+        assert isinstance(training, dict)
+        assert training["triples"] == [
+            {"query": f"q{i}", "positive": f"p{i}", "negatives": []} for i in range(4)
+        ]
+
+    async def test_hyperparameters_travel_as_one_value(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _, recorded = await self._run(
+            tmp_path,
+            monkeypatch,
+            epochs=2,
+            batch_size=4,
+            learning_rate=3e-5,
+            temperature=0.05,
+        )
+
+        training = recorded["training"]
+        assert isinstance(training, dict)
+        assert training["hyperparameters"] == ContrastiveHyperparameters(
+            epochs=2, batch_size=4, learning_rate=3e-5, temperature=0.05
+        )
+
+    async def test_the_trainer_writes_its_scratch_state_inside_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Left to the vendor default it would land in the process CWD."""
+        _, recorded = await self._run(tmp_path, monkeypatch)
+
+        training = recorded["training"]
+        assert isinstance(training, dict)
+        assert training["trainer_output_dir"] == (
+            tmp_path / "run" / TRAINER_OUTPUT_SUBDIR
+        )
+
+    async def test_a_cancel_before_the_model_loads_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        token = CancellationToken()
+        token.cancel()
+
+        with pytest.raises(FineTuneCancelledError):
+            await self._run(tmp_path, monkeypatch, cancellation=token)
 
 
 # -- Stage 4: Evaluation (mock-based) --------------------------------

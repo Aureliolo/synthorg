@@ -15,10 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers.memory._preflight_probe import local_probe
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory.embedding.fine_tune_models import (
-    FineTuneRequest,
-    PreflightCheck,
-)
+from synthorg.memory.embedding.fine_tune_models import FineTuneRequest
+from synthorg.memory.embedding.fine_tune_preflight_models import PreflightCheck
 from synthorg.memory.embedding.fine_tune_probe_result import ProbeResult
 from synthorg.memory.embedding.fine_tune_run_helpers import build_config
 from synthorg.observability import get_logger, safe_error_description
@@ -53,6 +51,16 @@ _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
 # a saturated executor surfaces as a clean 503 instead of a hung
 # request.
 _PREFLIGHT_HARD_TIMEOUT_MARGIN_S: Final[float] = 5.0
+
+# Added to the ceiling for the in-process backend only. ``local_probe`` runs
+# inside the same worker job as the walk and cold-imports torch,
+# sentence-transformers, datasets and transformers: shared libraries and a
+# CUDA runtime probe, tens of seconds on a cold page cache, and nothing the
+# walk's own deadline covers. Sized against those imports rather than the
+# walk, or the first preflight after a restart 503s on a healthy deployment.
+# The Docker backend pays none of it: its probe runs in a container, under
+# its own separately-bounded ceiling.
+_LOCAL_DEPENDENCY_IMPORT_CEILING_S: Final[float] = 60.0
 
 
 class _FineTuneThresholds(BaseModel):

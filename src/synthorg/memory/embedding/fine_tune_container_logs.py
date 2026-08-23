@@ -29,6 +29,16 @@ _MARKER_PROGRESS: Final[str] = "PROGRESS:"
 _MARKER_ERROR: Final[str] = "ERROR:"
 _SHORT_ID_LEN: Final[int] = 12
 
+#: Ceiling on what one ``ERROR:`` line contributes to the operator-visible
+#: failure message. The marker protocol is ours, but the streams it is read
+#: from are shared with every library in the container, so any line beginning
+#: with the prefix is collected whether the runner wrote it or not. The
+#: container also holds the organisation's documents, so an unbounded payload
+#: is both an error message nobody can read and a way for third-party output
+#: to carry that text out. Truncated rather than dropped: a genuine traceback
+#: line is worth keeping even when something else made it long.
+_MAX_ERROR_PAYLOAD_CHARS: Final[int] = 500
+
 
 async def stream_markers_until_exit(
     container: aiodocker.containers.DockerContainer,
@@ -78,7 +88,15 @@ def handle_marker_line(
     progress_callback: ProgressCallback | None,
     error_lines: list[str],
 ) -> None:
-    """Dispatch one stdout marker line from the stage container."""
+    """Dispatch one marker line from the stage container.
+
+    Read from the combined stdout and stderr stream, so the prefixes are a
+    convention the runner follows rather than a channel only it can write to:
+    anything in the container may emit a line that starts with one. Both
+    branches are therefore written to survive an impostor. A malformed
+    ``PROGRESS:`` payload is discarded as noise, and an ``ERROR:`` payload is
+    truncated before it reaches the operator's failure message.
+    """
     if line.startswith(_MARKER_PROGRESS):
         if progress_callback is None:
             return
@@ -108,7 +126,8 @@ def handle_marker_line(
                 error=safe_error_description(exc),
             )
     elif line.startswith(_MARKER_ERROR):
-        error_lines.append(line.removeprefix(_MARKER_ERROR).strip())
+        payload = line.removeprefix(_MARKER_ERROR).strip()
+        error_lines.append(payload[:_MAX_ERROR_PAYLOAD_CHARS])
 
 
 async def drain_probe_output(

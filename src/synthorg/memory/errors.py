@@ -132,8 +132,15 @@ FINE_TUNE_INPROCESS_DEP_HINT: Final[str] = (
 class FineTuneDependencyError(MemoryError):
     """Raised when fine-tuning ML dependencies are not installed.
 
-    In the default Docker-orchestrated deployment ``torch`` and
-    ``sentence-transformers`` ship inside the
+    The dependency set is ``torch``, ``sentence-transformers[train]``,
+    ``datasets``, ``accelerate`` and ``transformers``. The last three are
+    load-bearing rather than incidental: ``datasets`` supplies the training
+    table, ``accelerate`` the trainer's device handling, and neither is a
+    dependency of ``sentence-transformers`` itself (both live in its ``train``
+    extra), so an install that pinned the bare package imports cleanly and
+    still cannot train.
+
+    In the default Docker-orchestrated deployment all of it ships inside the
     ``synthorg-fine-tune-gpu`` / ``synthorg-fine-tune-cpu`` container
     that the backend spawns on demand; this error indicates the
     feature is turned off for the current install (`synthorg config

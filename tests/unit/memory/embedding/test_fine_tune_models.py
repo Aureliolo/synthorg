@@ -15,6 +15,8 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
+)
+from synthorg.memory.embedding.fine_tune_preflight_models import (
     PreflightCheck,
     PreflightResult,
 )
@@ -37,13 +39,13 @@ class TestCancellationToken:
 
     def test_check_passes_when_not_cancelled(self) -> None:
         token = CancellationToken()
-        token.check()  # should not raise
+        token.check(stage="training-data generation")  # should not raise
 
     def test_check_raises_when_cancelled(self) -> None:
         token = CancellationToken()
         token.cancel()
         with pytest.raises(FineTuneCancelledError, match="cancelled"):
-            token.check()
+            token.check(stage="training-data generation")
 
     def test_cancel_is_idempotent(self) -> None:
         token = CancellationToken()

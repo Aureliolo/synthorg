@@ -1,10 +1,10 @@
 # module-kind: code
 """Real-trajectory training-data sourcing for the finetune pipeline.
 
-The embedding finetune used to scan a static document directory. This module
-harvests the org's REAL working history into ``{query, positive_passage}``
-pairs from three persisted sources, then curates them by the golden-benchmark
-score so the model learns from periods the org was demonstrably performing well:
+The alternative source to a static document directory: this module harvests the
+org's REAL working history into ``{query, positive_passage}`` pairs from three
+persisted sources, then curates them by the golden-benchmark score so the model
+learns from periods the org was demonstrably performing well:
 
 * **Accepted deliverables** -- artifacts of ``COMPLETED`` tasks (query = the
   task title, passage = the artifact's recorded description).
@@ -200,7 +200,7 @@ class TrajectoryTrainingDataSource:
             Curated, de-duplicated training pairs.
         """
         if cancellation is not None:
-            cancellation.check()
+            cancellation.check(stage="training-source collection")
         completed = await self._task_repo.query(
             TaskFilterSpec(status=TaskStatus.COMPLETED),
             limit=self._max_tasks,
@@ -302,7 +302,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for task in completed_tasks:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="artifact pair harvest")
             try:
                 artifacts = await self._artifact_repo.query(
                     ArtifactFilterSpec(task_id=str(task.id)),
@@ -351,7 +351,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="distillation pair harvest")
             task_id = _task_id_from_distillation(entry.content)
             title = title_by_id.get(task_id) if task_id else None
             # A blank title or passage would raise a ``NotBlankStr``
@@ -393,7 +393,7 @@ class TrajectoryTrainingDataSource:
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
             if cancellation is not None:
-                cancellation.check()
+                cancellation.check(stage="failure pair harvest")
             source = entry.metadata.source
             if not source or not source.startswith(_FAILURE_SOURCE_PREFIX):
                 continue

@@ -298,8 +298,9 @@ single except clause.
 | `MemoryNotFoundError` | A specific memory ID is not found |
 | `MemoryConfigError` | Memory configuration is invalid |
 | `MemoryCapabilityError` | An unsupported operation is attempted for a backend |
-| `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers) are missing |
+| `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers[train], datasets, accelerate, transformers) are missing |
 | `FineTuneCancelledError` | A fine-tuning pipeline run is cancelled |
+| `FineTuneTrainingDataError` | Stage 2's triples file is empty or malformed |
 
 ### Configuration
 
@@ -516,7 +517,10 @@ importing the package. `datasets` and `accelerate` are not dependencies of
 `sentence-transformers` (they live in its `train` extra) nor of `transformers`,
 and the trainer refuses to run without them, so a probe that only proved the
 package imports would report a deployment ready and then lose the run two
-stages in. The fine-tune extras therefore pin `sentence-transformers[train]`.
+stages in. The fine-tune extras therefore pin `sentence-transformers[train]`,
+which is what supplies `accelerate`, and pin `datasets` and `transformers`
+directly on top of it, because the adapter imports both by name and a
+dependency we import is one we declare rather than inherit.
 
 Stage 2 emits **between zero and `top_k`** hard negatives per query, because
 its similarity margin can leave a query with nothing hard enough to keep. A
