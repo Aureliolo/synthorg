@@ -428,11 +428,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             subtask_count=len(plan.subtasks),
             termination=result.termination_reason.value,
         )
-        # Left blank, which is what this field MEANS: it marks a substitution,
-        # so only `_fallback_plan` stamps it. Naming the shipped strategy here
-        # too makes every plan carry a name, and a reader then cannot tell a
-        # researched plan from a single-shot one without knowing what was
-        # configured, which is precisely what the approval gate and the
+        # Blank, because that is what this field MEANS: it marks a
+        # substitution, so `_fallback_plan` is its only writer. A name here too
+        # would put one on every plan, and a reader could then tell a
+        # researched plan from a single-shot one only by knowing which strategy
+        # was configured, which is exactly what the approval gate and the
         # dashboard have no way to know.
         return plan
 

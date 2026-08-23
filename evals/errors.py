@@ -383,16 +383,17 @@ class RecursionDepthGateUnbuildableError(EvalError):
 
 
 class RecursionDepthCeilingUndeclaredError(EvalError):
-    """Raised when a decomposition ceiling the sweep arms declares no maximum.
+    """Raised when a setting the sweep opens to its ceiling has no ceiling.
 
-    The sweep clamps what it writes to what the settings service accepts, and
-    reads that bound off the definition so the two cannot drift. A definition
-    that is gone or unbounded leaves nothing to clamp against, and guessing
-    would surface as a write refused partway through a paid sweep.
+    Several of the values a sweep arms ARE their setting's declared maximum,
+    so the sweep reads that maximum off the definition rather than copying it
+    and letting the two drift. Two ways there is nothing to read: the setting
+    is absent, or it is present and unbounded. Guessing either would surface
+    as a write refused partway through a paid sweep.
     """
 
     default_message: ClassVar[str] = (
-        "A decomposition ceiling the sweep arms declares no maximum"
+        "A setting the sweep opens to its ceiling is absent or unbounded"
     )
 
 
@@ -447,6 +448,7 @@ __all__ = [
     "OracleUnusableError",
     "ProvenanceUnavailableError",
     "RecursionDepthCapabilityUnresolvedError",
+    "RecursionDepthCeilingUndeclaredError",
     "RecursionDepthGateUnbuildableError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",

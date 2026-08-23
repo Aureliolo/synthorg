@@ -34,11 +34,12 @@ from synthorg.engine.decomposition.protocol import (
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import DecompositionTimeoutError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_CEILING_UNREADABLE,
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_DEPTH_EXHAUSTED,
     DECOMPOSITION_FAILED,
@@ -47,6 +48,7 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SUBTASK_CREATED,
     DECOMPOSITION_SUBTASK_OVERSIZED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -180,7 +182,7 @@ class DecompositionService:
             Decomposition result with created tasks and dependency edges.
 
         Raises:
-            DecompositionError: When any one planning session outruns
+            DecompositionTimeoutError: When any one planning session outruns
                 ``coordination.decomposition_timeout_seconds``, or the whole
                 tree outruns ``coordination.decomposition_tree_timeout_seconds``.
         """
@@ -212,7 +214,11 @@ class DecompositionService:
                 error_type=type(exc).__name__,
                 error=msg,
             )
-            raise DecompositionError(msg) from exc
+            # Its own type, so a caller that retries a decomposition can tell
+            # the one failure a retry cannot help from the ones it can: the
+            # ceiling is the same on the next attempt, and paying it twice
+            # reaches the same place having spent everything again.
+            raise DecompositionTimeoutError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -238,68 +244,68 @@ class DecompositionService:
         """
         self._config_resolver = resolver
 
-    async def _timeout_seconds(self) -> float:
-        """Read the wall-clock ceiling in force for this decomposition.
+    async def _ceiling_seconds(self, key: str, default: float) -> float:
+        """Read the wall-clock ceiling *key* in force for this decomposition.
 
         Read per call rather than captured at construction, so an operator
-        raising the ceiling for a slow provider applies to the next
-        decomposition instead of the next restart.
+        raising a ceiling for a slow provider applies to the next decomposition
+        instead of the next restart.
+
+        Only the two failures the resolver documents fall back: the key is not
+        registered, or its stored value is not a float. Both are facts about
+        the setting, unchanged until someone changes it, and the default is the
+        honest answer to either. Anything else, a dead settings store above
+        all, propagates: it is transient, the ceiling is re-read per node of a
+        recursion, and swallowing it silently substitutes a bound nobody chose
+        for as long as the store stays down. A sweep arming a ceiling in the
+        tens of thousands of seconds and quietly getting the default back is
+        exactly the failure the arming exists to prevent.
+
+        Args:
+            key: The coordination setting naming the ceiling.
+            default: The definition's own default, in force when there is no
+                resolver (a harness) or the setting cannot answer.
 
         Returns:
-            The configured ceiling, or the definition's default when there is
-            no resolver (a harness) or it cannot answer. Falling back to the
-            default keeps a bound in force: the failure this exists to prevent
-            is an unbounded wait, and a settings read that failed is no reason
-            to grant one.
+            The ceiling, in seconds.
         """
         resolver = self._config_resolver
         if resolver is None:
-            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+            return default
         try:
-            return await resolver.get_float(
-                "coordination", "decomposition_timeout_seconds"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read; the bound
-            # still stands on the definition's own default, so the failure
-            # this method exists to prevent cannot happen either way
-            reraise_critical(exc)
+            return await resolver.get_float("coordination", key)
+        except (SettingNotFoundError, ValueError) as exc:
+            # lint-allow: swallow-ok -- a ceiling the setting cannot answer for
+            # is the definition's default by construction, and a bound still
+            # stands, so the unbounded wait this exists to prevent cannot happen
             logger.warning(
-                DECOMPOSITION_FAILED,
-                note="decomposition timeout unreadable; the default ceiling stands",
+                DECOMPOSITION_CEILING_UNREADABLE,
+                setting=key,
+                fallback_seconds=default,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+            return default
+
+    async def _timeout_seconds(self) -> float:
+        """Read the per-session ceiling in force for this decomposition.
+
+        Returns:
+            The ceiling, in seconds.
+        """
+        return await self._ceiling_seconds(
+            "decomposition_timeout_seconds", _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+        )
 
     async def _tree_timeout_seconds(self) -> float:
         """Read the whole-tree ceiling in force for this decomposition.
 
         Returns:
-            The configured ceiling, or the definition's default when there is
-            no resolver or it cannot answer, for the reason its per-session
-            sibling falls back: a settings read that failed is no reason to
-            grant an unbounded wait.
+            The ceiling, in seconds.
         """
-        resolver = self._config_resolver
-        if resolver is None:
-            return _DEFAULT_TREE_TIMEOUT_SECONDS
-        try:
-            return await resolver.get_float(
-                "coordination", "decomposition_tree_timeout_seconds"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read; the bound
-            # still stands on the definition's own default, so the failure
-            # this method exists to prevent cannot happen either way
-            reraise_critical(exc)
-            logger.warning(
-                DECOMPOSITION_FAILED,
-                note="tree timeout unreadable; the default ceiling stands",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return _DEFAULT_TREE_TIMEOUT_SECONDS
+        return await self._ceiling_seconds(
+            "decomposition_tree_timeout_seconds", _DEFAULT_TREE_TIMEOUT_SECONDS
+        )
 
     async def _do_decompose(
         self,

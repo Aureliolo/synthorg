@@ -87,6 +87,49 @@ Two of the four callers are request handlers, and the outer ceiling is what
 keeps a deep recursion from occupying one for as long as the tree keeps
 branching.
 
+Both are read live, per decomposition, so an operator raising one applies to the
+next call rather than the next restart. A read that fails falls back to the
+default only for the two things the setting itself can be wrong about: the key
+is unregistered, or its stored value is not a float. Anything else, a settings
+store that is down above all, propagates, because the ceiling is re-read once
+per node and swallowing a transient failure would run an arbitrary share of a
+tree under a bound nobody chose.
+
+### What the sweep arms, and why the product default is wrong for it
+
+The recursion-depth sweep writes its settings through the real service, so what
+it measured is only interpretable against what it armed
+(`evals/recursion_depth/tree.py::arm_recursion`, logged as
+`evals.recursion_depth.settings_armed` at the start of every run):
+
+| Setting | Product default | The sweep arms | Why |
+|---|---|---|---|
+| `recursive_decomposition_enabled` | off | on, or off for the control arm | The variable under test |
+| `leaf_subtask_threshold` | 1 | its declared maximum | Opened all the way so the requirement floor is the one rule that decides a split |
+| `subtask_max_criteria` | 5 | its declared maximum | The same manipulation, on the other threshold |
+| `decomposition_timeout_seconds` | 600s | 2400s | Sized for a model that answers directly; every model worth sweeping reasons first, and losing an arm to a timing margin destroys the comparison rather than slowing it |
+| `decomposition_tree_timeout_seconds` | 3600s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
+| `decomposition_max_retries` | 2 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
+
+The three armed at a declared maximum read it off the definition rather than
+copying the number, so a product bound that changes carries the sweep with it
+instead of surfacing as a write the settings service refuses partway through a
+paid run.
+
+Arming the per-session ceiling ALONE is worse than arming neither, and is the
+mistake this table exists to prevent: it raises what one session may spend while
+the whole-tree ceiling keeps a default sized for a request handler, leaving an
+outer bound that cannot admit even two of the sessions the inner one allows.
+Every tree killed that way has already paid for the levels it planned, and the
+sweep files it as an unavailable cell, which reads as "the planner could not
+decompose this" rather than "the harness could not finish a tree it was paying
+for".
+
+A timeout is also the one planning failure the sweep does not retry
+(`DecompositionTimeoutError`): the ceiling is unchanged on the next attempt, so
+a retry reaches the same place having paid it twice, and at these ceilings the
+second attempt is measured in hours.
+
 No published system has a signal like this at all, so it is deliberately a
 small measurable rule rather than an elaborate one.
 Its limitation is stated rather than hidden: the assessment is made from the

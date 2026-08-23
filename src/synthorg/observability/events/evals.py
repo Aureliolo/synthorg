@@ -107,6 +107,14 @@ Logged where the failure happens rather than only where it is caught, because
 by the time the runner files the cell the attempt's own execution id, the depth
 cap it was planning to, and the spend it booked on the way out are all several
 frames behind the exception."""
+EVALS_RECURSION_SETTINGS_ARMED: Final[str] = "evals.recursion_depth.settings_armed"
+"""Which coordination settings a sweep put in force before it began measuring.
+
+The sweep deliberately runs the product under settings no deployment ships, so
+what it measured is only interpretable against the values it armed. A cell
+killed by one of those ceilings reports that it produced no tree and nothing
+else, and the ceilings are otherwise recoverable only by reading the harness
+source at the commit the run used."""
 EVALS_RECURSION_PLAN_BOOKING_FAILED: Final[str] = (
     "evals.recursion_depth.plan_booking_failed"
 )

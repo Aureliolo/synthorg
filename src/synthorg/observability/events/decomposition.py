@@ -11,6 +11,14 @@ DECOMPOSITION_ROLLUP_COMPUTED: Final[str] = "decomposition.rollup.computed"
 DECOMPOSITION_GRAPH_VALIDATED: Final[str] = "decomposition.graph.validated"
 DECOMPOSITION_GRAPH_CYCLE: Final[str] = "decomposition.graph.cycle"
 DECOMPOSITION_FAILED: Final[str] = "decomposition.failed"
+DECOMPOSITION_CEILING_UNREADABLE: Final[str] = "decomposition.ceiling.unreadable"
+"""A wall-clock ceiling could not be read, so the definition's default stands.
+
+Its own event rather than a note on ``decomposition.failed``, because nothing
+failed: the decomposition proceeds, under a bound the operator did not choose.
+That is the shape worth being able to grep for on its own, since the ceiling is
+re-read per decomposition and a deployment that raised one can be running under
+the default for as long as the read keeps failing."""
 DECOMPOSITION_REFERENCE_ERROR: Final[str] = "decomposition.reference.error"
 DECOMPOSITION_GRAPH_BUILT: Final[str] = "decomposition.graph.built"
 DECOMPOSITION_LLM_CALL_START: Final[str] = "decomposition.llm.call.start"

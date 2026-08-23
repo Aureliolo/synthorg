@@ -91,6 +91,19 @@ class DecompositionBudgetExhaustedError(DecompositionError):
     """
 
 
+class DecompositionTimeoutError(DecompositionError):
+    """Raised when a decomposition outran one of its wall-clock ceilings.
+
+    Distinct from every other decomposition failure, and for the same reason
+    :class:`DecompositionBudgetExhaustedError` is: the ceiling is unchanged on
+    the next attempt, so a retry buys the same outcome at full price. That
+    price is the whole ceiling, which is what makes the distinction worth a
+    type rather than a log line: a caller that retries a parse failure is
+    paying for a fresh roll of the dice, while one that retries a timeout is
+    paying the ceiling twice to reach the same place.
+    """
+
+
 class PlanReviewUnavailableError(EngineError):
     """Raised when a seated review panel could not review at all.
 

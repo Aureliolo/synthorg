@@ -133,7 +133,10 @@ mandatory_rules:
         check_lifecycle_exit_reachable.py (a state with no reachable
         exit), check_subsystems_single_owner.py (a second wiring path),
         check_no_ghost_attribute_read.py (a lookup that substitutes
-        rather than fails). The general case is carried by the inventory
+        rather than fails),
+        check_single_planning_strategy_writer.py (a second writer of the
+        field that records whether the planner was substituted). The
+        general case is carried by the inventory
         in docs/reference/single-owner-decisions.md, which every new loop
         decision joins, and by review.
 

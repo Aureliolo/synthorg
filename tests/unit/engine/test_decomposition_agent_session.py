@@ -273,6 +273,30 @@ class TestAgentSessionDecompose:
 
         assert plan.planning_strategy == "sentinel-fallback"
 
+    async def test_a_researched_plan_names_no_planner_at_all(self) -> None:
+        """The other half of the same contract, and the half that can rot.
+
+        The field marks a SUBSTITUTION, so blank is how a researched plan says
+        it was researched. A name here would read identically to the fallback
+        having stood in, and every reader of the field decides on presence
+        alone: the dashboard renders the row only when it is set, and the
+        recursion-depth sweep refuses a tree any node of which carries one.
+        """
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("Plan submitted."),
+            ]
+        )
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert not fallback.called
+        assert plan.planning_strategy is None
+
     async def test_owner_provider_unresolved_falls_back(self) -> None:
         # The owner is pinned to a provider the registry does not know, so the
         # selector raises; the strategy falls back rather than dispatching to a

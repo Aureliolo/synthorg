@@ -5,13 +5,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from evals.recursion_depth.tree import arm_recursion
+from evals.errors import RecursionDepthCeilingUndeclaredError
+from evals.recursion_depth.tree import _declared_maximum, arm_recursion
 from synthorg.engine.decomposition.llm import LlmDecompositionConfig
 from synthorg.engine.decomposition.service import (
     _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
     _DEFAULT_TREE_TIMEOUT_SECONDS,
 )
-from synthorg.settings.registry import get_registry
+from synthorg.settings.registry import SettingsRegistry, get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import mock_of
 
@@ -20,14 +21,18 @@ pytestmark = pytest.mark.unit
 #: Read off the product's own config so the comparison cannot drift from it.
 _PRODUCT_DEFAULT_RETRIES = LlmDecompositionConfig().max_retries
 
-#: A sweep small enough that the derived tree ceiling stays under the setting's
-#: own maximum, so the clamp is not what these assertions are reading.
-_SMALL_SWEEP_SESSIONS = 30
+#: Every setting the sweep opens all the way, paired with the key whose
+#: declared maximum it must equal. Read from the registry rather than written
+#: down, so a product bound that moves is caught here rather than by a write
+#: the settings service refuses partway through a paid sweep.
+_OPENED_TO_CEILING: tuple[str, ...] = (
+    "leaf_subtask_threshold",
+    "subtask_max_criteria",
+    "decomposition_tree_timeout_seconds",
+)
 
 
-async def _armed(
-    *, enabled: bool = True, max_sessions: int = _SMALL_SWEEP_SESSIONS
-) -> dict[str, str]:
+async def _writes(*, enabled: bool = True) -> list[tuple[str, str]]:
     """Run ``arm_recursion`` against a recording double.
 
     ``mock_of`` rather than a hand-written class behind a ``cast``: the cast
@@ -36,15 +41,35 @@ async def _armed(
     here. The typed double carries the real signature.
 
     Returns:
-        The coordination settings it wrote, keyed by setting key.
+        The coordination writes it made, in order, as ``(key, value)`` pairs.
+        A list rather than a dict because a dict keeps only the last write per
+        key, which is exactly how a second write to one key would hide.
     """
     settings = mock_of[SettingsService](set=AsyncMock(return_value=None))
-    await arm_recursion(settings, enabled=enabled, max_sessions=max_sessions)
-    return {
-        call.args[1]: call.args[2]
+    await arm_recursion(settings, enabled=enabled)
+    return [
+        (call.args[1], call.args[2])
         for call in settings.set.await_args_list
         if call.args[0] == "coordination"
-    }
+    ]
+
+
+async def _armed(*, enabled: bool = True) -> dict[str, str]:
+    """The coordination settings ``arm_recursion`` wrote, keyed by setting.
+
+    Returns:
+        One entry per key.
+
+    Raises:
+        AssertionError: A key was written twice, which a keyed reading would
+            otherwise silently collapse to whichever write happened to be last.
+    """
+    writes = await _writes(enabled=enabled)
+    written = dict(writes)
+    assert len(written) == len(writes), (
+        f"a coordination key was written twice: {writes}"
+    )
+    return written
 
 
 async def test_planning_timeout_is_written() -> None:
@@ -96,14 +121,13 @@ async def test_ceiling_is_written_in_both_arms(enabled: bool) -> None:
 
 
 async def test_tree_ceiling_is_written() -> None:
-    """Arming one ceiling and not the other is worse than arming neither.
+    """Arming one decomposition ceiling and not the other is the worst option.
 
-    A live run raised the per-session ceiling to four times the product default
-    and left this one at its default, which is sized for the two callers that
-    are request handlers. Three of five planning attempts were then killed at
-    exactly the default, each having already spent between 0.6M and 1.3M
-    tokens, and every one was filed as an unavailable cell rather than as a
-    harness that could not finish a tree it was paying for.
+    A tree is many sessions by construction, so raising what one session may
+    spend while the whole-tree ceiling keeps a default sized for request
+    handlers leaves an outer bound that cannot admit even two of the sessions
+    the inner one allows. Every tree killed that way has already paid for the
+    levels it planned.
     """
     written = await _armed()
 
@@ -119,13 +143,12 @@ async def test_tree_ceiling_exceeds_the_product_default() -> None:
     )
 
 
-async def test_tree_ceiling_admits_more_than_one_session() -> None:
-    """The structural absurdity the live run hit, stated as an invariant.
+async def test_tree_ceiling_admits_many_sessions() -> None:
+    """The structural absurdity, stated as an invariant rather than a value.
 
-    A tree is many sessions by construction, so a tree ceiling that cannot
-    admit even two of the sessions the sweep itself allows can only ever kill
-    a tree partway through. That is what the product default did once the
-    per-session ceiling was raised past half of it.
+    A tree recurses across many sessions, so the outer ceiling has to admit
+    many of the inner one. Asserting the relationship rather than a number is
+    what keeps this true if either ceiling is retuned.
     """
     written = await _armed()
 
@@ -134,19 +157,50 @@ async def test_tree_ceiling_admits_more_than_one_session() -> None:
     assert tree > session * 2
 
 
-async def test_tree_ceiling_is_clamped_to_what_the_setting_accepts() -> None:
-    """A derived value the service would refuse is a write that fails mid-run.
+@pytest.mark.parametrize("key", _OPENED_TO_CEILING)
+async def test_a_setting_opened_all_the_way_equals_its_declared_maximum(
+    key: str,
+) -> None:
+    """Opened to the ceiling means THE ceiling, not a copy of today's value.
 
-    The derivation scales with the sweep's session ceiling, so a large enough
-    sweep computes a number above what the definition allows. Clamping is what
-    keeps that from surfacing as a refused write partway through a paid run.
+    Each of these is armed at whatever its definition currently declares, so a
+    product bound that moves moves the sweep with it. A literal here instead
+    would keep arming yesterday's number, silently arming a different
+    manipulation than the harness documents.
     """
-    definition = get_registry().get(
-        "coordination", "decomposition_tree_timeout_seconds"
-    )
+    written = await _armed()
+
+    definition = get_registry().get("coordination", key)
     assert definition is not None
     assert definition.max_value is not None
+    assert float(written[key]) == definition.max_value
 
-    written = await _armed(max_sessions=1_000_000)
 
-    assert float(written["decomposition_tree_timeout_seconds"]) == definition.max_value
+async def test_an_absent_setting_is_refused_rather_than_guessed() -> None:
+    """Nothing to read is a refusal, because the alternative is a guess.
+
+    A guessed ceiling would be discovered as a write the settings service
+    rejects, which happens after the sweep has booted and begun spending.
+    """
+    with pytest.raises(RecursionDepthCeilingUndeclaredError):
+        _declared_maximum("a_setting_that_does_not_exist")
+
+
+async def test_an_unbounded_setting_is_refused_rather_than_guessed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second way there is nothing to read: present, but with no maximum.
+
+    Distinct from absence, and reached through a different branch, so the
+    registry is stubbed to produce exactly that shape.
+    """
+    real = get_registry().get("coordination", "decomposition_tree_timeout_seconds")
+    assert real is not None
+    unbounded = real.model_copy(update={"max_value": None})
+    registry = mock_of[SettingsRegistry](get=lambda _ns, _key: unbounded)
+    monkeypatch.setattr(
+        "evals.recursion_depth.tree.get_registry", lambda: registry, raising=True
+    )
+
+    with pytest.raises(RecursionDepthCeilingUndeclaredError):
+        _declared_maximum("decomposition_tree_timeout_seconds")

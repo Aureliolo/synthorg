@@ -94,7 +94,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.engine.routing_policy.capability_policy import (
     CapabilityPolicy,
@@ -1312,6 +1312,45 @@ class TestTheMatrix:
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
             await _swept(context, tmp_path)
+
+    async def test_a_timed_out_plan_is_not_retried(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        """The one planning failure a second attempt cannot help.
+
+        A wall-clock ceiling is unchanged on the next attempt, so retrying
+        reaches the same place having paid the ceiling twice, and the ceilings
+        a sweep arms make that second attempt hours long. Everything else the
+        planner raises is worth another roll, which is why this needs its own
+        type rather than a comment.
+        """
+        del assembled_trees
+        context = await _context(
+            tmp_path,
+            planner=_ScriptedPlanner(
+                raises=DecompositionTimeoutError(
+                    "Decomposition outran its wall-clock ceiling"
+                ),
+                spent_before_failing=_Plan(cost=0.0, tokens=4096, sessions=1),
+            ),
+            manifest=_manifest(depths=(1,), repetitions={1: 1}, arms=(Arm.GATED,)),
+        )
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
+
+        _, resumed = open_journal(
+            tmp_path / "out",
+            PROGRESS_SPEC,
+            identity=matrix_identity(_provenance()),
+            resume=True,
+        )
+        plans = [record.unit for record in resumed.recorded if record.unit.kind == PLAN]
+        assert len(plans) == 1
+        # One attempt, not the two a retryable failure gets, and one attempt's
+        # spend rather than two.
+        assert plans[0].attempts == 1
+        assert plans[0].tokens == 4096
 
     async def test_a_failed_plan_still_journals_what_it_spent(
         self, tmp_path: Path, assembled_trees: None

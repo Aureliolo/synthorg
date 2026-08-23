@@ -14,7 +14,12 @@ from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.errors import DecompositionCycleError, DecompositionError
+from synthorg.engine.errors import (
+    DecompositionCycleError,
+    DecompositionError,
+    DecompositionTimeoutError,
+)
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, mock_of, sid
 
@@ -527,28 +532,59 @@ class TestOneDecompositionCannotRunForever:
         assert keys.count("decomposition_timeout_seconds") == 2
         assert keys.count("decomposition_tree_timeout_seconds") == 2
 
-    async def test_an_unreadable_ceiling_still_bounds_the_call(
-        self, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize(
+        "unanswerable",
+        [
+            SettingNotFoundError("coordination/decomposition_timeout_seconds"),
+            ValueError("not a float"),
+        ],
+    )
+    async def test_a_setting_that_cannot_answer_still_bounds_the_call(
+        self, monkeypatch: pytest.MonkeyPatch, unanswerable: Exception
     ) -> None:
-        # The failure this exists to prevent is an unbounded wait, so a
-        # settings read that failed is no reason to grant one. Driven by the
-        # strategy that never answers: against one that returns immediately
-        # the assertion holds whether the fallback bounds anything or removes
-        # the ceiling altogether, which is no test of the fallback at all.
+        # The two ways the SETTING itself cannot answer: it is not registered,
+        # or its stored value is not a float. Both are facts about the setting
+        # rather than about the moment, so the definition's own default is the
+        # honest reading and a bound still stands. Driven by the strategy that
+        # never answers: against one that returns immediately the assertion
+        # holds whether the fallback bounds anything or removes the ceiling
+        # altogether, which is no test of the fallback at all.
         monkeypatch.setattr(
             service_module,
             "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
             _A_SHORT_CEILING,
         )
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-        resolver.get_float.side_effect = RuntimeError("settings unreadable")
+        resolver.get_float.side_effect = unanswerable
         service = DecompositionService(
             _NeverAnsweringStrategy(),
             TaskStructureClassifier(),
             config_resolver=resolver,
         )
 
-        with pytest.raises(DecompositionError):
+        with pytest.raises(DecompositionTimeoutError):
+            await service.decompose_task(_make_task(), DecompositionContext())
+
+    async def test_a_settings_store_that_is_down_is_not_a_silent_downgrade(
+        self,
+    ) -> None:
+        """A transient read failure must not quietly substitute the default.
+
+        The ceiling is re-read per decomposition, and a recursion decomposes
+        once per node, so swallowing this would run an arbitrary share of a
+        tree under a bound nobody chose for as long as the store stayed down.
+        A deployment that raised its ceiling would get the default back with
+        one WARNING per node and no other sign.
+        """
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_float.side_effect = RuntimeError("settings store unreachable")
+        service = DecompositionService(
+            ManualDecompositionStrategy(_make_plan()),
+            TaskStructureClassifier(),
+            config_resolver=resolver,
+        )
+
+        with pytest.raises(RuntimeError, match="settings store unreachable"):
             await service.decompose_task(_make_task(), DecompositionContext())
 
     async def test_no_resolver_at_all_still_bounds_the_call(

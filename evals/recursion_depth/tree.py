@@ -43,18 +43,33 @@ from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_TREE_BUILT
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SETTINGS_ARMED,
+    EVALS_RECURSION_TREE_BUILT,
+)
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
-#: Opened to their ceilings so the requirement floor is the one rule that
-#: decides a split. See the module docstring: this is the manipulation, not a
-#: tuning choice, and it is written down here rather than in a YAML an operator
-#: might read as a recommendation.
-_OPEN_ARTIFACT_THRESHOLD: Final[str] = "20"
-_OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
+#: The two thresholds opened all the way, named rather than valued: each IS
+#: its setting's declared ceiling, so the value is read off the definition at
+#: :func:`_declared_maximum` instead of copied. A copy would be one product
+#: release from arming a different manipulation than the module docstring
+#: describes, silently, since both currently sit exactly ON their maxima.
+_OPEN_ARTIFACT_SETTING: Final[str] = "leaf_subtask_threshold"
+_OPEN_CRITERIA_SETTING: Final[str] = "subtask_max_criteria"
+
+#: The whole-tree ceiling, armed at what the setting itself allows.
+#:
+#: Not a multiple of the per-session ceiling, which is the one shape the
+#: design page rules out by construction: sessions scale with the node count,
+#: so any multiple is a guess that kills a legitimate deep tree and discards
+#: every level it had already paid for. The product's default is sized for the
+#: request handlers among its callers; a sweep is not one, and its tree is
+#: already bounded by the session ceiling, the per-session wall clock and the
+#: per-session token and cost ceilings.
+_TREE_TIMEOUT_SETTING: Final[str] = "decomposition_tree_timeout_seconds"
 
 #: Wall-clock ceiling on one planning session, raised well above the product
 #: default of 600s.
@@ -182,45 +197,20 @@ def _declared_maximum(key: str) -> float:
         The declared maximum.
 
     Raises:
-        RecursionDepthCeilingUndeclaredError: The setting is gone or declares
-            no maximum, so there is nothing to clamp against.
+        RecursionDepthCeilingUndeclaredError: The setting is absent, or present
+            and unbounded, so there is no ceiling to read.
     """
     definition = get_registry().get("coordination", key)
     if definition is None or definition.max_value is None:
         msg = (
-            f"coordination.{key} declares no maximum, so the sweep cannot tell "
-            f"what the settings service will accept"
+            f"coordination.{key} is absent or declares no maximum, so the "
+            f"sweep cannot tell what the settings service will accept"
         )
         raise RecursionDepthCeilingUndeclaredError(msg)
     return definition.max_value
 
 
-def _tree_timeout_seconds(max_sessions: int) -> float:
-    """The whole-tree ceiling a sweep of *max_sessions* sessions needs.
-
-    Derived rather than chosen, because the two ceilings bound different
-    things and the product's own reasoning says no multiple of the per-session
-    one bounds a tree: sessions scale with the node count. What DOES bound a
-    sweep's tree is the sweep itself, which will not buy more than
-    ``max_sessions`` sessions and will not let any one of them run past
-    :data:`_PLANNING_TIMEOUT_SECONDS`, so their product is the widest a tree
-    can legitimately get here. Clamped to what the setting accepts.
-
-    Args:
-        max_sessions: The sweep's own session ceiling.
-
-    Returns:
-        The ceiling to arm.
-    """
-    return min(
-        _PLANNING_TIMEOUT_SECONDS * max_sessions,
-        _declared_maximum("decomposition_tree_timeout_seconds"),
-    )
-
-
-async def arm_recursion(
-    settings: SettingsService, *, enabled: bool, max_sessions: int
-) -> None:
+async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     """Put the decomposition service into the shape this sweep measures.
 
     Written through the real settings service rather than handed to the
@@ -229,40 +219,57 @@ async def arm_recursion(
     decomposition, and a harness that bypassed that would be measuring a code
     path the deployment does not take.
 
-    BOTH decomposition ceilings are armed, and arming only the per-session one
-    is what a live run showed to be worse than arming neither. That run raised
-    the session ceiling to four times the product default and left the tree
-    ceiling at the default 3600s, which is sized for the two callers that are
-    request handlers; three of five planning attempts were then killed at
-    exactly 3600s having each already spent between 0.6M and 1.3M tokens, and
-    the sweep reported them as unavailable cells rather than as a harness that
-    could not finish a tree it was paying for.
+    BOTH decomposition ceilings are armed. Arming the per-session one alone is
+    worse than arming neither: it raises what a session may spend while the
+    whole-tree ceiling stays at a default sized for request handlers, and a
+    tree is many sessions by construction, so the outer bound then cannot admit
+    even two of the sessions the inner one allows. A tree killed that way has
+    already paid for every level it planned, and the sweep files it as an
+    unavailable cell, which reads as "the planner could not decompose this"
+    rather than "the harness could not finish a tree it was paying for".
+
+    Callers must not dispatch work until this returns. The writes are
+    sequential and not transactional, so a decomposition starting in between
+    would observe a partly-armed configuration; the sole caller awaits this
+    before the sweep begins, against a settings service booted for that one
+    run.
 
     Args:
         settings: The booted application's settings service.
         enabled: Whether an oversized subtask is decomposed again.
-        max_sessions: The sweep's session ceiling, which is what bounds the
-            tree ceiling below.
     """
+    artifact_threshold = _declared_maximum(_OPEN_ARTIFACT_SETTING)
+    criteria_threshold = _declared_maximum(_OPEN_CRITERIA_SETTING)
+    tree_timeout = _declared_maximum(_TREE_TIMEOUT_SETTING)
     await settings.set(
         "coordination",
         "recursive_decomposition_enabled",
         "true" if enabled else "false",
     )
     await settings.set(
-        "coordination", "leaf_subtask_threshold", _OPEN_ARTIFACT_THRESHOLD
+        "coordination", _OPEN_ARTIFACT_SETTING, str(int(artifact_threshold))
     )
-    await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
+    await settings.set(
+        "coordination", _OPEN_CRITERIA_SETTING, str(int(criteria_threshold))
+    )
     await settings.set(
         "coordination", "decomposition_timeout_seconds", str(_PLANNING_TIMEOUT_SECONDS)
     )
-    await settings.set(
-        "coordination",
-        "decomposition_tree_timeout_seconds",
-        str(_tree_timeout_seconds(max_sessions)),
-    )
+    await settings.set("coordination", _TREE_TIMEOUT_SETTING, str(tree_timeout))
     await settings.set(
         "coordination", "decomposition_max_retries", _PLANNING_MAX_RETRIES
+    )
+    # Logged because a cell killed by a ceiling reports only that it produced
+    # no tree: which ceilings were in force is otherwise recoverable from the
+    # source alone, and the source is not what an operator reads at 3am.
+    logger.info(
+        EVALS_RECURSION_SETTINGS_ARMED,
+        recursion_enabled=enabled,
+        leaf_subtask_threshold=artifact_threshold,
+        subtask_max_criteria=criteria_threshold,
+        decomposition_timeout_seconds=_PLANNING_TIMEOUT_SECONDS,
+        decomposition_tree_timeout_seconds=tree_timeout,
+        decomposition_max_retries=_PLANNING_MAX_RETRIES,
     )
 
 
