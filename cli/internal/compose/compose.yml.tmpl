@@ -258,13 +258,17 @@ env_var, i.e. no at-rest encryption.
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
-    # The ordered teardown bounds itself to _TOTAL_SHUTDOWN_WINDOW_SECONDS
-    # (75s, in api/lifecycle_runner_shutdown.py) and can overrun it by the
-    # per-step floor it grants once that window is spent. Without this,
-    # Docker's 10s default arrives mid-sequence and the steps that lose are
-    # the ones at the end: the audit-chain flush and the persistence
-    # disconnect. Move this and that constant together.
-    stop_grace_period: 90s
+    # Covers the WHOLE lifespan shutdown, which is two phases in series and
+    # not the one uvicorn's timeout_graceful_shutdown bounds: the request
+    # drain (_DRAIN_TIMEOUT_SECONDS, 25s) runs first, then the service
+    # teardown window (_TOTAL_SHUTDOWN_WINDOW_SECONDS, 75s) plus at most
+    # _FLOOR_RESERVE_SECONDS (10s) of floor for the tail, plus the minimum
+    # per-step grants. ~112s worst case, 120s here for headroom. Without it,
+    # Docker's 10s default arrives
+    # mid-sequence and the steps that lose are the ones at the end: the
+    # audit-chain flush and the persistence disconnect. Move this and those
+    # three constants together.
+    stop_grace_period: 120s
     stop_signal: SIGTERM
     restart: unless-stopped
     deploy:

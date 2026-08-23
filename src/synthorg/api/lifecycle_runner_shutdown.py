@@ -122,13 +122,18 @@ _FINE_TUNE_CANCEL_SHUTDOWN_SECONDS: Final[float] = (
     FINE_TUNE_CANCEL_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
 )
 
-# What the whole teardown may take, which is NOT the sum of the budgets above:
-# those are per-service worst cases that never all fire together, and summed
-# they reach 417s against a container that is killed long before. This is the
-# figure the deployment's termination grace period must cover, so it is stated
-# once here and the shipped compose files exceed it by a margin for the
-# per-step floor (see ``_EXHAUSTED_STEP_FLOOR_SECONDS``). Raising it is a
-# deployment change, not just a constant: both must move together.
+# What the teardown may take, which is NOT the sum of the budgets above: those
+# are per-service worst cases that never all fire together, and summed they
+# reach 417s against a container that is killed long before.
+#
+# This is only the SECOND phase of the lifespan shutdown. The request drain
+# (``_DRAIN_TIMEOUT_SECONDS``, 25s) runs to completion first, because the drain
+# middleware intercepts ``lifespan.shutdown`` and finishes before the inner app
+# sees it. Uvicorn's ``timeout_graceful_shutdown`` bounds neither phase: it
+# caps the wait for in-flight connections, which happens before the lifespan
+# event is dispatched at all. So the deployment's grace period is the only
+# thing bounding 25s + this + ``_FLOOR_RESERVE_SECONDS``, and the shipped
+# compose files carry that sum plus headroom. All four move together.
 _TOTAL_SHUTDOWN_WINDOW_SECONDS: Final[float] = 75.0
 
 

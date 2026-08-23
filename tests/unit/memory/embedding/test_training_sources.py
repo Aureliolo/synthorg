@@ -255,12 +255,23 @@ class _CancelsOnNthCheck(CancellationToken):
         super().check(stage=stage)
 
 
+#: Which check number each harvest loop's own ``cancellation.check`` is, in
+#: collect() order. One per loop, because each owns its check: a single count
+#: would leave the others asserted by nothing.
+_CHECK_AT_COLLECT_ENTRY: Final[int] = 1
+_CHECK_IN_ARTIFACT_HARVEST: Final[int] = 2
+_CHECK_IN_DISTILLATION_HARVEST: Final[int] = 3
+_CHECK_IN_FAILURE_HARVEST: Final[int] = 4
+
+
 @pytest.mark.parametrize(
     "checks_before_cancel",
-    # 1 stops in the task loop; the later counts land in the artifact,
-    # distillation and failure harvests. Each loop owns its own check, so a
-    # single count would leave the others asserted by nothing.
-    [1, 2, 3, 4],
+    [
+        _CHECK_AT_COLLECT_ENTRY,
+        _CHECK_IN_ARTIFACT_HARVEST,
+        _CHECK_IN_DISTILLATION_HARVEST,
+        _CHECK_IN_FAILURE_HARVEST,
+    ],
 )
 async def test_collect_is_cancellable_in_every_harvest_loop(
     checks_before_cancel: int,
