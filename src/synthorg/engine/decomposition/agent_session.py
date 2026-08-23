@@ -428,7 +428,13 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             subtask_count=len(plan.subtasks),
             termination=result.termination_reason.value,
         )
-        return plan.model_copy(update={"planning_strategy": _STRATEGY_NAME})
+        # Left blank, which is what this field MEANS: it marks a substitution,
+        # so only `_fallback_plan` stamps it. Naming the shipped strategy here
+        # too makes every plan carry a name, and a reader then cannot tell a
+        # researched plan from a single-shot one without knowing what was
+        # configured, which is precisely what the approval gate and the
+        # dashboard have no way to know.
+        return plan
 
     def _reject_empty_session(
         self,

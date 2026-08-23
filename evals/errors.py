@@ -382,6 +382,20 @@ class RecursionDepthGateUnbuildableError(EvalError):
     )
 
 
+class RecursionDepthCeilingUndeclaredError(EvalError):
+    """Raised when a decomposition ceiling the sweep arms declares no maximum.
+
+    The sweep clamps what it writes to what the settings service accepts, and
+    reads that bound off the definition so the two cannot drift. A definition
+    that is gone or unbounded leaves nothing to clamp against, and guessing
+    would surface as a write refused partway through a paid sweep.
+    """
+
+    default_message: ClassVar[str] = (
+        "A decomposition ceiling the sweep arms declares no maximum"
+    )
+
+
 class RecursionDepthCapabilityUnresolvedError(EvalError):
     """Raised when a sweep cannot resolve the one capability policy.
 

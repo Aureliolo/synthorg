@@ -698,7 +698,10 @@ class TestUnsubmittedSessionsContinue:
 
         assert not fallback.called
         assert len(plan.subtasks) == 2
-        assert plan.planning_strategy == "agent-session"
+        # Blank BECAUSE the shipped strategy produced it: the field marks a
+        # substitution, so a name here would be indistinguishable from the
+        # fallback having stood in.
+        assert plan.planning_strategy is None
 
     async def test_a_rejected_plan_is_reworked_after_the_nudge(self) -> None:
         """The shape the live failure actually took, end to end.

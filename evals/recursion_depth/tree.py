@@ -23,7 +23,11 @@ from types import MappingProxyType
 from typing import Final
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from evals.errors import OracleUnusableError, RecursionDepthPlannerSubstitutedError
+from evals.errors import (
+    OracleUnusableError,
+    RecursionDepthCeilingUndeclaredError,
+    RecursionDepthPlannerSubstitutedError,
+)
 from evals.recursion_depth.claims import RequirementId, criterion_for
 from evals.recursion_depth.oracle import (
     declared,
@@ -40,6 +44,7 @@ from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDef
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_TREE_BUILT
+from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -67,7 +72,7 @@ _OPEN_CRITERIA_THRESHOLD: Final[str] = "25"
 #: This is a bound, not a budget: a planner that finishes sooner costs nothing
 #: extra, and the ceiling still exists to stop an unbounded wait on a provider
 #: that never answers.
-_PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
+_PLANNING_TIMEOUT_SECONDS: Final[float] = 2400.0
 
 #: Decomposition self-correction attempts, raised above the product default.
 #:
@@ -162,7 +167,60 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
     )
 
 
-async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
+def _declared_maximum(key: str) -> float:
+    """The largest value the coordination setting *key* accepts.
+
+    Read off the definition rather than written down here, because a bound
+    copied into this module is one release away from disagreeing with the one
+    the settings service actually enforces, and the disagreement surfaces as a
+    refused write in the middle of a paid sweep.
+
+    Args:
+        key: The coordination setting whose ceiling is wanted.
+
+    Returns:
+        The declared maximum.
+
+    Raises:
+        RecursionDepthCeilingUndeclaredError: The setting is gone or declares
+            no maximum, so there is nothing to clamp against.
+    """
+    definition = get_registry().get("coordination", key)
+    if definition is None or definition.max_value is None:
+        msg = (
+            f"coordination.{key} declares no maximum, so the sweep cannot tell "
+            f"what the settings service will accept"
+        )
+        raise RecursionDepthCeilingUndeclaredError(msg)
+    return definition.max_value
+
+
+def _tree_timeout_seconds(max_sessions: int) -> float:
+    """The whole-tree ceiling a sweep of *max_sessions* sessions needs.
+
+    Derived rather than chosen, because the two ceilings bound different
+    things and the product's own reasoning says no multiple of the per-session
+    one bounds a tree: sessions scale with the node count. What DOES bound a
+    sweep's tree is the sweep itself, which will not buy more than
+    ``max_sessions`` sessions and will not let any one of them run past
+    :data:`_PLANNING_TIMEOUT_SECONDS`, so their product is the widest a tree
+    can legitimately get here. Clamped to what the setting accepts.
+
+    Args:
+        max_sessions: The sweep's own session ceiling.
+
+    Returns:
+        The ceiling to arm.
+    """
+    return min(
+        _PLANNING_TIMEOUT_SECONDS * max_sessions,
+        _declared_maximum("decomposition_tree_timeout_seconds"),
+    )
+
+
+async def arm_recursion(
+    settings: SettingsService, *, enabled: bool, max_sessions: int
+) -> None:
     """Put the decomposition service into the shape this sweep measures.
 
     Written through the real settings service rather than handed to the
@@ -171,9 +229,20 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     decomposition, and a harness that bypassed that would be measuring a code
     path the deployment does not take.
 
+    BOTH decomposition ceilings are armed, and arming only the per-session one
+    is what a live run showed to be worse than arming neither. That run raised
+    the session ceiling to four times the product default and left the tree
+    ceiling at the default 3600s, which is sized for the two callers that are
+    request handlers; three of five planning attempts were then killed at
+    exactly 3600s having each already spent between 0.6M and 1.3M tokens, and
+    the sweep reported them as unavailable cells rather than as a harness that
+    could not finish a tree it was paying for.
+
     Args:
         settings: The booted application's settings service.
         enabled: Whether an oversized subtask is decomposed again.
+        max_sessions: The sweep's session ceiling, which is what bounds the
+            tree ceiling below.
     """
     await settings.set(
         "coordination",
@@ -185,7 +254,12 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     )
     await settings.set("coordination", "subtask_max_criteria", _OPEN_CRITERIA_THRESHOLD)
     await settings.set(
-        "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
+        "coordination", "decomposition_timeout_seconds", str(_PLANNING_TIMEOUT_SECONDS)
+    )
+    await settings.set(
+        "coordination",
+        "decomposition_tree_timeout_seconds",
+        str(_tree_timeout_seconds(max_sessions)),
     )
     await settings.set(
         "coordination", "decomposition_max_retries", _PLANNING_MAX_RETRIES

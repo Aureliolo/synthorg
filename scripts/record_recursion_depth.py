@@ -399,7 +399,11 @@ async def _build_context(
     """
     app_state = host.app_state
     await seed_eval_project(host.project_repo)
-    await arm_recursion(settings_service_of(app_state), enabled=True)
+    await arm_recursion(
+        settings_service_of(app_state),
+        enabled=True,
+        max_sessions=manifest.max_sessions,
+    )
     capability = await build_capability_policy(app_state)
     if capability is None:
         msg = (
