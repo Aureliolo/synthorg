@@ -13,7 +13,7 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 
 import asyncio
 import ipaddress
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Final, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
@@ -121,15 +121,28 @@ class NetworkPolicy(BaseModel):
             Result of type ``object``.
 
         Raises:
-            ValueError: If any entry is not a string. Pydantic converts this
-                to a ``ValidationError``, which is what keeps a bad persisted
-                allowlist inside the contract the startup-path caller catches.
+            ValueError: If any entry is not a string, or if the allowlist
+                arrives in a form this cannot normalise. Pydantic converts
+                both to a ``ValidationError``, which is what keeps a bad
+                persisted allowlist inside the contract the startup-path
+                caller catches.
         """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
         raw = data["hostname_allowlist"]
-        if not isinstance(raw, tuple | list):
+        if isinstance(raw, str | bytes):
             return data
+        # Pydantic fills a ``tuple[...]`` field from any collection, a set and
+        # a frozenset included, so narrowing this to sequences left those
+        # spellings skipping lowercase, canonicalisation and dedupe entirely
+        # and sitting in the allowlist in a form the request side can never
+        # match. ``Collection`` is the widest shape safe to read here: it is
+        # re-iterable, so consuming it does not empty the value Pydantic
+        # reads next. Anything else iterable is refused rather than passed
+        # through, because passing it through is the silent bypass.
+        if not isinstance(raw, Collection):
+            msg = "hostname_allowlist must be a collection of strings"
+            raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
         # A ``mode="before"`` validator runs ahead of field validation, so an
         # element that is not a string reaches ``str`` methods here and raises
         # ``AttributeError``, which is outside the hierarchy Pydantic converts
@@ -148,8 +161,13 @@ class NetworkPolicy(BaseModel):
         # ``ValidationError`` only because it inherits from ``ValueError``
         # through ``UnicodeError``. Rewrapping it in a type outside that
         # hierarchy would escape the validator uncaught.
+        # A set states no order, so reading one in iteration order would store
+        # a tuple that differs between processes for the same configuration.
+        # Sorting the unordered forms keeps the field a function of its input;
+        # a sequence keeps the order the operator wrote.
+        entries = raw if isinstance(raw, Sequence) else sorted(raw)
         normalized = dedupe_preserving_order(
-            canonical_hostname(normalize_ascii_lowercase(h)) for h in raw
+            canonical_hostname(normalize_ascii_lowercase(h)) for h in entries
         )
         return {**data, "hostname_allowlist": normalized}
 

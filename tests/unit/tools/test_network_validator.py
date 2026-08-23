@@ -83,6 +83,31 @@ class TestNetworkPolicy:
             NetworkPolicy(hostname_allowlist=(123,))  # type: ignore[arg-type]
 
     @pytest.mark.unit
+    @pytest.mark.parametrize("wrap", [set, frozenset])
+    def test_allowlist_normalises_every_collection_pydantic_accepts(
+        self,
+        wrap: type[frozenset[str]] | type[set[str]],
+    ) -> None:
+        """A form that skips normalisation is an entry nothing can match.
+
+        Pydantic fills a tuple field from any collection, so an unordered one
+        reaching the field unnormalised would sit there uppercased and as a
+        U-label while the request side arrives lowercased and as an A-label.
+        """
+        policy = NetworkPolicy(hostname_allowlist=wrap({"ExÄmple.COM"}))  # type: ignore[arg-type]
+        assert policy.hostname_allowlist == ("xn--exmple-cua.com",)
+
+    @pytest.mark.unit
+    def test_allowlist_rejects_a_form_it_cannot_normalise(self) -> None:
+        """An iterator is consumed by reading it, so it is refused, not passed.
+
+        Letting it through would hand Pydantic an unnormalised allowlist,
+        which is the same silent bypass an unordered collection used to be.
+        """
+        with pytest.raises(ValidationError):
+            NetworkPolicy(hostname_allowlist=iter(["example.com"]))  # type: ignore[arg-type]
+
+    @pytest.mark.unit
     def test_allowlist_collapses_alternate_spellings_of_one_host(self) -> None:
         """Canonicalising must happen before the dedupe, not after it.
 
@@ -382,10 +407,18 @@ class TestValidateUrlHost:
 
     @pytest.mark.unit
     async def test_unicode_host_matches_its_a_label_allowlist_entry(self) -> None:
+        # The allowlist branch still resolves, to pin the IP, so this needs the
+        # resolver stubbed: unmocked it reaches real DNS from the unit suite,
+        # and the branch tolerates a lookup failure, so the test would pass
+        # either way and say nothing about what it claims to check.
         policy = NetworkPolicy(hostname_allowlist=("xn--exmple-cua.com",))
-        result = await validate_url_host("https://exämple.com/api", policy)
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = [(0, 0, 0, "", ("93.184.216.34", 0))]
+            result = await validate_url_host("https://exämple.com/api", policy)
         assert isinstance(result, DnsValidationOk)
         assert result.hostname == "xn--exmple-cua.com"
+        assert result.resolved_ips == ("93.184.216.34",)
 
     @pytest.mark.unit
     async def test_invalid_a_label_host_refused(self) -> None:
