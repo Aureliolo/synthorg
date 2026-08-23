@@ -43,6 +43,7 @@ from synthorg.memory.embedding.fine_tune_query import (
 )
 from synthorg.memory.embedding.fine_tune_trainer import (
     TRAINER_OUTPUT_SUBDIR,
+    ContrastiveHyperparameters,
     _import_trainer_api,
     run_biencoder_training,
 )
@@ -708,10 +709,12 @@ async def contrastive_fine_tune(  # noqa: PLR0913
             model=model,
             triples=triples,
             trainer_output_dir=output_root / TRAINER_OUTPUT_SUBDIR,
-            epochs=epochs,
-            learning_rate=learning_rate,
-            temperature=temperature,
-            batch_size=batch_size,
+            hyperparameters=ContrastiveHyperparameters(
+                epochs=epochs,
+                learning_rate=learning_rate,
+                temperature=temperature,
+                batch_size=batch_size,
+            ),
             progress_callback=progress_callback,
             cancellation=cancellation,
         )

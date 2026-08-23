@@ -14,10 +14,12 @@ import os
 from typing import Final
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune_trainer import (
     _WARMUP_STEP_CAP,
+    ContrastiveHyperparameters,
     bucket_triples,
     warmup_steps_for,
 )
@@ -314,9 +316,12 @@ class TestTrainingArguments:
         args = build_training_arguments(
             api,
             trainer_output_dir=tmp_path,  # type: ignore[arg-type]
-            epochs=3,
-            learning_rate=1e-5,
-            batch_size=16,
+            hyperparameters=ContrastiveHyperparameters(
+                epochs=3,
+                learning_rate=1e-5,
+                temperature=0.02,
+                batch_size=16,
+            ),
             warmup_steps=7,
         )
 
@@ -332,12 +337,85 @@ class TestTrainingArguments:
         assert args.save_strategy == "no"
         assert args.disable_tqdm is True
 
+    def test_output_dir_is_ours_not_the_process_cwd(self, tmp_path: object) -> None:
+        """Left unset, transformers writes to a relative path in the CWD."""
+        _require_fine_tune_extra()
+        from synthorg.memory.embedding.fine_tune_trainer import (
+            _import_trainer_api,
+            build_training_arguments,
+        )
+
+        api = _import_trainer_api()
+
+        args = build_training_arguments(
+            api,
+            trainer_output_dir=tmp_path,  # type: ignore[arg-type]
+            hyperparameters=ContrastiveHyperparameters(
+                epochs=1,
+                learning_rate=1e-5,
+                temperature=0.02,
+                batch_size=8,
+            ),
+            warmup_steps=0,
+        )
+
+        assert args.output_dir == str(tmp_path)
+
     def test_loss_scale_inverts_temperature(self) -> None:
         _require_fine_tune_extra()
         from synthorg.memory.embedding.fine_tune_trainer import loss_scale_for
 
         assert loss_scale_for(0.02) == pytest.approx(50.0)
         assert loss_scale_for(0.05) == pytest.approx(20.0)
+
+
+@pytest.mark.unit
+class TestContrastiveHyperparameters:
+    """The four values the operator sets, validated where they are held."""
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("epochs", 0),
+            ("learning_rate", 0.0),
+            ("learning_rate", -1e-5),
+            ("temperature", 0.0),
+            ("batch_size", 0),
+        ],
+    )
+    def test_rejects_out_of_range(self, field: str, value: float) -> None:
+        payload: dict[str, object] = {
+            "epochs": 3,
+            "learning_rate": 1e-5,
+            "temperature": 0.02,
+            "batch_size": 128,
+            field: value,
+        }
+
+        with pytest.raises(ValidationError):
+            ContrastiveHyperparameters.model_validate(payload)
+
+    def test_rejects_unknown_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            ContrastiveHyperparameters.model_validate(
+                {
+                    "epochs": 3,
+                    "learning_rate": 1e-5,
+                    "temperature": 0.02,
+                    "batch_size": 128,
+                    "warmup_steps": 7,
+                }
+            )
+
+    def test_is_frozen(self) -> None:
+        params = ContrastiveHyperparameters(
+            epochs=3, learning_rate=1e-5, temperature=0.02, batch_size=128
+        )
+
+        with pytest.raises(ValidationError):
+            # mypy already refuses the assignment on a frozen model; the test
+            # asserts the runtime half, which is what a dynamic caller hits.
+            params.epochs = 4  # type: ignore[misc]
 
 
 class _FakeTrainerState:

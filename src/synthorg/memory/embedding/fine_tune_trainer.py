@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.memory.embedding.cancellation import (
     CancellationToken,
     ProgressCallback,
@@ -81,6 +83,24 @@ _TrainingBuckets = dict[str, list[_TrainingRow]]
 #: value is handed straight back to the library that produced it, so the
 #: annotation would carry no information even if the types were available.
 _Vendor = Any  # type: ignore[explicit-any]
+
+
+class ContrastiveHyperparameters(BaseModel):
+    """What the operator configured for one contrastive run.
+
+    Travels as one value because the four move together: the stage reads
+    them from a single `FineTuneRunConfig`, and every consumer below wants
+    all four or none.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    epochs: int = Field(ge=1)
+    learning_rate: float = Field(gt=0.0)
+    #: InfoNCE tau. Its reciprocal is the loss's similarity scale, so zero is
+    #: not merely invalid, it is undefined.
+    temperature: float = Field(gt=0.0)
+    batch_size: int = Field(ge=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,9 +293,7 @@ def build_training_arguments(
     api: TrainerApi,
     *,
     trainer_output_dir: Path,
-    epochs: int,
-    learning_rate: float,
-    batch_size: int,
+    hyperparameters: ContrastiveHyperparameters,
     warmup_steps: int,
 ) -> _Vendor:
     """Assemble the trainer's arguments for one contrastive run.
@@ -283,9 +301,7 @@ def build_training_arguments(
     Args:
         api: The resolved training API.
         trainer_output_dir: Where the trainer may write its own scratch state.
-        epochs: Passes over the training set.
-        learning_rate: Optimiser step size.
-        batch_size: Rows per training batch.
+        hyperparameters: What the operator configured for this run.
         warmup_steps: Linear-warmup steps.
 
     Returns:
@@ -293,9 +309,9 @@ def build_training_arguments(
     """
     return api.args_cls(
         output_dir=str(trainer_output_dir),
-        num_train_epochs=epochs,
-        learning_rate=learning_rate,
-        per_device_train_batch_size=batch_size,
+        num_train_epochs=hyperparameters.epochs,
+        learning_rate=hyperparameters.learning_rate,
+        per_device_train_batch_size=hyperparameters.batch_size,
         warmup_steps=warmup_steps,
         # The sampler upstream documents for in-batch-negative losses, and the
         # direct replacement for the dataloader the legacy path used.
@@ -376,16 +392,13 @@ def build_progress_callback(
     return _TrainingProgressCallback()
 
 
-def run_biencoder_training(  # noqa: PLR0913
+def run_biencoder_training(
     *,
     api: TrainerApi,
     model: object,
     triples: list[dict[str, object]],
     trainer_output_dir: Path,
-    epochs: int,
-    learning_rate: float,
-    temperature: float,
-    batch_size: int,
+    hyperparameters: ContrastiveHyperparameters,
     progress_callback: ProgressCallback | None,
     cancellation: CancellationToken | None,
 ) -> None:
@@ -398,12 +411,9 @@ def run_biencoder_training(  # noqa: PLR0913
         model: The loaded ``SentenceTransformer`` to fine-tune in place.
         triples: Stage 2 output.
         trainer_output_dir: Where the trainer may write its own scratch state.
-        epochs: Passes over the training set.
-        learning_rate: Optimiser step size.
-        temperature: InfoNCE temperature; its reciprocal is the loss scale.
-        batch_size: Rows per training batch.
+        hyperparameters: What the operator configured for this run.
         progress_callback: Called with a fraction in ``0.0..1.0``, or ``None``.
-        cancellation: Checked on the step interval, or ``None``.
+        cancellation: Checked before the run and after every step, or ``None``.
 
     Raises:
         FineTuneTrainingDataError: If there is nothing to train on.
@@ -413,10 +423,12 @@ def run_biencoder_training(  # noqa: PLR0913
     args = build_training_arguments(
         api,
         trainer_output_dir=trainer_output_dir,
-        epochs=epochs,
-        learning_rate=learning_rate,
-        batch_size=batch_size,
-        warmup_steps=warmup_steps_for(buckets, batch_size=batch_size, epochs=epochs),
+        hyperparameters=hyperparameters,
+        warmup_steps=warmup_steps_for(
+            buckets,
+            batch_size=hyperparameters.batch_size,
+            epochs=hyperparameters.epochs,
+        ),
     )
     trainer = api.trainer_cls(
         model=model,
@@ -425,7 +437,10 @@ def run_biencoder_training(  # noqa: PLR0913
         # dataset, and the loss reads however many candidate columns it is
         # handed.
         train_dataset=datasets,
-        loss=api.loss_cls(model=model, scale=loss_scale_for(temperature)),
+        loss=api.loss_cls(
+            model=model,
+            scale=loss_scale_for(hyperparameters.temperature),
+        ),
         callbacks=[
             build_progress_callback(
                 api,
