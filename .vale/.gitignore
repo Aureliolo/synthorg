@@ -9,3 +9,6 @@
 # excludes only what `vale sync` downloads).
 styles/Google/
 styles/.vale-config/
+# The wrapper's sync mutex. It sits beside the package rather than inside
+# it because `vale sync` deletes the package directory it is guarding.
+styles/.sync.lock/

@@ -80,26 +80,67 @@ fi
 
 # Acronyms.yml is shipped by the Google style package; using a real file
 # (rather than `ls -A`) is faster and avoids the empty-directory edge case.
-if [ ! -s "${package_dir}/Acronyms.yml" ] ||
-   [ "$(cat "${pin_stamp}" 2>/dev/null || true)" != "${configured_pin}" ]; then
-  echo "vale: Google style package absent or not at the pinned version, running 'vale sync'..."
-  # The package is fetched from a CDN, so a single 5xx would otherwise
-  # fail a push that has nothing wrong with it.
-  #
-  # --plain-progress replaces the redrawing progress bar with one line per
-  # package. The bar is written for a terminal, so in a CI log it lands as a
-  # run of partial frames around the one line that says what was installed.
-  sync_attempt=1
-  until vale --config .vale.ini --plain-progress sync; do
-    if [ "${sync_attempt}" -ge 3 ]; then
-      echo "error: vale sync failed after 3 attempts" >&2
-      exit 1
+package_current() {
+  [ -s "${package_dir}/Acronyms.yml" ] &&
+    [ "$(cat "${pin_stamp}" 2>/dev/null || true)" = "${configured_pin}" ]
+}
+
+# ``vale sync`` deletes and re-extracts the whole package directory, so two
+# of them running at once fight over the same files. The pre-push hook lints
+# changed Markdown through several concurrent invocations of this wrapper, so
+# on a worktree whose package is not yet current every one of them decides it
+# must sync and they collide: on Windows the losers report "Access is denied"
+# / "The directory is not empty" and exhaust their retries, failing a push
+# that has nothing wrong with it. One winner holds the lock, syncs, and
+# stamps; the rest wait and then find the package already current.
+#
+# ``mkdir`` is the mutex because it is atomic on every filesystem this runs
+# on, unlike ``flock``, which Git Bash on Windows does not ship.
+sync_lock="${package_dir%/*}/.sync.lock"
+acquire_sync_lock() {
+  waited=0
+  until mkdir "${sync_lock}" 2>/dev/null; do
+    if [ "${waited}" -ge 180 ]; then
+      return 1
     fi
-    echo "warning: vale sync failed (attempt ${sync_attempt}/3), retrying in 10s..." >&2
-    sync_attempt=$((sync_attempt + 1))
-    sleep 10
+    sleep 1
+    waited=$((waited + 1))
   done
-  printf '%s\n' "${configured_pin}" > "${pin_stamp}"
+  return 0
+}
+
+if ! package_current; then
+  mkdir -p "${package_dir%/*}"
+  if ! acquire_sync_lock; then
+    echo "error: timed out waiting for another 'vale sync' to finish" >&2
+    echo "       if no other push is running, remove ${sync_lock} and retry" >&2
+    exit 1
+  fi
+  trap 'rmdir "${sync_lock}" 2>/dev/null || true' EXIT
+  # Re-check under the lock: the holder that just released it may have been
+  # syncing this very package, in which case there is nothing left to do.
+  if ! package_current; then
+    echo "vale: Google style package absent or not at the pinned version, running 'vale sync'..."
+    # The package is fetched from a CDN, so a single 5xx would otherwise
+    # fail a push that has nothing wrong with it.
+    #
+    # --plain-progress replaces the redrawing progress bar with one line per
+    # package. The bar is written for a terminal, so in a CI log it lands as a
+    # run of partial frames around the one line that says what was installed.
+    sync_attempt=1
+    until vale --config .vale.ini --plain-progress sync; do
+      if [ "${sync_attempt}" -ge 3 ]; then
+        echo "error: vale sync failed after 3 attempts" >&2
+        exit 1
+      fi
+      echo "warning: vale sync failed (attempt ${sync_attempt}/3), retrying in 10s..." >&2
+      sync_attempt=$((sync_attempt + 1))
+      sleep 10
+    done
+    printf '%s\n' "${configured_pin}" > "${pin_stamp}"
+  fi
+  rmdir "${sync_lock}" 2>/dev/null || true
+  trap - EXIT
 fi
 
 if [ "${1:-}" = "--sync-only" ]; then
