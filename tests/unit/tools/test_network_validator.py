@@ -102,7 +102,7 @@ class TestNetworkPolicy:
         """An iterator is consumed by reading it, so it is refused, not passed.
 
         Letting it through would hand Pydantic an unnormalised allowlist,
-        which is the same silent bypass an unordered collection used to be.
+        which is a silent bypass of every check this validator applies.
         """
         with pytest.raises(ValidationError):
             NetworkPolicy(hostname_allowlist=iter(["example.com"]))  # type: ignore[arg-type]
