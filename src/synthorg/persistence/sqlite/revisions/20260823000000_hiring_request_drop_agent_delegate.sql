@@ -45,3 +45,24 @@ SET status = 'expired'
 WHERE
     status = 'pending'
     AND action_type LIKE 'scaling:%';
+
+-- 3. Drop the custom rules whose metric no longer exists.
+--
+-- ``metric_path`` is a plain column with no vocabulary CHECK, so a rule an
+-- operator built on ``scaling.total_decisions`` or ``scaling.success_rate``
+-- sits in the table quite happily and fails only in Python, where a
+-- field validator rejects any path absent from the metric registry.
+--
+-- One such row takes the whole listing with it, not just itself: the repo
+-- builds its result with ``tuple(_row_to_definition(row) for row in rows)``
+-- outside the driver-error handler, so the raise escapes as far as
+-- ``GET /meta/custom-rules`` and every rule becomes unreadable.
+--
+-- Deleted rather than disabled, because disabling does not help: an
+-- unfiltered list still reads the row and still validates it. Nor can the
+-- path be rewritten to something valid, since that would silently change
+-- what the operator's rule means. The metric it watches is gone, so the
+-- rule can never fire again and cannot be repaired into one that can.
+
+DELETE FROM custom_rules
+WHERE metric_path LIKE 'scaling.%';

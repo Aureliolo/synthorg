@@ -1,8 +1,9 @@
 """The scaling cut, run over data rather than an empty database.
 
-Two things outlive the deleted subsystem in a database that had it, and the
-schema-drift gate can see neither: it builds from empty and compares shapes,
-and neither of these changes a shape.
+Three things outlive the deleted subsystem in a database that had it, and the
+schema-drift gate can see none of them: it builds from empty and compares
+shapes, and not one of these changes a shape. The subsystem owned no tables,
+which is a different claim from having written nothing.
 
 The first is ``hiring_requests.payload``. ``HiringRequest`` forbids extra keys,
 so a row still carrying ``agent_delegate`` fails validation on read, and
@@ -20,6 +21,13 @@ Nothing left can act on one: the level-triggered orphan sweep keys on
 being removed rather than a subsystem. Expired rather than rejected, for the
 reason the retirement path gives: a rejection is a reviewer's verdict, and
 nobody made one.
+
+The third is the custom rules an operator built on a ``scaling.*`` metric.
+That column carries no vocabulary CHECK, so the row survives the database and
+fails in Python, where a field validator rejects a path the registry no longer
+holds. One is enough to break every rule in the deployment: the repository
+builds its page outside the driver-error handler, so the raise reaches the
+endpoint and the whole listing goes with it.
 """
 
 import json
@@ -31,6 +39,7 @@ from pathlib import Path
 import pytest
 
 from synthorg.hr.models import HiringRequest
+from synthorg.meta.rules.custom import _VALID_METRIC_PATHS
 from synthorg.persistence import migrations
 
 pytestmark = pytest.mark.unit
@@ -49,6 +58,13 @@ _INSERT_APPROVAL = (
     "INSERT INTO approvals "
     "(id, action_type, title, description, requested_by, status, created_at) "
     "VALUES (?, ?, ?, ?, ?, 'pending', ?)"
+)
+
+_INSERT_RULE = (
+    "INSERT INTO custom_rules "
+    "(id, name, description, metric_path, comparator, threshold, severity, "
+    "target_altitudes, enabled, created_at, updated_at) "
+    "VALUES (?, ?, ?, ?, 'gt', 1.0, 'medium', '[]', 1, ?, ?)"
 )
 
 
@@ -98,6 +114,14 @@ _SEEDED_APPROVALS: tuple[tuple[str, str], ...] = (
     ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "scaling:hire"),
     ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "scaling:prune"),
     ("cccccccc-cccc-4ccc-8ccc-cccccccccccc", "org:hire"),
+)
+
+#: Custom rules an operator could have built, keyed by the metric they watch.
+#: The surviving one is a real registry path, so the pair also proves the
+#: sweep is bounded by the prefix rather than clearing the table.
+_SEEDED_RULES: tuple[tuple[str, str], ...] = (
+    ("rule-scaling", "scaling.success_rate"),
+    ("rule-budget", "budget.total_spend"),
 )
 
 
@@ -164,6 +188,11 @@ def _seed_pre_cut(conn: sqlite3.Connection) -> None:
                 "scaling_service",
                 _STAMP,
             ),
+        )
+    for rule_id, metric_path in _SEEDED_RULES:
+        conn.execute(
+            _INSERT_RULE,
+            (rule_id, rule_id, f"Watches {metric_path}", metric_path, _STAMP, _STAMP),
         )
     conn.commit()
 
@@ -274,3 +303,29 @@ class TestTheOrphanedApprovalsAreClosed:
                 (approval_id,),
             ).fetchone()
         assert row == ("pending",)
+
+
+class TestTheRulesWatchingADeadMetricAreDropped:
+    """A rule whose metric left the registry is unreadable, and contagious."""
+
+    def test_the_scaling_rule_is_gone(self, migrated: Path) -> None:
+        with _connect(migrated) as conn:
+            rows = conn.execute("SELECT id FROM custom_rules").fetchall()
+        assert [r[0] for r in rows] == ["rule-budget"]
+
+    def test_every_surviving_rule_names_a_live_metric(self, migrated: Path) -> None:
+        """The point of the delete: the listing reads again.
+
+        Checked against the registry the field validator reads, because that
+        is the condition the read turns on, and the defect is not that one
+        row is wrong: it is that one unreadable row raises for the whole
+        page, the repository building its result outside the driver-error
+        handler, so nothing between there and the endpoint absorbs it.
+        """
+        with _connect(migrated) as conn:
+            rows = conn.execute(
+                "SELECT metric_path FROM custom_rules ORDER BY name"
+            ).fetchall()
+        assert rows, "the control row should have survived"
+        for (metric_path,) in rows:
+            assert metric_path in _VALID_METRIC_PATHS
