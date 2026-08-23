@@ -82,8 +82,9 @@ class TestHiringServiceCreateRequest:
     ) -> None:
         """One question to the operator, not one per caller who noticed.
 
-        Two callers open hires (the staffing sweep and the scaler) and only
-        one of them checked, so the invariant lives here instead.
+        The invariant lives here rather than at the caller, so a second caller
+        inherits it instead of re-deciding it. That is asserted by calling in
+        as one: the service owes the same answer whoever asks.
         """
         first = await hiring_service.create_request(
             requested_by="staffing",
@@ -94,7 +95,7 @@ class TestHiringServiceCreateRequest:
 
         with pytest.raises(HiringAlreadyInFlightError, match=str(first.id)):
             await hiring_service.create_request(
-                requested_by="scaling_service",
+                requested_by="another_caller",
                 department="quality-assurance",
                 role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
                 reason="Review queue is deep",
@@ -104,13 +105,13 @@ class TestHiringServiceCreateRequest:
         self,
         hiring_service: HiringService,
     ) -> None:
-        """The two real callers arrive together, not in turn.
+        """Two callers arrive together, not in turn.
 
         The guard is a check-then-create, so awaiting the first request before
-        starting the second only ever proves sequential rejection. The staffing
-        sweep and the scaler both open hires from their own tasks, and
-        unserialised both observe an empty in-flight set and both create,
-        which is two approval items for the one role.
+        starting the second only ever proves sequential rejection. Unserialised
+        arrivals both observe an empty in-flight set and both create, which is
+        two approval items for the one role. The shipped caller serialises its
+        own passes, so this is what the service owes a caller that does not.
         """
         results = await asyncio.gather(
             hiring_service.create_request(
@@ -120,7 +121,7 @@ class TestHiringServiceCreateRequest:
                 reason="Nobody holds it",
             ),
             hiring_service.create_request(
-                requested_by="scaling_service",
+                requested_by="another_caller",
                 department="quality-assurance",
                 role=NotBlankStr(COMPLETION_REVIEWER_ROLE_NAME),
                 reason="Review queue is deep",
@@ -137,7 +138,7 @@ class TestHiringServiceCreateRequest:
         self,
         hiring_service: HiringService,
     ) -> None:
-        """Headcount is the scaler's decision, not a duplicate to collapse.
+        """Ordinary headcount is not a duplicate to collapse.
 
         Two teams wanting a backend developer is two hires; only the roles
         held org-wide have nothing to gain from a second request.

@@ -137,12 +137,14 @@ class SignalsService:
     def domain_availability(self) -> dict[str, bool]:
         """Report per-domain availability without running aggregation.
 
-        Every domain aggregates from an always-wired source, so each reads
-        available. Kept as a mapping rather than collapsed to a constant
-        because the signals overview renders one badge per domain, and a
-        domain that later degrades has one place to say so. Cheap by
-        design: the overview must render without fanning a time window out
-        to every aggregator.
+        Every aggregator is constructed unconditionally, so today every
+        domain reads available and nothing here can answer otherwise: three
+        of them tolerate a ``None`` store and return empty summaries without
+        reporting it. Kept as a mapping rather than collapsed to a constant
+        because the signals overview renders one badge per domain, which is
+        also where a real degradation check would attach. Cheap by design:
+        the overview must render without fanning a time window out to every
+        aggregator.
 
         Returns:
             An ordered mapping of domain name to whether its aggregator is

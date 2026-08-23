@@ -122,7 +122,17 @@ class ConfigTuningStrategy:
             "coordination_overhead": lambda: self._propose_overhead_fix(ctx),
         }
         builder = builders.get(rule_match.rule_name)
-        return builder() if builder else None
+        if builder is None:
+            # Not every rule has a config lever, so this is an ordinary
+            # outcome rather than a fault. Named anyway: a rule that fires
+            # and proposes nothing looks identical to one that never fired.
+            logger.debug(
+                META_PROPOSAL_GENERATED,
+                rule_name=rule_match.rule_name,
+                note="no config-tuning builder for this rule",
+            )
+            return None
+        return builder()
 
     def _propose_quality_fix(
         self,

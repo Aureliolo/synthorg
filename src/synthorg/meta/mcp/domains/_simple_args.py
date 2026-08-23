@@ -7,7 +7,7 @@ shape is too small to justify its own module:
 * ``budget`` + ``budget_versions`` (5 tools)
 * ``analytics`` + ``metrics`` + ``reports`` (8 tools)
 * ``coordination`` + ``coordination_metrics`` + ``ceremony_policy``
-  (6 tools)
+  (5 tools)
 * ``quality`` + ``reviews`` + ``evaluation_versions`` (9 tools)
 * ``signals`` (8 tools)
 * ``approvals`` (5 tools)

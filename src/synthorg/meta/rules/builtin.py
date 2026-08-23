@@ -19,9 +19,6 @@ from synthorg.meta.models import (
 )
 from synthorg.meta.protocol import SignalRule
 from synthorg.meta.rules.benchmark_rule import BenchmarkRegressionRule
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 _DEFAULT_QUALITY_DECLINING_THRESHOLD: Final[float] = 5.0
 _DEFAULT_SUCCESS_RATE_DROP_THRESHOLD: Final[float] = 0.7

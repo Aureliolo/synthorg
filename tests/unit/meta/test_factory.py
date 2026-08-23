@@ -56,7 +56,6 @@ class TestBuildRuleEngine:
             "coordination_overhead",
             "straggler_bottleneck",
             "redundancy",
-            "scaling_failure",
             "error_spike",
             "benchmark_regression",
         )

@@ -32,9 +32,6 @@ from synthorg.meta.signal_models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.toolsmith.models import CapabilityGap
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 def build_baseline_snapshot() -> OrgSignalSnapshot:

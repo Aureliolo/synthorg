@@ -228,7 +228,7 @@ class OrgTelemetrySummary(BaseModel):
 class OrgBenchmarkSummary(BaseModel):
     """Org-wide golden-benchmark signal summary.
 
-    Unlike the seven always-on runtime signals, this is an *opt-in,
+    Unlike the six always-on runtime signals, this is an *opt-in,
     offline* signal: it is populated only when a scorecard history
     directory (``meta.scorecard_history_dir``) is configured and has
     recorded golden-company benchmark runs. An all-default (empty)

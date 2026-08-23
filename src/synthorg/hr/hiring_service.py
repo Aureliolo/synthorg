@@ -263,11 +263,11 @@ class HiringService:
                 later inherits it instead of re-deciding it.
             HiringError: If the related operation fails.
         """
-        # Role-keyed, and held across the check AND the store: the guard below
-        # is a check-then-create, and the staffing sweep re-enters it on every
-        # pass while fanning out per role. Two overlapping passes unserialised
-        # both observe no in-flight request and both create one, which is two
-        # approval items for the one role the invariant keeps singular.
+        # Role-keyed, and held across the check AND the store, because the
+        # guard below is a check-then-create. Today's sole caller serialises
+        # its own passes, so nothing currently races here; the lock lives at
+        # the invariant rather than at that caller so a second one cannot open
+        # a duplicate hire by simply not knowing to serialise.
         async with self._role_locks.acquire(str(role)):
             if role_is_gate_role(str(role)) and (
                 in_flight := self.find_in_flight_request_for_role(str(role))
@@ -422,6 +422,15 @@ class HiringService:
                     await retire_unbacked_approval(
                         self._approval_store, request=updated
                     )
+                    logger.warning(
+                        HR_HIRING_REQUEST_INVALID,
+                        request_id=str(request.id),
+                        role=str(request.role),
+                        error=(
+                            "approval submitted but the request did not"
+                            " persist; both undone"
+                        ),
+                    )
                     raise
 
         # Emit the status-transition log only when the status actually
@@ -490,11 +499,21 @@ class HiringService:
                 f"Hiring request {request_id!r} cannot bind {model_ref!r}: a"
                 " binding names both a provider connection and a model id"
             )
+            logger.warning(
+                HR_HIRING_REQUEST_INVALID,
+                request_id=request_id,
+                error=msg,
+            )
             raise HiringError(msg)
         async with self._request_locks.acquire(request_id):
             request = self._requests.get(request_id)
             if request is None:
                 msg = f"Hiring request {request_id!r} not found"
+                logger.warning(
+                    HR_HIRING_REQUEST_NOT_FOUND,
+                    request_id=request_id,
+                    error=msg,
+                )
                 raise HiringError(msg)
             updated = request.model_copy(
                 update={"bound_model_ref": NotBlankStr(serialize_model_ref(parsed))}

@@ -74,7 +74,6 @@ owning `feature.py` `ghost_wired_symbols` claim.
 | `PersonalityService` | `api/lifecycle_helpers/persistence_autowire.py::_wire_personality_service` | `synthorg_personalities_*` |
 | `ActivityFeedService` | `api/lifecycle_helpers/persistence_autowire.py::_wire_activity_feed_service` | `synthorg_agents_get_activity`, `synthorg_activities_list` |
 | `AgentHealthService` | `hr/_construction.py::wire_construction` | `synthorg_agents_get_health` |
-| `ScalingDecisionService` | `api/lifecycle_helpers/scaling_wiring.py::_wire` | `synthorg_scaling_*` |
 | `CoordinationService` | `coordination/_construction.py::wire_construction` | `synthorg_coordination_*` |
 | `CeremonyPolicyService` | `coordination/_construction.py::wire_construction` | `synthorg_ceremony_policy_*` |
 

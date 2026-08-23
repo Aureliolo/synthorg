@@ -115,6 +115,13 @@ def test_no_mcp_tool_reaches_an_autonomous_sizer() -> None:
     The MCP surface is what an ELEVATED agent can call, so a sizing tool
     there would let an agent grow the roster on a path the reconciler does
     not own.
+
+    Scanned whole rather than narrowed to an HR-shaped prefix, deliberately.
+    The tools this replaces lived under ``scaling`` and ``signals``, neither
+    of them HR-named, so a prefix filter would have been blind to exactly
+    what it is here to catch. The cost is that a future unrelated tool (an
+    image or chart scaler) trips it; the fix then is to name that tool here
+    as a known non-sizer, never to drop the term.
     """
     registry = build_full_registry()
     offenders = sorted(

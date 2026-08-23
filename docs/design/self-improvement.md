@@ -1,6 +1,6 @@
 # Self-Improving Company
 
-The self-improvement meta-loop observes company-wide signals from 7 existing subsystems plus the offline golden-company benchmark, and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
+The self-improvement meta-loop observes company-wide signals from 6 existing subsystems plus the offline golden-company benchmark, and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
 Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organisation. Rank order: `full` > `semi` > `supervised` > `locked`.
 
@@ -22,7 +22,7 @@ flowchart TD
     Bm["Benchmark<br/>offline / opt-in"]
     signals --> SNAP[OrgSignalSnapshot]
     Bm --> SNAP
-    SNAP --> RE[Rule Engine<br/>10 built-in rules]
+    SNAP --> RE[Rule Engine<br/>9 built-in rules]
     RE -->|rules fire| STRATEGIES[Strategies<br/>Config / Architecture / Prompt / Code]
     STRATEGIES --> GUARD[Guard Chain<br/>Scope / Rollback / Rate / Approval]
     GUARD -->|all pass| QUEUE[Approval Queue<br/>Human Review]
@@ -45,8 +45,8 @@ src/synthorg/meta/
 
   rules/               -- Signal pattern detection
     engine.py          -- RuleEngine (evaluates rules, sorts by severity)
-    builtin.py         -- 9 built-in signal-detector rules with configurable thresholds
-    benchmark_rule.py  -- BenchmarkRegressionRule (golden-benchmark regression, the 10th rule)
+    builtin.py         -- 8 built-in signal-detector rules with configurable thresholds
+    benchmark_rule.py  -- BenchmarkRegressionRule (golden-benchmark regression, the 9th rule)
     custom.py          -- Declarative custom rules (CustomRuleDefinition, DeclarativeRule, METRIC_REGISTRY, Comparator)
     protocol.py        -- SignalRule protocol
     service.py         -- CustomRuleService (custom signal rule CRUD service layer)
@@ -126,7 +126,7 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 22 domain tool definition modules (247 tools)
+    domains/           -- 22 domain tool definition modules (242 tools)
     handlers/          -- domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_admin_guardrails)
 

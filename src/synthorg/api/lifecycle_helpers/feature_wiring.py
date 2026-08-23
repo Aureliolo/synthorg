@@ -327,7 +327,8 @@ async def _wire_signals_service(
 
     Raises:
         SubsystemDeclinedError: No persistence backend or no performance
-            tracker, the two the aggregator cannot degrade without.
+            tracker, the two the aggregator cannot degrade without, or the
+            facade's construction failed.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -404,7 +405,7 @@ async def _wire_signals_service(
             ).metrics_store,
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -413,7 +414,12 @@ async def _wire_signals_service(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        # Declining by returning leaves the reconciler nothing to report but
+        # "see the wiring log", and every optional collaborator above is
+        # already None-checked before the call, so nothing reaching here is an
+        # expected condition: it is construction failing on our own bug.
+        msg = f"signals facade construction failed: {type(exc).__name__}"
+        raise SubsystemDeclinedError(msg) from exc
     logger.info(API_APP_STARTUP, service="signals", note="wired")
 
 

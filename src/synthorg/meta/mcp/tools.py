@@ -10,10 +10,6 @@ from typing import TypedDict
 
 from pydantic import JsonValue
 
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
-
 # Tool name prefix for all meta signal tools.
 TOOL_PREFIX = "synthorg_signals"
 
