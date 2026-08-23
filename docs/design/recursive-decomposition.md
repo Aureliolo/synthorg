@@ -380,8 +380,9 @@ not spend, so a tree that stops shallow costs less than this says; and the
 declared branching does not constrain the planner either, so a tree that
 branches wider costs more. What it answers is the question worth sizing a
 ceiling against, since the run that uses its whole cap is the expensive one.
-`max_sessions` is what makes being wrong in either direction survivable: too
-high and the sweep stops early with a caveat, too low and it never started.
+`max_sessions` is what makes being wrong in either direction survivable: set it
+too low and the sweep stops early with a caveat, which is the outcome this
+whole section exists to keep survivable.
 
 Once a journal exists the manifest is frozen, so this figure is chosen once. The
 journal header pins the manifest digest along with the commit, the spec, and both
