@@ -3,31 +3,31 @@ revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
 ]
 conflicts = [[
@@ -203,33 +203,44 @@ wheels = [
 
 [[package]]
 name = "argon2-cffi-bindings"
-version = "25.1.0"
+version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cffi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/2d/db8af0df73c1cf454f71b2bbe5e356b8c1f8041c979f505b3d3186e520a9/argon2_cffi_bindings-25.1.0.tar.gz", hash = "sha256:b957f3e6ea4d55d820e40ff76f450952807013d361a65d7f28acc0acbf29229d", size = 1783441, upload-time = "2025-07-30T10:02:05.147Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/43/bb8b6e8708d49a5ab36781333af092d9f483b198a2710d01281204640055/argon2_cffi_bindings-26.1.0.tar.gz", hash = "sha256:63505c71542a44b68b1e38060450fb006404170da375feb31af153e7f9c6205d", size = 1790807, upload-time = "2026-08-20T07:44:22.492Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/97/3c0a35f46e52108d4707c44b95cfe2afcafc50800b5450c197454569b776/argon2_cffi_bindings-25.1.0-cp314-cp314t-macosx_10_13_universal2.whl", hash = "sha256:3d3f05610594151994ca9ccb3c771115bdb4daef161976a266f0dd8aa9996b8f", size = 54393, upload-time = "2025-07-30T10:01:40.97Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/f4/98bbd6ee89febd4f212696f13c03ca302b8552e7dbf9c8efa11ea4a388c3/argon2_cffi_bindings-25.1.0-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:8b8efee945193e667a396cbc7b4fb7d357297d6234d30a489905d96caabde56b", size = 29328, upload-time = "2025-07-30T10:01:41.916Z" },
-    { url = "https://files.pythonhosted.org/packages/43/24/90a01c0ef12ac91a6be05969f29944643bc1e5e461155ae6559befa8f00b/argon2_cffi_bindings-25.1.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:3c6702abc36bf3ccba3f802b799505def420a1b7039862014a65db3205967f5a", size = 31269, upload-time = "2025-07-30T10:01:42.716Z" },
-    { url = "https://files.pythonhosted.org/packages/d4/d3/942aa10782b2697eee7af5e12eeff5ebb325ccfb86dd8abda54174e377e4/argon2_cffi_bindings-25.1.0-cp314-cp314t-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a1c70058c6ab1e352304ac7e3b52554daadacd8d453c1752e547c76e9c99ac44", size = 86558, upload-time = "2025-07-30T10:01:43.943Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/82/b484f702fec5536e71836fc2dbc8c5267b3f6e78d2d539b4eaa6f0db8bf8/argon2_cffi_bindings-25.1.0-cp314-cp314t-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e2fd3bfbff3c5d74fef31a722f729bf93500910db650c925c2d6ef879a7e51cb", size = 92364, upload-time = "2025-07-30T10:01:44.887Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/c1/a606ff83b3f1735f3759ad0f2cd9e038a0ad11a3de3b6c673aa41c24bb7b/argon2_cffi_bindings-25.1.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:c4f9665de60b1b0e99bcd6be4f17d90339698ce954cfd8d9cf4f91c995165a92", size = 85637, upload-time = "2025-07-30T10:01:46.225Z" },
-    { url = "https://files.pythonhosted.org/packages/44/b4/678503f12aceb0262f84fa201f6027ed77d71c5019ae03b399b97caa2f19/argon2_cffi_bindings-25.1.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:ba92837e4a9aa6a508c8d2d7883ed5a8f6c308c89a4790e1e447a220deb79a85", size = 91934, upload-time = "2025-07-30T10:01:47.203Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/c7/f36bd08ef9bd9f0a9cff9428406651f5937ce27b6c5b07b92d41f91ae541/argon2_cffi_bindings-25.1.0-cp314-cp314t-win32.whl", hash = "sha256:84a461d4d84ae1295871329b346a97f68eade8c53b6ed9a7ca2d7467f3c8ff6f", size = 28158, upload-time = "2025-07-30T10:01:48.341Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/80/0106a7448abb24a2c467bf7d527fe5413b7fdfa4ad6d6a96a43a62ef3988/argon2_cffi_bindings-25.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:b55aec3565b65f56455eebc9b9f34130440404f27fe21c3b375bf1ea4d8fbae6", size = 32597, upload-time = "2025-07-30T10:01:49.112Z" },
-    { url = "https://files.pythonhosted.org/packages/05/b8/d663c9caea07e9180b2cb662772865230715cbd573ba3b5e81793d580316/argon2_cffi_bindings-25.1.0-cp314-cp314t-win_arm64.whl", hash = "sha256:87c33a52407e4c41f3b70a9c2d3f6056d88b10dad7695be708c5021673f55623", size = 28231, upload-time = "2025-07-30T10:01:49.92Z" },
-    { url = "https://files.pythonhosted.org/packages/1d/57/96b8b9f93166147826da5f90376e784a10582dd39a393c99bb62cfcf52f0/argon2_cffi_bindings-25.1.0-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:aecba1723ae35330a008418a91ea6cfcedf6d31e5fbaa056a166462ff066d500", size = 54121, upload-time = "2025-07-30T10:01:50.815Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/08/a9bebdb2e0e602dde230bdde8021b29f71f7841bd54801bcfd514acb5dcf/argon2_cffi_bindings-25.1.0-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2630b6240b495dfab90aebe159ff784d08ea999aa4b0d17efa734055a07d2f44", size = 29177, upload-time = "2025-07-30T10:01:51.681Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/02/d297943bcacf05e4f2a94ab6f462831dc20158614e5d067c35d4e63b9acb/argon2_cffi_bindings-25.1.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:7aef0c91e2c0fbca6fc68e7555aa60ef7008a739cbe045541e438373bc54d2b0", size = 31090, upload-time = "2025-07-30T10:01:53.184Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/93/44365f3d75053e53893ec6d733e4a5e3147502663554b4d864587c7828a7/argon2_cffi_bindings-25.1.0-cp39-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1e021e87faa76ae0d413b619fe2b65ab9a037f24c60a1e6cc43457ae20de6dc6", size = 81246, upload-time = "2025-07-30T10:01:54.145Z" },
-    { url = "https://files.pythonhosted.org/packages/09/52/94108adfdd6e2ddf58be64f959a0b9c7d4ef2fa71086c38356d22dc501ea/argon2_cffi_bindings-25.1.0-cp39-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d3e924cfc503018a714f94a49a149fdc0b644eaead5d1f089330399134fa028a", size = 87126, upload-time = "2025-07-30T10:01:55.074Z" },
-    { url = "https://files.pythonhosted.org/packages/72/70/7a2993a12b0ffa2a9271259b79cc616e2389ed1a4d93842fac5a1f923ffd/argon2_cffi_bindings-25.1.0-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:c87b72589133f0346a1cb8d5ecca4b933e3c9b64656c9d175270a000e73b288d", size = 80343, upload-time = "2025-07-30T10:01:56.007Z" },
-    { url = "https://files.pythonhosted.org/packages/78/9a/4e5157d893ffc712b74dbd868c7f62365618266982b64accab26bab01edc/argon2_cffi_bindings-25.1.0-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1db89609c06afa1a214a69a462ea741cf735b29a57530478c06eb81dd403de99", size = 86777, upload-time = "2025-07-30T10:01:56.943Z" },
-    { url = "https://files.pythonhosted.org/packages/74/cd/15777dfde1c29d96de7f18edf4cc94c385646852e7c7b0320aa91ccca583/argon2_cffi_bindings-25.1.0-cp39-abi3-win32.whl", hash = "sha256:473bcb5f82924b1becbb637b63303ec8d10e84c8d241119419897a26116515d2", size = 27180, upload-time = "2025-07-30T10:01:57.759Z" },
-    { url = "https://files.pythonhosted.org/packages/e2/c6/a759ece8f1829d1f162261226fbfd2c6832b3ff7657384045286d2afa384/argon2_cffi_bindings-25.1.0-cp39-abi3-win_amd64.whl", hash = "sha256:a98cd7d17e9f7ce244c0803cad3c23a7d379c301ba618a5fa76a67d116618b98", size = 31715, upload-time = "2025-07-30T10:01:58.56Z" },
-    { url = "https://files.pythonhosted.org/packages/42/b9/f8d6fa329ab25128b7e98fd83a3cb34d9db5b059a9847eddb840a0af45dd/argon2_cffi_bindings-25.1.0-cp39-abi3-win_arm64.whl", hash = "sha256:b0fdbcf513833809c882823f98dc2f931cf659d9a1429616ac3adebb49f5db94", size = 27149, upload-time = "2025-07-30T10:01:59.329Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/d2/0ae991f1b2181e5be49007c574710a800ad36c2978683addb3e67c474e55/argon2_cffi_bindings-26.1.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:21ca0396fe5ec995dd54431c32698189666f9224810acfa752e50d2bd94d9df2", size = 25521, upload-time = "2026-08-20T07:32:43.019Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/e4/ad91d8297638aa2258aad4501c306aca99480dfe76ccd638173fa3702db9/argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:78de2d65e0b9ea7ce9d1b1c3e87297b2d7305a02c266ee2a2d6910daddd7ee69", size = 27177, upload-time = "2026-08-20T07:32:44.158Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/86/5363df11b86d02cf3662208e7406496327649cc90eb365bf6f4e8a54a41f/argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:27f1821903e2ceadcb88ec2b45ef190897b7682449c772f4d9b53e42c520cf29", size = 26597, upload-time = "2026-08-20T07:32:45.172Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/b5/a14dcc592652347dad23ee93b278a4da5d2a25c9ed3ebd10d68eea823a4f/argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_34_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:d88e5f7e60f28ae0b0cc6b2f16c43e87cd642a196a86f85e0d8bb6fe016fc16d", size = 27403, upload-time = "2026-08-20T07:32:46.13Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/81/b4a20d4902af7f796390bf9245ff83c5217dfa7367efa1d14986956c482b/argon2_cffi_bindings-26.1.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:34b7d9c24a4165a2c61cc8ae11d44d48c9ce2830fb536cb7914e11fdd9962728", size = 27132, upload-time = "2026-08-20T07:32:47.13Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/1b/c8de358af07b1c490e0fcb863ef98e46ddb486e45567aca5a60bd68d9daa/argon2_cffi_bindings-26.1.0-cp310-abi3-musllinux_1_2_riscv64.whl", hash = "sha256:224865cbbcb7a2bd1356741dff12b0134df726b6d44bb7b500df8e303cbd9e81", size = 27588, upload-time = "2026-08-20T07:32:48.087Z" },
+    { url = "https://files.pythonhosted.org/packages/48/2f/7ee62a6e79f9309f9d9982d301b22a00010adb580c05c8109b94d7b33de0/argon2_cffi_bindings-26.1.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:ffff613aaa9ce6236766e2fc6dc560bb5abde7a2e2416e3db1f9ae395a2b4dd4", size = 26785, upload-time = "2026-08-20T07:32:48.977Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/10/960d0ee93d4897741bcaf4799c697dae2d81499f66fd1ed042a7dd54c1f4/argon2_cffi_bindings-26.1.0-cp310-abi3-win32.whl", hash = "sha256:a86c069c91a747a2c4e5c51473590aeb48172fff9b2130d23729a42d98665ecb", size = 23898, upload-time = "2026-08-20T07:32:50.114Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/3a/0cc14a05810e6add9bce5e87693334baa2222de5f647fa31781885b6573f/argon2_cffi_bindings-26.1.0-cp310-abi3-win_amd64.whl", hash = "sha256:2c36ff87b5dfaa477d0bd51e9d7f6abdae7c8955d2983c97419085d842154b3e", size = 25730, upload-time = "2026-08-20T07:32:51.091Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/db/d83cf2af140547f0b9cdaece05b2dc2dcbf991be4667331d073eff771435/argon2_cffi_bindings-26.1.0-cp310-abi3-win_arm64.whl", hash = "sha256:f9c4420a7a864fe1b86ce35befc95b8e39fb852493b81cf798671ddc265de638", size = 24478, upload-time = "2026-08-20T07:32:52.111Z" },
+    { url = "https://files.pythonhosted.org/packages/76/38/de696045960f5b846d428c0fb6c130ed3da87aac2af209b05c193815404c/argon2_cffi_bindings-26.1.0-cp314-cp314-pyemscripten_2026_0_wasm32.whl", hash = "sha256:db0fcd827ca61622a01b220aadfbece01939acf53888f2cb98cd93e9b1e2c97e", size = 15449, upload-time = "2026-08-20T07:32:54.075Z" },
+    { url = "https://files.pythonhosted.org/packages/91/0a/c25af768f6b75a5a71e31207f87c540656b2808c015260444a22763221ad/argon2_cffi_bindings-26.1.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:28524438cd3e723f25412f63d4fd516ff5bae9ae5aa56acbe2a1404398a0cf31", size = 25683, upload-time = "2026-08-20T07:32:55.05Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/7e/be212c751ab0bcea7f646615f933bf262e8e50b3f7bef32f861d0a2d066b/argon2_cffi_bindings-26.1.0-cp314-cp314t-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ac82fc756a446b6ccd7139ce70efa9d8bbe541e7ad579a12dcb52764b7175c5f", size = 27311, upload-time = "2026-08-20T07:32:56.166Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/ee/f84b28e4afd13d3cac36c1d8fa8c239d2dc2c51cd978d02ee5d5ad98d9bb/argon2_cffi_bindings-26.1.0-cp314-cp314t-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6a4e68eed961a8de6928d1c17ff3dc2a547e0e923c17f8f1cd79fb7bc9502f98", size = 26771, upload-time = "2026-08-20T07:32:57.206Z" },
+    { url = "https://files.pythonhosted.org/packages/21/c3/95c07a023691ecd529da9cb6a8f0779e13ebc1bdfaa86d145fdc1c6e7e79/argon2_cffi_bindings-26.1.0-cp314-cp314t-manylinux_2_34_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:151dfaad9de753f4af2a7854e707e4784f2acc434340ade64239c5b104b2d605", size = 27568, upload-time = "2026-08-20T07:32:58.361Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/31/3a18e31406d8694b4d6a31573c3e572fff6bed318bb744453eb653766d22/argon2_cffi_bindings-26.1.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:061a6919145bbf282ebf1f9c59d3135d4833c25313c8595c0d68cf7712ddfce2", size = 27280, upload-time = "2026-08-20T07:32:59.343Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/39/d4be4577e178b2397aa5b5575c8a309bf0da2afe05fe0c72c8f398662d63/argon2_cffi_bindings-26.1.0-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:62ff20cd130c956c7c9144d5fe35228f98b51c579b2439e988b27ef93e16c02a", size = 27776, upload-time = "2026-08-20T07:33:00.325Z" },
+    { url = "https://files.pythonhosted.org/packages/71/47/78f4dd96f7411339f723b96fe24039c1bd5835102b8a5ba71ac4ec712ac7/argon2_cffi_bindings-26.1.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:19423e5d7ac1cc354baab59eaabf18db2ec04ef6593b5abe5a34f323c4a8f87a", size = 26932, upload-time = "2026-08-20T07:33:01.272Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/cd/96bfd37434cc0a848a9066c291d84b28846c4c9ea289ed9866b1164d622b/argon2_cffi_bindings-26.1.0-cp314-cp314t-win32.whl", hash = "sha256:4f84cdd868978d7b7350a566c254042d44216d9e37f241f3a6d3b1dfebeede35", size = 24878, upload-time = "2026-08-20T07:33:02.189Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/42/d8b6810abd9b1bd2f47ebbccf460da59c9f32e94888bea4f7b137d998797/argon2_cffi_bindings-26.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:2b741888c93147444fdfc851abd81cc207f37f7f7da42062a00deb3888e57da8", size = 26656, upload-time = "2026-08-20T07:33:03.222Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/d1/095d95eaf2ed1d9f77268cf3291bde148c6cd56121f8db2c74c1ba618a0e/argon2_cffi_bindings-26.1.0-cp314-cp314t-win_arm64.whl", hash = "sha256:6ab674f668d5962a3a4136ae0812519b0f1586874263723a32181d60d64137e1", size = 25378, upload-time = "2026-08-20T07:33:04.332Z" },
+    { url = "https://files.pythonhosted.org/packages/66/cb/214092c39c4dbcb72cf98b12234ddac2221f8fe2c0acf29c6a70fa83be53/argon2_cffi_bindings-26.1.0-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:1d98e33bd8bd67d7206c124e200bf2229c4cfa8c9c19f7b44a897f0fc71837eb", size = 25683, upload-time = "2026-08-20T07:33:05.337Z" },
+    { url = "https://files.pythonhosted.org/packages/83/e5/02015b83e9b05ccb85ff2ced424cf6e83a12d3810bc7f66d679a92b69ffb/argon2_cffi_bindings-26.1.0-cp315-cp315t-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ccaf0a46cbb380f1fd102a874e32aa629fd3cb0c0e94f4943fa1f6d5edc5dac6", size = 27310, upload-time = "2026-08-20T07:33:06.344Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/4a/85e612787d0796878b3b4f6bd53dcd5484b6fe7b64cc6fc7b6e6a04cf835/argon2_cffi_bindings-26.1.0-cp315-cp315t-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f0c3103fcff20183e593459cfea6e012281c0e76ae3ed8b5565ad1b92eac3990", size = 26771, upload-time = "2026-08-20T07:33:07.429Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/84/ccb003b6f9969820e87656398f4d49c857def71a85ca1588a0e809afd7ce/argon2_cffi_bindings-26.1.0-cp315-cp315t-manylinux_2_34_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:c49e853a3bef9dd10329f31f702e7fa9b5c58229ff9c2ff6d069efaf09177c08", size = 27569, upload-time = "2026-08-20T07:33:08.598Z" },
+    { url = "https://files.pythonhosted.org/packages/88/07/c26b76debf0998ee08fbe947ab2058ac5de37d4b9d46b06c17abaa6c4ce9/argon2_cffi_bindings-26.1.0-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:6376d4b3aca039375ca8bf92f770da0ec424a1ce3a37077a8d3c557411aa56ca", size = 27279, upload-time = "2026-08-20T07:33:09.518Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/0d/ead6ddc029f91bc9b9390686dad3c808ab08100d348f6266b5f93f8970ee/argon2_cffi_bindings-26.1.0-cp315-cp315t-musllinux_1_2_riscv64.whl", hash = "sha256:9bacedc04b0402837586a17f0919e3dfdd95291f441f1f56bd80ec274c2840a1", size = 27774, upload-time = "2026-08-20T07:33:10.728Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/47/c108530d9eb86036b78d3af4de28b83b4a2d9a70512bd10ff8e59966aab4/argon2_cffi_bindings-26.1.0-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:76ae29acace5d33355344612844d588e19deaaba4639d8bb01601e4b1418ef36", size = 26933, upload-time = "2026-08-20T07:33:11.661Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/02/0bfc59e781c89acf64c31c388aade9d9d1c1ea38aa1ba1292fe07f607fe9/argon2_cffi_bindings-26.1.0-cp315-cp315t-win32.whl", hash = "sha256:df612391feca41c44d20118f3b88d1b86419465cd1f5496859f715ca60ec2210", size = 24875, upload-time = "2026-08-20T07:33:12.616Z" },
+    { url = "https://files.pythonhosted.org/packages/61/c7/c3e46068cddffccecb8ad94d71135e9bf62bbc789589e7dfadc7c6f59214/argon2_cffi_bindings-26.1.0-cp315-cp315t-win_amd64.whl", hash = "sha256:1a0a29ed86960e44eaace7e081bdfab4f08b012fd96ec8edba71e2ad020939e4", size = 26655, upload-time = "2026-08-20T07:33:13.521Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/ca/18b9c8c45fecf34b9100ec6d7946057f14a158f2eaa20ea123a3e82351cb/argon2_cffi_bindings-26.1.0-cp315-cp315t-win_arm64.whl", hash = "sha256:d157ddfab1e8b21f2f1dedda9c09645d98b5ed0b667b0626be600a345d426440", size = 25376, upload-time = "2026-08-20T07:33:14.491Z" },
 ]
 
 [[package]]
@@ -766,7 +777,7 @@ name = "cuda-bindings"
 version = "13.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder", marker = "(python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "cuda-pathfinder", marker = "(python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/81/bff68ce829999c1e4209c761bbf903b1c06ec570416ddb25020864ad5907/cuda_bindings-13.3.1-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1ab2f74ed65bfef4163ba07a8db16f1085e0729291db12a2423aff84ee8278b8", size = 6013639, upload-time = "2026-05-29T23:12:03.509Z" },
@@ -779,10 +790,10 @@ wheels = [
 
 [[package]]
 name = "cuda-pathfinder"
-version = "1.6.0"
+version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/b4/d088047afe39827556df21118cac9ffd20cc3f968c99a7681494d1eb333c/cuda_pathfinder-1.6.0-py3-none-any.whl", hash = "sha256:1503af579d8379c24bdd65528379bc57039b0455be9f5f9686cf8e473a1fce51", size = 54591, upload-time = "2026-07-21T15:03:56.224Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/1e/2942a0d6d52240d439f44384a40c65d359d9ca70325b65b265c020113121/cuda_pathfinder-1.6.1-py3-none-any.whl", hash = "sha256:cc8ec4cb0881fa5bcbf96b6dd75d50e55352b74dd33d4f3d884e192e7c2b6ef8", size = 60238, upload-time = "2026-08-18T02:57:50.087Z" },
 ]
 
 [[package]]
@@ -876,11 +887,11 @@ wheels = [
 
 [[package]]
 name = "deepmerge"
-version = "2.1.0"
+version = "3.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2a/78/6e9e20106224083cfb817d2d3c26e80e72258d617b616721a169b87081e0/deepmerge-2.1.0.tar.gz", hash = "sha256:07ca7a7b8935df596c512fa8161877c0487ac61f691c07766e7d71d2b23bdd2f", size = 21449, upload-time = "2026-06-22T05:46:07.669Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/6c/9f4577a36d5f463a3a3f8322bd65d33e1a1a6b6ba1d692a5ebc3cba19015/deepmerge-3.0.tar.gz", hash = "sha256:14ed69f063de64b7743985c732ccff5d6c34ff4560946e7fbfd99086b853b9ce", size = 22279, upload-time = "2026-08-17T05:50:53.161Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/25/2a75b47cb057b1e164c604fb81ab690a6cdb5e2260ce651194eae90f64a3/deepmerge-2.1.0-py3-none-any.whl", hash = "sha256:8f148339a91d680a75ecb74ade235d9e759a93df373a0b04e9d31c8666cfeb75", size = 14345, upload-time = "2026-06-22T05:46:06.742Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/d7/7f19bedd30b90b72865aeec3a29127bed6dee6c9ef0324bb5b4d424bb0e3/deepmerge-3.0-py3-none-any.whl", hash = "sha256:c8541c3e186dc88d19a5513ad3a0b2d0b22beaa780969fc0c13b995a64265365", size = 14855, upload-time = "2026-08-17T05:50:52.218Z" },
 ]
 
 [[package]]
@@ -929,7 +940,7 @@ wheels = [
 
 [[package]]
 name = "diff-cover"
-version = "10.5.0"
+version = "10.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chardet" },
@@ -937,9 +948,9 @@ dependencies = [
     { name = "pluggy" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/35/c7/b2883d341261dfa1cdc4386929e967ff4af9c201405f6f72275abefd5f2a/diff_cover-10.5.0.tar.gz", hash = "sha256:a1734543baaaa7d0860a6526016d487be24a0ffe9efb4eca0824c391d4a09d06", size = 110762, upload-time = "2026-08-08T17:25:19.494Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/74/b71a61b2610b5866aa29a9388bc1b58738e49600345dbe0598676b436717/diff_cover-10.5.1.tar.gz", hash = "sha256:f1c9417c62111e40a81c482c692c5cdd131ff93317baa993044cb291912ebba3", size = 113297, upload-time = "2026-08-16T18:09:19.466Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/c8/5345dfb7c955639454fffc767c3eaf9863d79a1cdb0081392a71102fedfa/diff_cover-10.5.0-py3-none-any.whl", hash = "sha256:5619f924e838b8f8c4c7b243b32a6068d8c449c1766c6f6a1110b152195ed9b9", size = 61184, upload-time = "2026-08-08T17:25:18.337Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/da/ac0ad341c7377e82f7d6dcb18461029579da224c3923f73ff6537d8591cf/diff_cover-10.5.1-py3-none-any.whl", hash = "sha256:67ce07494e605b5d7d7b04aeec2cf524950ed0c12f026dd176883cf33c74fba0", size = 62924, upload-time = "2026-08-16T18:09:18.387Z" },
 ]
 
 [[package]]
@@ -949,15 +960,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c9/02/bd72be9134d25ed783ecbbc38a539ffaefbf90c78418c7fb7229600dbac7/distlib-0.4.3.tar.gz", hash = "sha256:f152097224a0ae24be5a0f6bae1b9359af82133bce63f98a95f86cae1aede9ed", size = 615141, upload-time = "2026-06-12T08:04:52.847Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/08/9c41fb51ab5b43eb21674aff13df270e8ba6c4b29c8624e328dc7a9482af/distlib-0.4.3-py2.py3-none-any.whl", hash = "sha256:4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b", size = 470628, upload-time = "2026-06-12T08:04:50.506Z" },
-]
-
-[[package]]
-name = "distro"
-version = "1.9.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722, upload-time = "2023-12-24T09:54:32.31Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
 ]
 
 [[package]]
@@ -1198,11 +1200,11 @@ wheels = [
 
 [[package]]
 name = "griffelib"
-version = "2.1.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/33/e4/8d187ea29c2e30b3a09505c567513077d6117861bde1fbd997a167f262ec/griffelib-2.1.0.tar.gz", hash = "sha256:762a186d2c6fd6794d4ea20d428d597ffb857cb56b66421651cbba15bdd5e813", size = 216234, upload-time = "2026-06-19T12:05:42.278Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/b4/a767e91c606deefc447a96eaf59edd77397960b1d677dffd833ee8449831/griffelib-2.2.0.tar.gz", hash = "sha256:e1bc36fe9cd21d4b6b659b456346755e4cfdc5676c0a5214083126ee12612b3c", size = 227048, upload-time = "2026-08-16T14:04:58.383Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/d3/5268aeabf2ad82658c4e2ff3a060648d0f02f3926cb53247c0e4d0dab49e/griffelib-2.1.0-py3-none-any.whl", hash = "sha256:cc7b3d2d2865ad0b909fcc38086e3f554b5ea7acbaa7bbb7ecaa3f5dfb7d9f00", size = 142560, upload-time = "2026-06-19T12:05:38.742Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/b6/f65ac785d4ac90dcf7c831ac6256f5dd4a19780f4e1575b2c0d6eeebe319/griffelib-2.2.0-py3-none-any.whl", hash = "sha256:d71c3bc2bbed9f958488634fe788b843a9f705d6d2838ca32cd6c25eeb64dfc4", size = 166779, upload-time = "2026-08-16T14:04:54.365Z" },
 ]
 
 [[package]]
@@ -1305,15 +1307,15 @@ wheels = [
 
 [[package]]
 name = "httpcore2"
-version = "2.10.0"
+version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h11" },
     { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/83/a896fc59940fc5a6e2aff3a4be1d92fa890112936803b331cae75a993c34/httpcore2-2.10.0.tar.gz", hash = "sha256:13c0cc3d1919d4f28457f60cd2c2abe04113a8af184ccf1142811beba936f9dc", size = 67427, upload-time = "2026-08-09T09:11:32.123Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/4f/d149104195a35e2853a2fc203a8e3477747e58c80e17dda686dace174383/httpcore2-2.10.0-py3-none-any.whl", hash = "sha256:7df06cfb34070cae4f7c89be69dc1095eca138e9704ceffb98d25c1912ab6f01", size = 83000, upload-time = "2026-08-09T09:11:29.555Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/74/d370e55600d9bcfa0d9794b0166126d49291a3d2b20c268fc98c453a4948/httpcore2-2.12.0-py3-none-any.whl", hash = "sha256:7e04258ce01013d7d615e5b910a3b27fac937d7a95038227e79652b4ba3b4ceb", size = 83074, upload-time = "2026-08-18T13:22:05.854Z" },
 ]
 
 [[package]]
@@ -1355,7 +1357,7 @@ wheels = [
 
 [[package]]
 name = "httpx2"
-version = "2.10.0"
+version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
@@ -1364,9 +1366,9 @@ dependencies = [
     { name = "idna" },
     { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bd/3d/f9a8c07a3884f3e5b26205e8436a18b3af61c5d53192c3bea235574dbbec/httpx2-2.10.0.tar.gz", hash = "sha256:8741d7329fe2c7885fc9ceb61c8217acfb87a85f75723714b89ebf7ad7196338", size = 98749, upload-time = "2026-08-09T09:11:33.24Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/f8/579a8b51e42e38ee32647df9f08aa25643ae788e275cc625b199829c4671/httpx2-2.12.0.tar.gz", hash = "sha256:7631fe9887a8a2275f4a2540e053aa670fcc50742864a9ae7c66e609fdcf12cf", size = 100040, upload-time = "2026-08-18T13:22:09.086Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/6d/a637d52449d98a6892d9a4dc0262587afdb6a66f201871842dce5a97b1c1/httpx2-2.10.0-py3-none-any.whl", hash = "sha256:5e3194a432701e1cc6f69a8b1b2fa199ef907013fede8d9a09a2c5b7b8141a18", size = 94355, upload-time = "2026-08-09T09:11:30.882Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/95/411ba65569158e862368917aaf56597f3e5fa3b91b0502919638465a08f3/httpx2-2.12.0-py3-none-any.whl", hash = "sha256:cc8b6eecb8661c146b8f89a60e97456ee086e91a784ed31ac450c3a9e613dd36", size = 95427, upload-time = "2026-08-18T13:22:06.834Z" },
 ]
 
 [[package]]
@@ -1380,7 +1382,7 @@ wheels = [
 
 [[package]]
 name = "huggingface-hub"
-version = "1.27.0"
+version = "1.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1393,9 +1395,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/9b/ddf3d02a8681f1b9ce52fda03d755dad6b74c4f8172304c4c8d2975450f9/huggingface_hub-1.27.0.tar.gz", hash = "sha256:c1fed40ea82a6b41b477f5243546549b792ae0a93abcea608cff66089bf8f8df", size = 942668, upload-time = "2026-08-07T12:48:05.161Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/ae/222a91937ebee7f62c0ca8f5ee0afd97577caf24c0abb927d1f5c7e9f6d2/huggingface_hub-1.28.0.tar.gz", hash = "sha256:46a2e950c09234de54093d587d1675382f0d08dbd600d9fb599b5932f5b2c6cb", size = 959609, upload-time = "2026-08-18T12:27:15.101Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/d8/95b735e183957c1f26d94c52977f09d466d55119cbbc1558ea4975e4c216/huggingface_hub-1.27.0-py3-none-any.whl", hash = "sha256:7df6827c2f956c60fbaa64646e979e566db76f619dd0a9729dfb8c5a3eb4f68d", size = 784926, upload-time = "2026-08-07T12:48:02.905Z" },
+    { url = "https://files.pythonhosted.org/packages/51/0e/eafef18f1a75e125e68395db21131db0cf868a128ecd2fce69b4df6c584b/huggingface_hub-1.28.0-py3-none-any.whl", hash = "sha256:58a8bacb03072edfc38067065e9dc24bbb34805410fcd36a1632de0b329660bb", size = 793202, upload-time = "2026-08-18T12:27:12.719Z" },
 ]
 
 [[package]]
@@ -1467,11 +1469,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.18"
+version = "3.19"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz", hash = "sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848", size = 196711, upload-time = "2026-06-02T14:34:07.794Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/f7/abb373e5757eaec4b922b92f97ec8d6d7e057cf06778247604fbc4e7c3f3/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15", size = 215237, upload-time = "2026-08-18T05:14:24.27Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl", hash = "sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2", size = 65455, upload-time = "2026-06-02T14:34:06.319Z" },
+    { url = "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4", size = 68550, upload-time = "2026-08-18T05:14:22.343Z" },
 ]
 
 [[package]]
@@ -2141,16 +2143,16 @@ python = [
 
 [[package]]
 name = "mkdocstrings-python"
-version = "2.0.5"
+version = "2.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "griffelib" },
     { name = "mkdocs-autorefs" },
     { name = "mkdocstrings" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/b6/e858701499d57eee8b3fd8e78168083956c6683ddbe727b46758b19e1119/mkdocstrings_python-2.0.5.tar.gz", hash = "sha256:3a4d92556ad39637e88af94a5374213af9a8e3040c3824ceaed04b486c017594", size = 199578, upload-time = "2026-06-19T10:41:08.868Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/5d/1be1c7a49d8fa13dc80f66a85f53333d52cf5206911412006ffdff8fb9a0/mkdocstrings_python-2.0.7.tar.gz", hash = "sha256:8c49faf66d243072d7590a1b5dea028d9d7425fac191f54f096123a4a9c1a783", size = 201598, upload-time = "2026-08-17T16:56:18.239Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/fc/10ab7e80650a9c9e8f4f1105f8c8e73567f88ed0c06ada589ab81d38687c/mkdocstrings_python-2.0.5-py3-none-any.whl", hash = "sha256:30c837bbff016549f659fcba6539ac351303f0fd7e713c89a040611072236e9d", size = 104951, upload-time = "2026-06-19T10:41:07.378Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/6d/77546d8c26f038fce314a507106954f76270f6c182488bcf9ac9721175df/mkdocstrings_python-2.0.7-py3-none-any.whl", hash = "sha256:1fce5fbfe4ffa6e8136a35351cdc97c3bf55219c7efbd3f92a82260f93235d60", size = 105387, upload-time = "2026-08-17T16:56:16.813Z" },
 ]
 
 [[package]]
@@ -2368,11 +2370,11 @@ wheels = [
 
 [[package]]
 name = "narwhals"
-version = "2.24.0"
+version = "2.25.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2b/1d/58946e5aab18393e793bd4add6985b95d0e01c3a2d832f38f54468b10dcd/narwhals-2.24.0.tar.gz", hash = "sha256:b5c0f684ccd9d7475b564111e319a4964abcf2baf79d3cf6b1003d06ac9b828d", size = 661143, upload-time = "2026-07-13T10:49:19.086Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/7b/6248dada39781db1ab3ebf08943080df0796098515a87f6f8696d14ec744/narwhals-2.25.0.tar.gz", hash = "sha256:62c036c810662bf7820b7737077176313bc59350eeeefb808510f388c743e4b2", size = 677076, upload-time = "2026-08-20T18:10:15.454Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/85/a5bfaebfd305ac18b57b0854d74e37e586809061a91fda62f0bd50c8518e/narwhals-2.24.0-py3-none-any.whl", hash = "sha256:42fdedf44e5b2ca7505630d45b4ac3058f38d8485cba9fe1652ca23152df7489", size = 461030, upload-time = "2026-07-13T10:49:17.571Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/dc/55481808fd70ef1567cf13540ffd4702af3f74b112e35427564b03f79c2d/narwhals-2.25.0-py3-none-any.whl", hash = "sha256:1f0f403e8c7e4463cde9bfe78b12fdd809e3ae3dda6d9b2f802934fb9c7a6a8f", size = 467373, upload-time = "2026-08-20T18:10:13.834Z" },
 ]
 
 [[package]]
@@ -2619,21 +2621,19 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "3.1.0"
+version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "distro" },
     { name = "httpx2" },
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
-    { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/9b/d45911bf9abfc5a754d800d79fe56e4dcf6e7b679d6ff4b7e9689b56bc02/openai-3.1.0.tar.gz", hash = "sha256:3ae7190da63f718727f9c525740d3f713e85553d2bf1d0cc9247346bd9063a4d", size = 1131016, upload-time = "2026-08-14T23:49:46.325Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/9c/ba0c292b4032ede74c249ca314ad64eb1bb5a03a843f6e01facb02f80cd8/openai-3.3.1.tar.gz", hash = "sha256:6f22807de1a976c932cecda620e8172a8c3fdbaeed29c7f21564e0c2410edf56", size = 1282113, upload-time = "2026-08-19T16:31:35.006Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/45/84b9e909968c0f4c3112a828bba9aa8be6a5ee322fcb3d781145ee53d88e/openai-3.1.0-py3-none-any.whl", hash = "sha256:f06d5a5c8d06a0aead3a67d33fe5a3c3c31540a0f7a8017b02ba8cd99bc5c736", size = 1670762, upload-time = "2026-08-14T23:49:43.998Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/db/2b7a1b3de659bb82aef979116c74e809982b13e42c057759767552b5155f/openai-3.3.1-py3-none-any.whl", hash = "sha256:9652df7fdf8ee6f5bd58e0a12f2b1d414a18e0f06bb7a9a57c8643a5f5469bd3", size = 1690337, upload-time = "2026-08-19T16:31:32.812Z" },
 ]
 
 [[package]]
@@ -3234,11 +3234,11 @@ wheels = [
 
 [[package]]
 name = "pygments"
-version = "2.20.0"
+version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b/pygments-2.21.0.tar.gz", hash = "sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c", size = 5005329, upload-time = "2026-08-17T08:02:48.824Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
+    { url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl", hash = "sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9", size = 1250147, upload-time = "2026-08-17T08:02:44.912Z" },
 ]
 
 [[package]]
@@ -3257,15 +3257,15 @@ crypto = [
 
 [[package]]
 name = "pymdown-extensions"
-version = "11.0.1"
+version = "11.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/a9/5f0c535ba3b08fe09270c16808e053a968868242ecbd5676d4e3a488bf28/pymdown_extensions-11.0.1.tar.gz", hash = "sha256:dd2905ae6fc5b75582fafb139a1266ffc754705efa902aa50067fa7ff4f94ec0", size = 857113, upload-time = "2026-07-02T17:59:22.955Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/17/2db4b414de89659144488e0d9c6c0bf0c8395841dc12d81d0532cc6ef310/pymdown_extensions-11.0.2.tar.gz", hash = "sha256:9506fcbe66fa355a775b768084334238dd6805020ac4b92bea0c0dda6f8f223d", size = 855419, upload-time = "2026-08-22T19:28:47.236Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/54/da572c98c0b77626a91b5d3b89f0231d8bff5125c225420908632f8b342d/pymdown_extensions-11.0.1-py3-none-any.whl", hash = "sha256:db3943a62bab7e03af1364f0c4083e64b91fb097675a4b6cceccfbe9a77e5eb2", size = 269455, upload-time = "2026-07-02T17:59:21.271Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/43/9f45ec4d14e596efc32c925a78104934790438b0c0628b70d741016734ad/pymdown_extensions-11.0.2-py3-none-any.whl", hash = "sha256:259910762019732caa1dfd76f3faa62c59f191d46573e80bcb1d13c0f675bbe5", size = 269929, upload-time = "2026-08-22T19:28:45.389Z" },
 ]
 
 [[package]]
@@ -3486,11 +3486,11 @@ wheels = [
 
 [[package]]
 name = "python-dotenv"
-version = "1.2.2"
+version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135, upload-time = "2026-03-01T16:00:26.196Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/53/ed9d74092561d4b01a2ef1349d52cdbc135e526c245f366b089cfca6de49/python_dotenv-1.2.3.tar.gz", hash = "sha256:a20a594dabeaa385725aa239d5244871c143ecb356add8a20fcf23773a6c3a35", size = 58945, upload-time = "2026-08-16T16:54:54.067Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101, upload-time = "2026-03-01T16:00:25.09Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/17/c5c6b53ddc18f297992099b3d9ec16c855c0ccc83263a21fe4d1c625ec6c/python_dotenv-1.2.3-py3-none-any.whl", hash = "sha256:904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9", size = 22780, upload-time = "2026-08-16T16:54:52.473Z" },
 ]
 
 [[package]]
@@ -3870,11 +3870,11 @@ name = "scikit-learn"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "joblib", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "narwhals", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "numpy", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "scipy", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "threadpoolctl", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "joblib" },
+    { name = "narwhals" },
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "threadpoolctl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fa/6f/37092bdb25f712817231799fc5674d8e704066a8a70c1d2d40517e18b4ab/scikit_learn-1.9.0.tar.gz", hash = "sha256:8833266989d3a5110178a9fae30783675460724d0e1efb13b14901d2c660c557", size = 7750767, upload-time = "2026-06-02T11:54:32.706Z" }
 wheels = [
@@ -3894,33 +3894,53 @@ wheels = [
 
 [[package]]
 name = "scipy"
-version = "1.18.0"
+version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/25/c2700dfaf6442b4effaa91af24ebce5dc9d31bb4a69706313aae70d72cd0/scipy-1.18.0.tar.gz", hash = "sha256:67b2ad2ad54c72ca6d04975a9b2df8c3638c34ddd5b28738e94fc2b57929d378", size = 30774447, upload-time = "2026-06-19T15:01:43.456Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/74/66de6258867beb2ef08f35f9f2ac017a52cacd5081714d239ff1a442d458/scipy-1.18.1.tar.gz", hash = "sha256:52c4b7422442aba924d03ad4019852b08a92e64ea187b933135687bfe2747307", size = 30781235, upload-time = "2026-08-21T23:28:50.599Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/b5/915a19b3de2f7430062b509653563db1633ddbb6f021b06731521115d4e2/scipy-1.18.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:4c256ee70c0d1a8a2ace807e199ccd4e3f57037433842abb3fb36bc17eaa9578", size = 31036253, upload-time = "2026-06-19T15:00:43.216Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/88/b72def7262e150d16be13fca37a96481138d624e700340bc3362a7588929/scipy-1.18.0-cp314-cp314-macosx_12_0_arm64.whl", hash = "sha256:2ef3abc54a4ffc53765374b0d5728532dfdd2585ed23f6b11c206a1f0b1b9af8", size = 28673758, upload-time = "2026-06-19T15:00:46.663Z" },
-    { url = "https://files.pythonhosted.org/packages/91/02/2e636a61a525632c373cf6a9c24442a3ffb79e364d38e98b32042964ac32/scipy-1.18.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:f2a6af57bd9e4a75d70e4117e78a1bbee84f79ae3fbb6d0111005d6ebcc4cb8d", size = 20415514, upload-time = "2026-06-19T15:00:49.399Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/b6/2135974442f6aba159d9d39d774a1c8cb19947016725d69fecc685df45bf/scipy-1.18.0-cp314-cp314-macosx_14_0_x86_64.whl", hash = "sha256:3f1ac564d3bf6c03d861d2cd87a1bea0da2887136f7fb1bf519c05a8971452d6", size = 23034398, upload-time = "2026-06-19T15:00:51.941Z" },
-    { url = "https://files.pythonhosted.org/packages/f6/e6/ba89ec5abf6ee9257c0d1ec985573f3ae32742c24bc03e016388a40b1b15/scipy-1.18.0-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:40395a5fcd1abee49a5c7aaa98c29db393eedc835138560a588c47ec16156690", size = 33998032, upload-time = "2026-06-19T15:00:54.838Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/c4/bc41eb19b0fd0db868f4132920879019318d80cc522ad8f2bca4611af808/scipy-1.18.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8ca01e8ae69f1b18e9a58d91afead31be3cef0dd905a10249dac559ee15460a0", size = 35283333, upload-time = "2026-06-19T15:00:58.152Z" },
-    { url = "https://files.pythonhosted.org/packages/53/a4/cbdeef6eb3830a8462a9d4ada814de5fc984345cc9ecf17cbec51a036f1e/scipy-1.18.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7a7f3b01647384dbc3a711e8c6778e0aabbe93959249fef5c7393396bcac0867", size = 35610216, upload-time = "2026-06-19T15:01:01.155Z" },
-    { url = "https://files.pythonhosted.org/packages/80/4d/b2b82502b65f661d1b789c1665dcdf315d5f12194e06fc0b37946294ebae/scipy-1.18.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:6aa94e78ec192a30063a5e72e561c28af769dc311190b24fe91774eff1969709", size = 37418960, upload-time = "2026-06-19T15:01:04.155Z" },
-    { url = "https://files.pythonhosted.org/packages/93/3e/902d836831474b0ab5a37d16404f7bc5fafd9efba632890e271ba952635f/scipy-1.18.0-cp314-cp314-win_amd64.whl", hash = "sha256:2d8bbdc6c817f5b4006a54d799d4f5bab6f910193cbb9a1ff310833d4d270f61", size = 37288845, upload-time = "2026-06-19T15:01:07.822Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/43/8d73b337a3bdb14daa0314f0434210747c02d79d729ce1777574a817dcf6/scipy-1.18.0-cp314-cp314-win_arm64.whl", hash = "sha256:18e9575f1569b2c54174e6159d32942e03731177f63dce7975f0a0c88d102f5b", size = 24988971, upload-time = "2026-06-19T15:01:11.076Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/b4/f11918b0508a2787031a0499a03fbe3546f3bb5ca05d01038c45b278c09a/scipy-1.18.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:f351e0dd702687d12a402b867a1b4146a256923e1c38317cbc472f6372b94707", size = 31399325, upload-time = "2026-06-19T15:01:13.723Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/d1/1f287b57c0ff0ee5185dff3946d92c8017d39b0e431f0ae79a3ff1859512/scipy-1.18.0-cp314-cp314t-macosx_12_0_arm64.whl", hash = "sha256:7c7a51b33ce387193c97f228320cf8e87361daa1bba750638677729598b3e677", size = 29092110, upload-time = "2026-06-19T15:01:16.908Z" },
-    { url = "https://files.pythonhosted.org/packages/ff/1a/7b74eb6c392fdcb27d414c0e7558a6d0231eb3b6d73571f479bb81ea8794/scipy-1.18.0-cp314-cp314t-macosx_14_0_arm64.whl", hash = "sha256:84031d7b052a54fae2f8632e0ec802073d385476eb9a63079bce6e23ef9283d4", size = 20833811, upload-time = "2026-06-19T15:01:20.488Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/ad/f3941716320a7b9cb4d68734a903b45fe16eff5fb7da7e16f2e619304979/scipy-1.18.0-cp314-cp314t-macosx_14_0_x86_64.whl", hash = "sha256:56abf29a7c067dde59be8b9a22d606a4ea1b2f2a4b756d9d903c62818f5dacce", size = 23396644, upload-time = "2026-06-19T15:01:23.364Z" },
-    { url = "https://files.pythonhosted.org/packages/22/22/1446b62ffe07f9719b7d9b1b6a4e05a772833ae8f441fe4c22c34c9b250f/scipy-1.18.0-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1ad44305cfa24b1ba5803cbbebf033590ccbac1aa5d612d727b785325ab408b0", size = 34079318, upload-time = "2026-06-19T15:01:26.002Z" },
-    { url = "https://files.pythonhosted.org/packages/56/3b/b87da667098bb470fa30c7011b0ba351ee976dd395c78798c66e941665a3/scipy-1.18.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:945c1761b93f38d7f99ae81ae80c63e621471608c7eeead563f6df025585cd58", size = 35324320, upload-time = "2026-06-19T15:01:28.881Z" },
-    { url = "https://files.pythonhosted.org/packages/f8/a1/c7932f91909759b0267f75fdea34e91309f96b895757534b76a90b6b4344/scipy-1.18.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:1a4441f15d620578772a49e5ab48c0ee1f7a0220e387110283062729136b2553", size = 35699541, upload-time = "2026-06-19T15:01:31.968Z" },
-    { url = "https://files.pythonhosted.org/packages/f7/86/5185061a1fcc41d18c5dc2463969b3a3964b31d9ac67b2fb05d4c7ff7670/scipy-1.18.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9aac6192fac56bf2ca534389d24623f07b39ff83317d58287285e7fbd622ff76", size = 37472480, upload-time = "2026-06-19T15:01:35.136Z" },
-    { url = "https://files.pythonhosted.org/packages/31/8e/f04c68e39919a010d34f2ee1367fd705b0a25a02f609d755f0bfbc0a15fc/scipy-1.18.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e40baea28ae7f5475c779741e2d90b1247c78531207b49c7030e698ff81cee3f", size = 37365390, upload-time = "2026-06-19T15:01:38.091Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/19/969dc072906c84dd0a3b05dcf57ea750936087d7873549e408b35cfc3f97/scipy-1.18.0-cp314-cp314t-win_arm64.whl", hash = "sha256:368e0a705903c466aa5f08eefb39e6b1b6b2d659e7352a31fd9e2438365be0f8", size = 25279661, upload-time = "2026-06-19T15:01:40.817Z" },
+    { url = "https://files.pythonhosted.org/packages/06/d5/d8eb4e280ddb56a4ab2c6f02ee49b56b23f6e977cf0802fd6d68dbef14f5/scipy-1.18.1-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:83de5453a7799afc9048b4616bd085cef126e36412f0ea2f6370c36a2a3a51e7", size = 31090936, upload-time = "2026-08-21T23:25:28.686Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/49/59ea385dc3a62ff498ddf3cfff7c2b41b0f9f9d3c4122b3f1dcb6d6327fe/scipy-1.18.1-cp314-cp314-macosx_12_0_arm64.whl", hash = "sha256:9554bcc6d715ee87a633a3cc8e7703c6628b100dd29cb8a2efc4c0533c7ff729", size = 28725221, upload-time = "2026-08-21T23:25:33.244Z" },
+    { url = "https://files.pythonhosted.org/packages/70/e8/6b0c288c50942d78193696c9f15f9a0874f5178aa0ddf40f83d9924b3e8d/scipy-1.18.1-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:011413b7426b75012840e35649e00fe0a2c3bae89fed433876e3a99251572efc", size = 20466839, upload-time = "2026-08-21T23:25:37.516Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/e0/54fd3793c729e3b936782f181b59cbb1205bf250ab605a16cb1ba61cdd5e/scipy-1.18.1-cp314-cp314-macosx_14_0_x86_64.whl", hash = "sha256:88f0e784020649f88ea48c9f5ddfa403bf9205820667c0914740b392035afb82", size = 23089121, upload-time = "2026-08-21T23:25:42.019Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/56/030af62bea3cf878e0028515dff78c123b01633606a879b63f42d2db99cc/scipy-1.18.1-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2d3ab0e8c69a17dd3559eab8cbb88f258e285c94d572c2719033f90f83290c89", size = 34053851, upload-time = "2026-08-21T23:25:47.998Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/89/2a844506d49651e9aa1af6ef95b6bd8031cb1d5a4375edec6155037e04cf/scipy-1.18.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ac0333bdf38309aa3dcbe7e3fa7ea29e7a2c37c6ea306a757b700ded8e4596ad", size = 35329183, upload-time = "2026-08-21T23:25:53.522Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/56/c7370c3640e92ac9613cbf26cb3f729f9b12ddf1727b55b94b53b24d6f48/scipy-1.18.1-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:911de823097db8b63f034299d12662db93344e6ffa0b881cbb57748974b70168", size = 35672551, upload-time = "2026-08-21T23:25:59.387Z" },
+    { url = "https://files.pythonhosted.org/packages/24/16/ec8536f351421f8bf60a1120930638f83790f4710b8230446aca3d6159d4/scipy-1.18.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:95298364e251be3e60249facbeeca03631d3bb7584f85879516ec55ac717b81f", size = 37469416, upload-time = "2026-08-21T23:26:05.432Z" },
+    { url = "https://files.pythonhosted.org/packages/52/94/d73da0d28f16c45bb9b0a5691b91610b0275c5ef0eb5e43c87cf2dc1bf31/scipy-1.18.1-cp314-cp314-win_amd64.whl", hash = "sha256:78a0d7c918e74a232394117160e7e3db503377572a45bcef8826e4ab8a35feba", size = 37362755, upload-time = "2026-08-21T23:26:11.366Z" },
+    { url = "https://files.pythonhosted.org/packages/89/25/e996e4dc74e10e227b1e14db5eaf6608bb6dd33884a64851c38f18dd4249/scipy-1.18.1-cp314-cp314-win_arm64.whl", hash = "sha256:cbf38d043c1aa4ab306e1ada6ab6eddacc3322a20b7af1b30bc93254b366fe09", size = 25036090, upload-time = "2026-08-21T23:26:15.887Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/c9/c00213f92309d753b48903e6a451b87eb52ff5b7a16e789d1568bbf221c4/scipy-1.18.1-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:0fcb3c93519f27bb4f0c4b0f7802cdcaca7fcf93267b75edda2e9f4e8a55cbd7", size = 31485550, upload-time = "2026-08-21T23:26:20.776Z" },
+    { url = "https://files.pythonhosted.org/packages/74/b2/e3067c487982d4eeab2938928529410370c06fea84a4d3f4925e7d96647d/scipy-1.18.1-cp314-cp314t-macosx_12_0_arm64.whl", hash = "sha256:ddef79fb382df40104a19bb7151b3b23e57c1778fcf857c71ceecd9bd264513f", size = 29174642, upload-time = "2026-08-21T23:26:25.395Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/ab/374c9fe2d1ec014e576c781a4b5d8e1ba340e8f6b4638c16f711d2b194f0/scipy-1.18.1-cp314-cp314t-macosx_14_0_arm64.whl", hash = "sha256:0e82073ecc7acc6436fac4b31674109c7e1d3e596789767eda01258a8c9e8123", size = 20916357, upload-time = "2026-08-21T23:26:30.112Z" },
+    { url = "https://files.pythonhosted.org/packages/90/38/223915c88a17317cafbf8ca2a42b11c265a9fb1e804aa665544132b5fe8a/scipy-1.18.1-cp314-cp314t-macosx_14_0_x86_64.whl", hash = "sha256:8bcf3c1ba5d6456e2effd30fcbd3459b044d683fcdac79a2e6830f0bdf7de487", size = 23482611, upload-time = "2026-08-21T23:26:34.846Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/d1/db0948da8ca57a80b36520ef0a768b967d99f3af65f4b6f1bf6362ad4dd4/scipy-1.18.1-cp314-cp314t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cfbf154f2ba187f2ed6cce2639efff7d105f1140573642c0161615b6d91d6a87", size = 34143202, upload-time = "2026-08-21T23:26:40.4Z" },
+    { url = "https://files.pythonhosted.org/packages/87/53/39d046cc7574ed6acacb6bd5723e220107ece80bff12faaf3efc4ddeede4/scipy-1.18.1-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a1d33a7836f7ddc1993427966a0823468ec41bcbdb1a9f9942d1d7e57f803ba3", size = 35380876, upload-time = "2026-08-21T23:26:46.1Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/da/32e0e799d875a85ca57d9bde6c78148afcc0e38276df683d95854eadc8c3/scipy-1.18.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:7f4b8bc363b6d65ee2152bec57568e3c52639bb34c46057b09857a307ed5e21d", size = 35770885, upload-time = "2026-08-21T23:26:51.533Z" },
+    { url = "https://files.pythonhosted.org/packages/88/2e/f97a666d362fee68b18f41c9c30ed502ca5c98b549749bfcb52a8b74d1eb/scipy-1.18.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:11c423f1049c5755ad4409af52a9ada1cff96fe9b50795d4af3619f292901239", size = 37525424, upload-time = "2026-08-21T23:26:56.751Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/d5/a9e765a84654ebba8479a1fd1b059ced1af72b168a3b2a3a46540ea38d20/scipy-1.18.1-cp314-cp314t-win_amd64.whl", hash = "sha256:c24acac1e18912761c4700239bbc1fd32f615af690f1584d49b35859be51324d", size = 37416961, upload-time = "2026-08-21T23:27:01.546Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/16/e79e0d1c63ef698879d85439d37e9fb434e3b804e506a6991038d086ebd9/scipy-1.18.1-cp314-cp314t-win_arm64.whl", hash = "sha256:9f2897bf7737392ad0d5213ea7b6add72a4edf5679b3153106aeb88b6507b3b9", size = 25331848, upload-time = "2026-08-21T23:27:05.884Z" },
+    { url = "https://files.pythonhosted.org/packages/be/4f/1bd37c883b67163e2ca1f60977a399500e6879c15defecac62831c8d078d/scipy-1.18.1-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:eb0dfcf4e28a99c12c999744a2ff67c9b06200e20401c7c88186e33552a46331", size = 31091484, upload-time = "2026-08-21T23:27:11.051Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/c5/ba929d7feb9b2332f96827c12e0e924b61973b59b4dea383b603372c65ce/scipy-1.18.1-cp315-cp315-macosx_12_0_arm64.whl", hash = "sha256:30f464bee641fa8e282577c7dce027308403213c6ca8270bba73285c91024bc5", size = 28725057, upload-time = "2026-08-21T23:27:15.9Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/19/68f1c50f609d955d230e66d25d02bd3e1e167ec540232135354fb9a4b9e3/scipy-1.18.1-cp315-cp315-macosx_14_0_arm64.whl", hash = "sha256:1bca3b943fc2567ea49cd02c99abde49da4d5178ec46f624bd8255cda8755beb", size = 20466734, upload-time = "2026-08-21T23:27:20.044Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/6d/319fa29b73d1802fa80b32a6eaf3f5be456ef81526da2716a9493bcb5501/scipy-1.18.1-cp315-cp315-macosx_14_0_x86_64.whl", hash = "sha256:c9d18a33309122074ea483dd92dd444189166b8b2ec429fe9ed5ac73c7a0aa23", size = 23089664, upload-time = "2026-08-21T23:27:24.345Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/db/30992f9b51a63de671daf3888ffd18378b6cb9ec9f2c972264238ffa7fd6/scipy-1.18.1-cp315-cp315-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:82f201b4c878551d48558337aab270d3c6cca5507b8737c8d8a608d234cccde0", size = 34054035, upload-time = "2026-08-21T23:27:29.409Z" },
+    { url = "https://files.pythonhosted.org/packages/91/d4/bf3e735dc0b9d5a8ff45079d2540e17d3aff7a2f0048dd8f552ffd031d2b/scipy-1.18.1-cp315-cp315-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0ac49ea97594532dd44b7136094d35f5440fa06e6d9c6384a74c01764df388c5", size = 35333883, upload-time = "2026-08-21T23:27:34.293Z" },
+    { url = "https://files.pythonhosted.org/packages/19/93/12d78ce9f871fe945fca588d32644e6e63f553c2a35c564d73f3b22a3313/scipy-1.18.1-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:ceb30a00ce7c92d459819443d29ca486d882b83fb6738bdcbb2a1cce94ac5daa", size = 35673124, upload-time = "2026-08-21T23:27:39.059Z" },
+    { url = "https://files.pythonhosted.org/packages/70/cd/886219313a1012a48e6ae0ec4f302c837151beb92e1ff0d709ef8fdfc488/scipy-1.18.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:f29633129f9fa7e88a3f0fca835de2d030bfc9643f7799e1a0c46cee24d38fc7", size = 37470753, upload-time = "2026-08-21T23:27:44.435Z" },
+    { url = "https://files.pythonhosted.org/packages/17/6c/a776888ce618bee54fbde26172f0f46ac1da70d27b63861797fe78e1904b/scipy-1.18.1-cp315-cp315-win_amd64.whl", hash = "sha256:92c14f5bdbfb6216315ce33e78080474082de8b3830122ba97809bfbe65f75c0", size = 37361483, upload-time = "2026-08-21T23:27:49.334Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/09/97b651691322ebee97999b017ffc18a15a0b815103844c97e8da9d469731/scipy-1.18.1-cp315-cp315-win_arm64.whl", hash = "sha256:e402cf31eb68f453dbb2d36fc6d722b33f24a55d68b2ae1d92fa6305ca71c298", size = 25035883, upload-time = "2026-08-21T23:27:53.596Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/0f/9ec20467bbabd0d44e2a77d0fd3d124f884b4d67df92af82c91d2d6a486f/scipy-1.18.1-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:2a0b02f9fc46f8520330c23d45e6560db7e3a0d927232139427637f98943e11d", size = 31474926, upload-time = "2026-08-21T23:27:57.993Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/58/dcb79161e56efbedc50079fcd2f5fe427a0ebb53022eb476aa73c015ad8f/scipy-1.18.1-cp315-cp315t-macosx_12_0_arm64.whl", hash = "sha256:1d73131e358976663dd969e1fb4ed1404b815cd977eaaedc3b3a133ba2d81c35", size = 29164940, upload-time = "2026-08-21T23:28:03.062Z" },
+    { url = "https://files.pythonhosted.org/packages/71/d3/1eeea80c817fcb8ef7bd4a05a58824977a0e57a375cfc3d7ea7c911c01ad/scipy-1.18.1-cp315-cp315t-macosx_14_0_arm64.whl", hash = "sha256:bff0b729edd992766136b34e39cc76bc2fad905aa58897ee72a9cd000a6d8443", size = 20906742, upload-time = "2026-08-21T23:28:07.642Z" },
+    { url = "https://files.pythonhosted.org/packages/54/46/e59350428b6099301a20128108c995e2eb175a43f383af9a346e38824f9b/scipy-1.18.1-cp315-cp315t-macosx_14_0_x86_64.whl", hash = "sha256:10ac20c69d880f77f375db44c22e3e6a644f9fefa291d4cd2fb9790a89fc99fd", size = 23472183, upload-time = "2026-08-21T23:28:12.109Z" },
+    { url = "https://files.pythonhosted.org/packages/89/31/cc91623fa98f0621766a0f0aaaadb2c66de74a7ea7e3837164f6e4354260/scipy-1.18.1-cp315-cp315t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:33a834464fdabc0f26a45508df31b3cc5d028e04dbf6c5ed398541418e0a12fe", size = 34130796, upload-time = "2026-08-21T23:28:17.906Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/3e/8572ef536957ddb8aa81bb4090d9e25f257e3b4e05d97deb54319deb8a3a/scipy-1.18.1-cp315-cp315t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:49023963c193dacee096301452f223ee24d86ec5807f8df93c0f7221d119e305", size = 35374253, upload-time = "2026-08-21T23:28:23.732Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/c6/59fdeffb4f1435299f93d9dc8140b43ad2916e6cfc944be6c3041fcec86d/scipy-1.18.1-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:d84a09d0dad90ba6525d8ac1c2334b33e64bf3ccfe9e841f02feb867a22681e4", size = 35758543, upload-time = "2026-08-21T23:28:29.431Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/d9/135be205d9de8783193aff9cc3bf483a03a38e4b29432c954e8cb66ac14e/scipy-1.18.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:179ce34a8d0fe273d8883ba59e17e052247d08973dfcb743ca52bb1cce2d60b0", size = 37521946, upload-time = "2026-08-21T23:28:35.245Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/a2/5b7d5270621ab7cfa3f7766067bf95dc360b5efb6394694e8143b4156e2b/scipy-1.18.1-cp315-cp315t-win_amd64.whl", hash = "sha256:5632e3ae3d09197c446310cd5187de63e28448ce22f0f67b2b93d97503c0c230", size = 37408295, upload-time = "2026-08-21T23:28:40.724Z" },
+    { url = "https://files.pythonhosted.org/packages/63/ad/741c19fcb66755ff953daf9243af8480e4bf3d7fbe57583c178c7d2b6b51/scipy-1.18.1-cp315-cp315t-win_arm64.whl", hash = "sha256:eda632a7981f69730d6281f451db9c1c370993a2c0d7ddb43e2a809a2862b83a", size = 25319710, upload-time = "2026-08-21T23:28:45.713Z" },
 ]
 
 [[package]]
@@ -3928,17 +3948,17 @@ name = "sentence-transformers"
 version = "6.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "numpy", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "scikit-learn", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "scipy", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "tokenizers", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "tokenizers" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
     { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "tqdm", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "transformers", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "typing-extensions", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "tqdm" },
+    { name = "transformers" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e7/43/6b53e6a2098440ce21478742facbc058f1a66ba2cb80b24bdc64942e1e2c/sentence_transformers-6.0.0.tar.gz", hash = "sha256:9e8c2c24f3b1c7473cd5f519a3d3cff60daaeb95533b82d045ffb43ee5f2dac4", size = 575048, upload-time = "2026-08-18T13:33:49.919Z" }
 wheels = [
@@ -4081,7 +4101,7 @@ name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mpmath", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "mpmath" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
@@ -4138,14 +4158,14 @@ distributed = [
 ]
 fine-tune-cpu = [
     { name = "sentence-transformers" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 fine-tune-gpu = [
     { name = "sentence-transformers" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
     { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 knowledge = [
     { name = "pdfplumber" },
@@ -4216,14 +4236,14 @@ docs = [
 ]
 fine-tune-cpu = [
     { name = "sentence-transformers" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 fine-tune-gpu = [
     { name = "sentence-transformers" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
     { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 test = [
     { name = "hypothesis" },
@@ -4453,28 +4473,42 @@ wheels = [
 
 [[package]]
 name = "tiktoken"
-version = "0.13.0"
+version = "0.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "regex" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e4/e5/5f3cb2159769d0f4324c0e9e87f9de3c4b1cd45848a96b2eb3566ad5ca77/tiktoken-0.13.0.tar.gz", hash = "sha256:c9435714c3a84c2319499de9a300c0e604449dd0799ff246458b3bb6a7f433c1", size = 38986, upload-time = "2026-05-15T04:51:27.153Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz", hash = "sha256:231dec90efcdccf1b565a1416107736f1e09b1a08fe736ef9d6363e626d03874", size = 38898, upload-time = "2026-08-17T19:49:49.514Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/93/0dd6adca026a616c3a92974566b43381eea4b475ce1f36c062b8271a9ac5/tiktoken-0.13.0-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:eaaaef47c2406277181d2086484c317bf7fc433e2d5d03ff94f56b0dcec87471", size = 1034977, upload-time = "2026-05-15T04:51:00.957Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/77/5ec6e6bc5b30bed6d93f7f2162d8f6b32437b3ba27cb527cfe004f6109c9/tiktoken-0.13.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:ca8b310bd93b3772cb1b7922d915446864860f562bdfe4825c63a0aed3fb28cd", size = 983635, upload-time = "2026-05-15T04:51:02.629Z" },
-    { url = "https://files.pythonhosted.org/packages/94/b0/c8ae9aff00d625c50659b4513e707a0462c4bf5d4d6cc1b802103225c02e/tiktoken-0.13.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:32e0c12305105002c047b3bb1070b0dd9a73b0cb3b2856a8972b810e7a4f5881", size = 1116036, upload-time = "2026-05-15T04:51:04.082Z" },
-    { url = "https://files.pythonhosted.org/packages/1b/ac/6a5dddd1d0a6018ecb389bd0353e6b4a515eb4d2286611bd0ace1937b9e1/tiktoken-0.13.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:5ba5fd62507a932d1241346179e3b39bc7bf7408f03c272652d93b3bedf5db24", size = 1135544, upload-time = "2026-05-15T04:51:05.229Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/b8/585032b4384b2f7dcdaddcb52865c83a701a420d09e3c2b4a2be1c450c57/tiktoken-0.13.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:d108bc2d470fc53c8ecd24f2c0fd2b5f98c33e87cdb6aa2e9b8c5dced703d273", size = 1182217, upload-time = "2026-05-15T04:51:06.517Z" },
-    { url = "https://files.pythonhosted.org/packages/cd/b6/993ff1ded3958215fd341a847b8e5ffeb5de473f435296870d314fc91ac4/tiktoken-0.13.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:cb99cb5127449f58d0a2d5f5ccfb390d8dbdfd919c221246caaee29d8725ed51", size = 1239404, upload-time = "2026-05-15T04:51:07.843Z" },
-    { url = "https://files.pythonhosted.org/packages/dd/3d/fef7e06e3b33e7538db0ced734cf9fe23b6832d2ac4990c119c377aec55e/tiktoken-0.13.0-cp314-cp314-win_amd64.whl", hash = "sha256:115c4f26ffa11caac8b54eea35c2ad38c612c20a48d35dd15d70a02ac6f51f58", size = 918686, upload-time = "2026-05-15T04:51:08.925Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/82/a7fc44582bc32ab00de988a2299bf77c077f59068b233109e34b7d6ca7e6/tiktoken-0.13.0-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:472527e9132952f2fbf77cd290658bacf003d4d5a3fabc18e5fbd407cbae4d9b", size = 1034454, upload-time = "2026-05-15T04:51:10.035Z" },
-    { url = "https://files.pythonhosted.org/packages/37/d0/24d8a890c14f432a05cea669c17bebeaa99f96a7c79523b590f564246411/tiktoken-0.13.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:4e2f67d27c9626cdd25fe33d9313c5cdb3d8d82da646b68d6eb8e7e9c20e6448", size = 982976, upload-time = "2026-05-15T04:51:11.23Z" },
-    { url = "https://files.pythonhosted.org/packages/49/b7/2ab43f62788a9266187a9bfc1d3af99ad83e5eaa25fbef168a69cd5ad14f/tiktoken-0.13.0-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:2b920b35805cd64585a37c3dc7ce65fba4d2d36016be01e1d7942482ca29093a", size = 1115526, upload-time = "2026-05-15T04:51:12.608Z" },
-    { url = "https://files.pythonhosted.org/packages/64/39/1494321ed323ce7a14d88e3cd6cb9058625977df1c6961ddc492bd10a9f3/tiktoken-0.13.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:493af3aa28a4aaf2e3d2600a2ee717252c9bf5ab38fff94eb5a02db5ab77e5ad", size = 1136466, upload-time = "2026-05-15T04:51:13.926Z" },
-    { url = "https://files.pythonhosted.org/packages/96/d9/dfd086aa2d918c563a140720e0ce296cada1634efd2783d5cf51e05f984e/tiktoken-0.13.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:6644c9c2b5cf3916f5a3641d7d12fdb3f006a7b3d9ff6acdaec44e29ab1ff91e", size = 1181863, upload-time = "2026-05-15T04:51:15.025Z" },
-    { url = "https://files.pythonhosted.org/packages/2f/68/a18b4f307086954fdae32714cb4f85562e34f9d34ab206e61f1816aa6018/tiktoken-0.13.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:5cb65b60b9408563676d874a3a4ee573370066f0dc4e29d84e82e989c6517424", size = 1239218, upload-time = "2026-05-15T04:51:16.103Z" },
-    { url = "https://files.pythonhosted.org/packages/16/5b/f2aa703a4fc5d2dff73460a7d46cc2f3f44aa0f3dd8eeb20d2a0ecf68862/tiktoken-0.13.0-cp314-cp314t-win_amd64.whl", hash = "sha256:85b78cc3a2c3d48723ca751fa981f1fedccd54194ca0471b957364353a898b07", size = 918110, upload-time = "2026-05-15T04:51:17.237Z" },
+    { url = "https://files.pythonhosted.org/packages/59/b0/1cf129f4af8fc513931f931023def596b7c4bfc77026513cd9d851da9e88/tiktoken-0.14.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:e067f4cbcc5d036e8aff7fe7a6b530a8f4de2e4616ad9005a24a1879e24e6450", size = 1096273, upload-time = "2026-08-17T19:49:05.807Z" },
+    { url = "https://files.pythonhosted.org/packages/62/85/2ae74575e321148484147e10b53c3b1717c59ebaa9edb4fe18b1f5c055f8/tiktoken-0.14.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:f2af4a336ea56d6c14f27741a0e1d8294a35dd0b038bcf990d232ebb54eb994b", size = 1040269, upload-time = "2026-08-17T19:49:06.943Z" },
+    { url = "https://files.pythonhosted.org/packages/89/29/92a1120a12e4bcf2d5464350d1a91b68a433d63ce656bb7f806c27aec09c/tiktoken-0.14.0-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:f702e0aeeb6506e57687e881c59e844ebe8f0a6a097ddafe20e3ab25f387be4e", size = 1186101, upload-time = "2026-08-17T19:49:08.102Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/7d/144af98dc5ad68108451a82e2f5a17f80e2663f5115058b8dfd215c1ad02/tiktoken-0.14.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:e3442bbb2f0c588cec876061e37ae67b455b9df9978b003c8fe30e45f2ef5b42", size = 1204457, upload-time = "2026-08-17T19:49:09.28Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/1f/be7cb06ab2108f612f3e92e7b76cf391e192db0db37a984616f0cc32aafc/tiktoken-0.14.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:979c1524f753b662b0f3cd261b135afe6659cce33caaa7a5ea00dd1756b3055c", size = 1251716, upload-time = "2026-08-17T19:49:10.509Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/6b/81f158d0f90adb826cd704069c2129a046cb784a2a09861009519fc41cf4/tiktoken-0.14.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:2cc19ac87b41c9493c9778ff5847f0c8bbcf5bd0ec6b87ce06c1c802adc8a771", size = 1315432, upload-time = "2026-08-17T19:49:11.844Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/ec/f5fa35ec13f07279fdcaf3cc9c04bbb154ea591d23978651f2b672593e8a/tiktoken-0.14.0-cp314-cp314-win_amd64.whl", hash = "sha256:eceeff0c62419bc78d4b6e70a4762a4d25df3ae8f2d5946e3853ce93e7a57098", size = 988046, upload-time = "2026-08-17T19:49:13.282Z" },
+    { url = "https://files.pythonhosted.org/packages/68/c9/7756717408d3d0dfea3f046c9466144b28afde39ff69d5808f2475dcd7f5/tiktoken-0.14.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:6eb94895c45f26bb8f5546e5fd8a069efcf6e3f108ea9d5cbe3bf6f7f3983438", size = 1096261, upload-time = "2026-08-17T19:49:14.351Z" },
+    { url = "https://files.pythonhosted.org/packages/79/29/46ad8061f57bd9f8b2ea0aa82bf574e0f2aa040b0857a1582adba9957899/tiktoken-0.14.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:86951a971c53979ec857bd8c4a32dc227ab0fd33f6c12a3bd62d3fbf5f0bfcaa", size = 1040183, upload-time = "2026-08-17T19:49:15.707Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/7c/3184d17b868456f17b60b1a75f5ec0405618a43aa753336df341d8f11781/tiktoken-0.14.0-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:e2eca764c53490f8930dbce329e0769f11108d87d908282a80c5c130e26e7037", size = 1186719, upload-time = "2026-08-17T19:49:16.84Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/e8/46de4400d5bf859f640feee85bd7e32235f68ddf25db53c63be78e581e3a/tiktoken-0.14.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:26cc4b4840fa0e9f4b72ed489883e12f57e00d1021ca794720e3c29a12f0edef", size = 1204660, upload-time = "2026-08-17T19:49:17.987Z" },
+    { url = "https://files.pythonhosted.org/packages/29/ce/af8964c38bc8226dd8950305b7a255fa33345d5572f78af7275a313d28e0/tiktoken-0.14.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:2fc834fbe3f6a0736905c36ab709537e6840dbd63b982dc9e0216ae7d305ba1a", size = 1250932, upload-time = "2026-08-17T19:49:19.28Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/4b/323631116fc986d9cc5bbeb2b8223c7c85e61a8bb94ea5ab4951023b149b/tiktoken-0.14.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:ca4db6ff5c5bf600f9b7761a0070ed44dfe5797a76bd432fb978bc480ef40c58", size = 1315190, upload-time = "2026-08-17T19:49:20.467Z" },
+    { url = "https://files.pythonhosted.org/packages/18/8b/ba48a73729c9270989b36f37ab2ed5525e52690d715097c9fa791aaa5d05/tiktoken-0.14.0-cp314-cp314t-win_amd64.whl", hash = "sha256:7aab286a020660a039097912a088236b985d18a3090d73f136c4413d29d37ca0", size = 987717, upload-time = "2026-08-17T19:49:21.704Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/10/b73b7e319179e0f60b32475f783b044f9cece872c53b6662664e9084b0d0/tiktoken-0.14.0-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:14b47e3674f2624803a8acc8fb367b7e24fc53055f9df3296482fe9a3a34a232", size = 1096280, upload-time = "2026-08-17T19:49:22.779Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/6b/09999a9bf1d559670d1680e8f8e419ac0e2c5f6aac82e9bfdf70f260b30a/tiktoken-0.14.0-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:19d643d701fdaa70e5b9c7f8f96abcaffe77ca5e482a3a1a7dde46feb4284695", size = 1040433, upload-time = "2026-08-17T19:49:23.998Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/7b/8537be0836f3df99b2a636b44399bfa43cd757f2b8b4097dacb794cf24a7/tiktoken-0.14.0-cp315-cp315-manylinux_2_28_aarch64.whl", hash = "sha256:e4ddf863b59347deaa92302dcd90e5eb003cdc9be06ec2b692c38d1bdd9efd49", size = 1186989, upload-time = "2026-08-17T19:49:25.021Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/9d/f9c56d7a943a4468abf9ef37661bb9b8e0cd3aa8aa87368c7146cc3f3222/tiktoken-0.14.0-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:60c47ca69ddda0dea8256fffd12e1b86f4b59734a20e4a70c61f63cc5f021df4", size = 1204615, upload-time = "2026-08-17T19:49:26.37Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/d2/98a38579db25c4a8a84e31dd95d9072ec5f21f7e70de591da0412e29b25b/tiktoken-0.14.0-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:728303a072163130c5b477b1f20d6211895569c1d5302c24ffc93a3009160871", size = 1251828, upload-time = "2026-08-17T19:49:27.423Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/83/467be424746c039c5493c0f4102feab16b9b48eb6f5c089b2a2438e3cde2/tiktoken-0.14.0-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:3c5349c9f916283bba32bec8af69b763e4faa304dc004d0eaaea66a3cf004c1f", size = 1316260, upload-time = "2026-08-17T19:49:29.101Z" },
+    { url = "https://files.pythonhosted.org/packages/02/ee/ddf46ca78e371f5890e96b6e7d089a85b3536432be219851eb0481786ca8/tiktoken-0.14.0-cp315-cp315-win_amd64.whl", hash = "sha256:1b6e4adcfd285c44502aed51df98aaaca4f0fea028165dbf8a9e857b9f98d8ea", size = 988230, upload-time = "2026-08-17T19:49:30.246Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/00/5162e90c851a28da18ed382d34898b79a8022548e5619a64e14c03ce7c3d/tiktoken-0.14.0-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:11d8211b290855d2721334ff17dd9b3a17bfb26872be01f25d73612ef7ece890", size = 1096186, upload-time = "2026-08-17T19:49:31.656Z" },
+    { url = "https://files.pythonhosted.org/packages/65/97/a5a7bfccf25b1bb65e82bae8edff11ac3c9c041c374b7b4a823d60c38133/tiktoken-0.14.0-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:d0781223705199b289faa59601bb9c2441712d4c600dd13c43d8fd6a33d22cd5", size = 1039947, upload-time = "2026-08-17T19:49:32.848Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/ba/ef427fc638f1439181c5e12dd26b70e881861f89c007aa7e5b36300f8342/tiktoken-0.14.0-cp315-cp315t-manylinux_2_28_aarch64.whl", hash = "sha256:2ea70afba6b9eddbf22c165142e5f0a2ad7aa36a452873c48b57bb2aeb8492ae", size = 1186997, upload-time = "2026-08-17T19:49:34.121Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/88/2f3f85a968cdc514152129af0a060ebcccb067005a2f29b0d5ef3c838514/tiktoken-0.14.0-cp315-cp315t-manylinux_2_28_x86_64.whl", hash = "sha256:78571efc311c30b73f31eb949a921d6dac39a5d9dc42d1cfa8f8db157b3447b1", size = 1205211, upload-time = "2026-08-17T19:49:35.284Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/f6/80760e98a08e6649d2d68afb6035af713121dfb615acce8c4f73810ec438/tiktoken-0.14.0-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:86f66c85e796f5d05d5c4a60ec1d40cbfebc47a32464053528c797163fa9ab89", size = 1251479, upload-time = "2026-08-17T19:49:36.419Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/84/50966fb6918a0fb9b32721277e5342bf729a2d74350074d662fbedf9772e/tiktoken-0.14.0-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:149d97453c4c98c04b081d64a85e635921269b532710d6faf81e9e82b790e7d3", size = 1316673, upload-time = "2026-08-17T19:49:37.756Z" },
+    { url = "https://files.pythonhosted.org/packages/35/5e/9b01afd037bfa22a0033963fa091e0f75b6fb15cd85bffb42ff86e697323/tiktoken-0.14.0-cp315-cp315t-win_amd64.whl", hash = "sha256:561e7580f84a79859af1ef6f676968e9030fcc3fe195700b15235bca64f009c9", size = 987929, upload-time = "2026-08-17T19:49:38.947Z" },
 ]
 
 [[package]]
@@ -4562,16 +4596,17 @@ name = "torch"
 version = "2.13.0"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
+    "python_full_version >= '3.15' and sys_platform == 'darwin'",
     "python_full_version < '3.15' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "fsspec", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "jinja2", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "networkx", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "setuptools", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "sympy", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "typing-extensions", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "filelock", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "fsspec", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "jinja2", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "networkx", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "setuptools", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "sympy", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "typing-extensions", marker = "(python_full_version < '3.15' and sys_platform == 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:d849b390e07d8d333ce8ecaf91b273c656c598379a19c9acf1318a883f6b391c", upload-time = "2026-07-08T12:26:28Z" },
@@ -4619,28 +4654,24 @@ version = "2.13.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and sys_platform == 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
-    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
+    "python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
     "python_full_version < '3.15' and sys_platform != 'darwin' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra != 'group-8-synthorg-fine-tune-gpu'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "fsspec", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "jinja2", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "networkx", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "setuptools", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "sympy", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
-    { name = "typing-extensions", marker = "(python_full_version >= '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu') or (python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu')" },
+    { name = "filelock", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "fsspec", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "jinja2", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "networkx", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "setuptools", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "sympy", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "typing-extensions", marker = "(python_full_version < '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version >= '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform != 'darwin' and extra == 'group-8-synthorg-fine-tune-cpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.13.0%2Bcpu-cp314-cp314-linux_s390x.whl", hash = "sha256:dec241fef3984c0d1edadd1f58708e218d4eae881ceef7bc10cf9964d41b68b9", upload-time = "2026-07-08T19:30:20Z" },
@@ -4689,22 +4720,22 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "5.15.0"
+version = "5.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "numpy", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "packaging", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "pyyaml", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "regex", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "safetensors", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "tokenizers", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "tqdm", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "typer", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "regex" },
+    { name = "safetensors" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+    { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/3f/d89353267d511e18f137dfd7769d07837350c11b88408ce1dfe2e93e56c7/transformers-5.15.0.tar.gz", hash = "sha256:bbf98f57b2ddd7c4ecbccfa2c0069017aa6fd01cc204bd50cbc0eeadcf2a13b8", size = 9377983, upload-time = "2026-08-10T10:27:23.261Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/92/c50c61da7046bbb59a4d011291aeadcfb4d7980ab36fdb31e93823a3fb93/transformers-5.15.1.tar.gz", hash = "sha256:27c996bd9075ddc82d40f8590dfdc81ea45f611bfca477e0db5d7fd257a482f7", size = 9378434, upload-time = "2026-08-19T11:28:20.33Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/43/81355710a4c84e9420e11a86d41a5364deb561f2ef36dfdf254a07371bbb/transformers-5.15.0-py3-none-any.whl", hash = "sha256:d7f007736f67749ae9490c4f8cb5d30b452ae2d68c8675e50ba8d63ea7feb107", size = 11749280, upload-time = "2026-08-10T10:27:20.416Z" },
+    { url = "https://files.pythonhosted.org/packages/41/c4/a12e1d9b387fb0c40a57116db82b457e8c771cb419163cda29204d74a595/transformers-5.15.1-py3-none-any.whl", hash = "sha256:b7cdf238ff583e3a58dbc7fa34da1aaf091ce063141f65a30538160bd5afe93f", size = 11749582, upload-time = "2026-08-19T11:28:16.726Z" },
 ]
 
 [[package]]
@@ -4745,7 +4776,7 @@ name = "triton"
 version = "3.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "importlib-metadata", marker = "(python_full_version < '3.15' and extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (python_full_version >= '3.15' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
+    { name = "importlib-metadata", marker = "(python_full_version < '3.15' and extra != 'extra-8-synthorg-fine-tune-cpu' and extra != 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-gpu' and extra != 'group-8-synthorg-fine-tune-cpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/40/71/e01aa7ad573883ed9456f130226babdec70b005e098c4d6226a6238e761b/triton-3.7.1-cp314-cp314-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fe4ea396a06171f1f1f58cbd39c70b09294398f7dd7c620939bab54ad6f934fa", size = 184705764, upload-time = "2026-06-17T20:03:59.064Z" },
@@ -4780,10 +4811,10 @@ name = "typer"
 version = "0.27.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "annotated-doc", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "annotated-doc" },
     { name = "colorama", marker = "(sys_platform == 'win32' and extra == 'extra-8-synthorg-fine-tune-cpu') or (sys_platform == 'win32' and extra == 'extra-8-synthorg-fine-tune-gpu') or (sys_platform == 'win32' and extra == 'group-8-synthorg-fine-tune-cpu') or (sys_platform == 'win32' and extra == 'group-8-synthorg-fine-tune-gpu') or (sys_platform != 'win32' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "rich", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
-    { name = "shellingham", marker = "extra == 'extra-8-synthorg-fine-tune-cpu' or extra == 'extra-8-synthorg-fine-tune-gpu' or extra == 'group-8-synthorg-fine-tune-cpu' or extra == 'group-8-synthorg-fine-tune-gpu'" },
+    { name = "rich" },
+    { name = "shellingham" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ae/40/4a3db7990d1f62a53182aa96eaef57aeb2886a27f90a195bc66713565d31/typer-0.27.1.tar.gz", hash = "sha256:a79bef8469a79c45498e7b814ecf8d603cc7644e9acbd9e19cac0334240b18df", size = 203994, upload-time = "2026-08-03T14:41:03.438Z" }
 wheels = [
