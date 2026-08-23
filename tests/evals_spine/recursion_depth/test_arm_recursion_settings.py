@@ -4,6 +4,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from evals.errors import RecursionDepthCeilingUndeclaredError
 from evals.recursion_depth.tree import _declared_maximum, arm_recursion
@@ -12,6 +13,7 @@ from synthorg.engine.decomposition.service import (
     _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
     _DEFAULT_TREE_TIMEOUT_SECONDS,
 )
+from synthorg.observability.events.evals import EVALS_RECURSION_SETTINGS_ARMED
 from synthorg.settings.registry import SettingsRegistry, get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import mock_of
@@ -194,6 +196,29 @@ async def test_the_bound_is_read_off_the_service_that_will_accept_the_write() ->
 
     with pytest.raises(RecursionDepthCeilingUndeclaredError, match="not registered"):
         await arm_recursion(settings, enabled=True)
+
+
+async def test_the_armed_event_reports_every_setting_that_was_written() -> None:
+    """The log is the only record of which ceilings a killed cell ran under.
+
+    A cell killed by a ceiling reports only that it produced no tree, so this
+    event is what an operator reads to find out which bound fired. A hand-kept
+    kwarg list is one added setting away from silently omitting it, which is
+    exactly when the log is being read.
+    """
+    settings = mock_of[SettingsService](
+        set=AsyncMock(return_value=None), registry=get_registry()
+    )
+
+    with structlog.testing.capture_logs() as logs:
+        await arm_recursion(settings, enabled=True)
+
+    written = {call.args[1]: call.args[2] for call in settings.set.await_args_list}
+    armed = [
+        entry for entry in logs if entry["event"] == EVALS_RECURSION_SETTINGS_ARMED
+    ]
+    assert len(armed) == 1
+    assert {key: armed[0][key] for key in written} == written
 
 
 async def test_an_absent_setting_is_refused_rather_than_guessed() -> None:

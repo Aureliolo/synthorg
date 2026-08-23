@@ -233,16 +233,10 @@ def _declared_maximum(settings: SettingsService, key: str) -> float:
     return definition.max_value
 
 
-async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
-    """Put the decomposition service into the shape this sweep measures.
+def _armed_coordination(settings: SettingsService, *, enabled: bool) -> dict[str, str]:
+    """Every coordination value the sweep arms, keyed by setting.
 
-    Written through the real settings service rather than handed to the
-    decomposition service directly, so the sweep exercises the live read the
-    product does: an operator enabling recursion applies to the next
-    decomposition, and a harness that bypassed that would be measuring a code
-    path the deployment does not take.
-
-    BOTH decomposition ceilings are armed. Arming the per-session one alone is
+    BOTH decomposition ceilings are here. Arming the per-session one alone is
     worse than arming neither: it raises what a session may spend while the
     whole-tree ceiling stays at a default sized for request handlers, and a
     tree is many sessions by construction, so the outer bound then cannot admit
@@ -253,8 +247,40 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
 
     The tree ceiling is armed at the widest value the setting accepts, which
     ships as 24 hours. No per-tree bound is derivable, so the sweep does not
-    invent one: what actually bounds it is the per-session ceiling below, the
-    session budget, and the per-session token and cost ceilings.
+    invent one: what actually bounds it is the per-session ceiling, the session
+    budget, and the per-session token and cost ceilings.
+
+    Args:
+        settings: The service whose registry declares the ceilings.
+        enabled: Whether an oversized subtask is decomposed again.
+
+    Returns:
+        The settings to write, in the order they are written.
+
+    Raises:
+        RecursionDepthCeilingUndeclaredError: A setting the sweep opens to its
+            ceiling has none to read.
+    """
+    artifact = _declared_maximum(settings, _OPEN_ARTIFACT_SETTING)
+    criteria = _declared_maximum(settings, _OPEN_CRITERIA_SETTING)
+    return {
+        "recursive_decomposition_enabled": "true" if enabled else "false",
+        _OPEN_ARTIFACT_SETTING: str(int(artifact)),
+        _OPEN_CRITERIA_SETTING: str(int(criteria)),
+        "decomposition_timeout_seconds": _PLANNING_TIMEOUT_SECONDS,
+        _TREE_TIMEOUT_SETTING: str(_declared_maximum(settings, _TREE_TIMEOUT_SETTING)),
+        "decomposition_max_retries": _PLANNING_MAX_RETRIES,
+    }
+
+
+async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
+    """Put the decomposition service into the shape this sweep measures.
+
+    Written through the real settings service rather than handed to the
+    decomposition service directly, so the sweep exercises the live read the
+    product does: an operator enabling recursion applies to the next
+    decomposition, and a harness that bypassed that would be measuring a code
+    path the deployment does not take.
 
     Callers must not dispatch work until this returns. The writes are
     sequential and not transactional, so a decomposition starting in between
@@ -270,39 +296,14 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
         RecursionDepthCeilingUndeclaredError: A setting the sweep opens to its
             ceiling has none to read.
     """
-    artifact_threshold = _declared_maximum(settings, _OPEN_ARTIFACT_SETTING)
-    criteria_threshold = _declared_maximum(settings, _OPEN_CRITERIA_SETTING)
-    tree_timeout = _declared_maximum(settings, _TREE_TIMEOUT_SETTING)
-    await settings.set(
-        "coordination",
-        "recursive_decomposition_enabled",
-        "true" if enabled else "false",
-    )
-    await settings.set(
-        "coordination", _OPEN_ARTIFACT_SETTING, str(int(artifact_threshold))
-    )
-    await settings.set(
-        "coordination", _OPEN_CRITERIA_SETTING, str(int(criteria_threshold))
-    )
-    await settings.set(
-        "coordination", "decomposition_timeout_seconds", _PLANNING_TIMEOUT_SECONDS
-    )
-    await settings.set("coordination", _TREE_TIMEOUT_SETTING, str(tree_timeout))
-    await settings.set(
-        "coordination", "decomposition_max_retries", _PLANNING_MAX_RETRIES
-    )
+    armed = _armed_coordination(settings, enabled=enabled)
+    for key, value in armed.items():
+        await settings.set("coordination", key, value)
     # Logged because a cell killed by a ceiling reports only that it produced
     # no tree: which ceilings were in force is otherwise recoverable from the
-    # source alone, and the source is not what an operator reads at 3am.
-    logger.info(
-        EVALS_RECURSION_SETTINGS_ARMED,
-        recursion_enabled=enabled,
-        leaf_subtask_threshold=artifact_threshold,
-        subtask_max_criteria=criteria_threshold,
-        decomposition_timeout_seconds=_PLANNING_TIMEOUT_SECONDS,
-        decomposition_tree_timeout_seconds=tree_timeout,
-        decomposition_max_retries=_PLANNING_MAX_RETRIES,
-    )
+    # source alone, and the source is not what an operator reads at 3am. Logged
+    # FROM the mapping that was written, so the two cannot come to disagree.
+    logger.info(EVALS_RECURSION_SETTINGS_ARMED, **armed)
 
 
 def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
