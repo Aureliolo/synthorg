@@ -156,7 +156,6 @@ from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.risk_overrides import RiskOverrideController
 from synthorg.api.controllers.role_versions import RoleVersionController
-from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.settings.core import SettingsCoreController
 from synthorg.api.controllers.settings.observability import (
     SettingsObservabilityController,
@@ -326,7 +325,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     OntologyAdminController,
     ClientController,
     ReviewController,
-    ScalingController,
     TrainingController,
     MetaController,
     MetaEvolutionController,
@@ -486,7 +484,6 @@ __all__ = [
     "ReviewController",
     "RiskOverrideController",
     "RoleVersionController",
-    "ScalingController",
     "SettingsCoreController",
     "SettingsObservabilityController",
     "SettingsSecurityController",

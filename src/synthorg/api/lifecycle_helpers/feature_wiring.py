@@ -321,14 +321,14 @@ async def _wire_signals_service(
 
     Best-effort + idempotent. Gated on a connected persistence backend
     and a performance tracker (the one hard aggregator dependency); the
-    scaling service and the error / evolution / telemetry stores are
-    optional and degrade to empty per-domain summaries when absent, so
-    the signals MCP handlers and ``/meta/chat`` signal reads come online
-    rather than 503-ing.
+    error / evolution / telemetry stores are optional and degrade to
+    empty per-domain summaries when absent, so the signals MCP handlers
+    and ``/meta/chat`` signal reads come online rather than 503-ing.
 
     Raises:
         SubsystemDeclinedError: No persistence backend or no performance
-            tracker, the two the aggregator cannot degrade without.
+            tracker, the two the aggregator cannot degrade without, or the
+            facade's construction failed.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -396,7 +396,6 @@ async def _wire_signals_service(
             performance_tracker=performance_tracker,
             agent_ids_provider=agent_ids_provider,
             approval_store=effective_approval_store,
-            scaling_service=app_state.slice(HrStateSlice).scaling_service,
             error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
             evolution_store=evolution_outcome_store_of(app_state),
             budget_total_monthly=budget_total_monthly,
@@ -406,7 +405,7 @@ async def _wire_signals_service(
             ).metrics_store,
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
@@ -415,7 +414,12 @@ async def _wire_signals_service(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        # Declining by returning leaves the reconciler nothing to report but
+        # "see the wiring log", and every optional collaborator above is
+        # already None-checked before the call, so nothing reaching here is an
+        # expected condition: it is construction failing on our own bug.
+        msg = f"signals facade construction failed: {type(exc).__name__}"
+        raise SubsystemDeclinedError(msg) from exc
     logger.info(API_APP_STARTUP, service="signals", note="wired")
 
 

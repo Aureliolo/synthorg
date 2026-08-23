@@ -10,14 +10,12 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.hr.performance.tracker import PerformanceTracker
-from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -30,7 +28,6 @@ from synthorg.meta.signals.evolution import EvolutionSignalAggregator
 from synthorg.meta.signals.performance import (
     PerformanceSignalAggregator,
 )
-from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.snapshot import _EMPTY_PERFORMANCE, SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from tests._shared import mock_of
@@ -341,19 +338,6 @@ class TestCoordinationSignalAggregator:
         assert result.coordination_overhead_pct is None
 
 
-class TestScalingSignalAggregator:
-    """Scaling aggregator tests."""
-
-    async def test_returns_scaling_summary(self) -> None:
-        service = mock_of[ScalingService](
-            get_recent_decisions=MagicMock(return_value=()),
-            get_recent_actions=MagicMock(return_value=()),
-        )
-        agg = ScalingSignalAggregator(service=service)
-        result = await agg.aggregate(since=_week_ago(), until=_now())
-        assert isinstance(result, OrgScalingSummary)
-
-
 class TestErrorSignalAggregator:
     """Error aggregator tests."""
 
@@ -390,10 +374,6 @@ class TestSnapshotBuilder:
     def _make_builder(self) -> SnapshotBuilder:
         """Create a builder with default aggregators."""
         tracker = _make_mock_tracker()
-        scaling_service = mock_of[ScalingService](
-            get_recent_decisions=MagicMock(return_value=()),
-            get_recent_actions=MagicMock(return_value=()),
-        )
         return SnapshotBuilder(
             performance=PerformanceSignalAggregator(
                 tracker=tracker,
@@ -401,7 +381,6 @@ class TestSnapshotBuilder:
             ),
             budget=BudgetSignalAggregator(cost_record_provider=_empty_provider),
             coordination=CoordinationSignalAggregator(),
-            scaling=ScalingSignalAggregator(service=scaling_service),
             errors=ErrorSignalAggregator(),
             evolution=EvolutionSignalAggregator(),
             telemetry=TelemetrySignalAggregator(),
@@ -414,7 +393,6 @@ class TestSnapshotBuilder:
         assert isinstance(snapshot.performance, OrgPerformanceSummary)
         assert isinstance(snapshot.budget, OrgBudgetSummary)
         assert isinstance(snapshot.coordination, OrgCoordinationSummary)
-        assert isinstance(snapshot.scaling, OrgScalingSummary)
         assert isinstance(snapshot.errors, OrgErrorSummary)
         assert isinstance(snapshot.evolution, OrgEvolutionSummary)
         assert isinstance(snapshot.telemetry, OrgTelemetrySummary)
@@ -435,17 +413,12 @@ class TestSnapshotBuilder:
         self, exc: BaseException
     ) -> SnapshotBuilder:
         """Builder whose performance aggregator raises ``exc``."""
-        scaling_service = mock_of[ScalingService](
-            get_recent_decisions=MagicMock(return_value=()),
-            get_recent_actions=MagicMock(return_value=()),
-        )
         return SnapshotBuilder(
             performance=mock_of[PerformanceSignalAggregator](
                 aggregate=AsyncMock(side_effect=exc),
             ),
             budget=BudgetSignalAggregator(cost_record_provider=_empty_provider),
             coordination=CoordinationSignalAggregator(),
-            scaling=ScalingSignalAggregator(service=scaling_service),
             errors=ErrorSignalAggregator(),
             evolution=EvolutionSignalAggregator(),
             telemetry=TelemetrySignalAggregator(),

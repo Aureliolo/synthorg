@@ -36,9 +36,9 @@ class TestMetaConfigDefaults:
         cfg = SelfImprovementConfig()
         assert cfg.enabled is False
 
-    def test_default_has_10_rules(self) -> None:
+    def test_default_has_9_rules(self) -> None:
         rules = default_rules()
-        assert len(rules) == 10
+        assert len(rules) == 9
 
-    def test_default_has_9_mcp_tools(self) -> None:
-        assert len(SIGNAL_TOOLS) == 9
+    def test_default_has_8_mcp_tools(self) -> None:
+        assert len(SIGNAL_TOOLS) == 8

@@ -1,8 +1,8 @@
 """Signal summary models for the self-improvement meta-loop.
 
-Typed summaries aggregated from 7 org-wide signal domains
-(performance, budget, coordination, scaling, errors, evolution,
-telemetry) plus the composite snapshot passed to the rule engine.
+Typed summaries aggregated from 6 org-wide signal domains
+(performance, budget, coordination, errors, evolution, telemetry) plus
+the composite snapshot passed to the rule engine.
 """
 
 from datetime import UTC, datetime
@@ -119,49 +119,6 @@ class OrgCoordinationSummary(BaseModel):
     sample_count: int = Field(default=0, ge=0)
 
 
-class ScalingDecisionSummary(BaseModel):
-    """Summary of a recent scaling decision and its outcome.
-
-    Attributes:
-        decision_id: Stable identifier from the underlying scaling
-            decision.  Exposed so consumers and tests can join outcomes
-            back to specific decisions without relying on positional
-            ordering or other fields that may not be unique.
-        action_type: What was proposed (hire/prune/hold).
-        outcome: What happened (executed/failed/deferred/rejected).
-        source_strategy: Which strategy proposed it.
-        rationale: Why.
-        created_at: When the decision was made.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    decision_id: NotBlankStr
-    action_type: NotBlankStr
-    outcome: NotBlankStr
-    source_strategy: NotBlankStr
-    rationale: NotBlankStr
-    created_at: AwareDatetime
-
-
-class OrgScalingSummary(BaseModel):
-    """Org-wide scaling signal summary.
-
-    Attributes:
-        recent_decisions: Recent scaling decisions with outcomes.
-        total_decisions: Total decisions in the window.
-        success_rate: Fraction of decisions that were executed.
-        most_common_signal: Most frequently triggered signal.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    recent_decisions: tuple[ScalingDecisionSummary, ...] = ()
-    total_decisions: int = Field(default=0, ge=0)
-    success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
-    most_common_signal: NotBlankStr | None = None
-
-
 class ErrorCategorySummary(BaseModel):
     """Summary of errors in a single category.
 
@@ -271,7 +228,7 @@ class OrgTelemetrySummary(BaseModel):
 class OrgBenchmarkSummary(BaseModel):
     """Org-wide golden-benchmark signal summary.
 
-    Unlike the seven always-on runtime signals, this is an *opt-in,
+    Unlike the six always-on runtime signals, this is an *opt-in,
     offline* signal: it is populated only when a scorecard history
     directory (``meta.scorecard_history_dir``) is configured and has
     recorded golden-company benchmark runs. An all-default (empty)
@@ -319,7 +276,6 @@ class OrgSignalSnapshot(BaseModel):
         performance: Performance signal summary.
         budget: Budget signal summary.
         coordination: Coordination metrics summary.
-        scaling: Scaling signal summary.
         errors: Error taxonomy summary.
         evolution: Evolution signal summary.
         telemetry: Telemetry signal summary.
@@ -333,7 +289,6 @@ class OrgSignalSnapshot(BaseModel):
     performance: OrgPerformanceSummary
     budget: OrgBudgetSummary
     coordination: OrgCoordinationSummary
-    scaling: OrgScalingSummary
     errors: OrgErrorSummary
     evolution: OrgEvolutionSummary
     telemetry: OrgTelemetrySummary

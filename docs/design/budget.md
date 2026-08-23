@@ -135,10 +135,8 @@ derived (`budget/spending_summary.py`):
 `0.0` was the lie: it says "we have spent nothing" when the truth is "this ceiling
 cannot measure what we are spending". Everything downstream reads the verdict rather
 than inferring safety from a low number: the budget page and the overview endpoint
-surface it beside the total, a deliverable receipt states it next to `total_cost`, and
-the HR scaling budget signal treats an unmeasurable window the way it already treats a
-budget that cannot answer at all (burn 100%, alert `hard_stop`), so hires are blocked
-rather than waved through on an unmeasured zero. Writing a positive
+surface it beside the total, and a deliverable receipt states it next to `total_cost`.
+Writing a positive
 `budget.run_hard_ceiling` while every configured connection is unmeasurable is refused
 at write time, naming the token ceiling as the bound that does bind.
 

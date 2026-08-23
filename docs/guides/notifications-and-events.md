@@ -86,7 +86,6 @@ The dashboard subscribes to real-time events over `/api/v1/ws`. External consume
 | `budget` | `BudgetThresholdWarn`, `BudgetThresholdCritical`, `BudgetThresholdHardStop` | `BudgetEnforcer` |
 | `meetings` | `MeetingScheduled`, `MeetingStarted`, `MeetingTranscript`, `MeetingCompleted` | `MeetingScheduler`, `MeetingOrchestrator` |
 | `activity` | unified activity feed stream (lifecycle, task, cost, tool, delegation) | `ActivityFeedService` |
-| `scaling` | `ScalingDecisionCreated`, `ScalingDecisionApproved`, `ScalingDecisionExecuted` | `ScalingService` |
 | `settings` | `SettingChanged` | `SettingsChangeDispatcher` |
 
 ### Subscribe (JavaScript)

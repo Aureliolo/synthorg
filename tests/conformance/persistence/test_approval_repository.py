@@ -269,13 +269,13 @@ class TestApprovalRepository:
     ) -> None:
         repo = _approval_repo(backend)
         await repo.save(
-            _make_item(approval_id="hire", action_type="scaling:hire"),
+            _make_item(approval_id="hire", action_type="org:hire"),
         )
         await repo.save(
             _make_item(approval_id="deploy", action_type="deploy:production"),
         )
 
-        filter_spec = ApprovalFilterSpec(action_types=(NotBlankStr("scaling:hire"),))
+        filter_spec = ApprovalFilterSpec(action_types=(NotBlankStr("org:hire"),))
         hires = await repo.query(filter_spec)
         ids = {r.id for r in hires}
         assert as_uuid("hire") in ids
@@ -286,10 +286,10 @@ class TestApprovalRepository:
     ) -> None:
         repo = _approval_repo(backend)
         await repo.save(
-            _make_item(approval_id="hire", action_type="scaling:hire"),
+            _make_item(approval_id="hire", action_type="org:hire"),
         )
         await repo.save(
-            _make_item(approval_id="prune", action_type="scaling:prune"),
+            _make_item(approval_id="prune", action_type="org:fire"),
         )
         await repo.save(
             _make_item(approval_id="deploy", action_type="deploy:production"),
@@ -297,8 +297,8 @@ class TestApprovalRepository:
 
         filter_spec = ApprovalFilterSpec(
             action_types=(
-                NotBlankStr("scaling:hire"),
-                NotBlankStr("scaling:prune"),
+                NotBlankStr("org:hire"),
+                NotBlankStr("org:fire"),
             )
         )
         rows = await repo.query(filter_spec)

@@ -36,7 +36,6 @@ from litestar.handlers.base import BaseRouteHandler
 from synthorg.api.rate_limits._subject import KeyPolicy
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
-from synthorg.observability import get_logger
 from synthorg.settings.definitions.api import (
     ACTIVITIES_INFLIGHT_MAX,
     BROWNFIELD_IMPORT_INFLIGHT_MAX,
@@ -51,9 +50,6 @@ from synthorg.settings.definitions.api import (
     PROVIDERS_HEALTH_RECHECK_ALL_INFLIGHT_MAX,
     PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
 )
-
-logger = get_logger(__name__)
-
 
 # Every rate-limited endpoint registered here.  Keys are stable,
 # human-readable operation ids of the form ``<domain>.<action>``.
@@ -322,10 +318,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "requests.update_scope": (50, 60),
     # reviews
     "reviews.decide_stage": (50, 60),
-    # scaling
-    "scaling.trigger_evaluation": (10, 60),
-    "scaling.update_priority": (30, 60),
-    "scaling.update_strategy": (30, 60),
     # security
     "security.audit_query": (30, 60),
     "security.risk_override_create": (20, 60),

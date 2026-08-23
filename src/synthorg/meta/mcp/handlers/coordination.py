@@ -1,11 +1,9 @@
 """Coordination domain MCP handlers.
 
-Wires 9 tools across coordination, scaling, and ceremony-policy to
-their service facades:
+Wires 5 tools across coordination and ceremony-policy to their service
+facades:
 
 - :class:`CoordinationService` (``get_task_metrics``, ``metrics_list``)
-- :class:`ScalingDecisionService` (``scaling_list_decisions``,
-  ``_get_decision``, ``_get_config``, ``_trigger``)
 - :class:`CeremonyPolicyService` (``ceremony_policy_get``,
   ``_get_resolved``, ``_get_active_strategy``)
 
@@ -31,14 +29,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.state import HrStateSlice, scaling_decision_service_of
 from synthorg.meta.mcp.domains._simple_args import (
     CeremonyPolicyGetResolvedArgs,
     CoordinationGetTaskMetricsArgs,
     CoordinationMetricsListArgs,
-    ScalingGetDecisionArgs,
-    ScalingListDecisionsArgs,
-    ScalingTriggerArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -70,10 +64,6 @@ logger = get_logger(__name__)
 _WHY_COORDINATION_NOT_WIRED = (
     "coordination_service is not attached to app_state; wire it in "
     "application bootstrap"
-)
-_WHY_SCALING_NOT_WIRED = (
-    "scaling_decision_service is not attached to app_state; wire it "
-    "in application bootstrap"
 )
 _WHY_CEREMONY_NOT_WIRED = (
     "ceremony_policy_service is not attached to app_state; wire it "
@@ -163,131 +153,6 @@ async def _coordination_metrics_list(
     return ok(data=dump_many(records), pagination=meta)
 
 
-# --- Scaling --------------------------------------------------------------
-
-
-async def _scaling_list_decisions(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_scaling_list_decisions`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_scaling_list_decisions"
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
-    try:
-        page = typed_args(arguments, ScalingListDecisionsArgs)
-        offset, limit = page.offset, page.limit
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        decisions, total = await scaling_decision_service_of(app_state).list_decisions(
-            offset=offset,
-            limit=limit,
-        )
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    meta = PaginationMeta(total=total, offset=offset, limit=limit)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=dump_many(decisions), pagination=meta)
-
-
-async def _scaling_get_decision(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_scaling_get_decision`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_scaling_get_decision"
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
-    try:
-        decision_id = typed_args(arguments, ScalingGetDecisionArgs).decision_id
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        decision = await scaling_decision_service_of(app_state).get_decision(
-            NotBlankStr(decision_id),
-        )
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    if decision is None:
-        missing = NotFoundError(f"Scaling decision {decision_id!r} not found")
-        log_handler_invoke_failed(tool, missing, decision_id=str(decision_id))
-        return err(missing, domain_code="not_found")
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=decision.model_dump(mode="json"))
-
-
-async def _scaling_get_config(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_scaling_get_config`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_scaling_get_config"
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
-    try:
-        config = await scaling_decision_service_of(app_state).get_config()
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=config.model_dump(mode="json"))
-
-
-async def _scaling_trigger(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_scaling_trigger`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_scaling_trigger"
-    if app_state.slice(HrStateSlice).scaling_decision_service is None:
-        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
-    try:
-        agent_ids = typed_args(arguments, ScalingTriggerArgs).agent_ids
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        decisions = await scaling_decision_service_of(app_state).trigger(agent_ids)
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=dump_many(decisions))
-
-
 # --- Ceremony policy ------------------------------------------------------
 
 
@@ -374,10 +239,6 @@ COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
         "synthorg_coordination_metrics_list": _coordination_metrics_list,
-        "synthorg_scaling_list_decisions": _scaling_list_decisions,
-        "synthorg_scaling_get_decision": _scaling_get_decision,
-        "synthorg_scaling_get_config": _scaling_get_config,
-        "synthorg_scaling_trigger": _scaling_trigger,
         "synthorg_ceremony_policy_get": _ceremony_policy_get,
         "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
         "synthorg_ceremony_policy_get_active_strategy": (

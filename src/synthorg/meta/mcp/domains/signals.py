@@ -1,8 +1,8 @@
 """Signal domain MCP tools.
 
-Defines 9 signal tools as ``MCPToolDef`` instances for the unified
+Defines 8 signal tools as ``MCPToolDef`` instances for the unified
 registry, covering org health snapshots, performance, budget,
-coordination, scaling, errors, evolution, proposals, and submission.
+coordination, errors, evolution, proposals, and submission.
 """
 
 from typing import TYPE_CHECKING
@@ -17,7 +17,6 @@ from synthorg.meta.mcp.domains._simple_args import (
     SignalsGetOrgSnapshotArgs,
     SignalsGetPerformanceArgs,
     SignalsGetProposalsArgs,
-    SignalsGetScalingHistoryArgs,
     SignalsSubmitProposalArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
@@ -52,7 +51,7 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
         "signals",
         "get_org_snapshot",
         "Get a complete org-wide signal snapshot combining performance, "
-        "budget, coordination, scaling, errors, evolution, and telemetry.",
+        "budget, coordination, errors, evolution, and telemetry.",
         _SINCE_UNTIL_PROPERTIES,
         required=("since",),
         args_model=SignalsGetOrgSnapshotArgs,
@@ -83,15 +82,6 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
         _SINCE_UNTIL_PROPERTIES,
         required=("since",),
         args_model=SignalsGetCoordinationArgs,
-    ),
-    read_tool(
-        "signals",
-        "get_scaling_history",
-        "Get recent scaling decisions and their outcomes "
-        "(hired, pruned, deferred, rejected).",
-        _SINCE_UNTIL_PROPERTIES,
-        required=("since",),
-        args_model=SignalsGetScalingHistoryArgs,
     ),
     read_tool(
         "signals",

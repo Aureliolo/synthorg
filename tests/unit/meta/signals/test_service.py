@@ -23,7 +23,6 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
@@ -51,7 +50,6 @@ def _empty_snapshot() -> OrgSignalSnapshot:
             orchestration_overhead=0.0,
         ),
         coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
         errors=OrgErrorSummary(),
         evolution=OrgEvolutionSummary(),
         telemetry=OrgTelemetrySummary(),
@@ -117,9 +115,8 @@ def _make_service(
     *,
     approval_store: AsyncMock,
     snapshot_builder: AsyncMock,
-    scaling: AsyncMock | None,
 ) -> SignalsService:
-    """Build a SignalsService with a configurable scaling aggregator."""
+    """Build a SignalsService over stub aggregators."""
     return SignalsService(
         performance=_aggregator_with(
             OrgPerformanceSummary(
@@ -140,7 +137,6 @@ def _make_service(
             ),
         ),
         coordination=_aggregator_with(OrgCoordinationSummary()),
-        scaling=scaling,
         errors=_aggregator_with(OrgErrorSummary()),
         evolution=_aggregator_with(OrgEvolutionSummary()),
         telemetry=_aggregator_with(OrgTelemetrySummary()),
@@ -154,7 +150,6 @@ def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsSe
     return _make_service(
         approval_store=approval_store,
         snapshot_builder=snapshot_builder,
-        scaling=_aggregator_with(OrgScalingSummary()),
     )
 
 
@@ -172,7 +167,7 @@ class TestSignalsServiceSnapshot:
 
 
 class TestSignalsServiceAvailability:
-    def test_all_domains_available_when_scaling_wired(
+    def test_every_domain_reports_available(
         self,
         service: SignalsService,
     ) -> None:
@@ -180,25 +175,10 @@ class TestSignalsServiceAvailability:
             "performance": True,
             "budget": True,
             "coordination": True,
-            "scaling": True,
             "errors": True,
             "evolution": True,
             "telemetry": True,
         }
-
-    def test_scaling_unavailable_without_scaling_aggregator(
-        self,
-        approval_store: AsyncMock,
-        snapshot_builder: AsyncMock,
-    ) -> None:
-        service = _make_service(
-            approval_store=approval_store,
-            snapshot_builder=snapshot_builder,
-            scaling=None,
-        )
-        availability = service.domain_availability()
-        assert availability["scaling"] is False
-        assert all(ok for domain, ok in availability.items() if domain != "scaling")
 
 
 class TestSignalsServicePerDomain:
@@ -208,7 +188,6 @@ class TestSignalsServicePerDomain:
             ("get_performance", OrgPerformanceSummary),
             ("get_budget", OrgBudgetSummary),
             ("get_coordination", OrgCoordinationSummary),
-            ("get_scaling_history", OrgScalingSummary),
             ("get_error_patterns", OrgErrorSummary),
             ("get_evolution_outcomes", OrgEvolutionSummary),
             ("get_telemetry", OrgTelemetrySummary),

@@ -2,11 +2,10 @@
 
 Holds the agent-lifecycle services: the agent registry, performance
 tracker, training service + plan service, personality service, agent
-version service, activity feed, agent-health service, and the scaling
-service + decision service. The registry / performance tracker /
-training service are constructor-injected; the rest are wired lazily
-once persistence is connected. All fields are ``None`` until wired;
-readers guard accordingly.
+version service, activity feed, and agent-health service. The registry /
+performance tracker / training service are constructor-injected; the rest
+are wired lazily once persistence is connected. All fields are ``None``
+until wired; readers guard accordingly.
 """
 
 from pydantic import ConfigDict
@@ -23,10 +22,6 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.personalities.service import PersonalityService
 from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.scaling.decision_service import (
-    ScalingDecisionService,
-)
-from synthorg.hr.scaling.service import ScalingService
 from synthorg.hr.training.plan_service import TrainingPlanService
 from synthorg.hr.training.service import TrainingService
 
@@ -45,8 +40,6 @@ class HrStateSlice(BaseFeatureStateSlice):
     activity_feed_service: ActivityFeedService | None = None
     agent_health_service: AgentHealthService | None = None
     hiring_service: HiringService | None = None
-    scaling_service: ScalingService | None = None
-    scaling_decision_service: ScalingDecisionService | None = None
     pruning_service: PruningService | None = None
     eval_loop_coordinator: EvalLoopCoordinator | None = None
     eval_loop_cycle_scheduler: EvalLoopCycleScheduler | None = None
@@ -137,18 +130,4 @@ def hiring_service_of(app_state: AppStateSliceMixin) -> HiringService:
     """
     return require_service(
         app_state.slice(HrStateSlice).hiring_service, "Hiring Service"
-    )
-
-
-def scaling_decision_service_of(
-    app_state: AppStateSliceMixin,
-) -> ScalingDecisionService:
-    """Resolve the scaling decision service from its slice, or raise 503.
-
-    Returns:
-        The wired scaling decision service.
-    """
-    return require_service(
-        app_state.slice(HrStateSlice).scaling_decision_service,
-        "Scaling Decision Service",
     )

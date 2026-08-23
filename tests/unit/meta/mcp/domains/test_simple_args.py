@@ -23,7 +23,6 @@ from synthorg.meta.mcp.domains._simple_args import (
     MetaTriggerCycleArgs,
     ReportsGenerateArgs,
     ReviewsCreateArgs,
-    ScalingTriggerArgs,
     SignalsGetOrgSnapshotArgs,
     SignalsGetProposalsArgs,
     SignalsSubmitProposalArgs,
@@ -89,14 +88,6 @@ class TestAnalyticsArgs:
 
 
 class TestCoordinationArgs:
-    def test_scaling_trigger_requires_agent_ids(self) -> None:
-        args = ScalingTriggerArgs(agent_ids=("agent-1",))
-        assert args.agent_ids == ("agent-1",)
-        with pytest.raises(ValidationError):
-            ScalingTriggerArgs.model_validate({"agent_ids": []})
-        with pytest.raises(ValidationError):
-            ScalingTriggerArgs.model_validate({"agent_ids": ["   "]})
-
     def test_ceremony_resolved_optional_dept(self) -> None:
         args = CeremonyPolicyGetResolvedArgs()
         assert args.department is None

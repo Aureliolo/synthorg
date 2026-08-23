@@ -175,45 +175,6 @@ PRUNING_REQUEST_STATUS_TRANSITIONED: Final[str] = (
     "hr.pruning_request.status_transitioned"
 )
 
-# -- Scaling -----------------------------------------------------------------
-
-HR_SCALING_TRIGGER_REQUESTED: Final[str] = "hr.scaling.trigger_requested"
-HR_SCALING_TRIGGER_SKIPPED: Final[str] = "hr.scaling.trigger_skipped"
-HR_SCALING_CONTEXT_BUILT: Final[str] = "hr.scaling.context_built"
-HR_SCALING_STRATEGY_EVALUATED: Final[str] = "hr.scaling.strategy_evaluated"
-HR_SCALING_DECISIONS_MERGED: Final[str] = "hr.scaling.decisions_merged"
-HR_SCALING_GUARD_APPLIED: Final[str] = "hr.scaling.guard_applied"
-HR_SCALING_DECISION_APPROVED: Final[str] = "hr.scaling.decision_approved"
-HR_SCALING_DECISION_REJECTED: Final[str] = "hr.scaling.decision_rejected"
-HR_SCALING_EXECUTION_STARTED: Final[str] = "hr.scaling.execution_started"
-HR_SCALING_EXECUTED: Final[str] = "hr.scaling.executed"
-HR_SCALING_EXECUTION_FAILED: Final[str] = "hr.scaling.execution_failed"
-HR_SCALING_CYCLE_STARTED: Final[str] = "hr.scaling.cycle_started"
-HR_SCALING_CYCLE_COMPLETE: Final[str] = "hr.scaling.cycle_complete"
-HR_SCALING_SERVICE_STARTED: Final[str] = "hr.scaling.service_started"
-HR_SCALING_SERVICE_STOPPED: Final[str] = "hr.scaling.service_stopped"
-HR_SCALING_SIGNAL_COLLECTION_DEGRADED: Final[str] = (
-    "hr.scaling.signal_collection_degraded"
-)
-HR_SCALING_MANUAL_TRIGGER_REQUESTED: Final[str] = "hr.scaling.manual_trigger_requested"
-HR_SCALING_CONFIG_VALIDATION_FAILED: Final[str] = "hr.scaling.config_validation_failed"
-HR_SCALING_STRATEGY_VALIDATION_FAILED: Final[str] = (
-    "hr.scaling.strategy_validation_failed"
-)
-HR_SCALING_MODEL_VALIDATION_FAILED: Final[str] = "hr.scaling.model_validation_failed"
-HR_SCALING_SERVICE_VALIDATION_FAILED: Final[str] = (
-    "hr.scaling.service_validation_failed"
-)
-HR_SCALING_CONTROLLER_SERVICE_MISSING: Final[str] = (
-    "hr.scaling.controller_service_missing"
-)
-HR_SCALING_STRATEGY_TOGGLED: Final[str] = "hr.scaling.strategy_toggled"
-HR_SCALING_PRIORITY_ORDER_UPDATED: Final[str] = "hr.scaling.priority_order_updated"
-HR_SCALING_FACTORY_ASSEMBLED: Final[str] = "hr.scaling.factory_assembled"
-HR_SCALING_CONTROLLER_INVALID_REQUEST: Final[str] = (
-    "hr.scaling.controller_invalid_request"
-)
-
 HR_PERFORMANCE_CURRENCY_INVARIANT_VIOLATED: Final[str] = (
     "hr.performance.currency_invariant_violated"
 )

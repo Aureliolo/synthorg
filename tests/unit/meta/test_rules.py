@@ -8,7 +8,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     ProposalAltitude,
@@ -21,7 +20,6 @@ from synthorg.meta.rules.builtin import (
     ErrorSpikeRule,
     QualityDecliningRule,
     RedundancyRule,
-    ScalingFailureRule,
     StragglerBottleneckRule,
     SuccessRateDropRule,
     default_rules,
@@ -46,8 +44,6 @@ def _snap(  # noqa: PLR0913
     overhead_pct: float | None = None,
     straggler: float | None = None,
     redundancy: float | None = None,
-    scaling_total: int = 0,
-    scaling_success: float = 0.0,
     error_findings: int = 0,
 ) -> OrgSignalSnapshot:
     return OrgSignalSnapshot(
@@ -70,10 +66,6 @@ def _snap(  # noqa: PLR0913
             coordination_overhead_pct=overhead_pct,
             straggler_gap_ratio=straggler,
             redundancy_rate=redundancy,
-        ),
-        scaling=OrgScalingSummary(
-            total_decisions=scaling_total,
-            success_rate=scaling_success,
         ),
         errors=OrgErrorSummary(total_findings=error_findings),
         evolution=OrgEvolutionSummary(),
@@ -229,26 +221,6 @@ class TestRedundancyRule:
         assert rule.evaluate(_snap(redundancy=0.2)) is None
 
 
-# ── ScalingFailureRule ─────────────────────────────────────────────
-
-
-class TestScalingFailureRule:
-    """Scaling failure rule tests."""
-
-    def test_fires_high_failure_rate(self) -> None:
-        rule = ScalingFailureRule(threshold=0.5, min_decisions=3)
-        match = rule.evaluate(_snap(scaling_total=5, scaling_success=0.4))
-        assert match is not None
-
-    def test_does_not_fire_low_failure(self) -> None:
-        rule = ScalingFailureRule(threshold=0.5)
-        assert rule.evaluate(_snap(scaling_total=5, scaling_success=0.8)) is None
-
-    def test_does_not_fire_insufficient_decisions(self) -> None:
-        rule = ScalingFailureRule(min_decisions=3)
-        assert rule.evaluate(_snap(scaling_total=2, scaling_success=0.0)) is None
-
-
 # ── ErrorSpikeRule ─────────────────────────────────────────────────
 
 
@@ -271,9 +243,9 @@ class TestErrorSpikeRule:
 class TestDefaultRules:
     """Default rules set tests."""
 
-    def test_returns_10_rules(self) -> None:
+    def test_returns_9_rules(self) -> None:
         rules = default_rules()
-        assert len(rules) == 10
+        assert len(rules) == 9
 
     def test_all_have_unique_names(self) -> None:
         rules = default_rules()
@@ -334,7 +306,7 @@ class TestRuleEngine:
     def test_rule_count_and_names(self) -> None:
         rules = default_rules()
         engine = RuleEngine(rules=rules)
-        assert engine.rule_count == 10
+        assert engine.rule_count == 9
         assert "quality_declining" in engine.rule_names
         assert "benchmark_regression" in engine.rule_names
 

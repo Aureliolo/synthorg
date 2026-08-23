@@ -276,22 +276,6 @@ METRIC_REGISTRY: tuple[MetricDescriptor, ...] = (
         value_type="int",
         min_value=0.0,
     ),
-    # ── Scaling ───────────────────────────────────────────────
-    MetricDescriptor(
-        path="scaling.total_decisions",
-        label="Total Scaling Decisions",
-        domain="scaling",
-        value_type="int",
-        min_value=0.0,
-    ),
-    MetricDescriptor(
-        path="scaling.success_rate",
-        label="Scaling Success Rate",
-        domain="scaling",
-        value_type="float",
-        min_value=0.0,
-        max_value=1.0,
-    ),
     # ── Errors ────────────────────────────────────────────────
     MetricDescriptor(
         path="errors.total_findings",

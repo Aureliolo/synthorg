@@ -20,7 +20,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     ProposalAltitude,
@@ -54,7 +53,6 @@ class SignalAggregator(Protocol):
         OrgPerformanceSummary
         | OrgBudgetSummary
         | OrgCoordinationSummary
-        | OrgScalingSummary
         | OrgErrorSummary
         | OrgEvolutionSummary
         | OrgTelemetrySummary

@@ -6,8 +6,7 @@ request: each call reads the feature's ``<namespace>.<key>`` flag fresh from the
 settings resolver, so toggling it in dashboard Settings takes effect with no
 restart. When the flag is off the entrypoint 503s with a clear, settings-pointing
 message rather than serving a capability the operator has turned off. Used by the
-Chief-of-Staff chat capabilities, the research and knowledge MCP tools, and the
-auto-scaling evaluate endpoint.
+Chief-of-Staff chat capabilities and the research and knowledge MCP tools.
 
 This lives in the settings layer (not ``api``) so the ``meta`` MCP handlers gate
 through ``synthorg.settings`` (which they already depend on for the config

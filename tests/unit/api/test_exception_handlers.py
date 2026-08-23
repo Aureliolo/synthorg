@@ -2029,20 +2029,6 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 ErrorCategory.INTERNAL,
             ),
             (
-                "synthorg.hr.scaling.errors",
-                "ScalingCooldownActiveError",
-                409,
-                ErrorCode.SCALING_COOLDOWN_ACTIVE,
-                ErrorCategory.CONFLICT,
-            ),
-            (
-                "synthorg.hr.scaling.errors",
-                "ScalingError",
-                500,
-                ErrorCode.INTERNAL_ERROR,
-                ErrorCategory.INTERNAL,
-            ),
-            (
                 "synthorg.settings.errors",
                 "SettingNotFoundError",
                 404,

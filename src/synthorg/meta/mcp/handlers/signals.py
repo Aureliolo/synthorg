@@ -1,9 +1,9 @@
 """Signal domain MCP handlers.
 
-9 tools backing the Chief-of-Staff agent's org-health view: composite
-org snapshot, six per-domain summaries (performance, budget,
-coordination, scaling, errors, evolution), proposal listing, and
-proposal submission.
+8 tools backing the Chief-of-Staff agent's org-health view: composite
+org snapshot, five per-domain summaries (performance, budget,
+coordination, errors, evolution), proposal listing, and proposal
+submission.
 
 All handlers shim through :class:`SignalsService` exposed on
 ``AppState``; per-window reads thread ``since`` / ``until`` from the
@@ -32,7 +32,6 @@ from synthorg.meta.mcp.domains._simple_args import (
     SignalsGetOrgSnapshotArgs,
     SignalsGetPerformanceArgs,
     SignalsGetProposalsArgs,
-    SignalsGetScalingHistoryArgs,
     SignalsSubmitProposalArgs,
     _SinceOptionalUntilArgs,
 )
@@ -259,11 +258,6 @@ SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
             tool_name="synthorg_signals_get_coordination",
             method_name="get_coordination",
             args_model=SignalsGetCoordinationArgs,
-        ),
-        "synthorg_signals_get_scaling_history": _make_window_handler(
-            tool_name="synthorg_signals_get_scaling_history",
-            method_name="get_scaling_history",
-            args_model=SignalsGetScalingHistoryArgs,
         ),
         "synthorg_signals_get_error_patterns": _make_window_handler(
             tool_name="synthorg_signals_get_error_patterns",

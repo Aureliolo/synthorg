@@ -3,10 +3,10 @@
 
 Declares the HR feature's surface: its ``hr`` settings namespace, the
 :class:`HrStateSlice` (agent registry, performance, training,
-personalities, versions, activity, health, scaling), its REST
-controllers (agents, identity versions, activity, personalities,
-scaling, training, quality, collaboration), and the agents + quality
-MCP domains mounted by the composition root.
+personalities, versions, activity, health), its REST controllers
+(agents, identity versions, activity, personalities, training, quality,
+collaboration), and the agents + quality MCP domains mounted by the
+composition root.
 """
 
 from collections.abc import Mapping
@@ -27,7 +27,6 @@ from synthorg.api.controllers.agents.observability import (
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.personalities import PersonalityPresetController
 from synthorg.api.controllers.quality import QualityController
-from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.training import TrainingController
 from synthorg.hr._construction import wire_construction
 from synthorg.hr.state import HrStateSlice
@@ -71,7 +70,6 @@ FEATURE: FeatureModule = FeatureManifest(
         AgentIdentityVersionController,
         ActivityController,
         PersonalityPresetController,
-        ScalingController,
         TrainingController,
         QualityController,
         CollaborationController,
@@ -94,7 +92,6 @@ FEATURE: FeatureModule = FeatureManifest(
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
-        "ScalingDecisionService",
         "HiringService",
         "RoleStaffingService",
         "try_org_hire_resume",

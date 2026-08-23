@@ -25,7 +25,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     PromptChange,
@@ -42,7 +41,6 @@ from synthorg.meta.models import (
     RolloutStrategyType,
     RuleMatch,
     RuleSeverity,
-    ScalingDecisionSummary,
     TrendDirection,
 )
 
@@ -124,7 +122,6 @@ def _make_snapshot(**kwargs: object) -> OrgSignalSnapshot:
         "performance": _make_performance_summary(),
         "budget": _make_budget_summary(),
         "coordination": OrgCoordinationSummary(),
-        "scaling": OrgScalingSummary(),
         "errors": OrgErrorSummary(),
         "evolution": OrgEvolutionSummary(),
         "telemetry": OrgTelemetrySummary(),
@@ -561,22 +558,6 @@ class TestOrgSignalSnapshot:
         snap = _make_snapshot()
         assert snap.collected_at is not None
         assert snap.collected_at.tzinfo is not None
-
-
-class TestScalingDecisionSummary:
-    """ScalingDecisionSummary model tests."""
-
-    def test_valid(self) -> None:
-        s = ScalingDecisionSummary(
-            decision_id="scaling-d-001",
-            action_type="hire",
-            outcome="executed",
-            source_strategy="workload",
-            rationale="Queue depth exceeded threshold",
-            created_at=datetime.now(UTC),
-        )
-        assert s.action_type == "hire"
-        assert s.decision_id == "scaling-d-001"
 
 
 class TestErrorCategorySummary:

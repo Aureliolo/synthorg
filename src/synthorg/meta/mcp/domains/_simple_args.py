@@ -3,13 +3,13 @@
 Houses args models for the smaller MCP domains where each tool's
 shape is too small to justify its own module:
 
-* ``meta`` (5 tools)
+* ``meta`` (6 tools)
 * ``budget`` + ``budget_versions`` (5 tools)
 * ``analytics`` + ``metrics`` + ``reports`` (8 tools)
-* ``coordination`` + ``coordination_metrics`` + ``scaling`` +
-  ``ceremony_policy`` (10 tools)
+* ``coordination`` + ``coordination_metrics`` + ``ceremony_policy``
+  (5 tools)
 * ``quality`` + ``reviews`` + ``evaluation_versions`` (9 tools)
-* ``signals`` (9 tools)
+* ``signals`` (8 tools)
 * ``approvals`` (5 tools)
 
 Heavy-cardinality domains (``agents``, ``communication``,
@@ -244,7 +244,7 @@ class ReportsGenerateArgs(_ArgsBase):
     )
 
 
-# ── coordination / scaling / ceremony policy ────────────────────────
+# ── coordination / ceremony policy ─────────────────────────────────
 
 
 class CoordinationGetTaskMetricsArgs(_ArgsBase):
@@ -274,29 +274,6 @@ class CoordinationMetricsListArgs(PaginationFields):
         """
         _check_time_window_ordering(self.since, self.until)
         return self
-
-
-class ScalingListDecisionsArgs(PaginationFields):
-    """Args for ``scaling.list_decisions``."""
-
-
-class ScalingGetDecisionArgs(_ArgsBase):
-    """Args for ``scaling.get_decision``."""
-
-    decision_id: NotBlankStr = Field(description="Decision UUID")
-
-
-class ScalingGetConfigArgs(_ArgsBase):
-    """Args for ``scaling.get_config``: no fields."""
-
-
-class ScalingTriggerArgs(_ArgsBase):
-    """Args for ``scaling.trigger``."""
-
-    agent_ids: tuple[NotBlankStr, ...] = Field(
-        min_length=1,
-        description="Agents to evaluate for scaling (non-empty)",
-    )
 
 
 class CeremonyPolicyGetArgs(_ArgsBase):
@@ -391,10 +368,6 @@ class SignalsGetBudgetArgs(_SinceOptionalUntilArgs):
 
 class SignalsGetCoordinationArgs(_SinceOptionalUntilArgs):
     """Args for ``signals.get_coordination``."""
-
-
-class SignalsGetScalingHistoryArgs(_SinceOptionalUntilArgs):
-    """Args for ``signals.get_scaling_history``."""
 
 
 class SignalsGetErrorPatternsArgs(_SinceOptionalUntilArgs):
@@ -535,10 +508,6 @@ __all__ = [
     "ReviewsListArgs",
     "ReviewsUpdateArgs",
     "RiskLevel",
-    "ScalingGetConfigArgs",
-    "ScalingGetDecisionArgs",
-    "ScalingListDecisionsArgs",
-    "ScalingTriggerArgs",
     "SignalsGetBudgetArgs",
     "SignalsGetCoordinationArgs",
     "SignalsGetErrorPatternsArgs",
@@ -546,6 +515,5 @@ __all__ = [
     "SignalsGetOrgSnapshotArgs",
     "SignalsGetPerformanceArgs",
     "SignalsGetProposalsArgs",
-    "SignalsGetScalingHistoryArgs",
     "SignalsSubmitProposalArgs",
 ]

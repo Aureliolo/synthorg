@@ -31,7 +31,6 @@ TOOL_ACCESS = (
     f"{TOOL_PREFIX}_get_performance",
     f"{TOOL_PREFIX}_get_budget",
     f"{TOOL_PREFIX}_get_coordination",
-    f"{TOOL_PREFIX}_get_scaling_history",
     f"{TOOL_PREFIX}_get_error_patterns",
     f"{TOOL_PREFIX}_get_evolution_outcomes",
     f"{TOOL_PREFIX}_get_proposals",

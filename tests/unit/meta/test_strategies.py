@@ -11,7 +11,6 @@ from synthorg.meta.models import (
     OrgErrorSummary,
     OrgEvolutionSummary,
     OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
     ProposalAltitude,
@@ -49,10 +48,6 @@ def _snap() -> OrgSignalSnapshot:
         coordination=OrgCoordinationSummary(
             coordination_overhead_pct=40.0,
             straggler_gap_ratio=2.5,
-        ),
-        scaling=OrgScalingSummary(
-            total_decisions=5,
-            success_rate=0.4,
         ),
         errors=OrgErrorSummary(total_findings=15),
         evolution=OrgEvolutionSummary(),
@@ -159,7 +154,6 @@ class TestConfigTuningStrategy:
             ("budget_overrun", {"days_until_exhausted": 7, "total_spend": 150}),
             ("coordination_cost_ratio", {"coordination_ratio": 0.45}),
             ("coordination_overhead", {"overhead_pct": 40.0}),
-            ("scaling_failure", {"failure_rate": 0.6, "total_decisions": 5}),
         ]
         for name, ctx in known:
             rules = (_rule(name, (ProposalAltitude.CONFIG_TUNING,), ctx),)

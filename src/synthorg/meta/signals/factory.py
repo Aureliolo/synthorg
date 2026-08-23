@@ -1,12 +1,12 @@
 # module-kind: code
 """Factory composing the SignalsService from live runtime collaborators.
 
-Assembles the seven per-domain aggregators, the snapshot builder, and the
-approval store into one :class:`SignalsService`. The scaling domain and
-the error / evolution / telemetry stores are optional: when their backing
-service or store is not wired they degrade to an empty per-domain summary
-rather than blocking the whole facade, so the signals MCP handlers and
-``/meta/chat`` signal reads come online with whatever data is available.
+Assembles the per-domain aggregators, the snapshot builder, and the
+approval store into one :class:`SignalsService`. The error / evolution /
+telemetry stores are optional: when their backing store is not wired they
+degrade to an empty per-domain summary rather than blocking the whole
+facade, so the signals MCP handlers and ``/meta/chat`` signal reads come
+online with whatever data is available.
 """
 
 from collections.abc import Callable, Sequence
@@ -18,7 +18,6 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.cost_record import CostRecord
 from synthorg.engine.classification.taxonomy_store_protocol import ErrorTaxonomyStore
 from synthorg.hr.performance.tracker import PerformanceTracker
-from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.evolution.outcome_store_protocol import EvolutionOutcomeStore
 from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
 from synthorg.meta.signals.budget import (
@@ -29,7 +28,6 @@ from synthorg.meta.signals.coordination import CoordinationSignalAggregator
 from synthorg.meta.signals.errors import ErrorSignalAggregator
 from synthorg.meta.signals.evolution import EvolutionSignalAggregator
 from synthorg.meta.signals.performance import PerformanceSignalAggregator
-from synthorg.meta.signals.scaling import ScalingSignalAggregator
 from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.signals.snapshot import SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
@@ -55,7 +53,6 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
     performance_tracker: PerformanceTracker,
     agent_ids_provider: Callable[[], Sequence[str]],
     approval_store: ApprovalStoreProtocol,
-    scaling_service: ScalingService | None = None,
     error_store: ErrorTaxonomyStore | None = None,
     evolution_store: EvolutionOutcomeStore | None = None,
     telemetry_counter: TelemetryEventCounter | None = None,
@@ -71,9 +68,6 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         agent_ids_provider: Callable returning the current active agent
             ids the performance aggregator iterates.
         approval_store: Shared store backing proposal submit / list.
-        scaling_service: Scaling service whose decision history feeds the
-            scaling aggregator; ``None`` degrades the scaling domain to
-            an empty summary.
         error_store: Optional error-taxonomy store.
         evolution_store: Optional evolution-outcome store.
         telemetry_counter: Optional telemetry event counter.
@@ -98,11 +92,6 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         budget_total_monthly=budget_total_monthly,
     )
     coordination = CoordinationSignalAggregator(store=coordination_metrics_store)
-    scaling = (
-        ScalingSignalAggregator(service=scaling_service)
-        if scaling_service is not None
-        else None
-    )
     errors = ErrorSignalAggregator(error_store)
     evolution = EvolutionSignalAggregator(evolution_store)
     telemetry = TelemetrySignalAggregator(telemetry_counter)
@@ -112,7 +101,6 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         performance=performance,
         budget=budget,
         coordination=coordination,
-        scaling=scaling,
         errors=errors,
         evolution=evolution,
         telemetry=telemetry,
@@ -122,7 +110,6 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         performance=performance,
         budget=budget,
         coordination=coordination,
-        scaling=scaling,
         errors=errors,
         evolution=evolution,
         telemetry=telemetry,

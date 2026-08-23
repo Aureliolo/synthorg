@@ -34,7 +34,6 @@ _CONFIDENCE_SUCCESS_RATE_DROP: Final[float] = 0.65
 _CONFIDENCE_BUDGET_OVERRUN: Final[float] = 0.8
 _CONFIDENCE_COORDINATION_COST_RATIO: Final[float] = 0.75
 _CONFIDENCE_COORDINATION_OVERHEAD: Final[float] = 0.7
-_CONFIDENCE_SCALING_FAILURE: Final[float] = 0.6
 
 # The rung normal-stakes work demands, which is the lever a task-capability
 # mismatch is corrected with: raising it sends the same work to a stronger
@@ -42,10 +41,6 @@ _CONFIDENCE_SCALING_FAILURE: Final[float] = 0.6
 _CAPABILITY_FLOOR_NORMAL_PATH: Final[str] = "engine.capability_floor_normal"
 _CAPABILITY_FLOOR_NORMAL_DEFAULT: Final[str] = "capable"
 _CAPABILITY_FLOOR_NORMAL_RAISED: Final[str] = "expert"
-
-# Scaling cooldown: default one hour, doubled to damp churn.
-_DEFAULT_COOLDOWN_SECONDS: Final[int] = 3600
-_DOUBLED_COOLDOWN_SECONDS: Final[int] = 7200
 
 
 class ConfigTuningStrategy:
@@ -125,8 +120,11 @@ class ConfigTuningStrategy:
             "budget_overrun": lambda: self._propose_budget_fix(ctx, snapshot),
             "coordination_cost_ratio": lambda: self._propose_coordination_cost_fix(ctx),
             "coordination_overhead": lambda: self._propose_overhead_fix(ctx),
-            "scaling_failure": lambda: self._propose_scaling_fix(ctx),
         }
+        # A rule absent from the map is not a fault and is not dropped: this
+        # is one strategy among several, and a detector with no config lever
+        # to pull (a straggler, a redundancy, a benchmark regression) is
+        # answered by a sibling strategy instead.
         builder = builders.get(rule_match.rule_name)
         return builder() if builder else None
 
@@ -370,54 +368,4 @@ class ConfigTuningStrategy:
             ),
             confidence=_CONFIDENCE_COORDINATION_OVERHEAD,
             source_rule="coordination_overhead",
-        )
-
-    def _propose_scaling_fix(
-        self,
-        ctx: dict[str, JsonValue],
-    ) -> ImprovementProposal:
-        """Return propose scaling fix."""
-        return ImprovementProposal(
-            id=uuid4(),
-            altitude=ProposalAltitude.CONFIG_TUNING,
-            title="Adjust scaling thresholds",
-            description=(
-                f"Scaling failure rate at "
-                f"{ctx.get('failure_rate', 0):.1%}. "
-                f"Widen scaling cooldown to reduce churn."
-            ),
-            rationale=ProposalRationale(
-                signal_summary=(
-                    f"Failure rate: "
-                    f"{ctx.get('failure_rate', 'N/A')}, "
-                    f"decisions: "
-                    f"{ctx.get('total_decisions', 'N/A')}"
-                ),
-                pattern_detected="High scaling failure rate",
-                expected_impact="Reduce failed scaling actions",
-                confidence_reasoning=(
-                    "Longer cooldown prevents rapid contradictory scaling decisions"
-                ),
-            ),
-            config_changes=(
-                ConfigChange(
-                    path="hr.scaling.cooldown_seconds",
-                    old_value=_DEFAULT_COOLDOWN_SECONDS,
-                    new_value=_DOUBLED_COOLDOWN_SECONDS,
-                    description="Double scaling cooldown period",
-                ),
-            ),
-            rollback_plan=RollbackPlan(
-                operations=(
-                    RollbackOperation(
-                        operation_type="revert_config",
-                        target="hr.scaling.cooldown_seconds",
-                        previous_value=_DEFAULT_COOLDOWN_SECONDS,
-                        description="Revert cooldown to 1 hour",
-                    ),
-                ),
-                validation_check="cooldown_seconds equals 3600",
-            ),
-            confidence=_CONFIDENCE_SCALING_FAILURE,
-            source_rule="scaling_failure",
         )

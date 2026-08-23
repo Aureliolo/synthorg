@@ -24,7 +24,7 @@ The following table compares major multi-agent frameworks that informed the desi
 | Budget management (CFO) | No | No | No | **Yes** |
 | Persistent agent memory | No | No | Basic | **Yes: hybrid dense + BM25 retrieval in the operational database** |
 | Agent personalities | Basic | Basic | Basic | **Deep: traits, styles, evolution** |
-| Dynamic team scaling | No | No | Manual | **Yes: auto + manual** |
+| Dynamic team scaling | No | No | Manual | Manual, plus an approval-gated hire when a review role is unstaffed |
 | Multiple company types | No | No | Manual | **Yes: templates + builder** |
 | Security ops agent | No | No | No | **Yes** |
 | Configurable autonomy | No | No | Limited | **Yes: full spectrum** |

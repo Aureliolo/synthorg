@@ -321,8 +321,7 @@ class MetaController(Controller):
         """Get per-domain signal availability + the improvement-cycle toggle.
 
         Reports each domain's availability from the wired
-        :class:`SignalsService`; the ``scaling`` domain reports
-        ``unavailable`` when no scaling service is wired.
+        :class:`SignalsService`.
 
         Returns:
             The improvement ``enabled`` flag and each signal domain's status.

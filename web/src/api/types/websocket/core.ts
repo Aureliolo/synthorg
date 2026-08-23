@@ -78,16 +78,13 @@ import type { WsEventType } from '../backend-enums.gen'
 // Synchronised with channel constants in `src/synthorg/api/channels.py`.
 // Admin-only channels (#dissent, #webhooks, #ratelimit) are not exposed
 // to dashboard subscribers; the user-scoped `user:{id}` channel is
-// dynamic and matched by prefix server-side, not by name here. The
-// `scaling` channel is reserved for future hr.scaling.* events; the
-// dashboard's scaling page subscribes today, but no Python emitter
-// publishes yet.
+// dynamic and matched by prefix server-side, not by name here.
 export const WS_CHANNELS = [
   'tasks', 'agents', 'budget', 'messages', 'system',
   'approvals', 'plans', 'meetings', 'artifacts', 'projects',
   'company', 'departments', 'clients', 'requests',
   'simulations', 'reviews', 'events', 'interrupts',
-  'scaling', 'cockpit', 'workflows',
+  'cockpit', 'workflows',
 ] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]

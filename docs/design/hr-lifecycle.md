@@ -1,6 +1,6 @@
 ---
 title: HR & Agent Lifecycle
-description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, dynamic scaling, firing, performance tracking, evaluation loop, agent evolution, and the five-pillar evaluation framework.
+description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, firing, performance tracking, evaluation loop, agent evolution, and the five-pillar evaluation framework.
 ---
 
 # HR & Agent Lifecycle
@@ -239,137 +239,6 @@ The pruning service automates performance-driven agent removal with mandatory hu
 - Transient offboarding failures are retried on subsequent cycles.
 
 Module: `src/synthorg/hr/pruning/` (models, policy, service).
-
-## Dynamic Scaling
-
-The scaling service closes the loop between workload, budget, skill coverage, and
-performance signals and the existing hiring/pruning pipelines. It evaluates four
-pluggable strategies in parallel, filters decisions through a guard chain, and
-produces approved scaling actions.
-
-### Architecture
-
-```d2
-Pipeline: "Scaling Pipeline" {
-  Triggers: {
-    Batched: BatchedScalingTrigger
-    Threshold: SignalThresholdTrigger
-    Composite: CompositeScalingTrigger
-  }
-  Context: ScalingContextBuilder {
-    Workload: WorkloadSignalSource
-    Budget: BudgetSignalSource
-    Skill: SkillSignalSource
-    Performance: PerformanceSignalSource
-  }
-  Strategies: "Strategies (parallel)" {
-    WAS: WorkloadAutoScaleStrategy
-    BC: BudgetCapStrategy
-    SG: SkillGapStrategy
-    PP: PerformancePruningStrategy
-  }
-  Guards: {
-    CR: ConflictResolver
-    CD: CooldownGuard
-    RL: RateLimitGuard
-    AG: ApprovalGateGuard
-  }
-  Execute: {
-    Hire: HiringService
-    Offboard: OffboardingService
-  }
-
-  Triggers -> Context -> Strategies -> Guards -> Execute
-}
-```
-
-Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.
-
-### Strategies
-
-| Strategy | Signals | Actions | Default |
-|----------|---------|---------|---------|
-| **WorkloadAutoScale** | avg utilisation, queue depth | HIRE when > 85% sustained, PRUNE when < 30% sustained | Enabled |
-| **BudgetCap** | burn rate %, alert level | PRUNE when > 90% safety margin, HOLD to block hires | Enabled |
-| **SkillGap** | coverage ratio, missing skills | HIRE with specific skill profile | Disabled (LLM cost) |
-| **PerformancePruning** | quality/collaboration trends | PRUNE via existing PruningPolicy | Enabled |
-
-Each strategy supports a headless (rule-based) path and an optional agent-delegated
-path (``agent_delegate`` config field). Agent delegation is protocol-stubbed but not
-implemented; the headless path is always used.
-
-**PerformancePruningStrategy** coordinates with the evolution system: when
-``defer_during_evolution`` is True (default), agents with recent evolution
-adaptations are skipped.
-
-### Guard Chain
-
-All decisions flow through guards sequentially before execution:
-
-1. **ConflictResolver**: priority-ordered resolution. Default: BudgetCap (0) >
-   PerformancePruning (1) > SkillGap (2) > Workload (3). HOLD from BudgetCap
-   blocks HIRE from lower-priority strategies.
-2. **CooldownGuard**: per action-type + target cooldown (default 1 hour).
-3. **RateLimitGuard**: global daily caps (default 3 hires, 1 prune per day).
-4. **ApprovalGateGuard**: routes decisions through ``ApprovalStore`` as
-   ``ApprovalItem`` entries for human approval.
-
-### Configuration
-
-```yaml
-scaling:
-  enabled: true
-  workload:
-    enabled: true
-    hire_threshold: 0.85
-    prune_threshold: 0.30
-  budget_cap:
-    enabled: true
-    safety_margin: 0.90
-    headroom_fraction: 0.60
-  skill_gap:
-    enabled: false
-  performance_pruning:
-    enabled: true
-    defer_during_evolution: true
-  triggers:
-    batched_interval_seconds: 900
-  guards:
-    cooldown_seconds: 3600
-    max_hires_per_day: 3
-    max_prunes_per_day: 1
-    approval_expiry_days: 7
-```
-
-### Dashboard
-
-The ``/scaling`` page shows:
-
-- **Signal gauges**: utilisation, budget burn, declining agent count
-- **Strategy controls**: enabled status, priority order
-- **Pending decisions**: awaiting human approval
-- **Recent decisions**: history with outcome and rationale
-
-Module: `src/synthorg/hr/scaling/` (models, protocols, strategies, signals,
-triggers, guards, context, config, factory, service).
-
-### Boot wiring and rollout
-
-The pipeline is OPT-IN but ghost-wired. `build_scaling_service` (in
-`hr/scaling/factory.py`) assembles the `ScalingService` over the hiring and
-offboarding services, and `wire_scaling` (in
-`api/lifecycle_helpers/scaling_wiring.py`) constructs it at startup whenever its
-collaborators are present, regardless of `hr.scaling_enabled`. The
-`hr.scaling_enabled` switch (off by default) is enforced live at the `/scaling`
-endpoints via `ensure_feature_enabled`, which 503s while it is off; toggling it
-applies on the next request with no restart. `wire_scaling` also constructs the
-durable `HiringService`, attaches the per-backend `hiring_requests` repository,
-and reloads in-flight requests so an approved hire is not orphaned by a restart.
-Gated on a connected persistence backend plus a wired registry, performance
-tracker, and approval store; absent any of those the service stays unwired and
-the endpoints 503.
-
----
 
 ## Firing / Offboarding
 
@@ -678,7 +547,7 @@ the need for more human labels.
 
 ## HR Service Layer
 
-MCP handlers and REST controllers never reach into HR repositories directly; every read goes through a narrow service facade so auditing, pagination, and optional-dependency degradation stay in one place per domain. The services follow the standard protocol + strategy + factory + config-discriminator pattern where interchangeable backends exist (e.g. `AutonomyPolicyService`, `ScalingConfigService`), and collapse to a single class where the behaviour is strictly orchestration (e.g. `ActivityFeedService`).
+MCP handlers and REST controllers never reach into HR repositories directly; every read goes through a narrow service facade so auditing, pagination, and optional-dependency degradation stay in one place per domain. The services follow the standard protocol + strategy + factory + config-discriminator pattern where interchangeable backends exist (e.g. `AutonomyPolicyService`, `PruningService`), and collapse to a single class where the behaviour is strictly orchestration (e.g. `ActivityFeedService`).
 
 | Service | Module | Role |
 |---|---|---|
@@ -686,7 +555,6 @@ MCP handlers and REST controllers never reach into HR repositories directly; eve
 | `AgentHealthService` | `src/synthorg/hr/health/service.py` | Derives a compact `AgentHealthReport` (`healthy` / `degraded` / `unavailable`) from the tightest populated `PerformanceTracker` window. Rejects reports where `recent_failed_count > recent_task_count` via a cross-field validator. |
 | `AgentVersionService` | `src/synthorg/hr/identity/version_service.py` | Reads paged identity-version history for `synthorg_agents_get_history`. Lifted out of the REST controller so the MCP surface doesn't depend on HTTP request/response shapes. |
 | `PersonalityService` | `src/synthorg/hr/personalities/service.py` | Thin facade over `PersonalityPresetService` for MCP list/get endpoints. |
-| `ScalingDecisionService` | `src/synthorg/hr/scaling/decision_service.py` | Wraps the scaling decision repository + trigger. MCP tools list paged decisions, look up a specific one, read current config, and trigger an evaluation. |
 | `TrainingService` (extended) | `src/synthorg/hr/training/service.py` | Already owned the training pipeline; now additionally owns a bounded in-memory session store (FIFO, cap 500) used by `synthorg_training_list_sessions` / `_get_session` / `_start_session`. |
 
 ## See Also

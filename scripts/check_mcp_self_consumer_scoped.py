@@ -1,6 +1,6 @@
 """Gate: the MCP self-consumer scopes by per-agent capabilities.
 
-Every ELEVATED agent must NOT see the whole ~247-tool MCP surface. The
+Every ELEVATED agent must NOT see the whole ~243-tool MCP surface. The
 self-consumer bridge derives an agent's visible sensitive (admin) tools
 from its own ``ToolPermissions.mcp_capabilities`` (plus the ambient
 read/write surface and an operator broadening), never a single global

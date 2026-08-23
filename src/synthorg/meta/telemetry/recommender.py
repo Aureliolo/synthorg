@@ -42,7 +42,6 @@ _COORDINATION_RATIO_DEFAULT: Final[float] = 0.4
 _OVERHEAD_PCT_DEFAULT: Final[float] = 35.0
 _STRAGGLER_GAP_RATIO_DEFAULT: Final[float] = 2.0
 _REDUNDANCY_RATE_DEFAULT: Final[float] = 0.3
-_SCALING_FAILURE_RATE_DEFAULT: Final[float] = 0.5
 _ERROR_FINDINGS_DEFAULT: Final[float] = 10.0
 
 # Adjustment coefficients for relax / tighten recommendations.
@@ -76,10 +75,6 @@ _RULE_THRESHOLD_MAP: Mapping[str, tuple[str, float]] = MappingProxyType(
                 _STRAGGLER_GAP_RATIO_DEFAULT,
             ),
             "redundancy": ("redundancy_rate_threshold", _REDUNDANCY_RATE_DEFAULT),
-            "scaling_failure": (
-                "scaling_failure_rate_threshold",
-                _SCALING_FAILURE_RATE_DEFAULT,
-            ),
             "error_spike": ("error_findings_threshold", _ERROR_FINDINGS_DEFAULT),
         },
     ),

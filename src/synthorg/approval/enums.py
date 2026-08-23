@@ -53,7 +53,7 @@ class ApprovalSource(StrEnum):
         PARKED_CONTEXT: Backs a parked agent execution context (SecOps
             escalation or ``request_human_approval``); resumes the run.
         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
-            scaling, ...); drives the review-gate transition. Default.
+            ...); drives the review-gate transition. Default.
         CONVERSATIONAL_INTAKE: A work item proposed via the
             conversational interface; approval rebuilds the ``WorkItem``
             and runs it through the pipeline, rejection declines it.

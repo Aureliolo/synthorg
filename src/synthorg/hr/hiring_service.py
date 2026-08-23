@@ -19,7 +19,7 @@ from synthorg.hr.errors import (
     HiringError,
     InvalidCandidateError,
 )
-from synthorg.hr.hire_model_proposal import HireModelProposal, ProviderCatalogue
+from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.hr.hiring_approval_submission import (
     propose_models,
     recommended_ref,
@@ -37,14 +37,14 @@ from synthorg.hr.hiring_instantiation import (
     resolve_hire_model,
     try_onboard,
 )
-from synthorg.hr.hiring_request_durability import read_all, save_request
+from synthorg.hr.hiring_request_durability import merge_durable_into, save_request
 from synthorg.hr.hiring_request_queries import (
     approved_not_instantiated,
     by_approval_id,
     in_flight_for_role,
 )
 from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
-from synthorg.hr.models import CandidateCard, HiringRequest
+from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
@@ -61,7 +61,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_REQUEST_DISCARDED,
     HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
-    HR_HIRING_REQUESTS_HYDRATED,
 )
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestRepository,
@@ -173,21 +172,13 @@ class HiringService:
 
     async def _hydrate_locked(self) -> None:
         """Perform the hydration pass; caller holds ``_hydrate_lock``."""
-        if self._request_repo is None:
-            # Nothing durable to reflect, so the in-memory set is already
-            # the whole truth and a later pass has nothing to recover.
-            self._hydrated = True
-            return
-        loaded = await read_all(self._request_repo)
-        # Merged, not replaced, and the in-memory entry wins: the paginated
-        # read above spans awaits, and a request created or transitioned
-        # during it is newer than anything the durable pages carry. Replacing
-        # the mapping would drop it, and the hire it represents would then be
-        # opened a second time by whatever next asked whether one was
-        # in flight.
-        self._requests = {**loaded, **self._requests}
+        # With no repository the in-memory set is already the whole truth,
+        # so the pass is done and a later one has nothing to recover.
+        if self._request_repo is not None:
+            self._requests = await merge_durable_into(
+                self._request_repo, self._requests
+            )
         self._hydrated = True
-        logger.info(HR_HIRING_REQUESTS_HYDRATED, requests=len(loaded))
 
     async def _store(
         self,
@@ -239,7 +230,6 @@ class HiringService:
         role: NotBlankStr,
         required_skills: tuple[NotBlankStr, ...] = (),
         reason: NotBlankStr,
-        agent_delegate: NotBlankStr | None = None,
         budget_limit_monthly: float | None = None,
         template_name: str | None = None,
     ) -> HiringRequest:
@@ -251,8 +241,6 @@ class HiringService:
             role: Desired role.
             required_skills: Required skills.
             reason: Business justification.
-            agent_delegate: Existing agent assigned to absorb queued work
-                while this hire instantiates (overflow handler).
             budget_limit_monthly: Optional monthly budget limit.
             template_name: Template for candidate generation.
 
@@ -261,16 +249,16 @@ class HiringService:
 
         Raises:
             HiringAlreadyInFlightError: If a hire for a gate role is already
-                on its way to an agent. Enforced here rather than at each
-                caller so the invariant has one owner: the staffing sweep
-                and the scaler both open hires, and only one of them checked.
+                on its way to an agent. Enforced here rather than at the
+                caller so the invariant has one owner, and so a caller added
+                later inherits it instead of re-deciding it.
             HiringError: If the related operation fails.
         """
-        # Role-keyed, and held across the check AND the store: the guard below
-        # is a check-then-create, and the staffing sweep and the scaler both
-        # reach it concurrently. Unserialised, both observe no in-flight
-        # request and both create one, which is two approval items for the one
-        # role the invariant exists to keep singular.
+        # Role-keyed, and held across the check AND the store, because the
+        # guard below is a check-then-create. Today's sole caller serialises
+        # its own passes, so nothing currently races here; the lock lives at
+        # the invariant rather than at that caller so a second one cannot open
+        # a duplicate hire by simply not knowing to serialise.
         async with self._role_locks.acquire(str(role)):
             if role_is_gate_role(str(role)) and (
                 in_flight := self.find_in_flight_request_for_role(str(role))
@@ -293,7 +281,6 @@ class HiringService:
                 role=role,
                 required_skills=required_skills,
                 reason=reason,
-                agent_delegate=agent_delegate,
                 budget_limit_monthly=budget_limit_monthly,
                 template_name=template_name,
                 created_at=datetime.now(UTC),
@@ -384,7 +371,11 @@ class HiringService:
             # a model became configurable. Enterable, no exit, nothing watching.
             # Refusing instead leaves the staffing reconciler's next pass free
             # to open a real hire the moment one becomes proposable.
-            proposal = await self._propose_models(candidate)
+            proposal = await propose_models(
+                candidate,
+                catalogue=self._provider_catalogue,
+                resolver=self._config_resolver,
+            )
             require_proposable(request, proposal)
 
             previous_status = request.status
@@ -422,6 +413,19 @@ class HiringService:
                     # only a request carrying no approval, and ``_store`` seats
                     # the approval-stamped copy in the cache before it raises.
                     # Undo both, then surface the original failure.
+                    # Logged before the compensation, not after: retiring the
+                    # approval can raise in its own right, and that would
+                    # replace the failure being compensated for with no record
+                    # that either happened.
+                    logger.warning(
+                        HR_HIRING_REQUEST_INVALID,
+                        request_id=str(request.id),
+                        role=str(request.role),
+                        error=(
+                            "approval submitted but the request did not"
+                            " persist; undoing both"
+                        ),
+                    )
                     self._requests[str(request.id)] = request
                     await retire_unbacked_approval(
                         self._approval_store, request=updated
@@ -449,19 +453,6 @@ class HiringService:
             auto_approved=self._approval_store is None,
         )
         return updated
-
-    async def _propose_models(self, candidate: CandidateCard) -> HireModelProposal:
-        """Offer the pairs this candidate could be hired onto.
-
-        Returns:
-            The proposal, empty and carrying its reason when the operator has
-            configured nothing this role can use.
-        """
-        return await propose_models(
-            candidate,
-            catalogue=self._provider_catalogue,
-            resolver=self._config_resolver,
-        )
 
     async def bind_model(self, request_id: str, model_ref: str) -> HiringRequest:
         """Record the pair an operator picked on the approval.
@@ -494,12 +485,14 @@ class HiringService:
                 f"Hiring request {request_id!r} cannot bind {model_ref!r}: a"
                 " binding names both a provider connection and a model id"
             )
+            logger.warning(
+                HR_HIRING_REQUEST_INVALID,
+                request_id=request_id,
+                error=msg,
+            )
             raise HiringError(msg)
         async with self._request_locks.acquire(request_id):
-            request = self._requests.get(request_id)
-            if request is None:
-                msg = f"Hiring request {request_id!r} not found"
-                raise HiringError(msg)
+            request = self._get_request(request_id)
             updated = request.model_copy(
                 update={"bound_model_ref": NotBlankStr(serialize_model_ref(parsed))}
             )
