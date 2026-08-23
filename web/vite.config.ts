@@ -1,10 +1,10 @@
 import { defineConfig, type Plugin, type PluginOption } from 'vite'
-import { failBuildOnWarning } from './vite-warning-gate'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
+import { failBuildOnWarning } from './vite-warning-gate'
 
 /**
  * Project root (directory containing this config file).  Using

@@ -10,9 +10,9 @@ fixed in one place and left wrong in the other.
 
 import asyncio
 from http import HTTPStatus
-from ipaddress import IPv6Address, ip_address
+from ipaddress import ip_address
 from typing import Final
-from urllib.parse import ParseResult, SplitResult, urlparse, urlunparse
+from urllib.parse import ParseResult, SplitResult, urlparse
 
 import httpx
 
@@ -22,6 +22,7 @@ from synthorg.core.resilience.retry_after import (
     parse_retry_after_seconds,
 )
 from synthorg.tools._dns_pinning import PinnedDnsTransport
+from synthorg.tools._url_authority import bracket_host, with_authority_host
 from synthorg.tools.errors import ToolParameterError
 from synthorg.tools.network_validator import DnsValidationOk
 
@@ -147,32 +148,19 @@ def pin_url(
         raise ToolParameterError(msg)
     _, port = resolved
     validated_host = validation.hostname
-    bracketed_host = f"[{validated_host}]" if ":" in validated_host else validated_host
     normalized_headers = {k: v for k, v in headers.items() if not compare_ci(k, "host")}
-    normalized_headers["Host"] = _render_authority(bracketed_host, port)
-    userinfo = parsed.netloc.rpartition("@")[0]
+    normalized_headers["Host"] = _render_authority(bracket_host(validated_host), port)
 
-    def _with_authority(host: str) -> str:
-        """Rebuild *url* around *host*, keeping any userinfo it stated.
-
-        Returns:
-            The URL with its authority replaced.
-        """
-        authority = _render_authority(host, port)
-        netloc = f"{userinfo}@{authority}" if userinfo else authority
-        return urlunparse(parsed._replace(netloc=netloc))
-
-    canonical_url = _with_authority(bracketed_host)
+    canonical_url = with_authority_host(parsed, validated_host, port)
     if not validation.resolved_ips or validation.is_https:
         return canonical_url, normalized_headers
 
     pinned_ip = validation.resolved_ips[0]
     try:
-        addr = ip_address(pinned_ip)
+        ip_address(pinned_ip)
     except ValueError:
         return canonical_url, normalized_headers
-    pinned_host = f"[{pinned_ip}]" if isinstance(addr, IPv6Address) else pinned_ip
-    return _with_authority(pinned_host), normalized_headers
+    return with_authority_host(parsed, pinned_ip, port), normalized_headers
 
 
 async def stream_bounded(

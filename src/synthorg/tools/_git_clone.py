@@ -8,7 +8,7 @@ all git tools.
 
 from pathlib import Path
 from typing import ClassVar, Final, override
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
@@ -22,6 +22,7 @@ from synthorg.observability.events.git import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools._git_args import GitCloneArgs
 from synthorg.tools._git_base import _BaseGitTool
+from synthorg.tools._url_authority import with_authority_host
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_url_validator import (
     _CREDENTIAL_RE,
@@ -61,11 +62,7 @@ def _with_validated_host(url: str, hostname: str) -> str:
     if not url.startswith("https://"):
         return url
     parsed = urlparse(url)
-    bracketed = f"[{hostname}]" if ":" in hostname else hostname
-    authority = f"{bracketed}:{parsed.port}" if parsed.port is not None else bracketed
-    userinfo = parsed.netloc.rpartition("@")[0]
-    netloc = f"{userinfo}@{authority}" if userinfo else authority
-    return urlunparse(parsed._replace(netloc=netloc))
+    return with_authority_host(parsed, hostname, parsed.port)
 
 
 class GitCloneTool(_BaseGitTool):
