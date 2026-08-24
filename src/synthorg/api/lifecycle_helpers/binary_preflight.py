@@ -174,13 +174,13 @@ BINARY_MANIFEST: Final[tuple[BinaryRecord, ...]] = (
     ),
     BinaryRecord(
         name="pg_dump",
-        package="postgresql-client",
+        package="postgresql-18-client",
         consumers=("the Postgres backup handler",),
         backend=_POSTGRES_BACKEND,
     ),
     BinaryRecord(
         name="pg_restore",
-        package="postgresql-client",
+        package="postgresql-18-client",
         consumers=("the Postgres restore handler",),
         backend=_POSTGRES_BACKEND,
     ),
@@ -390,6 +390,7 @@ def run_binary_preflight(*, backend_name: str) -> None:
             service="binary_preflight",
             note="required binary missing; refusing to boot",
             binaries=[record.name for record in missing],
+            packages=[record.package for record in missing],
             backend_name=backend_name,
         )
         raise RequiredBinaryMissingError(detail)
@@ -407,6 +408,7 @@ def run_binary_preflight(*, backend_name: str) -> None:
             service="binary_preflight",
             note="required binary too old; refusing to boot",
             binaries=[record.name for record, _ in outdated],
+            packages=[record.package for record, _ in outdated],
             backend_name=backend_name,
         )
         raise RequiredBinaryMissingError(detail)

@@ -19,8 +19,11 @@ contents:
     # pg_dump / pg_restore. The Postgres backup handler shells out to both, so
     # without them every Postgres deployment boots with no backup coverage at
     # all: the handler factory raises at dispatch and the whole BackupService
-    # is dropped.
-    - postgresql-client
+    # is dropped. The major is named because both are archive-format
+    # versioned: an alias following the mirror's current major would change
+    # the format a deployment's existing dumps were written in without the
+    # server it restores into having moved at all.
+    - postgresql-18-client
     # Workspace provisioning, the git backends, the docs engine, the project
     # brain and the agent git tools all shell out to git, and workspace
     # provisioning sits on the critical path of every dispatch. Without it an

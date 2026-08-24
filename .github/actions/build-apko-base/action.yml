@@ -39,29 +39,62 @@ runs:
       with:
         version: ${{ inputs.apko-version }}
 
-    - name: Compute image tag
+    # The tag needs bash: `${GITHUB_SHA::7}` is a bash substring expansion and
+    # the retry action's `command:` runs under sh. The lockfile path needs no
+    # such workaround (`%.yaml` is POSIX suffix removal); it is derived here
+    # only so the two cannot drift into separate steps. The extension is
+    # asserted rather than assumed, because `foo.yml` would silently derive
+    # `foo.yml.lock.json` and surface as a generic missing-file error from apko
+    # instead of naming the actual mistake.
+    - name: Compute image tag and lockfile path
       id: image-ref
       shell: bash
-      run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      env:
+        APKO_YAML: ${{ inputs.apko-yaml }}
+      run: |
+        case "${APKO_YAML}" in
+          *.yaml) ;;
+          *)
+            echo "::error::apko-yaml must end in .yaml, got: ${APKO_YAML}" >&2
+            exit 1
+            ;;
+        esac
+        echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        echo "lockfile=${APKO_YAML%.yaml}.lock.json" >> "$GITHUB_OUTPUT"
 
     # `apko build` pulls every package + signing key from the Wolfi mirror;
     # a single 5xx on packages.wolfi.dev fails the build. Retry the whole
     # invocation so a transient mirror blip doesn't kill base-image CI.
-    # Reuses the tag computed by the preceding `Compute image tag` step so
-    # the substring expansion happens in bash (composite-action default),
-    # not the retry action's sh-default `command:` runtime.
+    #
+    # `--lockfile` is what makes the weekly `apko lock` refresh mean anything:
+    # the flag defaults to empty, which apko documents as "no additional
+    # constraints", and it does NOT pick up a sibling lock on its own. Without
+    # it every build re-resolves against whatever the mirror serves that
+    # minute, so the committed versions pin nothing and two builds of one
+    # commit can differ. Wolfi retains superseded versions, so a lock does not
+    # rot between weekly refreshes; the failure this can produce is a checksum
+    # mismatch, which apko names outright and which the pre-push gate catches
+    # before it ever reaches CI.
+    #
+    # `--sbom-path` keeps apko's SBOMs out of the checkout: it writes them to
+    # the working directory by default, and nothing here consumes them.
     - name: Build base image
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       env:
         APKO_YAML: ${{ inputs.apko-yaml }}
+        APKO_LOCKFILE: ${{ steps.image-ref.outputs.lockfile }}
         IMAGE_NAME: ${{ inputs.image-name }}
+        SBOM_DIR: ${{ runner.temp }}
         TAG: ${{ steps.image-ref.outputs.tag }}
       with:
         timeout_minutes: 20
         max_attempts: 3
         retry_wait_seconds: 30
         command: |
-          apko build "${APKO_YAML}" \
+          apko build \
+            --lockfile "${APKO_LOCKFILE}" \
+            --sbom-path "${SBOM_DIR}" \
+            "${APKO_YAML}" \
             "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" \
             "${IMAGE_NAME}-base.tar"
 

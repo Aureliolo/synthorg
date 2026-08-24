@@ -22,6 +22,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 | Gate (`scripts/`) | Stages | Scope | Scan | Changed-file? | Baseline | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
+| `check_apko_lock_applied.py` | push | `.github/workflows/` + `.github/actions/` + `docker/*/apko.{yaml,lock.json}` + `api/lifecycle_helpers/binary_preflight.py` | full | no | none | add |
 | `check_architecture_drift.py` | push | `src/synthorg/` | full | no | `data/architecture_report.json` | keep |
 | `check_argument_count_suppression.py` | push | whole tree (via ruff) | full | no | `argument_count_suppression_baseline.txt` | add |
 | `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `providers/health.py` + `*.gen.ts` | full | no | none | keep |
@@ -155,7 +156,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->132<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->133<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

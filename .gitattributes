@@ -31,6 +31,16 @@ src/synthorg/persistence/postgres/schema.sql text eol=lf
 .github/vex/* text eol=lf
 .github/.trivyignore.yaml text eol=lf
 
+# apko manifests and their lockfiles -- `apko lock` records a sha256 over the
+# manifest's RAW BYTES in the lock's `config.checksum`, and `apko build
+# --lockfile` refuses to build when it disagrees ("checksum in the lock file
+# does not matches the original config"). A lock generated on a CRLF checkout
+# therefore stops every build on an LF one, which is every CI runner. This pin
+# is what keeps the two byte-identical; scripts/check_apko_lock_applied.py
+# catches a disagreement before the push rather than at build time.
+docker/**/apko.yaml text eol=lf
+docker/**/apko.lock.json text eol=lf
+
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 

@@ -2,7 +2,7 @@
   "version": "v1",
   "config": {
     "name": "docker/fine-tune/apko.yaml",
-    "checksum": "sha256-irPIYYNhtHsOXfPSsqZF/cB3JJiiTNnkT/i+EgwY0Us="
+    "checksum": "sha256-0/MopfisUD1OlDqk+TM0J74MLmyZtAdIvROS19eIu60="
   },
   "contents": {
     "keyring": [

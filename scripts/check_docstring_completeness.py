@@ -14,7 +14,8 @@ Exit codes:
 
 * 0: no docstring-completeness violations in scope
 * 1: ruff reported one or more DOC201 / DOC202 / DOC501 violations
-* 2: ruff could not be invoked (setup failure, not a regression)
+* 2: ruff could not be invoked, or refused the config (setup failure, not a
+  regression)
 """
 
 import subprocess
@@ -22,6 +23,12 @@ import sys
 
 _DOC_RULES = "DOC201,DOC202,DOC501"
 _DEFAULT_PATHS = ("src", "tests")
+# ruff's own contract: 0 clean, 1 violations, anything else an error it could
+# not get past. Mapping every non-zero to "violations" reported a rule
+# selector the pinned ruff knows but a stale PATH ruff does not as a
+# docstring finding, which is a verdict the scan never reached.
+_RUFF_CLEAN = 0
+_RUFF_VIOLATIONS = 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,12 +41,15 @@ def main(argv: list[str] | None = None) -> int:
 
     Returns:
         ``0`` when ruff reports no DOC violations, ``1`` when it does,
-        and ``2`` when ruff itself cannot be invoked.
+        and ``2`` when ruff itself cannot be invoked or refuses the config.
     """
     paths = list(argv) if argv else list(_DEFAULT_PATHS)
     try:
         result = subprocess.run(
-            ["ruff", "check", f"--select={_DOC_RULES}", *paths],
+            # Through this interpreter, not a bare `ruff`: a PATH lookup finds
+            # whatever ruff the machine happens to carry, which is a different
+            # engine from the pinned one every sibling gate runs under.
+            [sys.executable, "-m", "ruff", "check", f"--select={_DOC_RULES}", *paths],
             check=False,
             capture_output=True,
             text=True,
@@ -60,7 +70,14 @@ def main(argv: list[str] | None = None) -> int:
         print(result.stdout, end="")
     if result.stderr:
         print(result.stderr, end="", file=sys.stderr)
-    return 1 if result.returncode != 0 else 0
+    if result.returncode in {_RUFF_CLEAN, _RUFF_VIOLATIONS}:
+        return result.returncode
+    print(
+        f"ruff exited {result.returncode} without checking the DOC rules; "
+        f"the scan reached no verdict.",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":

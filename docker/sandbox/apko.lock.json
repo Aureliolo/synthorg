@@ -2,7 +2,7 @@
   "version": "v1",
   "config": {
     "name": "docker/sandbox/apko.yaml",
-    "checksum": "sha256-XqYzm8/kOF7f63EdYr7wepoyHAnIEnV5vu+9LkRnPHI="
+    "checksum": "sha256-nx+Q70KqeRsyNaqxEggTyyjWpsr+IWiqhlSroEdZVPQ="
   },
   "contents": {
     "keyring": [

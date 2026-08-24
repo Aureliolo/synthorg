@@ -56,7 +56,7 @@ def resolve_binary(name: str) -> str:
     if resolved is None:
         msg = (
             f"PostgreSQL CLI tool {name!r} is not available on PATH. "
-            "Install the postgresql-client package (Debian/Ubuntu) or "
+            "Install the postgresql-18-client package (Debian/Ubuntu) or "
             "ensure the bin directory of your PostgreSQL installation "
             "is in PATH for backup support."
         )

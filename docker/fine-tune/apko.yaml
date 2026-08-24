@@ -28,7 +28,11 @@ contents:
     - ca-certificates-bundle
     - python-3.14
     - libstdc++
-    - glibc
+    # `glibc` is an alias resolving to whichever versioned series Wolfi
+    # currently serves, so the series moves without the manifest changing.
+    # This image links torch and sentence-transformers against libc, where an
+    # unannounced series change is the least welcome, so the series is named.
+    - glibc-2.43
     - openblas
 
 accounts:
