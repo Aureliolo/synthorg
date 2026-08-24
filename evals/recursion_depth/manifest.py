@@ -51,6 +51,13 @@ MAX_DEPTH: Final[int] = 6
 #: blindly so repair cannot win by spending more.
 _SESSIONS_PER_ASSEMBLY: Final[int] = 2
 
+#: What the shipped planning session accepts as its turn cap
+#: (``AgentSessionDecompositionConfig.max_turns``). ``unit_max_turns`` is handed
+#: to that session as well as to the units, so a bound wider than the product's
+#: admits a value that boots a host and then fails every cell at dispatch,
+#: against a matrix nobody can record until it is corrected.
+_PLANNER_TURN_CAP: Final[int] = 50
+
 
 class Arm(StrEnum):
     """Which arm of the experiment a cell belongs to.
@@ -197,7 +204,13 @@ class RecursionDepthManifest(BaseModel):
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
-        unit_max_turns: The turn ceiling one unit's session gets.
+        unit_max_turns: The turn ceiling one unit's session gets. Bounded by
+            what the PLANNER accepts rather than by what a unit could use:
+            the sweep hands this one value to the decomposition session as
+            well as to the units, and that config refuses anything above 50,
+            so a larger value here fails every cell at dispatch instead of
+            being refused at load. A unit that genuinely needs more turns
+            wants its own knob, not a wider bound on this one.
         unit_cost_ceiling: What one unit's session may spend before the
             gateway's own hard kill stops it. Money only, so it is half a
             bound: see ``unit_token_ceiling``.
@@ -234,7 +247,7 @@ class RecursionDepthManifest(BaseModel):
     reviewer: ModelPair
     independence: Independence
     merge_attempts: int = Field(ge=1, le=10)
-    unit_max_turns: int = Field(ge=1, le=200)
+    unit_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
