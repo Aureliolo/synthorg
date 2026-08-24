@@ -286,7 +286,13 @@ class LlmDecompositionStrategy:
 
             try:
                 plan = self._parse_response(
-                    response, str(task.id), context.available_roles
+                    response,
+                    str(task.id),
+                    context.available_roles,
+                    tuple(
+                        NotBlankStr(criterion.description)
+                        for criterion in task.acceptance_criteria
+                    ),
                 )
             except DecompositionBudgetExhaustedError:
                 # Not retried: the ceiling is the same on the next attempt, so
@@ -425,6 +431,7 @@ class LlmDecompositionStrategy:
         response: CompletionResponse,
         parent_task_id: str,
         available_roles: tuple[NotBlankStr, ...],
+        objective_criteria: tuple[NotBlankStr, ...] = (),
     ) -> DecompositionPlan:
         """Parse a plan from tool calls, content fallback, or raise.
 
@@ -433,6 +440,8 @@ class LlmDecompositionStrategy:
             parent_task_id: ID of the parent task.
             available_roles: The roles the org staffs, which every owner must
                 be drawn from.
+            objective_criteria: The acceptance criteria of the task being
+                decomposed, which the plan must advance at least one of.
 
         Returns:
             A parsed ``DecompositionPlan``.
@@ -443,7 +452,9 @@ class LlmDecompositionStrategy:
             DecompositionError: If both parsing paths fail.
         """
         if response.tool_calls:
-            return parse_tool_call_response(response, parent_task_id, available_roles)
+            return parse_tool_call_response(
+                response, parent_task_id, available_roles, objective_criteria
+            )
         # Checked BEFORE the content path, because a reasoning model that ran
         # out of budget returns an empty string rather than nothing, which
         # reaches the JSON parser and is reported as malformed JSON. The two
@@ -461,7 +472,9 @@ class LlmDecompositionStrategy:
             logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
             raise DecompositionBudgetExhaustedError(msg)
         if response.content is not None:
-            return parse_content_response(response, parent_task_id, available_roles)
+            return parse_content_response(
+                response, parent_task_id, available_roles, objective_criteria
+            )
         msg = "Response has no tool calls and no content"
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)

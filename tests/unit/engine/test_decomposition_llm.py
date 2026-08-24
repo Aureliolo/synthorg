@@ -95,6 +95,12 @@ def _valid_plan_args(
             "required_skills": ["python"],
             "acceptance_criteria": [f"step {i} verified"],
             "expected_artifacts": [f"src/step_{i}.py"],
+            # The objective's own criterion, copied verbatim, on the first item
+            # alone: a plan advancing none of what it decomposes is refused, and
+            # a plan where every item is pure support is that plan. One claim is
+            # what the rule asks for, so the rest stay untagged and the fixture
+            # keeps exercising the mixed case a real plan has.
+            **({"satisfies": ["Login returns token"]} if i == 0 else {}),
         }
         for i in range(subtask_count)
     ]

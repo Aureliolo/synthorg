@@ -14,14 +14,6 @@ from typing import Final
 from pydantic import JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.core.plan_role_validation import describe_unroutable_role
-from synthorg.core.plan_validation import (
-    ORDERED_STRUCTURES,
-    combine_graph_violations,
-    describe_structureless_graph,
-    describe_undecidable_criteria,
-    describe_unstated_references,
-)
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._plan_output_guard import (
@@ -35,11 +27,13 @@ from synthorg.engine.decomposition.llm_parse_subtask import (
     remap_subtask_ids,
     string_array,
 )
-from synthorg.engine.decomposition.llm_prompt import TOOL_NAME
-from synthorg.engine.decomposition.models import (
-    DecompositionPlan,
-    SubtaskDefinition,
+from synthorg.engine.decomposition.llm_parse_validate import (
+    validate_coverage,
+    validate_graph,
+    validate_roles,
 )
+from synthorg.engine.decomposition.llm_prompt import TOOL_NAME
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.output_style.errors import OutputPolicyViolationError
 from synthorg.observability import get_logger, safe_error_description
@@ -104,81 +98,11 @@ def _declared_structure(args: dict[str, JsonValue]) -> TaskStructure:
     return resolved
 
 
-def _validate_roles(
-    subtasks: tuple[SubtaskDefinition, ...],
-    available_roles: tuple[NotBlankStr, ...],
-) -> None:
-    """Reject an owner the org does not staff.
-
-    Sits with the kind/artifact invariant rather than at dispatch, because a
-    correctable :class:`DecompositionError` lets the planning session resubmit
-    inside the same session, while an unroutable owner discovered at dispatch
-    has already been approved by an operator who was told nothing was wrong.
-
-    Args:
-        subtasks: The parsed subtasks.
-        available_roles: The roles the org staffs; empty skips the check.
-
-    Raises:
-        DecompositionError: When an owner names no staffed role.
-    """
-    for sub in subtasks:
-        detail = describe_unroutable_role(
-            entity_id=sub.id,
-            required_role=sub.required_role,
-            available_roles=available_roles,
-        )
-        if detail is not None:
-            logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
-            raise DecompositionError(detail)
-
-
-def _validate_graph(
-    subtasks: tuple[SubtaskDefinition, ...],
-    structure: TaskStructure,
-) -> None:
-    """Reject a plan whose graph contradicts what the plan says about itself.
-
-    Both checks are correctable in-session for the same reason the roster
-    check is: the planner can restate the dependencies it meant. Discovered
-    at dispatch instead, the plan has already been approved by an operator
-    who was shown an ordering that does not exist.
-
-    Args:
-        subtasks: The parsed subtasks, in plan order.
-        structure: The structure the planner declared.
-
-    Raises:
-        DecompositionError: When an ordered structure carries no edges, an
-            item names another it declares no dependency on, or an item's own
-            gate demands evidence the plan produces after it.
-    """
-    detail = describe_structureless_graph(
-        declared_sequential=structure in ORDERED_STRUCTURES,
-        units=subtasks,
-    )
-    if detail is None:
-        # Every violation, not the first. A session that regenerates its whole
-        # plan on each rejection cannot converge while it is told one at a
-        # time: it resolves the pair it was given and manufactures another. A
-        # live run spent all twelve turns that way, seven submissions rejected
-        # by this one rule on seven different pairs, and returned no plan.
-        detail = combine_graph_violations(
-            (
-                *describe_unstated_references(subtasks),
-                *describe_undecidable_criteria(subtasks),
-            )
-        )
-    if detail is None:
-        return
-    logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
-    raise DecompositionError(detail)
-
-
 def _args_to_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
     available_roles: tuple[NotBlankStr, ...] = (),
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionPlan:
     """Convert parsed arguments dict into a ``DecompositionPlan``.
 
@@ -187,6 +111,9 @@ def _args_to_plan(
         parent_task_id: ID of the parent task.
         available_roles: The roles the org staffs, which every owner must be
             drawn from. Empty skips the check.
+        objective_criteria: The acceptance criteria of the task being
+            decomposed, which the plan must advance at least one of. Empty
+            skips the check.
 
     Returns:
         A validated ``DecompositionPlan``.
@@ -210,10 +137,11 @@ def _args_to_plan(
 
     parsed = tuple(parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
     subtasks = remap_subtask_ids(parsed)
-    _validate_roles(subtasks, available_roles)
+    validate_roles(subtasks, available_roles)
+    validate_coverage(subtasks, objective_criteria)
 
     structure = _declared_structure(args)
-    _validate_graph(subtasks, structure)
+    validate_graph(subtasks, structure)
     topology = enum_or_default(
         args.get("coordination_topology", "auto"),
         _TOPOLOGY_MAP,
@@ -235,6 +163,7 @@ def _guarded_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
     available_roles: tuple[NotBlankStr, ...] = (),
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionPlan:
     """Parse *args* into a plan whose prose passes the output-style policy.
 
@@ -249,6 +178,8 @@ def _guarded_plan(
         args: Parsed tool call arguments or JSON content.
         parent_task_id: ID of the parent task.
         available_roles: The roles the org staffs.
+        objective_criteria: The acceptance criteria the plan must advance at
+            least one of. Empty skips the check.
 
     Returns:
         A validated ``DecompositionPlan`` fit to render.
@@ -257,7 +188,7 @@ def _guarded_plan(
         DecompositionError: If the arguments are invalid, or the plan's
             wording breaks a hard output-style rule.
     """
-    plan = _args_to_plan(args, parent_task_id, available_roles)
+    plan = _args_to_plan(args, parent_task_id, available_roles, objective_criteria)
     try:
         return _revalidated(_style_checked(plan))
     except OutputPolicyViolationError as exc:
@@ -303,7 +234,7 @@ def _revalidated(plan: DecompositionPlan) -> DecompositionPlan:
         )
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
         raise DecompositionError(detail) from exc
-    _validate_graph(revalidated.subtasks, revalidated.task_structure)
+    validate_graph(revalidated.subtasks, revalidated.task_structure)
     return revalidated
 
 
@@ -342,6 +273,7 @@ def args_to_decomposition_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
     available_roles: tuple[NotBlankStr, ...] = (),
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionPlan:
     """Parse raw submit-plan arguments into a validated ``DecompositionPlan``.
 
@@ -358,6 +290,10 @@ def args_to_decomposition_plan(
         parent_task_id: ID of the parent task the plan decomposes.
         available_roles: The roles the org staffs, which every owner must be
             drawn from. Empty skips the check.
+        objective_criteria: The acceptance criteria of the task being
+            decomposed. A plan advancing none of them is rejected, because
+            ``satisfies`` exists so coverage can be checked and a plan tagged
+            with nothing answers that question with silence. Empty skips it.
 
     Returns:
         A validated ``DecompositionPlan``.
@@ -366,7 +302,7 @@ def args_to_decomposition_plan(
         DecompositionError: If the arguments are invalid.
     """
     try:
-        return _guarded_plan(args, parent_task_id, available_roles)
+        return _guarded_plan(args, parent_task_id, available_roles, objective_criteria)
     except DecompositionError:
         raise
     except Exception as exc:
@@ -385,6 +321,7 @@ def parse_tool_call_response(
     response: CompletionResponse,
     parent_task_id: str,
     available_roles: tuple[NotBlankStr, ...] = (),
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionPlan:
     """Extract a plan from a tool call response.
 
@@ -396,6 +333,9 @@ def parse_tool_call_response(
         parent_task_id: ID of the parent task.
         available_roles: The roles the org staffs, which every owner must be
             drawn from. Empty skips the check.
+        objective_criteria: The acceptance criteria of the task being
+            decomposed, which the plan must advance at least one of. Empty
+            skips the check.
 
     Returns:
         A validated ``DecompositionPlan``.
@@ -407,7 +347,12 @@ def parse_tool_call_response(
     for tc in response.tool_calls:
         if tc.name == TOOL_NAME:
             try:
-                return _guarded_plan(tc.arguments, parent_task_id, available_roles)
+                return _guarded_plan(
+                    tc.arguments,
+                    parent_task_id,
+                    available_roles,
+                    objective_criteria,
+                )
             except DecompositionError as exc:
                 # Re-raise without wrapping to preserve the original error
                 logger.warning(
@@ -500,6 +445,7 @@ def parse_content_response(
     response: CompletionResponse,
     parent_task_id: str,
     available_roles: tuple[NotBlankStr, ...] = (),
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionPlan:
     """Extract a plan from content text.
 
@@ -511,6 +457,9 @@ def parse_content_response(
         parent_task_id: ID of the parent task.
         available_roles: The roles the org staffs, which every owner must be
             drawn from. Empty skips the check.
+        objective_criteria: The acceptance criteria of the task being
+            decomposed, which the plan must advance at least one of. Empty
+            skips the check.
 
     Returns:
         A validated ``DecompositionPlan``.
@@ -581,7 +530,7 @@ def parse_content_response(
         raise DecompositionError(msg)
 
     try:
-        return _guarded_plan(data, parent_task_id, available_roles)
+        return _guarded_plan(data, parent_task_id, available_roles, objective_criteria)
     except DecompositionError as exc:
         # Re-raise without wrapping to preserve the original error
         logger.warning(

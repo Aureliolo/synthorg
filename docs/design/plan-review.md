@@ -44,6 +44,47 @@ carries only the plan's `plan_id`.
   item advances). A validator rejects a non-UUID id, a self-dependency, or duplicate
   dependencies.
 
+### A plan must advance the objective it decomposes
+
+`satisfies` exists so success-criteria coverage can be CHECKED, and for a while
+nothing checked it. The three pieces disagreed: the prompt states the contract
+("Between them, the items must cover every objective criterion"), the tool
+schema leaves the field out of its required list, and the field's own
+description invites omission per item ("Omit only for pure-support items that
+advance no objective criterion directly"). A planner reading every item as pure
+support therefore returned a plan tagged with nothing, which parsed cleanly,
+read correctly, and answered "which of the objective's criteria does this plan
+address?" with silence.
+
+That is not hypothetical. A live decomposition of a 42-criterion objective came
+back with `satisfies=[]` on all seven subtasks, on the same specification where
+an earlier run of the same planner tagged all seven. Variance rather than
+inability, which is worse: it poisons an unpredictable subset of plans instead
+of failing consistently, and any consumer computing coverage over it reports a
+confident zero. The recursion-depth sweep is one such consumer, and a plan
+claiming nothing empties its survival ratio's denominator at every depth.
+
+`llm_parse.py::_validate_coverage` refuses a plan that advances NONE of the
+objective's criteria, beside the roster and graph checks and for the same
+reason they sit there: a `DecompositionError` raised at parse time is
+correctable in-session, so the agent-session planner's submit tool turns it into
+a tool error the agent fixes on its next turn, where the same fault found at
+dispatch has already been approved by an operator who was told nothing was
+wrong.
+
+Two boundaries of the rule are deliberate. It is checked at PLAN level rather
+than per item, because the field's own semantics allow a genuine pure-support
+item to claim nothing; what cannot hold is that every item is pure support,
+since then nothing builds the objective. And it is FULL coverage that is
+documented but not enforced: partial coverage stays a plan worth having, while
+zero coverage is the degenerate case with no reading at all. Enforcing every
+criterion would put a rule the planner keeps re-breaking in front of the retry
+ladder, which is how the em-dash style rule once took 18 of 25 planning calls.
+
+The objective's criteria reach the parser the same way `available_roles` does,
+threaded from the two call sites that hold the parent task, and an empty tuple
+skips the check: an objective declaring no criteria has no coverage to claim.
+
 ### Open questions are asked, not filed
 
 `open_questions` is what the planner could not resolve on its own, and for a
