@@ -66,6 +66,13 @@ async def write_guard(
             an operator reads (``saving``, ``transitioning``, ...).
         sprint_id: The row the write targeted.
 
+    Anything else raised inside unwinds the write too, and propagates
+    unchanged. A statement's own RETURNING row can be one the domain model
+    refuses, and that is not a database failure to be dressed as one; but
+    it does mean the write must not stand, because a committed row nothing
+    can parse is unreadable for good, to every later reader including the
+    recovery sweep.
+
     Yields:
         Nothing; the caller runs its statements inside the guard.
 
@@ -103,6 +110,14 @@ async def write_guard(
             error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
+    except Exception:
+        # Not a driver failure, so it is not re-dressed as one and not
+        # logged here (whoever raised it owns saying why). The rollback is
+        # the point: SQLite's transaction is open on the shared
+        # connection, so without it the write stands and the next writer
+        # inherits it.
+        await _safe_rollback(db, operation=operation, sprint_id=sprint_id)
+        raise
 
 
 @asynccontextmanager

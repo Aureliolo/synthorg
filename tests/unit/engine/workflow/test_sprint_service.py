@@ -20,6 +20,7 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import (
+    STORY_POINTS_CEILING,
     Sprint,
     SprintStatus,
 )
@@ -282,6 +283,34 @@ class TestExplicitControl:
         sprint = await service.create_sprint("proj-1")
         with pytest.raises(SprintBacklogInvalidError, match=">= 0"):
             await service.add_task(sprint.id, "task-a", -1.0)
+
+    async def test_add_task_refuses_to_cross_the_points_ceiling(self) -> None:
+        """The bound is on the TOTAL, which no single caller can see.
+
+        The API bounds each task's points by the ceiling separately, so
+        two individually-admissible calls carry the sprint past it. The
+        statement derives the total rather than being handed one, and
+        neither table carries a CHECK, so the row that results is one the
+        model refuses: without this the second call writes it.
+        """
+        repo = FakeSprintRepository()
+        service = _service(sprints=repo)
+        sprint = await service.create_sprint("proj-1")
+        await service.add_task(sprint.id, "task-a", STORY_POINTS_CEILING * 0.6)
+
+        with pytest.raises(SprintBacklogInvalidError, match="ceiling"):
+            await service.add_task(sprint.id, "task-b", STORY_POINTS_CEILING * 0.6)
+
+        stored = await repo.get(sprint.id)
+        assert stored is not None
+        assert stored.task_ids == ("task-a",)
+        assert stored.story_points_committed <= STORY_POINTS_CEILING
+
+    async def test_add_task_allows_exactly_the_ceiling(self) -> None:
+        service = _service()
+        sprint = await service.create_sprint("proj-1")
+        updated = await service.add_task(sprint.id, "task-a", STORY_POINTS_CEILING)
+        assert updated.story_points_committed == pytest.approx(STORY_POINTS_CEILING)
 
     async def test_concurrent_adds_both_land(self) -> None:
         """The lost-update regression on backlog assembly.

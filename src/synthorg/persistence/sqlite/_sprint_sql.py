@@ -59,6 +59,15 @@ TRANSITION_SQL = (
 # key as a bound value. ``story_points_committed`` is then re-totalled from
 # that same merged mapping, so it is a pure function of ``task_points``
 # rather than a running sum that can disagree with it.
+#
+# One asymmetry with the Postgres sibling, measured and left alone:
+# JSON_OBJECT renders a double at 15 significant digits where the
+# ``save`` path's json.dumps renders 17, so a value needing 16 or 17 is
+# stored slightly differently by the two write paths and by the two
+# backends. Every value a story point can realistically be round-trips
+# exactly on both, so this buys nothing to chase; it is recorded because
+# the difference is invisible until somebody writes a test with a
+# pathological value and cannot see why it fails on one backend.
 ADD_TASK_SQL = f"""
     UPDATE sprints
     SET task_ids = JSON_INSERT(task_ids, '$[#]', ?),

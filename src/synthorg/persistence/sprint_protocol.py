@@ -285,10 +285,16 @@ class SprintRepository(
         Args:
             sprint_id: The sprint whose backlog is being assembled.
             task_id: The task to add.
-            story_points: What this task commits, added to
-                ``story_points_committed`` and recorded per task in
+            story_points: What this task commits, recorded per task in
                 ``task_points`` so completion credits exactly what
-                assembly committed.
+                assembly committed, and re-totalled into
+                ``story_points_committed``. Must be NON-NEGATIVE, and must
+                not take the sprint's total past
+                :data:`STORY_POINTS_CEILING`: both are the caller's to
+                hold, because the statement derives the total rather than
+                being handed one, and neither table carries a CHECK for
+                them. Violating either produces a row the ``Sprint`` model
+                refuses, which is raised rather than written.
 
         Returns:
             The sprint after the append, or ``None`` when the guard did
@@ -298,5 +304,8 @@ class SprintRepository(
         Raises:
             ConstraintViolationError: On constraint violations.
             QueryError: On other database errors.
+            MalformedRowError: When the derived row breaches a bound the
+                model holds and the schema does not, in which case
+                nothing is written.
         """
         ...

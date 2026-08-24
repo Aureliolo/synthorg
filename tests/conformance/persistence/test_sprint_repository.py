@@ -33,9 +33,17 @@ from typing import ClassVar, cast
 import aiosqlite
 import pytest
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import (
+    STORY_POINTS_CEILING,
+    Sprint,
+    SprintStatus,
+)
 from synthorg.persistence.postgres.sprint_repo import PostgresSprintRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
@@ -874,6 +882,42 @@ class TestAddTaskIfPlanning:
             )
             is None
         )
+
+    async def test_a_row_the_model_refuses_is_never_left_behind(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A derived column can breach a bound the schema does not carry.
+
+        ``story_points_committed`` is re-totalled in SQL and neither table
+        bounds it, while ``Sprint`` caps it at ``STORY_POINTS_CEILING``.
+        Committing before parsing made such a row durable AND unreadable
+        in one step: `get`, `query`, `list_items` and the recovery sweep
+        all failed on it afterwards, and the one-open-per-scope index kept
+        the scope locked for good. The write must not stand.
+        """
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="ceil-1",
+                task_ids=("task-a",),
+                task_points={"task-a": STORY_POINTS_CEILING},
+                story_points_committed=STORY_POINTS_CEILING,
+            )
+        )
+
+        with pytest.raises(MalformedRowError):
+            await repo.add_task_if_planning(
+                NotBlankStr("ceil-1"), NotBlankStr("task-over"), STORY_POINTS_CEILING
+            )
+
+        # The row is still there, still readable, still what it was.
+        fetched = await repo.get(NotBlankStr("ceil-1"))
+        assert fetched is not None
+        assert fetched.task_ids == ("task-a",)
+        assert fetched.story_points_committed == pytest.approx(STORY_POINTS_CEILING)
+        # And the reads that a poisoned row used to break still work.
+        assert await repo.count(SprintFilterSpec(project="proj-x")) == 1
+        assert len(await repo.list_items()) == 1
 
 
 class TestOneOpenSprintPerScope:

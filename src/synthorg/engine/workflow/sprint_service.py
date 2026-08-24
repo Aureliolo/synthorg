@@ -77,6 +77,7 @@ from synthorg.engine.workflow.sprint_backlog import add_task_to_sprint
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import (
     OPEN_SPRINT_STATUSES,
+    STORY_POINTS_CEILING,
     Sprint,
     SprintStatus,
 )
@@ -363,6 +364,24 @@ class SprintService:
                     reason="negative_points",
                     sprint_id=sprint_id,
                     task_id=task_id,
+                )
+                raise SprintBacklogInvalidError(msg)
+            # Checked against the RESULTING total, not this task's points.
+            # The API bounds each task by the ceiling separately, so two
+            # admissible calls can carry the sprint past it, and the
+            # statement derives the total rather than being handed one.
+            committed = sprint.story_points_committed + story_points
+            if committed > STORY_POINTS_CEILING:
+                msg = (
+                    f"Adding {story_points} points would take sprint "
+                    f"{sprint_id!r} to {committed}, past the "
+                    f"{STORY_POINTS_CEILING} ceiling"
+                )
+                log_refusal(
+                    reason="points_ceiling",
+                    sprint_id=sprint_id,
+                    task_id=task_id,
+                    would_commit=committed,
                 )
                 raise SprintBacklogInvalidError(msg)
             updated = await self._sprints.add_task_if_planning(

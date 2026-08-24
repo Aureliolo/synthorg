@@ -334,8 +334,15 @@ class PostgresSprintRepository:
         ):
             await cur.execute(sql, params)
             row = await cur.fetchone()
+            # Parsed BEFORE the commit, inside the pool's connection
+            # context so a refusal unwinds the write. These statements
+            # DERIVE columns, so they can produce a row the domain model
+            # refuses that no input row would have been; the
+            # committed-then-parsed order made such a row durable and
+            # unreadable at once, failing every later read of it.
+            sprint = row_to_sprint(row) if row is not None else None
             await conn.commit()
-        return row_to_sprint(row) if row is not None else None
+        return sprint
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a sprint by id.
