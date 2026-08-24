@@ -317,6 +317,11 @@ class SprintRecoveryReconciler:
             if status is SprintStatus.COMPLETED:
                 continue
             offset = 0
+            # Bounded offset pagination over a finite sprints table:
+            # terminates on the first partial page, and the pass that owns it
+            # is already gated by the scheduler's pause switch and by
+            # ``sprints_active`` -- not a daemon loop of its own.
+            # lint-allow: long-running-loop-kill-switch -- bounded pagination
             while True:
                 page = await self._sprints.query(
                     SprintFilterSpec(status=status),
