@@ -389,8 +389,8 @@ sweep may run is one decision, and asked only inside the scheduler the answer
 at boot was an unconditional yes, so an operator who paused recovery got it
 back on the next deploy, which is the moment it has the most to move. Paused,
 the pass is skipped and the scheduler still starts, because pausing stops the
-sweep running rather than removing the thing to unpause. It is bounded by the
-smaller of the resync interval and a 30-second
+sweep running rather than removing the thing the operator later switches back
+on. It is bounded by the smaller of the resync interval and a 30-second
 startup ceiling, because the pass is awaited inline in the lifespan and the
 interval is an operator setting that legitimately reaches a day, which would
 hold startup open past the readiness probe. Only that deadline is waived: a
