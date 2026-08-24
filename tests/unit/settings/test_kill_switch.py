@@ -59,8 +59,8 @@ async def test_resolver_outage_falls_back() -> None:
 async def test_float_returns_fallback_when_resolver_missing() -> None:
     result = await resolve_float_with_fallback(
         resolver=None,
-        namespace="hr",
-        key="eval_loop_cycle_interval_seconds",
+        namespace="api",
+        key="readiness_probe_timeout_seconds",
         fallback=86400.0,
     )
     assert result == 86400.0
@@ -70,13 +70,13 @@ async def test_float_returns_resolver_value_when_wired() -> None:
     resolver = mock_of[ConfigResolverProtocol](get_float=AsyncMock(return_value=120.0))
     result = await resolve_float_with_fallback(
         resolver=resolver,
-        namespace="hr",
-        key="eval_loop_cycle_interval_seconds",
+        namespace="api",
+        key="readiness_probe_timeout_seconds",
         fallback=86400.0,
     )
     assert result == 120.0
     resolver.get_float.assert_awaited_once_with(
-        "hr", "eval_loop_cycle_interval_seconds"
+        "api", "readiness_probe_timeout_seconds"
     )
 
 
@@ -86,8 +86,8 @@ async def test_float_resolver_outage_falls_back() -> None:
     )
     result = await resolve_float_with_fallback(
         resolver=resolver,
-        namespace="hr",
-        key="eval_loop_cycle_window_hours",
+        namespace="api",
+        key="readiness_probe_timeout_seconds",
         fallback=168.0,
     )
     assert result == 168.0
@@ -244,8 +244,8 @@ async def test_float_system_errors_propagate(exc_type: type[BaseException]) -> N
     with pytest.raises(exc_type):
         await resolve_float_with_fallback(
             resolver=resolver,
-            namespace="hr",
-            key="eval_loop_cycle_interval_seconds",
+            namespace="api",
+            key="readiness_probe_timeout_seconds",
             fallback=86400.0,
         )
 

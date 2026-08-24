@@ -295,6 +295,39 @@ class TestGetSnapshot:
         # here would read as the reviewer having judged the work worthless.
         assert snapshot.overall_quality_score is None
 
+    async def test_mixed_scored_and_unscored_averages_over_the_scored_only(
+        self,
+    ) -> None:
+        """An unreviewed run neither counts as zero nor drags the average.
+
+        This is the normal production shape, not an edge case: only tasks
+        that reached the completion-oracle gate carry a score, so a window
+        routinely mixes reviewed and unreviewed runs. Averaging over the
+        whole window would silently depress every agent's quality the more
+        work they did outside review.
+        """
+        tracker = _make_tracker()
+        for score in (10.0, 5.0):
+            await tracker.record_task_metric(
+                make_task_metric(
+                    task_id=f"task-{score}",
+                    completed_at=NOW - timedelta(days=1),
+                    quality_score=score,
+                ),
+            )
+        await tracker.record_task_metric(
+            make_task_metric(
+                task_id="task-unscored",
+                completed_at=NOW - timedelta(days=1),
+                quality_score=None,
+            ),
+        )
+
+        snapshot = await tracker.get_snapshot(NotBlankStr("agent-001"), now=NOW)
+
+        # Mean of the two scored runs, not of all three.
+        assert snapshot.overall_quality_score == pytest.approx(7.5)
+
     async def test_snapshot_uses_current_time_when_now_none(self) -> None:
         tracker = _make_tracker()
 

@@ -65,7 +65,7 @@ class PersistenceBackend(Protocol):
     def cost_records(self) -> CostRecordRepository: ...
     @property
     def messages(self) -> MessageRepository: ...
-    # ... plus lifecycle_events, task_metrics, collaboration_metrics,
+    # ... plus lifecycle_events, task_metrics,
     #     parked_contexts, audit_entries, users, api_keys, checkpoints,
     #     heartbeats, agent_states, settings, artifacts, projects,
     #     custom_presets

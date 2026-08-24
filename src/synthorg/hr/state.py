@@ -1,11 +1,11 @@
 """HR feature state slice.
 
 Holds the agent-lifecycle services: the agent registry, performance
-tracker, personality service, agent version service, activity feed, and
-agent-health service. The registry and performance tracker are
-constructor-injected; the rest are wired lazily once persistence is
-connected. All fields are ``None``
-until wired; readers guard accordingly.
+tracker, personality service, agent version service, activity feed,
+agent-health service, hiring service and pruning service. The registry
+and performance tracker are constructor-injected; the rest are wired
+lazily once persistence is connected. All fields are ``None`` until
+wired; readers guard accordingly.
 """
 
 from pydantic import ConfigDict

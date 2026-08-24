@@ -41,6 +41,7 @@ from synthorg.observability.events.hr import (
     HR_FIRING_NOTIFICATION_FAILED,
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
+    HR_FIRING_TERMINATION_FAILED,
     HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED,
 )
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
@@ -386,7 +387,7 @@ class OffboardingService:
             scrubbed = safe_error_description(exc)
             msg = f"Failed to terminate agent {agent_id!r} in registry: {scrubbed}"
             logger.error(
-                HR_FIRING_COMPLETE,
+                HR_FIRING_TERMINATION_FAILED,
                 agent_id=agent_id,
                 error_type=type(exc).__name__,
                 error=scrubbed,

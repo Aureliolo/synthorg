@@ -19,6 +19,7 @@ from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
     REVIEW_CREATED_VIA_MCP,
+    REVIEW_ID_MALFORMED,
     REVIEW_UPDATED_VIA_MCP,
 )
 
@@ -249,6 +250,10 @@ class ReviewFacadeService:
         try:
             key = UUID(review_id)
         except ValueError:
+            # Indistinguishable from "no such review" to the caller, so say
+            # which it was here; a client sending malformed ids repeatedly is
+            # a bug on their side, not an empty archive.
+            logger.debug(REVIEW_ID_MALFORMED, review_id=review_id, operation="get")
             return None
         async with self._lock:
             record = self._reviews.get(key)
@@ -291,6 +296,7 @@ class ReviewFacadeService:
         try:
             key = UUID(review_id)
         except ValueError:
+            logger.debug(REVIEW_ID_MALFORMED, review_id=review_id, operation="update")
             return None
         async with self._lock:
             record = self._reviews.get(key)

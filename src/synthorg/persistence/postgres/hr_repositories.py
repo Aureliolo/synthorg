@@ -1,7 +1,7 @@
 """Postgres repository implementations for HR entities.
 
 Postgres-native port of ``synthorg.persistence.sqlite.hr_repositories``.
-LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
+LifecycleEvent and TaskMetric repositories.
 Uses native JSONB for metadata fields, native TIMESTAMPTZ for all timestamps,
 and native BOOLEAN for boolean flags. The protocol surface returns the same
 Pydantic models as the SQLite backend.

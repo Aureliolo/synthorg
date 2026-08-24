@@ -412,18 +412,6 @@ class FineTuneRunActiveError(ConflictError):
     error_code: ClassVar[ErrorCode] = ErrorCode.FINE_TUNE_RUN_ACTIVE
 
 
-class TrainingPlanNotModifiableError(ConflictError):
-    """Raised when a training plan is edited after execution/failure (409).
-
-    Distinct ``error_code`` tells the dashboard the plan is frozen by
-    its lifecycle status rather than a transient conflict, so it hides
-    the edit form instead of offering a retry.
-    """
-
-    default_message: ClassVar[str] = "Cannot modify plan after execution or failure"
-    error_code: ClassVar[ErrorCode] = ErrorCode.TRAINING_PLAN_NOT_MODIFIABLE
-
-
 class PlanParentTaskMissingError(NotFoundError):
     """Raised when a plan's objective task is gone before it is parked (404).
 

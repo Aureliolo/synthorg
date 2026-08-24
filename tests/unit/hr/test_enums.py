@@ -22,7 +22,14 @@ class TestHiringRequestStatus:
         assert HiringRequestStatus.INSTANTIATED.value == "instantiated"
 
     def test_completeness(self) -> None:
-        assert len(HiringRequestStatus) == 4
+        # Set equality, not a count: a bare length reports "something
+        # changed" without saying which member arrived or left.
+        assert {m.value for m in HiringRequestStatus} == {
+            "pending",
+            "approved",
+            "rejected",
+            "instantiated",
+        }
 
 
 @pytest.mark.unit
@@ -36,7 +43,12 @@ class TestFiringReason:
         assert FiringReason.PROJECT_COMPLETION.value == "project_completion"
 
     def test_completeness(self) -> None:
-        assert len(FiringReason) == 4
+        assert {m.value for m in FiringReason} == {
+            "manual",
+            "performance",
+            "budget",
+            "project_completion",
+        }
 
 
 @pytest.mark.unit
@@ -49,7 +61,11 @@ class TestOnboardingStep:
         assert OnboardingStep.TEAM_INTRODUCTIONS.value == "team_introductions"
 
     def test_completeness(self) -> None:
-        assert len(OnboardingStep) == 3
+        assert {m.value for m in OnboardingStep} == {
+            "company_context",
+            "project_briefing",
+            "team_introductions",
+        }
 
 
 @pytest.mark.unit
@@ -66,7 +82,15 @@ class TestLifecycleEventType:
         assert LifecycleEventType.DEMOTED.value == "demoted"
 
     def test_completeness(self) -> None:
-        assert len(LifecycleEventType) == 7
+        assert {m.value for m in LifecycleEventType} == {
+            "hired",
+            "onboarded",
+            "fired",
+            "offboarded",
+            "status_changed",
+            "promoted",
+            "demoted",
+        }
 
 
 @pytest.mark.unit
@@ -80,4 +104,9 @@ class TestTrendDirection:
         assert TrendDirection.INSUFFICIENT_DATA.value == "insufficient_data"
 
     def test_completeness(self) -> None:
-        assert len(TrendDirection) == 4
+        assert {m.value for m in TrendDirection} == {
+            "improving",
+            "stable",
+            "declining",
+            "insufficient_data",
+        }

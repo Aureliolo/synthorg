@@ -8,6 +8,7 @@ the probe and the grade that reads the same pin back out of it.
 """
 
 import copy
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,10 +16,10 @@ from synthorg.core.types import NotBlankStr
 
 #: Upper bound on the probe prompt and the expected fingerprint, so a
 #: malformed metadata payload cannot balloon a case.
-_MAX_FIELD_CHARS: int = 65536
+_MAX_FIELD_CHARS: Final[int] = 65536
 
 #: Upper bound on a grade explanation.
-_MAX_EXPLANATION_CHARS: int = 2048
+_MAX_EXPLANATION_CHARS: Final[int] = 2048
 
 
 class PinTestCase(BaseModel):

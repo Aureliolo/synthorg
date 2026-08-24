@@ -1,6 +1,6 @@
 """SQLite repository implementations for HR entities.
 
-LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
+LifecycleEvent and TaskMetric repositories.
 """
 
 import json

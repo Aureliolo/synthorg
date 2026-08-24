@@ -81,7 +81,10 @@ class TestTrackerConcurrency:
                 _ = tg.create_task(_record_task(i))
                 _ = tg.create_task(_record_contrib(i))
 
-        assert len(tracker._task_metrics[_AGENT_ID]) == 30
+        metrics = tracker.get_task_metrics(agent_id=NotBlankStr(_AGENT_ID))
+        assert len(metrics) == 30
+        # No public accessor exists for contributions, so this half reads the
+        # private store; the task-metric half goes through the real API.
         assert len(tracker._contributions[_AGENT_ID]) == 30
 
 

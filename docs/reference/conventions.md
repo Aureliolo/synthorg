@@ -837,8 +837,8 @@ API boundary. The naming suffix encodes its role:
   `AgentSnapshot`, `WorkflowSnapshot`). Suitable for caching and
   diffing; not used for mutation inputs.
 * `*Result`: outcome of a discrete operation that does not have a
-  natural "request" / "response" pair (e.g. `RestoreResult`,
-  `TrainingResult`). Carries a status discriminator plus the
+  natural "request" / "response" pair (e.g. `ArchivalResult`,
+  `BulkDeleteResult`). Carries a status discriminator plus the
   operation-specific payload.
 * `*Envelope`: typed error wrapper or generic transport container.
 * `*Status`: read-only state projection (e.g. `BackupStatus`).

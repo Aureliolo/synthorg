@@ -58,6 +58,7 @@ HR_FIRING_COMPLETE: Final[str] = "hr.firing.complete"
 HR_ONBOARDING_STARTED: Final[str] = "hr.onboarding.started"
 HR_ONBOARDING_STEP_COMPLETE: Final[str] = "hr.onboarding.step_complete"
 HR_ONBOARDING_COMPLETE: Final[str] = "hr.onboarding.complete"
+HR_ONBOARDING_FAILED: Final[str] = "hr.onboarding.failed"
 
 # ── Registry ─────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
 HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
+HR_FIRING_TERMINATION_FAILED: Final[str] = "hr.firing.termination_failed"
 HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
     "hr.offboarding.performance_eviction_failed"
 )

@@ -17,6 +17,7 @@ metric record and vice versa, and neither ever propagates out of the observer
 (the ``TaskEngine`` dispatch loop treats observers as best-effort anyway).
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
@@ -52,6 +53,13 @@ logger = get_logger(__name__)
 # free-form and unbounded at the model; a status-changed event fans out to every
 # subscriber on every transition, so the broadcast copy is truncated.
 _MAX_DESCRIPTION_TITLE_LENGTH: Final[int] = 120
+
+# The task engine dispatches observers from ONE serial background loop, so a
+# stalled enrichment read blocks every other task's transition behind it and
+# eventually overflows the bounded observer queue, which drops events. Bound
+# the read instead: an unmeasured quality score is the honest outcome, a
+# stalled board is not.
+_ENRICHMENT_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 class ActivityAgentRef(BaseModel):
@@ -221,7 +229,8 @@ class TaskActivityObserver:
         if self._resolve_quality_fn is None:
             return None
         try:
-            return await self._resolve_quality_fn(task)
+            async with asyncio.timeout(_ENRICHMENT_TIMEOUT_SECONDS):
+                return await self._resolve_quality_fn(task)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort ledger enrichment; the
             # authoritative gate already ran and acted on the verdict, so a

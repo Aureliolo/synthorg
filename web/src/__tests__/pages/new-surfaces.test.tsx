@@ -1,5 +1,5 @@
 /**
- * Smoke tests for nine dashboard surfaces.
+ * Smoke tests for eight dashboard surfaces.
  *
  * Each test asserts the page renders without crashing under the default
  * MSW handlers configured in the global test setup; version-history

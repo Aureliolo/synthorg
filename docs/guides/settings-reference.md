@@ -73,7 +73,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `tools` | Sandbox backends, tool access levels, progressive disclosure thresholds |
 | `settings` | Dispatcher polling interval, change-notification channel |
 | `client` | Human-response timeout, scored-feedback passing score / strictness multiplier / floor for synthesised AIClients |
-| `hr` | Training-pipeline kill switch, evaluation metric toggles (quality, cost, latency, task count) |
+| `hr` | Department-health derivation: rolling window and the minimum-runs floor below which the dashboard shows no-data instead of a score |
 | `simulations` | Client-intake benchmark door toggle (`client_intake_enabled`, off by default) and per-run timeouts for synthetic-client task and code-review simulations |
 | `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
 | `workers` | Uvicorn worker count; distributed dispatcher publish retry budget and backoff |

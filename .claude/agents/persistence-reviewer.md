@@ -1,6 +1,6 @@
 ---
 name: persistence-reviewer
-description: SynthOrg persistence-layer specialist for SQLite + Postgres parity, query optimization, schema design, security, and yoyo migrations. Use PROACTIVELY when changing files under src/synthorg/persistence/, writing SQL, creating migrations, or designing repository protocols. Output findings only; do not edit files.
+description: "SynthOrg persistence-layer specialist for SQLite + Postgres parity, query optimization, schema design, security, and yoyo migrations. Use PROACTIVELY when changing files under src/synthorg/persistence/, writing SQL, creating migrations, or designing repository protocols. Output findings only; do not edit files."
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 ---

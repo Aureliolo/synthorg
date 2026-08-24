@@ -106,14 +106,13 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 - **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
 - **Performance metrics**: 2x2 grid of MetricCards (tasks completed, avg completion time, success rate, cost per task) with sparklines
 - **Tool badges**: Horizontal flex-wrap of permitted tools
-- **Collaboration override**: Active collaboration-score override (score, applied by, reason, optional expiry) with a destructive Clear action gated to CEO / Manager, shown alongside the quality-score override panel
 - **Career timeline**: Vertical timeline with coloured dots (hired=green, promoted=blue, demoted=yellow, fired=red)
 - **Task history**: Gantt-style horizontal bars sorted by time, type-coloured, pulse on in-progress tasks, duration labels
 - **Activity log**: Paginated chronological event list with type icons, descriptions, timestamps
 
 **Deferred to future iteration**: Spending breakdown and tabbed layout (Access tab).
 
-**API endpoints**: `GET /agents`, `GET /agents/{agent_id}`, `GET /agents/{agent_id}/performance`, `GET /agents/{agent_id}/activity`, `GET /agents/{agent_id}/history`, `GET /agents/{agent_id}/health`, `GET /agents/{agent_id}/collaboration/score`, `GET /agents/{agent_id}/collaboration/override`, `POST /agents/{agent_id}/collaboration/override`, `DELETE /agents/{agent_id}/collaboration/override`, `GET /agents/{agent_id}/autonomy`, `POST /agents/{agent_id}/autonomy`
+**API endpoints**: `GET /agents`, `GET /agents/{agent_id}`, `GET /agents/{agent_id}/performance`, `GET /agents/{agent_id}/activity`, `GET /agents/{agent_id}/history`, `GET /agents/{agent_id}/health`, `GET /agents/{agent_id}/autonomy`, `POST /agents/{agent_id}/autonomy`
 **WS channels**: `agents`, `tasks` (detail page)
 
 #### Projects (`/projects`)
@@ -329,7 +328,7 @@ Slide-in drawer aggregating system notifications: budget alerts, approval arriva
 #### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
-Navigates to a dedicated full page at `/agents/{agentId}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Collaboration override, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
+Navigates to a dedicated full page at `/agents/{agentId}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
 
 ---
 
@@ -546,7 +545,6 @@ Every backend controller has a home in the page structure. No orphans.
 | SettingsController | Settings |
 | BackupController | Admin Backups page (`/admin/backups`) |
 | AutonomyController | Agent Detail page (planned) |
-| CollaborationController | Agent Detail page (Collaboration override panel) |
 | CoordinationController | Task Board (task detail action) |
 | CoordinationMetricsController | Coordination Metrics page (per-run efficiency / overhead / redundancy table) |
 | ExperimentsController | Meta page (read-only Experiments explorer: variants + assignment history) |

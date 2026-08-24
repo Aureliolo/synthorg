@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -50,26 +51,24 @@ def _make_mock_tracker(
     *,
     quality: float = 7.5,
     windows: tuple[tuple[str, float, float], ...] = (("7d", 0.85, 7.5),),
-) -> MagicMock:
+) -> PerformanceTracker:
     """Create a mock PerformanceTracker.
 
     Args:
         quality: Overall quality score.
         windows: Tuples of (window_size, success_rate, avg_quality).
     """
-    tracker = MagicMock()
-    snapshot = MagicMock()
-    snapshot.overall_quality_score = quality
-    mock_windows = []
-    for ws, sr, aq in windows:
-        w = MagicMock()
-        w.window_size = ws
-        w.success_rate = sr
-        w.avg_quality_score = aq
-        mock_windows.append(w)
-    snapshot.windows = tuple(mock_windows)
-    snapshot.trends = ()
-    tracker.get_snapshot = AsyncMock(return_value=snapshot)
+    snapshot = SimpleNamespace(
+        overall_quality_score=quality,
+        windows=tuple(
+            SimpleNamespace(window_size=ws, success_rate=sr, avg_quality_score=aq)
+            for ws, sr, aq in windows
+        ),
+        trends=(),
+    )
+    tracker: PerformanceTracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(return_value=snapshot),
+    )
     return tracker
 
 

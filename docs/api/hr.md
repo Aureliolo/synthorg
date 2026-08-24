@@ -47,9 +47,7 @@ Agent lifecycle management: hiring, firing, onboarding, offboarding, and perform
 
 ::: synthorg.hr.performance.tracker
 
-::: synthorg.hr.performance.quality_protocol
-
-::: synthorg.hr.performance.collaboration_protocol
+::: synthorg.hr.performance.oracle_quality
 
 ::: synthorg.hr.performance.trend_protocol
 

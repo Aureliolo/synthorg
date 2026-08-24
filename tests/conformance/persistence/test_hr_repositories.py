@@ -45,7 +45,7 @@ class TestLifecycleEventRepository:
         await repo.save(event)
         events = await repo.list_events()
 
-        assert len(events) >= 1
+        assert len(events) == 1
         saved = events[0]
         assert saved.id == as_uuid("evt-001")
         assert saved.agent_id == "agent-001"
@@ -83,7 +83,7 @@ class TestLifecycleEventRepository:
         await repo.save(event2)
 
         a_events = await repo.list_events(agent_id="agent-a")
-        assert len(a_events) >= 1
+        assert len(a_events) == 1
         assert all(e.agent_id == "agent-a" for e in a_events)
 
     async def test_list_events_by_type(
@@ -107,7 +107,7 @@ class TestLifecycleEventRepository:
         await repo.save(event)
         hired = await repo.list_events(event_type=LifecycleEventType.HIRED)
 
-        assert len(hired) >= 1
+        assert len(hired) == 1
         assert all(e.event_type == LifecycleEventType.HIRED for e in hired)
 
     async def test_list_events_with_limit(
@@ -130,8 +130,11 @@ class TestLifecycleEventRepository:
             )
             await repo.save(event)
 
+        # ``== 2``, not ``<= 2``: a limit that silently returned nothing, or
+        # was ignored while some other bug shrank the result, would satisfy
+        # the inequality and leave the test's own subject unchecked.
         limited = await repo.list_events(limit=2)
-        assert len(limited) <= 2
+        assert len(limited) == 2
 
     async def test_list_events_rejects_naive_since(
         self,
@@ -184,7 +187,7 @@ class TestTaskMetricRepository:
         await metric_repo.save(metric)
         records = await metric_repo.query()
 
-        assert len(records) >= 1
+        assert len(records) == 1
         saved = records[0]
         assert saved.id == as_uuid("tm-001")
         assert saved.agent_id == "agent-001"
@@ -266,7 +269,7 @@ class TestTaskMetricRepository:
         await metric_repo.save(metric)
         records = await metric_repo.query(agent_id="agent-x")
 
-        assert len(records) >= 1
+        assert len(records) == 1
         assert all(r.agent_id == "agent-x" for r in records)
 
     async def test_query_metrics_by_time_range(
@@ -308,7 +311,7 @@ class TestTaskMetricRepository:
         past = now - timedelta(hours=1)
         records = await metric_repo.query(since=past)
 
-        assert len(records) >= 1
+        assert len(records) == 1
 
     async def test_query_rejects_naive_bounds(
         self,

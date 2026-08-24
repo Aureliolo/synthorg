@@ -77,8 +77,6 @@ MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
-# Quality scores are reported on a 0-10 axis; dividing by this normalises
-# a human override score into the snapshot's [0, 1] human-feedback signal.
 class PerformanceTracker:
     """Central service for recording and querying agent performance metrics.
 

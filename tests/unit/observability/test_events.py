@@ -242,7 +242,6 @@ class TestEventConstants:
             "design",
             "docker",
             "docs",
-            "evaluation",
             "event_stream",
             "evolution",
             "execution",
@@ -345,8 +344,8 @@ class TestEventConstants:
             # A/B experiment variant registry + deterministic assignment.
             "experiments",
             # Golden-benchmark eval spine (executable grader subprocess
-            # outcomes); distinct from "evaluation", which serves the
-            # initiative-tail plan evaluation.
+            # outcomes); distinct from "initiative", which carries the
+            # initiative-tail plan evaluation verdict.
             "evals",
             # Governed external API/data access tool lifecycle events.
             "external_api",

@@ -1,7 +1,7 @@
 """Evolver cycle report model.
 
-Contains the results of a single evolution cycle for R3 eval loop
-consumption and audit.
+Contains the results of a single evolution cycle, as the audit record of
+what the cycle examined and emitted.
 """
 
 from typing import Self
