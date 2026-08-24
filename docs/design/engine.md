@@ -332,10 +332,10 @@ while one process is the only writer.
   read as that answer on its own: `UNIQUE (project, sprint_number)` refuses
   the same write when a competing writer took the number this process derived
   and then completed that sprint, which leaves the scope free and only the
-  number stale. `open_sprint_in_scope` tells them apart by re-reading the
-  scope rather than by asking which constraint fired, since the two engines
-  name theirs differently, and rebuilds the number instead of refusing a
-  sprint that should have been opened.
+  number stale. `open_sprint_in_scope` separates the two by re-reading the
+  scope rather than by inspecting which constraint fired, since the two
+  engines name theirs differently, and rebuilds the number instead of
+  refusing a sprint that should have been opened.
 
 Auto-creation off an `ASSIGNED` task assembles the sprint whole in memory and
 inserts it **already `ACTIVE`**, in one write. There is deliberately no
