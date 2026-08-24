@@ -320,8 +320,8 @@ while one process is the only writer.
   return value from the others, so the caller re-reads to name it.
 - **Which lifecycle state it is in**: `transition_if`.
 - **Nothing else**: `SprintRepository.save` CREATES a sprint and refuses an
-  id that already exists, rather than upserting as the generic contract
-  does. The three guarded statements above each hold their invariant
+  id that already exists, rather than writing over it as the generic
+  contract does. The three guarded statements above each hold their invariant
   against the row's own current value, so an unconditional whole-row write
   beside them is a fourth path that can undo all three at once, and the
   suite had a case asserting exactly that: a sprint saved, then saved again
