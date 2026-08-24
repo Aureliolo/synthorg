@@ -23,21 +23,22 @@ DROP TABLE IF EXISTS collaboration_metrics;
 -- a value that nothing will ever apply.
 
 DELETE FROM settings
-WHERE namespace = 'hr'
-  AND key IN (
-      'training_enabled',
-      'training_curation_model',
-      'eval_loop_cycle_enabled',
-      'eval_loop_cycle_paused',
-      'eval_loop_cycle_interval_seconds',
-      'eval_loop_cycle_window_hours',
-      'eval_loop_pattern_identifier_mode',
-      'eval_loop_fix_proposer_mode',
-      'eval_loop_llm_model',
-      'performance_llm_sampling_rate',
-      'performance_quality_ci_weight',
-      'evaluation_quality_enabled',
-      'evaluation_cost_enabled',
-      'evaluation_latency_enabled',
-      'evaluation_task_count_enabled'
-  );
+WHERE
+    namespace = 'hr'
+    AND key IN (
+        'training_enabled',
+        'training_curation_model',
+        'eval_loop_cycle_enabled',
+        'eval_loop_cycle_paused',
+        'eval_loop_cycle_interval_seconds',
+        'eval_loop_cycle_window_hours',
+        'eval_loop_pattern_identifier_mode',
+        'eval_loop_fix_proposer_mode',
+        'eval_loop_llm_model',
+        'performance_llm_sampling_rate',
+        'performance_quality_ci_weight',
+        'evaluation_quality_enabled',
+        'evaluation_cost_enabled',
+        'evaluation_latency_enabled',
+        'evaluation_task_count_enabled'
+    );
