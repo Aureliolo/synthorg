@@ -45,6 +45,7 @@ EVALS_HARNESS_HOST_SECRETS_INSTALLED: Final[str] = (
 EVALS_HARNESS_HOST_IMAGES_INSTALLED: Final[str] = "evals.harness.host_images_installed"
 EVALS_HARNESS_IMAGE_UNRESOLVED: Final[str] = "evals.harness.image_unresolved"
 EVALS_HARNESS_HOST_ADMIN_SEEDED: Final[str] = "evals.harness.host_admin_seeded"
+EVALS_HARNESS_HOST_ADMIN_PRESENT: Final[str] = "evals.harness.host_admin_present"
 EVALS_HARNESS_BIND_HOST_RESOLVED: Final[str] = "evals.harness.bind_host_resolved"
 EVALS_HARNESS_BEARER_MINTED: Final[str] = "evals.harness.bearer_minted"
 EVALS_HARNESS_LEDGER_INSTALLED: Final[str] = "evals.harness.ledger_installed"
