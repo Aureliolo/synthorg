@@ -59,18 +59,33 @@ async def sqlite_backend(tmp_path: Path) -> AsyncIterator[PersistenceBackend]:
         await backend.disconnect()
 
 
-def _resolver() -> _Configured:
+def _resolver(*, sweep_paused: bool = False) -> _Configured:
+    """A resolver answering per key rather than one value for every bool.
+
+    The pause switch and the sprint feature flag are both booleans in the
+    ``engine`` namespace and mean opposite things here, so a single
+    ``return_value`` cannot express "sprints on, sweep paused" at all.
+
+    Returns:
+        The configured resolver double.
+    """
+
+    async def _bool(_namespace: str, key: str) -> bool:
+        if key == "sprint_tail_sweep_paused":
+            return sweep_paused
+        return True
+
     return mock_of[ConfigResolverProtocol](
-        get_bool=AsyncMock(return_value=True),
+        get_bool=AsyncMock(side_effect=_bool),
         get_float=AsyncMock(return_value=_INTERVAL_SECONDS),
         get_enum=AsyncMock(return_value=WorkflowType.AGILE_KANBAN),
     )
 
 
-def _deps() -> dict[str, _Configured]:
+def _deps(*, sweep_paused: bool = False) -> dict[str, _Configured]:
     return {
         "task_engine": mock_of[TaskEngine](register_observer=Mock()),
-        "config_resolver": _resolver(),
+        "config_resolver": _resolver(sweep_paused=sweep_paused),
     }
 
 
@@ -115,6 +130,33 @@ async def test_boot_pass_runs_before_the_cadence(
         recovered = await repository.get(NotBlankStr("stranded"))
         assert recovered is not None
         assert recovered.status is SprintStatus.COMPLETED
+    finally:
+        await unwire_sprint_recovery(app_state)
+
+
+async def test_a_paused_sweep_skips_the_boot_pass_but_still_starts(
+    sqlite_backend: PersistenceBackend,
+) -> None:
+    """Pausing recovery has to survive the restart it is most needed across.
+
+    The scheduler applies the switch to every periodic tick, so asking it
+    only there left the boot pass an unconditional yes: an operator who
+    paused the sweep got it back, advancing lifecycle state, on the next
+    deploy. The scheduler still starts, because pausing stops the sweep
+    running rather than removing the thing to unpause.
+    """
+    repository = build_sprint_repository(sqlite_backend)
+    assert repository is not None
+    await repository.save(_stranded_sprint())
+
+    app_state = make_app_state(persistence=sqlite_backend, **_deps(sweep_paused=True))
+    await wire_sprint_service(app_state)
+    await wire_sprint_recovery(app_state)
+    try:
+        assert app_state.slice(EngineStateSlice).sprint_tail_scheduler is not None
+        untouched = await repository.get(NotBlankStr("stranded"))
+        assert untouched is not None
+        assert untouched.status is SprintStatus.ACTIVE
     finally:
         await unwire_sprint_recovery(app_state)
 

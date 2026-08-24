@@ -284,23 +284,31 @@ class TestSprintRepository:
         """Both backends read the cursor as the same row-value predicate.
 
         A drain paging by key is only correct while "after this row" means
-        the same thing to the dialect that runs it; a backend reading it
-        as an id comparison alone would repeat rows that share a sprint
-        number and skip rows below them.
+        the same thing to the dialect that runs it. Two of the rows share a
+        sprint number deliberately, because a sprint number is unique only
+        within a scope: a backend comparing the number alone would return
+        the tied pair together on one page and then step past both, and one
+        comparing the id alone would order them against rows they never sit
+        beside. Only the pair read as one value walks all three exactly
+        once.
         """
         repo = _repo(backend)
-        for number in (1, 2, 3):
+        # Two scopes, so the shared number is admissible: the tie is what
+        # forces the id half of the key to decide.
+        for sprint_id, project, number in (
+            ("ks-a", "ks-one", 2),
+            ("ks-b", "ks-two", 2),
+            ("ks-1", "ks-one", 1),
+        ):
             await repo.save(
-                _completed_sprint(sprint_id=f"ks-{number}", project="ks", number=number)
+                _completed_sprint(sprint_id=sprint_id, project=project, number=number)
             )
 
         walked: list[str] = []
         cursor: SprintPageCursor | None = None
         while True:
             page = await repo.query(
-                SprintFilterSpec(
-                    project="ks", status=SprintStatus.COMPLETED, after=cursor
-                ),
+                SprintFilterSpec(status=SprintStatus.COMPLETED, after=cursor),
                 limit=1,
             )
             if not page:
@@ -310,7 +318,7 @@ class TestSprintRepository:
                 sprint_number=page[-1].sprint_number, sprint_id=page[-1].id
             )
 
-        assert walked == ["ks-3", "ks-2", "ks-1"]
+        assert walked == ["ks-b", "ks-a", "ks-1"]
 
     async def test_count_matches_query(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)

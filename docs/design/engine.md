@@ -382,9 +382,15 @@ It is its own subsystem (`sprint_recovery`, requiring `sprint_service`)
 rather than a step inside the sprint service's wiring, so it starts and stops
 on its own path and reports its own unmet dependency through
 `GET /subsystems`. Its boot pass runs before the cadence starts: a restart is
-exactly when sprints are stranded, and waiting out an interval first would
-leave the board showing work in flight with nothing behind it for that whole
-interval. It is bounded by the smaller of the resync interval and a 30-second
+when sprints are stranded, and waiting out an interval first would leave the
+board showing work in flight with nothing behind it for that whole interval.
+The pause switch gates that pass too, not just the periodic ones: whether the
+sweep may run is one decision, and asked only inside the scheduler the answer
+at boot was an unconditional yes, so an operator who paused recovery got it
+back on the next deploy, which is the moment it has the most to move. Paused,
+the pass is skipped and the scheduler still starts, because pausing stops the
+sweep running rather than removing the thing to unpause. It is bounded by the
+smaller of the resync interval and a 30-second
 startup ceiling, because the pass is awaited inline in the lifespan and the
 interval is an operator setting that legitimately reaches a day, which would
 hold startup open past the readiness probe. Only that deadline is waived: a

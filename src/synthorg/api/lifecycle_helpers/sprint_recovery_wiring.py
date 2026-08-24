@@ -25,8 +25,11 @@ from synthorg.engine.workflow.sprint_tail_scheduler import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.workflow import SPRINT_TAIL_SWEEP_PAUSED
 from synthorg.persistence.sprint_factory import build_sprint_repository
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -36,6 +39,76 @@ logger = get_logger(__name__)
 #: startup can hang; the cadence is an operator setting that legitimately
 #: reaches a full day, which would make "bounded" mean nothing here.
 _BOOT_PASS_CEILING_SECONDS: Final[float] = 30.0
+
+
+async def _run_boot_pass(
+    reconciler: SprintRecoveryReconciler,
+    *,
+    config_resolver: ConfigResolverProtocol,
+    interval: float,
+) -> None:
+    """Run the one recovery pass a restart owes, unless the sweep is paused.
+
+    Before the cadence starts, because a restart is when sprints are
+    stranded and waiting out an interval first would leave the board
+    showing work in flight with nothing behind it for that whole interval.
+
+    Args:
+        reconciler: The sweep to run once.
+        config_resolver: Reads the pause switch, live.
+        interval: The configured cadence, the other half of the bound.
+
+    Raises:
+        TimeoutError: When the pass raises one that is not this function's
+            own deadline, which is the only timeout it waives.
+    """
+    # Whether the sweep may run is ONE decision, and the scheduler already
+    # owns it for every later pass. Asked only there, the answer at boot was
+    # an unconditional yes, so an operator who paused recovery got it back on
+    # the next restart -- which is when the sweep has the most to move, and a
+    # kill switch a deploy defeats is worse than none at all. Namespace and
+    # key are spelled out rather than borrowed, because the liveness gate
+    # reads a call site textually and a setting reached through an
+    # indirection it cannot follow reads as one nothing consumes.
+    paused = await resolve_bool_with_fallback(
+        resolver=config_resolver,
+        namespace="engine",
+        key="sprint_tail_sweep_paused",
+        fallback=False,
+    )
+    if paused:
+        # The scheduler still starts: pausing stops the sweep from running,
+        # not from being there to unpause.
+        logger.info(SPRINT_TAIL_SWEEP_PAUSED, trigger=BOOT_TRIGGER)
+        return
+    # Bounded, because this one is awaited inline in the lifespan: the pass
+    # reads every unfinished sprint, and a persistence backend that hangs
+    # would hold startup open with no ceiling, so the readiness probe never
+    # succeeds and the orchestrator restarts into the same wait. What a
+    # timed-out pass did not reach is exactly what the next pass covers, so
+    # the interval is an upper bound worth taking when it is the smaller of
+    # the two; the startup ceiling is what stops the bound BEING the
+    # configured cadence, which an operator may legitimately set to a day.
+    bound = min(interval, _BOOT_PASS_CEILING_SECONDS)
+    boot_deadline = asyncio.timeout(bound)
+    try:
+        async with boot_deadline:
+            await reconciler.reconcile(trigger=BOOT_TRIGGER)
+    except TimeoutError:
+        # Only THIS deadline is tolerable. ``TimeoutError`` is also what a
+        # socket timeout in the driver raises, and what any inner bound the
+        # pass takes surfaces as, so an unqualified handler reports the
+        # wrong cause and carries startup past a failure that is not the
+        # one being waived. ``expired()`` is the scope's own answer to
+        # which of the two happened.
+        if not boot_deadline.expired():
+            raise
+        logger.warning(
+            API_APP_STARTUP,
+            service="sprint_recovery",
+            note="boot pass hit its bound; the cadence covers what it missed",
+            bound_seconds=bound,
+        )
 
 
 async def wire_sprint_recovery(app_state: AppState) -> None:
@@ -79,38 +152,7 @@ async def wire_sprint_recovery(app_state: AppState) -> None:
     interval = await config_resolver.get_float(
         "engine", "sprint_tail_resync_interval_seconds"
     )
-    # Before the cadence starts, because a restart is exactly when sprints
-    # are stranded and waiting out an interval first would leave the board
-    # showing work in flight with nothing behind it for that whole interval.
-    #
-    # Bounded, because this one is awaited inline in the lifespan: the pass
-    # reads every unfinished sprint, and a persistence backend that hangs
-    # would hold startup open with no ceiling, so the readiness probe never
-    # succeeds and the orchestrator restarts into the same wait. What a
-    # timed-out pass did not reach is exactly what the next pass covers, so
-    # the interval is an upper bound worth taking when it is the smaller of
-    # the two; the startup ceiling is what stops the bound BEING the
-    # configured cadence, which an operator may legitimately set to a day.
-    bound = min(interval, _BOOT_PASS_CEILING_SECONDS)
-    boot_deadline = asyncio.timeout(bound)
-    try:
-        async with boot_deadline:
-            await reconciler.reconcile(trigger=BOOT_TRIGGER)
-    except TimeoutError:
-        # Only THIS deadline is tolerable. ``TimeoutError`` is also what a
-        # socket timeout in the driver raises, and what any inner bound the
-        # pass takes surfaces as, so an unqualified handler reports the
-        # wrong cause and carries startup past a failure that is not the
-        # one being waived. ``expired()`` is the scope's own answer to
-        # which of the two happened.
-        if not boot_deadline.expired():
-            raise
-        logger.warning(
-            API_APP_STARTUP,
-            service="sprint_recovery",
-            note="boot pass hit its bound; the cadence covers what it missed",
-            bound_seconds=bound,
-        )
+    await _run_boot_pass(reconciler, config_resolver=config_resolver, interval=interval)
     scheduler = SprintTailScheduler(
         reconciler,
         interval_seconds=interval,
