@@ -12,11 +12,9 @@ x-logging: &logging
 
 services:
   postgres:
-    # pgvector variant of the same hardened Postgres image: agent memory
-    # stores embeddings in this database, so the vector extension must be
-    # present. Staying inside the DHI family keeps the hardened posture
-    # (zero known CVEs, signed provenance, SBOM) rather than trading it
-    # away for a community image or a hand-built one.
+    # Agent memory stores embeddings here, so the image needs the vector
+    # extension; the pgvector variant supplies it without leaving the DHI
+    # family's hardened posture for a community or hand-built image.
     # renovate: datasource=docker depName=dhi.io/pgvector
     image: dhi.io/pgvector:0.8-pg18-debian13@sha256:9387a618668fa8f90d0c9d3f4acaa5880f57caff2ab35809e1ea7d2375a17878
     ports:
@@ -58,11 +56,9 @@ services:
       start_period: 30s
     logging: *logging
 
-  # Init container: chown named volumes to the correct non-root UID per service.
-  # Fresh Docker named volumes are root-owned; DHI images run as non-root and
-  # cannot self-chown, so this one-shot container sets ownership on first start.
-  #   /data      -> 65532 (backend)    /pgdata -> 70 (postgres)
-  #   /nats-data -> 65532 (nats)
+  # Fresh Docker named volumes are root-owned and DHI images run as non-root
+  # and cannot self-chown, so ownership has to be set from outside on first
+  # start.
   data-init:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.38-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37
@@ -77,8 +73,7 @@ services:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
-    # One-shot chown walk: a single busybox process, negligible memory.
-    # Limits cap the blast radius without throttling first-run chowns over
+    # Sized to cap blast radius without throttling a first-run chown walk over
     # a large pre-existing volume.
     deploy:
       resources:
@@ -91,12 +86,9 @@ services:
     build:
       context: ..
       dockerfile: docker/backend/Dockerfile
-      # BASE_IMAGE must come from the caller's environment (the
-      # backend Dockerfile has no default and a blank value is a
-      # hard error -- see docker/backend/Dockerfile for the
-      # Pinned-Dependencies rationale). CI release builds set
-      # this to a digest-pinned `synthorg-backend-base@sha256:...`;
-      # the DAST workflow and local dev set it to a tag like
+      # No default here on purpose: the backend Dockerfile treats a blank
+      # BASE_IMAGE as a hard error rather than resolving a floating tag. CI
+      # release builds pass a digest; the DAST workflow and local dev pass
       # `ghcr.io/aureliolo/synthorg-backend-base:main`.
       args:
         BASE_IMAGE: ${BASE_IMAGE}
@@ -111,33 +103,30 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
-      # UVICORN_HOST / UVICORN_PORT carry correct defaults from the image
-      # ENV (see docker/backend/Dockerfile) and drive what uvicorn binds;
-      # SYNTHORG_API_SERVER_HOST / _PORT below are the separate settings
-      # the application resolves, and they have to agree with the bind or
-      # the settings page reports a fiction and the untrusted-proxy
-      # warning never fires.
+      # SYNTHORG_API_SERVER_HOST / _PORT below are settings the application
+      # resolves, separate from the UVICORN_* image ENV that drives the actual
+      # bind. They have to agree with it or the settings page reports a fiction
+      # and the untrusted-proxy warning never fires.
       SYNTHORG_DATABASE_URL: "postgresql://synthorg:${POSTGRES_PASSWORD}@postgres:5432/synthorg"
       # Local docker-network postgres runs plaintext inside the bridge.
       # For production, override to `verify-full` with proper certs.
       SYNTHORG_POSTGRES_SSL_MODE: "disable"
-      # The artefact this stack is running, which source cannot tell it:
+      # Source cannot tell the process its own build identity:
       # `synthorg.__version__` is the last RELEASED version, so a pre-release
       # stack reports the previous release's number as its own. This file
-      # builds the backend from the worktree, so an unset tag reads as the
-      # source version, which is then the true answer.
+      # builds from the worktree, so an unset tag reads as the source version,
+      # which is then the true answer.
       SYNTHORG_IMAGE_TAG: "${SYNTHORG_IMAGE_TAG:-}"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "postgres"
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
-      # The next block is the settings the product marks compose_set: the
-      # process is started with them and nothing inside can change them, so
-      # this file has to pass every one or the label is a lie for this
-      # deployment path. Kept in step with the CLI's own template by
-      # scripts/check_setting_compose_backed.py. It ends at the cassette
-      # pair below; what follows is ordinary env-layer seeding of live
-      # settings, which the gate does not inspect.
+      # From here to the cassette pair are the settings the product marks
+      # compose_set: nothing inside the process can change them, so every
+      # launcher has to pass every one or the label is a lie for this
+      # deployment path. Held to the CLI's own template by
+      # scripts/check_setting_compose_backed.py. What follows the pair is
+      # ordinary env-layer seeding of live settings, which the gate ignores.
       SYNTHORG_API_SERVER_HOST: "0.0.0.0"
       SYNTHORG_API_SERVER_PORT: "3001"
       SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
@@ -165,16 +154,14 @@ services:
       SYNTHORG_FINE_TUNE_IMAGE: "${SYNTHORG_FINE_TUNE_IMAGE:-}"
       SYNTHORG_OPENHANDS_IMAGE: "${SYNTHORG_OPENHANDS_IMAGE:-}"
       # The OpenHands loop container runs on the default bridge network, not
-      # synthorg-net, so it reaches the API through the host rather than by
-      # compose service name: the loop gives its container a
-      # `host.docker.internal:host-gateway` alias and these two point at the
-      # published port. Derived from the same values the bind above uses, so a
-      # standard deployment needs no hand configuration. The container appends
-      # `/mcp` to the MCP base itself.
+      # synthorg-net, so a compose service name does not resolve for it: the
+      # loop gives its container a `host.docker.internal:host-gateway` alias
+      # and these point at the published port instead. Derived from the values
+      # the bind above uses, so a standard deployment needs no hand
+      # configuration. The container appends `/mcp` to the MCP base itself.
       SYNTHORG_PROVIDERS_GATEWAY_BASE_URL: "${SYNTHORG_PROVIDERS_GATEWAY_BASE_URL:-http://host.docker.internal:${BACKEND_PORT:-3001}${SYNTHORG_API_API_PREFIX:-/api/v1}/gateway/v1}"
       SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL: "${SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL:-http://host.docker.internal:${BACKEND_PORT:-3001}${SYNTHORG_API_API_PREFIX:-/api/v1}/mcp-gateway}"
-    # Image sets USER 65532 in the Dockerfile; no compose override
-    # needed.
+    # No `user:` here because the Dockerfile already sets USER 65532.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -182,16 +169,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
-    # Covers the WHOLE lifespan shutdown, which is two phases in series and
-    # not the one uvicorn's timeout_graceful_shutdown bounds: the request
-    # drain (_DRAIN_TIMEOUT_SECONDS, 25s) runs first, then the service
-    # teardown window (_TOTAL_SHUTDOWN_WINDOW_SECONDS, 75s) plus at most
-    # _FLOOR_RESERVE_SECONDS (10s) of floor for the tail, plus the minimum
-    # per-step grants. ~112s worst case, 120s here for headroom. Without it,
-    # Docker's 10s default arrives
-    # mid-sequence and the steps that lose are the ones at the end: the
-    # audit-chain flush and the persistence disconnect. Move this and those
-    # three constants together.
+    # Sized to the whole lifespan shutdown rather than to uvicorn's own
+    # timeout. The contract, and the constants this is the sum of, are derived
+    # in docs/design/deployment.md; they and this number move together.
     stop_grace_period: 120s
     stop_signal: SIGTERM
     restart: unless-stopped
@@ -210,25 +190,23 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    # apko sets run-as: "65532" in docker/web/apko.yaml; no compose
-    # override needed.
+    # No `user:` here because docker/web/apko.yaml already sets run-as 65532.
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     read_only: true
     tmpfs:
-      # Caddy runs as uid 65532 from apko; tmpfs defaults to root-owned,
-      # which breaks autosave, instance-UUID persistence, and the
-      # storage_clean lock dir under /data/caddy. Pin the mount owner so
-      # Caddy can write without falling back to read-only mode.
+      # The uid/gid on each mount is load-bearing: a tmpfs defaults to
+      # root-owned, which Caddy (65532) cannot write, breaking autosave,
+      # instance-UUID persistence, and the storage_clean lock dir under
+      # /data/caddy, and dropping it back to read-only mode.
       - /tmp:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
       - /config/caddy:noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
       - /data/caddy:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
     healthcheck:
-      # Caddy serves a plain "ok" 200 at /healthz; wget is installed in
-      # the apko image specifically for this probe. Target 127.0.0.1 to
-      # avoid pulling in external DNS resolution.
+      # wget is in the apko image solely for this probe, and 127.0.0.1 keeps
+      # DNS out of the probe hot path.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 10s
       timeout: 3s
@@ -243,10 +221,10 @@ services:
           pids: 64
     logging: *logging
 
-  # DHI NATS JetStream (distributed message bus + task queue).
-  # DHI image is distroless (no shell/wget) -- healthcheck via sidecar.
-  # Configuration via bind-mounted nats.conf -- NATS has no
-  # --max_payload CLI flag, so non-default settings need a config file.
+  # Config comes from a bind-mounted file because NATS has no --max_payload
+  # CLI flag, so anything diverging from the defaults cannot be passed as an
+  # argument. No healthcheck: the DHI image is distroless, and liveness
+  # surfaces at the application layer instead (see below).
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
     image: dhi.io/nats:2.14-debian13@sha256:6e380f3a2910ab38b7b9b018c6a8bfb7eda8fb86426b4c408e3eef044314a2a6
@@ -281,20 +259,17 @@ services:
           pids: 64
     logging: *logging
 
-  # NATS health is surfaced via the backend's /api/v1/readyz endpoint.
-  # `NatsBus.health_check` performs a live PING/PONG round-trip, so
-  # shipping a busybox sidecar purely to produce a green dot in
-  # `docker ps` added a container for zero dependency value -- nothing
-  # in compose ever consumed the sidecar's `service_healthy` state.
+  # No NATS health sidecar here on purpose: `NatsBus.health_check` does a live
+  # PING/PONG that the backend reports at /api/v1/readyz, and nothing in
+  # compose ever consumed the sidecar's `service_healthy` state, so it was a
+  # container bought for a green dot in `docker ps`.
 
-  # Fine-tuning (~4 GB GPU image / ~1.7 GB CPU-only) has no standing
-  # service: the backend spawns an ephemeral one-shot container per
-  # torch-bound pipeline stage via the Docker API and removes it on
-  # exit. Enable by setting the image on the backend's environment:
-  #   SYNTHORG_FINE_TUNE_IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-gpu:<tag>
-  # (or synthorg-fine-tune-cpu for hosts without an NVIDIA GPU). The
-  # CLI-generated compose.yml writes a sigstore-verified digest-pinned
-  # reference into this env var automatically when fine_tuning=true.
+  # No fine-tune service here on purpose: the backend spawns an ephemeral
+  # one-shot container per torch-bound stage over the Docker API and removes
+  # it on exit. Enable by setting SYNTHORG_FINE_TUNE_IMAGE on the backend to
+  # ghcr.io/aureliolo/synthorg-fine-tune-gpu:<tag> (or -cpu on hosts with no
+  # NVIDIA GPU); the CLI-generated compose.yml writes a sigstore-verified
+  # digest pin there itself when fine_tuning=true.
 
 networks:
   default:

@@ -52,14 +52,9 @@ services:
       SYNTHORG_API_AUTH_EXCLUDE_PATHS: "${SYNTHORG_API_AUTH_EXCLUDE_PATHS:-}"
       SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS: "${SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS:-}"
       SYNTHORG_API_REQUEST_MAX_BODY_SIZE_BYTES: "${SYNTHORG_API_REQUEST_MAX_BODY_SIZE_BYTES:-10485760}"
-      # Timestamp-authority trust anchors for the signed audit chain. Resolved
-      # before the settings backend exists, so the deployment is the only place
-      # they can be chosen.
       SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_FREETSA: "${SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_FREETSA:-https://freetsa.org/tsr}"
       SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_DIGICERT: "${SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_DIGICERT:-https://timestamp.digicert.com}"
       SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_SECTIGO: "${SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_SECTIGO:-https://timestamp.sectigo.com}"
-      # Provider cassettes: recording or replaying is chosen for the whole run,
-      # because switching mid-process leaves a half-recorded transcript.
       SYNTHORG_PROVIDERS_CASSETTE_MODE: "${SYNTHORG_PROVIDERS_CASSETTE_MODE:-off}"
       SYNTHORG_PROVIDERS_CASSETTE_PATH: "${SYNTHORG_PROVIDERS_CASSETTE_PATH:-}"
       SYNTHORG_JWT_SECRET: "test-secret-value"
@@ -73,16 +68,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
-    # Covers the WHOLE lifespan shutdown, which is two phases in series and
-    # not the one uvicorn's timeout_graceful_shutdown bounds: the request
-    # drain (_DRAIN_TIMEOUT_SECONDS, 25s) runs first, then the service
-    # teardown window (_TOTAL_SHUTDOWN_WINDOW_SECONDS, 75s) plus at most
-    # _FLOOR_RESERVE_SECONDS (10s) of floor for the tail, plus the minimum
-    # per-step grants. ~112s worst case, 120s here for headroom. Without it,
-    # Docker's 10s default arrives
-    # mid-sequence and the steps that lose are the ones at the end: the
-    # audit-chain flush and the persistence disconnect. Move this and those
-    # three constants together.
     stop_grace_period: 120s
     stop_signal: SIGTERM
     restart: unless-stopped
@@ -111,9 +96,6 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      # uid/gid are load-bearing: a tmpfs mounts root-owned by default,
-      # which Caddy (running as 65532) cannot write, so it would fall
-      # back to read-only mode.
       - /tmp:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
       - /config/caddy:noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
       - /data/caddy:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532

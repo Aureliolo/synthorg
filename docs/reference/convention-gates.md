@@ -33,6 +33,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
+| `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
 | `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |

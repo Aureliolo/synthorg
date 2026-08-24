@@ -86,6 +86,11 @@ mandatory_rules:
     header: Applied apko Locks
     gate: scripts/check_apko_lock_applied.py
 
+  - id: claude-md::generated-compose-comments
+    file: CLAUDE.md
+    header: Generated-Compose Comments
+    gate: scripts/check_compose_template_comments.py
+
   - id: claude-md::license-compatibility
     file: CLAUDE.md
     header: License Compatibility
