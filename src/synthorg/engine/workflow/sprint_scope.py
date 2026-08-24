@@ -61,6 +61,30 @@ def scope_spec(project: str | None) -> SprintFilterSpec:
     return SprintFilterSpec(project=NotBlankStr(project))
 
 
+async def scope_occupant(
+    project: str | None, *, sprints: SprintRepository
+) -> Sprint | None:
+    """Return the sprint holding *project*'s scope, if one does.
+
+    The one place "is this scope taken" is asked. Its two callers want
+    different things from the answer (a refusal the operator reads, and a
+    quiet return on the auto-create path), which is exactly how one
+    predicate comes to be written twice and then to drift.
+
+    Args:
+        project: The scope being asked about.
+        sprints: The durable store.
+
+    Returns:
+        The occupying non-completed sprint, or ``None`` when the scope is
+        free.
+    """
+    for existing in await sprints.query(scope_spec(project)):
+        if existing.status is not SprintStatus.COMPLETED:
+            return existing
+    return None
+
+
 async def require_scope_free(project: str | None, *, sprints: SprintRepository) -> None:
     """Refuse when *project*'s scope already carries an open sprint.
 
@@ -72,14 +96,14 @@ async def require_scope_free(project: str | None, *, sprints: SprintRepository) 
         SprintAlreadyOpenError: When a non-completed sprint exists, naming
             it so the caller can go and finish it.
     """
-    for existing in await sprints.query(scope_spec(project)):
-        if existing.status is not SprintStatus.COMPLETED:
-            log_refusal(reason="scope_occupied", project=project, sprint_id=existing.id)
-            raise SprintAlreadyOpenError(
-                sprint_name=existing.name,
-                sprint_id=existing.id,
-                sprint_status=existing.status.value,
-            )
+    existing = await scope_occupant(project, sprints=sprints)
+    if existing is not None:
+        log_refusal(reason="scope_occupied", project=project, sprint_id=existing.id)
+        raise SprintAlreadyOpenError(
+            sprint_name=existing.name,
+            sprint_id=existing.id,
+            sprint_status=existing.status.value,
+        )
 
 
 def scope_occupied_error(project: str | None) -> SprintAlreadyOpenError:
@@ -129,6 +153,7 @@ __all__ = [
     "build_planning_sprint",
     "log_refusal",
     "require_scope_free",
+    "scope_occupant",
     "scope_occupied_error",
     "scope_spec",
 ]

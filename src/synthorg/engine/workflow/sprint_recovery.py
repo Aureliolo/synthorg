@@ -40,17 +40,18 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import MAX_PAGE_SIZE
-from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow._sprint_ops import log_sprint_transition
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.engine.workflow.sprint_tail import advance_tail, backlog_fully_delivered
+from synthorg.engine.workflow.sprint_tail import (
+    advance_tail,
+    backlog_fully_delivered,
+    try_hop,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow import (
     SPRINT_RESUMED,
     SPRINT_TAIL_SWEEP_COMPLETE,
     SPRINT_TAIL_SWEEP_FAILED,
     SPRINT_TAIL_SWEEP_STARTED,
-    SPRINT_TRANSITION_LOST,
 )
 from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
 
@@ -272,24 +273,15 @@ class SprintRecoveryReconciler:
             ``SprintStatus.COMPLETED`` when this pass closed it, else
             ``None``.
         """
-        completed = sprint.with_transition(
-            SprintStatus.COMPLETED, end_date=self._clock.now().isoformat()
-        )
-        if not await self._sprints.transition_if(
-            NotBlankStr(sprint.id),
-            SprintStatus.RETROSPECTIVE,
+        completed = await try_hop(
+            sprint,
             SprintStatus.COMPLETED,
-            end_date=completed.end_date,
-        ):
-            logger.debug(
-                SPRINT_TRANSITION_LOST,
-                sprint_id=sprint.id,
-                from_status=SprintStatus.RETROSPECTIVE.value,
-                to_status=SprintStatus.COMPLETED.value,
-                note="recovery_retro_to_completed",
-            )
+            sprints=self._sprints,
+            note="recovery_retro_to_completed",
+            end_date=self._clock.now().isoformat(),
+        )
+        if completed is None:
             return None
-        log_sprint_transition(completed, SprintStatus.RETROSPECTIVE)
         logger.info(
             SPRINT_RESUMED,
             sprint_id=sprint.id,

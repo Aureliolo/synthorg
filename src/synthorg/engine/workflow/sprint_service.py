@@ -84,6 +84,7 @@ from synthorg.engine.workflow.sprint_scope import (
     build_planning_sprint,
     log_refusal,
     require_scope_free,
+    scope_occupant,
     scope_occupied_error,
     scope_spec,
 )
@@ -298,6 +299,10 @@ class SprintService:
             try:
                 await self._sprints.save(sprint)
             except ConstraintViolationError as exc:
+                # Bound before the raise so the statement names an error
+                # rather than the builder that returns one; raised inline,
+                # the docstring gate reads `scope_occupied_error` itself as
+                # the exception type and asks for it by that name.
                 occupied = scope_occupied_error(project)
                 raise occupied from exc
         logger.info(
@@ -387,10 +392,13 @@ class SprintService:
             SprintTransitionConflictError: When the sprint is not
                 ``PLANNING`` (the CAS found a different state).
         """
+        # One message for both refusals: they are the same fact reached two
+        # ways, before the write and by the write, and a caller cannot act
+        # on the difference.
+        msg = f"Sprint {sprint_id!r} is not in 'planning'"
         async with self._lock:
             sprint = await self._require(sprint_id)
             if sprint.status is not SprintStatus.PLANNING:
-                msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 log_refusal(
                     reason="not_planning",
                     sprint_id=sprint_id,
@@ -407,7 +415,6 @@ class SprintService:
                 start_date=started.start_date,
             )
             if not ok:
-                msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 log_refusal(reason="activation_cas_lost", sprint_id=sprint_id)
                 raise SprintTransitionConflictError(msg)
         log_sprint_transition(started, SprintStatus.PLANNING)
@@ -500,8 +507,7 @@ class SprintService:
         """
         scope = self._project_of(task)
         async with self._lock:
-            existing = await self._sprints.query(scope_spec(scope))
-            if any(s.status is not SprintStatus.COMPLETED for s in existing):
+            if await scope_occupant(scope, sprints=self._sprints) is not None:
                 return
             sprint = await build_planning_sprint(
                 scope, sprints=self._sprints, config=self._sprint_config

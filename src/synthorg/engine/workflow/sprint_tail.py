@@ -56,6 +56,57 @@ def backlog_fully_delivered(sprint: Sprint) -> bool:
     return len(sprint.completed_task_ids) >= len(sprint.task_ids)
 
 
+async def try_hop(
+    sprint: Sprint,
+    target: SprintStatus,
+    *,
+    sprints: SprintRepository,
+    note: str,
+    **overrides: object,
+) -> Sprint | None:
+    """Attempt one lifecycle compare-and-set, and say what happened.
+
+    Every hop the tail and the recovery sweep take has the same three
+    parts (try the CAS, record the loss, record the move), so they live
+    here once rather than at each hop. What differs per hop is only which
+    states it names, which date it stamps, and the *note* that tells two
+    otherwise identical log lines apart.
+
+    The post-image is built only AFTER the CAS lands. Building it first
+    would read more directly, but ``with_transition`` refuses an illegal
+    hop by raising, so an eagerly-built candidate turns "this row was not
+    where I left it" into an exception at a caller that is written to
+    treat it as an ordinary lost race.
+
+    Args:
+        sprint: The sprint as the caller last read it; its status is the
+            CAS's expected ``from`` state.
+        target: The status to move to.
+        sprints: The durable store, whose CAS decides the hop.
+        note: Slug distinguishing this hop in the lost-CAS log.
+        **overrides: Date columns stamped with the transition.
+
+    Returns:
+        The sprint after the hop, or ``None`` when the CAS was lost. A
+        lost CAS means another caller moved the row first, which is the
+        designed arrangement here rather than a failure.
+    """
+    if not await sprints.transition_if(
+        NotBlankStr(sprint.id), sprint.status, target, **overrides
+    ):
+        logger.debug(
+            SPRINT_TRANSITION_LOST,
+            sprint_id=sprint.id,
+            from_status=sprint.status.value,
+            to_status=target.value,
+            note=note,
+        )
+        return None
+    moved = sprint.with_transition(target, **overrides)
+    log_sprint_transition(moved, sprint.status)
+    return moved
+
+
 async def open_review_if_delivered(
     sprint: Sprint, *, sprints: SprintRepository
 ) -> Sprint:
@@ -75,20 +126,10 @@ async def open_review_if_delivered(
         return sprint
     if not backlog_fully_delivered(sprint):
         return sprint
-    if not await sprints.transition_if(
-        NotBlankStr(sprint.id), sprint.status, SprintStatus.IN_REVIEW
-    ):
-        logger.debug(
-            SPRINT_TRANSITION_LOST,
-            sprint_id=sprint.id,
-            from_status=sprint.status.value,
-            to_status=SprintStatus.IN_REVIEW.value,
-            note="backlog_delivered",
-        )
-        return sprint
-    transitioned = sprint.with_transition(SprintStatus.IN_REVIEW)
-    log_sprint_transition(transitioned, sprint.status)
-    return transitioned
+    moved = await try_hop(
+        sprint, SprintStatus.IN_REVIEW, sprints=sprints, note="backlog_delivered"
+    )
+    return moved if moved is not None else sprint
 
 
 async def finalize_if_delivered(
@@ -118,43 +159,25 @@ async def finalize_if_delivered(
         return sprint
     if not backlog_fully_delivered(sprint):
         return sprint
-    if not await sprints.transition_if(
-        NotBlankStr(sprint.id),
-        SprintStatus.IN_REVIEW,
+    # Two hops rather than one, each logged: RETROSPECTIVE is a state the
+    # row genuinely occupied, and a single line spanning both leaves no
+    # record that it was ever there.
+    retro = await try_hop(
+        sprint,
         SprintStatus.RETROSPECTIVE,
-    ):
-        logger.debug(
-            SPRINT_TRANSITION_LOST,
-            sprint_id=sprint.id,
-            from_status=SprintStatus.IN_REVIEW.value,
-            to_status=SprintStatus.RETROSPECTIVE.value,
-            note="finalize_review_to_retro",
-        )
-        return sprint
-    # Logged per hop rather than once for the walk: RETROSPECTIVE is a state
-    # the row genuinely occupied, and a single line spanning both hops leaves
-    # no record that it was ever there.
-    retro = sprint.model_copy(update={"status": SprintStatus.RETROSPECTIVE})
-    log_sprint_transition(retro, SprintStatus.IN_REVIEW)
-    completed = retro.with_transition(
-        SprintStatus.COMPLETED, end_date=clock.now().isoformat()
+        sprints=sprints,
+        note="finalize_review_to_retro",
     )
-    if not await sprints.transition_if(
-        NotBlankStr(sprint.id),
-        SprintStatus.RETROSPECTIVE,
+    if retro is None:
+        return sprint
+    completed = await try_hop(
+        retro,
         SprintStatus.COMPLETED,
-        end_date=completed.end_date,
-    ):
-        logger.debug(
-            SPRINT_TRANSITION_LOST,
-            sprint_id=sprint.id,
-            from_status=SprintStatus.RETROSPECTIVE.value,
-            to_status=SprintStatus.COMPLETED.value,
-            note="finalize_retro_to_completed",
-        )
-        return retro
-    log_sprint_transition(completed, SprintStatus.RETROSPECTIVE)
-    return completed
+        sprints=sprints,
+        note="finalize_retro_to_completed",
+        end_date=clock.now().isoformat(),
+    )
+    return completed if completed is not None else retro
 
 
 async def advance_tail(
@@ -182,4 +205,5 @@ __all__ = [
     "backlog_fully_delivered",
     "finalize_if_delivered",
     "open_review_if_delivered",
+    "try_hop",
 ]
