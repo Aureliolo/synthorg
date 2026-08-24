@@ -56,9 +56,9 @@ services:
       start_period: 30s
     logging: *logging
 
-  # Fresh Docker named volumes are root-owned and DHI images run as non-root
-  # and cannot self-chown, so ownership has to be set from outside on first
-  # start.
+  # Fresh Docker named volumes are root-owned and every image here runs as a
+  # non-root user that cannot self-chown, so ownership has to be set from
+  # outside on first start.
   data-init:
     # renovate: datasource=docker depName=busybox
     image: busybox:1.38-musl@sha256:32b5cdad7cce41dfd53d0ae06baebcf8357a147ee7694dc706911c373bc30c37

@@ -305,12 +305,10 @@ and a compose-level block would replace it wholesale, start period included.
     cap_drop:
       - ALL
     read_only: true
-{{- /*
-The uid/gid on each mount below is load-bearing: a tmpfs mounts root-owned by
-default, which Caddy (running as 65532) cannot write, so it would fall back to
-read-only mode.
-*/}}
     tmpfs:
+      # The uid/gid on each mount is load-bearing: a tmpfs mounts root-owned
+      # by default, which Caddy (running as 65532) cannot write, so it falls
+      # back to read-only mode.
       - /tmp:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
       - /config/caddy:noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
       - /data/caddy:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
@@ -345,7 +343,7 @@ the backend's /api/v1/readyz reports it. Do not add a busybox health sidecar
 -- nothing in compose ever consumed its service_healthy state.
 
 Config comes from a bind-mounted nats.conf written next to compose.yml by the
-CLI: NATS 2.12 has no --max_payload CLI flag, so anything diverging from the
+CLI: NATS has no --max_payload CLI flag, so anything diverging from the
 defaults must come from a file.
 */}}
 
