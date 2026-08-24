@@ -125,6 +125,7 @@ HR_HIRING_RISK_TIER_MISSING: Final[str] = "hr.hiring.risk_tier_missing"
 HR_HIRING_ALREADY_REGISTERED: Final[str] = "hr.hiring.already_registered"
 HR_HIRING_PERSIST_FAILED: Final[str] = "hr.hiring.persist_failed"
 HR_HIRING_REQUESTS_HYDRATED: Final[str] = "hr.hiring.requests_hydrated"
+HR_AUTONOMY_AGENT_NOT_FOUND: Final[str] = "hr.autonomy.agent_not_found"
 
 # ── Activity timeline ──────────────────────────────────────────
 

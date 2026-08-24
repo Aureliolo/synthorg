@@ -44,6 +44,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
     HR_AGENT_STATUS_TRANSITIONED,
+    HR_AUTONOMY_AGENT_NOT_FOUND,
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
     HR_REGISTRY_CLEARED,
@@ -836,7 +837,7 @@ class AgentRegistryService:
             if identity is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                 )
@@ -881,7 +882,7 @@ class AgentRegistryService:
             if live is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                     requested_level=level.value,
@@ -946,7 +947,7 @@ class AgentRegistryService:
             if live is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                     requested_level=level.value,
