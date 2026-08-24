@@ -22,23 +22,27 @@ _OPEN_STATUS_SLOTS = open_status_placeholders("?")
 
 ORDER_BY = "ORDER BY sprint_number DESC, id DESC"
 
-UPSERT_SQL = f"""
+# Sprint creation, and ONLY creation. Every column a persisted sprint
+# carries belongs to a guarded statement below -- ``status`` and the date
+# stamps to ``TRANSITION_SQL``, the backlog and its committed total to
+# ``ADD_TASK_SQL``, the completed set and its total to
+# ``COMPLETE_TASK_SQL`` -- and each of those holds its invariant against
+# the row's own current value. An upsert here would write all of them
+# from a pre-image a caller read earlier, which is the read-modify-write
+# every one of those statements exists to remove: two callers adding
+# different tasks would each save a backlog that never saw the other's.
+#
+# ``DO NOTHING`` targets the id conflict alone, so the scope index and
+# the per-scope number index still refuse as they did; the repository
+# reads the RETURNING row and raises rather than returning a silent
+# no-op. RETURNING rather than a row count because ``sqlite3`` answers
+# ``rowcount`` with -1 whenever it cannot determine one, which reads
+# exactly like the refusal this has to detect.
+INSERT_SQL = f"""
     INSERT INTO sprints ({SPRINT_COLUMNS})
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-        project = excluded.project,
-        name = excluded.name,
-        goal = excluded.goal,
-        status = excluded.status,
-        sprint_number = excluded.sprint_number,
-        duration_days = excluded.duration_days,
-        start_date = excluded.start_date,
-        end_date = excluded.end_date,
-        task_ids = excluded.task_ids,
-        completed_task_ids = excluded.completed_task_ids,
-        task_points = excluded.task_points,
-        story_points_committed = excluded.story_points_committed,
-        story_points_completed = excluded.story_points_completed
+    ON CONFLICT(id) DO NOTHING
+    RETURNING id
 """  # noqa: S608 -- column list is a compile-time constant
 
 TRANSITION_SQL = (
@@ -140,8 +144,8 @@ __all__ = [
     "COMPLETE_TASK_SQL",
     "DELETE_SQL",
     "GET_SQL",
+    "INSERT_SQL",
     "LIST_SQL",
     "ORDER_BY",
     "TRANSITION_SQL",
-    "UPSERT_SQL",
 ]

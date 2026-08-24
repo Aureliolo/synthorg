@@ -22,23 +22,13 @@ _OPEN_STATUS_SLOTS = open_status_placeholders("%s")
 
 ORDER_BY = "ORDER BY sprint_number DESC, id DESC"
 
-UPSERT_SQL = f"""
+# Sprint creation, and ONLY creation; see the SQLite sibling for why an
+# upsert here would undo every guarded statement below it.
+INSERT_SQL = f"""
     INSERT INTO sprints ({SPRINT_COLUMNS})
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (id) DO UPDATE SET
-        project = EXCLUDED.project,
-        name = EXCLUDED.name,
-        goal = EXCLUDED.goal,
-        status = EXCLUDED.status,
-        sprint_number = EXCLUDED.sprint_number,
-        duration_days = EXCLUDED.duration_days,
-        start_date = EXCLUDED.start_date,
-        end_date = EXCLUDED.end_date,
-        task_ids = EXCLUDED.task_ids,
-        completed_task_ids = EXCLUDED.completed_task_ids,
-        task_points = EXCLUDED.task_points,
-        story_points_committed = EXCLUDED.story_points_committed,
-        story_points_completed = EXCLUDED.story_points_completed
+    ON CONFLICT (id) DO NOTHING
+    RETURNING id
 """  # noqa: S608 -- column list is a compile-time constant
 
 TRANSITION_SQL = (
@@ -139,8 +129,8 @@ __all__ = [
     "COMPLETE_TASK_SQL",
     "DELETE_SQL",
     "GET_SQL",
+    "INSERT_SQL",
     "LIST_SQL",
     "ORDER_BY",
     "TRANSITION_SQL",
-    "UPSERT_SQL",
 ]

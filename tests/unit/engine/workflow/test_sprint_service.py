@@ -71,7 +71,10 @@ class _RivalClaimsTheScope(FakeSprintRepository):
         self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
     ) -> tuple[Sprint, ...]:
         rows = await super().query(filter_spec, limit=limit, offset=offset)
-        if not rows:
+        # Claimed once. The service reads the scope more than once per
+        # create, and ``save`` refuses a repeated id, so an unguarded
+        # second claim would raise out of a read.
+        if not rows and "rival" not in self.rows:
             await super().save(
                 Sprint(
                     id=NotBlankStr("rival"),
@@ -137,6 +140,12 @@ class _EveryNumberTaken(FakeSprintRepository):
 
     @override
     async def save(self, entity: Sprint) -> None:
+        # One rival per number: a retry deriving a number already taken
+        # collides on the number either way, and re-inserting the rival
+        # would raise on its id instead, which is a different refusal.
+        if f"rival-{entity.sprint_number}" in self.rows:
+            await super().save(entity)
+            return
         await super().save(
             Sprint(
                 id=NotBlankStr(f"rival-{entity.sprint_number}"),
@@ -272,6 +281,18 @@ def _completed(sprint: Sprint) -> Sprint:
     )
 
 
+def _finish(repo: FakeSprintRepository, sprint: Sprint) -> None:
+    """Put *sprint* in the store already finished, freeing its scope.
+
+    Arranged into the store rather than saved, because ``save`` creates a
+    sprint and refuses an id that exists: a persisted sprint reaches
+    COMPLETED through ``transition_if``, and walking the whole lifecycle
+    here would be four hops of setup for a fact this test only needs to
+    start from.
+    """
+    repo.rows[sprint.id] = _completed(sprint)
+
+
 class TestExplicitControl:
     async def test_create_sprint_numbers_sequentially(self) -> None:
         repo = FakeSprintRepository()
@@ -279,7 +300,7 @@ class TestExplicitControl:
         first = await service.create_sprint("proj-1")
         # A scope runs one sprint at a time, so the next one follows the
         # first finishing rather than sitting beside it.
-        await repo.save(_completed(first))
+        _finish(repo, first)
         second = await service.create_sprint("proj-1")
         assert first.sprint_number == 1
         assert second.sprint_number == 2

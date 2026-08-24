@@ -48,6 +48,9 @@ async def wire_sprint_recovery(app_state: AppState) -> None:
         SubsystemDeclinedError: When a collaborator the sweep reads or
             writes through is absent, named so the status surface can
             report which.
+        TimeoutError: When the boot pass raises one that is not this
+            function's own startup deadline, which is the only timeout
+            it waives.
     """
     engine_slice = app_state.slice(EngineStateSlice)
     if engine_slice.sprint_tail_scheduler is not None:
@@ -89,10 +92,19 @@ async def wire_sprint_recovery(app_state: AppState) -> None:
     # the two; the startup ceiling is what stops the bound BEING the
     # configured cadence, which an operator may legitimately set to a day.
     bound = min(interval, _BOOT_PASS_CEILING_SECONDS)
+    boot_deadline = asyncio.timeout(bound)
     try:
-        async with asyncio.timeout(bound):
+        async with boot_deadline:
             await reconciler.reconcile(trigger=BOOT_TRIGGER)
     except TimeoutError:
+        # Only THIS deadline is tolerable. ``TimeoutError`` is also what a
+        # socket timeout in the driver raises, and what any inner bound the
+        # pass takes surfaces as, so an unqualified handler reports the
+        # wrong cause and carries startup past a failure that is not the
+        # one being waived. ``expired()`` is the scope's own answer to
+        # which of the two happened.
+        if not boot_deadline.expired():
+            raise
         logger.warning(
             API_APP_STARTUP,
             service="sprint_recovery",

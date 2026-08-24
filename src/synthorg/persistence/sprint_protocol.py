@@ -41,6 +41,22 @@ if TYPE_CHECKING:
         end_date: object
 
 
+class SprintPageCursor(BaseModel):
+    """The last row a page returned, naming where the next one starts.
+
+    Carries the whole sort key rather than the id alone, because the key
+    is ``(sprint_number DESC, id DESC)`` and half of it decides nothing:
+    two sprints in different scopes share a number, so an id-only cursor
+    would have to fall back to comparing ids across sprint numbers, which
+    is a different order from the one the rows come back in.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    sprint_number: int = Field(description="The last row's sprint number")
+    sprint_id: NotBlankStr = Field(description="The last row's id")
+
+
 class SprintFilterSpec(BaseModel):
     """Filter spec for ``SprintRepository.query``.
 
@@ -53,6 +69,19 @@ class SprintFilterSpec(BaseModel):
     org-wide by carrying no project at all. Asking for both at once names
     two contradictory scopes and is refused rather than silently
     resolved.
+
+    ``after`` is the keyset half of pagination, and it is a predicate on
+    rows exactly like the others, which is why it lives here rather than
+    beside ``limit``: it narrows the set to what sorts below a key. A
+    caller draining a set that another writer is editing needs it,
+    because ``offset`` counts rows rather than naming one, so a row that
+    leaves the filtered set between two page reads shifts everything
+    below it up by one and the next ``offset`` steps straight over the
+    row that took its place. That row is silently never returned, and in
+    a recovery sweep it is precisely the stranded row nothing else is
+    watching. Anchored to the last row actually seen, a page cannot skip:
+    rows that left are simply absent, and every remaining row below the
+    anchor is still below it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -62,6 +91,10 @@ class SprintFilterSpec(BaseModel):
     org_wide_only: bool = Field(
         default=False,
         description="Match only sprints with no owning project",
+    )
+    after: SprintPageCursor | None = Field(
+        default=None,
+        description="Match only rows sorting below this key",
     )
 
     @model_validator(mode="after")
@@ -92,13 +125,16 @@ class SprintRepository(
     """CRUD + state-transition + filtered query for agile sprints.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). Every write a running sprint takes is guarded, because
+    (ADR-0001). EVERY change a persisted sprint takes is guarded, because
     each of them is a read-modify-write that two processes can enter at
-    once: the linear lifecycle hops go through :meth:`transition_if`, and
-    the completion append goes through :meth:`complete_task_if`. The
-    generic :meth:`save` upsert is left to sprint *assembly* (creation and
-    ``PLANNING`` backlog edits), where the row is not yet contended and
-    the partial unique index on the scope decides who creates it.
+    once: the linear lifecycle hops go through :meth:`transition_if`, the
+    backlog append through :meth:`add_task_if_planning`, and the
+    completion append through :meth:`complete_task_if`. :meth:`save`
+    therefore CREATES a sprint and nothing else, and refuses an id that
+    already exists rather than overwriting it: an unconditional whole-row
+    write is exactly the pre-image overwrite each guarded statement was
+    added to remove, so leaving one reachable would let a caller undo all
+    three by taking the path that skips them.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise
@@ -107,10 +143,18 @@ class SprintRepository(
 
     @override
     async def save(self, entity: Sprint, /) -> None:
-        """Upsert a sprint row keyed by ``id``.
+        """Insert a new sprint row keyed by ``id``.
+
+        Narrower than the generic upsert, and deliberately so: see the
+        class docstring for why a persisted sprint has no unconditional
+        write path. Which scope may hold an open sprint, and which
+        number it may carry, stay the database's own indexes to decide,
+        so a caller racing another creator is refused by the same error
+        as a caller re-saving a row.
 
         Raises:
-            ConstraintViolationError: On constraint violations.
+            ConstraintViolationError: When a sprint already carries this
+                ``id``, and on the scope / number constraint violations.
             QueryError: On other database errors.
         """
         ...

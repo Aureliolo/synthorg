@@ -77,7 +77,7 @@ class FakeSprintRepository:
         return sprint.project or ""
 
     async def save(self, entity: Sprint) -> None:
-        """Upsert, refusing what either unique constraint refuses.
+        """Insert, refusing what each constraint refuses.
 
         The scope index and the per-scope sprint number are separate
         constraints that refuse the same call, and they mean opposite
@@ -85,13 +85,23 @@ class FakeSprintRepository:
         only the number is stale. A fake modelling just the first lets a
         suite agree with a service that conflates them.
 
+        A repeated id is the third, and it is the one that keeps this
+        double honest about the contract rather than about a race: the
+        real ``save`` creates and refuses to overwrite, so a fake that
+        upserted would let a test assemble a backlog by re-saving a whole
+        sprint, which is the write no repository will accept.
+
         Raises:
-            ConstraintViolationError: When the scope already holds a
-                different non-completed sprint, as the partial unique
-                index does, or when another sprint in the scope already
-                carries this number, as ``UNIQUE (project, sprint_number)``
-                and the org-wide number index do.
+            ConstraintViolationError: When a sprint already carries this
+                id, when the scope already holds a different
+                non-completed sprint, as the partial unique index does,
+                or when another sprint in the scope already carries this
+                number, as ``UNIQUE (project, sprint_number)`` and the
+                org-wide number index do.
         """
+        if entity.id in self._rows:
+            msg = f"sprint {entity.id!r} already exists"
+            raise ConstraintViolationError(msg, constraint="sprints.id")
         key = self._scope_key(entity)
         if entity.status is not SprintStatus.COMPLETED:
             for existing in self._rows.values():
@@ -163,12 +173,17 @@ class FakeSprintRepository:
         Returns:
             One page of matching sprints.
         """
+        after = filter_spec.after
+        # The same key the repositories compare, as one row value, so the
+        # double cannot page differently from what it is standing in for.
+        anchor = None if after is None else (after.sprint_number, after.sprint_id)
         rows = [
             s
             for s in self._rows.values()
             if (filter_spec.project is None or s.project == filter_spec.project)
             and (not filter_spec.org_wide_only or s.project is None)
             and (filter_spec.status is None or s.status is filter_spec.status)
+            and (anchor is None or (s.sprint_number, s.id) < anchor)
         ]
         return tuple(self._sorted(rows)[offset : offset + limit])
 

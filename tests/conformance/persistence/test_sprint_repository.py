@@ -10,8 +10,11 @@ Covers:
 * CRUD round-trip (save / get / list / delete) including tuple-valued
   ``task_ids`` / ``completed_task_ids``, the nullable ``project``, and
   the ISO date strings.
-* In-place edit (re-save) round-trip and duplicate-id upsert.
-* Filtered query by project / status, plus ``count`` agreement.
+* ``save`` refusing a persisted id, whether the re-save carries a
+  different backlog or only a different name: it creates a sprint, and
+  every later change belongs to one of the guarded statements below.
+* Filtered query by project / status, plus ``count`` agreement, and the
+  keyset cursor both backends page a drain by.
 * Transition state machine: the strictly-linear lifecycle walk
   ``planning -> active -> in_review -> retrospective -> completed``;
   state mismatch returns ``False``.
@@ -46,7 +49,11 @@ from synthorg.engine.workflow.sprint_lifecycle import (
 )
 from synthorg.persistence.postgres.sprint_repo import PostgresSprintRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
+from synthorg.persistence.sprint_protocol import (
+    SprintFilterSpec,
+    SprintPageCursor,
+    SprintRepository,
+)
 from synthorg.persistence.sqlite.sprint_repo import SQLiteSprintRepository
 
 pytestmark = pytest.mark.integration
@@ -202,37 +209,48 @@ class TestSprintRepository:
         assert fetched.status is SprintStatus.ACTIVE
         assert fetched.start_date == _START
 
-    async def test_edit_in_place_round_trip(self, backend: PersistenceBackend) -> None:
+    async def test_save_refuses_to_rewrite_a_backlog(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A whole-row write over a persisted sprint is the lost update.
+
+        The backlog belongs to ``add_task_if_planning``, which holds its
+        guard against the row's own current value. Saving a pre-image
+        read before somebody else's append would put that append back the
+        way it was, so the write is refused rather than accepted.
+        """
         repo = _repo(backend)
         sprint = _make_sprint()
         await repo.save(sprint)
 
-        edited = sprint.model_copy(
+        stale = sprint.model_copy(
             update={
                 "task_ids": ("task-a", "task-b", "task-c"),
                 "story_points_committed": 13.0,
             }
         )
-        await repo.save(edited)
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(stale)
 
         fetched = await repo.get(NotBlankStr("sprint-1"))
         assert fetched is not None
-        assert fetched.task_ids == ("task-a", "task-b", "task-c")
-        assert fetched.story_points_committed == pytest.approx(13.0)
+        assert fetched.task_ids == ("task-a", "task-b")
+        assert fetched.story_points_committed == pytest.approx(8.0)
 
-    async def test_duplicate_id_save_is_upsert(
+    async def test_duplicate_id_save_is_refused(
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
         await repo.save(_make_sprint(sprint_id="dup"))
-        await repo.save(
-            _make_sprint(sprint_id="dup").model_copy(
-                update={"name": NotBlankStr("Renamed")}
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_sprint(sprint_id="dup").model_copy(
+                    update={"name": NotBlankStr("Renamed")}
+                )
             )
-        )
         fetched = await repo.get(NotBlankStr("dup"))
         assert fetched is not None
-        assert fetched.name == "Renamed"
+        assert fetched.name != "Renamed"
 
     async def test_query_by_project(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
@@ -259,6 +277,40 @@ class TestSprintRepository:
         planning = await repo.query(SprintFilterSpec(status=SprintStatus.PLANNING))
         assert {s.id for s in planning} >= {"q1"}
         assert "q2" not in {s.id for s in planning}
+
+    async def test_keyset_cursor_walks_every_row_once(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Both backends read the cursor as the same row-value predicate.
+
+        A drain paging by key is only correct while "after this row" means
+        the same thing to the dialect that runs it; a backend reading it
+        as an id comparison alone would repeat rows that share a sprint
+        number and skip rows below them.
+        """
+        repo = _repo(backend)
+        for number in (1, 2, 3):
+            await repo.save(
+                _completed_sprint(sprint_id=f"ks-{number}", project="ks", number=number)
+            )
+
+        walked: list[str] = []
+        cursor: SprintPageCursor | None = None
+        while True:
+            page = await repo.query(
+                SprintFilterSpec(
+                    project="ks", status=SprintStatus.COMPLETED, after=cursor
+                ),
+                limit=1,
+            )
+            if not page:
+                break
+            walked.append(page[-1].id)
+            cursor = SprintPageCursor(
+                sprint_number=page[-1].sprint_number, sprint_id=page[-1].id
+            )
+
+        assert walked == ["ks-3", "ks-2", "ks-1"]
 
     async def test_count_matches_query(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)

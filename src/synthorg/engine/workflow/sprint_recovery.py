@@ -53,7 +53,11 @@ from synthorg.observability.events.workflow import (
     SPRINT_TAIL_SWEEP_FAILED,
     SPRINT_TAIL_SWEEP_STARTED,
 )
-from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
+from synthorg.persistence.sprint_protocol import (
+    SprintFilterSpec,
+    SprintPageCursor,
+    SprintRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -301,6 +305,14 @@ class SprintRecoveryReconciler:
         stranded sprint that happens to sit past the first page is exactly
         the one nothing else is watching.
 
+        Paged by KEY rather than by offset, because the set being paged is
+        the one the live observer is editing: a sprint that leaves the
+        status between two page reads shifts every row below it up by one,
+        and the next offset then steps over the row that moved into its
+        place. That row is returned by no page, so the sweep does not see
+        it at all -- and the whole point of the sweep is the row nothing
+        else is looking at.
+
         Returns:
             The non-terminal sprints, in no significant order.
         """
@@ -315,22 +327,24 @@ class SprintRecoveryReconciler:
         for status in SprintStatus:
             if status is SprintStatus.COMPLETED:
                 continue
-            offset = 0
-            # Bounded offset pagination over a finite sprints table:
+            cursor: SprintPageCursor | None = None
+            # Bounded keyset pagination over a finite sprints table:
             # terminates on the first partial page, and the pass that owns it
             # is already gated by the scheduler's pause switch and by
             # ``sprints_active`` -- not a daemon loop of its own.
             # lint-allow: long-running-loop-kill-switch -- bounded pagination
             while True:
                 page = await self._sprints.query(
-                    SprintFilterSpec(status=status),
+                    SprintFilterSpec(status=status, after=cursor),
                     limit=MAX_PAGE_SIZE,
-                    offset=offset,
                 )
                 collected.update({sprint.id: sprint for sprint in page})
                 if len(page) < MAX_PAGE_SIZE:
                     break
-                offset += MAX_PAGE_SIZE
+                last = page[-1]
+                cursor = SprintPageCursor(
+                    sprint_number=last.sprint_number, sprint_id=last.id
+                )
         return tuple(collected.values())
 
 

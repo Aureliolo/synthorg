@@ -25,6 +25,7 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_recovery import SprintRecoveryReconciler
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend
@@ -116,6 +117,30 @@ async def test_boot_pass_runs_before_the_cadence(
         assert recovered.status is SprintStatus.COMPLETED
     finally:
         await unwire_sprint_recovery(app_state)
+
+
+async def test_a_timeout_from_inside_the_pass_is_not_the_boot_bound(
+    sqlite_backend: PersistenceBackend, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the startup deadline is waived, and it names itself.
+
+    ``TimeoutError`` is also what a socket timeout in the driver raises,
+    so an unqualified handler would report "the boot pass hit its bound"
+    for a store that never answered and carry startup on regardless.
+    """
+
+    async def _refuse(*_args: object, **_kwargs: object) -> None:
+        msg = "store did not answer"
+        raise TimeoutError(msg)
+
+    monkeypatch.setattr(SprintRecoveryReconciler, "reconcile", _refuse)
+    app_state = make_app_state(persistence=sqlite_backend, **_deps())
+    await wire_sprint_service(app_state)
+
+    with pytest.raises(TimeoutError, match="did not answer"):
+        await wire_sprint_recovery(app_state)
+
+    assert app_state.slice(EngineStateSlice).sprint_tail_scheduler is None
 
 
 async def test_is_idempotent(sqlite_backend: PersistenceBackend) -> None:

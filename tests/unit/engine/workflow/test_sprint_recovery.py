@@ -229,10 +229,40 @@ class _ReturnsOneSprintUnderTwoStatuses(FakeSprintRepository):
     async def query(
         self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
     ) -> tuple[Sprint, ...]:
-        if offset:
+        if filter_spec.after is not None:
             return ()
         stored = self.rows.get("s-1")
         return () if stored is None else (stored,)
+
+
+class _AdvancesARowBetweenPages(FakeSprintRepository):
+    """Completes the newest ACTIVE row after the first page is served.
+
+    The shape offset paging cannot survive: the row leaves the filtered
+    set, everything below it shifts up by one, and the next OFFSET steps
+    straight over whichever row moved into the vacated slot. That row is
+    returned by no page at all, and in this sweep it is by definition the
+    stranded sprint nothing else is looking at.
+    """
+
+    def __init__(self, *rows: Sprint) -> None:
+        super().__init__(*rows)
+        self.pages_served = 0
+
+    @override
+    async def query(
+        self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
+    ) -> tuple[Sprint, ...]:
+        page = await super().query(filter_spec, limit=limit, offset=offset)
+        if filter_spec.status is not SprintStatus.ACTIVE:
+            return page
+        self.pages_served += 1
+        if self.pages_served == 1 and page:
+            leaving = page[0]
+            self.rows[leaving.id] = leaving.model_copy(
+                update={"status": SprintStatus.COMPLETED, "end_date": _END}
+            )
+        return page
 
 
 class TestPassBehaviour:
@@ -339,3 +369,32 @@ class TestPassBehaviour:
         last = await repo.get(f"s-{len(rows) - 1}")
         assert last is not None
         assert last.status is SprintStatus.COMPLETED
+
+    async def test_a_row_leaving_mid_drain_skips_nothing(self) -> None:
+        """The set being paged is the one the live observer is editing.
+
+        Counting rows to find the next page is what breaks: a row that
+        leaves the status shifts everything below it up, and the next
+        offset steps over whichever row took the vacated slot. Anchored
+        to the last row actually seen, nothing can move into a gap the
+        cursor has already passed.
+        """
+        rows = [
+            _sprint(
+                f"s-{n}",
+                status=SprintStatus.ACTIVE,
+                project=f"proj-{n}",
+                number=n + 1,
+            )
+            for n in range(MAX_PAGE_SIZE + 3)
+        ]
+        repo = _AdvancesARowBetweenPages(*rows)
+
+        report = await _reconciler(repo).reconcile(trigger="periodic")
+
+        assert repo.pages_served > 1
+        assert report.examined == len(rows)
+        for row in rows:
+            stored = await repo.get(row.id)
+            assert stored is not None
+            assert stored.status is SprintStatus.COMPLETED

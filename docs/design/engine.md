@@ -319,6 +319,15 @@ while one process is the only writer.
   backlog is durable. A decline for that reason is indistinguishable in the
   return value from the others, so the caller re-reads to name it.
 - **Which lifecycle state it is in**: `transition_if`.
+- **Nothing else**: `SprintRepository.save` CREATES a sprint and refuses an
+  id that already exists, rather than upserting as the generic contract
+  does. The three guarded statements above each hold their invariant
+  against the row's own current value, so an unconditional whole-row write
+  beside them is a fourth path that can undo all three at once, and the
+  suite had a case asserting exactly that: a sprint saved, then saved again
+  with a different backlog, which is the pre-image overwrite the guarded
+  appends exist to remove. Refusing costs nothing, because the one thing a
+  persisted sprint has no path to is being rewritten wholesale.
 - **Who opens a scope's sprint**: a partial unique index
   (`idx_sprints_one_open_per_scope`) admitting one non-completed sprint per
   scope. A project runs one sprint at a time, and an org-wide sprint (one with
@@ -359,13 +368,30 @@ asked for and is still filling. The sweep writes lifecycle hops and nothing
 else, so it can advance a sprint that was already finished but can never
 invent a delivery.
 
+Each status is drained by **key**, not by offset. The set being paged is the
+one the live observer is editing, and a row that leaves the status between
+two page reads shifts everything below it up by one, so the next offset steps
+straight over whichever row moved into the vacated slot. That row is returned
+by no page at all, and here it is by definition the stranded sprint nothing
+else is looking at. `SprintFilterSpec.after` carries the whole sort key
+(`(sprint_number, id)`, the order both backends return) as a row-value
+predicate, so a page cannot skip: rows that left are simply absent, and every
+remaining row below the anchor is still below it.
+
 It is its own subsystem (`sprint_recovery`, requiring `sprint_service`)
 rather than a step inside the sprint service's wiring, so it starts and stops
 on its own path and reports its own unmet dependency through
-`GET /subsystems`. Its boot pass runs, bounded by the resync interval, before
-the cadence starts: a restart is exactly when sprints are stranded, and
-waiting out an interval first would leave the board showing work in flight
-with nothing behind it for that whole interval.
+`GET /subsystems`. Its boot pass runs before the cadence starts: a restart is
+exactly when sprints are stranded, and waiting out an interval first would
+leave the board showing work in flight with nothing behind it for that whole
+interval. It is bounded by the smaller of the resync interval and a 30-second
+startup ceiling, because the pass is awaited inline in the lifespan and the
+interval is an operator setting that legitimately reaches a day, which would
+hold startup open past the readiness probe. Only that deadline is waived: a
+`TimeoutError` raised from inside the pass (a driver's socket timeout, say)
+is re-raised rather than logged as the boot bound, since carrying startup on
+past a store that never answered is a different decision from tolerating a
+pass the next one will repeat.
 
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration).

@@ -33,6 +33,7 @@ from synthorg.persistence._shared.sprint_marshalling import (
     add_task_params,
     build_sprint_where,
     complete_task_params,
+    raise_existing_sprint,
     row_to_sprint,
     sprint_save_params,
     validate_sprint_update_keys,
@@ -45,10 +46,10 @@ from synthorg.persistence.sqlite._sprint_sql import (
     COMPLETE_TASK_SQL,
     DELETE_SQL,
     GET_SQL,
+    INSERT_SQL,
     LIST_SQL,
     ORDER_BY,
     TRANSITION_SQL,
-    UPSERT_SQL,
 )
 
 logger = get_logger(__name__)
@@ -75,10 +76,11 @@ class SQLiteSprintRepository:
         self._write_context = write_context
 
     async def save(self, entity: Sprint) -> None:
-        """Upsert a sprint row.
+        """Insert a new sprint row; refuse to overwrite a persisted one.
 
         Raises:
-            ConstraintViolationError: On constraint violations.
+            ConstraintViolationError: When a sprint already carries this
+                id, and on the scope / number constraint violations.
             QueryError: On other database errors.
         """
         params = sprint_save_params(entity)
@@ -87,9 +89,12 @@ class SQLiteSprintRepository:
             write_guard(
                 self._db, operation="save", doing="saving", sprint_id=entity.id
             ),
+            self._db.execute(INSERT_SQL, params) as cursor,
         ):
-            await self._db.execute(UPSERT_SQL, params)
+            inserted = await cursor.fetchone()
             await self._db.commit()
+        if inserted is None:
+            raise_existing_sprint(entity.id)
 
     async def get(self, entity_id: NotBlankStr) -> Sprint | None:
         """Get a sprint by id, or ``None`` if not found.

@@ -17,9 +17,13 @@ backends for a lossless round-trip.
 
 import json
 from collections.abc import Callable, Mapping
-from typing import LiteralString
+from typing import LiteralString, NoReturn
 
-from synthorg.core.persistence_errors import MalformedRowError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import (
     OPEN_SPRINT_STATUS_VALUES,
@@ -218,6 +222,16 @@ def build_sprint_where(
     if filter_spec.status is not None:
         clauses.append(f"status = {placeholder}")
         params.append(filter_spec.status.value)
+    if filter_spec.after is not None:
+        # A row-value comparison rather than the expanded
+        # ``a < ? OR (a = ? AND b < ?)``: it is the same predicate, and
+        # both backends index it, but written out the two forms are one
+        # transcription error apart and the error is invisible (it drops
+        # or duplicates rows only at a page boundary). ``<`` because
+        # ``ORDER_BY`` is descending on both columns, so "after" in
+        # iteration order is "below" in value order.
+        clauses.append(f"(sprint_number, id) < ({placeholder}, {placeholder})")
+        params.extend([filter_spec.after.sprint_number, filter_spec.after.sprint_id])
     where = " AND ".join(clauses) if clauses else "1=1"
     return where, params
 
@@ -301,6 +315,31 @@ def add_task_params(
     )
 
 
+def raise_existing_sprint(sprint_id: str) -> NoReturn:
+    """Refuse a ``save`` aimed at a sprint that is already persisted.
+
+    Shared so both backends refuse in the same words: the row count is
+    what each of them observes, but what the refusal MEANS is one fact
+    about the sprint contract, and two hand-written messages are two
+    chances to describe it differently.
+
+    Args:
+        sprint_id: The row the insert conflicted with.
+
+    Raises:
+        ConstraintViolationError: Always; the caller reached this only
+            because a row already carries *sprint_id*.
+    """
+    msg = (
+        f"sprint {sprint_id!r} already exists; save creates a sprint and "
+        "every later change goes through transition_if, add_task_if_planning "
+        "or complete_task_if, each of which holds its guard against the "
+        "row's current value"
+    )
+    logger.warning(PERSISTENCE_SPRINT_FAILED, operation="save", sprint_id=sprint_id)
+    raise ConstraintViolationError(msg, constraint="sprints.id")
+
+
 def validate_sprint_update_keys(updates: dict[str, object]) -> None:
     """Reject unknown ``transition_if`` update keys.
 
@@ -322,6 +361,7 @@ __all__ = [
     "encode_float_map",
     "encode_str_tuple",
     "open_status_placeholders",
+    "raise_existing_sprint",
     "row_to_sprint",
     "sprint_save_params",
     "validate_sprint_update_keys",
