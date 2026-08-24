@@ -88,19 +88,29 @@ _TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 #
 #   862 files (nine packages)                            218s -> 0.25s/file
 #   600 files (api + observability + settings + tools)   218s -> 0.36s/file
+#   333 files (api alone, quiet machine)                 207s -> 0.62s/file
 #
 # Same wall-clock, wildly different counts, because ``-n 8 --dist=loadfile``
-# pins a file to one worker and the run ends when the BUSIEST worker does. Both
-# selections carry ``tests/unit/api`` (319 files, over half the second sample),
-# so both pay its serial tail and neither is predicted by its own file count.
-# The first sample set the cap at ~600 on the 0.25s rate; a settings-hub change
-# then selected exactly 600, ran 218s rather than the budgeted 155s, and took
-# the push to 321s. It was admitted by one file.
+# pins a file to one worker and the run ends when the BUSIEST worker does. All
+# three selections carry ``tests/unit/api``, so all three pay its serial tail
+# and none is predicted by its own file count. The first sample set the cap at
+# ~600 on the 0.25s rate; a settings-hub change then selected exactly 600, ran
+# 218s rather than the budgeted 155s, and took the push to 321s, admitted by
+# one file. The cap moved to 425 on the 0.36s rate; a comment-only edit to an
+# api module then selected 333 and took the push to 427s.
 #
-# So the cap is set from the pessimistic sample (155s / 0.36s), and it is a
-# ceiling on a weak predictor rather than a model of the cost. Below it the
-# heavy packages stop dominating and file count starts to mean something; at
-# 600 the local run costs more than the ~186s whole-tier baseline, which is the
+# The third sample is the one that says what the other two could not, because
+# it is that tail ON ITS OWN: ``tests/unit/api`` is 333 files and 207s, so a
+# selection carrying it has already spent the whole 155s pytest budget before
+# any other package is counted. No rate fixes that, because the cost is not
+# per-file; the cap simply has to sit BELOW what api alone contributes, or the
+# package that dominates every heavy selection is the one thing the cap cannot
+# exclude. 155s / 0.62s puts it at 250, which does.
+#
+# So the cap is set from the pessimistic sample, and it is a ceiling on a weak
+# predictor rather than a model of the cost. Below it the heavy packages stop
+# dominating and file count starts to mean something; at 333 the local run
+# already costs more than the ~186s whole-tier baseline, which is the
 # definition of having stopped being a screen.
 #
 # File count rather than package count because packages differ by two orders of
@@ -113,7 +123,7 @@ _TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 # perverse: dropping the largest drops the packages a broad change most affects.
 # Deferring the whole run says one true thing (CI owns this one) instead of
 # quietly verifying an unprincipled fraction of it.
-_MAX_AFFECTED_TEST_FILES: Final[int] = 425
+_MAX_AFFECTED_TEST_FILES: Final[int] = 250
 
 # The test tiers, each of which owns its own runner. Everything else under
 # ``tests/`` is infrastructure the unit tier imports (``_shared/``,
