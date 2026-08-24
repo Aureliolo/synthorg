@@ -82,6 +82,10 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_IMAGE_UNRESOLVED,
 )
 from synthorg.observability.redaction import safe_error_description
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
@@ -426,6 +430,38 @@ class RecordingGatewayHost:
             )
             raise HarnessGatewayUnavailableError(msg)
         return self._persistence.projects
+
+    @property
+    def checkpoint_repo(self) -> CheckpointRepository:
+        """Where a session's conversation is persisted, turn by turn.
+
+        Returns:
+            The started host's checkpoint repository.
+
+        Raises:
+            HarnessGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = "the recording host's checkpoints were read before it was started"
+            raise HarnessGatewayUnavailableError(msg)
+        return self._persistence.checkpoints
+
+    @property
+    def heartbeat_repo(self) -> HeartbeatRepository:
+        """The liveness half of the checkpoint mechanism.
+
+        Returns:
+            The started host's heartbeat repository.
+
+        Raises:
+            HarnessGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = "the recording host's heartbeats were read before it was started"
+            raise HarnessGatewayUnavailableError(msg)
+        return self._persistence.heartbeats
 
     @property
     def images(self) -> RecordedImages:

@@ -53,6 +53,10 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_UNIT_EXECUTED,
     EVALS_RECURSION_UNIT_STARTED,
 )
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import ModelRef
@@ -128,6 +132,15 @@ class SweepDeps:
         project_repo: Where the engine looks the benchmark project up. Every
             unit declares an artifact, which makes it a work task, and the
             engine refuses a work task whose project it cannot validate.
+        checkpoint_repo: Where a session's conversation is persisted, every
+            turn. Without it a provider failure that outlasts the retry ladder
+            discards the whole session: the loop returns a terminal ERROR and
+            nothing can re-enter a conversation nobody wrote down. A sweep unit
+            is hours of work, so the state goes on disk and a retry RESUMES.
+        heartbeat_repo: The liveness half of the same mechanism. Required
+            together with ``checkpoint_repo``: the engine refuses one without
+            the other, because a checkpoint nothing declares stale is a
+            resume point that can be handed to two runners at once.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.
@@ -148,6 +161,8 @@ class SweepDeps:
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
     project_repo: ProjectRepository | None = None
+    checkpoint_repo: CheckpointRepository | None = None
+    heartbeat_repo: HeartbeatRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
@@ -566,6 +581,7 @@ async def run_session(
     workspace: CellWorkspace,
     execution_id: str,
     limits: SessionLimits,
+    resume: bool = False,
 ) -> SessionOutcome:
     """Run *task* as *identity* against *workspace* and report what it cost.
 
@@ -576,6 +592,13 @@ async def run_session(
         workspace: The tree it works in.
         execution_id: What the gateway ledger keys this session's spend on.
         limits: The turn and spend bounds this session gets.
+        resume: Continue the conversation this ``execution_id`` already
+            checkpointed rather than starting a fresh one. The id is derived
+            from the cell and the task, so it is the same string on every
+            attempt, which is what makes a resume addressable at all. Ignored
+            with no checkpoint on disk: the engine replays what it finds, and
+            an attempt that failed before its first checkpoint has nothing to
+            continue from and simply starts over.
 
     Returns:
         The session's outcome.
@@ -595,7 +618,10 @@ async def run_session(
         try:
             async with watching(deps, session):
                 result = await session.engine.run(
-                    identity=identity, task=bounded, max_turns=limits.max_turns
+                    identity=identity,
+                    task=bounded,
+                    max_turns=limits.max_turns,
+                    resume_execution_id=execution_id if resume else None,
                 )
         finally:
             # Read however the session ended. A provider call that recorded
@@ -651,6 +677,11 @@ async def _build_engine(
         # denominator.
         artifact_probe=workspace_artifact_probe(workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
+        # Both or neither, which the engine enforces. With them a session's
+        # conversation is on disk turn by turn, so a failure that outlasts the
+        # retry ladder costs the turns still in flight rather than all of them.
+        checkpoint_repo=deps.checkpoint_repo,
+        heartbeat_repo=deps.heartbeat_repo,
     )
 
 

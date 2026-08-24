@@ -826,6 +826,91 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
 
         assert outcome.delivered, outcome.detail
 
+    async def test_a_session_killed_by_infrastructure_is_resumed_not_rerun(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A blip must not discard the turns a unit has already paid for.
+
+        An exhausted retry does not fail a turn, it terminates the run, so
+        without this a leaf thirty turns into building a subsystem loses all
+        thirty. The second attempt must carry ``resume=True``: re-running would
+        spend the same money again and throw away the tree built so far.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "resumed")
+        resumes: list[bool] = []
+
+        async def _dies_then_finishes(
+            _deps: SweepDeps, **rest: object
+        ) -> SessionOutcome:
+            resumes.append(bool(rest.get("resume")))
+            if len(resumes) == 1:
+                return SessionOutcome(
+                    cost=0.5, tokens=900, turns=30, termination="error"
+                )
+            written = workspace.project_dir / "src/inference.py"
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text("real work", encoding="utf-8")
+            return SessionOutcome(
+                cost=0.2, tokens=400, turns=4, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _dies_then_finishes)
+
+        outcome = await run_leaf(
+            _deps(),
+            task=task,
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert resumes == [False, True]
+        assert outcome.attempts == 2
+        assert outcome.delivered, outcome.detail
+
+    @pytest.mark.parametrize(
+        "termination",
+        ["completed", "max_turns", "no_op", "budget_exhausted"],
+        ids=["delivered", "spent-its-turns", "produced-nothing", "spent-its-budget"],
+    )
+    async def test_a_session_that_chose_its_ending_is_never_resumed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        termination: str,
+    ) -> None:
+        """Each of these IS the measurement, so a retry would overwrite it.
+
+        ``no_op`` in particular: a unit that produced nothing is the failure
+        the survival curve exists to count, and resuming it would buy a second
+        opinion on the very verdict being recorded.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, f"final-{termination}")
+        calls: list[bool] = []
+
+        async def _ends(_deps: SweepDeps, **rest: object) -> SessionOutcome:
+            calls.append(bool(rest.get("resume")))
+            return SessionOutcome(
+                cost=0.5, tokens=900, turns=3, termination=termination
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _ends)
+
+        outcome = await run_leaf(
+            _deps(),
+            task=task,
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert calls == [False]
+        assert outcome.attempts == 1
+
     def test_a_session_that_wrote_nothing_still_does_not_deliver(
         self, tmp_path: Path
     ) -> None:

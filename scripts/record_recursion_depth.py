@@ -576,6 +576,12 @@ def _build_deps(
         transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
         project_repo=host.project_repo,
+        # A sweep unit is hours of work, so its conversation goes on disk turn
+        # by turn and a session cut off by infrastructure is RESUMED rather
+        # than re-run. Both or neither: the engine refuses one without the
+        # other.
+        checkpoint_repo=host.checkpoint_repo,
+        heartbeat_repo=host.heartbeat_repo,
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
         declared_pairs=declared_pairs,

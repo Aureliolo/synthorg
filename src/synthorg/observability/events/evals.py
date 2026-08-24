@@ -84,6 +84,14 @@ killed mid-session (a quota refusal, a wall-clock kill, an operator stopping
 it) otherwise leaves no record of which unit was in flight when the money was
 spent."""
 EVALS_RECURSION_UNIT_EXECUTED: Final[str] = "evals.recursion_depth.unit_executed"
+EVALS_RECURSION_UNIT_RESUMED: Final[str] = "evals.recursion_depth.unit_resumed"
+"""A unit was cut off by an infrastructure failure and its session continued.
+
+Logged at WARNING rather than DEBUG because it is the one place the operator
+learns that a session did not run in one piece. The spend is real either way
+and the unit reports one turn count, so without this line a resumed unit is
+indistinguishable from a unit that simply took longer, and a provider having a
+bad hour looks like a model that reasons at length."""
 EVALS_RECURSION_MERGE_ATTEMPTED: Final[str] = "evals.recursion_depth.merge_attempted"
 EVALS_RECURSION_MERGE_GATED: Final[str] = "evals.recursion_depth.merge_gated"
 EVALS_RECURSION_MERGE_PARKED: Final[str] = "evals.recursion_depth.merge_parked"

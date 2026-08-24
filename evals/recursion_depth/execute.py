@@ -43,8 +43,10 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_RESUMED
 
 logger = get_logger(__name__)
 
@@ -227,12 +229,36 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
+    attempts = 1
+    if _died_in_flight(outcome):
+        # RESUMED, not re-run. The engine replays the conversation this
+        # execution_id checkpointed and continues from the last turn, so an
+        # infrastructure failure costs the turns still in flight rather than
+        # every turn the unit had already paid for. Re-running from scratch
+        # would cost the same money twice and discard the tree built so far.
+        logger.warning(
+            EVALS_RECURSION_UNIT_RESUMED,
+            execution_id=execution_id,
+            task_id=str(task.id),
+            termination=outcome.termination,
+            turns=outcome.turns,
+        )
+        outcome = await run_session(
+            deps,
+            identity=owner,
+            task=task,
+            workspace=workspace,
+            execution_id=execution_id,
+            limits=limits,
+            resume=True,
+        )
+        attempts = 2
     detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
-        attempts=1,
+        attempts=attempts,
         turns=outcome.turns,
         cost=outcome.cost,
         tokens=outcome.tokens,
@@ -240,6 +266,30 @@ async def run_leaf(
         undeclared_paths=final.missing,
         detail=detail,
     )
+
+
+def _died_in_flight(outcome: SessionOutcome) -> bool:
+    """Whether the session was cut off rather than reaching an end it chose.
+
+    ``ERROR`` alone. Every other termination is the run deciding something:
+    ``MAX_TURNS`` and ``BUDGET_EXHAUSTED`` spent what they were given,
+    ``NO_OP`` produced nothing and that IS the measurement, and ``COMPLETED``
+    is a delivery whose artifacts are judged separately. Resuming any of those
+    would buy a second opinion on a verdict the sweep exists to record.
+
+    ``ERROR`` is the one that is never about the work: the loop returns it when
+    a provider call fails past its retries, which says nothing about whether
+    the unit could have delivered. It is also the only reason whose turns are
+    worth continuing rather than re-running, because the conversation was
+    making progress when the infrastructure went away.
+
+    Args:
+        outcome: How the session ended.
+
+    Returns:
+        True when a resume is worth an attempt.
+    """
+    return outcome.termination == TerminationReason.ERROR.value
 
 
 async def _undelivered_reason(
