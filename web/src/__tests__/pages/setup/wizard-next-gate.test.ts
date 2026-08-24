@@ -3,52 +3,40 @@ import { describe, it, expect } from 'vitest'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardStep } from '@/stores/setup-wizard'
 import { useWizardNextGate } from '@/pages/setup/wizard-next-gate'
-import type { SetupAgentSummary } from '@/api/types/setup'
-
-function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
-  return {
-    name: 'Alice Smith',
-    role: 'Developer',
-    department: 'engineering',
-    model_provider: 'cloud-x',
-    model_id: 'cloud-x-large',
-    capability: 'capable',
-    personality_preset: 'strategic_planner',
-    ...overrides,
-  }
-}
 
 function completeStep(step: WizardStep): Record<WizardStep, boolean> {
   return { ...useSetupWizardStore.getState().stepsCompleted, [step]: true }
 }
 
-describe('useWizardNextGate', () => {
-  it('disables Next when an agent has no personality', () => {
-    useSetupWizardStore.setState({
-      agents: [agent(), agent({ personality_preset: null })],
-      stepsCompleted: completeStep('agents'),
-    })
-    const { result } = renderHook(() => useWizardNextGate('agents'))
-    expect(result.current.disabled).toBe(true)
-    expect(result.current.reason).toMatch(/personality/i)
-  })
+function incompleteStep(step: WizardStep): Record<WizardStep, boolean> {
+  return { ...useSetupWizardStore.getState().stepsCompleted, [step]: false }
+}
 
-  it('enables Next once every agent has a personality', () => {
-    useSetupWizardStore.setState({
-      agents: [agent(), agent({ personality_preset: 'pragmatic_builder' })],
-      stepsCompleted: completeStep('agents'),
-    })
+describe('useWizardNextGate', () => {
+  it('enables Next once the step reports itself complete', () => {
+    useSetupWizardStore.setState({ stepsCompleted: completeStep('agents') })
     const { result } = renderHook(() => useWizardNextGate('agents'))
     expect(result.current.disabled).toBe(false)
     expect(result.current.reason).toBeNull()
   })
 
-  it('does not gate non-agent steps on personality', () => {
+  it('disables Next with the generic caption when the step is incomplete', () => {
     useSetupWizardStore.setState({
-      agents: [agent({ personality_preset: null })],
-      stepsCompleted: completeStep('theme'),
+      stepsCompleted: incompleteStep('agents'),
+      agentsLoading: false,
     })
-    const { result } = renderHook(() => useWizardNextGate('theme'))
-    expect(result.current.disabled).toBe(false)
+    const { result } = renderHook(() => useWizardNextGate('agents'))
+    expect(result.current.disabled).toBe(true)
+    expect(result.current.reason).toMatch(/complete the required fields/i)
+  })
+
+  it('says what it is waiting for while the step is still loading', () => {
+    useSetupWizardStore.setState({
+      stepsCompleted: incompleteStep('agents'),
+      agentsLoading: true,
+    })
+    const { result } = renderHook(() => useWizardNextGate('agents'))
+    expect(result.current.disabled).toBe(true)
+    expect(result.current.reason).toMatch(/waiting for agents to load/i)
   })
 })

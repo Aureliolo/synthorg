@@ -75,7 +75,6 @@ from tests.unit.api.fakes import (
     FakeLifecycleTransitionRepository,
     FakeMessageRepository,
     FakeParkedContextRepository,
-    FakePersonalityPresetRepository,
     FakePlanItemCommentRepository,
     FakePlanRepository,
     FakeProjectBrainRepository,
@@ -771,7 +770,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._knowledge_usage_records = InMemoryKnowledgeUsageRecordRepository()
         self._code_execution_records = InMemoryCodeExecutionRecordRepository()
         self._evaluation_reports = InMemoryEvaluationReportRepository()
-        self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
         self._workflow_versions = FakeWorkflowVersionRepository()
@@ -1129,11 +1127,6 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def settings(self) -> FakeSettingsRepository:
         return self._settings_repo
-
-    @property
-    @override
-    def custom_presets(self) -> FakePersonalityPresetRepository:
-        return self._custom_presets
 
     @property
     @override

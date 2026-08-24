@@ -103,7 +103,7 @@ on resolution.
   guard reads the live config on every request. Covers 85+ endpoints
   across memory, providers, agents, tasks, approvals, workflows,
   requests, users, webhooks, custom_rules, ontology,
-  departments, connections, personalities, reviews,
+  departments, connections, reviews,
   artifacts, backup, oauth, settings, setup, simulations, training,
   a2a, and auth ws-ticket.
 - **Per-operation inflight concurrency**: a companion middleware

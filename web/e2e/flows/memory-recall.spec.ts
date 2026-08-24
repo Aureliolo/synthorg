@@ -4,13 +4,13 @@ import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harn
 import { makeOntologyEntity, makeEntityListMeta } from '../factories'
 
 /**
- * Critical-flow E2E: ontology catalogue + WS personality-trim intake.
+ * Critical-flow E2E: ontology catalogue + WS notification intake.
  *
  * The ``/ontology`` page renders the entity catalogue from
  * ``listEntities`` -> ``GET /ontology/entities`` (NOT a raw memory/fact
  * feed). This spec seeds one deterministic entity, asserts the catalogue
- * row renders and its detail opens on click, then drives a
- * ``personality.trimmed`` WS frame so the notifications dispatch chain is
+ * row renders and its detail opens on click, then drives an
+ * ``agent.hired`` WS frame so the notifications dispatch chain is
  * exercised end-to-end (the entry lands in the notification drawer).
  */
 
@@ -36,7 +36,7 @@ test.describe('Memory recall critical flow', () => {
     )
   })
 
-  test('loads the ontology catalogue and processes a trim event', async ({ page }) => {
+  test('loads the ontology catalogue and processes a hire event', async ({ page }) => {
     await page.goto('/ontology')
     await expect(page).toHaveURL(/\/ontology/)
     await expect(page.locator('main')).toBeVisible()
@@ -50,20 +50,19 @@ test.describe('Memory recall critical flow', () => {
     await entity.click()
     await expect(page.getByText('A task assigned to an agent.').first()).toBeVisible()
 
-    // Drive a personality-trimmed event through the harness. The
-    // event_type is in ``WS_EVENT_TYPE_VALUES`` and the notifications
-    // store's ws-handler enqueues a "Personality trimmed" drawer entry,
-    // so its visibility (after opening the drawer) proves the WS frame
-    // conformed to the runtime validator (``isWsEvent``) and reached the
-    // dispatch chain.
+    // Drive an agent-hired event through the harness. The event_type is in
+    // ``WS_EVENT_TYPE_VALUES`` and the notifications store's ws-handler
+    // enqueues an "Agent hired" drawer entry, so its visibility (after
+    // opening the drawer) proves the WS frame conformed to the runtime
+    // validator (``isWsEvent``) and reached the dispatch chain.
     await injectEvent(page, {
-      event_type: 'personality.trimmed',
+      event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-04-01T12:00:00Z',
       payload: { agent_id: 'agent-001', agent_name: 'Alice' },
     })
     await page.getByRole('button', { name: /notifications/i }).click()
-    await expect(page.getByText('Personality trimmed').first()).toBeVisible()
+    await expect(page.getByText('Agent hired').first()).toBeVisible()
   })
 
   test('filters the catalogue via the entity search box', async ({ page }) => {

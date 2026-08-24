@@ -73,18 +73,6 @@ function systemShutdown(): EnqueueParams {
   return { category: 'system.shutdown', title: 'System shutting down' }
 }
 
-function personalityTrimmed(p: WsPayload): EnqueueParams {
-  const agentName = sanitizeWsString(p['agent_name'], 64)
-  return {
-    category: 'agents.personality_trimmed',
-    title: 'Personality trimmed',
-    description: agentName
-      ? `${agentName} personality was trimmed`
-      : undefined,
-    entityId: sanitizeWsString(p['agent_id']),
-  }
-}
-
 function agentEvent(
   p: WsPayload,
   category: EnqueueParams['category'],
@@ -173,7 +161,6 @@ const WS_ROUTERS: Readonly<Record<string, WsEnqueueRouter>> = {
   'budget.alert': budgetAlert,
   'system.error': systemError,
   'system.shutdown': systemShutdown,
-  'personality.trimmed': personalityTrimmed,
   'agent.hired': (p) => agentEvent(p, 'agents.hired', 'Agent hired'),
   'agent.fired': (p) => agentEvent(p, 'agents.fired', 'Agent fired'),
   'task.status_changed': taskStatusChanged,

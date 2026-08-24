@@ -46,12 +46,12 @@ class TestFailAndReassignStrategy:
 
     async def test_happy_path_transitions_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Task transitions to FAILED, can_reassign=True when retries remain."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -75,12 +75,12 @@ class TestFailAndReassignStrategy:
 
     async def test_max_retries_exceeded_cannot_reassign(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """can_reassign=False when retry_count >= max_retries."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -106,7 +106,7 @@ class TestFailAndReassignStrategy:
 
     async def test_zero_max_retries_never_reassignable(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Task with max_retries=0 is never reassignable."""
         task = Task(
@@ -116,12 +116,12 @@ class TestFailAndReassignStrategy:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.ASSIGNED,
             max_retries=0,
         )
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=task,
         )
         ctx = ctx.with_task_transition(
@@ -142,12 +142,12 @@ class TestFailAndReassignStrategy:
 
     async def test_snapshot_is_redacted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Snapshot contains metadata but no message contents."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -165,19 +165,19 @@ class TestFailAndReassignStrategy:
 
         snapshot = result.context_snapshot
         assert snapshot.task_id == str(sample_task_with_criteria.id)
-        assert snapshot.agent_id == str(sample_agent_with_personality.id)
+        assert snapshot.agent_id == str(sample_agent.id)
         assert snapshot.turn_count >= 0
         # Snapshot is an AgentContextSnapshot -- has no message contents
         assert not hasattr(snapshot, "conversation")
 
     async def test_error_message_captured(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Error message is preserved in the result."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -197,12 +197,12 @@ class TestFailAndReassignStrategy:
 
     async def test_recovery_result_frozen(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """RecoveryResult fields cannot be reassigned (frozen model)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -223,12 +223,12 @@ class TestFailAndReassignStrategy:
 
     async def test_recovery_logs_events(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Recovery emits start, snapshot, and complete events."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(

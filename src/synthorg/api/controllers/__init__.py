@@ -95,9 +95,6 @@ from synthorg.api.controllers.ontology.admin import OntologyAdminController
 from synthorg.api.controllers.ontology.drift import OntologyDriftController
 from synthorg.api.controllers.ontology.entities import OntologyController
 from synthorg.api.controllers.ontology.versions import OntologyVersionsController
-from synthorg.api.controllers.personalities import (
-    PersonalityPresetController,
-)
 from synthorg.api.controllers.plan_comments import PlanCommentController
 from synthorg.api.controllers.plans import PlanController
 from synthorg.api.controllers.project_brain import ProjectBrainController
@@ -153,9 +150,6 @@ from synthorg.api.controllers.setup.company import SetupCompanyController
 from synthorg.api.controllers.setup.completion import SetupCompletionController
 from synthorg.api.controllers.setup.locales import SetupLocalesController
 from synthorg.api.controllers.setup.status import SetupStatusController
-from synthorg.api.controllers.setup_personality import (
-    SetupPersonalityController,
-)
 from synthorg.api.controllers.simulations import SimulationController
 from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.ssrf_violations import SsrfViolationController
@@ -277,8 +271,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     SetupAgentsController,
     SetupLocalesController,
     SetupCompletionController,
-    SetupPersonalityController,
-    PersonalityPresetController,
     BackupController,
     MemoryFineTuneController,
     MemoryCheckpointsController,
@@ -429,7 +421,6 @@ __all__ = [
     "OntologyController",
     "OntologyDriftController",
     "OntologyVersionsController",
-    "PersonalityPresetController",
     "PlanCommentController",
     "PlanController",
     "ProjectBrainController",
@@ -462,7 +453,6 @@ __all__ = [
     "SetupCompanyController",
     "SetupCompletionController",
     "SetupLocalesController",
-    "SetupPersonalityController",
     "SetupStatusController",
     "SimulationController",
     "SprintController",

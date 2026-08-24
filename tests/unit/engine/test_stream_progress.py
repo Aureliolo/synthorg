@@ -75,7 +75,7 @@ async def test_run_terminated_is_noop_for_non_terminal_reasons(
 
 
 async def test_turn_observer_projects_tool_call_with_turn_and_tools(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
 ) -> None:
     publish = AsyncMock()
     observer = make_turn_observer(_hub(publish), task_id="task-1", agent_id="agent-x")
@@ -83,7 +83,7 @@ async def test_turn_observer_projects_tool_call_with_turn_and_tools(
         TurnProgress(
             3,
             ("search", "read_file"),
-            AgentContext.from_identity(sample_agent_with_personality),
+            AgentContext.from_identity(sample_agent),
         )
     )
     assert publish.await_args is not None

@@ -258,8 +258,6 @@ class TestEventConstants:
             "parallel",
             "performance",
             "persistence",
-            "personality",
-            "preset",
             "prompt",
             "prompt_purpose",
             "provider",

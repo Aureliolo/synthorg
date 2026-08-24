@@ -143,14 +143,6 @@ class AgentConfigResponse(BaseModel):
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
     department: NotBlankStr = Field(description="Department name")
-    personality_preset: NotBlankStr | None = Field(
-        default=None,
-        description="Named personality preset",
-    )
-    personality: dict[str, JsonValue] = Field(
-        default_factory=dict,
-        description="Raw personality config",
-    )
     model: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw model config",
@@ -438,8 +430,6 @@ def _response(
         name=agent.name,
         role=agent.role,
         department=agent.department,
-        personality_preset=agent.personality_preset,
-        personality=agent.personality,
         model=agent.model,
         memory=agent.memory,
         tools=agent.tools,

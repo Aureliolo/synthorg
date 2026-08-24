@@ -31,7 +31,6 @@ _PAGINATED_ACCESSORS = (
     "agent_states",
     "artifacts",
     "projects",
-    "custom_presets",
     "workflow_definitions",
     "subworkflows",
     "risk_overrides",

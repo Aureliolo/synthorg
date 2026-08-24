@@ -2,12 +2,11 @@
 """Agent expansion for the template renderer.
 
 Expands raw template agent dicts into ``AgentConfig``-compatible dicts:
-auto-name generation, name deduplication, personality preset/inline
-resolution, model-requirement resolution, and merge directive handling.
+auto-name generation, name deduplication, model-requirement resolution,
+and merge directive handling.
 """
 
 import re
-from collections.abc import Mapping
 from typing import Final
 
 from pydantic import JsonValue, ValidationError
@@ -17,14 +16,13 @@ from synthorg.observability.events.template import (
     TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VARIABLE_ERROR,
 )
-from synthorg.templates._preset_resolution import resolve_agent_personality
+from synthorg.templates.agent_naming import generate_auto_name
 from synthorg.templates.errors import TemplateRenderError
 from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT
 from synthorg.templates.model_requirements import (
     ModelRequirement,
     resolve_model_requirement,
 )
-from synthorg.templates.presets import generate_auto_name
 
 # Placeholder provider name resolved by the engine at startup.
 _DEFAULT_PROVIDER = "default"
@@ -94,7 +92,6 @@ def _expand_agents(
     *,
     has_extends: bool,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_ids: bool = False,
 ) -> list[dict[str, object]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
@@ -103,7 +100,6 @@ def _expand_agents(
         raw_agents: List of agent dicts from rendered YAML.
         has_extends: Whether the template uses inheritance.
         locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping.
         preserve_merge_ids: Preserve ``merge_id`` on expanded agents.
 
     Returns:
@@ -120,7 +116,6 @@ def _expand_agents(
                 used_names,
                 has_extends=has_extends,
                 locales=locales,
-                custom_presets=custom_presets,
                 preserve_merge_id=keep_merge,
             ),
         )
@@ -134,14 +129,12 @@ def _expand_single_agent(
     *,
     has_extends: bool,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_id: bool = False,
 ) -> dict[str, object]:
     """Expand a single template agent dict.
 
-    Steps: auto-name generation, name deduplication, personality
-    preset/inline resolution, model capability assignment, and merge
-    directive handling.
+    Steps: auto-name generation, name deduplication, model capability
+    assignment, and merge directive handling.
 
     Args:
         agent: Raw agent dict from rendered YAML.
@@ -149,8 +142,6 @@ def _expand_single_agent(
         used_names: Set of already-used names for deduplication.
         has_extends: Whether the template uses inheritance.
         locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping for resolving
-            user-defined presets.
         preserve_merge_id: Preserve ``merge_id`` on the expanded agent.
 
     Returns:
@@ -168,7 +159,7 @@ def _expand_single_agent(
     name = str(agent.get("name") or "").strip()
 
     if not name or name.startswith("{{") or "__JINJA2__" in name:
-        name = generate_auto_name(role, seed=idx, locales=locales)
+        name = generate_auto_name(seed=idx, locales=locales)
 
     base_name = name
     counter = 2
@@ -183,19 +174,7 @@ def _expand_single_agent(
         "department": agent.get("department", _DEFAULT_DEPARTMENT),
     }
 
-    personality = resolve_agent_personality(
-        agent,
-        name,
-        custom_presets=custom_presets,
-    )
-    if personality is not None:
-        agent_dict["personality"] = personality
-
-    preset = _agent_preset_name(agent)
-    if preset is not None:
-        agent_dict["personality_preset"] = preset
-
-    requirement = _resolve_model_requirement(agent, preset)
+    requirement = _resolve_model_requirement(agent)
     agent_dict["model_requirement"] = requirement.model_dump()
     placeholder = requirement.model_id or _DEFAULT_MODEL_ALIAS
     agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": placeholder}
@@ -226,41 +205,16 @@ def _expand_single_agent(
     return agent_dict
 
 
-def _agent_preset_name(agent: dict[str, object]) -> str | None:
-    """Return the named personality preset, when the agent uses one.
-
-    A template agent references a preset either by the explicit
-    ``personality_preset`` field or by a bare ``personality`` string; an
-    inline ``personality`` dict has no preset name. Both reference forms must
-    carry the preset NAME onto the rendered ``AgentConfig`` so the setup
-    wizard's personality dropdown shows the assigned preset (otherwise it
-    renders "Select..." even though the personality was resolved).
-
-    Returns:
-        The preset name, or ``None`` for inline / absent personality.
-    """
-    explicit = agent.get("personality_preset")
-    if isinstance(explicit, str) and explicit.strip():
-        return explicit.strip()
-    raw = agent.get("personality")
-    return raw.strip() if isinstance(raw, str) and raw.strip() else None
-
-
-def _resolve_model_requirement(
-    agent: dict[str, object],
-    preset: str | None,
-) -> ModelRequirement:
+def _resolve_model_requirement(agent: dict[str, object]) -> ModelRequirement:
     """Resolve an agent's model reference into a full ``ModelRequirement``.
 
     A bare ``model`` string pins an explicit example id; a dict maps onto
-    the capability/family fields. Personality-preset affinity supplies
-    capability defaults that the explicit reference overrides. The full
-    requirement is preserved on the expanded agent so the capability
-    matcher can pin a concrete id (no lossy tier collapse).
+    the capability/family fields. The full requirement is preserved on the
+    expanded agent so the capability matcher can pin a concrete id (no
+    lossy tier collapse).
 
     Args:
         agent: Raw template agent dict from Jinja2 rendering.
-        preset: Resolved personality preset name (or ``None``).
 
     Returns:
         The resolved ``ModelRequirement``.
@@ -278,14 +232,14 @@ def _resolve_model_requirement(
         overrides = {}
 
     # A strategic role declared only as a department head_role carries no model
-    # block, so it would inherit the generic balanced preset (a mid-tier model).
-    # Strategy work is reasoning-heavy, so default a spec-less exec to the top
-    # capability demand -- a CEO must not silently land below its own CTO.
+    # block, so it would inherit the generic balanced default (a mid-tier
+    # model). Strategy work is reasoning-heavy, so default a spec-less exec to
+    # the top capability demand: a CEO must not silently land below its own CTO.
     if not overrides and _is_strategic(agent):
         overrides = {"priority": "quality", "requires_reasoning": True}
 
     try:
-        return resolve_model_requirement(preset, overrides)
+        return resolve_model_requirement(overrides)
     except (ValidationError, ValueError) as exc:
         msg = f"Invalid model reference: {safe_error_description(exc)}"
         logger.warning(

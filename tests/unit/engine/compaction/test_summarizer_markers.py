@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import Complexity
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
@@ -265,7 +265,6 @@ def _make_identity(name: str = "test-agent") -> AgentIdentity:
         role="engineer",
         department="engineering",
         hiring_date=date(2026, 1, 15),
-        personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(
             provider="test-provider",
             model_id="test-basic-001",

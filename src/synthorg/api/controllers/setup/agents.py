@@ -62,7 +62,6 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_NAME_UPDATED,
     SETUP_AGENTS_LISTED,
 )
-from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import provider_management_of
 from synthorg.settings.state import settings_service_of
 
@@ -105,19 +104,9 @@ class SetupAgentsController(Controller):
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
 
-        from synthorg.templates.preset_service import (  # noqa: PLC0415
-            fetch_custom_presets_map,
-        )
-
         providers = await provider_management_of(app_state).list_providers()
         validate_provider_and_model(providers, data)
-        custom_presets = await fetch_custom_presets_map(
-            persistence_of(app_state).custom_presets,
-        )
-        agent_config = build_agent_config(
-            data,
-            custom_presets=custom_presets,
-        )
+        agent_config = build_agent_config(data)
 
         # Lock order across this module is _COMPLETE_LOCK -> _AGENT_LOCK
         # (matches ``complete_setup``). Acquiring _AGENT_LOCK alone
@@ -338,7 +327,7 @@ class SetupAgentsController(Controller):
             ConflictError: If setup has already been completed.
             NotFoundError: If the agent index is out of range.
         """
-        from synthorg.templates.presets import (  # noqa: PLC0415
+        from synthorg.templates.agent_naming import (  # noqa: PLC0415
             generate_auto_name,
         )
 
@@ -353,9 +342,7 @@ class SetupAgentsController(Controller):
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
-            role_value = agents[agent_index].get("role", "Agent")
-            role = role_value if isinstance(role_value, str) else "Agent"
-            new_name = generate_auto_name(role, locales=locales)
+            new_name = generate_auto_name(locales=locales)
 
             updated_agent = {
                 **agents[agent_index],

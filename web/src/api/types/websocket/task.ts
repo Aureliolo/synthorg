@@ -98,14 +98,3 @@ export interface WsDepartmentDeletedPayload {
 export interface WsDepartmentsReorderedPayload {
   readonly department_names: readonly string[]
 }
-
-export interface WsPersonalityTrimmedPayload {
-  agent_id: string
-  agent_name: string
-  task_id: string
-  trim_tier: 1 | 2 | 3
-  before_tokens: number
-  after_tokens: number
-  max_tokens: number
-  budget_met: boolean
-}

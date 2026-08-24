@@ -66,13 +66,6 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
     role: 'Developer',
     department: 'engineering',
     status: 'active',
-    personality: {
-      traits: ['analytical'],
-      communication_style: 'direct',
-      risk_tolerance: 'medium',
-      creativity: 'medium',
-      description: 'A test agent',
-    },
     model: {
       provider: 'test-provider',
       model_id: 'test-capable-001',
@@ -88,7 +81,6 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
     authority: {},
     autonomy_level: 'semi',
     strategic_output_mode: null,
-    personality_preset: null,
     capability: null,
     model_requirement: null,
     model_capabilities: null,

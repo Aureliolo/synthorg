@@ -23,7 +23,7 @@ The following table compares major multi-agent frameworks that informed the desi
 | HR (hiring/firing) | No | No | No | **Yes** |
 | Budget management (CFO) | No | No | No | **Yes** |
 | Persistent agent memory | No | No | Basic | **Yes: hybrid dense + BM25 retrieval in the operational database** |
-| Agent personalities | Basic | Basic | Basic | **Deep: traits, styles, evolution** |
+| Governed output style | No | No | No | **Yes: scoped house style, enforced at the boundary** |
 | Dynamic team scaling | No | No | Manual | Manual, plus an approval-gated hire when a review role is unstaffed |
 | Multiple company types | No | No | Manual | **Yes: templates + builder** |
 | Security ops agent | No | No | No | **Yes** |
@@ -58,7 +58,7 @@ The following table compares major multi-agent frameworks that informed the desi
 
 **Decision: Build from scratch, leverage libraries.**
 
-No existing framework covers even 50% of SynthOrg's requirements. The core differentiators (HR, budget management, security ops, deep personalities) do not exist in any framework. Forking MetaGPT or CrewAI would mean fighting their architecture while adding these features.
+No existing framework covers even 50% of SynthOrg's requirements. The core differentiators (HR, budget management, security ops, governed output style) do not exist in any framework. Forking MetaGPT or CrewAI would mean fighting their architecture while adding these features.
 
 The "company simulation" layer on top is the unique value and must be purpose-built.
 

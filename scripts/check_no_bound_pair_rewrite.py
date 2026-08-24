@@ -5,7 +5,7 @@ A provider is a registered *connection*, with its own credentials, endpoint and
 quota, so the same model id reached through two of them is two different calls,
 billed and rate-limited separately. The pair an operator binds to an agent is
 therefore a choice about where work runs and what it costs, and an agent is a
-fixed ``(role, personality, model)`` unit: work that needs more capability goes
+fixed ``(role, model)`` unit: work that needs more capability goes
 to a DIFFERENT AGENT, never to the same agent quietly running something else.
 
 A bound pair can be rewritten from three independent angles, and each reads

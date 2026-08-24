@@ -10,7 +10,6 @@ from synthorg.a2a.models import A2AAuthSchemeInfo
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.role import Skill
@@ -41,10 +40,6 @@ def _make_identity(
         model=ModelConfig(
             provider="test-provider",
             model_id="test-capable-001",
-        ),
-        personality=PersonalityConfig(
-            traits=("detail-oriented",),
-            communication_style="formal",
         ),
         skills=SkillSet(
             primary=primary_skills,
@@ -107,7 +102,7 @@ class TestAgentCardBuilder:
 
     @pytest.mark.unit
     def test_build_excludes_sensitive_fields(self) -> None:
-        """Card does NOT contain personality, model, memory, etc."""
+        """Card does NOT contain model, memory, etc."""
         builder = AgentCardBuilder()
         identity = _make_identity()
         card = builder.build(identity, "https://example.com/a2a")
@@ -115,7 +110,6 @@ class TestAgentCardBuilder:
 
         # Sensitive field keys must not appear at the top level
         forbidden_keys = {
-            "personality",
             "model",
             "model_config",
             "memory",

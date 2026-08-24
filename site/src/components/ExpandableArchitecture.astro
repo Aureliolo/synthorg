@@ -9,7 +9,7 @@ const architecture = [
     submodules: [
       {
         name: "YAML Company Schema",
-        description: "Define agents, roles, hierarchy, budgets, tools, and personality in one file.",
+        description: "Define agents, roles, hierarchy, budgets, and tools in one file.",
         href: "/docs/design/organization/",
       },
       {
@@ -23,9 +23,9 @@ const architecture = [
         href: "/docs/design/organization/",
       },
       {
-        name: "Personality Presets",
-        description: "Big Five dimensions, communication styles, decision-making profiles.",
-        href: "/docs/design/agents/",
+        name: "House Writing Style",
+        description: "Org-wide output style with per-role and per-department overrides, enforced deterministically at every boundary.",
+        href: "/docs/design/output-style-policy/",
       },
     ],
   },
@@ -96,8 +96,8 @@ const architecture = [
         href: "/docs/design/memory/",
       },
       {
-        name: "Identity & Personality",
-        description: "Big Five dimensions, compatibility scoring, 8 seniority levels, authority nesting.",
+        name: "Identity & Authority",
+        description: "Bound (role, model) agents, 8 seniority levels, skills, authority nesting.",
         href: "/docs/design/agents/",
       },
     ],

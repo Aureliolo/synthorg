@@ -38,14 +38,14 @@ class TestResumeParkedRun:
 
     async def test_resumes_to_terminal_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(provider=provider)
         parked = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -58,19 +58,19 @@ class TestResumeParkedRun:
 
         assert isinstance(result, AgentRunResult)
         assert result.termination_reason == TerminationReason.COMPLETED
-        assert result.agent_id == str(sample_agent_with_personality.id)
+        assert result.agent_id == str(sample_agent.id)
         assert result.task_id == str(sample_task_with_criteria.id)
 
     async def test_decision_message_injected_into_conversation(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(provider=provider)
         parked = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -91,7 +91,7 @@ class TestResumeParkedRun:
 
     async def test_budget_exhausted_during_resume_returns_terminal_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         monkeypatch: pytest.MonkeyPatch,
@@ -111,7 +111,7 @@ class TestResumeParkedRun:
 
         monkeypatch.setattr(engine, "_execute", _exhaust)
         parked = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -127,7 +127,7 @@ class TestResumeParkedRun:
 
     async def test_awaiting_input_task_moved_to_in_progress_on_resume(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -143,7 +143,7 @@ class TestResumeParkedRun:
         )
         engine = AgentEngine(provider=provider, task_engine=task_engine)
         parked = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -159,7 +159,7 @@ class TestResumeParkedRun:
 
     async def test_in_progress_task_not_transitioned_on_resume(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -175,7 +175,7 @@ class TestResumeParkedRun:
         )
         engine = AgentEngine(provider=provider, task_engine=task_engine)
         parked = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -190,13 +190,13 @@ class TestResumeParkedRun:
 
     async def test_taskless_parked_context_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(provider=provider)
         # No task bound -> task_execution is None.
-        parked = AgentContext.from_identity(sample_agent_with_personality)
+        parked = AgentContext.from_identity(sample_agent)
 
         with pytest.raises(ExecutionStateError, match="task-bound"):
             await engine.resume_parked_run(

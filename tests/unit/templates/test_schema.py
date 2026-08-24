@@ -73,7 +73,6 @@ class TestTemplateAgentConfig:
         assert a.name is None
         assert a.merge_id is None
         assert a.model == {"priority": "balanced"}
-        assert a.personality_preset is None
         assert a.department is None
 
     def test_valid_full(self) -> None:
@@ -81,10 +80,10 @@ class TestTemplateAgentConfig:
             role="CEO",
             name="{{ company_name }} CEO",
             model={"priority": "quality", "requires_reasoning": True},
-            personality_preset="visionary_leader",
             department="executive",
         )
-        assert a.personality_preset == "visionary_leader"
+        assert a.model == {"priority": "quality", "requires_reasoning": True}
+        assert a.department == "executive"
 
     def test_blank_role_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -109,18 +108,6 @@ class TestTemplateAgentConfig:
     def test_non_blank_merge_id_accepted(self) -> None:
         a = TemplateAgentConfig(role="Dev", merge_id="backend-senior")
         assert a.merge_id == "backend-senior"
-
-    def test_inline_personality(self) -> None:
-        a = TemplateAgentConfig(
-            role="Dev",
-            personality={"openness": 0.9, "traits": ["bold"]},
-        )
-        assert a.personality is not None
-        assert a.personality["openness"] == 0.9
-
-    def test_personality_none_by_default(self) -> None:
-        a = TemplateAgentConfig(role="Dev")
-        assert a.personality is None
 
     def test_blank_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -171,14 +158,6 @@ class TestTemplateAgentConfig:
     def test_string_model_is_explicit_id(self) -> None:
         a = TemplateAgentConfig(role="Dev", model="example-expert-001")
         assert a.model == "example-expert-001"
-
-    def test_both_personality_and_preset_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Cannot specify both"):
-            TemplateAgentConfig(
-                role="Dev",
-                personality_preset="visionary_leader",
-                personality={"openness": 0.9},
-            )
 
     def test_remove_alias(self) -> None:
         a = TemplateAgentConfig(role="Dev", _remove=True)

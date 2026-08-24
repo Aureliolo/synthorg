@@ -30,8 +30,7 @@ provider, zero LLM spend, unless noted):
 - **Provider layer**: any LLM via LiteLLM with retry and rate-limit handling;
   local model management for Ollama and LM Studio.
 - **Configuration and templates**: define a company in YAML; importable
-  agent, department, and company templates with personality presets and
-  locale-aware name generation.
+  agent, department, and company templates with locale-aware name generation.
 - **Agent runtime**: a configured provider boots a real agent runtime that
   executes tasks (LLM + sandboxed tools) under a minimal safety spine
   (autonomy/trust verdict on tool actions, approval-queue producer for

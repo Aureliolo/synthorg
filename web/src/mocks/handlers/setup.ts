@@ -9,13 +9,11 @@ import type {
   getModelRecommendations,
   getNameLocales,
   getSetupStatus,
-  listPersonalityPresets,
   listTemplates,
   randomizeAgentName,
   saveNameLocales,
   updateAgentModel,
   updateAgentName,
-  updateAgentPersonality,
 } from '@/api/endpoints/setup'
 import type {
   SetupAgentSummary,
@@ -50,7 +48,6 @@ function buildAgentSummary(
     model_provider: 'provider-default',
     model_id: 'model-default',
     capability: 'capable',
-    personality_preset: 'balanced',
     ...overrides,
   }
 }
@@ -210,17 +207,6 @@ export const setupHandlers = [
         buildAgentSummary({ name: 'random-name' }),
       ),
     ),
-  ),
-  http.put('/api/v1/setup/agents/:index/personality', async ({ request }) => {
-    const body = (await request.json()) as { personality_preset: string }
-    return HttpResponse.json(
-      successFor<typeof updateAgentPersonality>(
-        buildAgentSummary({ personality_preset: body.personality_preset }),
-      ),
-    )
-  }),
-  http.get('/api/v1/setup/personality-presets', () =>
-    HttpResponse.json(paginatedEnvelopeFor<typeof listPersonalityPresets>()),
   ),
   http.get('/api/v1/setup/name-locales/available', () =>
     HttpResponse.json(

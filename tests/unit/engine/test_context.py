@@ -41,46 +41,42 @@ class TestAgentContextFromIdentity:
 
     def test_with_task(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
-        assert ctx.identity is sample_agent_with_personality
+        assert ctx.identity is sample_agent
         assert ctx.task_execution is not None
         assert ctx.task_execution.task is sample_task_with_criteria
 
-    def test_without_task(self, sample_agent_with_personality: AgentIdentity) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_without_task(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         assert ctx.task_execution is None
 
-    def test_defaults(self, sample_agent_with_personality: AgentIdentity) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_defaults(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         assert ctx.conversation == ()
         assert ctx.accumulated_cost.cost == 0.0
         assert ctx.turn_count == 0
         assert ctx.max_turns == DEFAULT_MAX_TURNS
         assert ctx.has_turns_remaining is True
 
-    def test_execution_id_generated(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx1 = AgentContext.from_identity(sample_agent_with_personality)
-        ctx2 = AgentContext.from_identity(sample_agent_with_personality)
+    def test_execution_id_generated(self, sample_agent: AgentIdentity) -> None:
+        ctx1 = AgentContext.from_identity(sample_agent)
+        ctx2 = AgentContext.from_identity(sample_agent)
         assert ctx1.execution_id != ctx2.execution_id
         assert len(ctx1.execution_id) > 0
 
-    def test_custom_max_turns(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=5)
+    def test_custom_max_turns(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent, max_turns=5)
         assert ctx.max_turns == 5
 
-    def test_started_at_set(self, sample_agent_with_personality: AgentIdentity) -> None:
+    def test_started_at_set(self, sample_agent: AgentIdentity) -> None:
         before = datetime.now(UTC)
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         assert ctx.started_at >= before
 
 
@@ -139,19 +135,17 @@ class TestAgentContextTurns:
 
     def test_no_task_execution_still_works(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_token_usage: TokenUsage,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         msg = _make_assistant_msg()
         result = ctx.with_turn_completed(sample_token_usage, msg)
         assert result.turn_count == 1
         assert result.task_execution is None
 
-    def test_has_turns_remaining_boundary(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=2)
+    def test_has_turns_remaining_boundary(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent, max_turns=2)
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
@@ -164,10 +158,8 @@ class TestAgentContextTurns:
         step2 = step1.with_turn_completed(usage, msg)
         assert step2.has_turns_remaining is False
 
-    def test_max_turns_exceeded_raises(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=1)
+    def test_max_turns_exceeded_raises(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent, max_turns=1)
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
@@ -178,11 +170,9 @@ class TestAgentContextTurns:
         with pytest.raises(MaxTurnsExceededError, match="max_turns"):
             step1.with_turn_completed(usage, msg)
 
-    def test_max_turns_zero_rejected(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
+    def test_max_turns_zero_rejected(self, sample_agent: AgentIdentity) -> None:
         with pytest.raises(ValidationError):
-            AgentContext.from_identity(sample_agent_with_personality, max_turns=0)
+            AgentContext.from_identity(sample_agent, max_turns=0)
 
 
 @pytest.mark.unit
@@ -198,10 +188,8 @@ class TestAgentContextTransitions:
         assert result.task_execution is not None
         assert result.task_execution.status is TaskStatus.IN_PROGRESS
 
-    def test_raises_without_task_execution(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_raises_without_task_execution(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         with pytest.raises(ExecutionStateError, match="no task execution"):
             ctx.with_task_transition(TaskStatus.IN_PROGRESS)
 
@@ -233,10 +221,8 @@ class TestAgentContextSnapshot:
         assert snapshot.task_id == str(sample_agent_context.task_execution.task.id)
         assert snapshot.task_status == sample_agent_context.task_execution.status
 
-    def test_snapshot_without_task(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_snapshot_without_task(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         snapshot = ctx.to_snapshot()
         assert snapshot.task_id is None
         assert snapshot.task_status is None
@@ -320,11 +306,9 @@ class TestAgentContextImmutability:
 class TestAgentContextLogging:
     """Event constants are logged."""
 
-    def test_from_identity_logs_created(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
+    def test_from_identity_logs_created(self, sample_agent: AgentIdentity) -> None:
         with structlog.testing.capture_logs() as logs:
-            AgentContext.from_identity(sample_agent_with_personality)
+            AgentContext.from_identity(sample_agent)
         events = [entry["event"] for entry in logs]
         assert EXECUTION_CONTEXT_CREATED in events
 
@@ -345,10 +329,8 @@ class TestAgentContextLogging:
         events = [entry["event"] for entry in logs]
         assert EXECUTION_CONTEXT_SNAPSHOT in events
 
-    def test_no_task_transition_logs_error(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_no_task_transition_logs_error(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         with (
             structlog.testing.capture_logs() as logs,
             pytest.raises(ExecutionStateError),
@@ -357,10 +339,8 @@ class TestAgentContextLogging:
         events = [entry["event"] for entry in logs]
         assert EXECUTION_CONTEXT_NO_TASK in events
 
-    def test_max_turns_exceeded_logs_error(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=1)
+    def test_max_turns_exceeded_logs_error(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent, max_turns=1)
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,

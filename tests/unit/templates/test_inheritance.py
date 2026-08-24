@@ -603,7 +603,6 @@ template:
     - role: "Data Analyst"
       name: "Kai Analytics"
       model: "medium"
-      personality_preset: "data_driven_optimizer"
       department: "engineering"
 """
         child_a_path = tmp_path / "child_a.yaml"

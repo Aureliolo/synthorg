@@ -31,7 +31,7 @@ def _ctx(identity: AgentIdentity, task: Task) -> AgentContext:
 class TestContinueRework:
     def test_the_reviewers_own_words_reach_the_agent(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Quoted, not paraphrased.
@@ -40,7 +40,7 @@ class TestContinueRework:
         and a paraphrase is how "no test run" becomes "try harder".
         """
         resumed = continue_rework(
-            _ctx(sample_agent_with_personality, sample_task_with_criteria),
+            _ctx(sample_agent, sample_task_with_criteria),
             _REASON,
             rounds_taken=0,
             max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
@@ -55,11 +55,11 @@ class TestContinueRework:
 
     def test_the_run_keeps_the_work_it_already_did(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Resumed, not restarted: the correction extends the same context."""
-        before = _ctx(sample_agent_with_personality, sample_task_with_criteria)
+        before = _ctx(sample_agent, sample_task_with_criteria)
 
         resumed = continue_rework(
             before,
@@ -75,13 +75,13 @@ class TestContinueRework:
     @pytest.mark.parametrize("rounds", list(range(DEFAULT_MAX_REWORK_ROUNDS)))
     def test_every_round_inside_the_bound_is_taken(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         rounds: int,
     ) -> None:
         assert (
             continue_rework(
-                _ctx(sample_agent_with_personality, sample_task_with_criteria),
+                _ctx(sample_agent, sample_task_with_criteria),
                 _REASON,
                 rounds_taken=rounds,
                 max_rounds=DEFAULT_MAX_REWORK_ROUNDS,
@@ -92,7 +92,7 @@ class TestContinueRework:
 
     def test_the_operators_bound_is_what_decides(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Each round is a whole run, so the number is the operator's to set.
@@ -100,7 +100,7 @@ class TestContinueRework:
         Widened, a round the shipped default refuses is taken; set to zero,
         the first refusal is final.
         """
-        ctx = _ctx(sample_agent_with_personality, sample_task_with_criteria)
+        ctx = _ctx(sample_agent, sample_task_with_criteria)
 
         widened = continue_rework(
             ctx,
@@ -118,7 +118,7 @@ class TestContinueRework:
 
     def test_the_bound_is_spent_rather_than_looping(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A model told twice why it was refused will not hear it a third time.
@@ -128,7 +128,7 @@ class TestContinueRework:
         """
         assert (
             continue_rework(
-                _ctx(sample_agent_with_personality, sample_task_with_criteria),
+                _ctx(sample_agent, sample_task_with_criteria),
                 _REASON,
                 rounds_taken=DEFAULT_MAX_REWORK_ROUNDS,
                 max_rounds=DEFAULT_MAX_REWORK_ROUNDS,

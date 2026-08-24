@@ -1,7 +1,7 @@
 """Shared agent-persona system-prompt renderer.
 
 A single place that turns an :class:`AgentIdentity` into a compact
-``system`` prompt (role, department, personality) carrying the house-style
+``system`` prompt (name, role, department) carrying the house-style
 directives in scope for the agent and the canonical
 ``untrusted_content_directive``. Used by the planning, evaluation, retro and
 plan-review sessions, the multi-agent conversation caller, the concern-routed
@@ -53,38 +53,28 @@ _HOUSE_STYLE_HEADING: Final[str] = (
 def render_agent_persona_body(identity: AgentIdentity) -> str:
     """Render the identity preamble for *identity* without any directive.
 
-    The role + department + personality lines that put the
-    model in character, with no untrusted-content directive appended.
-    Callers that already emit their own directive (the concern-routed
-    proposer, whose prompt template appends one) inject this preamble as
-    the identity line; callers building a standalone ``system`` prompt
-    use :func:`render_agent_system_prompt` instead.
+    The name + role + department line that puts the model in character,
+    with no untrusted-content directive appended. Callers that already
+    emit their own directive (the concern-routed proposer, whose prompt
+    template appends one) inject this preamble as the identity line;
+    callers building a standalone ``system`` prompt use
+    :func:`render_agent_system_prompt` instead.
 
     Args:
         identity: The agent whose persona drives the turn.
 
     Returns:
-        The multi-line persona preamble (no trailing directive).
+        The persona preamble (no trailing directive).
     """
     # Flatten every interpolated identity field: name / role / department
     # reach AgentIdentity from semi-trusted HiringRequest / CandidateCard
-    # values, and personality fields likewise. Flattening here stops a
-    # crafted value (e.g. a newline-injected "Ignore all prior
-    # instructions") from forging a fresh instruction line in this SYSTEM
-    # preamble.
+    # values. Flattening here stops a crafted value (e.g. a
+    # newline-injected "Ignore all prior instructions") from forging a
+    # fresh instruction line in this SYSTEM preamble.
     name = flatten_label(identity.name)
     role = flatten_label(identity.role)
     department = flatten_label(identity.department)
-    lines: list[str] = [
-        f"You are {name}, a {role} in the {department} department.",
-    ]
-    traits = tuple(flatten_label(t) for t in identity.personality.traits)
-    if traits:
-        lines.append("Personality traits: " + ", ".join(traits) + ".")
-    communication_style = flatten_label(identity.personality.communication_style)
-    if communication_style:
-        lines.append(f"Communication style: {communication_style}.")
-    return "\n".join(lines)
+    return f"You are {name}, a {role} in the {department} department."
 
 
 def _house_style_block(identity: AgentIdentity) -> str:
@@ -144,7 +134,7 @@ def render_agent_system_prompt(
 ) -> str:
     """Render a persona ``system`` prompt for *identity*.
 
-    Builds the role + department + personality preamble, the house-style
+    Builds the name + role + department preamble, the house-style
     directives in scope for the agent, and the ``untrusted_content_directive``
     for *fences* so the model treats fenced content as data, not instructions.
     Protocols inject the full turn context (agenda, prior contributions, lens)

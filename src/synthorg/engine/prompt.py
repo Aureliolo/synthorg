@@ -1,6 +1,6 @@
 """System prompt construction from agent identity and context.
 
-Translates agent configuration (personality, skills, authority, role) into
+Translates agent configuration (role, skills, authority) into
 contextually rich system prompts that shape agent behavior during LLM calls.
 
 **Non-inferable principle:** System prompts should contain only information
@@ -94,8 +94,6 @@ def build_system_prompt(  # noqa: PLR0913
     context_budget_indicator: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     capability: CapabilityLevel | None = None,
-    personality_trimming_enabled: bool = True,
-    max_personality_tokens_override: int | None = None,
     strategy_config: StrategyConfig | None = None,
     async_task_state: AsyncTaskStateChannel | None = None,
 ) -> SystemPrompt:
@@ -106,7 +104,7 @@ def build_system_prompt(  # noqa: PLR0913
     org_policies).
 
     Args:
-        agent: Agent identity containing personality, skills, authority.
+        agent: Agent identity containing role, skills, authority.
         role: Optional role with description and responsibilities.
         task: Optional task context injected into the prompt.
         available_tools: Tool definitions populated into template context
@@ -128,12 +126,6 @@ def build_system_prompt(  # noqa: PLR0913
             against the allowlist in ``synthorg.budget.currency``.
         capability: Capability rung for prompt profile selection.
             ``None`` defaults to the full (expert) profile.
-        personality_trimming_enabled: When ``True`` (default), the
-            personality section is progressively trimmed if it exceeds
-            the profile's ``max_personality_tokens``.
-        max_personality_tokens_override: When set to a positive value,
-            overrides the profile's ``max_personality_tokens`` limit.
-            Values ``<= 0`` are ignored (profile default is used).
         strategy_config: Strategy and trendslop mitigation config.
             When provided and the agent qualifies (C-suite/VP/Director
             or has explicit ``strategic_output_mode``), strategic
@@ -159,23 +151,11 @@ def build_system_prompt(  # noqa: PLR0913
         )
 
     profile = get_prompt_profile(capability)
-    if max_personality_tokens_override is not None:
-        if max_personality_tokens_override > 0:
-            profile = profile.model_copy(
-                update={"max_personality_tokens": max_personality_tokens_override},
-            )
-        else:
-            logger.warning(
-                PROMPT_PROFILE_SELECTED,
-                override_ignored=max_personality_tokens_override,
-                reason="max_personality_tokens_override must be > 0",
-            )
     logger.info(
         PROMPT_PROFILE_SELECTED,
         requested_capability=capability,
         selected_capability=profile.capability,
         defaulted=capability is None,
-        personality_mode=profile.personality_mode,
         autonomy_detail_level=profile.autonomy_detail_level,
     )
 
@@ -256,7 +236,6 @@ def build_system_prompt(  # noqa: PLR0913
             context_budget_indicator=context_budget_indicator,
             currency=currency,
             profile=profile,
-            trimming_enabled=personality_trimming_enabled,
             strategy_config=strategy_config,
         )
     except PromptBuildError:

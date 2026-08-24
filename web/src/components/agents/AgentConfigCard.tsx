@@ -5,9 +5,7 @@ import {
   agentCapabilitiesUnverified,
   agentModelBindingUnresolved,
   agentModelId,
-  agentPersonalityLabel,
   agentToolCallsFailed,
-  agentTraits,
   toRuntimeStatus,
 } from '@/utils/agents'
 import type { AgentConfig } from '@/api/types/agents'
@@ -40,8 +38,6 @@ export function AgentConfigCard({
       status={toRuntimeStatus(agent.status ?? 'active')}
       model={agentModelId(agent)}
       capability={agent.capability}
-      personality={agentPersonalityLabel(agent)}
-      traits={agentTraits(agent)}
       capabilities={agentCapabilities(agent)}
       toolCallsFailed={agentToolCallsFailed(agent)}
       capabilitiesUnverified={agentCapabilitiesUnverified(agent)}

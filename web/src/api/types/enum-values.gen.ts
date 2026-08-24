@@ -227,20 +227,6 @@ export const CODE_EXECUTION_ISOLATION_VALUES = [
 ] as const
 export type CodeExecutionIsolation = (typeof CODE_EXECUTION_ISOLATION_VALUES)[number]
 
-export const COLLABORATION_PREFERENCE_VALUES = [
-    'independent',
-    'pair',
-    'team',
-] as const
-export type CollaborationPreference = (typeof COLLABORATION_PREFERENCE_VALUES)[number]
-
-export const COMMUNICATION_VERBOSITY_VALUES = [
-    'terse',
-    'balanced',
-    'verbose',
-] as const
-export type CommunicationVerbosity = (typeof COMMUNICATION_VERBOSITY_VALUES)[number]
-
 export const COMPANY_TYPE_VALUES = [
     'solo_founder',
     'startup',
@@ -283,15 +269,6 @@ export const COMPLEXITY_VALUES = [
     'epic',
 ] as const
 export type Complexity = (typeof COMPLEXITY_VALUES)[number]
-
-export const CONFLICT_APPROACH_VALUES = [
-    'avoid',
-    'accommodate',
-    'compete',
-    'compromise',
-    'collaborate',
-] as const
-export type ConflictApproach = (typeof CONFLICT_APPROACH_VALUES)[number]
 
 export const CONNECTION_STATUS_VALUES = [
     'healthy',
@@ -340,27 +317,12 @@ export const COST_RECORDING_STATE_VALUES = [
 ] as const
 export type CostRecordingState = (typeof COST_RECORDING_STATE_VALUES)[number]
 
-export const CREATIVITY_LEVEL_VALUES = [
-    'low',
-    'medium',
-    'high',
-] as const
-export type CreativityLevel = (typeof CREATIVITY_LEVEL_VALUES)[number]
-
 export const CRITERION_OUTCOME_VALUES = [
     'met',
     'partial',
     'unmet',
 ] as const
 export type CriterionOutcome = (typeof CRITERION_OUTCOME_VALUES)[number]
-
-export const DECISION_MAKING_STYLE_VALUES = [
-    'analytical',
-    'intuitive',
-    'consultative',
-    'directive',
-] as const
-export type DecisionMakingStyle = (typeof DECISION_MAKING_STYLE_VALUES)[number]
 
 export const DEPARTMENT_NAME_VALUES = [
     'executive',
@@ -724,12 +686,6 @@ export const POSTURE_NAME_VALUES = [
 ] as const
 export type PostureName = (typeof POSTURE_NAME_VALUES)[number]
 
-export const PRESET_SOURCE_VALUES = [
-    'builtin',
-    'custom',
-] as const
-export type PresetSource = (typeof PRESET_SOURCE_VALUES)[number]
-
 export const PRIORITY_VALUES = [
     'critical',
     'high',
@@ -918,13 +874,6 @@ export const RISK_LEVEL_VALUES = [
     'high',
 ] as const
 export type RiskLevel = (typeof RISK_LEVEL_VALUES)[number]
-
-export const RISK_TOLERANCE_VALUES = [
-    'low',
-    'medium',
-    'high',
-] as const
-export type RiskTolerance = (typeof RISK_TOLERANCE_VALUES)[number]
 
 export const ROUTING_REASON_VALUES = [
     'routing_disabled',

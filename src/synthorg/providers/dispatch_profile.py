@@ -1,11 +1,10 @@
 # module-kind: code
 """How one agent's own calls actually went, on the pair it is bound to.
 
-This comparison is only valid because an agent is a fixed
-``(role, personality, model)`` unit: while the loop could re-dispatch a
-turn onto different horsepower under the same name, "how did this agent
-perform" had no answer, because the runs were spread across whatever the
-stakes ladder reached for.
+This comparison is only valid because an agent is a fixed ``(role, model)``
+unit: while the loop could re-dispatch a turn onto different horsepower under
+the same name, "how did this agent perform" had no answer, because the runs
+were spread across whatever the stakes ladder reached for.
 
 Two things keep it honest:
 
@@ -18,10 +17,10 @@ Two things keep it honest:
   calls is not a measurement, and rendering it beside one over four hundred
   invites a decision the data cannot support.
 
-Agent attributes (role, department, the personality axes) are joined here
-from the live roster and never written onto a record: a row that copied an
-agent's department would silently change meaning the day that agent moved,
-which is what makes historical numbers wrong.
+Agent attributes (role, department) are joined here from the live roster and
+never written onto a record: a row that copied an agent's department would
+silently change meaning the day that agent moved, which is what makes
+historical numbers wrong.
 """
 
 from collections.abc import Mapping, Sequence
@@ -31,7 +30,6 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import CapabilityLevel, NotBlankStr
-from synthorg.hr.enums import CreativityLevel, DecisionMakingStyle, RiskTolerance
 from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderOutcomeClass,
@@ -56,10 +54,6 @@ class DispatchProfile(BaseModel):
         agent_name: Display name, so a comparison reads as people.
         role: Role label, joined live from the roster.
         department: Department label, joined live from the roster.
-        risk_tolerance: Personality axis, so two agents differing only in
-            temperament can be compared side by side.
-        decision_making: Personality axis.
-        creativity: Personality axis.
         provider_name: Connection the agent is bound to.
         model: Model on that connection.
         capability: The rung the agent's pair is graded at, when graded.
@@ -78,9 +72,6 @@ class DispatchProfile(BaseModel):
     agent_name: NotBlankStr = Field(description="Display name")
     role: NotBlankStr = Field(description="Role label")
     department: NotBlankStr = Field(description="Department label")
-    risk_tolerance: RiskTolerance = Field(description="Personality axis")
-    decision_making: DecisionMakingStyle = Field(description="Personality axis")
-    creativity: CreativityLevel = Field(description="Personality axis")
     provider_name: NotBlankStr = Field(description="Bound connection")
     model: NotBlankStr = Field(description="Bound model")
     capability: CapabilityLevel | None = Field(
@@ -150,9 +141,6 @@ def build_dispatch_profile(
         agent_name=NotBlankStr(str(identity.name)),
         role=NotBlankStr(str(identity.role)),
         department=NotBlankStr(str(identity.department)),
-        risk_tolerance=identity.personality.risk_tolerance,
-        decision_making=identity.personality.decision_making,
-        creativity=identity.personality.creativity,
         provider_name=NotBlankStr(str(identity.model.provider)),
         model=NotBlankStr(str(identity.model.model_id)),
         capability=capability if capability is not None else identity.model.capability,

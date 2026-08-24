@@ -8,7 +8,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.role import Authority
@@ -23,7 +22,6 @@ def minimal_context() -> AgentContext:
         name="test-agent",
         role="Developer",
         department="Engineering",
-        personality=PersonalityConfig(),
         skills=SkillSet(),
         authority=Authority(),
         model=ModelConfig(

@@ -32,22 +32,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     role: 'Software Engineer',
     department: 'engineering',
     status: 'active',
-    personality: {
-      traits: ['analytical'],
-      communication_style: 'direct',
-      risk_tolerance: 'medium',
-      creativity: 'high',
-      description: 'test',
-      openness: 0.8,
-      conscientiousness: 0.7,
-      extraversion: 0.5,
-      agreeableness: 0.6,
-      stress_response: 0.9,
-      decision_making: 'analytical',
-      collaboration: 'team',
-      verbosity: 'balanced',
-      conflict_approach: 'collaborate',
-    },
     model: {
       provider: 'test-provider',
       model_id: 'test-expert-001',
@@ -59,7 +43,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     authority: {},
     autonomy_level: 'semi',
     strategic_output_mode: null,
-    personality_preset: null,
     capability: null,
     model_requirement: null,
     model_capabilities: null,
@@ -547,49 +530,48 @@ describe('computePerformanceCards', () => {
 
 describe('generateInsights', () => {
   it('generates at least one insight for a performing agent', () => {
-    const insights = generateInsights(makeAgent(), makePerformance())
+    const insights = generateInsights(makePerformance())
     expect(insights.length).toBeGreaterThan(0)
   })
 
   it('mentions success rate when high', () => {
-    const insights = generateInsights(makeAgent(), makePerformance({ success_rate_percent: 98 }))
+    const insights = generateInsights(makePerformance({ success_rate_percent: 98 }))
     const hasSuccessInsight = insights.some((i) => i.toLowerCase().includes('success'))
     expect(hasSuccessInsight).toBe(true)
   })
 
   it('mentions trend direction when improving', () => {
-    const insights = generateInsights(makeAgent(), makePerformance({ trend_direction: 'improving' }))
+    const insights = generateInsights(makePerformance({ trend_direction: 'improving' }))
     const hasTrend = insights.some((i) => i.toLowerCase().includes('improving') || i.toLowerCase().includes('upward'))
     expect(hasTrend).toBe(true)
   })
 
   it('mentions declining trend', () => {
-    const insights = generateInsights(makeAgent(), makePerformance({ trend_direction: 'declining' }))
+    const insights = generateInsights(makePerformance({ trend_direction: 'declining' }))
     const hasDeclining = insights.some((i) => i.toLowerCase().includes('declining') || i.toLowerCase().includes('attention'))
     expect(hasDeclining).toBe(true)
   })
 
   it('does not generate quality insight below threshold', () => {
-    const insights = generateInsights(makeAgent(), makePerformance({ quality_score: 7.9, trend_direction: 'stable' }))
+    const insights = generateInsights(makePerformance({ quality_score: 7.9, trend_direction: 'stable' }))
     const hasQuality = insights.some((i) => i.toLowerCase().includes('quality'))
     expect(hasQuality).toBe(false)
   })
 
   it('returns empty array when performance is null', () => {
-    const insights = generateInsights(makeAgent(), null)
+    const insights = generateInsights(null)
     expect(insights).toHaveLength(0)
   })
 
   it('handles zero tasks gracefully', () => {
     const insights = generateInsights(
-      makeAgent(),
       makePerformance({ tasks_completed_total: 0, success_rate_percent: null }),
     )
     expect(Array.isArray(insights)).toBe(true)
   })
 
   it('returns at most 3 insights', () => {
-    const insights = generateInsights(makeAgent(), makePerformance())
+    const insights = generateInsights(makePerformance())
     expect(insights.length).toBeLessThanOrEqual(3)
   })
 })

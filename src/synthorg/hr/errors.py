@@ -1,8 +1,8 @@
 """HR domain error hierarchy.
 
 All HR errors default to ``is_retryable = False``. HR operations are
-either deterministic lookups (agent registry, personality catalogue,
-training session store) or write-ops against authoritative state
+either deterministic lookups (agent registry, activity feed) or
+write-ops against authoritative state
 (hiring, promotion, pruning) where silent retries would double-apply.
 Subclasses that genuinely represent a transient network/I/O failure
 should override ``is_retryable = True`` explicitly.
@@ -163,19 +163,3 @@ class PruningUnrestartableError(PruningError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
     error_code: ClassVar[ErrorCode] = ErrorCode.PRUNING_UNRESTARTABLE
     status_code: ClassVar[int] = 409
-
-
-# ── Personalities ───────────────────────────────────────────────
-
-
-class PersonalityError(HRError):
-    """Error in the personality preset catalogue."""
-
-
-class PersonalityNotFoundError(PersonalityError):
-    """Personality preset not found in the catalogue."""
-
-    default_message: ClassVar[str] = "Personality preset not found"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.PERSONALITY_NOT_FOUND
-    status_code: ClassVar[int] = 404

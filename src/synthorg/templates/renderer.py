@@ -16,12 +16,9 @@ Config-dict assembly lives in
 :mod:`synthorg.templates._agent_expansion`.
 """
 
-from collections.abc import Mapping
-
 import yaml
 from jinja2 import TemplateError as Jinja2TemplateError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import JsonValue
 
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
@@ -65,7 +62,6 @@ def render_template(
     variables: dict[str, object] | None = None,
     *,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
@@ -76,8 +72,6 @@ def render_template(
         variables: User-supplied variable values (overrides defaults).
         locales: Faker locale codes for auto-name generation.
             Defaults to all Latin-script locales when ``None``.
-        custom_presets: Optional mapping of custom preset names to
-            personality config dicts for resolving user-defined presets.
 
     Returns:
         Validated, frozen :class:`RootConfig`.
@@ -91,12 +85,7 @@ def render_template(
         TEMPLATE_RENDER_START,
         source_name=loaded.source_name,
     )
-    config_dict = _render_to_dict(
-        loaded,
-        variables,
-        locales=locales,
-        custom_presets=custom_presets,
-    )
+    config_dict = _render_to_dict(loaded, variables, locales=locales)
 
     _apply_effective_posture(loaded.template, config_dict)
 
@@ -139,7 +128,6 @@ def _render_to_dict(
     *,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     _as_parent: bool = False,
 ) -> dict[str, object]:
     """Render a template to a config dict, resolving inheritance.
@@ -150,7 +138,6 @@ def _render_to_dict(
         locales: Faker locale codes for auto-name generation.
         _chain: Set of already-seen template identifiers for circular
             detection (internal use).
-        custom_presets: Optional custom preset mapping.
         _as_parent: When ``True``, preserve ``merge_id`` on agents
             even if this template has no ``extends``.  Used when
             rendering a parent template whose agents may be targeted
@@ -178,7 +165,6 @@ def _render_to_dict(
         template,
         vars_dict,
         locales=locales,
-        custom_presets=custom_presets,
         preserve_merge_ids=_as_parent,
     )
 
@@ -191,7 +177,6 @@ def _render_to_dict(
             vars_dict=vars_dict,
             _chain=_chain,
             locales=locales,
-            custom_presets=custom_presets,
             render_to_dict_fn=_render_to_dict,
         )
 
@@ -203,7 +188,6 @@ def _render_to_dict(
             variables=vars_dict,
             locales=locales,
             _chain=_chain,
-            custom_presets=custom_presets,
         )
 
     # Merge child on top of base (child wins).
@@ -221,7 +205,6 @@ def _resolve_packs(
     variables: dict[str, object] | None = None,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
 ) -> dict[str, object]:
     """Merge template packs onto a base config in declaration order.
 
@@ -237,7 +220,6 @@ def _resolve_packs(
             rendering so parameterized packs resolve correctly.
         locales: Faker locale codes for auto-name generation.
         _chain: Already-seen template identifiers.
-        custom_presets: Optional custom preset mapping.
 
     Returns:
         Merged config dict with all packs applied.
@@ -271,7 +253,6 @@ def _resolve_packs(
             variables,
             locales=locales,
             _chain=_chain | {pack_name},
-            custom_presets=custom_presets,
             _as_parent=True,
         )
         result = merge_template_configs(result, pack_config)

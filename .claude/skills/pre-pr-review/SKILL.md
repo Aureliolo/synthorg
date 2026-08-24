@@ -779,7 +779,7 @@ SCOPE OVERRIDE (mini-pass): only inspect the following files (the PR diff). Do n
 
 For `mini-pass-unwired-settings`, the diff scope must include `src/synthorg/settings/definitions/` AND `src/synthorg/api/lifecycle_helpers/` whenever either changed (settings can be defined in one PR and ghost-wired in another -- the diff scope alone is too narrow).
 
-**Launch:** add the two mini-pass agents to the parallel Task call in Phase 4. Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
+**Launch:** add the two mini-pass agents to the parallel `Agent` batch in Phase 4, under the same subagents-only rule (no `name`, no `SendMessage`). Use `subagent_type: general-purpose`. The triage gate lock from Phase 4 covers their output too -- no separate lock needed.
 
 `mini-pass-ghost-wiring` is src-targeted (runtime modules only). Give it the changed `.py` files under `src/synthorg/{engine,workers,api,budget,security,meta,client,settings}/` as scope, but allow it to read `src/synthorg/api/{app,auto_wire,lifecycle,lifecycle_builder}.py`, the `src/synthorg/api/lifecycle_helpers/` package, and `scripts/_ghost_wiring_manifest.txt` for boot-path tracing even when those are not in the diff (proving non-reachability requires reading the boot path, not just the new file). It must apply the SCOPE RULE in Agent 14's prompt and must not re-flag symbols whose manifest line is `PENDING` (those are tracked by EPIC #1955).
 
@@ -822,7 +822,7 @@ Mitigation in the agent files themselves: keep every `.claude/agents/*.md`
 
 Before launching, for every agent in the selected roster, confirm its
 `subagent_type` appears in this session's available agent list (the set
-the Task tool accepts; a rejected name returns `Agent type 'X' not
+the `Agent` tool accepts; a rejected name returns `Agent type 'X' not
 found`). If ANY rostered agent is missing, do NOT silently fall back.
 Surface, in chat: (a) which agents are unavailable, (b) the root cause
 (session-start registry snapshot; a frontmatter parse failure or a file
@@ -836,7 +836,39 @@ after surfacing this, run each missing agent via
 specialised prompt, only the backing model differs) so no roster
 coverage is lost in the current run.
 
-Launch ALL selected agents **in parallel** using the Task tool. **Do NOT use `run_in_background`**; launch them as regular parallel Task calls so results arrive together.
+### Launch: subagents only, never teammates (MANDATORY)
+
+Launch ALL selected agents **in parallel** as `Agent` calls in a single
+message, and pin an explicit `model` on every one (`haiku` mechanical,
+`sonnet` review/analysis, `opus` only for the heaviest reasoning; see
+CLAUDE.md "Subagent models").
+
+A review agent is a **subagent**: it runs once, and the value the `Agent`
+call returns IS its report. It is never a teammate, so:
+
+- **Do NOT pass `name`.** A named agent becomes addressable and is
+  expected to converse. Two named review agents in one run went idle
+  without ever returning a report, and their findings (including the
+  run's only CRITICAL) had to be pulled out by hand with `SendMessage`
+  after the roster had already been declared complete. An unnamed
+  `Agent` call cannot fail that way: it either returns a report or errors.
+- **Do NOT use `SendMessage` or `ListAgents`** to collect, chase, or
+  follow up a review agent. If a returned report is empty, truncated, or
+  visibly wrong, re-run that agent as a **fresh** `Agent` call with a
+  sharper prompt. Never negotiate with a half-finished one.
+- **Do NOT use `subagent_type: fork`.** A fork inherits this session's
+  full context, including the diff you already believe is correct, which
+  is exactly the bias an independent reviewer exists to break.
+- **Do NOT use `run_in_background`.** Launch them as regular parallel
+  `Agent` calls so results arrive together and Phase 5 can start with a
+  complete set.
+- **Do NOT use `Workflow`.** Multi-agent orchestration needs the user's
+  explicit opt-in, which invoking this skill is not.
+
+Count the reports you receive against the roster you launched before
+leaving Phase 4. If the two disagree, say so in chat with the count
+(`N/M reported`) and re-run the missing agents; do not proceed to triage
+on a partial set and do not quietly drop a rostered agent.
 
 Each agent receives:
 - List of changed files

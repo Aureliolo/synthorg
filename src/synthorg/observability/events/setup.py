@@ -134,12 +134,6 @@ SETUP_AGENT_NAME_UPDATED: Final[str] = "setup.agent.name_updated"
 # Agent name randomized during setup review
 SETUP_AGENT_NAME_RANDOMIZED: Final[str] = "setup.agent.name_randomized"
 
-# Agent personality preset updated during setup review
-SETUP_AGENT_PERSONALITY_UPDATED: Final[str] = "setup.agent.personality_updated"
-
-# Personality presets listed for the setup wizard
-SETUP_PERSONALITY_PRESETS_LISTED: Final[str] = "setup.personality_presets.listed"
-
 # Agents bootstrapped from persisted config into runtime registry
 SETUP_AGENTS_BOOTSTRAPPED: Final[str] = "setup.agents.bootstrapped"
 
@@ -154,9 +148,6 @@ SETUP_AGENT_BOOTSTRAP_FAILED: Final[str] = "setup.agents.bootstrap_failed"
 
 # Provider-gated feature rewire failed after setup completion (non-fatal)
 SETUP_FEATURE_REWIRE_FAILED: Final[str] = "setup.features.rewire_failed"
-
-# Unknown personality preset referenced during agent creation or update
-SETUP_PRESET_NOT_FOUND: Final[str] = "setup.agent.preset_not_found"
 
 # A template's resolved posture was seeded into the settings service
 SETUP_POSTURE_SEEDED: Final[str] = "setup.posture.seeded"

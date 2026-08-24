@@ -7,7 +7,7 @@ template:
     developer remediates. Security-hardened: the red-team completion gate
     runs at a lowered stakes floor with knowledge-substrate grounding, so
     the roster staffs both gate roles that judge finished work.
-  version: "1.1.0"
+  version: "1.2.0"
   min_agents: 6
   max_agents: 8
   tags:
@@ -68,38 +68,32 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "devil_advocate"
       department: "security"
     - role: "Software Architect"
       model:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
       model:
         priority: "quality"
-      personality_preset: "code_craftsman"
       department: "engineering"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "Red Team"
       model:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "devil_advocate"
       department: "quality_assurance"
 
   workflow: "kanban"

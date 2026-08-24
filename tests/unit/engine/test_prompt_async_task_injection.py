@@ -29,11 +29,11 @@ def _make_record(**overrides: object) -> AsyncTaskRecord:
 class TestAsyncTaskPromptInjection:
     def test_section_present_when_records_exist(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         channel = AsyncTaskStateChannel().with_record(_make_record())
         prompt = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             async_task_state=channel,
         )
         assert "Active Async Tasks" in prompt.content
@@ -55,18 +55,18 @@ class TestAsyncTaskPromptInjection:
     )
     def test_section_absent_for_empty_or_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         state: AsyncTaskStateChannel | None,
     ) -> None:
         prompt = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             async_task_state=state,
         )
         assert "Active Async Tasks" not in prompt.content
 
     def test_multiple_tasks_listed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         channel = (
             AsyncTaskStateChannel()
@@ -74,7 +74,7 @@ class TestAsyncTaskPromptInjection:
             .with_record(_make_record(task_id="t-2", agent_name="a-2"))
         )
         prompt = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             async_task_state=channel,
         )
         assert "t-1" in prompt.content

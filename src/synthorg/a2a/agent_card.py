@@ -2,8 +2,8 @@
 
 Computes A2A Agent Cards from the current ``AgentIdentity`` at
 request time.  The safe subset excludes sensitive internal
-fields (personality, authority, model config, memory,
-tool permissions, budget, autonomy, strategic mode, hiring date).
+fields (authority, model config, memory, tool permissions, budget,
+autonomy, strategic mode, hiring date).
 """
 
 from collections.abc import Sequence

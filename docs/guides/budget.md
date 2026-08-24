@@ -109,7 +109,7 @@ budget:
 ## Keeping costs down
 
 There is no automatic model downgrade, and this is deliberate. An agent is a
-fixed unit of role, personality and model: the pair you bind is your decision
+fixed unit of role and model: the pair you bind is your decision
 about where its work runs and what it costs, and a run whose model was swapped
 out underneath it would report a capability rung that meant nothing and bill a
 connection you did not choose.

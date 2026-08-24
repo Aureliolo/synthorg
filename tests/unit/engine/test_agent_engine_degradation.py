@@ -66,7 +66,7 @@ class TestEngineDegradation:
 
     async def test_the_preflight_is_asked_about_the_agents_own_provider(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Quota is per connection, so the check must name the right one.
@@ -88,7 +88,7 @@ class TestEngineDegradation:
             ),
         ) as mock_check:
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -97,7 +97,7 @@ class TestEngineDegradation:
 
     async def test_a_quota_refusal_stops_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """ALERT refuses, and refusing is the whole behaviour.
@@ -125,7 +125,7 @@ class TestEngineDegradation:
             ),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -134,7 +134,7 @@ class TestEngineDegradation:
 
     async def test_an_exhausted_agent_never_lands_on_another_connection(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A registry full of alternatives is not a menu.
@@ -177,7 +177,7 @@ class TestEngineDegradation:
             ),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -188,7 +188,7 @@ class TestEngineDegradation:
 
     async def test_a_queued_wait_dispatches_to_the_same_connection(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """QUEUE waits for the window and then runs where it always would."""
@@ -212,7 +212,7 @@ class TestEngineDegradation:
             new=AsyncMock(spec=enforcer.check_can_execute, return_value=queue_result),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -221,7 +221,7 @@ class TestEngineDegradation:
 
     async def test_the_binding_the_run_executes_under_is_the_one_handed_in(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Budget pressure tunes nothing about the pair.
@@ -243,10 +243,8 @@ class TestEngineDegradation:
             ),
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
-        assert provider.recorded_models == [
-            sample_agent_with_personality.model.model_id
-        ]
+        assert provider.recorded_models == [sample_agent.model.model_id]

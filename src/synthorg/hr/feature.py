@@ -2,10 +2,9 @@
 """HR feature manifest.
 
 Declares the HR feature's surface: its ``hr`` settings namespace, the
-:class:`HrStateSlice` (agent registry, performance, personalities,
-versions, activity, health), its REST controllers (agents, identity
-versions, activity, personalities), and the agents + quality MCP domains
-mounted by the composition root.
+:class:`HrStateSlice` (agent registry, performance, versions, activity,
+health), its REST controllers (agents, identity versions, activity), and
+the agents + quality MCP domains mounted by the composition root.
 """
 
 from collections.abc import Mapping
@@ -23,7 +22,6 @@ from synthorg.api.controllers.agents.dispatch_profile import (
 from synthorg.api.controllers.agents.observability import (
     AgentObservabilityController,
 )
-from synthorg.api.controllers.personalities import PersonalityPresetController
 from synthorg.hr._construction import wire_construction
 from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.domains.agents import AGENT_TOOLS
@@ -65,7 +63,6 @@ FEATURE: FeatureModule = FeatureManifest(
         AgentRosterController,
         AgentIdentityVersionController,
         ActivityController,
-        PersonalityPresetController,
     ),
     mcp_handlers=(
         mcp_descriptor(
@@ -83,7 +80,6 @@ FEATURE: FeatureModule = FeatureManifest(
     construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "AgentHealthService",
-        "PersonalityService",
         "ActivityFeedService",
         "HiringService",
         "RoleStaffingService",

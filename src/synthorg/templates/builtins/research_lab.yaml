@@ -6,7 +6,7 @@ template:
     starts. Output is peer-reviewed before publication. Knowledge-grounded
     and self-directing: the knowledge substrate, steering, and clarify
     proposals are pre-enabled for rigorous autonomous inquiry.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 5
   max_agents: 10
   tags:
@@ -70,47 +70,39 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "independent_researcher"
       department: "engineering"
     - role: "Data Engineer"
       model:
         priority: "balanced"
-      personality_preset: "disciplined_executor"
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-primary"
       model:
         priority: "quality"
-      personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "ML Engineer"
       model:
         priority: "quality"
-      personality_preset: "independent_researcher"
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-secondary"
       model:
         priority: "balanced"
         requires_reasoning: true
-      personality_preset: "methodical_analyst"
       department: "data_analytics"
     - role: "Technical Writer"
       model:
         priority: "balanced"
-      personality_preset: "technical_communicator"
       department: "product"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
 
   workflow: "kanban"

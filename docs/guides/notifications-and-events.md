@@ -80,7 +80,7 @@ The dashboard subscribes to real-time events over `/api/v1/ws`. External consume
 | Channel | Events | Producers |
 |---------|--------|-----------|
 | `tasks` | `TaskStateChanged` | `TaskEngine` mutation pipeline |
-| `agents` | `AgentHired`, `AgentFired`, `AgentPromoted`, `PersonalityTrimmed` | `AgentRegistryService`, `AgentEngine` |
+| `agents` | `AgentHired`, `AgentFired`, `AgentPromoted` | `AgentRegistryService`, `AgentEngine` |
 | `approvals` | `ApprovalRequested`, `ApprovalApproved`, `ApprovalRejected`, `ApprovalExpired`, `ApprovalInterrupt`, `ApprovalResumed` | `ApprovalGate`, `EventStreamHub` |
 | `clients` | `ClientCreated`, `ClientUpdated`, `ClientDeleted` | `ClientController` |
 | `budget` | `BudgetThresholdWarn`, `BudgetThresholdCritical`, `BudgetThresholdHardStop` | `BudgetEnforcer` |

@@ -12,29 +12,28 @@ from pydantic import ValidationError
 class TestSetupDTOs:
     """Unit tests for setup DTO validation."""
 
-    def test_setup_agent_request_valid_preset(self) -> None:
+    def test_setup_agent_request_defaults_department(self) -> None:
         from synthorg.api.controllers.setup_models import SetupAgentRequest
 
         req = SetupAgentRequest(
             name="Alice",
             role="CEO",
-            personality_preset="Visionary_Leader",
             model_provider="test-provider",
             model_id="model-001",
         )
-        # Validator normalizes to lowercase
-        assert req.personality_preset == "visionary_leader"
+        assert req.department == "engineering"
+        assert req.budget_limit_monthly is None
 
-    def test_setup_agent_request_invalid_preset(self) -> None:
+    def test_setup_agent_request_rejects_unknown_field(self) -> None:
         from synthorg.api.controllers.setup_models import SetupAgentRequest
 
-        with pytest.raises(ValidationError, match="personality preset"):
+        with pytest.raises(ValidationError):
             SetupAgentRequest(
                 name="Alice",
                 role="CEO",
-                personality_preset="nonexistent",
                 model_provider="test-provider",
                 model_id="model-001",
+                bogus_field="nope",  # type: ignore[call-arg]
             )
 
     def test_setup_company_request_defaults(self) -> None:
@@ -129,57 +128,3 @@ class TestSetupDTOs:
                 department="Engineering",
                 **{field: value},  # type: ignore[arg-type]
             )
-
-
-@pytest.mark.unit
-class TestSetupDTOBeforeValidatorImmutability:
-    """The personality-preset before-validators must not mutate caller input."""
-
-    def test_setup_agent_request_does_not_mutate_input(self) -> None:
-        import copy
-
-        from synthorg.api.controllers.setup_models import SetupAgentRequest
-
-        original = {
-            "name": "Alice",
-            "role": "CEO",
-            "personality_preset": "Visionary_Leader",
-            "model_provider": "test-provider",
-            "model_id": "model-001",
-        }
-        snapshot = copy.deepcopy(original)
-        req = SetupAgentRequest.model_validate(original)
-
-        assert original == snapshot, "before-validator mutated caller input"
-        assert req.personality_preset == "visionary_leader"
-
-    def test_setup_agent_request_default_preset_does_not_mutate(self) -> None:
-        import copy
-
-        from synthorg.api.controllers.setup_models import SetupAgentRequest
-
-        original: dict[str, object] = {
-            "name": "Alice",
-            "role": "CEO",
-            "model_provider": "test-provider",
-            "model_id": "model-001",
-        }
-        snapshot = copy.deepcopy(original)
-        req = SetupAgentRequest.model_validate(original)
-
-        assert original == snapshot, "before-validator added a key to caller input"
-        assert req.personality_preset == "pragmatic_builder"
-
-    def test_update_agent_personality_request_does_not_mutate_input(self) -> None:
-        import copy
-
-        from synthorg.api.controllers.setup_models import (
-            UpdateAgentPersonalityRequest,
-        )
-
-        original = {"personality_preset": "Visionary_Leader"}
-        snapshot = copy.deepcopy(original)
-        req = UpdateAgentPersonalityRequest.model_validate(original)
-
-        assert original == snapshot, "before-validator mutated caller input"
-        assert req.personality_preset == "visionary_leader"

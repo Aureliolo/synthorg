@@ -6,7 +6,7 @@ template:
     through a structured pipeline with quality review at each checkpoint.
     Group chat and proposals are pre-enabled so stakeholders collaborate
     in the loop.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 10
   max_agents: 15
   tags:
@@ -93,70 +93,57 @@ template:
     - role: "Project Manager"
       model:
         priority: "speed"
-      personality_preset: "process_optimizer"
       department: "operations"
     - role: "Product Manager"
       model:
         priority: "speed"
-      personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       model:
         priority: "speed"
-      personality_preset: "team_diplomat"
       department: "operations"
     - role: "UX Designer"
       model:
         priority: "balanced"
-      personality_preset: "user_advocate"
       department: "design"
     - role: "UI Designer"
       model:
         priority: "balanced"
-      personality_preset: "creative_innovator"
       department: "design"
     - role: "Frontend Developer"
       model:
         priority: "balanced"
-      personality_preset: "rapid_prototyper"
       department: "engineering"
     - role: "Backend Developer"
       model:
         priority: "balanced"
-      personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
       model:
         priority: "cost"
-      personality_preset: "process_optimizer"
       department: "quality_assurance"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "Content Writer"
       model:
         priority: "quality"
-      personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
       model:
         priority: "balanced"
-      personality_preset: "growth_hacker"
       department: "creative_marketing"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       model:
         priority: "balanced"
-      personality_preset: "empathetic_mentor"
       department: "engineering"
 
   workflow: "kanban"

@@ -187,8 +187,8 @@ def _build_messages(
 ) -> list[ChatMessage]:
     """Assemble the minimal ``system`` + ``user`` pair for one turn.
 
-    The system message is derived from the agent identity (role +
-    personality traits) so the LLM stays in character across the
+    The system message is derived from the agent identity (name, role and
+    department) so the LLM stays in character across the
     conversation. Callers inject the full turn context into ``prompt``,
     so the system prompt only carries agent-stable identity.
 

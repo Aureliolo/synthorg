@@ -11,7 +11,6 @@ from synthorg.core.agent import (
     AgentIdentity,
     MemoryConfig,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.core.clock import Clock, SystemClock
@@ -66,11 +65,6 @@ def identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity:
         role=config.role,
         department=config.department,
         model=_build_model_config(config),
-        personality=(
-            PersonalityConfig.model_validate(config.personality)
-            if config.personality
-            else PersonalityConfig()
-        ),
         memory=(
             MemoryConfig.model_validate(config.memory)
             if config.memory

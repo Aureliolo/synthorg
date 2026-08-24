@@ -34,17 +34,17 @@ class TestAgentContextAsyncTaskState:
 
     def test_default_is_empty_channel(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         assert isinstance(ctx.async_task_state, AsyncTaskStateChannel)
         assert ctx.async_task_state.records == ()
 
     def test_with_async_task_state_helper(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         record = _make_record()
         new_channel = ctx.async_task_state.with_record(record)
         ctx2 = ctx.with_async_task_state(new_channel)
@@ -55,9 +55,9 @@ class TestAgentContextAsyncTaskState:
 
     def test_survives_model_copy(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         record = _make_record()
         channel = ctx.async_task_state.with_record(record)
         ctx2 = ctx.model_copy(update={"async_task_state": channel})
@@ -65,10 +65,10 @@ class TestAgentContextAsyncTaskState:
 
     def test_survives_with_compression(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """State channel must not be touched by compaction."""
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         record = _make_record()
         channel = ctx.async_task_state.with_record(record)
         ctx_with_task = ctx.model_copy(
@@ -90,10 +90,10 @@ class TestAgentContextAsyncTaskState:
 
     def test_from_identity_factory_includes_field(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             max_turns=10,
         )
         assert hasattr(ctx, "async_task_state")
@@ -101,9 +101,9 @@ class TestAgentContextAsyncTaskState:
 
     def test_to_snapshot_still_works(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         record = _make_record()
         channel = ctx.async_task_state.with_record(record)
         ctx2 = ctx.model_copy(update={"async_task_state": channel})
@@ -112,9 +112,9 @@ class TestAgentContextAsyncTaskState:
 
     def test_with_turn_completed_preserves_state(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         record = _make_record()
         channel = ctx.async_task_state.with_record(record)
         ctx2 = ctx.model_copy(update={"async_task_state": channel})

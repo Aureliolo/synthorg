@@ -48,8 +48,6 @@ A list of agent definitions; each must declare at least `name`, `role`, and `dep
 | `name` | str | (required) | Agent display name (unique within the company). |
 | `role` | str | (required) | Role name. |
 | `department` | str | (required) | Name of the department this agent belongs to. |
-| `personality_preset` | str | `null` | Named personality preset; round-trips from template setup. |
-| `personality` | map | `{}` | Raw personality config (Big Five dimensions, decision-making style). |
 | `model` | map | `{}` | Raw model-selection hints (`tier`, `priority`, `min_context`). |
 | `memory` | map | `{}` | Raw memory config. |
 | `tools` | map | `{}` | Raw tools config. |

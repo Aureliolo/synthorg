@@ -257,7 +257,7 @@ budget:
 
 !!! tip "Cost discipline is selection, not substitution"
 
-    An agent is a fixed `(role, personality, model)` unit, so budget pressure never
+    An agent is a fixed `(role, model)` unit, so budget pressure never
     swaps its binding: the pair is the operator's choice about where work runs and
     what it costs, and a run whose model was rewritten mid-flight recorded a
     capability rung that meant nothing.

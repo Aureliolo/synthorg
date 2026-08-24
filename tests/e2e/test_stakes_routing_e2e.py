@@ -6,7 +6,7 @@ and a capability-priced provider catalogue, under the simulation harness
 (zero real LLM spend). One brief decomposes into a low-stakes simple
 subtask and a critical-stakes complex subtask.
 
-An agent is a fixed ``(role, personality, model)`` unit, so work that needs
+An agent is a fixed ``(role, model)`` unit, so work that needs
 more capability goes to a DIFFERENT AGENT. The acceptance is therefore two
 things at once: which agent each subtask landed on, and which model each
 call actually used. A cost total answers neither, because the same figure

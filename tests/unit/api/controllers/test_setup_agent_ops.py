@@ -34,7 +34,7 @@ class TestSetupAgent:
         )
         assert resp.status_code == 404
 
-    async def test_invalid_personality_preset(
+    async def test_unknown_field_rejected(
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
@@ -43,12 +43,12 @@ class TestSetupAgent:
             json={
                 "name": "Alice Chen",
                 "role": "CEO",
-                "personality_preset": "nonexistent_preset",
+                "bogus_field": "nope",
                 "model_provider": "test",
                 "model_id": "model-001",
             },
         )
-        # Pydantic model_validator returns 400
+        # ``extra="forbid"`` returns 400
         assert resp.status_code == 400
 
     async def test_requires_write_access(
@@ -128,7 +128,6 @@ class TestAgentDictToSummary:
             "role": "Developer",
             "department": "Engineering",
             "capability": "capable",
-            "personality_preset": None,
             "model": {"provider": "", "model_id": ""},
         }
         summary = agent_dict_to_summary(agent)
@@ -145,7 +144,6 @@ class TestAgentDictToSummary:
             "role": "QA",
             "department": "Engineering",
             "capability": "basic",
-            "personality_preset": None,
             "model": {"provider": "  ", "model_id": "  "},
         }
         summary = agent_dict_to_summary(agent)
@@ -162,7 +160,6 @@ class TestAgentDictToSummary:
             "role": "PM",
             "department": "Product",
             "capability": "expert",
-            "personality_preset": "visionary_leader",
             "model": {"provider": "test-provider", "model_id": "test-model-001"},
         }
         summary = agent_dict_to_summary(agent)

@@ -46,7 +46,7 @@ class TaskAssignmentService:
 
     The requirement is derived here rather than by each caller so every
     assignment asks for the same rung: an agent is a fixed
-    ``(role, personality, model)`` unit, and the answer to work that needs
+    ``(role, model)`` unit, and the answer to work that needs
     more capability is a different agent, so which agents are eligible must
     not depend on which caller assembled the request.
 

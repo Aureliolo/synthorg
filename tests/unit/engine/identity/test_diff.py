@@ -20,7 +20,7 @@ class _Flat(BaseModel):
 
 
 class _Nested(BaseModel):
-    """Model with one level of nesting -- simulates personality sub-model."""
+    """Model with one level of nesting -- simulates authority sub-model."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -34,7 +34,7 @@ class _Deep(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str
-    personality: _Flat
+    authority: _Flat
 
 
 class TestComputeDiffIdentical:
@@ -49,7 +49,7 @@ class TestComputeDiffIdentical:
 
     @pytest.mark.unit
     def test_identical_nested_no_changes(self) -> None:
-        m = _Deep(title="Lead", personality=_Flat(name="bob", role="manager"))
+        m = _Deep(title="Lead", authority=_Flat(name="bob", role="manager"))
         result = compute_diff("agt-2", m, m, from_version=3, to_version=4)
         assert result.field_changes == ()
         assert result.summary == "no changes"
@@ -82,21 +82,21 @@ class TestComputeDiffModified:
 
     @pytest.mark.unit
     def test_nested_field_modified(self) -> None:
-        old = _Deep(title="Lead", personality=_Flat(name="alice", role="eng"))
-        new = _Deep(title="Lead", personality=_Flat(name="alice", role="mgr"))
+        old = _Deep(title="Lead", authority=_Flat(name="alice", role="eng"))
+        new = _Deep(title="Lead", authority=_Flat(name="alice", role="mgr"))
         result = compute_diff("agt-1", old, new, from_version=1, to_version=2)
         assert len(result.field_changes) == 1
-        assert result.field_changes[0].field_path == "personality.role"
+        assert result.field_changes[0].field_path == "authority.role"
         assert result.field_changes[0].change_type == "modified"
 
     @pytest.mark.unit
     def test_top_level_and_nested_fields_both_changed(self) -> None:
-        old = _Deep(title="Lead", personality=_Flat(name="alice", role="eng"))
-        new = _Deep(title="Senior Lead", personality=_Flat(name="bob", role="eng"))
+        old = _Deep(title="Lead", authority=_Flat(name="alice", role="eng"))
+        new = _Deep(title="Senior Lead", authority=_Flat(name="bob", role="eng"))
         result = compute_diff("agt-1", old, new, from_version=2, to_version=3)
         paths = {c.field_path for c in result.field_changes}
         assert "title" in paths
-        assert "personality.name" in paths
+        assert "authority.name" in paths
         assert len(result.field_changes) == 2
 
     @pytest.mark.unit

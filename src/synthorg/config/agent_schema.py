@@ -110,10 +110,10 @@ class RoutingConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Agent configuration from YAML.
 
-    Personality, model, memory, tools, and authority stay raw dicts so
-    wizard-emitted intermediate keys (e.g. a resolved ``capability``) round-trip
-    through validation that ``extra="forbid"`` sub-models would reject; the
-    engine rehydrates each into its typed form at startup.
+    Model, memory, tools, and authority stay raw dicts so wizard-emitted
+    intermediate keys (e.g. a resolved ``capability``) round-trip through
+    validation that ``extra="forbid"`` sub-models would reject; the engine
+    rehydrates each into its typed form at startup.
 
     The rung an agent runs at is a property of its bound ``(provider, model)``
     pair, so it lives inside ``model`` and nowhere else. A second copy beside
@@ -125,7 +125,6 @@ class AgentConfig(BaseModel):
         name: Agent display name.
         role: Role name.
         department: Department name.
-        personality: Raw personality config dict.
         model: Raw model config dict.
         memory: Raw memory config dict.
         tools: Raw tools config dict.
@@ -150,14 +149,6 @@ class AgentConfig(BaseModel):
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
     department: NotBlankStr = Field(description="Department name")
-    personality_preset: NotBlankStr | None = Field(
-        default=None,
-        description="Named personality preset; round-trips from template setup.",
-    )
-    personality: dict[str, JsonValue] = Field(
-        default_factory=dict,
-        description="Raw personality config",
-    )
     model: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw model config",
@@ -212,7 +203,7 @@ class AgentConfig(BaseModel):
     def _deep_copy_raw_dicts(self) -> Self:
         """Deep-copy the raw-dict fields so a retained source cannot mutate them.
 
-        ``personality`` / ``model`` / ``memory`` / ``tools`` /
+        ``model`` / ``memory`` / ``tools`` /
         ``authority`` / ``model_requirement`` are mutable references
         inside a frozen model; without this guard a caller holding the
         original dict could mutate the config's view after construction.
@@ -221,7 +212,6 @@ class AgentConfig(BaseModel):
             The config with owned deep copies of each raw-dict field.
         """
         for field in (
-            "personality",
             "model",
             "memory",
             "tools",

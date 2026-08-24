@@ -10,7 +10,6 @@ function agent(overrides: Partial<SetupAgentSummary>): SetupAgentSummary {
     model_provider: null,
     model_id: null,
     capability: 'capable',
-    personality_preset: null,
     ...overrides,
   }
 }

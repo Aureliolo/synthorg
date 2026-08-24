@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.output_style.models import HouseStyleDirective
@@ -50,24 +50,12 @@ def _reset_house_style_ambient() -> Iterator[None]:
         set_house_style_provider(previous)
 
 
-_DEFAULT_TRAITS: tuple[NotBlankStr, ...] = (NotBlankStr("analytical"),)
-_DEFAULT_STYLE: NotBlankStr = NotBlankStr("concise")
-
-
-def _identity(
-    *,
-    traits: tuple[NotBlankStr, ...] = _DEFAULT_TRAITS,
-    communication_style: NotBlankStr = _DEFAULT_STYLE,
-) -> AgentIdentity:
+def _identity() -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
         name=NotBlankStr("Casey"),
         role=NotBlankStr("CFO"),
         department=NotBlankStr("executive"),
-        personality=PersonalityConfig(
-            traits=traits,
-            communication_style=communication_style,
-        ),
         model=ModelConfig(
             provider=NotBlankStr("example-provider"),
             model_id=NotBlankStr("example-capable-001"),
@@ -83,17 +71,18 @@ class TestRenderAgentSystemPrompt:
     def test_includes_identity_preamble(self) -> None:
         prompt = render_agent_system_prompt(_identity())
         assert "You are Casey, a CFO in the executive department." in prompt
-        assert "Personality traits: analytical." in prompt
-        assert "Communication style: concise." in prompt
 
     def test_carries_default_untrusted_directive(self) -> None:
         prompt = render_agent_system_prompt(_identity())
         expected = untrusted_content_directive((TAG_TASK_DATA, TAG_PEER_CONTRIBUTION))
         assert expected in prompt
 
-    def test_omits_traits_line_when_empty(self) -> None:
-        prompt = render_agent_system_prompt(_identity(traits=()))
+    def test_carries_no_persona_lines(self) -> None:
+        """Anchored on the preamble: an empty prompt passes both negatives."""
+        prompt = render_agent_system_prompt(_identity())
+        assert "You are Casey, a CFO in the executive department." in prompt
         assert "Personality traits" not in prompt
+        assert "Communication style" not in prompt
 
     def test_custom_fences_emit_only_those_tags(self) -> None:
         prompt = render_agent_system_prompt(

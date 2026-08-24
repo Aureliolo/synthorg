@@ -7,7 +7,7 @@ from typing import override
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.plan_review.reply import (
@@ -38,10 +38,6 @@ def _identity(name: str, role: str) -> AgentIdentity:
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr("executive"),
-        personality=PersonalityConfig(
-            traits=(NotBlankStr("analytical"),),
-            communication_style=NotBlankStr("concise"),
-        ),
         model=ModelConfig(
             provider=NotBlankStr("test-provider"),
             model_id=NotBlankStr("test-model-001"),

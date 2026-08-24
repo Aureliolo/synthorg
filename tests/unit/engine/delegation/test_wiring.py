@@ -10,7 +10,6 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.engine._agent_tool_registry import registry_with_delegate_tool
@@ -64,7 +63,6 @@ def _identity() -> AgentIdentity:
         role="Lead",
         department="Engineering",
         hiring_date=date(2026, 1, 1),
-        personality=PersonalityConfig(traits=("decisive",)),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         tools=ToolPermissions(),
     )

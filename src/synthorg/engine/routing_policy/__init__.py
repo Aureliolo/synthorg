@@ -5,7 +5,7 @@ raised one rung by substantial complexity: the weakest rung for low-stakes
 work, an expert rung (plus a red-team review mark) for high/critical work.
 
 The requirement decides *which agent* takes the work, never which model runs
-behind one agent's name. An agent is a fixed ``(role, personality, model)``
+behind one agent's name. An agent is a fixed ``(role, model)``
 unit, so selection walks a ladder over the roster (an exact match, else the
 nearest rung above, else the nearest rung below with the concession logged)
 and nothing anywhere rewrites a bound ``(provider, model)`` pair.

@@ -8,7 +8,7 @@ description: Core vision, design principles, and foundational concepts of SynthO
 ## Core Vision
 
 SynthOrg is a **configurable AI company framework** where AI agents operate within a virtual
-organisation. Each agent has a defined role, personality, skills, memory, and model backend.
+organisation. Each agent has a defined role, skills, memory, and model backend.
 The company can be configured from a 2-person startup to a 50+ enterprise, handling software
 development, business operations, creative work, or any domain.
 
@@ -117,7 +117,7 @@ configuration reference.
 
 | Term | Definition |
 |------|-----------|
-| **Agent** | An AI entity with a role, personality, model backend, memory, and tool access. The primary entity in the framework. Within a company context, agents serve as the company's employees. |
+| **Agent** | An AI entity with a role, model backend, memory, and tool access. The primary entity in the framework. Within a company context, agents serve as the company's employees. |
 | **Company** | A configured organisation of agents with structure, hierarchy, and workflows |
 | **Department** | A grouping of related roles (Engineering, Product, Design, Operations, etc.) |
 | **Role** | A job definition with required skills, responsibilities, authority level, and tool access |
@@ -183,7 +183,7 @@ Queue: Hiring Queue
 
     ---
 
-    Agent identity (personality, skills, identity versioning) plus the full
+    Agent identity (skills, identity versioning) plus the full
     HR lifecycle: role catalog, reporting-graph authority, hiring, firing,
     performance tracking, evaluation, and evolution.
 

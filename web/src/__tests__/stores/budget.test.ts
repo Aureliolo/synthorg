@@ -109,7 +109,6 @@ const mockAgent = {
   role: 'Developer',
   department: 'engineering',
   status: 'active',
-  personality: {},
   model: {},
   memory: {},
   tools: {},

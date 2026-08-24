@@ -272,9 +272,8 @@ export default function AppLayout() {
   const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false)
   const { notificationDrawerOpen, setNotificationDrawerOpen } = useNotificationDrawerShortcuts()
 
-  // Global WebSocket subscription for app-wide notifications (e.g.
-  // personality trimming toasts) so they render regardless of the
-  // current page.
+  // Global WebSocket subscription for app-wide notifications so they
+  // render regardless of the current page.
   useGlobalNotifications()
   useDocumentTitle(location.pathname)
   useNotificationNavigateBridge()

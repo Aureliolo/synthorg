@@ -15,10 +15,6 @@ export interface AgentCardProps {
   model?: string | undefined
   /** Resolved capability rung. */
   capability?: 'expert' | 'capable' | 'basic' | null | undefined
-  /** Human-readable personality preset label (e.g. "Visionary Leader"). */
-  personality?: string | undefined
-  /** Personality trait words. */
-  traits?: readonly string[] | undefined
   /**
    * What the assigned model can actually do (e.g. "reasoning", "vision").
    * Tool calling never appears: the matcher only assigns models it believes
@@ -65,7 +61,7 @@ interface MetaItemData {
   value: string
   /** Render the value in a monospace font (model ids). */
   mono?: boolean
-  /** Span both grid columns (long values like traits / current task). */
+  /** Span both grid columns (e.g. a long current-task value). */
   span?: boolean
   /** Muted qualifier shown after the value (e.g. the model's capability tier). */
   suffix?: string | undefined
@@ -114,12 +110,8 @@ function buildMetaItems(props: AgentCardProps): MetaItemData[] {
   const items: MetaItemData[] = [{ label: 'Dept', value: props.department }]
   const model = modelMetaItem(props)
   if (model) items.push(model)
-  if (props.personality) items.push({ label: 'Personality', value: props.personality })
   const capabilities = capabilitiesMetaItem(props)
   if (capabilities) items.push(capabilities)
-  if (props.traits?.length) {
-    items.push({ label: 'Traits', value: props.traits.join(', '), span: true })
-  }
   if (props.currentTask) items.push({ label: 'Task', value: props.currentTask, span: true })
   return items
 }

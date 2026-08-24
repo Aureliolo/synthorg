@@ -137,9 +137,6 @@ from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import (
     PresetOverrideRepo,
 )
-from synthorg.persistence.preset_protocol import (
-    PersonalityPresetRepository,
-)
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
@@ -255,7 +252,6 @@ class PersistenceBackend(Protocol):
         knowledge_usage_records: Repository for per-run knowledge-usage capture.
         code_execution_records: Repository for per-run code-execution capture.
         evaluation_reports: Repository for the evaluate stage's verdicts.
-        custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
         workflow_versions: Repository for workflow definition version
@@ -615,11 +611,6 @@ class PersistenceBackend(Protocol):
     @property
     def research_runs(self) -> ResearchRunRepository:
         """Repository for the research-run record."""
-        ...
-
-    @property
-    def custom_presets(self) -> PersonalityPresetRepository:
-        """Repository for custom personality preset persistence."""
         ...
 
     @property

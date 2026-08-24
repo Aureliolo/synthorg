@@ -14,14 +14,11 @@ export interface MockAgent {
   current_task_id: string | null
   /** Raw model config dict, mirroring the wire ``AgentConfig.model``. */
   model: Record<string, unknown>
-  /** Raw personality config dict, mirroring ``AgentConfig.personality``. */
-  personality: Record<string, unknown>
   /** Raw model requirement dict, mirroring ``AgentConfig.model_requirement``. */
   model_requirement: Record<string, unknown>
   model_capabilities: Record<string, unknown> | null
   /** Why ``model_capabilities`` is or is not populated. */
   model_capability_status: 'resolved' | 'unresolved' | 'provider_config_unavailable'
-  personality_preset: string | null
   capability: 'expert' | 'capable' | 'basic' | null
 }
 
@@ -34,7 +31,6 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     status: 'active',
     current_task_id: null,
     model: { model_id: 'example-capable-001' },
-    personality: { traits: ['pragmatic', 'thorough'] },
     model_requirement: { requires_reasoning: true },
     model_capabilities: {
       supports_reasoning: true,
@@ -43,7 +39,6 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
       metadata_source: 'probe',
     },
     model_capability_status: 'resolved',
-    personality_preset: 'balanced',
     capability: 'capable',
     ...overrides,
   }

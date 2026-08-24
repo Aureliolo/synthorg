@@ -43,4 +43,4 @@ This section documents every public class, function, and model in the SynthOrg f
 | [API Layer](layer.md) | REST + WebSocket API, auth, controllers |
 | [Persistence](persistence.md) | Pluggable storage backends |
 | [Observability](observability.md) | Structured logging, events, correlation |
-| [Templates](templates.md) | Pre-built company templates and presets |
+| [Templates](templates.md) | Pre-built company templates |

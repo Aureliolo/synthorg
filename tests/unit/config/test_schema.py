@@ -277,7 +277,6 @@ class TestAgentConfig:
             department="Engineering",
         )
         assert a.name == "Alice"
-        assert a.personality == {}
         assert a.model == {}
 
     def test_full(self) -> None:
@@ -285,33 +284,35 @@ class TestAgentConfig:
             name="Alice",
             role="Backend Developer",
             department="Engineering",
-            personality={"traits": ["analytical"]},
             model={"provider": "example-provider", "model_id": "test-model:8b"},
         )
-        assert a.personality == {"traits": ["analytical"]}
+        assert a.model == {
+            "provider": "example-provider",
+            "model_id": "test-model:8b",
+        }
 
     def test_raw_dicts_deep_copied_from_source(self) -> None:
-        personality: dict[str, JsonValue] = {"traits": ["analytical"]}
+        model: dict[str, JsonValue] = {"aliases": ["primary"]}
         a = AgentConfig(
             name="Alice",
             role="Backend Developer",
             department="Engineering",
-            personality=personality,
+            model=model,
         )
         # Mutating the source list inside the raw dict must not bleed in.
-        traits = personality["traits"]
-        assert isinstance(traits, list)
-        traits.append("tampered")
-        assert a.personality == {"traits": ["analytical"]}
+        aliases = model["aliases"]
+        assert isinstance(aliases, list)
+        aliases.append("tampered")
+        assert a.model == {"aliases": ["primary"]}
 
     @pytest.mark.parametrize(
         "field",
-        ["personality", "model", "memory", "tools", "authority", "model_requirement"],
+        ["model", "memory", "tools", "authority", "model_requirement"],
     )
     def test_every_raw_dict_field_is_deep_copied(self, field: str) -> None:
-        """The deep-copy guard covers all six raw-dict fields, not just
-        ``personality`` -- a retained source reference to any of them must
-        not be able to mutate the frozen config after construction."""
+        """The deep-copy guard covers all five raw-dict fields: a retained
+        source reference to any of them must not be able to mutate the
+        frozen config after construction."""
         source: dict[str, JsonValue] = {"nested": ["x"]}
         kwargs: dict[str, dict[str, JsonValue]] = {field: source}
         a = AgentConfig(
@@ -340,7 +341,7 @@ class TestAgentConfig:
                 name="Alice",
                 role="dev",
                 department="eng",
-                personality={"traits": object()},  # type: ignore[dict-item]
+                model={"aliases": object()},  # type: ignore[dict-item]
             )
 
     def test_blank_name_rejected(self) -> None:

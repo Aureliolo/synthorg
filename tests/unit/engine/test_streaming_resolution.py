@@ -16,7 +16,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
@@ -39,7 +38,6 @@ def _identity() -> AgentIdentity:
         role="Engineer",
         department="Engineering",
         hiring_date=date(2026, 1, 1),
-        personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider="example-provider", model_id=_MODEL_ID),
         tools=ToolPermissions(),
     )

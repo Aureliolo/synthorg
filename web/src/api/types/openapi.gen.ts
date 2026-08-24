@@ -3178,60 +3178,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/personalities/presets": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListPresets */
-        readonly get: operations["ApiV1PersonalitiesPresetsListPresets"];
-        readonly put?: never;
-        /** CreatePreset */
-        readonly post: operations["ApiV1PersonalitiesPresetsCreatePreset"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/personalities/presets/{name}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetPreset */
-        readonly get: operations["ApiV1PersonalitiesPresetsNameGetPreset"];
-        /** UpdatePreset */
-        readonly put: operations["ApiV1PersonalitiesPresetsNameUpdatePreset"];
-        readonly post?: never;
-        /** DeletePreset */
-        readonly delete: operations["ApiV1PersonalitiesPresetsNameDeletePreset"];
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/personalities/schema": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** GetSchema */
-        readonly get: operations["ApiV1PersonalitiesSchemaGetSchema"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/plans": {
         readonly parameters: {
             readonly query?: never;
@@ -5022,23 +4968,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/setup/agents/{agent_index}/personality": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        /** UpdateAgentPersonality */
-        readonly put: operations["ApiV1SetupAgentsAgentIndexPersonalityUpdateAgentPersonality"];
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/setup/agents/{agent_index}/randomize-name": {
         readonly parameters: {
             readonly query?: never;
@@ -5135,23 +5064,6 @@ export type paths = {
         };
         /** GetAvailableLocales */
         readonly get: operations["ApiV1SetupNameLocalesAvailableGetAvailableLocales"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/setup/personality-presets": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** ListPersonalityPresets */
-        readonly get: operations["ApiV1SetupPersonalityPresetsListPersonalityPresets"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -6252,14 +6164,6 @@ export type components = {
             } | null;
             /** @description Agent display name */
             readonly name: string;
-            /** @description Raw personality config */
-            readonly personality: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-            /** @description Named personality preset */
-            readonly personality_preset: string | null;
             /** @description Role name */
             readonly role: string;
             /**
@@ -6330,7 +6234,6 @@ export type components = {
             readonly model: components["schemas"]["ModelConfig"];
             /** @description Agent display name */
             readonly name: string;
-            readonly personality: components["schemas"]["PersonalityConfig"];
             /** @description Role name */
             readonly role: string;
             readonly skills: components["schemas"]["SkillSet"];
@@ -7315,14 +7218,6 @@ export type components = {
         /** ApiResponse[PreflightResult] */
         readonly ApiResponse_PreflightResult_: {
             readonly data: components["schemas"]["PreflightResult"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[PresetDetailResponse] */
-        readonly ApiResponse_PresetDetailResponse_: {
-            readonly data: components["schemas"]["PresetDetailResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9431,20 +9326,6 @@ export type components = {
             readonly setting: string;
         };
         /**
-         * CollaborationPreference
-         * @description Preferred collaboration mode for an agent.
-         * @default team
-         * @enum {string}
-         */
-        readonly CollaborationPreference: "independent" | "pair" | "team";
-        /**
-         * CommunicationVerbosity
-         * @description Communication verbosity level for an agent.
-         * @default balanced
-         * @enum {string}
-         */
-        readonly CommunicationVerbosity: "terse" | "balanced" | "verbose";
-        /**
          * Company
          * @description Full frozen entity model at this version
          */
@@ -9594,13 +9475,6 @@ export type components = {
             /** @description Operator-confirmed obsolete tasks to cancel */
             readonly task_ids: readonly string[];
         };
-        /**
-         * ConflictApproach
-         * @description Conflict resolution approach used by an agent.
-         * @default collaborate
-         * @enum {string}
-         */
-        readonly ConflictApproach: "avoid" | "accommodate" | "compete" | "compromise" | "collaborate";
         /** Connection */
         readonly Connection: {
             /** @default [] */
@@ -10247,56 +10121,6 @@ export type components = {
             /** @default false */
             readonly tos_accepted: boolean;
         };
-        /** CreatePresetRequest */
-        readonly CreatePresetRequest: {
-            /**
-             * @description Big Five agreeableness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly agreeableness: number;
-            readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /**
-             * @description Communication style label.
-             * @default neutral
-             */
-            readonly communication_style: string;
-            readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /**
-             * @description Big Five conscientiousness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly conscientiousness: number;
-            readonly creativity?: components["schemas"]["CreativityLevel"];
-            readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /**
-             * @description Preset description.
-             * @default
-             */
-            readonly description: string;
-            /**
-             * @description Big Five extraversion score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly extraversion: number;
-            readonly name: string;
-            /**
-             * @description Big Five openness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly openness: number;
-            readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /**
-             * @description Stress-response (neuroticism) score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly stress_response: number;
-            /**
-             * @description Personality traits for the preset.
-             * @default []
-             */
-            readonly traits: readonly string[];
-            readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
-        };
         /** CreateProjectRequest */
         readonly CreateProjectRequest: {
             /**
@@ -10493,13 +10317,6 @@ export type components = {
             readonly workflow_type: components["schemas"]["WorkflowType"];
         };
         /**
-         * CreativityLevel
-         * @description Creativity level for agent personality.
-         * @default medium
-         * @enum {string}
-         */
-        readonly CreativityLevel: "low" | "medium" | "high";
-        /**
          * CriterionOutcome
          * @description Whether one success criterion is met by the delivered whole.
          *
@@ -10561,13 +10378,6 @@ export type components = {
             /** @description Why this decision */
             readonly rationale: string;
         };
-        /**
-         * DecisionMakingStyle
-         * @description Decision-making approach used by an agent.
-         * @default consultative
-         * @enum {string}
-         */
-        readonly DecisionMakingStyle: "analytical" | "intuitive" | "consultative" | "directive";
         /** DecisionPayload */
         readonly DecisionPayload: {
             /**
@@ -10856,8 +10666,6 @@ export type components = {
              * @enum {null|string}
              */
             readonly capability: "basic" | "capable" | "expert" | null;
-            readonly creativity: components["schemas"]["CreativityLevel"];
-            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
             /** @description Department label */
             readonly department: string;
             /** @description Whether the sample supports a comparison */
@@ -10882,7 +10690,6 @@ export type components = {
             };
             /** @description Bound connection */
             readonly provider_name: string;
-            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
             /** @description Role label */
             readonly role: string;
             /** @description Share of the agent's calls that succeeded */
@@ -11204,7 +11011,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4007 | 4008 | 4009 | 4010 | 4011 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4007 | 4008 | 4009 | 4010 | 4011 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -13571,40 +13378,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[PersonalityPresetInfoResponse] */
-        readonly PaginatedResponse_PersonalityPresetInfoResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["PersonalityPresetInfoResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** PaginatedResponse[PlanRow] */
         readonly PaginatedResponse_PlanRow_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["PlanRow"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[PresetSummaryResponse] */
-        readonly PaginatedResponse_PresetSummaryResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["PresetSummaryResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -14186,64 +13963,6 @@ export type components = {
             /** @description Total output tokens */
             readonly total_output_tokens: number;
         };
-        /**
-         * PersonalityConfig
-         * @description Personality configuration
-         */
-        readonly PersonalityConfig: {
-            /**
-             * @description Big Five agreeableness (cooperation, empathy)
-             * @default 0.5
-             */
-            readonly agreeableness: number;
-            readonly collaboration: components["schemas"]["CollaborationPreference"];
-            /**
-             * @description Communication style description
-             * @default neutral
-             */
-            readonly communication_style: string;
-            readonly conflict_approach: components["schemas"]["ConflictApproach"];
-            /**
-             * @description Big Five conscientiousness (thoroughness, reliability)
-             * @default 0.5
-             */
-            readonly conscientiousness: number;
-            readonly creativity: components["schemas"]["CreativityLevel"];
-            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
-            /**
-             * @description Extended personality description
-             * @default
-             */
-            readonly description: string;
-            /**
-             * @description Big Five extraversion (assertiveness, sociability)
-             * @default 0.5
-             */
-            readonly extraversion: number;
-            /**
-             * @description Big Five openness (curiosity, creativity)
-             * @default 0.5
-             */
-            readonly openness: number;
-            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
-            /**
-             * @description Emotional stability (1.0 = very calm)
-             * @default 0.5
-             */
-            readonly stress_response: number;
-            /**
-             * @description Personality traits
-             * @default []
-             */
-            readonly traits: readonly string[];
-            readonly verbosity: components["schemas"]["CommunicationVerbosity"];
-        };
-        /** PersonalityPresetInfoResponse */
-        readonly PersonalityPresetInfoResponse: {
-            /** @default  */
-            readonly description: string;
-            readonly name: string;
-        };
         /** PipelineResult */
         readonly PipelineResult: {
             readonly final_verdict: components["schemas"]["ReviewVerdict"];
@@ -14779,62 +14498,6 @@ export type components = {
             /** @description VRAM-based batch size recommendation */
             readonly recommended_batch_size: number | null;
         };
-        /** PresetDetailResponse */
-        readonly PresetDetailResponse: {
-            /**
-             * @description Big Five agreeableness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly agreeableness: number;
-            readonly collaboration: components["schemas"]["CollaborationPreference"];
-            /**
-             * @description Default communication style label.
-             * @default neutral
-             */
-            readonly communication_style: string;
-            readonly conflict_approach: components["schemas"]["ConflictApproach"];
-            /**
-             * @description Big Five conscientiousness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly conscientiousness: number;
-            /** @description Creation timestamp as an ISO 8601 string, if known. */
-            readonly created_at: string | null;
-            readonly creativity: components["schemas"]["CreativityLevel"];
-            readonly decision_making: components["schemas"]["DecisionMakingStyle"];
-            /**
-             * @description Full preset description.
-             * @default
-             */
-            readonly description: string;
-            /**
-             * @description Big Five extraversion score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly extraversion: number;
-            /** @description Unique preset name. */
-            readonly name: string;
-            /**
-             * @description Big Five openness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly openness: number;
-            readonly risk_tolerance: components["schemas"]["RiskTolerance"];
-            readonly source: components["schemas"]["PresetSource"];
-            /**
-             * @description Stress-response (neuroticism) score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly stress_response: number;
-            /**
-             * @description Personality traits for the preset.
-             * @default []
-             */
-            readonly traits: readonly string[];
-            /** @description Last-update timestamp as an ISO 8601 string, if known. */
-            readonly updated_at: string | null;
-            readonly verbosity: components["schemas"]["CommunicationVerbosity"];
-        };
         /** PresetOverride */
         readonly PresetOverride: {
             /** @description Override for cloud-preset base URL */
@@ -14861,28 +14524,6 @@ export type components = {
             readonly candidate_urls?: readonly string[] | null;
             readonly default_models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly supported_auth_types?: readonly components["schemas"]["AuthType"][] | null;
-        };
-        /**
-         * PresetSource
-         * @description Origin of a personality preset.
-         * @enum {string}
-         */
-        readonly PresetSource: "builtin" | "custom";
-        /** PresetSummaryResponse */
-        readonly PresetSummaryResponse: {
-            /**
-             * @description Short human-readable summary.
-             * @default
-             */
-            readonly description: string;
-            /** @description Unique preset name. */
-            readonly name: string;
-            readonly source: components["schemas"]["PresetSource"];
-            /**
-             * @description Headline personality traits for the preset.
-             * @default []
-             */
-            readonly traits: readonly string[];
         };
         /** PreviewRuleRequest */
         readonly PreviewRuleRequest: {
@@ -16363,13 +16004,6 @@ export type components = {
             readonly mitigation: string | null;
         };
         /**
-         * RiskTolerance
-         * @description Risk tolerance level for agent personality.
-         * @default medium
-         * @enum {string}
-         */
-        readonly RiskTolerance: "low" | "medium" | "high";
-        /**
          * Role
          * @description Full frozen entity model at this version
          */
@@ -16769,12 +16403,6 @@ export type components = {
              */
             readonly name: string;
             /**
-             * @default pragmatic_builder
-             * @example pragmatic_builder
-             * @example visionary_leader
-             */
-            readonly personality_preset: string;
-            /**
              * @example CEO
              * @example Engineer
              * @example Designer
@@ -16800,7 +16428,6 @@ export type components = {
             readonly model_id: string | null;
             readonly model_provider: string | null;
             readonly name: string;
-            readonly personality_preset: string | null;
             readonly role: string;
         };
         /** SetupCompanyRequest */
@@ -18405,11 +18032,6 @@ export type components = {
             readonly name?: string | null;
             readonly role?: string | null;
         };
-        /** UpdateAgentPersonalityRequest */
-        readonly UpdateAgentPersonalityRequest: {
-            /** @description Personality preset name; must exist in PERSONALITY_PRESETS. */
-            readonly personality_preset: string;
-        };
         /** UpdateClientRequest */
         readonly UpdateClientRequest: {
             /** @description Domains of expertise for the simulated client. */
@@ -18491,55 +18113,6 @@ export type components = {
         /** UpdateModelConfigRequest */
         readonly UpdateModelConfigRequest: {
             readonly local_params: components["schemas"]["LocalModelParams"];
-        };
-        /** UpdatePresetRequest */
-        readonly UpdatePresetRequest: {
-            /**
-             * @description Big Five agreeableness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly agreeableness: number;
-            readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /**
-             * @description Communication style label.
-             * @default neutral
-             */
-            readonly communication_style: string;
-            readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /**
-             * @description Big Five conscientiousness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly conscientiousness: number;
-            readonly creativity?: components["schemas"]["CreativityLevel"];
-            readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /**
-             * @description Preset description.
-             * @default
-             */
-            readonly description: string;
-            /**
-             * @description Big Five extraversion score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly extraversion: number;
-            /**
-             * @description Big Five openness score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly openness: number;
-            readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /**
-             * @description Stress-response (neuroticism) score in the range 0 to 1.
-             * @default 0.5
-             */
-            readonly stress_response: number;
-            /**
-             * @description Personality traits for the preset.
-             * @default []
-             */
-            readonly traits: readonly string[];
-            readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
         };
         /** UpdateProviderRequest */
         readonly UpdateProviderRequest: {
@@ -26147,188 +25720,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1PersonalitiesPresetsListPresets: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_PresetSummaryResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PersonalitiesPresetsCreatePreset: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CreatePresetRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_PresetDetailResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PersonalitiesPresetsNameGetPreset: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_PresetDetailResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PersonalitiesPresetsNameUpdatePreset: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdatePresetRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_PresetDetailResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PersonalitiesPresetsNameDeletePreset: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource name */
-                readonly name: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_NoneType_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1PersonalitiesSchemaGetSchema: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1PlansListPlans: {
         readonly parameters: {
             readonly query?: {
@@ -30159,40 +29550,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1SetupAgentsAgentIndexPersonalityUpdateAgentPersonality: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly agent_index: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["UpdateAgentPersonalityRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_SetupAgentSummary_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1SetupAgentsAgentIndexRandomizeNameRandomizeAgentName: {
         readonly parameters: {
             readonly query?: never;
@@ -30405,37 +29762,6 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ApiResponse_AvailableLocalesResponse_"];
                 };
             };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1SetupPersonalityPresetsListPersonalityPresets: {
-        readonly parameters: {
-            readonly query?: {
-                /** @description Opaque pagination cursor returned by the previous page */
-                readonly cursor?: string | null;
-                /** @description Page size (default 50, max 200) */
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_PersonalityPresetInfoResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];

@@ -56,14 +56,14 @@ class _LoopDiedError(RuntimeError):
 
 
 async def test_run_records_replayable_frames(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
     mock_provider_factory: type[MockCompletionProvider],
 ) -> None:
     repo = FakeFlightRecorderFrameRepository()
 
     ctx = AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
     ctx = ctx.model_copy(
@@ -98,7 +98,7 @@ async def test_run_records_replayable_frames(
     )
 
     result = await engine.run(
-        identity=sample_agent_with_personality,
+        identity=sample_agent,
         task=sample_task_with_criteria,
     )
 
@@ -112,7 +112,7 @@ async def test_run_records_replayable_frames(
 
 
 async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
     mock_provider_factory: type[MockCompletionProvider],
 ) -> None:
@@ -139,7 +139,7 @@ async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
         )
 
     ctx = AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
     ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -188,7 +188,7 @@ async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
     )
 
     await engine.run(
-        identity=sample_agent_with_personality,
+        identity=sample_agent,
         task=sample_task_with_criteria,
     )
 
@@ -196,7 +196,7 @@ async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
 
 
 async def test_the_review_judges_the_attempt_not_the_recorded_copy(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
     mock_provider_factory: type[MockCompletionProvider],
 ) -> None:
@@ -222,7 +222,7 @@ async def test_the_review_judges_the_attempt_not_the_recorded_copy(
         )
 
     ctx = AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
     ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -273,7 +273,7 @@ async def test_the_review_judges_the_attempt_not_the_recorded_copy(
     )
 
     await engine.run(
-        identity=sample_agent_with_personality,
+        identity=sample_agent,
         task=sample_task_with_criteria,
     )
 
@@ -304,7 +304,7 @@ def _recording_state_repository(
 
 
 async def test_the_engine_records_the_agents_live_state(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
     mock_provider_factory: type[MockCompletionProvider],
 ) -> None:
@@ -318,7 +318,7 @@ async def test_the_engine_records_the_agents_live_state(
     saved: list[AgentRuntimeState] = []
     repository = _recording_state_repository(saved)
     ctx = AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
     engine = AgentEngine(
@@ -336,7 +336,7 @@ async def test_the_engine_records_the_agents_live_state(
     )
 
     await engine.run(
-        identity=sample_agent_with_personality,
+        identity=sample_agent,
         task=sample_task_with_criteria,
     )
 
@@ -347,7 +347,7 @@ async def test_the_engine_records_the_agents_live_state(
 
 
 async def test_a_run_that_died_still_stops_reading_as_busy(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
     mock_provider_factory: type[MockCompletionProvider],
 ) -> None:
@@ -369,7 +369,7 @@ async def test_a_run_that_died_still_stops_reading_as_busy(
     )
 
     result = await engine.run(
-        identity=sample_agent_with_personality,
+        identity=sample_agent,
         task=sample_task_with_criteria,
     )
 

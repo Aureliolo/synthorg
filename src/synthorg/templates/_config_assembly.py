@@ -9,8 +9,6 @@ sub-dict, and the optional list attachments.
 from collections.abc import Mapping
 from typing import cast
 
-from pydantic import JsonValue
-
 from synthorg.config.posture_config import PostureConfig
 from synthorg.config.utils import deep_merge, to_float
 from synthorg.engine.workflow.enums import WorkflowType
@@ -117,7 +115,6 @@ def _build_config_dict(
     variables: dict[str, object],
     *,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_ids: bool = False,
 ) -> dict[str, object]:
     """Build a RootConfig-compatible dict from rendered template data.
@@ -127,7 +124,6 @@ def _build_config_dict(
         template: Original template metadata (for fallback values).
         variables: Collected variables.
         locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping.
         preserve_merge_ids: Force ``merge_id`` preservation even when
             the template itself has no ``extends``.  Used for parent
             rendering.
@@ -159,7 +155,6 @@ def _build_config_dict(
         _validate_list(rendered_data, "agents"),
         has_extends=has_extends,
         locales=locales,
-        custom_presets=custom_presets,
         preserve_merge_ids=preserve_merge,
     )
     departments = build_departments(

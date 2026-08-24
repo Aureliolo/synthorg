@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.ask_policy.provider import (
     current_ask_policy_provider,
@@ -51,7 +51,6 @@ def agent(*, role: str = "Developer", department: str = "Engineering") -> AgentI
         department=department,
         model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
-        personality=PersonalityConfig(description="A precise thinker."),
     )
 
 

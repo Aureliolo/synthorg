@@ -60,7 +60,7 @@ class TestEngineWithEnforcer:
     )
     async def test_preflight_budget_stop_returns_budget_exhausted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         exc_cls: type[BudgetExhaustedError],
         msg: str,
@@ -84,7 +84,7 @@ class TestEngineWithEnforcer:
             new=AsyncMock(spec=enforcer.check_can_execute, side_effect=exc_cls(msg)),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -93,7 +93,7 @@ class TestEngineWithEnforcer:
 
     async def test_the_enforcer_cannot_re_point_the_run_at_another_model(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Budget pressure refuses spend; it never re-binds the agent.
@@ -133,18 +133,16 @@ class TestEngineWithEnforcer:
             ),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
         assert result.termination_reason == TerminationReason.COMPLETED
-        assert provider.recorded_models == [
-            sample_agent_with_personality.model.model_id
-        ]
+        assert provider.recorded_models == [sample_agent.model.model_id]
 
     async def test_no_enforcer_uses_fallback_checker(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Without enforcer, uses existing make_budget_checker fallback."""
@@ -154,7 +152,7 @@ class TestEngineWithEnforcer:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -162,7 +160,7 @@ class TestEngineWithEnforcer:
 
     async def test_enforcer_provides_cost_tracker(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When no explicit cost_tracker, uses enforcer's tracker."""
@@ -194,7 +192,7 @@ class TestEngineWithEnforcer:
             ),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 

@@ -14,7 +14,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.core.completion_enums import FinishReason
@@ -146,9 +145,6 @@ class TestAgentEngineToolCallIntegration:
             role="Developer",
             department="Engineering",
             hiring_date=date(2026, 1, 15),
-            personality=PersonalityConfig(
-                traits=("analytical",),
-            ),
             model=ModelConfig(
                 provider="test-provider",
                 model_id="test-model-001",
@@ -231,7 +227,6 @@ class TestAgentEngineFullLifecycle:
             role="Developer",
             department="Engineering",
             hiring_date=date(2026, 1, 15),
-            personality=PersonalityConfig(traits=("analytical",)),
             model=ModelConfig(
                 provider="test-provider",
                 model_id="test-model-001",
@@ -318,7 +313,6 @@ class TestPermissionDeniedToolCall:
             role="Intern",
             department="Engineering",
             hiring_date=date(2026, 1, 15),
-            personality=PersonalityConfig(traits=("cautious",)),
             model=ModelConfig(
                 provider="test-provider",
                 model_id="test-model-001",

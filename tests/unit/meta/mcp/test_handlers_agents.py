@@ -1,8 +1,8 @@
 """Smoke tests for agent domain MCP handlers.
 
 The handler universe is big and some of it shims onto services that
-expose no clean read method (personality registry, activity feed,
-etc.).  The unit suite here covers:
+expose no clean read method (the activity feed, etc.).  The unit suite
+here covers:
 
 - Every handler is callable with an empty/minimal arg dict and returns
   a syntactically valid envelope (``status`` is ``"ok"`` or

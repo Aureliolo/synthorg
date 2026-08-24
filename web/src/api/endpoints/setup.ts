@@ -2,7 +2,6 @@ import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   AvailableLocalesResponse,
-  PersonalityPresetInfo,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
@@ -15,7 +14,6 @@ import type {
   TemplateInfoResponse,
   UpdateAgentModelRequest,
   UpdateAgentNameRequest,
-  UpdateAgentPersonalityRequest,
 } from '../types/setup'
 import type { SetupCompleteResponse } from '@/api/types/setup'
 
@@ -111,31 +109,6 @@ export async function randomizeAgentName(
     `/setup/agents/${index}/randomize-name`,
   )
   return unwrap(response)
-}
-
-export async function updateAgentPersonality(
-  index: number,
-  data: UpdateAgentPersonalityRequest,
-): Promise<SetupAgentSummary> {
-  if (!Number.isInteger(index) || index < 0) {
-    throw new Error(`Invalid agent index: ${index}`)
-  }
-  const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
-    `/setup/agents/${index}/personality`,
-    data,
-  )
-  return unwrap(response)
-}
-
-export async function listPersonalityPresets(): Promise<readonly PersonalityPresetInfo[]> {
-  return paginateAll<PersonalityPresetInfo>(async (cursor) => {
-    const params = new URLSearchParams()
-    if (cursor) params.set('cursor', cursor)
-    const qs = params.toString()
-    const url = qs ? `/setup/personality-presets?${qs}` : '/setup/personality-presets'
-    const response = await apiClient.get<PaginatedResponse<PersonalityPresetInfo>>(url)
-    return unwrapPaginated<PersonalityPresetInfo>(response)
-  })
 }
 
 export async function getAvailableLocales(): Promise<AvailableLocalesResponse> {

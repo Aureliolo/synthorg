@@ -88,8 +88,6 @@ export const FullProfile: Story = {
     status: 'active',
     model: 'example-expert-001',
     capability: 'expert',
-    personality: 'Visionary Leader',
-    traits: ['strategic', 'decisive', 'inspiring'],
     capabilities: ['reasoning', 'vision'],
     timestamp: '2m ago',
   },

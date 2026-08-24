@@ -6,7 +6,7 @@ template:
     approval gates or hierarchy overhead, and a completion reviewer
     signs off finished work so nobody reviews their own. Ideal for solo
     projects, proof-of-concepts, and rapid prototyping.
-  version: "1.1.0"
+  version: "1.2.0"
   min_agents: 3
   max_agents: 4
   tags:
@@ -50,14 +50,12 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "visionary_leader"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-      personality_preset: "rapid_prototyper"
       department: "engineering"
     # A two-agent org cannot review its own work: the completion oracle is
     # on by default and excludes the executor, so without a third agent
@@ -66,7 +64,6 @@ template:
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
 
   workflow: "kanban"

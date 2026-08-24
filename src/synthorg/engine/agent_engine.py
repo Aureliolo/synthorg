@@ -5,9 +5,9 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from contextlib import ExitStack
-from typing import TYPE_CHECKING, Literal, TypedDict, override
+from typing import TYPE_CHECKING, override
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
@@ -190,23 +190,6 @@ def _no_agent_state() -> None:
     """
 
 
-class PersonalityTrimPayload(TypedDict):
-    """Structured payload forwarded to :data:`PersonalityTrimNotifier` callbacks."""
-
-    agent_id: NotBlankStr
-    agent_name: NotBlankStr
-    task_id: NotBlankStr
-    before_tokens: int
-    after_tokens: int
-    max_tokens: int
-    trim_tier: Literal[1, 2, 3]
-    budget_met: bool
-
-
-type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None]]
-"""Async callback invoked when an agent's personality section is trimmed."""
-
-
 class AgentEngine(
     AgentEngineChatActionMixin,
     AgentEngineContextMixin,
@@ -271,7 +254,6 @@ class AgentEngine(
         memory_backend: MemoryBackend | None = None,
         distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
-        personality_trim_notifier: PersonalityTrimNotifier | None = None,
         coordination_metrics_collector: CoordinationMetricsCollector | None = None,
         audit_log: AuditLog | None = None,
         project_repo: ProjectRepository | None = None,
@@ -421,7 +403,6 @@ class AgentEngine(
         self._memory_backend = memory_backend
         self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver
-        self._personality_trim_notifier = personality_trim_notifier
         self._coordination_metrics_collector = coordination_metrics_collector
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         # Constructed regardless of ``enabled`` so the switch stays live: the
@@ -471,7 +452,6 @@ class AgentEngine(
             has_coordinator=self._coordinator is not None,
             has_compaction_callback=self._compaction_callback is not None,
             has_openhands_loop_deps=self._openhands_loop_deps is not None,
-            has_personality_trim_notifier=self._personality_trim_notifier is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
         )
 

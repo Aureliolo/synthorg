@@ -6,7 +6,7 @@ template:
     developers, a frontend specialist, a QA pipeline, and a DevOps engineer.
     Cost-disciplined: auto-downgrade keeps spend in check while quality
     gates hold the line.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 6
   max_agents: 10
   tags:
@@ -103,45 +103,37 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-senior-1"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-mid"
       model:
         priority: "balanced"
-      personality_preset: "eager_learner"
       department: "engineering"
     - role: "Frontend Developer"
       model:
         priority: "balanced"
-      personality_preset: "creative_innovator"
       department: "engineering"
     - role: "QA Lead"
       model:
         priority: "quality"
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       model:
         priority: "cost"
-      personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "DevOps/SRE Engineer"
       model:
         priority: "balanced"
-      personality_preset: "process_optimizer"
       department: "operations"
     - role: "Backend Developer"
       merge_id: "backend-senior-2"
       model:
         priority: "balanced"
-      personality_preset: "disciplined_executor"
       department: "engineering"
 
   workflow_config:

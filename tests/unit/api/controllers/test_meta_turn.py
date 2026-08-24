@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.state import agent_registry_of
@@ -104,10 +104,6 @@ def _active_agent() -> AgentIdentity:
         name=NotBlankStr("Casey"),
         role=NotBlankStr("CFO"),
         department=NotBlankStr("executive"),
-        personality=PersonalityConfig(
-            traits=(NotBlankStr("analytical"),),
-            communication_style=NotBlankStr("concise"),
-        ),
         model=ModelConfig(
             provider=NotBlankStr("test-provider"),
             model_id=NotBlankStr("test-model-001"),

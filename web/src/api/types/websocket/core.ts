@@ -13,7 +13,6 @@ import type {
   WsDepartmentDeletedPayload,
   WsDepartmentUpdatedPayload,
   WsDepartmentsReorderedPayload,
-  WsPersonalityTrimmedPayload,
   WsTaskAssignedPayload,
   WsTaskCreatedPayload,
   WsTaskStatusChangedPayload,
@@ -152,7 +151,6 @@ export interface WsEventPayloadMap {
   'department.updated': WsDepartmentUpdatedPayload
   'department.deleted': WsDepartmentDeletedPayload
   'departments.reordered': WsDepartmentsReorderedPayload
-  'personality.trimmed': WsPersonalityTrimmedPayload
   'budget.record_added': WsBudgetRecordAddedPayload
   'budget.alert': WsBudgetAlertPayload
   'message.sent': WsMessageSentPayload

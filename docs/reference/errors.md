@@ -118,7 +118,6 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3027 | `CHECKPOINT_NOT_FOUND` | Fine-tune checkpoint |
 | 3028 | `FINE_TUNE_RUN_NOT_FOUND` | Fine-tune run record |
 | 3029 | `AGENT_NOT_FOUND` | Registered agent |
-| 3030 | `PERSONALITY_NOT_FOUND` | Agent personality |
 | 3032 | `SPRINT_NOT_FOUND` | Sprint record |
 | 3033 | `OUTPUT_STYLE_PACK_NOT_FOUND` | Output-style rule pack |
 | 3034 | `DELEGATION_TARGET_NOT_FOUND` | Blocking-delegation target agent |

@@ -53,7 +53,7 @@ class TestAgentEngineBasicRun:
 
     async def test_basic_run_returns_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -62,17 +62,17 @@ class TestAgentEngineBasicRun:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
         assert isinstance(result, AgentRunResult)
-        assert result.agent_id == str(sample_agent_with_personality.id)
+        assert result.agent_id == str(sample_agent.id)
         assert result.task_id == str(sample_task_with_criteria.id)
 
     async def test_basic_run_is_success(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -81,7 +81,7 @@ class TestAgentEngineBasicRun:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -95,7 +95,7 @@ class TestAgentEngineSystemPrompt:
 
     async def test_system_prompt_in_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -104,14 +104,14 @@ class TestAgentEngineSystemPrompt:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
         assert result.system_prompt.content
         assert "identity" in result.system_prompt.sections
         assert result.system_prompt.metadata["agent_id"] == str(
-            sample_agent_with_personality.id,
+            sample_agent.id,
         )
 
 
@@ -121,7 +121,7 @@ class TestAgentEngineTaskTransition:
 
     async def test_assigned_transitions_to_in_progress(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -131,7 +131,7 @@ class TestAgentEngineTaskTransition:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -147,7 +147,7 @@ class TestAgentEngineAlreadyInProgress:
 
     async def test_in_progress_accepted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -157,7 +157,7 @@ class TestAgentEngineAlreadyInProgress:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=task_ip,
         )
 
@@ -174,11 +174,11 @@ class TestAgentEngineInvalidInput:
 
     async def test_inactive_agent_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        inactive = sample_agent_with_personality.model_copy(
+        inactive = sample_agent.model_copy(
             update={"status": AgentStatus.ON_LEAVE},
         )
         provider = mock_provider_factory([])
@@ -189,11 +189,11 @@ class TestAgentEngineInvalidInput:
 
     async def test_terminated_agent_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        terminated = sample_agent_with_personality.model_copy(
+        terminated = sample_agent.model_copy(
             update={"status": AgentStatus.TERMINATED},
         )
         provider = mock_provider_factory([])
@@ -204,7 +204,7 @@ class TestAgentEngineInvalidInput:
 
     async def test_completed_task_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task already COMPLETED cannot be executed."""
@@ -216,7 +216,7 @@ class TestAgentEngineInvalidInput:
             priority=Priority.MEDIUM,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.COMPLETED,
         )
         provider = mock_provider_factory([])
@@ -224,13 +224,13 @@ class TestAgentEngineInvalidInput:
 
         with pytest.raises(ExecutionStateError, match="completed"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=completed_task,
             )
 
     async def test_created_task_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task still in CREATED status (unassigned) cannot be executed."""
@@ -248,13 +248,13 @@ class TestAgentEngineInvalidInput:
 
         with pytest.raises(ExecutionStateError, match="created"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=created_task,
             )
 
     async def test_blocked_task_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A BLOCKED task cannot be executed."""
@@ -265,7 +265,7 @@ class TestAgentEngineInvalidInput:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.BLOCKED,
         )
         provider = mock_provider_factory([])
@@ -273,13 +273,13 @@ class TestAgentEngineInvalidInput:
 
         with pytest.raises(ExecutionStateError, match="blocked"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=blocked_task,
             )
 
     async def test_task_assigned_to_different_agent_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task assigned to another agent cannot be executed."""
@@ -298,7 +298,7 @@ class TestAgentEngineInvalidInput:
 
         with pytest.raises(ExecutionStateError, match="not to agent"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=other_task,
             )
 
@@ -325,7 +325,7 @@ class TestAgentEngineProjectRepoValidation:
 
     async def test_work_task_without_project_repo_fails(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """No project repo + expected artifacts aborts instead of running.
@@ -338,8 +338,8 @@ class TestAgentEngineProjectRepoValidation:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=self._work_task(str(sample_agent_with_personality.id)),
+            identity=sample_agent,
+            task=self._work_task(str(sample_agent.id)),
         )
 
         assert result.is_success is False
@@ -347,7 +347,7 @@ class TestAgentEngineProjectRepoValidation:
 
     async def test_non_work_task_without_project_repo_proceeds(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task carrying a project only as a label may still proceed.
@@ -356,7 +356,7 @@ class TestAgentEngineProjectRepoValidation:
         target, so the missing repo is a logged warning rather than a fatal
         abort.
         """
-        agent_id = str(sample_agent_with_personality.id)
+        agent_id = str(sample_agent.id)
         label_task = Task(
             id=as_uuid("task-proj-label"),
             title="Investigate",
@@ -372,7 +372,7 @@ class TestAgentEngineProjectRepoValidation:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=label_task,
         )
 
@@ -385,7 +385,7 @@ class TestAgentEngineMaxTurnsBoundary:
 
     async def test_max_turns_one_succeeds(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -395,7 +395,7 @@ class TestAgentEngineMaxTurnsBoundary:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             max_turns=1,
         )
@@ -410,7 +410,7 @@ class TestAgentEngineWithTools:
 
     async def test_tools_from_registry(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -444,7 +444,7 @@ class TestAgentEngineWithTools:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -459,7 +459,7 @@ class TestAgentEngineMemoryToolWiring:
 
     def test_memory_tools_registered_when_strategy_provided(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         from synthorg.memory.injection import InjectionStrategy
@@ -500,7 +500,7 @@ class TestAgentEngineMemoryToolWiring:
         # Through the engine's own resolver, so this still asserts that the
         # configured provider is what puts the memory tools on the registry.
         invoker = engine._make_tool_invoker(
-            sample_agent_with_personality,
+            sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
         )
 
@@ -510,7 +510,7 @@ class TestAgentEngineMemoryToolWiring:
 
     def test_no_memory_tools_when_strategy_is_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         from synthorg.security.autonomy.enums import ToolCategory
@@ -538,7 +538,7 @@ class TestAgentEngineMemoryToolWiring:
         )
 
         invoker = engine._make_tool_invoker(
-            sample_agent_with_personality,
+            sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
         )
 
@@ -554,13 +554,13 @@ class TestAgentEngineBudgetChecker:
 
     async def test_budget_checker_passed_and_terminates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Budget limit > 0 creates checker and passes it to the loop."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         mock_result = ExecutionResult(
@@ -580,7 +580,7 @@ class TestAgentEngineBudgetChecker:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -591,7 +591,7 @@ class TestAgentEngineBudgetChecker:
 
     async def test_no_budget_limit_no_checker(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Task with budget_limit=0 should not create a budget checker."""
@@ -602,7 +602,7 @@ class TestAgentEngineBudgetChecker:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             budget_limit=0.0,
             status=TaskStatus.ASSIGNED,
         )
@@ -611,7 +611,7 @@ class TestAgentEngineBudgetChecker:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=task,
         )
 
@@ -625,7 +625,7 @@ class TestAgentEngineCostRecording:
 
     async def test_cost_recorded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -638,7 +638,7 @@ class TestAgentEngineCostRecording:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -649,7 +649,7 @@ class TestAgentEngineCostRecording:
 
     async def test_no_cost_recorded_without_tracker(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -659,7 +659,7 @@ class TestAgentEngineCostRecording:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -667,7 +667,7 @@ class TestAgentEngineCostRecording:
 
     async def test_zero_cost_not_recorded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """CostTracker present but zero cost/tokens -> no record created."""
@@ -679,7 +679,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
@@ -690,14 +690,14 @@ class TestAgentEngineCostRecording:
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
-        await engine.run(identity=sample_agent_with_personality, task=task)
+        await engine.run(identity=sample_agent, task=task)
 
         count = await tracker.get_record_count()
         assert count == 0
 
     async def test_free_provider_tokens_recorded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Free provider: cost=0 but tokens>0 -> record IS created."""
@@ -709,7 +709,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
@@ -720,14 +720,14 @@ class TestAgentEngineCostRecording:
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
-        await engine.run(identity=sample_agent_with_personality, task=task)
+        await engine.run(identity=sample_agent, task=task)
 
         count = await tracker.get_record_count()
         assert count == 1
 
     async def test_cost_tracker_failure_preserves_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -740,7 +740,7 @@ class TestAgentEngineCostRecording:
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -754,7 +754,7 @@ class TestAgentEngineCompletionConfig:
 
     async def test_completion_config_forwarded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -765,7 +765,7 @@ class TestAgentEngineCompletionConfig:
         caller's fields and carries ``prompt_caching=True``.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -798,7 +798,7 @@ class TestAgentEngineCompletionConfig:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             completion_config=config,
         )
@@ -815,7 +815,7 @@ class TestAgentEngineMaxTurns:
 
     async def test_max_turns_forwarded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -825,7 +825,7 @@ class TestAgentEngineMaxTurns:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             max_turns=5,
         )
@@ -839,7 +839,7 @@ class TestAgentEngineDuration:
 
     async def test_duration_is_positive(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -848,7 +848,7 @@ class TestAgentEngineDuration:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -861,7 +861,7 @@ class TestAgentEngineDefaultLoop:
 
     async def test_default_is_react_loop(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -870,7 +870,7 @@ class TestAgentEngineDefaultLoop:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         # Verify through observable behavior: the result metadata
@@ -879,13 +879,13 @@ class TestAgentEngineDefaultLoop:
 
     async def test_custom_loop_used(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A custom ExecutionLoop is used when provided."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         # Mock must return context at IN_PROGRESS (as _prepare_context
@@ -919,7 +919,7 @@ class TestAgentEngineDefaultLoop:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -951,25 +951,25 @@ class TestAgentEngineImmutability:
 
     async def test_identity_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        identity_before = copy.deepcopy(sample_agent_with_personality)
+        identity_before = copy.deepcopy(sample_agent)
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
-        assert sample_agent_with_personality == identity_before
+        assert sample_agent == identity_before
 
     async def test_task_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -979,7 +979,7 @@ class TestAgentEngineImmutability:
         engine = AgentEngine(provider=provider)
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -994,7 +994,7 @@ class TestAgentEngineClassification:
 
     async def test_no_config_skips_classification(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1010,7 +1010,7 @@ class TestAgentEngineClassification:
             "synthorg.engine.agent_engine_post_exec.classify_execution_errors",
         ) as mock_classify:
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -1019,7 +1019,7 @@ class TestAgentEngineClassification:
 
     async def test_enabled_config_calls_classification(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1038,7 +1038,7 @@ class TestAgentEngineClassification:
             return_value=None,
         ) as mock_classify:
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -1047,7 +1047,7 @@ class TestAgentEngineClassification:
 
     async def test_classification_memory_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1069,7 +1069,7 @@ class TestAgentEngineClassification:
             pytest.raises(MemoryError),
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -1096,7 +1096,7 @@ class TestAgentEnginePromptTokenRatioWarning:
     )
     async def test_prompt_token_ratio_warning(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         *,
@@ -1126,7 +1126,7 @@ class TestAgentEnginePromptTokenRatioWarning:
             template_version="test",
             estimated_tokens=prompt_tokens,
             sections=("identity",),
-            metadata={"agent_id": str(sample_agent_with_personality.id)},
+            metadata={"agent_id": str(sample_agent.id)},
         )
 
         with (
@@ -1137,7 +1137,7 @@ class TestAgentEnginePromptTokenRatioWarning:
             structlog.testing.capture_logs() as logs,
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -1180,7 +1180,7 @@ class TestSyncToTaskEngine:
 
     async def test_no_task_engine_is_noop(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1190,7 +1190,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=None)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1198,7 +1198,7 @@ class TestSyncToTaskEngine:
 
     async def test_completed_path_produces_two_syncs(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1212,7 +1212,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1228,13 +1228,13 @@ class TestSyncToTaskEngine:
 
     async def test_shutdown_path_produces_two_syncs(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """SHUTDOWN path syncs IN_PROGRESS then INTERRUPTED."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -1270,7 +1270,7 @@ class TestSyncToTaskEngine:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1285,13 +1285,13 @@ class TestSyncToTaskEngine:
 
     async def test_error_path_produces_two_syncs(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """ERROR path syncs IN_PROGRESS then FAILED (after recovery)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -1328,7 +1328,7 @@ class TestSyncToTaskEngine:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1343,7 +1343,7 @@ class TestSyncToTaskEngine:
 
     async def test_max_turns_syncs_a_terminal_failure(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1354,7 +1354,7 @@ class TestSyncToTaskEngine:
         initiative could never be replanned or completed.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -1391,7 +1391,7 @@ class TestSyncToTaskEngine:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1400,7 +1400,7 @@ class TestSyncToTaskEngine:
 
     async def test_exit_sync_failure_does_not_undo_completed_work(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1425,7 +1425,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1434,7 +1434,7 @@ class TestSyncToTaskEngine:
 
     async def test_entry_sync_failure_aborts_before_any_work(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1454,7 +1454,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1468,7 +1468,7 @@ class TestSyncToTaskEngine:
 
     async def test_task_engine_error_aborts_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1489,7 +1489,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1498,7 +1498,7 @@ class TestSyncToTaskEngine:
 
     async def test_unexpected_error_aborts_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1514,7 +1514,7 @@ class TestSyncToTaskEngine:
         engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -1523,7 +1523,7 @@ class TestSyncToTaskEngine:
 
     async def test_memory_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1540,13 +1540,13 @@ class TestSyncToTaskEngine:
 
         with pytest.raises(MemoryError, match="out of memory"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
     async def test_recursion_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1563,7 +1563,7 @@ class TestSyncToTaskEngine:
 
         with pytest.raises(RecursionError, match="maximum recursion depth exceeded"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -1635,7 +1635,7 @@ class TestAgentEngineCorrelationBinding:
 
     async def test_run_uses_correlation_scope(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1648,19 +1648,19 @@ class TestAgentEngineCorrelationBinding:
             "synthorg.engine.agent_engine.correlation_scope",
         ) as mock_scope:
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
             mock_scope.assert_called_once_with(
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 project_id=sample_task_with_criteria.project,
             )
 
     async def test_correlation_context_clean_after_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1671,7 +1671,7 @@ class TestAgentEngineCorrelationBinding:
 
         try:
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
             ctx = structlog.contextvars.get_contextvars()
@@ -1682,7 +1682,7 @@ class TestAgentEngineCorrelationBinding:
 
     async def test_correlation_scope_not_entered_on_validation_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1698,7 +1698,7 @@ class TestAgentEngineCorrelationBinding:
         ) as mock_scope:
             with pytest.raises(ValueError, match="max_turns"):
                 await engine.run(
-                    identity=sample_agent_with_personality,
+                    identity=sample_agent,
                     task=sample_task_with_criteria,
                     max_turns=0,
                 )
@@ -1706,7 +1706,7 @@ class TestAgentEngineCorrelationBinding:
 
     async def test_structlog_context_carries_correlation(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1729,7 +1729,7 @@ class TestAgentEngineCorrelationBinding:
 
         try:
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
         finally:
@@ -1742,7 +1742,7 @@ class TestAgentEngineCorrelationBinding:
 
         # Correlation IDs were present during execution
         assert captured_ctx.get("agent_id") == str(
-            sample_agent_with_personality.id,
+            sample_agent.id,
         )
         assert captured_ctx.get("task_id") == str(sample_task_with_criteria.id)
         assert captured_ctx.get("request_id") == "test-request-123"

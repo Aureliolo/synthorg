@@ -150,7 +150,7 @@ def generic_responder(*, model: ModelRef) -> Responder:
 def responder_for_identity(identity: AgentIdentity) -> Responder:
     """Build a routed responder from a resolved agent identity.
 
-    The persona body (role + department + seniority + personality) is
+    The persona body (name + role + department) is
     rendered without an untrusted-content directive: the propose prompt
     template appends its own, so a single directive reaches the model.
 

@@ -1,7 +1,7 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Final, Literal, NamedTuple, TypedDict, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, cast
 
 from pydantic import TypeAdapter
 
@@ -35,10 +35,6 @@ from synthorg.observability.events.memory import (
     MEMORY_CONTEXT_INJECTED,
     MEMORY_CONTEXT_INJECTION_FAILED,
 )
-from synthorg.observability.events.prompt import (
-    PROMPT_PERSONALITY_NOTIFY_FAILED,
-    PROMPT_PERSONALITY_TRIMMED,
-)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 from synthorg.tools.protocol import ToolInvokerProtocol
@@ -46,7 +42,6 @@ from synthorg.tools.protocol import ToolInvokerProtocol
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.core.effective_autonomy import EffectiveAutonomy
-    from synthorg.engine.agent_engine import PersonalityTrimNotifier
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategyProvider
     from synthorg.persistence.project_protocol import ProjectRepository
@@ -58,9 +53,6 @@ logger = get_logger(__name__)
 # wired memory injection strategy.  Caps the injected-memory section so it
 # cannot crowd out the system prompt and task instruction.
 _DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
-# Best-effort budget for the personality-trim WebSocket notifier callback; a
-# slow dashboard sink must not stall the engine's trim path.
-_PERSONALITY_TRIM_NOTIFY_TIMEOUT_S: Final[float] = 2.0
 # ``NotBlankStr(x)`` is a bare ``str(x)`` cast at runtime and performs no
 # validation, so a module-level adapter enforces the not-blank contract on the
 # identifiers before they cross the memory-injection strategy boundary (the
@@ -86,19 +78,6 @@ class MemoryContextInputs(NamedTuple):
     strategy: MemoryInjectionStrategy | None
 
 
-class PersonalityTrimPayload(TypedDict):
-    """Typed payload emitted for personality-trim notifications."""
-
-    agent_id: str
-    agent_name: str
-    task_id: str
-    before_tokens: int
-    after_tokens: int
-    max_tokens: int
-    trim_tier: Literal[1, 2, 3]
-    budget_met: bool
-
-
 class AgentEngineContextMixin:
     """Mixin providing context preparation and project validation."""
 
@@ -109,7 +88,6 @@ class AgentEngineContextMixin:
     _capability: CapabilityPolicy | None
     _config_resolver: ConfigResolver | None
     _task_engine: TaskEngine | None
-    _personality_trim_notifier: PersonalityTrimNotifier | None
     _project_repo: ProjectRepository | None
     _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
 
@@ -130,8 +108,7 @@ class AgentEngineContextMixin:
         Returns:
             ``(ctx, system_prompt)``: the prepared :class:`AgentContext`
             with memory and instruction messages threaded in and the
-            corresponding :class:`SystemPrompt` (post-personality-trim
-            where applicable).
+            corresponding :class:`SystemPrompt`.
         """
         l1_summaries = tool_invoker.get_l1_summaries() if tool_invoker else ()
         cur_code = (
@@ -139,37 +116,6 @@ class AgentEngineContextMixin:
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
         )
-        trimming_enabled = True
-        tokens_override: int | None = None
-        if self._config_resolver is not None:
-            try:
-                resolved_enabled = await self._config_resolver.get_bool(
-                    "engine",
-                    "personality_trimming_enabled",
-                )
-                resolved_override = await self._config_resolver.get_int(
-                    "engine",
-                    "personality_max_tokens_override",
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- best-effort side channel
-                reraise_critical(exc)
-                logger.warning(
-                    EXECUTION_ENGINE_ERROR,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    note="failed to read ENGINE settings, using defaults",
-                    failed_keys=(
-                        "personality_trimming_enabled",
-                        "personality_max_tokens_override",
-                    ),
-                    fallback_trimming_enabled=True,
-                    fallback_tokens_override=None,
-                )
-            else:
-                trimming_enabled = resolved_enabled
-                if resolved_override > 0:
-                    tokens_override = resolved_override
         # build_system_prompt is pure CPU + blocking strategy-pack file reads
         # (principles.py) and runs on every agent turn; offload it so the
         # per-turn prompt build never stalls the event loop. It is sync-only
@@ -183,24 +129,7 @@ class AgentEngineContextMixin:
             effective_autonomy=effective_autonomy,
             currency=cur_code,
             capability=described_capability(self._capability, identity.model),
-            personality_trimming_enabled=trimming_enabled,
-            max_personality_tokens_override=tokens_override,
         )
-
-        if system_prompt.personality_trim_info is not None:
-            ti = system_prompt.personality_trim_info
-            trim_payload: PersonalityTrimPayload = {
-                "agent_id": agent_id,
-                "agent_name": identity.name,
-                "task_id": task_id,
-                "before_tokens": ti.before_tokens,
-                "after_tokens": ti.after_tokens,
-                "max_tokens": ti.max_tokens,
-                "trim_tier": ti.trim_tier,  # type: ignore[typeddict-item]
-                "budget_met": ti.budget_met,
-            }
-            logger.info(PROMPT_PERSONALITY_TRIMMED, **trim_payload)
-            await self._maybe_notify_personality_trim(trim_payload)
 
         ctx = AgentContext.from_identity(
             identity,
@@ -353,80 +282,6 @@ class AgentEngineContextMixin:
                 message_count=len(messages),
             )
         return messages
-
-    async def _maybe_notify_personality_trim(
-        self,
-        payload: PersonalityTrimPayload,
-    ) -> None:
-        """Publish a personality-trim WebSocket notification, best-effort."""
-        if self._personality_trim_notifier is None:
-            return
-        notify_enabled = await self._read_notify_enabled(payload)
-        if not notify_enabled:
-            return
-        agent_id = payload["agent_id"]
-        agent_name = payload["agent_name"]
-        task_id = payload["task_id"]
-        trim_tier = payload["trim_tier"]
-        try:
-            async with asyncio.timeout(_PERSONALITY_TRIM_NOTIFY_TIMEOUT_S):
-                await self._personality_trim_notifier(payload)
-        except TimeoutError:
-            logger.warning(
-                PROMPT_PERSONALITY_NOTIFY_FAILED,
-                agent_id=agent_id,
-                agent_name=agent_name,
-                task_id=task_id,
-                trim_tier=trim_tier,
-                reason="notifier callback timed out (>2s)",
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort notification
-            reraise_critical(exc)
-            logger.warning(
-                PROMPT_PERSONALITY_NOTIFY_FAILED,
-                agent_id=agent_id,
-                agent_name=agent_name,
-                task_id=task_id,
-                trim_tier=trim_tier,
-                reason="notifier callback raised",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
-    async def _read_notify_enabled(
-        self,
-        payload: PersonalityTrimPayload,
-    ) -> bool:
-        """Read the ``personality_trimming_notify`` setting, fail-open.
-
-        Returns:
-            The resolved bool, or ``True`` (fail-open) when no resolver
-            is wired or the resolver raises.
-        """
-        if self._config_resolver is None:
-            return True
-        try:
-            result: bool = await self._config_resolver.get_bool(
-                "engine",
-                "personality_trimming_notify",
-            )
-            return result  # noqa: TRY300
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort notification
-            reraise_critical(exc)
-            logger.warning(
-                PROMPT_PERSONALITY_NOTIFY_FAILED,
-                agent_id=payload["agent_id"],
-                agent_name=payload["agent_name"],
-                task_id=payload["task_id"],
-                trim_tier=payload["trim_tier"],
-                reason=(
-                    "failed to read personality_trimming_notify setting;"
-                    " fail-open with default notify_enabled=True"
-                ),
-            )
-            return True
 
     async def _validate_project(
         self,

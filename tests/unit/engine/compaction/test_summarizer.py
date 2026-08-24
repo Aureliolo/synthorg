@@ -57,13 +57,13 @@ class TestMakeCompactionCallback:
 
     async def test_below_threshold_returns_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(fill_threshold_percent=80.0)
         callback = make_compaction_callback(config=config)
 
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=(
                 _msg(MessageRole.SYSTEM, "sys prompt"),
                 _msg(MessageRole.USER, "q1"),
@@ -79,7 +79,7 @@ class TestMakeCompactionCallback:
 
     async def test_above_threshold_compresses(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
@@ -102,7 +102,7 @@ class TestMakeCompactionCallback:
             _msg(MessageRole.USER, "question 5"),
         )
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=messages,
             capacity=1000,
             fill=850,  # 85% > 80%
@@ -124,13 +124,13 @@ class TestMakeCompactionCallback:
 
     async def test_too_few_messages_returns_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(min_messages_to_compact=4)
         callback = make_compaction_callback(config=config)
 
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=(
                 _msg(MessageRole.SYSTEM, "sys"),
                 _msg(MessageRole.USER, "q"),
@@ -144,7 +144,7 @@ class TestMakeCompactionCallback:
 
     async def test_nothing_to_archive_returns_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             preserve_recent_turns=3,
@@ -163,7 +163,7 @@ class TestMakeCompactionCallback:
             _msg(MessageRole.ASSISTANT, "a3"),
         )
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=messages,
             capacity=100,
             fill=95,
@@ -173,13 +173,13 @@ class TestMakeCompactionCallback:
 
     async def test_unknown_capacity_returns_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig()
         callback = make_compaction_callback(config=config)
 
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
         ).model_copy(
             update={
                 "conversation": (
@@ -198,7 +198,7 @@ class TestMakeCompactionCallback:
 
     async def test_multiple_compactions_increment(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
@@ -217,7 +217,7 @@ class TestMakeCompactionCallback:
         messages = (_msg(MessageRole.SYSTEM, "sys"), *messages)
 
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=messages,
             capacity=1000,
             fill=850,
@@ -272,7 +272,7 @@ class TestCompactionSanitization:
     )
     async def test_assistant_snippet_sanitized(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         user_prompt: str,
         assistant_text: str,
         forbidden_substr: str,
@@ -296,7 +296,7 @@ class TestCompactionSanitization:
             _msg(MessageRole.USER, "thanks"),
         )
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=messages,
             capacity=1000,
             fill=850,
@@ -310,7 +310,7 @@ class TestCompactionSanitization:
 
     async def test_assistant_long_path_crossing_boundary_is_sanitized(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """A path crossing the 100-char snippet boundary is still redacted."""
         config = CompactionConfig(
@@ -335,7 +335,7 @@ class TestCompactionSanitization:
             _msg(MessageRole.USER, "thanks"),
         )
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=messages,
             capacity=1000,
             fill=850,
@@ -392,7 +392,7 @@ class TestPhase2Compaction:
 
     async def test_llm_summary_replaces_text_summary(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
@@ -409,7 +409,7 @@ class TestPhase2Compaction:
         )
         callback = make_compaction_callback(config=config, summarizer=summarizer)
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=_phase2_messages(),
             capacity=1000,
             fill=850,
@@ -420,7 +420,7 @@ class TestPhase2Compaction:
 
     async def test_llm_failure_falls_back_to_text_summary(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
@@ -437,7 +437,7 @@ class TestPhase2Compaction:
         )
         callback = make_compaction_callback(config=config, summarizer=summarizer)
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=_phase2_messages(),
             capacity=1000,
             fill=850,
@@ -449,7 +449,7 @@ class TestPhase2Compaction:
 
     async def test_offload_called_when_enabled(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
@@ -466,7 +466,7 @@ class TestPhase2Compaction:
         offloader = MemoryOffloader(backend=backend)
         callback = make_compaction_callback(config=config, offloader=offloader)
         ctx = _build_context(
-            sample_agent_with_personality,
+            sample_agent,
             messages=_phase2_messages(),
             capacity=1000,
             fill=850,

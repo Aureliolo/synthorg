@@ -70,7 +70,6 @@ of `AgentIdentity`; only fields relevant to external capability discovery are ex
 | `role` | `description` (partial) | Yes | Capability context |
 | `skills` (SkillSet) | `skills` (AgentSkill[]) | Yes | Lossless mapping via [Skill model](agents.md#skill-model) |
 | `department` | metadata | Optional | Organisational context |
-| `personality` | - | No | Internal behavioural tuning |
 | `authority` (`reports_to`) | - | No | Internal reporting-graph hierarchy |
 | `model` (ModelConfig) | - | No | Internal infrastructure |
 | `tools` | - | No | Security-sensitive capability list |

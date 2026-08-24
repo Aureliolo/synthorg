@@ -279,7 +279,7 @@ class TestAutoLoopSelection:
     async def test_every_complexity_defaults_to_react(
         self,
         complexity: Complexity,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         response = _make_completion_response()
@@ -290,12 +290,12 @@ class TestAutoLoopSelection:
         )
         task = _make_task_with_complexity(
             complexity=complexity,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
         )
 
         with structlog.testing.capture_logs() as logs:
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=task,
             )
 
@@ -332,7 +332,7 @@ class TestAutoLoopSelection:
 
     async def test_static_loop_emits_static_selected_event(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Without auto-selection, the static-loop path records its choice."""
@@ -341,12 +341,12 @@ class TestAutoLoopSelection:
         engine = AgentEngine(provider=provider)
         task = _make_task_with_complexity(
             complexity=Complexity.SIMPLE,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
         )
 
         with structlog.testing.capture_logs() as logs:
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=task,
             )
 
@@ -388,7 +388,7 @@ class TestAutoLoopResumePath:
 
     async def test_execute_resumed_loop_calls_resolve_loop(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """_execute_resumed_loop delegates to _resolve_loop for auto mode."""
@@ -401,10 +401,10 @@ class TestAutoLoopResumePath:
 
         task = _make_task_with_complexity(
             complexity=Complexity.MEDIUM,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
         )
         checkpoint_ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=task,
         )
 
@@ -420,7 +420,7 @@ class TestAutoLoopResumePath:
         with patch.object(engine, "_resolve_loop", resolve_mock):
             await engine._execute_resumed_loop(
                 checkpoint_ctx,
-                str(sample_agent_with_personality.id),
+                str(sample_agent.id),
                 str(task.id),
             )
 
@@ -429,7 +429,7 @@ class TestAutoLoopResumePath:
         call_args = resolve_mock.call_args
         call_task = call_args[0][0]
         assert call_task.estimated_complexity == Complexity.MEDIUM
-        assert call_args[0][1] == str(sample_agent_with_personality.id)
+        assert call_args[0][1] == str(sample_agent.id)
         assert call_args[0][2] == str(task.id)
 
         # The resolved loop instance was actually executed

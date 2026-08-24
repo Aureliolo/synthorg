@@ -35,7 +35,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Define agents, roles, personality, departments, and reporting lines.
+    Define agents, roles, departments, and reporting lines.
 
     [:octicons-arrow-right-24: Agents](agents.md)
 

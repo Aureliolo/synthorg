@@ -245,32 +245,6 @@ class WsDepartmentsReorderedPayload(BaseModel):
     department_names: tuple[NotBlankStr, ...]
 
 
-# ── Personality domain ──────────────────────────────────────────────
-
-
-class WsPersonalityTrimmedPayload(BaseModel):
-    """Payload for ``personality.trimmed`` -- engine pruned a persona.
-
-    Emitted by ``make_personality_trim_notifier`` in
-    ``api/app_helpers.py``; field shape mirrors
-    ``synthorg.engine.agent_engine.PersonalityTrimPayload``.
-    """
-
-    model_config = PAYLOAD_CONFIG
-
-    event_type: Literal[WsEventType.PERSONALITY_TRIMMED] = (
-        WsEventType.PERSONALITY_TRIMMED
-    )
-    agent_id: NotBlankStr
-    agent_name: NotBlankStr
-    task_id: NotBlankStr
-    trim_tier: Literal[1, 2, 3]
-    before_tokens: int = Field(ge=0)
-    after_tokens: int = Field(ge=0)
-    max_tokens: int = Field(ge=0)
-    budget_met: bool
-
-
 # ── Budget domain ───────────────────────────────────────────────────
 
 

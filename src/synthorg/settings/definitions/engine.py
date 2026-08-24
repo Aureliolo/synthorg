@@ -16,19 +16,6 @@ _r = get_registry()
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="personality_trimming_enabled",
-        type=SettingType.BOOLEAN,
-        default="true",
-        description=(
-            "Enable token-based personality trimming when section exceeds budget"
-        ),
-        group="Personality Trimming",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
         key="agent_max_response_tokens",
         type=SettingType.INTEGER,
         default="32768",
@@ -47,36 +34,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1024,
         max_value=200_000,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="personality_max_tokens_override",
-        type=SettingType.INTEGER,
-        default="0",
-        description=(
-            "Global override for personality section token limit "
-            "(0 = use profile defaults per rung: expert=500, capable=200, basic=80)"
-        ),
-        group="Personality Trimming",
-        min_value=0,
-        max_value=10000,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="personality_trimming_notify",
-        type=SettingType.BOOLEAN,
-        default="true",
-        description=(
-            "Publish a WebSocket notification on the agents channel "
-            "when personality trimming activates for an agent"
-        ),
-        group="Personality Trimming",
     )
 )
 

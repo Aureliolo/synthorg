@@ -290,7 +290,6 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 | `name` | string | *(required)* | Agent display name |
 | `role` | string | *(required)* | Role identifier |
 | `department` | string | *(required)* | Department name |
-| `personality` | dict | `{}` | Personality configuration |
 | `model` | dict | `{}` | Model assignment (priority, min_context) |
 | `memory` | dict | `{}` | Per-agent memory settings |
 | `tools` | dict | `{}` | Tool access configuration |
@@ -524,40 +523,24 @@ SynthOrg enforces the following cross-field validation rules at load time:
         model:
           priority: "quality"
           min_context: 100000
-        personality:
-          openness: 0.85
-          conscientiousness: 0.6
-          decision_making: directive
       - role: "CTO"
         name: "Bob"
         level: c_suite
         department: "executive"
         model:
           priority: "quality"
-        personality:
-          openness: 0.85
-          conscientiousness: 0.4
-          decision_making: intuitive
       - role: "Full-Stack Developer"
         name: "Charlie"
         level: senior
         department: "engineering"
         model:
           priority: "balanced"
-        personality:
-          openness: 0.5
-          conscientiousness: 0.85
-          decision_making: analytical
       - role: "Product Manager"
         name: "Diana"
         level: senior
         department: "product"
         model:
           priority: "speed"
-        personality:
-          openness: 0.6
-          conscientiousness: 0.7
-          decision_making: consultative
 
     providers:
       cloud:

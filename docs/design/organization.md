@@ -267,8 +267,7 @@ template:
   # (priority / min_context / requires_vision / requires_reasoning, plus an
   # optional family or model_pattern), or an
   # explicit model id/alias string to pin a configured model. The matcher
-  # resolves it against the configured providers; personality-preset affinity
-  # fills any capability defaults the agent omits. Built-in templates use
+  # resolves it against the configured providers. Built-in templates use
   # capability dicts so they resolve on any provider, Ollama Cloud included.
   agents:
     - role: "CEO"                     # name omitted -> Faker at render time
@@ -276,31 +275,26 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "visionary_leader"
 
     - role: "CTO"
       model:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "rapid_prototyper"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       model:
         priority: "cost"
-      personality_preset: "team_diplomat"
 
     - role: "Product Manager"
       model:
         priority: "speed"
-      personality_preset: "strategic_planner"
 
   departments:
     - name: "executive"
@@ -353,21 +347,7 @@ template:
 ```
 
 Templates support **Jinja2-style variables** (`{{ variable | default(value) }}`) for
-user-customizable values, and **personality presets** for reusable agent personality
-configurations.
-
-### Personality Presets
-
-Personality presets come in two flavors:
-
-- **Built-in presets** ship with the codebase (`templates/presets.py`) and are read-only.
-- **Custom presets** are user-defined via the REST API (`POST /api/v1/personalities/presets`), persisted to the database, and managed through full CRUD operations.
-
-Custom preset names must match `^[a-z][a-z0-9_]*$` and cannot shadow built-in names. All custom presets are validated against `PersonalityConfig` before persistence. The API distinguishes origin via a `source: "builtin" | "custom"` field in responses.
-
-During template rendering and setup agent expansion, custom presets are fetched from the database and passed into the rendering pipeline alongside builtins. If an agent references a preset name that exists in neither custom nor built-in collections, the system logs a warning rather than raising an error: during template rendering, the personality is omitted (the agent proceeds with no personality assigned); during setup agent expansion, the agent falls back to the `pragmatic_builder` default. The `validate_preset_references()` function provides advisory pre-flight validation for template import/export scenarios, returning warning strings for unknown presets without raising.
-
-Discovery endpoints (`GET /api/v1/personalities/presets`, `GET /api/v1/personalities/presets/{name}`, `GET /api/v1/personalities/schema`) are available to all authenticated users. CRUD endpoints require write access.
+user-customizable values.
 
 ### Template Inheritance
 
@@ -518,7 +498,7 @@ agent count, departments, autonomy level, and workflow), Company (name, descript
 currency, and model spend profile), Providers (configure LLM providers with auto-detection
 for local instances (with probe-detected base URLs) and full provider form supporting
 API key, subscription, custom configurations, and manually entered base URLs),
-Agents (customise names, roles, personality presets, and model assignments),
+Agents (customise names, roles, and model assignments),
 Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
 Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and
 Complete, skipping template, agents, and theme. Providers are configured before agents so

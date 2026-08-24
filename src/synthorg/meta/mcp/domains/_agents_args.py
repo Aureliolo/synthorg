@@ -1,6 +1,6 @@
 """Typed argument models for the MCP ``agents`` domain.
 
-Covers agents CRUD + observability + personalities + autonomy.
+Covers agents CRUD + observability + autonomy.
 """
 
 from typing import Literal
@@ -77,19 +77,6 @@ class AgentsGetHealthArgs(_AgentNameArgs):
     """Args for ``agents.get_health``."""
 
 
-# ── Personalities ───────────────────────────────────────────────────
-
-
-class PersonalitiesListArgs(PaginationFields):
-    """Args for ``personalities.list``."""
-
-
-class PersonalitiesGetArgs(_ArgsBase):
-    """Args for ``personalities.get``."""
-
-    name: NotBlankStr = Field(description="Personality name")
-
-
 # ── Autonomy ───────────────────────────────────────────────────────
 
 
@@ -132,6 +119,4 @@ __all__ = [
     "AutonomyGetArgs",
     "AutonomyLevel",
     "AutonomyUpdateArgs",
-    "PersonalitiesGetArgs",
-    "PersonalitiesListArgs",
 ]

@@ -7,16 +7,7 @@ from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
-from synthorg.hr.enums import (
-    AgentStatus,
-    CollaborationPreference,
-    CommunicationVerbosity,
-    ConflictApproach,
-    CostTier,
-    CreativityLevel,
-    DecisionMakingStyle,
-    RiskTolerance,
-)
+from synthorg.hr.enums import AgentStatus, CostTier
 from synthorg.memory.enums import ConsolidationInterval
 from synthorg.organization.enums import CompanyType, DepartmentName
 from synthorg.security.autonomy.enums import ActionType
@@ -29,12 +20,6 @@ from synthorg.templates.enums import SkillPattern
 class TestEnumMemberCounts:
     def test_agent_status_has_4_members(self) -> None:
         assert len(AgentStatus) == 4
-
-    def test_risk_tolerance_has_3_members(self) -> None:
-        assert len(RiskTolerance) == 3
-
-    def test_creativity_level_has_3_members(self) -> None:
-        assert len(CreativityLevel) == 3
 
     def test_memory_level_has_4_members(self) -> None:
         assert len(MemoryLevel) == 4
@@ -65,18 +50,6 @@ class TestEnumMemberCounts:
 
     def test_project_status_has_7_members(self) -> None:
         assert len(ProjectStatus) == 7
-
-    def test_decision_making_style_has_4_members(self) -> None:
-        assert len(DecisionMakingStyle) == 4
-
-    def test_collaboration_preference_has_3_members(self) -> None:
-        assert len(CollaborationPreference) == 3
-
-    def test_communication_verbosity_has_3_members(self) -> None:
-        assert len(CommunicationVerbosity) == 3
-
-    def test_conflict_approach_has_5_members(self) -> None:
-        assert len(ConflictApproach) == 5
 
     def test_memory_category_has_8_members(self) -> None:
         # 5 agent categories + PROJECT_DOC + KNOWLEDGE + PROJECT_BRAIN.
@@ -196,61 +169,6 @@ class TestEnumStringValues:
         assert ProjectStatus.ON_HOLD.value == "on_hold"
         assert ProjectStatus.COMPLETED.value == "completed"
         assert ProjectStatus.CANCELLED.value == "cancelled"
-
-    @pytest.mark.parametrize(
-        ("member", "value"),
-        [
-            (DecisionMakingStyle.ANALYTICAL, "analytical"),
-            (DecisionMakingStyle.INTUITIVE, "intuitive"),
-            (DecisionMakingStyle.CONSULTATIVE, "consultative"),
-            (DecisionMakingStyle.DIRECTIVE, "directive"),
-        ],
-    )
-    def test_decision_making_style_values(
-        self, member: DecisionMakingStyle, value: str
-    ) -> None:
-        assert member.value == value
-
-    @pytest.mark.parametrize(
-        ("member", "value"),
-        [
-            (CollaborationPreference.INDEPENDENT, "independent"),
-            (CollaborationPreference.PAIR, "pair"),
-            (CollaborationPreference.TEAM, "team"),
-        ],
-    )
-    def test_collaboration_preference_values(
-        self, member: CollaborationPreference, value: str
-    ) -> None:
-        assert member.value == value
-
-    @pytest.mark.parametrize(
-        ("member", "value"),
-        [
-            (CommunicationVerbosity.TERSE, "terse"),
-            (CommunicationVerbosity.BALANCED, "balanced"),
-            (CommunicationVerbosity.VERBOSE, "verbose"),
-        ],
-    )
-    def test_communication_verbosity_values(
-        self, member: CommunicationVerbosity, value: str
-    ) -> None:
-        assert member.value == value
-
-    @pytest.mark.parametrize(
-        ("member", "value"),
-        [
-            (ConflictApproach.AVOID, "avoid"),
-            (ConflictApproach.ACCOMMODATE, "accommodate"),
-            (ConflictApproach.COMPETE, "compete"),
-            (ConflictApproach.COMPROMISE, "compromise"),
-            (ConflictApproach.COLLABORATE, "collaborate"),
-        ],
-    )
-    def test_conflict_approach_values(
-        self, member: ConflictApproach, value: str
-    ) -> None:
-        assert member.value == value
 
     @pytest.mark.parametrize(
         ("member", "value"),

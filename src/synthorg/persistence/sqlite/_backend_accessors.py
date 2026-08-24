@@ -121,7 +121,6 @@ from synthorg.persistence.parked_context_protocol import (
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
-from synthorg.persistence.preset_protocol import PersonalityPresetRepository
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
@@ -223,7 +222,6 @@ class _BackendRepositoryAccessors:
     _project_cost_aggregates: ProjectCostAggregateRepository | None
     _fine_tune_checkpoints: FineTuneCheckpointRepository | None
     _fine_tune_runs: FineTuneRunRepository | None
-    _custom_presets: PersonalityPresetRepository | None
     _workflow_definitions: WorkflowDefinitionRepository | None
     _workflow_executions: WorkflowExecutionRepository | None
     _subworkflows: SubworkflowRepository | None
@@ -541,11 +539,6 @@ class _BackendRepositoryAccessors:
             self._fine_tune_runs,
             "fine_tune_runs",
         )
-
-    @property
-    def custom_presets(self) -> PersonalityPresetRepository:
-        """Repository for custom personality preset persistence."""
-        return self._require_connected(self._custom_presets, "custom_presets")
 
     @property
     def workflow_definitions(self) -> WorkflowDefinitionRepository:

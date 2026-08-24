@@ -5,7 +5,7 @@ Declares the cross-cutting API-core surface: the ``api`` settings
 namespace, the :class:`ApiCoreStateSlice` that owns services belonging
 to no single domain feature (the opaque-pagination cursor secret
 today), the cross-cutting REST controllers (health probes, capabilities,
-auth, users, setup, setup-personality), and the realtime websocket
+auth, users, setup), and the realtime websocket
 handler. The composition root mounts these from this manifest.
 """
 
@@ -29,7 +29,6 @@ from synthorg.api.controllers.setup.company import SetupCompanyController
 from synthorg.api.controllers.setup.completion import SetupCompletionController
 from synthorg.api.controllers.setup.locales import SetupLocalesController
 from synthorg.api.controllers.setup.status import SetupStatusController
-from synthorg.api.controllers.setup_personality import SetupPersonalityController
 from synthorg.api.controllers.users.account import UserController
 from synthorg.api.controllers.users.org_roles import UserOrgRolesController
 from synthorg.api.controllers.ws import ws_handler
@@ -57,7 +56,6 @@ FEATURE: FeatureModule = FeatureManifest(
         SetupAgentsController,
         SetupLocalesController,
         SetupCompletionController,
-        SetupPersonalityController,
     ),
     websocket_handlers=(ws_handler,),
     mcp_handlers=(),

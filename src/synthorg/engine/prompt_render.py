@@ -24,7 +24,6 @@ from synthorg.engine._prompt_helpers import (
 )
 from synthorg.engine._prompt_helpers import SECTION_TASK as _SECTION_TASK
 from synthorg.engine._prompt_helpers import TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS
-from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
 from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_result import SystemPrompt, build_prompt_result
@@ -73,11 +72,9 @@ def build_template_context(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-    trimming_enabled: bool = True,
-    estimator: PromptTokenEstimator | None = None,
     strategy_config: StrategyConfig | None = None,
     prompt_providers: PromptAmbientProviders,
-) -> tuple[dict[str, object], PersonalityTrimInfo | None]:
+) -> dict[str, object]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
     Args:
@@ -92,24 +89,15 @@ def build_template_context(  # noqa: PLR0913
         context_budget: Formatted context budget indicator string.
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
-        trimming_enabled: Whether personality trimming is active.
-        estimator: Token estimator for personality trimming.
         strategy_config: Strategy config for trendslop mitigation.
         prompt_providers: The ambient provider snapshot, resolved once per
             prompt build. Required, because a default here would be a second
             place the ambient globals are read.
 
     Returns:
-        Tuple of (template variables dict, personality trim info or None).
+        The template variables dict.
     """
-    context, trim_info = _build_core_context(
-        agent,
-        role,
-        effective_autonomy,
-        profile,
-        trimming_enabled=trimming_enabled,
-        estimator=estimator,
-    )
+    context = _build_core_context(agent, role, effective_autonomy, profile)
 
     context["currency_symbol"] = get_currency_symbol(currency)
     context["currency"] = currency
@@ -208,7 +196,7 @@ def build_template_context(  # noqa: PLR0913
         context["company"] = None
         context["company_departments"] = None
 
-    return context, trim_info
+    return context
 
 
 def trim_sections(  # noqa: PLR0913
@@ -227,7 +215,6 @@ def trim_sections(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-    trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
     prompt_providers: PromptAmbientProviders,
 ) -> tuple[
@@ -252,7 +239,7 @@ def trim_sections(  # noqa: PLR0913
     trimmed_sections: list[str] = []
 
     for section in _TRIMMABLE_SECTIONS:
-        content, estimated, _ = render_and_estimate(
+        content, estimated = render_and_estimate(
             template_str,
             agent,
             role=role,
@@ -266,7 +253,6 @@ def trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=trimming_enabled,
             strategy_config=strategy_config,
             prompt_providers=prompt_providers,
         )
@@ -291,7 +277,7 @@ def trim_sections(  # noqa: PLR0913
         trimmed_sections.append(section)
     else:
         # All sections exhausted -- do a final render.
-        content, estimated, _ = render_and_estimate(
+        content, estimated = render_and_estimate(
             template_str,
             agent,
             role=role,
@@ -305,7 +291,6 @@ def trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=trimming_enabled,
             strategy_config=strategy_config,
             prompt_providers=prompt_providers,
         )
@@ -331,7 +316,6 @@ def render_with_trimming(  # noqa: PLR0913
     context_budget_indicator: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-    trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget.
@@ -350,7 +334,7 @@ def render_with_trimming(  # noqa: PLR0913
 
     prompt_providers = current_prompt_providers()
 
-    content, estimated, trim_info = render_and_estimate(
+    content, estimated = render_and_estimate(
         template_str,
         agent,
         role=role,
@@ -364,7 +348,6 @@ def render_with_trimming(  # noqa: PLR0913
         context_budget=context_budget_indicator,
         currency=currency,
         profile=profile,
-        trimming_enabled=trimming_enabled,
         strategy_config=strategy_config,
         prompt_providers=prompt_providers,
     )
@@ -386,7 +369,6 @@ def render_with_trimming(  # noqa: PLR0913
                 context_budget=context_budget_indicator,
                 currency=currency,
                 profile=profile,
-                trimming_enabled=trimming_enabled,
                 strategy_config=strategy_config,
                 prompt_providers=prompt_providers,
             )
@@ -403,7 +385,6 @@ def render_with_trimming(  # noqa: PLR0913
         custom_template=template_str is not DEFAULT_TEMPLATE,
         context_budget=context_budget_indicator,
         profile=profile,
-        personality_trim_info=trim_info,
         strategy_config=strategy_config,
         prompt_providers=prompt_providers,
     )
@@ -424,10 +405,9 @@ def render_and_estimate(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-    trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
     prompt_providers: PromptAmbientProviders,
-) -> tuple[str, int, PersonalityTrimInfo | None]:
+) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
     Args:
@@ -444,16 +424,14 @@ def render_and_estimate(  # noqa: PLR0913
         context_budget: Formatted context budget indicator string.
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
-        trimming_enabled: Whether personality trimming is active.
         strategy_config: Strategy config for trendslop mitigation.
         prompt_providers: The ambient provider snapshot, resolved once per
             prompt build.
 
     Returns:
-        Tuple of (rendered content, estimated token count,
-        personality trim info or None).
+        Tuple of (rendered content, estimated token count).
     """
-    context, trim_info = build_template_context(
+    context = build_template_context(
         agent=agent,
         role=role,
         task=task,
@@ -465,10 +443,8 @@ def render_and_estimate(  # noqa: PLR0913
         context_budget=context_budget,
         currency=currency,
         profile=profile,
-        trimming_enabled=trimming_enabled,
-        estimator=estimator,
         strategy_config=strategy_config,
         prompt_providers=prompt_providers,
     )
     content = render_template(template_str, context)
-    return content, estimator.estimate_tokens(content), trim_info
+    return content, estimator.estimate_tokens(content)

@@ -80,7 +80,6 @@ API -> CLI
 | `/api/v1/providers/model-refresh/*` | Upgrade recommendations (`GET /recommendations`, approve/reject), manual `POST /refresh` (CEO/manager), `GET /status` |
 | `GET /api/v1/projects/{project_id}/docs/{slug}/receipt` | Deliverable receipt with provenance; `/receipt/validate` re-checks integrity |
 | `/api/v1/setup/*` | First-run setup wizard |
-| `/api/v1/personalities/*` | Personality preset discovery and custom preset CRUD |
 | `/api/v1/users` | CEO-only user CRUD |
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates. First-message auth preferred: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}`. Query-param `?ticket=` is a legacy fallback. |

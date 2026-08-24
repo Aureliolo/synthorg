@@ -64,7 +64,7 @@ class TestProjectValidation:
 
     async def test_project_not_found_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Raises ProjectNotFoundError when project repo returns None."""
@@ -79,13 +79,13 @@ class TestProjectValidation:
 
         with pytest.raises(ProjectNotFoundError):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
     async def test_any_agent_may_work_an_existing_project(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Selection decided who takes the work; dispatch does not re-decide."""
@@ -99,7 +99,7 @@ class TestProjectValidation:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.termination_reason == TerminationReason.COMPLETED
@@ -110,13 +110,13 @@ class TestProjectValidation:
     )
     async def test_a_gate_role_dispatches_like_any_other(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         role: str,
     ) -> None:
         """With no membership check there is nothing for a gate role to be
         exempt from, so the two paths are the same path."""
-        judge = sample_agent_with_personality.model_copy(update={"role": role})
+        judge = sample_agent.model_copy(update={"role": role})
         repo = _make_project_repo(project=_make_project())
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
@@ -129,14 +129,12 @@ class TestProjectValidation:
 
     async def test_a_gate_role_still_needs_the_project_to_exist(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A missing project is a broken dispatch for a reviewer exactly as
         for a working agent."""
-        reviewer = sample_agent_with_personality.model_copy(
-            update={"role": RED_TEAM_ROLE_NAME}
-        )
+        reviewer = sample_agent.model_copy(update={"role": RED_TEAM_ROLE_NAME})
         repo = _make_project_repo(project=None)
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
@@ -148,7 +146,7 @@ class TestProjectValidation:
 
     async def test_no_project_repo_skips_validation(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Without project_repo, project checks are skipped with warning."""
@@ -158,7 +156,7 @@ class TestProjectValidation:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.termination_reason == TerminationReason.COMPLETED
@@ -170,7 +168,7 @@ class TestProjectBudgetIntegration:
 
     async def test_project_budget_exceeded_returns_budget_exhausted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Project budget exceeded returns BUDGET_EXHAUSTED."""
@@ -205,7 +203,7 @@ class TestProjectBudgetIntegration:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED

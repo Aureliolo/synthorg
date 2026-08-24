@@ -27,9 +27,7 @@ autonomy) and `RedTeamReviewInput` (red-team gate input) also live core-local,
 in `synthorg.core.effective_autonomy` and `synthorg.core.redteam_review_input`,
 so engine, security, and tools consumers reference them without dragging a heavy
 hub at import time. Every other domain enum lives with its owning package: agent
-status, the personality traits (risk tolerance, creativity, decision style,
-collaboration preference, communication verbosity, conflict approach), cost
-tier, and strategic output mode under [HR](hr.md); company type
+status, cost tier, and strategic output mode under [HR](hr.md); company type
 and department name under [Organisation](organization.md); the skill-pattern
 taxonomy under [Templates](templates.md); memory consolidation interval and
 org-fact category under [Memory](memory.md); knowledge source type, content
@@ -114,10 +112,6 @@ tool category, autonomy-downgrade reason, and timeout-action type under
 ## Artifact
 
 ::: synthorg.core.artifact
-
-## Personality
-
-::: synthorg.core.personality
 
 ## Resilience Config
 

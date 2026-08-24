@@ -27,6 +27,8 @@ The skill below references `subagent_type` values from Claude Code plugins. In O
 
 Custom prompts defined inline in the skill (logging-audit, resilience-audit, conventions-enforcer, frontend-reviewer, api-contract-drift, infra-reviewer, test-quality-reviewer, async-concurrency-reviewer, go-conventions-enforcer, docs-consistency, comment-quality-rot, issue-resolution-verifier) should use the matching `.opencode/agents/<name>.md` as the base agent, then append the custom prompt from the skill.
 
+Phase 4's "subagents only, never teammates" rule names Claude Code tools (`Agent`, `SendMessage`, `ListAgents`, `Workflow`). OpenCode has no equivalents, but the rule it encodes still binds: each review agent is spawned once with a fresh context, its returned text IS its report, and there is no back-channel to chase a silent one. Re-spawn instead, and count reports against the roster before triage.
+
 ### PR creation
 
 The skill uses `mcp__github__create_pull_request`. In OpenCode, use `gh pr create` via shell instead (MCP GitHub tools may not be configured).

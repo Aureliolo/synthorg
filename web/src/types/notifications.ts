@@ -28,7 +28,6 @@ export type NotificationCategory =
   | 'budget.exhausted'
   | 'system.error'
   | 'system.shutdown'
-  | 'agents.personality_trimmed'
   | 'agents.hired'
   | 'agents.fired'
   | 'tasks.failed'
@@ -119,12 +118,6 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     defaultRoutes: ['drawer', 'toast', 'browser'],
     label: 'System shutdown',
     group: 'system',
-  },
-  'agents.personality_trimmed': {
-    severity: 'info',
-    defaultRoutes: ['toast'],
-    label: 'Personality trimmed',
-    group: 'agents',
   },
   'agents.hired': {
     severity: 'info',

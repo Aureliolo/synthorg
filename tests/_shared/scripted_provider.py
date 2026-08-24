@@ -27,7 +27,6 @@ from pydantic import JsonValue
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.core.completion_enums import FinishReason
@@ -314,7 +313,6 @@ def make_e2e_identity(
         role="Developer",
         department="Engineering",
         hiring_date=date(2026, 1, 15),
-        personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider=_TEST_PROVIDER, model_id=_TEST_MODEL),
         tools=tools or ToolPermissions(),
     )

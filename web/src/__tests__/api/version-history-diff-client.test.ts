@@ -34,7 +34,7 @@ describe('version-history per-domain diff', () => {
           to_version: 3,
           field_changes: [
             {
-              field_path: 'personality.risk_tolerance',
+              field_path: 'authority.budget_limit',
               change_type: 'modified',
               old_value: 'low',
               new_value: 'high',
@@ -61,7 +61,7 @@ describe('version-history per-domain diff', () => {
       to_version: 3,
       entries: [
         {
-          path: 'personality.risk_tolerance',
+          path: 'authority.budget_limit',
           before: 'low',
           after: 'high',
         },

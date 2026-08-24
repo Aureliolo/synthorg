@@ -345,12 +345,12 @@ class TestTransitionTaskIfNeeded:
 
     async def test_assigned_transitions_to_in_progress(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """ASSIGNED task transitions to IN_PROGRESS and syncs."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         assert ctx.task_execution is not None
@@ -360,7 +360,7 @@ class TestTransitionTaskIfNeeded:
 
         result_ctx = await transition_task_if_needed(
             ctx,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -372,12 +372,12 @@ class TestTransitionTaskIfNeeded:
 
     async def test_in_progress_passes_through(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """IN_PROGRESS task is returned as-is (no sync)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="already started")
@@ -386,7 +386,7 @@ class TestTransitionTaskIfNeeded:
 
         result_ctx = await transition_task_if_needed(
             ctx,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -397,17 +397,17 @@ class TestTransitionTaskIfNeeded:
 
     async def test_no_task_execution_passes_through(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Context without task_execution returns unchanged."""
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         assert ctx.task_execution is None
 
         mock_te = _make_mock_task_engine()
 
         result_ctx = await transition_task_if_needed(
             ctx,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id="irrelevant",
             task_engine=mock_te,
         )
@@ -417,18 +417,18 @@ class TestTransitionTaskIfNeeded:
 
     async def test_none_task_engine_still_transitions_locally(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Local transition works even when task_engine is None."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
 
         result_ctx = await transition_task_if_needed(
             ctx,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
@@ -438,7 +438,7 @@ class TestTransitionTaskIfNeeded:
 
     async def test_refused_entry_sync_aborts_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A rejected entry sync stops the run instead of proceeding unsynced.
@@ -448,7 +448,7 @@ class TestTransitionTaskIfNeeded:
         of moving.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         mock_te = _make_mock_task_engine(
@@ -458,19 +458,19 @@ class TestTransitionTaskIfNeeded:
         with pytest.raises(ExecutionStateError, match="IN_PROGRESS"):
             await transition_task_if_needed(
                 ctx,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=mock_te,
             )
 
     async def test_unavailable_engine_aborts_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """An engine that raised is as unsynced as one that refused."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         mock_te = _make_mock_task_engine(side_effect=TaskEngineError("unavailable"))
@@ -478,7 +478,7 @@ class TestTransitionTaskIfNeeded:
         with pytest.raises(ExecutionStateError):
             await transition_task_if_needed(
                 ctx,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=mock_te,
             )
@@ -495,15 +495,15 @@ class TestApplyPostExecutionTransitions:
 
     async def test_no_task_execution_returns_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Without task_execution, result is returned as-is."""
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         result = _make_execution_result(ctx)
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id="irrelevant",
             task_engine=None,
         )
@@ -512,12 +512,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_completed_transitions_to_in_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """COMPLETED termination: IN_PROGRESS -> IN_REVIEW (awaits review)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -527,7 +527,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -542,12 +542,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_shutdown_transitions_to_interrupted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """SHUTDOWN termination: current status -> INTERRUPTED."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -557,7 +557,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -573,7 +573,7 @@ class TestApplyPostExecutionTransitions:
     )
     async def test_already_terminal_reasons_return_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         reason: TerminationReason,
     ) -> None:
@@ -584,7 +584,7 @@ class TestApplyPostExecutionTransitions:
         ``test_unfinished_run_terminalises_to_failed``.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -592,7 +592,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
@@ -601,12 +601,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_error_reason_returns_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """ERROR termination reason leaves task state unchanged."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -618,7 +618,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
@@ -627,7 +627,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_no_op_work_task_transitions_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A NO_OP run on a work task fails the task, never pushes to review."""
@@ -638,7 +638,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(
             ctx, reason=TerminationReason.NO_OP, error_message="empty run"
@@ -648,7 +648,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
             approval_store=approval_store,
@@ -668,7 +668,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_failed_approval_skipped_when_central_sync_rejected(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """No failure approval is queued when the engine rejects the FAILED sync.
@@ -685,7 +685,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(
             ctx, reason=TerminationReason.NO_OP, error_message="empty run"
@@ -695,7 +695,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
             approval_store=approval_store,
@@ -710,7 +710,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_completed_empty_work_task_transitions_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Defence-in-depth: a COMPLETED work run with zero tool calls fails."""
@@ -721,14 +721,14 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
         mock_te = _make_mock_task_engine()
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
         )
@@ -738,7 +738,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_justified_no_op_goes_to_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A recorded no-op justification routes an empty run to review."""
@@ -749,7 +749,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = ExecutionResult(
             context=ctx,
@@ -770,7 +770,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
         )
@@ -780,7 +780,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_completed_work_task_with_tool_calls_goes_to_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A COMPLETED work run that used tools proceeds to review as usual."""
@@ -791,7 +791,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = ExecutionResult(
             context=ctx,
@@ -811,7 +811,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
         )
@@ -821,7 +821,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_resumed_empty_work_run_goes_to_review_not_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A resumed run's zero-tool-call segment must not fail the task.
@@ -839,7 +839,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
         mock_te = _make_mock_task_engine()
@@ -847,7 +847,7 @@ class TestApplyPostExecutionTransitions:
         with resumed_run_scope():
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=mock_te,
             )
@@ -857,7 +857,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_resumed_run_still_answers_to_the_workspace(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The resume exemption covers the turn-count proxy, not the disk.
@@ -875,7 +875,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
 
@@ -887,7 +887,7 @@ class TestApplyPostExecutionTransitions:
         with resumed_run_scope():
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
                 artifact_probe=_nothing_delivered,
@@ -906,7 +906,7 @@ class TestApplyPostExecutionTransitions:
     )
     async def test_unfinished_run_terminalises_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         reason: TerminationReason,
         expected_fragment: str,
@@ -918,9 +918,7 @@ class TestApplyPostExecutionTransitions:
         un-completable. FAILED is honest, retryable, and the status the
         derivation recognises once retries are spent.
         """
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=sample_task_with_criteria
-        )
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=reason)
         mock_te = _make_mock_task_engine()
@@ -928,7 +926,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
             approval_store=approval_store,
@@ -944,7 +942,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_a_failed_transition_that_cannot_land_is_raised(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Swallowing it would leave the task at its prior status silently.
@@ -958,9 +956,7 @@ class TestApplyPostExecutionTransitions:
         machine has no IN_REVIEW -> FAILED edge, so the local move raises
         before any sync is attempted.
         """
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=sample_task_with_criteria
-        )
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         ctx = ctx.with_task_transition(TaskStatus.IN_REVIEW, reason="submitted")
         result = _make_execution_result(ctx, reason=TerminationReason.MAX_TURNS)
@@ -969,7 +965,7 @@ class TestApplyPostExecutionTransitions:
         with pytest.raises(ExecutionStateError):
             await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=_make_mock_task_engine(),
                 approval_store=approval_store,
@@ -979,7 +975,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_a_failure_the_engine_never_applied_queues_no_approval(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A swallowed sync leaves the engine's task at its prior status.
@@ -988,16 +984,14 @@ class TestApplyPostExecutionTransitions:
         holds IN_PROGRESS would let a later decision transition the wrong
         state, so the approval waits on the sync landing.
         """
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=sample_task_with_criteria
-        )
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.MAX_TURNS)
         approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(
                 side_effect=TaskEngineError("engine unavailable")
@@ -1011,19 +1005,17 @@ class TestApplyPostExecutionTransitions:
 
     async def test_parked_run_still_holds_its_status(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """PARKED waits on a human; terminalising it would discard the wait."""
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=sample_task_with_criteria
-        )
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.PARKED)
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
         )
@@ -1032,7 +1024,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_declared_artifacts_all_absent_fails_despite_tool_calls(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The tool-call proxy passes; the workspace says nothing was written.
@@ -1048,7 +1040,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
         mock_te = _make_mock_task_engine()
@@ -1056,7 +1048,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=mock_te,
             approval_store=approval_store,
@@ -1070,7 +1062,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_an_untouched_declaration_is_a_no_op_not_a_delivery(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Presence alone answers a task that creates, never one that edits.
@@ -1086,7 +1078,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
         found_as_seeded = ArtifactPresence(
@@ -1096,7 +1088,7 @@ class TestApplyPostExecutionTransitions:
         with artifact_baseline_scope(found_as_seeded):
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
                 approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
@@ -1109,7 +1101,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_a_changed_declaration_is_delivery(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The guard must not fail a run that actually edited what it declared.
@@ -1125,7 +1117,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
         found_as_seeded = ArtifactPresence(
@@ -1135,7 +1127,7 @@ class TestApplyPostExecutionTransitions:
         with artifact_baseline_scope(found_as_seeded):
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
                 approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
@@ -1146,7 +1138,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_a_failed_run_does_not_still_report_itself_completed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The task and the run must not disagree about whether it worked.
@@ -1164,14 +1156,14 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
         assert result.termination_reason == TerminationReason.COMPLETED
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
             approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
@@ -1199,7 +1191,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_an_unfinished_run_keeps_the_reason_it_stopped_for(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Adjudication supplies a reason only where there was none to lose.
@@ -1208,9 +1200,7 @@ class TestApplyPostExecutionTransitions:
         ``False``; overwriting it with ``NO_OP`` would throw away the more
         specific fact of *how* it stopped.
         """
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=sample_task_with_criteria
-        )
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = ExecutionResult(
             context=ctx,
@@ -1220,7 +1210,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
@@ -1232,7 +1222,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_partial_delivery_still_reaches_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """One file elsewhere is a judgement call, not an empty run.
@@ -1249,13 +1239,13 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
             artifact_probe=_fake_probe(missing=("tests/x.py",)),
@@ -1266,7 +1256,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_delivered_artifacts_reach_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         work_task = sample_task_with_criteria.model_copy(
@@ -1276,13 +1266,13 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
             artifact_probe=_fake_probe(missing=()),
@@ -1293,7 +1283,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_unanswerable_probe_does_not_fail_the_task(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A probe that cannot answer is not evidence of an empty run.
@@ -1313,7 +1303,7 @@ class TestApplyPostExecutionTransitions:
                 )
             }
         )
-        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = AgentContext.from_identity(sample_agent, task=work_task)
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
 
@@ -1325,7 +1315,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
             artifact_probe=_raises,
@@ -1336,7 +1326,7 @@ class TestApplyPostExecutionTransitions:
 
     async def test_completed_transition_failure_returns_original(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When IN_REVIEW transition fails, original result is returned.
@@ -1346,7 +1336,7 @@ class TestApplyPostExecutionTransitions:
         original state).
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1366,7 +1356,7 @@ class TestApplyPostExecutionTransitions:
 
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=mock_te,
             )
@@ -1378,12 +1368,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_shutdown_transition_failure_returns_original(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """SHUTDOWN: if INTERRUPTED transition fails, original result returned."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1401,7 +1391,7 @@ class TestApplyPostExecutionTransitions:
         with patch.object(AgentContext, "with_task_transition", raise_on_transition):
             out = await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=None,
             )
@@ -1413,12 +1403,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_completed_with_none_task_engine(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """COMPLETED path works with task_engine=None (local only)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1426,7 +1416,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
@@ -1436,12 +1426,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_sync_failure_does_not_block_transitions(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Sync failures (rejected mutations) don't block local transitions."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1454,7 +1444,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -1464,12 +1454,12 @@ class TestApplyPostExecutionTransitions:
 
     async def test_task_engine_exception_does_not_block_transitions(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """TaskEngineError from submit() doesn't block local transitions."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1481,7 +1471,7 @@ class TestApplyPostExecutionTransitions:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -1501,12 +1491,12 @@ class TestReviewApprovalCreation:
 
     async def test_creates_approval_with_store(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When approval_store is provided, a review approval is created."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1516,7 +1506,7 @@ class TestReviewApprovalCreation:
 
         await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=mock_store,
@@ -1530,7 +1520,7 @@ class TestReviewApprovalCreation:
 
     async def test_skips_approval_when_review_sync_rejected(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """No review approval is queued when the engine rejects the IN_REVIEW sync.
@@ -1540,7 +1530,7 @@ class TestReviewApprovalCreation:
         decision act on a status the engine has not applied.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1550,7 +1540,7 @@ class TestReviewApprovalCreation:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
             approval_store=mock_store,
@@ -1565,12 +1555,12 @@ class TestReviewApprovalCreation:
 
     async def test_no_approval_without_store(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When approval_store is None, no approval is created."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1578,7 +1568,7 @@ class TestReviewApprovalCreation:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=None,
@@ -1589,12 +1579,12 @@ class TestReviewApprovalCreation:
 
     async def test_approval_creation_failure_swallowed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Failure to create approval does not affect task transition."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1606,7 +1596,7 @@ class TestReviewApprovalCreation:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=mock_store,
@@ -1623,13 +1613,13 @@ class TestReviewApprovalCreation:
     )
     async def test_approval_creation_memory_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         error_cls: type[BaseException],
     ) -> None:
         """MemoryError/RecursionError from approval store propagates."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
@@ -1642,7 +1632,7 @@ class TestReviewApprovalCreation:
         with pytest.raises(error_cls):
             await apply_post_execution_transitions(
                 result,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
                 task_id=str(sample_task_with_criteria.id),
                 task_engine=None,
                 approval_store=mock_store,
@@ -1700,12 +1690,10 @@ class TestAutoReview:
 
     async def test_runs_pipeline_when_gate_and_pipeline_wired(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(return_value=_approving_review_run())
         )
@@ -1713,7 +1701,7 @@ class TestAutoReview:
 
         await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1728,7 +1716,7 @@ class TestAutoReview:
 
     async def test_a_review_that_sends_the_work_back_says_so_on_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """REWORK means "run this again", so it has to reach something runnable.
@@ -1738,9 +1726,7 @@ class TestAutoReview:
         Writing the status and nothing else is what left five tasks of a live
         plan in a state no reader was watching.
         """
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(
                 return_value=_rework_review_run("no test run; unverified")
@@ -1749,7 +1735,7 @@ class TestAutoReview:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1760,19 +1746,17 @@ class TestAutoReview:
 
     async def test_an_accepted_review_leaves_no_rework_to_answer(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(return_value=_approving_review_run())
         )
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1783,13 +1767,11 @@ class TestAutoReview:
 
     async def test_a_park_is_not_a_rework(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """An escalation waits on a human; re-running answers nobody."""
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(
                 return_value=_review_run(
@@ -1805,7 +1787,7 @@ class TestAutoReview:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1816,20 +1798,18 @@ class TestAutoReview:
 
     async def test_no_pipeline_run_when_disabled(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         # Gate wired but no pipeline (auto-review off): the pipeline never runs.
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(return_value=_approving_review_run())
         )
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1842,21 +1822,19 @@ class TestAutoReview:
 
     async def test_pipeline_failure_does_not_discard_completion(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         # A review-pipeline fault must not lose the agent's completed work:
         # the task stays IN_REVIEW for a human, exactly as when off.
-        result = self._completed_result(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        result = self._completed_result(sample_agent, sample_task_with_criteria)
         gate = mock_of[ReviewGateService](
             run_pipeline=AsyncMock(side_effect=RuntimeError("pipeline boom"))
         )
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=_make_mock_task_engine(),
             review_gate=gate,
@@ -1888,17 +1866,17 @@ class TestClarificationPark:
 
     async def test_clarification_park_transitions_to_awaiting_input(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         result = self._parked_result(
-            sample_agent_with_personality, sample_task_with_criteria, clarification=True
+            sample_agent, sample_task_with_criteria, clarification=True
         )
         mock_te = _make_mock_task_engine()
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
@@ -1910,13 +1888,13 @@ class TestClarificationPark:
 
     async def test_plain_approval_park_leaves_task_unchanged(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         # A binary approval park (no clarification marker) leaves the task
         # IN_PROGRESS -- distinct from the clarification pause.
         result = self._parked_result(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
             clarification=False,
         )
@@ -1924,7 +1902,7 @@ class TestClarificationPark:
 
         out = await apply_post_execution_transitions(
             result,
-            agent_id=str(sample_agent_with_personality.id),
+            agent_id=str(sample_agent.id),
             task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )

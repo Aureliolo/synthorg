@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
@@ -36,7 +36,6 @@ def _make_identity(
         "role": "engineer",
         "department": "engineering",
         "hiring_date": date(2026, 1, 15),
-        "personality": PersonalityConfig(traits=("analytical",)),
         "model": ModelConfig(
             provider="test-provider",
             model_id="test-basic-001",

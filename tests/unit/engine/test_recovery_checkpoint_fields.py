@@ -27,12 +27,12 @@ class TestCanResumeField:
 
     def test_can_resume_true_when_checkpoint_context_set(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """can_resume is True when checkpoint_context_json is provided."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -53,12 +53,12 @@ class TestCanResumeField:
 
     def test_can_resume_false_when_checkpoint_context_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """can_resume is False when checkpoint_context_json is None (default)."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -85,12 +85,12 @@ class TestCheckpointConsistencyValidator:
 
     def test_json_set_but_attempt_zero_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Setting checkpoint_context_json without resume_attempt > 0 raises."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -109,12 +109,12 @@ class TestCheckpointConsistencyValidator:
 
     def test_attempt_set_but_json_none_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Setting resume_attempt > 0 without checkpoint_context_json raises."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -138,11 +138,11 @@ class TestResumeAttemptDefault:
 
     def test_defaults_to_zero(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -168,12 +168,12 @@ class TestBackwardCompatibility:
 
     async def test_fail_and_reassign_has_no_resume(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """FailAndReassignStrategy result has can_resume=False and resume_attempt=0."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
@@ -213,12 +213,12 @@ class TestRecoveryResultCheckpointJsonValidation:
 
     def test_invalid_json_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Invalid JSON in checkpoint_context_json raises ValueError."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -241,12 +241,12 @@ class TestRecoveryResultCheckpointJsonValidation:
 
     def test_json_array_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """JSON array in checkpoint_context_json raises ValueError."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -269,12 +269,12 @@ class TestRecoveryResultCheckpointJsonValidation:
 
     def test_json_primitive_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """JSON primitive in checkpoint_context_json raises ValueError."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(

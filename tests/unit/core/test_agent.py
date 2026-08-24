@@ -11,27 +11,17 @@ from synthorg.core.agent import (
     AgentRetentionRule,
     MemoryConfig,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
     ToolPermissions,
 )
 from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.role import Authority, Skill
-from synthorg.hr.enums import (
-    AgentStatus,
-    CollaborationPreference,
-    CommunicationVerbosity,
-    ConflictApproach,
-    CreativityLevel,
-    DecisionMakingStyle,
-    RiskTolerance,
-)
+from synthorg.hr.enums import AgentStatus
 
 from .conftest import (
     AgentIdentityFactory,
     MemoryConfigFactory,
     ModelConfigFactory,
-    PersonalityConfigFactory,
     SkillSetFactory,
     ToolPermissionsFactory,
 )
@@ -39,180 +29,6 @@ from .conftest import (
 #: The persona-label fields flatten whitespace before the length check, so a
 #: whitespace-only value arrives at that check as the empty string.
 _EMPTY_LABEL = "at least 1 item after validation"
-
-# ── PersonalityConfig ──────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestPersonalityConfig:
-    """Tests for PersonalityConfig defaults, validation, and immutability."""
-
-    def test_defaults(self) -> None:
-        """Verify default field values for a bare PersonalityConfig."""
-        p = PersonalityConfig()
-        assert p.traits == ()
-        assert p.communication_style == "neutral"
-        assert p.risk_tolerance is RiskTolerance.MEDIUM
-        assert p.creativity is CreativityLevel.MEDIUM
-        assert p.description == ""
-
-    def test_custom_values(self) -> None:
-        """Verify explicitly provided values are persisted."""
-        p = PersonalityConfig(
-            traits=("analytical", "pragmatic"),
-            communication_style="concise and technical",
-            risk_tolerance=RiskTolerance.LOW,
-            creativity=CreativityLevel.HIGH,
-            description="A detail-oriented engineer.",
-        )
-        assert len(p.traits) == 2
-        assert p.communication_style == "concise and technical"
-
-    def test_empty_communication_style_rejected(self) -> None:
-        """Reject empty string for communication_style."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(communication_style="")
-
-    def test_whitespace_communication_style_rejected(self) -> None:
-        """Reject whitespace-only communication_style."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            PersonalityConfig(communication_style="   ")
-
-    def test_empty_trait_rejected(self) -> None:
-        """Reject empty string in traits tuple."""
-        with pytest.raises(ValidationError, match="at least 1 character"):
-            PersonalityConfig(traits=("analytical", ""))
-
-    def test_whitespace_trait_rejected(self) -> None:
-        """Reject whitespace-only trait entry."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            PersonalityConfig(traits=("  ",))
-
-    def test_frozen(self) -> None:
-        """Ensure PersonalityConfig is immutable."""
-        p = PersonalityConfig()
-        with pytest.raises(ValidationError):
-            p.creativity = CreativityLevel.LOW  # type: ignore[misc]
-
-    def test_factory(self) -> None:
-        """Verify factory produces a valid PersonalityConfig."""
-        p = PersonalityConfigFactory.build()
-        assert isinstance(p, PersonalityConfig)
-
-    def test_big_five_defaults(self) -> None:
-        """All Big Five dimensions default to 0.5."""
-        p = PersonalityConfig()
-        assert p.openness == 0.5
-        assert p.conscientiousness == 0.5
-        assert p.extraversion == 0.5
-        assert p.agreeableness == 0.5
-        assert p.stress_response == 0.5
-
-    @pytest.mark.parametrize(
-        "dimension",
-        [
-            "openness",
-            "conscientiousness",
-            "extraversion",
-            "agreeableness",
-            "stress_response",
-        ],
-    )
-    def test_big_five_boundaries_accepted(self, dimension: str) -> None:
-        """0.0 and 1.0 are accepted for Big Five dimensions."""
-        p_low = PersonalityConfig(**{dimension: 0.0})  # type: ignore[arg-type]
-        assert getattr(p_low, dimension) == 0.0
-        p_high = PersonalityConfig(**{dimension: 1.0})  # type: ignore[arg-type]
-        assert getattr(p_high, dimension) == 1.0
-
-    @pytest.mark.parametrize(
-        "dimension",
-        [
-            "openness",
-            "conscientiousness",
-            "extraversion",
-            "agreeableness",
-            "stress_response",
-        ],
-    )
-    def test_big_five_below_zero_rejected(self, dimension: str) -> None:
-        """Values below 0.0 are rejected for Big Five dimensions."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(**{dimension: -0.1})  # type: ignore[arg-type]
-
-    @pytest.mark.parametrize(
-        "dimension",
-        [
-            "openness",
-            "conscientiousness",
-            "extraversion",
-            "agreeableness",
-            "stress_response",
-        ],
-    )
-    def test_big_five_above_one_rejected(self, dimension: str) -> None:
-        """Values above 1.0 are rejected for Big Five dimensions."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(**{dimension: 1.1})  # type: ignore[arg-type]
-
-    def test_extended_enum_defaults(self) -> None:
-        """Extended behavioral enums default to neutral values."""
-        p = PersonalityConfig()
-        assert p.decision_making is DecisionMakingStyle.CONSULTATIVE
-        assert p.collaboration is CollaborationPreference.TEAM
-        assert p.verbosity is CommunicationVerbosity.BALANCED
-        assert p.conflict_approach is ConflictApproach.COLLABORATE
-
-    def test_extended_enums_custom(self) -> None:
-        """Extended behavioral enums accept custom values."""
-        p = PersonalityConfig(
-            decision_making=DecisionMakingStyle.ANALYTICAL,
-            collaboration=CollaborationPreference.INDEPENDENT,
-            verbosity=CommunicationVerbosity.TERSE,
-            conflict_approach=ConflictApproach.COMPETE,
-        )
-        assert p.decision_making is DecisionMakingStyle.ANALYTICAL
-        assert p.collaboration is CollaborationPreference.INDEPENDENT
-        assert p.verbosity is CommunicationVerbosity.TERSE
-        assert p.conflict_approach is ConflictApproach.COMPETE
-
-    @pytest.mark.parametrize(
-        "dimension",
-        [
-            "openness",
-            "conscientiousness",
-            "extraversion",
-            "agreeableness",
-            "stress_response",
-        ],
-    )
-    def test_big_five_nan_rejected(self, dimension: str) -> None:
-        """NaN values are rejected for Big Five dimensions."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(**{dimension: float("nan")})  # type: ignore[arg-type]
-
-    def test_description_max_length_rejected(self) -> None:
-        """Reject description exceeding max_length."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(description="x" * 501)
-
-    def test_communication_style_max_length_rejected(self) -> None:
-        """Reject communication_style exceeding max_length."""
-        with pytest.raises(ValidationError):
-            PersonalityConfig(communication_style="x" * 101)
-
-    def test_backward_compatible_construction(self) -> None:
-        """Construction without new fields works identically to before."""
-        p = PersonalityConfig(
-            traits=("analytical",),
-            communication_style="concise",
-            risk_tolerance=RiskTolerance.LOW,
-            creativity=CreativityLevel.HIGH,
-            description="test",
-        )
-        assert p.openness == 0.5
-        assert p.decision_making is DecisionMakingStyle.CONSULTATIVE
-
 
 # ── SkillSet ───────────────────────────────────────────────────────
 
@@ -694,7 +510,6 @@ class TestAgentIdentity:
             hiring_date=date(2026, 1, 1),
         )
         assert agent.status is AgentStatus.ACTIVE
-        assert isinstance(agent.personality, PersonalityConfig)
         assert isinstance(agent.skills, SkillSet)
         assert isinstance(agent.memory, MemoryConfig)
         assert isinstance(agent.tools, ToolPermissions)
@@ -817,11 +632,6 @@ class TestAgentIdentity:
             name="Full Agent",
             role="Lead Dev",
             department="Engineering",
-            personality=PersonalityConfig(
-                traits=("analytical", "pragmatic"),
-                communication_style="direct",
-                risk_tolerance=RiskTolerance.HIGH,
-            ),
             skills=SkillSet(
                 primary=(
                     Skill(id="python", name="Python"),

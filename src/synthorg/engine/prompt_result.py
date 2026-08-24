@@ -18,7 +18,6 @@ from synthorg.core.task import Task
 from synthorg.engine._prompt_helpers import SECTION_ASK_POLICY as _SECTION_ASK_POLICY
 from synthorg.engine._prompt_helpers import SECTION_HOUSE_STYLE as _SECTION_HOUSE_STYLE
 from synthorg.engine._prompt_helpers import SECTION_STRATEGY as _SECTION_STRATEGY
-from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
 from synthorg.engine.errors import PromptBuildError
@@ -50,8 +49,6 @@ class SystemPrompt(BaseModel):
         sections: Names of sections included in the prompt.
         metadata: Agent identity metadata (agent_id, name, role,
             department, level, and optionally profile_capability).
-        personality_trim_info: Populated when personality section was
-            trimmed to fit the profile's token budget.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -69,10 +66,6 @@ class SystemPrompt(BaseModel):
     )
     metadata: dict[str, str] = Field(
         description="Agent identity metadata (string-only values; shallow-frozen)",
-    )
-    personality_trim_info: PersonalityTrimInfo | None = Field(
-        default=None,
-        description="Populated when personality section was trimmed",
     )
 
     @model_validator(mode="after")
@@ -98,7 +91,6 @@ def build_prompt_result(  # noqa: PLR0913
     custom_template: bool = False,
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
-    personality_trim_info: PersonalityTrimInfo | None = None,
     strategy_config: StrategyConfig | None = None,
     prompt_providers: PromptAmbientProviders,
 ) -> SystemPrompt:
@@ -106,8 +98,7 @@ def build_prompt_result(  # noqa: PLR0913
 
     Returns:
         The composed :class:`SystemPrompt` with sections, token
-        estimate, template version, and optional personality-trim
-        info populated.
+        estimate and template version populated.
     """
     from synthorg.engine.ask_policy.adapter import (  # noqa: PLC0415
         should_inject_ask_policy,
@@ -146,7 +137,6 @@ def build_prompt_result(  # noqa: PLR0913
         estimated_tokens=estimated,
         sections=sections,
         metadata=metadata,
-        personality_trim_info=personality_trim_info,
     )
 
 

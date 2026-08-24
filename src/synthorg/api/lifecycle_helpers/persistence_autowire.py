@@ -271,49 +271,6 @@ async def _wire_subworkflow_service(
         )
 
 
-async def _wire_personality_service(
-    app_state: AppState,
-    persistence: PersistenceBackend | None,
-) -> None:
-    """Wire ``PersonalityService`` once persistence is connected.
-
-    Wraps the same custom-preset repo the REST personalities controller
-    builds per request, so the synthorg_personalities_* MCP tools read the
-    identical builtin + custom preset surface instead of 503-ing.
-    """
-    if persistence is None or not getattr(persistence, "is_connected", False):
-        return
-    if app_state.slice(HrStateSlice).personality_service is not None or not hasattr(
-        persistence, "custom_presets"
-    ):
-        return
-    try:
-        from synthorg.hr.personalities.service import (  # noqa: PLC0415
-            PersonalityService,
-        )
-        from synthorg.templates.preset_service import (  # noqa: PLC0415
-            PersonalityPresetService,
-        )
-
-        app_state.wire(
-            HrStateSlice,
-            personality_service=PersonalityService(
-                presets=PersonalityPresetService(
-                    repository=persistence.custom_presets,
-                ),
-            ),
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="personality_service")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.error(
-            API_SERVICE_AUTO_WIRE_FAILED,
-            service="personality_service",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
 async def _wire_activity_feed_service(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -375,6 +332,5 @@ async def wire_persistence_services(
     await _wire_workflow_version_service(app_state, persistence)
     await _wire_agent_version_service(app_state, persistence)
     await _wire_subworkflow_service(app_state, persistence)
-    await _wire_personality_service(app_state, persistence)
     await _wire_activity_feed_service(app_state, persistence)
     await wire_persistence_facades(app_state)

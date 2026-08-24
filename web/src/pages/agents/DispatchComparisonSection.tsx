@@ -1,15 +1,15 @@
 /**
  * How each agent's own calls actually went, side by side.
  *
- * The comparison is only valid because an agent is a fixed
- * (role, personality, model) unit: while a turn could be re-dispatched onto
- * different horsepower under the same name, these rows would be averages
- * over runs that never belonged together.
+ * The comparison is only valid because an agent is a fixed (role, model)
+ * unit: while a turn could be re-dispatched onto different horsepower under
+ * the same name, these rows would be averages over runs that never belonged
+ * together.
  *
- * Rows are grouped by role and model so "the same model under two
- * personalities" and "the same personality on two models" both read off the
- * page, and a cell below the operator's sample floor says so rather than
- * showing a rate the sample cannot support.
+ * Rows are grouped by role and model so "two agents on the same model" and
+ * "the same role on two models" both read off the page, and a cell below the
+ * operator's sample floor says so rather than showing a rate the sample
+ * cannot support.
  */
 import { Users } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -29,16 +29,12 @@ function groupKey(row: DispatchProfile): string {
   return `${row.role} on ${row.provider_name} / ${row.model}`
 }
 
-function personality(row: DispatchProfile): string {
-  return `${row.risk_tolerance} risk, ${row.decision_making}, ${row.creativity} creativity`
-}
-
 function ProfileRow({ row }: { row: DispatchProfile }) {
   return (
     <tr className="border-b border-border last:border-0">
       <th scope="row" className="py-2 pr-4 text-left align-top font-normal">
         <div className="text-sm font-medium text-foreground">{row.agent_name}</div>
-        <div className="text-xs text-muted-foreground">{personality(row)}</div>
+        <div className="text-xs text-muted-foreground">{row.department}</div>
       </th>
       <td className="py-2 pr-4 align-top tabular-nums">
         {formatNumber(row.call_count)}

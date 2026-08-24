@@ -363,7 +363,7 @@ class HiringService:
                 )
                 raise InvalidCandidateError(msg)
 
-            # An agent is a fixed (role, personality, model) unit, so a hire
+            # An agent is a fixed (role, model) unit, so a hire
             # with no pair is not a hire. Refused HERE, before anything durable
             # is written, because the alternative is what a live run produced:
             # an approval an operator could see, could not approve (instantiation

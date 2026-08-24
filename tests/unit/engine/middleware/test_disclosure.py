@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.context import AgentContext
@@ -39,7 +39,6 @@ def _make_context(
         name="test-agent",
         role="developer",
         department="engineering",
-        personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )

@@ -34,7 +34,6 @@ from synthorg.api.state import AppState
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -60,9 +59,6 @@ def _identity() -> AgentIdentity:
         role="developer",
         department="engineering",
         model=ModelConfig(provider="test-provider", model_id="test-capable-001"),
-        personality=PersonalityConfig(
-            traits=("detail-oriented",), communication_style="formal"
-        ),
         skills=SkillSet(primary=(Skill(id="python", name="python"),), secondary=()),
         hiring_date=date(2026, 1, 1),
     )

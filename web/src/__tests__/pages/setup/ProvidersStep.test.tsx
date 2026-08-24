@@ -61,9 +61,6 @@ describe('ProvidersStep: providersWarning surface', () => {
     useSetupWizardStore.getState().reset()
     useToastStore.getState().dismissAll()
     server.use(
-      http.get('/api/v1/setup/personality-presets', () =>
-        HttpResponse.json(apiSuccess({ presets: [] })),
-      ),
       http.get('/api/v1/providers/presets', () =>
         HttpResponse.json(apiSuccess([localPreset('local-x')])),
       ),

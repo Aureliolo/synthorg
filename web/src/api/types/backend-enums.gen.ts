@@ -20,7 +20,6 @@ export const WS_EVENT_TYPE_VALUES = [
   "department.updated",
   "department.deleted",
   "departments.reordered",
-  "personality.trimmed",
   "budget.record_added",
   "budget.alert",
   "message.sent",

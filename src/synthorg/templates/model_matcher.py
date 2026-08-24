@@ -25,7 +25,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.core.url_locality import is_local_url
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
-    TEMPLATE_MODEL_MATCH_COERCED,
     TEMPLATE_MODEL_MATCH_FAILED,
     TEMPLATE_MODEL_MATCH_FALLBACK,
     TEMPLATE_MODEL_MATCH_SKIPPED,
@@ -346,12 +345,14 @@ def _resolve_agent_requirement(
     idx: int,
     model_requirement_cls: type[ModelRequirement],
     parse_fn: Callable[[str | dict[str, JsonValue]], ModelRequirement],
-    resolve_fn: Callable[[str | None, dict[str, JsonValue] | None], ModelRequirement],
 ) -> ModelRequirement | None:
     """Resolve a single agent's model requirement.
 
-    Checks ``model_requirement`` (object then dict) first; otherwise builds
-    a requirement from the agent's ``personality_preset`` affinity defaults.
+    Checks ``model_requirement`` (object then dict) first; otherwise falls
+    back to the empty requirement, which the capability matcher scores
+    against every configured model. Empty is built directly rather than
+    resolved: every field carries a default and the model_id/family
+    exclusion cannot fire on no fields, so there is nothing to fail.
 
     Returns:
         The resolved ``ModelRequirement``, or ``None`` if the agent
@@ -374,30 +375,7 @@ def _resolve_agent_requirement(
             )
             return None
 
-    raw_preset = agent.get("personality_preset")
-    if raw_preset is None or isinstance(raw_preset, str):
-        preset = raw_preset
-    else:
-        logger.warning(
-            TEMPLATE_MODEL_MATCH_COERCED,
-            agent_index=idx,
-            field="personality_preset",
-            coerced_to=None,
-            value_type=type(raw_preset).__name__,
-        )
-        preset = None
-    try:
-        return resolve_fn(preset, None)
-    except (ValidationError, ValueError) as exc:
-        logger.warning(
-            TEMPLATE_MODEL_MATCH_SKIPPED,
-            agent_index=idx,
-            preset=preset,
-            reason="invalid_requirement",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
+    return model_requirement_cls()
 
 
 def match_all_agents(
@@ -417,7 +395,7 @@ def match_all_agents(
     Args:
         agents: List of expanded agent config dicts. Requirement
             resolution checks ``model_requirement`` (object then dict),
-            then falls back to ``personality_preset`` affinity defaults.
+            then falls back to the empty requirement.
         providers: Provider name -> provider config mapping; each must
             expose a ``models`` tuple of ``ProviderModelConfig``.
         matcher_config: Operator-tunable score weights. ``None`` uses the
@@ -438,7 +416,6 @@ def match_all_agents(
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
         ModelRequirement,
         parse_model_requirement,
-        resolve_model_requirement,
     )
 
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
@@ -457,7 +434,6 @@ def match_all_agents(
             idx,
             ModelRequirement,
             parse_model_requirement,
-            resolve_model_requirement,
         )
         if req is None:
             continue

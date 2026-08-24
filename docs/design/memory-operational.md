@@ -67,8 +67,7 @@ class PersistenceBackend(Protocol):
     def messages(self) -> MessageRepository: ...
     # ... plus lifecycle_events, task_metrics,
     #     parked_contexts, audit_entries, users, api_keys, checkpoints,
-    #     heartbeats, agent_states, settings, artifacts, projects,
-    #     custom_presets
+    #     heartbeats, agent_states, settings, artifacts, projects
 ```
 
 Each entity type has its own repository protocol:
@@ -141,7 +140,6 @@ persistence:
 | `HandoffArtifact` | `engine/workflow/handoff.py` | (in-memory, per-execution frame) | Structured inter-stage handoff; `artifact_refs` resolve through `ArtifactRepository`. See [Verification & Quality: Verification Stage](verification-quality.md#verification-stage) |
 | `Project` | `core/project.py` | `ProjectRepository` | by status, by lead |
 | `DecisionRecord` | `engine/decisions.py` | `DecisionRepository` | by task_id (version ASC), by agent (role=executor or reviewer, recorded_at DESC) |
-| Custom preset | `templates/preset_service.py` | `PersonalityPresetRepository` | by name |
 
 ## Schema Strategy
 

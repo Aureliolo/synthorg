@@ -1,7 +1,6 @@
 # module-kind: declarative
 """Template schema: Pydantic models for company templates."""
 
-import copy
 from collections import Counter
 from typing import Literal, Self
 
@@ -168,8 +167,8 @@ class TemplateVariable(BaseModel):
 class TemplateAgentConfig(BaseModel):
     """Agent definition within a template.
 
-    Uses string references and presets rather than full ``AgentConfig``.
-    The renderer expands these into full agent configuration dicts.
+    Uses string references rather than full ``AgentConfig``. The renderer
+    expands these into full agent configuration dicts.
 
     Attributes:
         role: Built-in role name (case-insensitive match to role catalog).
@@ -180,9 +179,6 @@ class TemplateAgentConfig(BaseModel):
             ``priority`` / ``min_context`` / ``requires_*`` capability flags
             and an optional ``family`` / ``model_pattern``. Built-in
             templates use capability dicts so they resolve on any provider.
-        personality_preset: Named personality preset from the presets registry.
-        personality: Inline personality config dict (alternative to
-            ``personality_preset``).
         department: Department override (``None`` uses the template
             system default during rendering).
         strategic_output_mode: Strategic output mode override for this
@@ -234,14 +230,6 @@ class TemplateAgentConfig(BaseModel):
             raise ValueError(str(exc)) from exc
         return value
 
-    personality_preset: NotBlankStr | None = Field(
-        default=None,
-        description="Named personality preset",
-    )
-    personality: dict[str, JsonValue] | None = Field(
-        default=None,
-        description="Inline personality override (alternative to preset)",
-    )
     department: NotBlankStr | None = Field(
         default=None,
         description="Department override",
@@ -259,37 +247,6 @@ class TemplateAgentConfig(BaseModel):
         alias="_remove",
         description="Merge directive: remove matching parent agent",
     )
-
-    @model_validator(mode="after")
-    def _deep_copy_personality(self) -> Self:
-        """Deep-copy ``personality`` so the frozen model cannot be aliased.
-
-        Returns:
-            The instance with ``personality`` deep-copied (``None`` stays
-            ``None``).
-        """
-        object.__setattr__(self, "personality", copy.deepcopy(self.personality))
-        return self
-
-    @model_validator(mode="after")
-    def _validate_personality_mutual_exclusion(self) -> Self:
-        """Reject specifying both personality_preset and inline personality.
-
-        Returns:
-            The validated model instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When both ``personality_preset`` and
-                ``personality`` are set.
-        """
-        if self.personality_preset is not None and self.personality is not None:
-            msg = (
-                "Cannot specify both 'personality_preset' and 'personality'. "
-                "Use one or the other."
-            )
-            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
-            raise ValueError(msg)
-        return self
 
 
 class TemplateDepartmentConfig(BaseModel):

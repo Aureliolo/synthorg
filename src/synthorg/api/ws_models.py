@@ -73,8 +73,6 @@ class WsEventType(StrEnum):
     DEPARTMENT_DELETED = "department.deleted"
     DEPARTMENTS_REORDERED = "departments.reordered"
 
-    PERSONALITY_TRIMMED = "personality.trimmed"
-
     BUDGET_RECORD_ADDED = "budget.record_added"
     BUDGET_ALERT = "budget.alert"
 
