@@ -238,25 +238,16 @@ def _seed(conn: sqlite3.Connection) -> None:
                 _STAMP,
             ),
         )
-    ids = ("cp-with", "cp-without")
-    for row_id, (_, identity) in zip(ids, _SNAPSHOTS, strict=True):
+    suffixes = ("with", "without")
+    for suffix, (_, identity) in zip(suffixes, _SNAPSHOTS, strict=True):
+        stored = _context(identity)
         conn.execute(
             _INSERT_CHECKPOINT,
-            (row_id, "exec-1", "agent-1", "task-1", 2, _context(identity), _STAMP),
+            (f"cp-{suffix}", "exec-1", "agent-1", "task-1", 2, stored, _STAMP),
         )
-    ids = ("pc-with", "pc-without")
-    for row_id, (_, identity) in zip(ids, _SNAPSHOTS, strict=True):
         conn.execute(
             _INSERT_PARKED,
-            (
-                row_id,
-                "exec-1",
-                "agent-1",
-                "task-1",
-                "appr-1",
-                _STAMP,
-                _context(identity),
-            ),
+            (f"pc-{suffix}", "exec-1", "agent-1", "task-1", "appr-1", _STAMP, stored),
         )
     conn.commit()
 
