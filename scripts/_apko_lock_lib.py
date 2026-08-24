@@ -26,8 +26,15 @@ DOCKER_SUBDIR: Final[str] = "docker"
 YAML_SUFFIXES: Final[frozenset[str]] = frozenset({".yml", ".yaml"})
 LOCK_SUFFIX: Final[str] = ".lock.json"
 CHECKSUM_PREFIX: Final[str] = "sha256-"
+# Beside `Findings.exit_code`, which is the one place the verdict is decided.
+EXIT_OK: Final[int] = 0
+EXIT_VIOLATION: Final[int] = 1
+EXIT_CONFIG_ERROR: Final[int] = 2
 LOCKFILE_FLAG: Final[str] = "--lockfile"
-BUILD_MARKER: Final[str] = "apko build"
+# Any run of whitespace, because a literal single space would miss an
+# invocation written with a tab or two spaces, and a missed invocation is
+# checked by nothing rather than reported.
+BUILD_MARKER: Final[re.Pattern[str]] = re.compile(r"\bapko\s+build\b")
 # The composite action every locked base image is built through. Its callers
 # name their config in `with: apko-yaml:`, which is the only place the tree
 # says which images are supposed to carry a lock.
@@ -66,6 +73,20 @@ class Findings:
     errors: list[str] = field(default_factory=list)
     invocations: int = 0
     checked_preflight: bool = False
+
+    def exit_code(self) -> int:
+        """Return the verdict, with errors outranking violations.
+
+        Both lists can be non-empty in one run, so which wins is a real
+        decision and it lives here rather than in the order of two branches
+        somewhere else: a scan that could not look must never be reported as a
+        tree that is merely wrong.
+        """
+        if self.errors:
+            return EXIT_CONFIG_ERROR
+        if self.violations:
+            return EXIT_VIOLATION
+        return EXIT_OK
 
 
 def digest(data: bytes) -> str:
@@ -149,7 +170,7 @@ def split_build_commands(text: str) -> list[tuple[int, str]]:
     index = 0
     while index < len(lines):
         stripped = lines[index].strip()
-        if stripped.startswith("#") or BUILD_MARKER not in stripped:
+        if stripped.startswith("#") or not BUILD_MARKER.search(stripped):
             index += 1
             continue
         start_line = index + 1
@@ -164,7 +185,7 @@ def split_build_commands(text: str) -> list[tuple[int, str]]:
         found.extend(
             (start_line, segment)
             for segment in _separate(" ".join(parts))
-            if BUILD_MARKER in segment
+            if BUILD_MARKER.search(segment)
         )
     return found
 
@@ -194,16 +215,25 @@ def tokenise(command: str) -> list[str] | None:
         return None
 
 
-def config_argument(tokens: Sequence[str]) -> str | None:
-    """Return the apko config a build invocation names, if any.
+def config_arguments(tokens: Sequence[str]) -> list[str]:
+    """Return every token a build invocation could be naming its config with.
 
     A token carrying a shell expansion counts, because the whole point is to
     tell a run-time-resolved config apart from an absent one: the omission this
     gate exists for lived behind exactly such a token.
 
-    Flags and the value of ``--lockfile`` are skipped so a lock path is never
-    mistaken for the config it locks.
+    Every candidate is returned rather than the first, because which one is
+    the config cannot be decided without knowing which flags take a value, and
+    that knowledge is one apko release out of date the moment it is written
+    down. ``--sbom-path "${SBOM_DIR}"`` is the shape that makes this concrete:
+    its value carries a ``$``, so a first-match rule reads it as the config and
+    then judges the wrong file. The caller weighs the candidates together and
+    fails closed, so a decoy can add a verdict but never hide one.
+
+    ``--lockfile``'s value is still skipped outright, since a lock path is
+    never the config it locks.
     """
+    candidates: list[str] = []
     skip_next = False
     for token in tokens:
         if skip_next:
@@ -215,8 +245,8 @@ def config_argument(tokens: Sequence[str]) -> str | None:
         if token.startswith("-"):
             continue
         if Path(token).suffix in YAML_SUFFIXES or "$" in token:
-            return token
-    return None
+            candidates.append(token)
+    return candidates
 
 
 def lockfile_argument(tokens: Sequence[str]) -> str | None:

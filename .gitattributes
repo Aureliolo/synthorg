@@ -38,8 +38,8 @@ src/synthorg/persistence/postgres/schema.sql text eol=lf
 # therefore stops every build on an LF one, which is every CI runner. This pin
 # is what keeps the two byte-identical; scripts/check_apko_lock_applied.py
 # catches a disagreement before the push rather than at build time.
-docker/*/apko.yaml text eol=lf
-docker/*/apko.lock.json text eol=lf
+docker/**/apko.yaml text eol=lf
+docker/**/apko.lock.json text eol=lf
 
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf

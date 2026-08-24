@@ -2,7 +2,7 @@
 """Pre-push gate: the apko lockfiles pin what actually gets built.
 
 ``docker/*/apko.lock.json`` records an exact apk URL per package, and a weekly
-cron reconciles it. A lock binds a build only when four things hold, and each
+cron reconciles it. A lock binds a build only when five things hold, and each
 is checked here.
 
 * ``apko build`` is handed ``--lockfile``, and the path it names exists. The
@@ -24,6 +24,9 @@ is checked here.
   preflight. Wolfi resolves an unversioned alias through ``provides`` to
   whichever series it serves that week, so a bare name reads like a pin while
   tracking a moving target, and the lock records only what the alias reached.
+* Every workflow pins one ``APKO_VERSION``. One workflow mints the locks and
+  others consume them, and the pins are separate literals in separate files
+  held together only by Renovate's grouping, which no check enforced.
 
 Scope is derived, never listed. A build whose config has no sibling lock and
 which no workflow declares as locked has nothing to apply and is exempt; a
@@ -59,6 +62,8 @@ if __package__ in {None, ""}:
         APKO_VERSION_RE,
         BINARY_RECORD,
         DOCKER_SUBDIR,
+        EXIT_CONFIG_ERROR,
+        EXIT_VIOLATION,
         LOCK_SUFFIX,
         LOCKED_BUILD_ACTION,
         LOCKFILE_FLAG,
@@ -66,7 +71,7 @@ if __package__ in {None, ""}:
         Findings,
         alias_candidates,
         bare_name,
-        config_argument,
+        config_arguments,
         contained,
         declared_build_configs,
         declared_specs,
@@ -89,6 +94,8 @@ else:
         APKO_VERSION_RE,
         BINARY_RECORD,
         DOCKER_SUBDIR,
+        EXIT_CONFIG_ERROR,
+        EXIT_VIOLATION,
         LOCK_SUFFIX,
         LOCKED_BUILD_ACTION,
         LOCKFILE_FLAG,
@@ -96,7 +103,7 @@ else:
         Findings,
         alias_candidates,
         bare_name,
-        config_argument,
+        config_arguments,
         contained,
         declared_build_configs,
         declared_specs,
@@ -119,32 +126,43 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _PREFLIGHT_MODULE: Final[str] = "src/synthorg/api/lifecycle_helpers/binary_preflight.py"
 _PREFLIGHT_MANIFEST: Final[str] = "docker/backend/apko.yaml"
 
-_EXIT_OK: Final[int] = 0
-_EXIT_VIOLATION: Final[int] = 1
-_EXIT_CONFIG_ERROR: Final[int] = 2
 
+def _unlocked_reason(root: Path, location: str, configs: Sequence[str]) -> str | None:
+    """Return why an invocation without ``--lockfile`` is wrong, else ``None``.
 
-def _unlocked_reason(root: Path, location: str, config: str | None) -> str | None:
-    """Return why an invocation without ``--lockfile`` is wrong, else ``None``."""
-    if config is None:
+    Weighed across every candidate rather than one chosen token, because which
+    token is the config cannot be decided without knowing which flags take a
+    value, and that knowledge is one apko release out of date the moment it is
+    written down.
+
+    Concrete candidates settle it first, and only their absence falls through
+    to the parameterised rule. That order is load-bearing in both directions: a
+    decoy naming a locked manifest still produces a verdict, while an image
+    reference carrying a ``${TAG}`` no longer reads as a run-time config and
+    condemns a build whose real config sits right beside it, already judged.
+    """
+    if not configs:
         return (
             f"{location}: `apko build` names no config file, so whether a lock "
             f"applies cannot be decided. Name the config, and pass "
             f"`{LOCKFILE_FLAG}` with it."
         )
-    if "$" in config:
-        return (
-            f"{location}: `apko build {config}` resolves its config at run "
-            f"time, so whether a lock exists cannot be decided here. Pass "
-            f"`{LOCKFILE_FLAG}` derived from the same value."
-        )
-    lock = sibling_lock(root / config)
-    if not lock.is_file():
+    concrete = [config for config in configs if "$" not in config]
+    if concrete:
+        for config in concrete:
+            lock = sibling_lock(root / config)
+            if lock.is_file():
+                return (
+                    f"{location}: `apko build {config}` does not pass "
+                    f"`{LOCKFILE_FLAG} {rel(root, lock)}`, so the committed "
+                    f"digests constrain nothing and the build re-resolves "
+                    f"against the mirror."
+                )
         return None
     return (
-        f"{location}: `apko build {config}` does not pass "
-        f"`{LOCKFILE_FLAG} {rel(root, lock)}`, so the committed digests "
-        f"constrain nothing and the build re-resolves against the mirror."
+        f"{location}: `apko build {configs[0]}` resolves its config at run "
+        f"time, so whether a lock exists cannot be decided here. Pass "
+        f"`{LOCKFILE_FLAG}` derived from the same value."
     )
 
 
@@ -196,7 +214,7 @@ def _check_build_invocations(
             if value is not None:
                 _check_lockfile_value(root, location, value, findings)
                 continue
-            reason = _unlocked_reason(root, location, config_argument(tokens))
+            reason = _unlocked_reason(root, location, config_arguments(tokens))
             if reason is not None:
                 findings.violations.append(reason)
 
@@ -416,6 +434,16 @@ def _selected(
                 # A manifest edit is judged through its own lock, which is
                 # where both the checksum and the alias evidence live.
                 locks.append(sibling_lock(path))
+            else:
+                # Whether this manifest is legitimately unlocked or simply
+                # never locked is decided by what the workflows declare, and
+                # reading those is a whole-tree question. Dropping it silently
+                # is what would let a brand-new manifest exit 0 here.
+                findings.errors.append(
+                    f"{rel(root, path)}: has no sibling lock, and whether it "
+                    f"needs one is decided by the workflow declarations a "
+                    f"whole-tree run reads. Run the gate without `--files`."
+                )
             if rel(root, path) == _PREFLIGHT_MANIFEST:
                 preflight = True
     return workflows, locks, preflight
@@ -439,7 +467,7 @@ def _blind_scan_message(root: Path, findings: Findings, locks: int) -> str | Non
         )
     if not findings.checked_preflight:
         return (
-            "the boot-preflight check did not complete, so one of the four "
+            "the boot-preflight check did not complete, so one of the five "
             "guarantees went unverified."
         )
     return None
@@ -508,15 +536,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if blind is not None:
             findings.errors.append(blind)
 
-    if findings.errors:
+    verdict: int = findings.exit_code()
+    if verdict == EXIT_CONFIG_ERROR:
         for error in findings.errors:
             print(f"check_apko_lock_applied: {error}", file=sys.stderr)
-        return _EXIT_CONFIG_ERROR
-
-    if findings.violations:
+    elif verdict == EXIT_VIOLATION:
         _report(findings)
-        return _EXIT_VIOLATION
-    return _EXIT_OK
+    return verdict
 
 
 if __name__ == "__main__":

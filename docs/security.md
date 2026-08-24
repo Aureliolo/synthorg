@@ -311,11 +311,14 @@ shell, no package manager, minimal attack surface. The build uses a 2-stage Dock
 
 Base images are declared in `docker/*/apko.yaml` with package specs naming the
 series (e.g. `python-3.14`). Exact patch versions are resolved and pinned by
-`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/maint-apko-lock.yml`,
-and every `apko build` is handed `--lockfile` so that record constrains the
-build rather than merely describing it (enforced by
-`scripts/check_apko_lock_applied.py`; see
+a sibling `apko.lock.json`, refreshed weekly by
+`.github/workflows/maint-apko-lock.yml`, and every `apko build` that has one is
+handed `--lockfile` so that record constrains the build rather than merely
+describing it (enforced by `scripts/check_apko_lock_applied.py`; see
 [How a lockfile binds a build](design/deployment.md#how-a-lockfile-binds-a-build)).
+`docker/web/apko.yaml` is the one deliberate exception: it depends on a melange
+package built during the workflow run, so it has no upstream to lock against
+and no lock to apply.
 The lock decides *which* versions install; package integrity is Wolfi's signed
 `APKINDEX`, which apk verifies whether or not a lock is in play.
 
@@ -439,7 +442,7 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 ### Artifact Provenance
 
 - All base images **pinned by SHA-256 digest** (no mutable tags)
-- **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/maint-apko-lock.yml`, and applied at build time via `--lockfile` so the recorded versions are the ones installed (gated by `check_apko_lock_applied.py`)
+- **apko lockfiles** (`docker/*/apko.lock.json`, every base manifest except the deliberately unlocked `docker/web/apko.yaml`) reconciled weekly by `.github/workflows/maint-apko-lock.yml`, and applied at build time via `--lockfile` so the recorded versions are the ones installed (gated by `check_apko_lock_applied.py`)
 - **Renovate** auto-updates base-image digests weekly (Saturday mornings) for every Dockerfile (backend, sandbox, sidecar, fine-tune, desktop); the `dockerfile` manager plus `docker:pinDigests` scans them all
 - **cosign keyless signing** on every pushed image (Sigstore OIDC-bound)
 - **Buildx SPDX SBOMs** (SLSA L1) auto-generated and pushed to GHCR as registry attestations (inspect via `docker buildx imagetools inspect`). Standalone CycloneDX JSON SBOMs are generated separately by Syft. See [Software Bill of Materials](#software-bill-of-materials-sbom) below.

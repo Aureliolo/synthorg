@@ -333,6 +333,104 @@ jobs:
           body: 'Every pinned package is on the newest series Wolfi publishes.'
           gh-token: ${{ github.token }}
 
+  # Its own sink rather than a second `needs` on report-failure: that job's
+  # body sends the reader to the `apko lock` step's candidate causes, none of
+  # which explain a drift scan that could not read the index. A scheduled run
+  # going red with no issue opened is the outcome the rest of this workflow
+  # exists to avoid, so the coverage has to name the right failure.
+  report-drift-scan-failure:
+    name: Open / update tracking issue on a drift scan that could not run
+    needs: report-series-drift
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.report-series-drift.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<DRIFT_SCAN_ISSUE_BODY_EOF'
+            cat <<EOF
+          The apko series-drift scan exited 2 at $(date -u +%Y-%m-%dT%H:%M:%SZ),
+          meaning it could not be trusted rather than that it found drift.
+
+          Run: ${RUN_URL}
+
+          \`scripts/report_apko_series_drift.py\` returns 2 for exactly three
+          reasons, and its stderr names which:
+          - The Wolfi \`APKINDEX\` could not be fetched or would not unpack
+            (a mirror blip; normally clears on a re-run).
+          - No Wolfi-backed manifest pins a series any more, so the scan found
+            nothing to watch. A manifest rename or a repository-URL change does
+            this, and it means the watcher is blind rather than satisfied.
+          - A \`docker/*/apko.yaml\` would not parse.
+
+          While this is red nothing is watching for a superseded package series,
+          which no other check in the pipeline can see.
+          EOF
+            echo 'DRIFT_SCAN_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'apko series-drift scan could not run'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-drift-scan-stalled:
+    name: Open / update tracking issue on a drift scan that never finished
+    needs: report-series-drift
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.report-series-drift.result != 'success'
+      && needs.report-series-drift.result != 'failure'
+      && needs.report-series-drift.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'apko series-drift scan not completing'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          subject: 'The weekly apko series-drift scan'
+          not-measured: 'no package pin was compared against the upstream index'
+          guidance: >-
+            There is no failing step to read: check the run's step timings
+            against the job's 10-minute budget instead. A stalled APKINDEX
+            download and a hung scan look the same here. While this persists
+            nothing is watching for a superseded package series, which no
+            other check in the pipeline can see.
+          result: ${{ needs.report-series-drift.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          gh-token: ${{ github.token }}
+
   report-failure:
     name: Open / update tracking issue on schedule failure
     needs: update-lockfiles

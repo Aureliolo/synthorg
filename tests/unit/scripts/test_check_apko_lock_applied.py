@@ -337,6 +337,48 @@ class TestUnlockedBuilds:
 
         assert main(["--repo-root", str(tmp_path)]) == 0
 
+    def test_an_expanded_image_tag_beside_a_concrete_config_is_not_the_config(
+        self, tmp_path: Path
+    ) -> None:
+        """A `${TAG}` in the image reference must not read as a run-time config."""
+        _tree(tmp_path)
+        _write(tmp_path / _DOCKER / "web" / "apko.yaml", _MANIFEST)
+        _write(
+            tmp_path / ".github" / "workflows" / "web.yml",
+            "jobs:\n  web:\n    steps:\n      - run: |\n"
+            '          apko build docker/web/apko.yaml "web:${TAG}" web.tar\n',
+        )
+
+        assert main(["--repo-root", str(tmp_path)]) == 0
+
+    def test_a_decoy_flag_value_cannot_hide_a_locked_config(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Another flag's value looking like a config must not end the search."""
+        _tree(tmp_path)
+        _write(tmp_path / _DOCKER / "web" / "apko.yaml", _MANIFEST)
+        _write(
+            tmp_path / ".github" / "workflows" / "decoy.yml",
+            "jobs:\n  base:\n    steps:\n      - run: |\n"
+            "          apko build --overlay docker/web/apko.yaml "
+            "docker/demo/apko.yaml demo:tag demo.tar\n",
+        )
+
+        assert main(["--repo-root", str(tmp_path)]) == 1
+        assert "docker/demo/apko.yaml` does not pass" in capsys.readouterr().err
+
+    def test_a_tab_separated_invocation_is_still_seen(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A missed invocation is checked by nothing rather than reported."""
+        _tree(
+            tmp_path,
+            workflow=_UNLOCKED_LITERAL_BUILD.replace("apko build", "apko\tbuild"),
+        )
+
+        assert main(["--repo-root", str(tmp_path)]) == 1
+        assert "does not pass" in capsys.readouterr().err
+
 
 class TestLockfileValue:
     """Passing the flag is not the same as the lock being there."""
@@ -420,9 +462,8 @@ class TestChecksumParity:
             checksum=_digest(b"a different manifest"),
         )
 
-        captured = capsys.readouterr
         assert main(["--repo-root", str(tmp_path)]) == 1
-        assert "through `provides`" not in captured().err
+        assert "through `provides`" not in capsys.readouterr().err
 
     def test_a_lock_naming_a_missing_manifest_is_refused(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -433,9 +474,11 @@ class TestChecksumParity:
         assert main(["--repo-root", str(tmp_path)]) == 1
         assert "belongs to no manifest" in capsys.readouterr().err
 
-    @pytest.mark.parametrize(
-        "escape", ["../../outside.yaml", "/etc/passwd", "C:/Windows/system.ini"]
-    )
+    # A drive-letter path is deliberately absent: POSIX has no drive letters,
+    # so `C:/Windows/system.ini` is an ordinary relative name there and stays
+    # inside the root, which is a different verdict rather than a weaker one.
+    # These two escape on every platform the tree runs on.
+    @pytest.mark.parametrize("escape", ["../../outside.yaml", "/etc/passwd"])
     def test_a_lock_naming_a_path_outside_the_repo_is_refused(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], escape: str
     ) -> None:
@@ -695,6 +738,17 @@ class TestSelectedFiles:
 
         assert main(["--repo-root", str(tmp_path), "--files", str(lock)]) == 2
         assert "named but absent" in capsys.readouterr().err
+
+    def test_a_named_manifest_with_no_lock_exits_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Whether an unlocked manifest is deliberate is a whole-tree question."""
+        _tree(tmp_path)
+        fresh = tmp_path / _DOCKER / "fresh" / "apko.yaml"
+        _write(fresh, _MANIFEST)
+
+        assert main(["--repo-root", str(tmp_path), "--files", str(fresh)]) == 2
+        assert "has no sibling lock" in capsys.readouterr().err
 
     def test_a_file_run_matching_nothing_is_not_a_blind_scan(
         self, tmp_path: Path

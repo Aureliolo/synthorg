@@ -156,7 +156,7 @@ def _index_names(arch: str, findings: Findings) -> frozenset[str]:
     """Return every package name the Wolfi index for ``arch`` publishes."""
     url = _INDEX_URL.format(arch=arch)
     try:
-        with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 -- URL is the https Wolfi constant above, not caller input
+        with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310 -- scheme and host come from the https Wolfi constant above; only the arch path segment is caller-supplied
             raw = response.read(_MAX_INDEX_BYTES + 1)
     except (urllib.error.URLError, OSError) as exc:
         findings.errors.append(f"{url}: could not be fetched ({exc})")
