@@ -905,15 +905,6 @@ CREATE TABLE project_cost_aggregates (
     last_updated TIMESTAMPTZ NOT NULL
 );
 
--- ── Custom personality presets (user-defined) ────────────────
-CREATE TABLE custom_presets (
-    name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(name) > 0),
-    config_json JSONB NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
 CREATE TABLE workflow_definitions (
     id TEXT PRIMARY KEY NOT NULL CHECK (LENGTH(id) > 0),
     name TEXT NOT NULL CHECK (LENGTH(name) > 0),

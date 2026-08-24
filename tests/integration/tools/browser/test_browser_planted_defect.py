@@ -23,7 +23,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
 )
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
@@ -219,7 +218,6 @@ def _make_identity() -> AgentIdentity:
         role="QA Engineer",
         department="Engineering",
         hiring_date=date(2026, 1, 15),
-        personality=PersonalityConfig(traits=("methodical",)),
         model=ModelConfig(provider=_TEST_PROVIDER, model_id=_TEST_MODEL),
     )
 

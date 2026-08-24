@@ -11,7 +11,7 @@ class _PackAgent(TypedDict):
     """The agent keys this pack's assertions navigate."""
 
     role: str
-    personality_preset: str
+    model: dict[str, object]
 
 
 class _PackTemplate(TypedDict):
@@ -54,12 +54,14 @@ class TestVerifierHarnessPack:
         roles = {a["role"] for a in data["template"]["agents"]}
         assert roles == {"Planner", "Generator", "Evaluator"}
 
-    def test_evaluator_and_generator_have_different_presets(self) -> None:
+    def test_evaluator_outranks_the_generator_it_judges(self) -> None:
+        """The judge is bound to a reasoning model; the generator need not be."""
         data = _load_pack()
         agents = data["template"]["agents"]
         evaluator = next(a for a in agents if a["role"] == "Evaluator")
         generator = next(a for a in agents if a["role"] == "Generator")
-        assert evaluator["personality_preset"] != generator["personality_preset"]
+        assert evaluator["model"]["requires_reasoning"] is True
+        assert "requires_reasoning" not in generator["model"]
 
     def test_has_verification_tag(self) -> None:
         data = _load_pack()
@@ -71,23 +73,13 @@ class TestVerifierHarnessPack:
         assert data["template"]["min_agents"] == 3
         assert data["template"]["max_agents"] == 3
 
-    def test_evaluator_uses_quality_guardian_preset(self) -> None:
-        data = _load_pack()
-        agents = data["template"]["agents"]
-        evaluator = next(a for a in agents if a["role"] == "Evaluator")
-        assert evaluator["personality_preset"] == "quality_guardian"
-
     def test_harness_contract_fields(self) -> None:
         data = _load_pack()
         assert data["template"]["workflow"] == "sequential_pipeline"
         assert data["template"]["communication"] == "structured"
 
-    def test_all_presets_are_valid(self) -> None:
-        from synthorg.templates.presets import PERSONALITY_PRESETS
-
+    def test_every_agent_states_its_model(self) -> None:
+        """Each agent is a bound unit, so each names its own requirement."""
         data = _load_pack()
         for agent in data["template"]["agents"]:
-            preset = agent["personality_preset"]
-            assert preset in PERSONALITY_PRESETS, (
-                f"Agent {agent['role']!r} uses unknown preset {preset!r}"
-            )
+            assert agent["model"], f"Agent {agent['role']!r} states no model"

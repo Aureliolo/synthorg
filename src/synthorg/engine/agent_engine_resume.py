@@ -250,9 +250,7 @@ class AgentEngineResumeMixin:
         focused on context restoration + decision injection. The
         system prompt is rebuilt (not restored) because it is
         deterministic from identity/task and the original is already
-        present verbatim in the restored conversation; rebuilding here
-        avoids re-firing the personality-trim notification a fresh
-        ``_prepare_context`` would.
+        present verbatim in the restored conversation.
 
         Returns:
             ``(tool_invoker, system_prompt)``: the per-resume invoker

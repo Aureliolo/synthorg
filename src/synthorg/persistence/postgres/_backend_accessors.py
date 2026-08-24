@@ -189,7 +189,6 @@ from synthorg.persistence.postgres.webhook_receipt_repo import (
     PostgresWebhookReceiptRepository,
 )
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
-from synthorg.persistence.preset_protocol import PersonalityPresetRepository
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
@@ -286,7 +285,6 @@ class _PostgresBackendRepositoryAccessors:
     _heartbeats: HeartbeatRepository | None
     _agent_states: AgentStateRepository | None
     _settings: SettingsRepository | None
-    _custom_presets: PersonalityPresetRepository | None
     _workflow_definitions: WorkflowDefinitionRepository | None
     _workflow_executions: WorkflowExecutionRepository | None
     _subworkflows: SubworkflowRepository | None
@@ -582,11 +580,6 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._knowledge_provenance, "knowledge_provenance"
         )
-
-    @property
-    def custom_presets(self) -> PersonalityPresetRepository:
-        """Repository for custom personality preset persistence."""
-        return self._require_connected(self._custom_presets, "custom_presets")
 
     @property
     def workflow_definitions(self) -> WorkflowDefinitionRepository:

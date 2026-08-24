@@ -162,7 +162,7 @@ export function useAgentDetailData(agentId: string): UseAgentDetailDataReturn {
     [slice.performance],
   )
   const insights = useMemo(
-    () => (slice.agent ? generateInsights(slice.agent, slice.performance) : []),
+    () => (slice.agent ? generateInsights(slice.performance) : []),
     [slice.agent, slice.performance],
   )
 

@@ -46,22 +46,6 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   role: fc.constantFrom('Engineer', 'Designer', 'Analyst', 'Manager', 'SRE'),
   department: arbDepartment,
   status: arbStatus,
-  personality: fc.constant({
-    traits: ['analytical'],
-    communication_style: 'direct',
-    risk_tolerance: 'medium' as const,
-    creativity: 'high' as const,
-    description: 'test',
-    openness: 0.5,
-    conscientiousness: 0.5,
-    extraversion: 0.5,
-    agreeableness: 0.5,
-    stress_response: 0.5,
-    decision_making: 'analytical' as const,
-    collaboration: 'team' as const,
-    verbosity: 'balanced' as const,
-    conflict_approach: 'collaborate' as const,
-  }),
   model: fc.constant({
     provider: 'test-provider',
     model_id: 'test-expert-001',
@@ -73,7 +57,6 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   authority: fc.constant({}),
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),
   strategic_output_mode: fc.constant(null),
-  personality_preset: fc.constant(null),
   capability: fc.constant(null),
   model_requirement: fc.constant(null),
   model_capabilities: fc.option(
@@ -109,9 +92,9 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   // as active, without emitting an explicit ``undefined`` (rejected under
   // exactOptionalPropertyTypes).
   requiredKeys: [
-    'id', 'name', 'role', 'department', 'personality', 'model',
+    'id', 'name', 'role', 'department', 'model',
     'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
-    'personality_preset', 'capability', 'model_requirement', 'model_capabilities',
+    'capability', 'model_requirement', 'model_capabilities',
     'model_capability_status', 'hiring_date',
   ],
 }).map((agent) => ({
@@ -351,26 +334,21 @@ describe('computePerformanceCards properties', () => {
 describe('generateInsights properties', () => {
   it('returns at most 3 insights', () => {
     fc.assert(
-      fc.property(arbAgent, arbPerformance, (agent, perf) => {
-        const insights = generateInsights(agent, perf)
+      fc.property(arbPerformance, (perf) => {
+        const insights = generateInsights(perf)
         expect(insights.length).toBeLessThanOrEqual(3)
       }),
     )
   })
 
   it('returns empty array for null performance', () => {
-    fc.assert(
-      fc.property(arbAgent, (agent) => {
-        const insights = generateInsights(agent, null)
-        expect(insights).toHaveLength(0)
-      }),
-    )
+    expect(generateInsights(null)).toHaveLength(0)
   })
 
   it('all insights are non-empty strings', () => {
     fc.assert(
-      fc.property(arbAgent, arbPerformance, (agent, perf) => {
-        const insights = generateInsights(agent, perf)
+      fc.property(arbPerformance, (perf) => {
+        const insights = generateInsights(perf)
         for (const insight of insights) {
           expect(typeof insight).toBe('string')
           expect(insight.length).toBeGreaterThan(0)

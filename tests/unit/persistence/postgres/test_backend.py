@@ -351,7 +351,6 @@ class TestRepositoryPropertiesRaiseWhenDisconnected:
             "settings",
             "artifacts",
             "projects",
-            "custom_presets",
             "workflow_definitions",
             "workflow_executions",
             "workflow_versions",

@@ -8,8 +8,6 @@ Extracted from ``renderer.py`` to keep file sizes under 800 lines.
 from collections.abc import Mapping
 from typing import Final, Protocol
 
-from pydantic import JsonValue
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
@@ -33,7 +31,6 @@ class _RenderToDictFn(Protocol):
         *,
         locales: list[str] | None = ...,
         _chain: frozenset[str] = ...,
-        custom_presets: Mapping[str, dict[str, JsonValue]] | None = ...,
         _as_parent: bool = ...,
     ) -> dict[str, object]: ...
 
@@ -89,7 +86,6 @@ def render_parent_config(
     vars_dict: dict[str, object],
     _chain: frozenset[str],
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     render_to_dict_fn: _RenderToDictFn,
 ) -> dict[str, object]:
     """Load and render a parent template, returning its config dict.
@@ -105,7 +101,6 @@ def render_parent_config(
         vars_dict: Child's resolved variables.
         _chain: Already-visited parent names for circular detection.
         locales: Faker locale codes for auto-name generation.
-        custom_presets: Optional custom preset mapping.
         render_to_dict_fn: Callback to ``_render_to_dict``.
 
     Returns:
@@ -128,7 +123,6 @@ def render_parent_config(
         parent_vars,
         locales=locales,
         _chain=_chain | {parent_name},
-        custom_presets=custom_presets,
         _as_parent=True,
     )
 

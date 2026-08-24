@@ -187,7 +187,6 @@ ENFORCED ConnectionService #2535 -- constructed in integrations/_construction.py
 ENFORCED WebhookService #2535 -- constructed in api/lifecycle_runner_support.py::_wire_webhook_request_services over an in-process definition store; backs the synthorg_webhooks_* MCP tools
 ENFORCED CoordinationService #2535 -- constructed in coordination/_construction.py::wire_construction over the coordination metrics store; backs the synthorg_coordination_* MCP read tools
 ENFORCED AgentHealthService #2535 -- constructed in hr/_construction.py::wire_construction over the performance tracker; backs the synthorg_agents_get_health MCP tool
-ENFORCED PersonalityService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_personality_service over the custom-preset repo; backs the synthorg_personalities_* MCP tools
 ENFORCED ActivityFeedService #2535 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_activity_feed_service over the lifecycle-event repo + performance tracker; backs the synthorg_agents_get_activity + synthorg_activities_list MCP tools
 ENFORCED CompanyReadService #2535 -- constructed in api/lifecycle_helpers/organization_wiring.py::_wire_company_read_service over the config resolver + org-mutation service + company version repo; backs the synthorg_company_* MCP tools
 ENFORCED RoleVersionService #2535 -- constructed in api/lifecycle_helpers/organization_wiring.py::_wire_role_version_service over the role version repo; backs the synthorg_role_versions_* MCP tools

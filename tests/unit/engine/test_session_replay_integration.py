@@ -46,7 +46,7 @@ class TestBrainFailureRecovery:
 
     async def test_recovery_after_simulated_crash(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Simulate: agent runs 3 turns, crashes, replays from events."""
@@ -66,7 +66,7 @@ class TestBrainFailureRecovery:
                 event_name=EXECUTION_CONTEXT_CREATED,
                 timestamp=_ts(1),
                 execution_id=exec_id,
-                data={"agent_id": str(sample_agent_with_personality.id)},
+                data={"agent_id": str(sample_agent.id)},
             )
         )
         for turn in range(1, 4):
@@ -92,7 +92,7 @@ class TestBrainFailureRecovery:
         result = await Session.replay(
             execution_id=exec_id,
             event_reader=store,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -101,12 +101,12 @@ class TestBrainFailureRecovery:
         assert result.context.accumulated_cost.cost == pytest.approx(0.06)
         assert result.replay_completeness >= 0.85
         assert result.events_processed == 6
-        assert result.context.identity is sample_agent_with_personality
+        assert result.context.identity is sample_agent
         assert result.context.task_execution is not None
 
     async def test_recovery_with_partial_events(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Crash after 1 turn, only turn event survived."""
         exec_id = "exec-crash-sim-002"
@@ -124,7 +124,7 @@ class TestBrainFailureRecovery:
         result = await Session.replay(
             execution_id=exec_id,
             event_reader=store,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
 
         assert result.context.turn_count == 1
@@ -134,7 +134,7 @@ class TestBrainFailureRecovery:
 
     async def test_recovery_unknown_execution_returns_fresh(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Unknown execution ID returns fresh context."""
         store = InMemoryEventReader()
@@ -142,7 +142,7 @@ class TestBrainFailureRecovery:
         result = await Session.replay(
             execution_id="nonexistent",
             event_reader=store,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
 
         assert result.context.turn_count == 0

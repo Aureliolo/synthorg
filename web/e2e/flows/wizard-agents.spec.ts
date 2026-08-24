@@ -52,7 +52,6 @@ const AGENT: SetupAgentSummary = {
   department: 'Engineering',
   model_provider: null,
   model_id: null,
-  personality_preset: null,
   capability: 'capable',
 }
 
@@ -105,13 +104,10 @@ test.describe('Setup wizard agents step', () => {
         json: { success: false, data: null, error: 'Not authenticated', error_detail: null },
       }),
     )
-    // The Agents step re-fetches its roster on mount and loads the
-    // personality presets; both back the card render under test.
+    // The Agents step re-fetches its roster on mount; it backs the card
+    // render under test.
     await page.route(/\/api\/v1\/setup\/agents(\?.*)?$/, (route) =>
       route.fulfill({ json: page1([AGENT]) }),
-    )
-    await page.route(/\/api\/v1\/setup\/personality-presets(\?.*)?$/, (route) =>
-      route.fulfill({ json: page1([]) }),
     )
     // The embedded Models section loads recommendations + the namespace
     // settings it prefills from. Without these the section gets a malformed

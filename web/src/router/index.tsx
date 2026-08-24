@@ -49,7 +49,6 @@ const CoordinationMetricsPage = lazy(() => import('@/pages/CoordinationMetricsPa
 const MissionControlPage = lazy(() => import('@/pages/MissionControlPage'))
 const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
 const LearningCurvePage = lazy(() => import('@/pages/LearningCurvePage'))
-const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
 const AdminBackupsPage = lazy(() => import('@/pages/AdminBackupsPage'))
 const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
@@ -197,7 +196,6 @@ const appRoutes = [
               { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'analytics/learning', element: <LearningCurvePage /> },
-              { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
               { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
               { path: ROUTES.ADMIN_BACKUPS.slice(1), element: <AdminBackupsPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },

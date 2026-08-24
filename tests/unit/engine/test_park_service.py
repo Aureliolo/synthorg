@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.park_service import ParkService
 from synthorg.execution.parked_context import ParkedContext
@@ -20,7 +20,6 @@ def _make_agent_context() -> AgentContext:
         name="test-agent",
         role="developer",
         department="engineering",
-        personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )

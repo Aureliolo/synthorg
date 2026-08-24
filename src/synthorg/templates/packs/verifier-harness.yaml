@@ -5,7 +5,7 @@ template:
     pattern with calibrated rubric grading.  The evaluator operates
     with its own context, grading generator output against atomic
     acceptance probes.  Self-evaluation is structurally prevented.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 3
   max_agents: 3
   tags:
@@ -34,20 +34,17 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "strategic_planner"
       department: "engineering"
     - role: "Generator"
       model:
         priority: "balanced"
         min_context: 50000
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"
       model:
         priority: "quality"
         min_context: 50000
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "engineering"
 
   workflow: "sequential_pipeline"

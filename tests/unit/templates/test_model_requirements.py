@@ -1,16 +1,13 @@
-"""Tests for model requirements parsing and affinity resolution."""
+"""Tests for model requirements parsing and resolution."""
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.templates.model_requirements import (
-    MODEL_AFFINITY,
     ModelRequirement,
     parse_model_requirement,
     resolve_model_requirement,
 )
-
-_VISIONARY_CONTEXT_FLOOR = 100_000
 
 
 @pytest.mark.unit
@@ -132,104 +129,29 @@ class TestParseModelRequirement:
 
 
 @pytest.mark.unit
-class TestModelAffinity:
-    def test_all_presets_have_affinity(self) -> None:
-        """Every personality preset should have a model affinity entry."""
-        from synthorg.templates.presets import PERSONALITY_PRESETS
-
-        missing = set(PERSONALITY_PRESETS) - set(MODEL_AFFINITY)
-        assert not missing, f"Presets missing affinity: {sorted(missing)}"
-
-    def test_affinity_values_have_valid_priority(self) -> None:
-        valid = {"quality", "balanced", "speed", "cost"}
-        for name, affinity in MODEL_AFFINITY.items():
-            if "priority" in affinity:
-                assert affinity["priority"] in valid, (
-                    f"{name} has invalid priority {affinity['priority']!r}"
-                )
-
-    @pytest.mark.parametrize(
-        ("preset", "expected_priority"),
-        [
-            ("client_advisor", "balanced"),
-            ("code_craftsman", "quality"),
-            ("devil_advocate", "quality"),
-        ],
-    )
-    def test_preset_affinity_priority(
-        self,
-        preset: str,
-        expected_priority: str,
-    ) -> None:
-        assert MODEL_AFFINITY[preset]["priority"] == expected_priority
-
-    def test_every_affinity_profile_resolves(self) -> None:
-        """Every preset's affinity dict is a valid ``ModelRequirement``.
-
-        ``AffinityValue`` is ``str | int | bool``, so the type system alone
-        would let a key the requirement no longer accepts sit in a preset
-        until whichever agent uses it happens to resolve. Resolving all of
-        them here catches that for any retired key, not just one.
-        """
-        for name in MODEL_AFFINITY:
-            assert resolve_model_requirement(name) is not None, name
-
-    def test_no_preset_declares_tool_calling(self) -> None:
-        """Tool calling is a matcher floor, never a personality affinity."""
-        for name, affinity in MODEL_AFFINITY.items():
-            assert "requires_tools" not in affinity, f"{name} declares tools"
-
-    def test_visionary_leader_profile(self) -> None:
-        profile = MODEL_AFFINITY["visionary_leader"]
-        assert profile["priority"] == "quality"
-        assert profile["min_context"] == _VISIONARY_CONTEXT_FLOOR
-        assert profile.get("requires_reasoning") is True
-
-    def test_affinity_min_context_non_negative(self) -> None:
-        for name, affinity in MODEL_AFFINITY.items():
-            if "min_context" in affinity:
-                min_context = affinity["min_context"]
-                assert isinstance(min_context, int)
-                assert min_context >= 0, f"{name} has negative min_context"
-
-
-@pytest.mark.unit
 class TestResolveModelRequirement:
-    def test_no_preset_no_overrides(self) -> None:
+    def test_no_overrides(self) -> None:
         req = resolve_model_requirement()
         assert req.priority == "balanced"
         assert req.model_id is None
+        assert req.requires_reasoning is False
 
-    def test_preset_affinity_applied(self) -> None:
-        req = resolve_model_requirement("visionary_leader")
-        assert req.priority == "quality"
-        assert req.min_context == _VISIONARY_CONTEXT_FLOOR
-        assert req.requires_reasoning is True
-
-    def test_unknown_preset_uses_defaults(self) -> None:
-        req = resolve_model_requirement("nonexistent_preset")
-        assert req.priority == "balanced"
-
-    def test_case_insensitive_preset(self) -> None:
-        req = resolve_model_requirement("EAGER_LEARNER")
-        assert req.priority == "speed"
-
-    def test_none_preset(self) -> None:
+    def test_none_overrides(self) -> None:
         req = resolve_model_requirement(None)
         assert req.priority == "balanced"
 
-    def test_overrides_win_over_affinity(self) -> None:
-        req = resolve_model_requirement("visionary_leader", {"priority": "cost"})
-        assert req.priority == "cost"
-        # Non-overridden affinity defaults still apply.
-        assert req.min_context == _VISIONARY_CONTEXT_FLOOR
+    def test_overrides_applied(self) -> None:
+        req = resolve_model_requirement(
+            {"priority": "quality", "min_context": 100_000, "requires_reasoning": True}
+        )
+        assert req.priority == "quality"
+        assert req.min_context == 100_000
+        assert req.requires_reasoning is True
 
     def test_overrides_with_model_id(self) -> None:
-        req = resolve_model_requirement(
-            "methodical_analyst", {"model_id": "pinned-001"}
-        )
+        req = resolve_model_requirement({"model_id": "pinned-001"})
         assert req.model_id == "pinned-001"
-        # An explicit pin is clean: affinity capability flags are NOT layered
-        # on (the matcher selects the pinned id verbatim, ignoring filters).
+        # An explicit pin is clean: no capability filters are layered on
+        # (the matcher selects the pinned id verbatim).
         assert req.requires_reasoning is False
         assert req.family is None

@@ -12,7 +12,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -85,7 +84,6 @@ def _make_identity() -> AgentIdentity:
         role="Developer",
         department="Engineering",
         hiring_date=date(2026, 1, 15),
-        personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(
             provider="test-provider",
             model_id="test-basic-001",

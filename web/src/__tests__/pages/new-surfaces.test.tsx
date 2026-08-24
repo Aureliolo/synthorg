@@ -18,7 +18,6 @@ import WorkflowExecutionsPage from '@/pages/WorkflowExecutionsPage'
 import WebhookReceiptsPage from '@/pages/WebhookReceiptsPage'
 import CoordinationMetricsPage from '@/pages/CoordinationMetricsPage'
 import MetaAnalyticsPage from '@/pages/MetaAnalyticsPage'
-import PersonalitiesAdminPage from '@/pages/PersonalitiesAdminPage'
 
 function renderAt(node: React.ReactNode, path: string, route: string) {
   return render(
@@ -77,13 +76,6 @@ describe('new-surface pages render', () => {
     renderAt(<MetaAnalyticsPage />, '/analytics/meta', '/analytics/meta')
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Meta analytics/i })).toBeInTheDocument()
-    })
-  })
-
-  it('PersonalitiesAdminPage renders the title', async () => {
-    renderAt(<PersonalitiesAdminPage />, '/admin/personalities', '/admin/personalities')
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Personality presets/i })).toBeInTheDocument()
     })
   })
 })

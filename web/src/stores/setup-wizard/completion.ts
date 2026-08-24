@@ -50,9 +50,6 @@ function getInitialState() {
     agentsLoading: false,
     agentsError: null,
     agentsFetched: false,
-    personalityPresets: [],
-    personalityPresetsLoading: false,
-    personalityPresetsError: null,
 
     providers: {},
     presets: [],

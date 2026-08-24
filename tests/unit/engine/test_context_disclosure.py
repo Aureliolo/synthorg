@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.context import AgentContext
 
 
@@ -15,7 +15,6 @@ def _make_context(**overrides: object) -> AgentContext:
         name="test-agent",
         role="developer",
         department="engineering",
-        personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-basic-001"),
         hiring_date=date(2026, 1, 1),
     )

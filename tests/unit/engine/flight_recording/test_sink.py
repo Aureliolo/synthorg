@@ -27,11 +27,11 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def agent_context(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> AgentContext:
     return AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
 

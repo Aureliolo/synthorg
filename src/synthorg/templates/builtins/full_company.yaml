@@ -6,7 +6,7 @@ template:
     five skill patterns and covers the complete range of organizational
     capabilities from strategy to execution. Supervised with group chat
     and proposals pre-enabled for human-in-the-loop oversight.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 20
   max_agents: 50
   tags:
@@ -156,7 +156,6 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "visionary_leader"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CTO"
@@ -164,7 +163,6 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CFO"
@@ -172,7 +170,6 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "data_driven_optimizer"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "COO"
@@ -180,7 +177,6 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "process_optimizer"
       department: "operations"
       strategic_output_mode: "advisor"
     - role: "CPO"
@@ -188,31 +184,26 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "user_advocate"
       department: "product"
       strategic_output_mode: "advisor"
     # Product (2)
     - role: "Product Manager"
       model:
         priority: "speed"
-      personality_preset: "strategic_planner"
       department: "product"
     - role: "Technical Writer"
       model:
         priority: "balanced"
-      personality_preset: "technical_communicator"
       department: "product"
     # Design (2)
     - role: "UX Designer"
       model:
         priority: "balanced"
-      personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "independent_researcher"
       department: "design"
     # Engineering -- static (3)
     - role: "Software Architect"
@@ -220,17 +211,14 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "engineering"
     - role: "DevOps/SRE Engineer"
       model:
         priority: "balanced"
-      personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
       model:
         priority: "balanced"
-      personality_preset: "methodical_analyst"
       department: "engineering"
     # Engineering -- dynamic backend devs
 {% for i in range(num_backend_devs | default(3) | int) %}
@@ -239,11 +227,9 @@ template:
 {% if i == 0 %}
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
 {% else %}
       model:
         priority: "balanced"
-      personality_preset: "eager_learner"
 {% endif %}
       department: "engineering"
 {% endfor %}
@@ -254,11 +240,9 @@ template:
 {% if i == 0 %}
       model:
         priority: "balanced"
-      personality_preset: "creative_innovator"
 {% else %}
       model:
         priority: "balanced"
-      personality_preset: "team_diplomat"
 {% endif %}
       department: "engineering"
 {% endfor %}
@@ -266,69 +250,57 @@ template:
     - role: "QA Lead"
       model:
         priority: "quality"
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       model:
         priority: "cost"
-      personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
       model:
         priority: "cost"
-      personality_preset: "disciplined_executor"
       department: "quality_assurance"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"
       model:
         priority: "quality"
-      personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "Data Engineer"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "data_analytics"
     # Operations (2)
     - role: "Project Manager"
       model:
         priority: "speed"
-      personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       model:
         priority: "speed"
-      personality_preset: "empathetic_mentor"
       department: "operations"
     # Security (2)
     - role: "Security Engineer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "security_sentinel"
       department: "security"
     # Creative & Marketing (2)
     - role: "Content Writer"
       model:
         priority: "quality"
-      personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
       model:
         priority: "balanced"
-      personality_preset: "growth_hacker"
       department: "creative_marketing"
 
   workflow: "agile_kanban"

@@ -40,14 +40,12 @@ export interface MockOrgAgent {
   role: string
   department: string
   status: 'active' | 'idle' | 'paused' | 'terminated'
-  personality: Record<string, unknown>
   model: Record<string, unknown>
   memory: Record<string, unknown>
   tools: Record<string, unknown>
   authority: Record<string, unknown>
   autonomy_level: 'supervised' | 'autonomous' | 'manual'
   strategic_output_mode: null
-  personality_preset: null
   tier: null
   model_requirement: null
   hiring_date: string
@@ -91,14 +89,12 @@ export function makeOrgAgent(overrides: Partial<MockOrgAgent> = {}): MockOrgAgen
     role: 'engineer',
     department: 'engineering',
     status: 'active',
-    personality: {},
     model: {},
     memory: {},
     tools: {},
     authority: {},
     autonomy_level: 'supervised',
     strategic_output_mode: null,
-    personality_preset: null,
     tier: null,
     model_requirement: null,
     hiring_date: '2026-01-01T00:00:00Z',

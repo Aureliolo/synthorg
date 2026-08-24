@@ -12,7 +12,7 @@ dispatch cannot reach different verdicts about the same pair:
 - *how hard should the model think, and does the deliverable need a red team*
 
 The judgement never rewrites what an agent runs. An agent is a fixed
-``(role, personality, model)`` unit, so work needing more capability goes to a
+``(role, model)`` unit, so work needing more capability goes to a
 DIFFERENT agent; the ladder prefers an exact match, then the nearest rung
 above, then the nearest rung below with the concession logged. Preferring an
 exact match over a stronger one is also the org's standing cost discipline,

@@ -135,7 +135,7 @@ def build_approval(
 def require_proposable(request: HiringRequest, proposal: HireModelProposal) -> None:
     """Refuse a hire no configured model can run.
 
-    An agent is a fixed (role, personality, model) unit, so a hire with no pair
+    An agent is a fixed (role, model) unit, so a hire with no pair
     is not a hire. Refused before anything durable is written, because the
     alternative is what a live run produced: an approval an operator could see,
     could not approve (instantiation refuses an unbound request), and which
@@ -161,7 +161,7 @@ def require_proposable(request: HiringRequest, proposal: HireModelProposal) -> N
     )
     msg = (
         f"Cannot open a hire for {request.role}: {reason}. An agent is a "
-        "fixed (role, personality, model) unit, so there is nothing to "
+        "fixed (role, model) unit, so there is nothing to "
         "approve until a model this role can use is configured."
     )
     logger.warning(

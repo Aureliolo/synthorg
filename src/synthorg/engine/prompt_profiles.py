@@ -7,11 +7,10 @@ more reliably; a more capable one receives the full prompt.
 
 Three built-in profiles:
 
-* **full** (expert) -- no profile-driven reductions, full personality,
-  full criteria.
-* **standard** (capable) -- condensed personality, summary autonomy.
-* **basic** (basic) -- minimal personality, no org policies,
-  simplified acceptance criteria.
+* **full** (expert) -- no profile-driven reductions, full criteria.
+* **standard** (capable) -- summary autonomy.
+* **basic** (basic) -- minimal autonomy, no org policies, simplified
+  acceptance criteria.
 
 Authority and identity sections are **never** stripped regardless of
 profile.
@@ -22,7 +21,7 @@ from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import AutonomyDetailLevel, CapabilityLevel, PersonalityMode
+from synthorg.core.types import AutonomyDetailLevel, CapabilityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PROFILE_DEFAULT
 
@@ -38,27 +37,17 @@ class PromptProfile(BaseModel):
 
     Attributes:
         capability: The rung this profile targets.
-        max_personality_tokens: Hard cap on personality section token
-            count.  Enforced by :func:`build_core_context` via
-            progressive trimming (drop enums, truncate description,
-            fall back to minimal mode).
         include_org_policies: Whether to include the org policies section.
         simplify_acceptance_criteria: Whether to render acceptance
             criteria as a flat semicolon-separated line instead of a
             nested list.
         autonomy_detail_level: Level of detail for autonomy instructions
             (``"full"`` | ``"summary"`` | ``"minimal"``).
-        personality_mode: How much personality detail to include
-            (``"full"`` | ``"condensed"`` | ``"minimal"``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     capability: CapabilityLevel = Field(description="Target capability rung")
-    max_personality_tokens: int = Field(
-        gt=0,
-        description="Hard cap on personality section token count",
-    )
     include_org_policies: bool = Field(
         default=True,
         description="Whether to include org policies in prompt",
@@ -71,39 +60,29 @@ class PromptProfile(BaseModel):
         default="full",
         description="Level of autonomy instruction detail",
     )
-    personality_mode: PersonalityMode = Field(
-        default="full",
-        description="Personality section verbosity",
-    )
 
 
 # ── Built-in profiles ──────────────────────────────────────────
 
 _FULL_PROFILE = PromptProfile(
     capability="expert",
-    max_personality_tokens=500,
     include_org_policies=True,
     simplify_acceptance_criteria=False,
     autonomy_detail_level="full",
-    personality_mode="full",
 )
 
 _STANDARD_PROFILE = PromptProfile(
     capability="capable",
-    max_personality_tokens=200,
     include_org_policies=True,
     simplify_acceptance_criteria=False,
     autonomy_detail_level="summary",
-    personality_mode="condensed",
 )
 
 _BASIC_PROFILE = PromptProfile(
     capability="basic",
-    max_personality_tokens=80,
     include_org_policies=False,
     simplify_acceptance_criteria=True,
     autonomy_detail_level="minimal",
-    personality_mode="minimal",
 )
 
 PROMPT_PROFILE_REGISTRY: MappingProxyType[CapabilityLevel, PromptProfile] = (

@@ -6,7 +6,7 @@ template:
     content writers, with a data analyst measuring campaign performance
     and a project manager coordinating delivery. Cost-disciplined:
     auto-downgrade keeps spend in check.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 5
   max_agents: 8
   tags:
@@ -62,35 +62,29 @@ template:
     - role: "Brand Strategist"
       model:
         priority: "balanced"
-      personality_preset: "growth_hacker"
       department: "creative_marketing"
     - role: "Content Writer"
       merge_id: "writer-lead"
       model:
         priority: "quality"
-      personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Content Writer"
       merge_id: "writer-support"
       model:
         priority: "cost"
-      personality_preset: "technical_communicator"
       department: "creative_marketing"
     - role: "Data Analyst"
       model:
         priority: "balanced"
-      personality_preset: "data_driven_optimizer"
       department: "operations"
     - role: "Project Manager"
       model:
         priority: "speed"
-      personality_preset: "process_optimizer"
       department: "operations"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
 
   workflow: "agile_kanban"

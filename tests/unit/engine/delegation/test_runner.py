@@ -11,7 +11,6 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     ToolPermissions,
 )
 from synthorg.core.task import Task
@@ -51,7 +50,6 @@ def _child_identity(name: str = "Child Agent") -> AgentIdentity:
         role="Researcher",
         department="Engineering",
         hiring_date=date(2026, 1, 1),
-        personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         tools=ToolPermissions(),
     )

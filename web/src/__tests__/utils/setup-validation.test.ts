@@ -24,7 +24,6 @@ const makeAgent = (
   model_provider: "test-provider",
   model_id: "test-model-001",
   capability: "capable",
-  personality_preset: null,
   ...overrides,
 });
 

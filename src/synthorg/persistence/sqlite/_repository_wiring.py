@@ -161,9 +161,6 @@ from synthorg.persistence.sqlite.plan_repo import (
 from synthorg.persistence.sqlite.preset_override_repo import (
     SQLitePresetOverrideRepo,
 )
-from synthorg.persistence.sqlite.preset_repo import (
-    SQLitePersonalityPresetRepository,
-)
 from synthorg.persistence.sqlite.principle_override_repo import (
     SQLitePrincipleOverrideRepository,
 )
@@ -306,7 +303,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
-        self._custom_presets = None
         self._workflow_definitions = None
         self._workflow_executions = None
         self._subworkflows = None
@@ -496,10 +492,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._settings = SQLiteSettingsRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._custom_presets = SQLitePersonalityPresetRepository(
             self._db,
             write_context=self.write_context,
         )

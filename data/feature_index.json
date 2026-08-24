@@ -37,8 +37,7 @@
         "SetupCompanyController",
         "SetupAgentsController",
         "SetupLocalesController",
-        "SetupCompletionController",
-        "SetupPersonalityController"
+        "SetupCompletionController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/api",
@@ -676,14 +675,12 @@
         "AgentDispatchProfileController",
         "AgentRosterController",
         "AgentIdentityVersionController",
-        "ActivityController",
-        "PersonalityPresetController"
+        "ActivityController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [
         "AgentHealthService",
-        "PersonalityService",
         "ActivityFeedService",
         "HiringService",
         "RoleStaffingService",
@@ -699,8 +696,6 @@
         "synthorg_agents_get_activity",
         "synthorg_agents_get_history",
         "synthorg_agents_get_health",
-        "synthorg_personalities_list",
-        "synthorg_personalities_get",
         "synthorg_autonomy_get",
         "synthorg_autonomy_update",
         "synthorg_quality_get_summary",
@@ -717,7 +712,6 @@
       "state_slice_fields": [
         "agent_registry",
         "performance_tracker",
-        "personality_service",
         "agent_version_service",
         "activity_feed_service",
         "agent_health_service",
@@ -1487,6 +1481,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-24T09:53:12.948204Z",
+  "generated_at": "2026-08-24T17:28:32.389038Z",
   "schema_version": 1
 }

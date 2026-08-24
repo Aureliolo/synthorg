@@ -52,7 +52,7 @@ export function useGlobalNotifications(): void {
           useNotificationsStore.getState().handleWsEvent(event)
 
           // Agents channel: also update agent-specific store state
-          // (runtime statuses, personality tracking, etc.)
+          // (runtime statuses, etc.)
           if (channel === 'agents') {
             useAgentsStore.getState().updateFromWsEvent(event)
           }

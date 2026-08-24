@@ -1,6 +1,6 @@
 ---
 title: Agent Management
-description: Hire, fire, promote, and customise agents via the REST API. Covers personality assignment, rehiring from archive, and lifecycle events.
+description: Hire, fire, promote, and customise agents via the REST API. Covers model assignment, rehiring from archive, and lifecycle events.
 ---
 
 # Agent Management
@@ -26,14 +26,6 @@ curl -X POST http://localhost:3001/api/v1/agents \
     "model_provider": "example-provider",
     "model_id": "example-capable-001"
   }' | jq
-```
-
-Personality presets and personality dimensions are **not** fields on the hiring DTO. They are applied during the first-run setup flow via `SetupAgentRequest` (see [Setup wizard shortcuts](#setup-wizard-shortcuts) below). `PersonalityConfig` internals (`decision_making`, `collaboration`, `verbosity`, `conflict_approach`, and the Big-5 dimensions) are runtime state, not user-settable through the public API.
-
-```bash
-# List available presets (used by the setup wizard, not by POST /api/v1/agents)
-curl http://localhost:3001/api/v1/personalities/presets \
-  -H "Cookie: ${SESSION}" | jq '.data[] | {name, description}'
 ```
 
 Tool access and autonomy are **not** part of `CreateAgentOrgRequest` either: tool grants are resolved from role, department, and org config at runtime, and `autonomy_level` is set on `UpdateAgentOrgRequest` (or on the department-level endpoints) *after* the agent is hired. See [Updating an agent](#updating-an-agent).
@@ -106,7 +98,7 @@ Subscribe to the `agents` channel to get real-time lifecycle events:
 ws.send(JSON.stringify({ action: 'subscribe', channels: ['agents'] }))
 // Actually emitted on the `agents` channel today (see
 // src/synthorg/api/controllers/agents.py and app_helpers.py):
-//   agent.created, agent.updated, agent.deleted, personality.trimmed
+//   agent.created, agent.updated, agent.deleted
 ```
 
 See [Notifications & Events](notifications-and-events.md) for the full protocol.
@@ -135,6 +127,6 @@ After the wizard completes, use `/api/v1/agents` for subsequent changes.
 ## See Also
 
 - [Agent Roles & Hierarchy](agents.md): role catalog, reporting-graph authority
-- [Design: Agents](../design/agents.md): identity card, personality dimensions, identity versioning
+- [Design: Agents](../design/agents.md): identity card, the bound unit, identity versioning
 - [Design: HR & Agent Lifecycle](../design/hr-lifecycle.md): full lifecycle, performance tracking, evolution
 - [Security Policies](security.md): autonomy and tool permissions

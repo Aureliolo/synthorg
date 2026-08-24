@@ -8,7 +8,6 @@ import type {
   TestConnectionResponse,
 } from '@/api/types/providers'
 import type {
-  PersonalityPresetInfo,
   SetupAgentSummary,
   SetupCompanyResponse,
   TemplateInfoResponse,
@@ -163,15 +162,10 @@ export interface AgentsSlice {
    * re-fire the fetch on every mount.
    */
   agentsFetched: boolean
-  personalityPresets: PersonalityPresetInfo[]
-  personalityPresetsLoading: boolean
-  personalityPresetsError: string | null
   fetchAgents: () => Promise<void>
   updateAgentModel: (index: number, provider: string, modelId: string) => Promise<void>
   updateAgentName: (index: number, name: string) => Promise<void>
   randomizeAgentName: (index: number) => Promise<void>
-  updateAgentPersonality: (index: number, preset: string) => Promise<void>
-  fetchPersonalityPresets: () => Promise<void>
 }
 
 export interface ProvidersSlice {

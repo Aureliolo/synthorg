@@ -159,13 +159,11 @@ def test_registry_openhands_without_deps_fails_loud() -> None:
 
 
 async def test_completed_run_maps_events_to_turns(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (_action("edit_file"), _OBSERVATION, _MESSAGE, _FINISHED)
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert result.termination_reason is TerminationReason.COMPLETED
     assert len(result.turns) == 2
@@ -174,7 +172,7 @@ async def test_completed_run_maps_events_to_turns(
 
 
 async def test_a_resumed_run_continues_its_turn_numbering(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """A resumed run arrives with turns already on its conversation.
@@ -184,7 +182,7 @@ async def test_a_resumed_run_continues_its_turn_numbering(
     depends on comes apart on exactly the runs that were interrupted.
     """
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality),
+        _bound(sample_agent),
         task=sample_task_with_criteria,
     ).model_copy(update={"turn_count": 4})
     events = (_action("edit_file"), _OBSERVATION, _MESSAGE, _FINISHED)
@@ -198,12 +196,12 @@ async def test_a_resumed_run_continues_its_turn_numbering(
 
 
 async def test_zero_tool_work_run_is_no_op(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (_MESSAGE, _FINISHED)
     result = await _run(
-        sample_agent_with_personality,
+        sample_agent,
         _work_task(sample_task_with_criteria),
         _deps(events, {}),
     )
@@ -214,13 +212,11 @@ async def test_zero_tool_work_run_is_no_op(
 
 
 async def test_error_event_terminates_error(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (OpenHandsEvent(kind=OpenHandsEventKind.ERROR, text="boom"),)
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert result.termination_reason is TerminationReason.ERROR
     assert result.error_message is not None
@@ -228,7 +224,7 @@ async def test_error_event_terminates_error(
 
 
 async def test_a_rejected_tool_call_costs_a_turn_not_the_run(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The harness rejects a bad call so the model can fix it, and keeps going.
@@ -250,9 +246,7 @@ async def test_a_rejected_tool_call_costs_a_turn_not_the_run(
         _action("terminal"),
         _FINISHED,
     )
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert result.termination_reason is TerminationReason.COMPLETED
     assert [turn.tool_calls_made for turn in result.turns] == [
@@ -270,7 +264,7 @@ def _tool_error(tool: str) -> OpenHandsEvent:
 
 
 async def test_a_turn_states_what_ran_not_what_was_asked_for(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The turn is recorded from the request; only the harness knows the outcome.
@@ -287,15 +281,13 @@ async def test_a_turn_states_what_ran_not_what_was_asked_for(
         _tool_error("shel"),
         _FINISHED,
     )
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert [turn.resolved_tool_calls for turn in result.turns] == [1, 0]
 
 
 async def test_a_run_asking_only_after_tools_nobody_has_stops(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The operator's ceiling on unresolved turns has to reach this loop too.
@@ -306,7 +298,7 @@ async def test_a_run_asking_only_after_tools_nobody_has_stops(
     existed.
     """
     limit = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     ).max_unresolved_tool_turns
     events = (
         *(
@@ -317,9 +309,7 @@ async def test_a_run_asking_only_after_tools_nobody_has_stops(
         _FINISHED,
     )
 
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert result.termination_reason is TerminationReason.STAGNATION
     assert result.metadata["unresolved_turns"] == limit
@@ -329,7 +319,7 @@ async def test_a_run_asking_only_after_tools_nobody_has_stops(
 
 
 async def test_a_fatal_container_error_still_terminates(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The kind that means the run itself failed keeps ending the run."""
@@ -337,20 +327,18 @@ async def test_a_fatal_container_error_still_terminates(
         _action("terminal"),
         OpenHandsEvent(kind=OpenHandsEventKind.ERROR, text="empty run spec on stdin"),
     )
-    result = await _run(
-        sample_agent_with_personality, sample_task_with_criteria, _deps(events, {})
-    )
+    result = await _run(sample_agent, sample_task_with_criteria, _deps(events, {}))
 
     assert result.termination_reason is TerminationReason.ERROR
 
 
 async def test_budget_exhaustion_stops_at_event_boundary(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (_action("a"), _action("b"), _FINISHED)
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     result = await _loop(_deps(events, {})).execute(
         context=ctx,
@@ -363,7 +351,7 @@ async def test_budget_exhaustion_stops_at_event_boundary(
 
 
 async def test_the_harness_is_given_the_agent_s_own_system_prompt(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The loop must not throw away what the engine already built for it.
@@ -376,7 +364,7 @@ async def test_the_harness_is_given_the_agent_s_own_system_prompt(
     between the loops.
     """
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     system = "You are a careful engineer. House style: no em-dashes."
     ctx = ctx.model_copy(
@@ -399,7 +387,7 @@ async def test_the_harness_is_given_the_agent_s_own_system_prompt(
 
 
 async def test_the_driving_message_fences_the_task_it_carries(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The message that drives the harness carries client-supplied free text.
@@ -412,7 +400,7 @@ async def test_the_driving_message_fences_the_task_it_carries(
     task = _work_task(sample_task_with_criteria)
     captured: dict[str, object] = {}
 
-    await _run(sample_agent_with_personality, task, _deps((_FINISHED,), captured))
+    await _run(sample_agent, task, _deps((_FINISHED,), captured))
 
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
@@ -422,10 +410,10 @@ async def test_the_driving_message_fences_the_task_it_carries(
 
 
 async def test_a_chat_turn_is_not_fenced_twice(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
 ) -> None:
     """The engine already wrapped the chat message before it reached here."""
-    ctx = AgentContext.from_identity(_bound(sample_agent_with_personality))
+    ctx = AgentContext.from_identity(_bound(sample_agent))
     # Content that is genuinely fenced already: plain text would only show that
     # a chat turn passes through unchanged, which is not what double-fencing is.
     fenced = wrap_untrusted(TAG_TASK_DATA, "already fenced upstream")
@@ -445,7 +433,7 @@ async def test_a_chat_turn_is_not_fenced_twice(
 
 
 async def test_the_run_samples_on_the_config_the_native_loop_samples_on(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The sampling half of the completion config reaches the harness.
@@ -457,7 +445,7 @@ async def test_the_run_samples_on_the_config_the_native_loop_samples_on(
     between the loops.
     """
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     captured: dict[str, object] = {}
 
@@ -475,12 +463,12 @@ async def test_the_run_samples_on_the_config_the_native_loop_samples_on(
 
 
 async def test_an_unpinned_config_leaves_sampling_to_the_provider(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """No config means no invented values: the provider still decides."""
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     captured: dict[str, object] = {}
 
@@ -496,7 +484,7 @@ async def test_an_unpinned_config_leaves_sampling_to_the_provider(
 
 
 async def test_the_native_tool_catalogue_does_not_reach_the_harness(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """The one part of the prompt that describes the other loop's tools.
@@ -508,7 +496,7 @@ async def test_the_native_tool_catalogue_does_not_reach_the_harness(
     the loop failing the brief.
     """
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     system = (
         "## Identity\n\nYou are a careful engineer.\n\n"
@@ -543,7 +531,7 @@ async def test_the_native_tool_catalogue_does_not_reach_the_harness(
 
 
 async def test_the_turn_ceiling_names_itself(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     """A ceiling hit emits the fact the scorers key on.
@@ -555,7 +543,7 @@ async def test_the_turn_ceiling_names_itself(
     """
     events = (_action("a"), _action("b"), _action("c"), _FINISHED)
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality),
+        _bound(sample_agent),
         task=sample_task_with_criteria,
         max_turns=2,
     )
@@ -570,12 +558,12 @@ async def test_the_turn_ceiling_names_itself(
 
 
 async def test_shutdown_stops_at_event_boundary(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (_action("a"), _FINISHED)
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     result = await _loop(_deps(events, {})).execute(
         context=ctx,
@@ -587,7 +575,7 @@ async def test_shutdown_stops_at_event_boundary(
 
 
 async def test_cancellation_stops_at_event_boundary(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     events = (_action("a"), _FINISHED)
@@ -596,7 +584,7 @@ async def test_cancellation_stops_at_event_boundary(
         return True
 
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     result = await _loop(_deps(events, {})).execute(
         context=ctx,
@@ -617,7 +605,7 @@ def test_unconfigured_endpoints_fail_loud() -> None:
 
 
 async def test_spec_binds_gateway_token_and_urls(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     captured: dict[str, object] = {}
@@ -630,7 +618,7 @@ async def test_spec_binds_gateway_token_and_urls(
         clock=FakeClock(),
     )
     task = sample_task_with_criteria
-    ctx = AgentContext.from_identity(_bound(sample_agent_with_personality), task=task)
+    ctx = AgentContext.from_identity(_bound(sample_agent), task=task)
     await _loop(deps).execute(context=ctx, provider=mock_of[CompletionProvider]())
 
     spec = captured["spec"]
@@ -647,7 +635,7 @@ async def test_spec_binds_gateway_token_and_urls(
 
 
 async def test_bearer_lifetime_comes_from_the_frozen_config(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> None:
     # ``providers.gateway_token_ttl_seconds`` is resolved once, while the
@@ -665,7 +653,7 @@ async def test_bearer_lifetime_comes_from_the_frozen_config(
         clock=FakeClock(start=minted_at),
     )
     ctx = AgentContext.from_identity(
-        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+        _bound(sample_agent), task=sample_task_with_criteria
     )
     loop = OpenHandsLoop(config=OpenHandsLoopConfig(token_ttl_seconds=_TTL), deps=deps)
     await loop.execute(context=ctx, provider=mock_of[CompletionProvider]())

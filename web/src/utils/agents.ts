@@ -25,7 +25,7 @@ import type { AgentStatus } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatCurrency, formatLabel } from '@/utils/format'
+import { formatCurrency } from '@/utils/format'
 
 /**
  * What a surface shows where an agent's name belongs and none resolved.
@@ -106,19 +106,6 @@ export function toRuntimeStatus(status: AgentStatus): AgentRuntimeStatus {
 export function agentModelId(agent: DashboardAgentConfig): string | undefined {
   const id = agent.model['model_id']
   return typeof id === 'string' && id ? id : undefined
-}
-
-/** Human-readable personality label from the named preset, if any. */
-export function agentPersonalityLabel(agent: DashboardAgentConfig): string | undefined {
-  const preset = agent.personality_preset
-  return preset ? formatLabel(preset) : undefined
-}
-
-/** Personality trait words from the raw personality config, if present. */
-export function agentTraits(agent: DashboardAgentConfig): readonly string[] {
-  const raw = agent.personality['traits']
-  if (!Array.isArray(raw)) return []
-  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0)
 }
 
 /**
@@ -337,12 +324,8 @@ export function computePerformanceCards(
 
 // ── Prose insights ─────────────────────────────────────────
 
-/**
- * Generate 0-3 human-readable insight sentences from performance data.
- * The agent parameter is accepted for future personality-based insights but not yet used.
- */
+/** Generate 0-3 human-readable insight sentences from performance data. */
 export function generateInsights(
-  _agent: DashboardAgentConfig,
   perf: AgentPerformanceSummary | null,
 ): string[] {
   if (!perf) return []

@@ -15,7 +15,6 @@ from synthorg.api.ws_payloads import (
     WsEventPayload,
     WsMemoryFineTuneProgressPayload,
     WsMessageSentPayload,
-    WsPersonalityTrimmedPayload,
     WsRequestSubmittedPayload,
     WsSimulationStartedPayload,
     WsTaskCreatedPayload,
@@ -216,22 +215,6 @@ class TestRoundTrip:
         assert restored == original
 
     @pytest.mark.unit
-    def test_personality_trimmed_round_trip(self) -> None:
-        """Personality trim payload survives a round-trip."""
-        original = WsPersonalityTrimmedPayload(
-            agent_id="a1",
-            agent_name="Alice",
-            task_id="t1",
-            trim_tier=2,
-            before_tokens=1000,
-            after_tokens=500,
-            max_tokens=1500,
-            budget_met=True,
-        )
-        restored = _ADAPTER.validate_python(original.model_dump())
-        assert restored == original
-
-    @pytest.mark.unit
     def test_coordination_started_round_trip(self) -> None:
         """Coordination started payload survives a round-trip."""
         original = WsCoordinationStartedPayload(
@@ -325,21 +308,6 @@ class TestValidationErrors:
                 simulation_id="s1",
                 status="running",
                 progress=-0.1,
-            )
-
-    @pytest.mark.unit
-    def test_negative_token_count_rejected(self) -> None:
-        """Personality trim token counts cannot be negative."""
-        with pytest.raises(ValidationError):
-            WsPersonalityTrimmedPayload(
-                agent_id="a1",
-                agent_name="Alice",
-                task_id="t1",
-                trim_tier=2,
-                before_tokens=-1,
-                after_tokens=500,
-                max_tokens=1000,
-                budget_met=True,
             )
 
 

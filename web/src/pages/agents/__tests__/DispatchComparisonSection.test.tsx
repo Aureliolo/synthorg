@@ -16,9 +16,6 @@ function profile(overrides: Partial<DispatchProfile> = {}): DispatchProfile {
     agent_name: 'Ada',
     role: 'Developer',
     department: 'Engineering',
-    risk_tolerance: 'low',
-    decision_making: 'analytical',
-    creativity: 'low',
     provider_name: 'example-provider',
     model: 'example-capable-001',
     capability: 'capable',
@@ -42,7 +39,7 @@ function page(rows: readonly DispatchProfile[]) {
 }
 
 describe('DispatchComparisonSection', () => {
-  it('renders an agent with its rate, latencies and personality', async () => {
+  it('renders an agent with its department, rate and latencies', async () => {
     server.use(http.get(PROFILES, () => HttpResponse.json(page([profile()]))))
     render(<DispatchComparisonSection />)
 
@@ -50,23 +47,18 @@ describe('DispatchComparisonSection', () => {
     expect(screen.getByText('95.0%')).toBeInTheDocument()
     expect(screen.getByText('420ms')).toBeInTheDocument()
     expect(screen.getByText('1.4s')).toBeInTheDocument()
-    expect(screen.getByText(/low risk, analytical, low creativity/)).toBeInTheDocument()
+    expect(screen.getByText('Engineering')).toBeInTheDocument()
   })
 
   it('groups agents that share a role and a bound pair', async () => {
     // The comparison the fixed-unit ruling exists to make answerable: two
-    // agents on the same model differing only in temperament.
+    // agents on the same role and model, side by side.
     server.use(
       http.get(PROFILES, () =>
         HttpResponse.json(
           page([
             profile(),
-            profile({
-              agent_id: 'agent-b',
-              agent_name: 'Grace',
-              risk_tolerance: 'high',
-              creativity: 'high',
-            }),
+            profile({ agent_id: 'agent-b', agent_name: 'Grace' }),
           ]),
         ),
       ),

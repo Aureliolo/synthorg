@@ -393,12 +393,12 @@ class TestReactLoopMaxTurns:
 
     async def test_max_turns_termination(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """With extensions disabled, the first ceiling still ends the run."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             max_turns=2,
             turn_extensions=0,
         )
@@ -425,7 +425,7 @@ class TestReactLoopMaxTurns:
 
     async def test_the_ceiling_extends_before_it_stops(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A run with extensions left carries on past its first ceiling.
@@ -433,7 +433,7 @@ class TestReactLoopMaxTurns:
         The work is what matters, not the estimate that sized the budget.
         """
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             max_turns=2,
             turn_extensions=1,
         )
@@ -1444,14 +1444,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_zero_tool_work_run_is_no_op(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Two empty turns: nudged once, then failed loud."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _stop_response("All done, trust me."),
@@ -1468,7 +1466,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_first_empty_turn_is_corrected_not_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1477,9 +1475,7 @@ class TestReactLoopNoOpFailLoud:
         Without it the zero-artifact guard fires on turn 1 and the task is
         failed with its whole budget unused.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _stop_response("I would start by designing the module."),
@@ -1511,7 +1507,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_discovery_call_does_not_count_as_delivering(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1523,9 +1519,7 @@ class TestReactLoopNoOpFailLoud:
         once: a recorded run asked ``list_tools``, said it would begin, and
         finished ``completed`` holding an empty workspace.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _tool_use_response("list_tools", "tc-1"),
@@ -1550,14 +1544,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_delivering_call_after_discovery_completes(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Discovery followed by real work is a completed run, not a no-op."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _tool_use_response("list_tools", "tc-1"),
@@ -1576,7 +1568,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_no_correction_when_no_turn_remains(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1590,7 +1582,7 @@ class TestReactLoopNoOpFailLoud:
         )
         ctx = _ctx_with_user_msg(
             AgentContext.from_identity(
-                sample_agent_with_personality,
+                sample_agent,
                 task=work_task,
                 max_turns=1,
             )
@@ -1622,7 +1614,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_silent_reasoning_turn_is_corrected_not_fatal(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1632,9 +1624,7 @@ class TestReactLoopNoOpFailLoud:
         channel comes back empty, and ending there discards every productive
         turn before it.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _reasoning_only_response(),
@@ -1661,7 +1651,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_dropped_tool_call_is_corrected_not_fatal(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1672,9 +1662,7 @@ class TestReactLoopNoOpFailLoud:
         with nothing in it. Ending there discards every productive turn before
         it over one turn of the model's own bad output.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _dropped_tool_call_response(),
@@ -1701,7 +1689,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_an_empty_turn_is_corrected_not_reported_as_a_provider_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1711,9 +1699,7 @@ class TestReactLoopNoOpFailLoud:
         well-formed to recover from; treating that as a provider failure ends
         the run on a turn the model simply wasted.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _empty_turn_response(),
@@ -1739,7 +1725,7 @@ class TestReactLoopNoOpFailLoud:
     )
     async def test_a_wordless_turn_leaves_nothing_unsendable_in_the_history(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         wordless: Callable[[], CompletionResponse],
@@ -1752,9 +1738,7 @@ class TestReactLoopNoOpFailLoud:
         assistant message therefore turns each of these two recoveries into the
         thing that kills the run.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [wordless(), _tool_use_response("echo", "tc-1"), _stop_response("Done.")]
         )
@@ -1776,14 +1760,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_stumble_inside_the_budget_still_recovers(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Two bad turns in a row is a stumble, not a dead provider."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 _dropped_tool_call_response(),
@@ -1805,7 +1787,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_productive_turn_resets_the_correction_budget(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1816,9 +1798,7 @@ class TestReactLoopNoOpFailLoud:
         as the consecutive run they are, each group is inside the bound and the
         run finishes.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 *[_dropped_tool_call_response()] * MAX_CONSECUTIVE_CORRECTIONS,
@@ -1841,14 +1821,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_the_correction_budget_is_bounded(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A provider returning nothing usable still ends the run."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [_dropped_tool_call_response()] * (MAX_CONSECUTIVE_CORRECTIONS + 1)
         )
@@ -1866,7 +1844,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_running_out_of_corrections_fails_rather_than_reports_success(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1876,9 +1854,7 @@ class TestReactLoopNoOpFailLoud:
         run that delivered nothing would otherwise be reported as having
         finished its work.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [_empty_turn_response()] * (MAX_CONSECUTIVE_CORRECTIONS + 1)
         )
@@ -1891,14 +1867,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_a_provider_error_that_says_why_stays_fatal(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A real provider failure reports its cause and must not be retried."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [
                 CompletionResponse(
@@ -1918,14 +1892,12 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_two_silent_turns_in_a_row_stop_correcting(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """The correction is its own bound, so a mute model cannot loop."""
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [_reasoning_only_response(), _reasoning_only_response()]
         )
@@ -1943,13 +1915,11 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_work_run_with_tool_call_completes(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
             [_tool_use_response("echo", "tc-1"), _stop_response("Done.")]
         )
@@ -1982,7 +1952,7 @@ class TestReactLoopNoOpFailLoud:
 
     async def test_resumed_zero_tool_work_run_completes(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -1993,9 +1963,7 @@ class TestReactLoopNoOpFailLoud:
         may already have produced artifacts before a park), so the empty
         segment completes to review rather than being failed as NO_OP.
         """
-        ctx = self._work_context(
-            sample_agent_with_personality, sample_task_with_criteria
-        )
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory([_stop_response("Resuming; already done.")])
         loop = ReactLoop()
 

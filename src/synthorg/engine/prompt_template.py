@@ -147,9 +147,6 @@ in the {{ agent_department }} department.
 {% if role_description %}
 **Role**: {{ role_description }}
 {% endif %}
-
-## Personality
-{{ personality_section }}
 {% if house_style %}
 
 ## House Writing Style

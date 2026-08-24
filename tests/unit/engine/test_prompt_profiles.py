@@ -27,17 +27,15 @@ class TestPromptProfile:
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "full"
-        assert profile.personality_mode == "full"
 
     def test_standard_profile_has_reduced_settings(self) -> None:
-        """Standard profile condenses personality and summarizes autonomy."""
+        """Standard profile summarizes autonomy."""
         profile = get_prompt_profile("capable")
 
         assert profile.capability == "capable"
         assert profile.include_org_policies is True
         assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "summary"
-        assert profile.personality_mode == "condensed"
 
     def test_basic_profile_has_minimal_settings(self) -> None:
         """Basic profile strips org policies, simplifies everything."""
@@ -47,7 +45,6 @@ class TestPromptProfile:
         assert profile.include_org_policies is False
         assert profile.simplify_acceptance_criteria is True
         assert profile.autonomy_detail_level == "minimal"
-        assert profile.personality_mode == "minimal"
 
     def test_profile_is_frozen(self) -> None:
         """PromptProfile instances are immutable."""
@@ -61,34 +58,17 @@ class TestPromptProfile:
         with pytest.raises(ValidationError):
             PromptProfile(
                 capability="expert",
-                max_personality_tokens=500,
                 bogus_field="nope",  # type: ignore[call-arg]
             )
-
-    def test_max_personality_tokens_must_be_positive(self) -> None:
-        """max_personality_tokens must be > 0."""
-        with pytest.raises(ValidationError):
-            PromptProfile(capability="expert", max_personality_tokens=0)
 
     @pytest.mark.parametrize("level", ["full", "summary", "minimal"])
     def test_valid_autonomy_detail_levels(self, level: str) -> None:
         """Only full/summary/minimal are accepted."""
         profile = PromptProfile(
             capability="expert",
-            max_personality_tokens=100,
             autonomy_detail_level=level,  # type: ignore[arg-type]
         )
         assert profile.autonomy_detail_level == level
-
-    @pytest.mark.parametrize("mode", ["full", "condensed", "minimal"])
-    def test_valid_personality_modes(self, mode: str) -> None:
-        """Only full/condensed/minimal are accepted."""
-        profile = PromptProfile(
-            capability="expert",
-            max_personality_tokens=100,
-            personality_mode=mode,  # type: ignore[arg-type]
-        )
-        assert profile.personality_mode == mode
 
 
 # ── TestGetPromptProfile ────────────────────────────────────────
@@ -103,7 +83,6 @@ class TestGetPromptProfile:
         profile = get_prompt_profile(None)
 
         assert profile.capability == "expert"
-        assert profile.personality_mode == "full"
 
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_all_tiers_return_matching_profile(self, tier: CapabilityLevel) -> None:
@@ -136,10 +115,11 @@ class TestPromptProfileRegistry:
             assert isinstance(profile, PromptProfile)
 
     def test_profiles_have_increasing_verbosity(self) -> None:
-        """Larger tiers have higher max_personality_tokens."""
+        """Larger tiers carry more autonomy detail."""
         small = PROMPT_PROFILE_REGISTRY["basic"]
         medium = PROMPT_PROFILE_REGISTRY["capable"]
         large = PROMPT_PROFILE_REGISTRY["expert"]
 
-        assert small.max_personality_tokens < medium.max_personality_tokens
-        assert medium.max_personality_tokens < large.max_personality_tokens
+        assert small.autonomy_detail_level == "minimal"
+        assert medium.autonomy_detail_level == "summary"
+        assert large.autonomy_detail_level == "full"

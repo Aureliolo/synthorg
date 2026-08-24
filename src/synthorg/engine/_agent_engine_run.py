@@ -46,7 +46,7 @@ class RunBinding(NamedTuple):
     The identity and its provider travel together because cost attribution
     reads ``identity.model.provider`` and the dispatched client must be that
     same connection. Neither is ever rewritten here: an agent is a fixed
-    ``(role, personality, model)`` unit, so the binding stages settle how the
+    ``(role, model)`` unit, so the binding stages settle how the
     run SAMPLES and nothing else.
 
     Attributes:

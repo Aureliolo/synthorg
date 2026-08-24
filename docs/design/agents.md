@@ -1,11 +1,11 @@
 ---
 title: Agents
-description: Agent identity system. Personality dimensions, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
+description: Agent identity system. The bound (role, model) unit, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
 ---
 
 # Agents
 
-Every agent is a composition of **immutable config** (identity, personality, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
+Every agent is a composition of **immutable config** (identity, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
 
 ## Agent Identity Card
 
@@ -13,7 +13,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 layers:
 
 Config (immutable)
-:   Identity, personality, skills, model preferences, tool permissions, and authority.
+:   Identity, skills, model preferences, tool permissions, and authority.
     Defined at hire time, changed only by explicit reconfiguration. Represented as frozen
     Pydantic models.
 
@@ -88,45 +88,15 @@ runtime registry derive the same id independently from the name, so a config-sou
 its registered `AgentIdentity` share one id without coordination. REST routes address agents by
 this id (`/agents/{agent_id}`), matching the UUID that group chat addresses participants by.
 
-### Personality Dimensions
+### The Bound Unit
 
-Personality is split into two tiers:
-
-=== "Big Five (OCEAN-variant)"
-
-    Float values (0.0--1.0) used for **internal compatibility scoring only** (not injected
-    into prompts). `stress_response` replaces traditional neuroticism with inverted polarity
-    (1.0 = very calm). Scored by `core/personality.py`.
-
-    | Dimension | Range | Description |
-    |-----------|-------|-------------|
-    | `openness` | 0.0--1.0 | Curiosity, creativity |
-    | `conscientiousness` | 0.0--1.0 | Thoroughness, reliability |
-    | `extraversion` | 0.0--1.0 | Assertiveness, sociability |
-    | `agreeableness` | 0.0--1.0 | Cooperation, empathy |
-    | `stress_response` | 0.0--1.0 | Emotional stability (1.0 = very calm) |
-
-    **Compatibility scoring** (weighted composite, result clamped to [0, 1]):
-
-    - **60% Big Five similarity:** `openness`, `conscientiousness`, `agreeableness`,
-      `stress_response` use `1 - |diff|`; `extraversion` uses a tent-function peaking
-      at 0.3 diff (complementary extraverts collaborate better than identical ones)
-    - **20% Collaboration alignment:** ordinal adjacency
-      (`INDEPENDENT` ↔ `PAIR` ↔ `TEAM`); scored 1.0 for same, 0.5 for adjacent, 0.0
-      for opposite
-    - **20% Conflict approach:** constructive pairs score 1.0, destructive pairs 0.2,
-      mixed 0.4--0.6. Uses `itertools.combinations` for team-level averaging
-
-=== "Behavioural Enums"
-
-    Injected into system prompts as natural-language labels that LLMs respond to:
-
-    | Enum | Values |
-    |------|--------|
-    | `DecisionMakingStyle` | `analytical`, `intuitive`, `consultative`, `directive` |
-    | `CollaborationPreference` | `independent`, `pair`, `team` |
-    | `CommunicationVerbosity` | `terse`, `balanced`, `verbose` |
-    | `ConflictApproach` | `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model) |
+An agent is a fixed `(role, model)` pair. The role says what the agent is FOR, which is what
+selection, routing and the decomposition planner reason about; the bound `(provider, model)`
+says what actually runs it, and nothing in the loop re-points it (see
+[No Bound-Pair Rewrite](providers.md)). How an agent's output READS is not a property of the
+agent at all: it is governed centrally by
+[Output Style Policy](output-style-policy.md), which applies the same house rules to every
+agent and enforces the hard ones deterministically at the boundary where work is kept or sent.
 
 ### Skill Model
 
@@ -215,29 +185,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
       name: "Sarah Chen"
       role: "Senior Backend Developer"
       department: "Engineering"
-      personality:
-        traits:
-          - analytical
-          - detail-oriented
-          - pragmatic
-        communication_style: "concise and technical"
-        risk_tolerance: "low"
-        creativity: "medium"
-        description: >
-          Sarah is a methodical backend developer who prioritizes clean
-          architecture and thorough testing. She pushes back on shortcuts
-          and advocates for proper error handling. Prefers Pythonic solutions.
-        # Big Five (OCEAN-variant) -- internal scoring (0.0-1.0)
-        openness: 0.4
-        conscientiousness: 0.9
-        extraversion: 0.3
-        agreeableness: 0.5
-        stress_response: 0.75
-        # Behavioral enums -- injected into system prompts
-        decision_making: "analytical"
-        collaboration: "independent"
-        verbosity: "balanced"
-        conflict_approach: "compromise"
       skills:
         primary:
           - id: python
@@ -396,7 +343,7 @@ matches the path `agent_id` (cross-agent rows are rejected with 400).
 `src/synthorg/engine/identity/diff.py` provides identity-specific diff logic:
 
 - **`IdentityFieldChange`**: A single field-level change with `field_path`
-  (dot-notation, e.g. `personality.risk_tolerance`), `change_type`
+  (dot-notation, e.g. `authority.budget_limit`), `change_type`
   (`modified`/`added`/`removed`), and `old_value`/`new_value` (JSON strings).
 - **`AgentIdentityDiff`**: Full diff summary with `agent_id`, `from_version`,
   `to_version`, `field_changes`, and a human-readable `summary`.

@@ -43,30 +43,15 @@ class TestRenderTemplateBasic:
         assert config.company_name == "Tech Startup"
         assert len(config.agents) == 6
 
-    def test_personality_preset_name_retained_for_field_form(self) -> None:
-        # Builtins reference presets via the `personality_preset:` FIELD (not a
-        # bare `personality:` string). The rendered AgentConfig must keep the
-        # preset NAME, not just the resolved personality dict, so the setup
-        # wizard's personality dropdown shows the assignment instead of an
-        # empty "Select...".
-        loaded = load_template("product_team")
-        config = render_template(loaded)
-        presets = {agent.personality_preset for agent in config.agents}
-        assert "strategic_planner" in presets
-        for agent in config.agents:
-            if agent.personality_preset is not None:
-                assert agent.personality, agent.name
-
     @pytest.mark.parametrize("template_name", sorted(BUILTIN_TEMPLATES))
-    def test_every_builtin_agent_has_a_personality(self, template_name: str) -> None:
-        # Every shipped template must assign a personality preset to EVERY
-        # agent. The setup wizard binds its personality dropdown to the preset
-        # name, so an agent without one renders an unconfigured "Select..." and
-        # ships an agent with no personality.
+    def test_every_builtin_agent_states_its_model(self, template_name: str) -> None:
+        # An agent is a bound (role, model) unit, so every shipped template
+        # must state each agent's own model requirement: an agent without one
+        # reaches the matcher with nothing to select on.
         config = render_template(load_template(template_name))
-        unassigned = [a.role for a in config.agents if not a.personality_preset]
-        assert not unassigned, (
-            f"{template_name} agents without a personality: {unassigned}"
+        unstated = [a.role for a in config.agents if not a.model_requirement]
+        assert not unstated, (
+            f"{template_name} agents without a model requirement: {unstated}"
         )
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
@@ -463,7 +448,7 @@ class TestCollectVariables:
         assert result["undeclared_key"] == "value123"
 
 
-# ── Inline personality and department extensions ──────────────────
+# ── Agent narrowing and department extensions ─────────────────────
 
 
 @pytest.mark.unit
@@ -477,36 +462,6 @@ class TestExpandAgentNarrowing:
             TemplateRenderError, match="requires a non-empty string 'role'"
         ):
             _expand_single_agent(agent, 0, set(), has_extends=False)
-
-    def test_non_string_personality_preset_raises(self) -> None:
-        """A non-string personality_preset fails loud."""
-        from synthorg.templates._agent_expansion import _expand_single_agent
-
-        agent: dict[str, object] = {"role": "Dev", "personality_preset": 123}
-        with pytest.raises(TemplateRenderError, match="must be a string"):
-            _expand_single_agent(agent, 0, set(), has_extends=False)
-
-
-@pytest.mark.unit
-class TestInlinePersonality:
-    def test_inline_personality_applied(self) -> None:
-        """Inline personality dict is applied to agent config."""
-        from synthorg.templates._agent_expansion import _expand_single_agent
-
-        agent: dict[str, object] = {
-            "role": "Dev",
-            "personality": {
-                "traits": ("custom-trait",),
-                "communication_style": "custom",
-            },
-        }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
-        personality = result["personality"]
-        assert isinstance(personality, dict)
-        assert personality["communication_style"] == "custom"
-        traits = personality["traits"]
-        assert isinstance(traits, tuple | list)
-        assert "custom-trait" in traits
 
 
 @pytest.mark.unit
@@ -578,31 +533,6 @@ class TestDepartmentPassthrough:
         handoffs = result["workflow_handoffs"]
         assert isinstance(handoffs, list)
         assert len(handoffs) == 1
-
-
-@pytest.mark.unit
-class TestInlinePersonalityRejection:
-    def test_invalid_inline_personality_raises_template_render_error(self) -> None:
-        """Invalid inline personality dict raises TemplateRenderError."""
-        from synthorg.templates._agent_expansion import _expand_single_agent
-
-        agent: dict[str, object] = {
-            "role": "Dev",
-            "personality": {"openness": 99.0},
-        }
-        with pytest.raises(TemplateRenderError, match="Invalid inline personality"):
-            _expand_single_agent(agent, 0, set(), has_extends=False)
-
-    def test_non_dict_personality_raises_template_render_error(self) -> None:
-        """Non-dict personality value raises TemplateRenderError."""
-        from synthorg.templates._agent_expansion import _expand_single_agent
-
-        agent: dict[str, object] = {
-            "role": "Dev",
-            "personality": "not-a-dict",
-        }
-        with pytest.raises(TemplateRenderError, match="must be a mapping"):
-            _expand_single_agent(agent, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit

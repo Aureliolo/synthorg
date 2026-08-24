@@ -5,7 +5,7 @@ search:
 
 # Templates
 
-Pre-built company templates, personality presets, and template builder.
+Pre-built company templates and template builder.
 
 ## Enums
 
@@ -27,9 +27,9 @@ Pre-built company templates, personality presets, and template builder.
 
 ::: synthorg.templates.merge
 
-## Presets
+## Agent Naming
 
-::: synthorg.templates.presets
+::: synthorg.templates.agent_naming
 
 ## Model Requirements
 

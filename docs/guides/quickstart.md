@@ -119,7 +119,7 @@ On a fresh install with no admin user yet, the **setup wizard** first asks you t
 1. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.
 3. **Name your company**: pick any name (e.g. "My First Org").
-4. **Review agents**: the template populates the roster; tweak personalities and models if you want, or accept defaults.
+4. **Review agents**: the template populates the roster; tweak names and models if you want, or accept defaults.
 5. **Choose capabilities**: enable or disable the optional platform capabilities for your organisation.
 6. **Pick a theme**: light or dark.
 
@@ -127,7 +127,7 @@ On a fresh install with no admin user yet, the **setup wizard** first asks you t
 
 Once the wizard completes, the dashboard loads and you will see:
 
-- **Agents**: the CEO and Full-Stack Developer; each has its own personality and model assignment
+- **Agents**: the CEO and Full-Stack Developer; each has its own role and model assignment
 - **Organisation status**: health indicators for the platform
 - **Task board**: empty, ready to accept tasks
 
@@ -216,7 +216,7 @@ Your data persists in the `synthorg-data` Docker volume and will be available ne
 ## Next Steps
 
 - [Company Configuration](company-config.md): customise every aspect of your organisation via YAML
-- [Agent Roles & Hierarchy](agents.md): add more agents, define departments, configure personality
+- [Agent Roles & Hierarchy](agents.md): add more agents, define departments, assign models
 - [Budget & Cost Control](budget.md): set spending limits and tune the capability ladder
 - [Deployment (Docker)](deployment.md): production hardening and operations
 - [Roadmap](../roadmap/index.md): what is available now versus in active development

@@ -4,7 +4,6 @@ export type {
   AvailableLocalesResponse,
   ImportCodebaseAck,
   ImportCodebasePayload,
-  PersonalityPresetInfoResponse as PersonalityPresetInfo,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
@@ -20,7 +19,6 @@ export type {
   TemplateVariableResponse as TemplateVariable,
   UpdateAgentModelRequest,
   UpdateAgentNameRequest,
-  UpdateAgentPersonalityRequest,
 } from './dtos.gen'
 
 export type { PostureName } from './enum-values.gen'

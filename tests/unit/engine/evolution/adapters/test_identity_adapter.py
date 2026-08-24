@@ -71,8 +71,8 @@ class TestIdentityAdapter:
         proposal = AdaptationProposal(
             agent_id=agent_id,
             axis=AdaptationAxis.IDENTITY,
-            description="Update personality",
-            changes={"personality": {"openness": 0.8}},
+            description="Update department",
+            changes={"department": "Platform"},
             confidence=0.95,
             source=AdaptationSource.SUCCESS,
         )

@@ -11,7 +11,6 @@ function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
     model_provider: 'prov',
     model_id: 'm-1',
     capability: 'capable',
-    personality_preset: null,
     ...overrides,
   }
 }
@@ -66,11 +65,9 @@ function renderTable(providerBaseUrl: string | null) {
     <SetupAgentsTable
       agents={[agent()]}
       providers={{ prov: provider(providerBaseUrl) }}
-      personalityPresets={[]}
       onNameChange={noop}
       onModelChange={noop}
       onRandomizeName={noop}
-      onPersonalityChange={noop}
     />,
   )
 }

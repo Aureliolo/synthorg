@@ -7,7 +7,7 @@ template:
     Project Manager owning the client relationship. Advisory rather than a
     full delivery line, so it stays small and senior. Group chat and
     proposals are pre-enabled for stakeholder collaboration.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 4
   max_agents: 6
   tags:
@@ -62,36 +62,30 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "systems_thinker"
       department: "consulting"
     - role: "Backend Developer"
       merge_id: "advisor-1"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "pragmatic_builder"
       department: "consulting"
     - role: "Backend Developer"
       merge_id: "advisor-2"
       model:
         priority: "quality"
-      personality_preset: "code_craftsman"
       department: "consulting"
     - role: "Project Manager"
       model:
         priority: "speed"
-      personality_preset: "client_advisor"
       department: "operations"
     - role: "Technical Writer"
       model:
         priority: "quality"
-      personality_preset: "technical_communicator"
       department: "operations"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
 
   workflow: "kanban"

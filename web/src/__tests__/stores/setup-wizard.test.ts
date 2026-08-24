@@ -105,7 +105,6 @@ describe('setup wizard store', () => {
         department: '',
         model_provider: 'missing-provider',
         model_id: 'm',
-        personality_preset: 'pragmatist',
         capability: 'capable',
       } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
       useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
@@ -121,7 +120,6 @@ describe('setup wizard store', () => {
         department: '',
         model_provider: 'missing-provider',
         model_id: 'm',
-        personality_preset: 'pragmatist',
         capability: 'capable',
       } as unknown as ReturnType<typeof useSetupWizardStore.getState>['agents'][number]
       useSetupWizardStore.setState({ agents: [agentFixture], providers: {} })
@@ -269,7 +267,6 @@ describe('setup wizard store', () => {
         model_provider: 'provider-default',
         model_id: 'model-default',
         capability: 'capable',
-        personality_preset: 'balanced',
         ...over,
       }
     }
@@ -496,7 +493,6 @@ describe('setup wizard store', () => {
                   model_provider: 'test-provider',
                   model_id: 'test-model',
                   capability: 'expert',
-                  personality_preset: 'visionary_leader',
                 },
               ],
             }),
@@ -690,7 +686,6 @@ describe('setup wizard store', () => {
         model_provider: 'p',
         model_id: 'm',
         capability: 'expert',
-        personality_preset: null,
       }
       server.use(
         http.put('/api/v1/setup/agents/:index/name', () =>
@@ -707,8 +702,7 @@ describe('setup wizard store', () => {
             model_provider: 'p',
             model_id: 'm',
             capability: 'expert',
-            personality_preset: null,
-          },
+              },
         ],
       })
 

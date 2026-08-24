@@ -1,10 +1,8 @@
 import {
   getAgents,
-  listPersonalityPresets,
   randomizeAgentName as apiRandomizeAgentName,
   updateAgentModel as apiUpdateAgentModel,
   updateAgentName as apiUpdateAgentName,
-  updateAgentPersonality as apiUpdateAgentPersonality,
 } from '@/api/endpoints/setup'
 import type { StoreApi } from 'zustand'
 import { createLogger } from '@/lib/logger'
@@ -37,9 +35,6 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
   agentsLoading: false,
   agentsError: null,
   agentsFetched: false,
-  personalityPresets: [],
-  personalityPresetsLoading: false,
-  personalityPresetsError: null,
 
   async fetchAgents() {
     set({ agentsLoading: true, agentsError: null })
@@ -82,30 +77,6 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
       set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
     } catch (err) {
       reportAgentUpdateError(set, 'randomizeAgentName', err)
-    }
-  },
-
-  async updateAgentPersonality(index, preset) {
-    set({ agentsError: null })
-    try {
-      const updated = await apiUpdateAgentPersonality(index, { personality_preset: preset })
-      set((s) => ({ agents: s.agents.map((a, i) => (i === index ? updated : a)) }))
-    } catch (err) {
-      reportAgentUpdateError(set, 'updateAgentPersonality', err)
-    }
-  },
-
-  async fetchPersonalityPresets() {
-    set({ personalityPresetsLoading: true, personalityPresetsError: null })
-    try {
-      const presets = await listPersonalityPresets()
-      set({ personalityPresets: [...presets], personalityPresetsLoading: false })
-    } catch (err) {
-      log.error('fetchPersonalityPresets failed:', getErrorMessage(err))
-      set({
-        personalityPresetsError: getErrorMessage(err),
-        personalityPresetsLoading: false,
-      })
     }
   },
 })

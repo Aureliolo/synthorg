@@ -469,7 +469,7 @@ operator-tunable through `engine.capability_floor_*`). Substantial complexity
 regardless of what it is worth.
 
 What the requirement does is pick an **agent**, not a model. An agent is a fixed
-`(role, personality, model)` unit, so its capability is a property of the
+`(role, model)` unit, so its capability is a property of the
 employee; work that needs more of it goes to a different employee, exactly as
 an organisation would handle it. The alternative the loop used to run,
 re-dispatching a turn onto a stronger model under the same agent's name, made
@@ -852,11 +852,10 @@ answerable by an import style.
 
 ## Per-agent dispatch comparison
 
-Because an agent is a fixed unit, "how did this agent, with this personality,
-on this model, perform" finally has an answer. `GET
-/agents/dispatch-profiles` reports every active agent's own calls, grouped by
-role and bound pair so the same model under two personalities and the same
-personality on two models both read off the page;
+Because an agent is a fixed unit, "how did this agent, on this model, perform"
+finally has an answer. `GET /agents/dispatch-profiles` reports every active
+agent's own calls, grouped by role and bound pair so two agents on the same
+model and the same role on two models both read off the page;
 `GET /agents/{id}/dispatch-profile` reports one.
 
 Two things keep it honest. Probe traffic is excluded, because a probe belongs
@@ -867,7 +866,7 @@ renders as insufficient rather than as a number, since a rate over four calls
 is not a measurement and rendering it beside one over four hundred invites a
 decision the data cannot support.
 
-Agent attributes (role, department, the personality axes) are joined at read
+Agent attributes (role, department) are joined at read
 time from the live roster and never written onto a record: a row that copied
 an agent's department would silently change meaning the day that agent moved,
 which is exactly what makes historical numbers wrong.

@@ -13,7 +13,6 @@ from synthorg.api.controllers.setup_model_assignment import match_and_assign_mod
 from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import (
     ProviderModelCoverageInsufficientError,
-    ValidationError,
 )
 from synthorg.core.types import CapabilityLevel
 from synthorg.templates.loader import load_template
@@ -25,8 +24,8 @@ from tests._shared import JsonDict
 class TestExpandTemplateAgentsRenders:
     """expand_template_agents renders through the one renderer pipeline.
 
-    The model-block / preset resolution itself is covered at the renderer
-    layer (``test_renderer.py``); these assert the wizard wrapper renders the
+    The model-block resolution itself is covered at the renderer layer
+    (``test_renderer.py``); these assert the wizard wrapper renders the
     real, inheritance-resolved roster and projects each agent's
     ``model_requirement`` for matching.
     """
@@ -66,63 +65,42 @@ class TestExpandTemplateAgentsRenders:
         assert cto["model_requirement"]["priority"] == "quality"
         assert cto["model_requirement"]["requires_reasoning"] is True
 
-    def test_custom_presets_accepted(self) -> None:
-        """A custom_presets map passes through render without error."""
-        custom: dict[str, JsonDict] = {"other": {"traits": ("a",)}}
-        agents: list[JsonDict] = expand_template_agents(
-            load_template("startup"), locales=["en_US"], custom_presets=custom
-        )
-        assert agents
-
 
 @pytest.mark.unit
-class TestBuildAgentConfigCustomPresets:
-    def _make_request(
-        self,
-        preset: str = "pragmatic_builder",
-    ) -> SetupAgentRequest:
-        # ``model_construct`` builds a real, typed ``SetupAgentRequest`` while
-        # bypassing validation: the model validates ``personality_preset``
-        # against the built-in catalogue, but these tests exercise
-        # ``build_agent_config`` with custom / unknown presets that the model
-        # would reject at construction.
-        return SetupAgentRequest.model_construct(
+class TestBuildAgentConfig:
+    """build_agent_config projects the wizard payload onto a settings row."""
+
+    def _request(self, *, budget: float | None = None) -> SetupAgentRequest:
+        return SetupAgentRequest(
             name="Test Agent",
             role="Backend Developer",
             department="engineering",
-            personality_preset=preset,
             model_provider="test-provider",
             model_id="test-basic-001",
-            budget_limit_monthly=None,
+            budget_limit_monthly=budget,
         )
 
-    def test_builtin_preset_resolves(self) -> None:
-        data = self._make_request("pragmatic_builder")
-        result: JsonDict = build_agent_config(data)
-        assert result["personality"]["communication_style"] == "concise"
-        assert result["personality_preset"] == "pragmatic_builder"
+    def test_carries_identity_and_bound_pair(self) -> None:
+        """The row names the agent and both halves of its binding."""
+        result = build_agent_config(self._request())
 
-    def test_custom_preset_resolves(self) -> None:
-        custom: dict[str, JsonDict] = {
-            "my_custom": {
-                "traits": ("custom-trait",),
-                "communication_style": "custom",
-                "description": "Custom",
-                "openness": 0.5,
-                "conscientiousness": 0.5,
-                "extraversion": 0.5,
-                "agreeableness": 0.5,
-                "stress_response": 0.5,
-            },
+        assert result["name"] == "Test Agent"
+        assert result["role"] == "Backend Developer"
+        assert result["department"] == "engineering"
+        assert result["model"] == {
+            "provider": "test-provider",
+            "model_id": "test-basic-001",
         }
-        data = self._make_request("my_custom")
-        result: JsonDict = build_agent_config(data, custom_presets=custom)
-        assert result["personality"]["communication_style"] == "custom"
 
-    def test_unknown_preset_raises_validation_error(self) -> None:
-        data = self._make_request("nonexistent")
-        with pytest.raises(ValidationError, match="Unknown personality preset"):
-            build_agent_config(data)
+    def test_omits_budget_when_unset(self) -> None:
+        """An absent budget leaves the key out rather than writing a null."""
+        assert "budget_limit_monthly" not in build_agent_config(self._request())
+
+    def test_carries_budget_when_set(self) -> None:
+        """A supplied budget reaches the persisted row."""
+        result = build_agent_config(self._request(budget=250.0))
+
+        assert result["budget_limit_monthly"] == 250.0
 
 
 @pytest.mark.unit

@@ -249,10 +249,7 @@ LOCKED organisation a weaker response than it chose and said nothing.
    `BudgetChecker` closure provides the true safety net.
 4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
    task, and resolved model capability. The rung determines a `PromptProfile` that
-   controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
-   including personality token trimming when the section exceeds the profile's
-   `max_personality_tokens` budget. Trimming metadata is returned in
-   `SystemPrompt.personality_trim_info`.
+   controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below).
    Tool definitions are NOT included in the prompt; they are supplied via the
    API's `tools` parameter ([Decision Log](../architecture/decisions.md) D22).
    Follows the **non-inferable-only principle**: system prompts include only
@@ -561,11 +558,11 @@ detailed the system prompt is for each capability rung.
 
 ### Built-in Profiles
 
-| Profile    | Capability | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
-|------------|------------|----------------------|------------------------|--------------|---------------------|----------|
-| **full**   | expert     | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
-| **standard** | capable  | Description + style + traits | 200              | Included     | Nested list         | Summary  |
-| **basic**  | basic      | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
+| Profile    | Capability | Org Policies | Acceptance Criteria | Autonomy |
+|------------|------------|--------------|---------------------|----------|
+| **full**   | expert     | Included     | Nested list         | Full     |
+| **standard** | capable  | Included     | Nested list         | Summary  |
+| **basic**  | basic      | Excluded     | Flat semicolon line | Minimal  |
 
 The `Autonomy` column selects the verbosity tier for two sections at once. The
 standing "ask rather than guess" directive is tiered on the same axis as the
@@ -573,40 +570,6 @@ autonomy instructions and keyed on the same resolved autonomy level, so an
 agent selected at a lower capability rung gets a terser instruction rather
 than losing the instruction.
 See [The Org Asks](org-questions.md).
-
-### Personality Trimming
-
-When the personality section exceeds `max_personality_tokens`, progressive
-trimming enforces the budget as a secondary control after `personality_mode`:
-
-1. **Tier 1, Drop enums**: override mode to `"condensed"` (removes behavioural
-   enum fields like risk_tolerance, creativity, verbosity, etc.)
-2. **Tier 2, Truncate description**: shorten `personality_description` to fit
-   the remaining budget (word-boundary aware, appends `"..."`)
-3. **Tier 3, Minimal fallback**: override mode to `"minimal"`
-   (`communication_style` only)
-
-Trimming metadata is attached to `SystemPrompt.personality_trim_info`
-(`PersonalityTrimInfo` model with `before_tokens`, `after_tokens`,
-`max_tokens`, `trim_tier`, and `budget_met` computed field). Runtime
-settings in the `ENGINE` namespace control trimming
-(`personality_trimming_enabled`, `personality_max_tokens_override`,
-`personality_trimming_notify`).
-
-**Dashboard notification**: when trimming activates and
-`personality_trimming_notify` is enabled (default `true`), `AgentEngine`
-publishes a `WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED)` on the
-`agents` WebSocket channel. The payload carries `agent_id`, `agent_name`,
-`task_id`, `before_tokens`, `after_tokens`, `max_tokens`, `trim_tier`, and
-`budget_met`. The dashboard subscribes via the global `useGlobalNotifications`
-hook and renders a live toast so operators see token-budget pressure in
-real time. Publishing is failure-tolerant: failures log
-`prompt.personality.notify_failed` at WARNING and never block task
-execution (`MemoryError`, `RecursionError`, and `asyncio.CancelledError`
-propagate per the standard failure-tolerant publisher contract). Wiring the
-notifier callback is the responsibility of the engine host; API-layer
-integrations use the `synthorg.api.app.make_personality_trim_notifier`
-factory to build a callback bound to the live `ChannelsPlugin`.
 
 ### Capability Flow
 
@@ -638,8 +601,6 @@ factory to build a callback bound to the live `ChannelsPlugin`.
   `requested_capability`, `selected_capability`, and `defaulted` flag);
   `prompt.profile.default` is emitted at DEBUG level when falling back
   to the full profile
-- Personality trimming is logged via `prompt.personality.trimmed` (with
-  `before_tokens`, `after_tokens`, `max_tokens`, and `trim_tier`)
 
 ## Stagnation Detection
 
@@ -898,7 +859,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
-**SynthOrg concepts not captured by ACG**: agent personality, episodic memory,
+**SynthOrg concepts not captured by ACG**: episodic memory,
 procedural memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organisational
 abstractions above the computation graph level.
 

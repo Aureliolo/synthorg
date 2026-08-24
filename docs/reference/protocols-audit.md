@@ -294,7 +294,6 @@ All 45 persistence protocols are listed; every one is a plug-in `Repository` / `
 | persistence/ontology_protocol.py | 96 | `OntologyDriftReportRepository` | 1 | 0 | 2 | KEEP |
 | persistence/parked_context_protocol.py | 10 | `ParkedContextRepository` | 1 | 0 | 6 | KEEP |
 | persistence/preset_override_protocol.py | 24 | `PresetOverrideRepo` | 1 | 0 | 5 | KEEP |
-| persistence/preset_protocol.py | 38 | `PersonalityPresetRepository` | 1 | 0 | 5 | KEEP |
 | persistence/project_cost_aggregate_protocol.py | 28 | `ProjectCostAggregateRepository` | 1 | 0 | 4 | KEEP |
 | persistence/project_protocol.py | 11 | `ProjectRepository` | 1 | 0 | 6 | KEEP |
 | persistence/protocol.py | 134 | `PersistenceBackend` | 1 | 0 | 569 | KEEP |

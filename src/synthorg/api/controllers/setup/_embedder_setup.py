@@ -39,7 +39,6 @@ from synthorg.observability.events.setup import (
     SETUP_PROVIDER_MODEL_COVERAGE_INSUFFICIENT,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
 )
-from synthorg.persistence.state import persistence_of
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.state import provider_management_of
 from synthorg.settings.model_ref import parse_model_ref
@@ -140,15 +139,8 @@ async def auto_create_template_agents(
     Returns:
         Tuple of the declared element types.
     """
-    from synthorg.templates.preset_service import (  # noqa: PLC0415
-        fetch_custom_presets_map,
-    )
-
     async with asyncio.TaskGroup() as tg:
         loc_task = tg.create_task(read_name_locales(settings_svc))
-        preset_task = tg.create_task(
-            fetch_custom_presets_map(persistence_of(app_state).custom_presets),
-        )
         prov_task = tg.create_task(
             provider_management_of(app_state).list_providers(),
         )
@@ -156,7 +148,6 @@ async def auto_create_template_agents(
     agents = expand_template_agents(
         loaded,
         locales=loc_task.result(),
-        custom_presets=preset_task.result(),
         variables=variables,
     )
     providers = prov_task.result()

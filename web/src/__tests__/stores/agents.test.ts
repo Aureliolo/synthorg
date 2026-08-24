@@ -20,22 +20,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     role: 'Software Engineer',
     department: 'engineering',
     status: 'active',
-    personality: {
-      traits: ['analytical'],
-      communication_style: 'direct',
-      risk_tolerance: 'medium',
-      creativity: 'high',
-      description: 'test',
-      openness: 0.8,
-      conscientiousness: 0.7,
-      extraversion: 0.5,
-      agreeableness: 0.6,
-      stress_response: 0.9,
-      decision_making: 'analytical',
-      collaboration: 'team',
-      verbosity: 'balanced',
-      conflict_approach: 'collaborate',
-    },
     model: {
       provider: 'test-provider',
       model_id: 'test-expert-001',
@@ -47,7 +31,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     authority: {},
     autonomy_level: 'semi',
     strategic_output_mode: null,
-    personality_preset: null,
     capability: null,
     model_requirement: null,
     model_capabilities: null,
@@ -762,105 +745,30 @@ describe('runtime statuses (org chart)', () => {
   })
 })
 
-describe('personality.trimmed toast dispatch', () => {
+describe('unhandled agents-channel events', () => {
   beforeEach(() => {
     useToastStore.getState().dismissAll()
     useAgentsStore.setState({ runtimeStatuses: {} })
   })
 
-  it('does not dispatch a toast for personality.trimmed (handled by notifications pipeline)', () => {
+  it('neither toasts nor touches runtimeStatuses', () => {
     useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
+      event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: {
-        agent_id: 'agent-1',
-        agent_name: 'Alice',
-        task_id: 'task-1',
-        before_tokens: 600,
-        after_tokens: 120,
-        max_tokens: 200,
-        trim_capability: 2,
-        budget_met: true,
-      },
+      payload: { agent_id: 'agent-1', agent_name: 'Alice' },
     })
 
     expect(useToastStore.getState().toasts).toHaveLength(0)
-  })
-
-  it('does not dispatch a toast when token fields are missing', () => {
-    useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
-      channel: 'agents',
-      timestamp: '2026-03-27T10:00:00Z',
-      payload: { agent_name: 'Bob' },
-    })
-
-    expect(useToastStore.getState().toasts).toHaveLength(0)
-  })
-
-  it('suppresses the toast when every payload field is missing', () => {
-    useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
-      channel: 'agents',
-      timestamp: '2026-03-27T10:00:00Z',
-      payload: {},
-    })
-
-    expect(useToastStore.getState().toasts).toHaveLength(0)
-  })
-
-  it('does not affect runtimeStatuses', () => {
-    useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
-      channel: 'agents',
-      timestamp: '2026-03-27T10:00:00Z',
-      payload: { agent_name: 'Alice', before_tokens: 600, after_tokens: 120 },
-    })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 
-  it('does not dispatch a toast for long agent_name', () => {
-    const longName = 'A'.repeat(200)
+  it('tolerates an empty payload', () => {
     useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
+      event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: {
-        agent_name: longName,
-        before_tokens: 600,
-        after_tokens: 120,
-      },
-    })
-
-    expect(useToastStore.getState().toasts).toHaveLength(0)
-  })
-
-  it('does not dispatch a toast for non-finite token values', () => {
-    useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
-      channel: 'agents',
-      timestamp: '2026-03-27T10:00:00Z',
-      payload: {
-        agent_name: 'Carol',
-        before_tokens: Number.POSITIVE_INFINITY,
-        after_tokens: Number.NaN,
-      },
-    })
-
-    expect(useToastStore.getState().toasts).toHaveLength(0)
-  })
-
-  it('does not dispatch a toast for non-string agent_name', () => {
-    useAgentsStore.getState().updateFromWsEvent({
-      event_type: 'personality.trimmed',
-      channel: 'agents',
-      timestamp: '2026-03-27T10:00:00Z',
-      payload: {
-        agent_name: 12345,
-        before_tokens: 600,
-        after_tokens: 120,
-      },
+      payload: {},
     })
 
     expect(useToastStore.getState().toasts).toHaveLength(0)

@@ -1,4 +1,4 @@
-"""Company templates: built-in presets and custom template loading.
+"""Company templates: built-in templates, packs, and custom template loading.
 
 Public API
 ----------
@@ -8,7 +8,6 @@ Public API
     list_templates
     list_builtin_templates
     render_template
-    validate_preset_references
     CompanyTemplate
     LoadedTemplate
     ModelMatch
@@ -61,7 +60,6 @@ if TYPE_CHECKING:
         list_packs,
         load_pack,
     )
-    from synthorg.templates.presets import validate_preset_references
     from synthorg.templates.renderer import render_template
     from synthorg.templates.schema import (
         CompanyTemplate,
@@ -113,10 +111,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "list_builtin_packs": ("synthorg.templates.pack_loader", "list_builtin_packs"),
     "list_packs": ("synthorg.templates.pack_loader", "list_packs"),
     "load_pack": ("synthorg.templates.pack_loader", "load_pack"),
-    "validate_preset_references": (
-        "synthorg.templates.presets",
-        "validate_preset_references",
-    ),
     "render_template": ("synthorg.templates.renderer", "render_template"),
 }
 
@@ -189,5 +183,4 @@ __all__ = [
     "parse_model_requirement",
     "render_template",
     "resolve_model_requirement",
-    "validate_preset_references",
 ]

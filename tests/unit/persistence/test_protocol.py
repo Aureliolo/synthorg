@@ -83,9 +83,6 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
-from synthorg.persistence.preset_protocol import (
-    PersonalityPresetRepository,
-)
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
@@ -1123,42 +1120,6 @@ class _FakeModelToolCallSignalRepository:
         return False
 
 
-class _FakePersonalityPresetRepository:
-    async def save(self, entity: object) -> None:
-        del entity
-
-    async def get(self, entity_id: NotBlankStr) -> object | None:
-        del entity_id
-        return None
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del limit, offset
-        return ()
-
-    async def query(
-        self,
-        filter_spec: object,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[object, ...]:
-        del filter_spec, limit, offset
-        return ()
-
-    async def count(self, filter_spec: object) -> int:
-        del filter_spec
-        return 0
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        del entity_id
-        return False
-
-
 class _FakeKnowledgeSourceRepository:
     async def save(self, entity: object) -> None:
         del entity
@@ -1742,10 +1703,6 @@ class _FakeBackend:
         return InMemoryEvaluationReportRepository()
 
     @property
-    def custom_presets(self) -> _FakePersonalityPresetRepository:
-        return _FakePersonalityPresetRepository()
-
-    @property
     def workflow_definitions(self) -> _FakeWorkflowDefinitionRepository:
         return _FakeWorkflowDefinitionRepository()
 
@@ -2203,12 +2160,6 @@ class TestProtocolCompliance:
     ) -> None:
         backend = _FakeBackend()
         assert isinstance(backend.evaluation_reports, EvaluationReportRepository)
-
-    def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
-        assert isinstance(
-            _FakePersonalityPresetRepository(),
-            PersonalityPresetRepository,
-        )
 
     def test_fake_workflow_def_repo_is_workflow_definition_repository(
         self,

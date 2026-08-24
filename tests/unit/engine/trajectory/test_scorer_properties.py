@@ -10,7 +10,6 @@ from hypothesis import strategies as st
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.completion_enums import FinishReason
@@ -31,7 +30,6 @@ def _make_context() -> AgentContext:
         name="test-agent",
         role="Developer",
         department="Engineering",
-        personality=PersonalityConfig(),
         skills=SkillSet(),
         authority=Authority(),
         model=ModelConfig(

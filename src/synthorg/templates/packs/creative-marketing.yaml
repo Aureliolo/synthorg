@@ -5,7 +5,7 @@ template:
     leading campaign planning and brand positioning, supported by a
     Content Writer producing copy, articles, social media content, and
     marketing collateral.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 2
   max_agents: 2
   tags:
@@ -31,12 +31,10 @@ template:
     - role: "Content Writer"
       model:
         priority: "quality"
-      personality_preset: "team_diplomat"
       department: "creative_marketing"
     - role: "Brand Strategist"
       model:
         priority: "balanced"
-      personality_preset: "strategic_planner"
       department: "creative_marketing"
 
   workflow: "agile_kanban"

@@ -13,7 +13,7 @@ from synthorg.communication.multi_agent import (
     UnknownConversationAgentError,
     build_agent_caller,
 )
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
@@ -48,18 +48,12 @@ def _identity(
     provider: str = "example-provider",
     model_id: str = "example-capable-001",
     max_tokens: int | None = 4096,
-    personality: PersonalityConfig | None = None,
 ) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        personality=personality
-        or PersonalityConfig(
-            traits=(NotBlankStr("analytical"), NotBlankStr("curious")),
-            communication_style=NotBlankStr("concise"),
-        ),
         model=ModelConfig(
             provider=NotBlankStr(provider),
             model_id=NotBlankStr(model_id),
@@ -262,22 +256,16 @@ class TestBuildAgentCaller:
         provider = provider_registry.get.return_value
         assert provider.complete.await_args.kwargs["config"].max_tokens == 10_000
 
-    async def test_renders_prompt_without_traits_when_tuple_empty(self) -> None:
-        """Empty traits render without a Personality traits line.
-
-        ``PersonalityConfig.traits`` defaults to an empty tuple and
-        ``communication_style`` defaults to ``"neutral"``; both are
-        conditionally rendered.
-        """
-        caller, provider_registry = _build_caller(
-            identity=_identity(personality=PersonalityConfig()),
-        )
+    async def test_renders_persona_from_identity_alone(self) -> None:
+        """The participant persona is name, role and department, nothing more."""
+        caller, provider_registry = _build_caller(identity=_identity())
         await caller(_AGENT_ID, "agenda", 100, _CONVERSATION_ID)
 
         messages = provider_registry.get.return_value.complete.await_args.args[0]
         system_content = messages[0].content or ""
-        assert "Personality traits" not in system_content
-        assert "Communication style: neutral." in system_content
+        assert "You are Sarah Chen, a engineer in the engineering department." in (
+            system_content
+        )
 
     async def test_system_prompt_carries_untrusted_directive(self) -> None:
         """Every conversation LLM call carries the untrusted-content directive.

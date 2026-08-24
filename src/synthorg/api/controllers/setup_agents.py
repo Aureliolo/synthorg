@@ -8,8 +8,6 @@ within budget.
 import json
 from collections.abc import Mapping, Sequence
 
-from pydantic import JsonValue
-
 from synthorg.api.controllers.setup_models import SetupAgentRequest, SetupAgentSummary
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.domain_errors import (
@@ -21,7 +19,6 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_SUMMARY_MISSING_FIELDS,
     SETUP_AGENTS_CORRUPTED,
     SETUP_AGENTS_READ_FALLBACK,
-    SETUP_PRESET_NOT_FOUND,
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
@@ -39,27 +36,23 @@ def expand_template_agents(
     loaded: LoadedTemplate,
     locales: list[str] | None = None,
     *,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     variables: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     """Expand a template into persistable agent dicts via the renderer.
 
     Renders the template through the same pipeline as the engine
     (:func:`render_template`): resolves ``extends`` / ``_remove`` / department
-    head-roles and runs the shared agent expansion (auto-naming, personality
-    presets, and the strategic-role model default), then projects each
-    validated ``AgentConfig`` into the dict shape the matcher and persistence
-    consume. Routing the wizard through the one renderer pipeline keeps it in
-    lockstep with the engine -- a single source of truth for a template's
-    roster, instead of a parallel load-only expansion that silently skipped
-    inheritance.
+    head-roles and runs the shared agent expansion (auto-naming and the
+    strategic-role model default), then projects each validated
+    ``AgentConfig`` into the dict shape the matcher and persistence consume.
+    Routing the wizard through the one renderer pipeline keeps it in lockstep
+    with the engine: a single source of truth for a template's roster, instead
+    of a parallel load-only expansion that silently skipped inheritance.
 
     Args:
         loaded: Loaded template from the loader.
         locales: Faker locale codes for name generation.  ``None``
             uses all Latin-script locales.
-        custom_presets: Optional mapping of custom preset names to
-            personality config dicts (checked before builtins).
         variables: User-supplied template variable overrides (company name,
             budget, and any genuine template variables) fed to the renderer.
 
@@ -77,7 +70,6 @@ def expand_template_agents(
         loaded,
         variables=dict(variables) if variables else None,
         locales=locales,
-        custom_presets=custom_presets,
     )
     return [_agent_config_to_dict(agent) for agent in cfg.agents]
 
@@ -86,59 +78,32 @@ def _agent_config_to_dict(agent: AgentConfig) -> dict[str, object]:
     """Project a rendered ``AgentConfig`` into a wizard agent dict.
 
     Returns:
-        A dict with name/role/department/personality and the
-        ``model_requirement`` the matcher reads; ``model`` is a blank
-        placeholder ``match_and_assign_models`` overwrites.
+        A dict with name/role/department and the ``model_requirement`` the
+        matcher reads; ``model`` is a blank placeholder
+        ``match_and_assign_models`` overwrites.
     """
     return {
         "name": agent.name,
         "role": agent.role,
         "department": agent.department,
-        "personality": agent.personality,
-        "personality_preset": agent.personality_preset,
         "model_requirement": agent.model_requirement,
         "model": {"provider": "", "model_id": ""},
     }
 
 
-def build_agent_config(
-    data: SetupAgentRequest,
-    *,
-    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
-) -> dict[str, object]:
+def build_agent_config(data: SetupAgentRequest) -> dict[str, object]:
     """Build an agent config dict for settings persistence.
 
     Args:
         data: Validated agent creation payload.
-        custom_presets: Optional custom preset mapping.
 
     Returns:
         Agent configuration dict suitable for JSON serialization.
-
-    Raises:
-        ValidationError: If the personality preset name is not
-            found in either custom or builtin presets.
     """
-    from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
-
-    try:
-        personality_dict = get_personality_preset(
-            data.personality_preset,
-            custom_presets=custom_presets,
-        )
-    except KeyError:
-        logger.warning(
-            SETUP_PRESET_NOT_FOUND,
-            preset=data.personality_preset,
-        )
-        msg = f"Unknown personality preset {data.personality_preset!r}"
-        raise ValidationError(msg) from None
     agent_config: dict[str, object] = {
         "name": data.name,
         "role": data.role,
         "department": data.department,
-        "personality": personality_dict,
-        "personality_preset": data.personality_preset,
         "model": {
             "provider": data.model_provider,
             "model_id": data.model_id,
@@ -382,6 +347,5 @@ def agent_dict_to_summary(
             "model_provider": _agent_opt_str(model_dict.get("provider")),
             "model_id": _agent_opt_str(model_dict.get("model_id")),
             "capability": _agent_opt_str(model_dict.get("capability")) or "capable",
-            "personality_preset": _agent_opt_str(agent.get("personality_preset")),
         },
     )

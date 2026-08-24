@@ -70,13 +70,11 @@ describe('useGlobalNotifications', () => {
     expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
   })
 
-  it('delegates personality.trimmed events to the agents store', () => {
-    // This hook is only responsible for wiring the `agents` binding.  The
-    // toast contents (title, variant, description) are built inside
-    // `useAgentsStore.updateFromWsEvent` and are covered by the agents
-    // store test suite.  Spying on the store method here keeps this test
-    // focused on the delegation contract so unrelated copy changes in the
-    // store do not cascade into this file.
+  it('delegates every agents-channel event to the agents store', () => {
+    // This hook is only responsible for wiring the `agents` binding. What the
+    // store does with the event is covered by the agents store test suite, so
+    // spying on the store method keeps this test focused on the delegation
+    // contract and unaffected by store-side copy changes.
     const spy = vi.spyOn(useAgentsStore.getState(), 'updateFromWsEvent')
     renderHook(() => useGlobalNotifications())
 
@@ -88,19 +86,10 @@ describe('useGlobalNotifications', () => {
     expect(agentsBinding).toBeDefined()
 
     const event: WsEvent = {
-      event_type: 'personality.trimmed',
+      event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-04-05T10:00:00Z',
-      payload: {
-        agent_id: 'agent-1',
-        agent_name: 'Alice',
-        task_id: 'task-1',
-        before_tokens: 600,
-        after_tokens: 120,
-        max_tokens: 200,
-        trim_tier: 2,
-        budget_met: true,
-      },
+      payload: { agent_id: 'agent-1', agent_name: 'Alice' },
     }
     agentsBinding!.handler(event)
 

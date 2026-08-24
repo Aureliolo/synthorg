@@ -10,7 +10,6 @@ from synthorg.core.agent import (
     AgentIdentity,
     MemoryConfig,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
     ToolPermissions,
 )
@@ -53,10 +52,6 @@ class RoleFactory(ModelFactory[Role]):
 
 class CustomRoleFactory(ModelFactory[CustomRole]):
     __model__ = CustomRole
-
-
-class PersonalityConfigFactory(ModelFactory[PersonalityConfig]):
-    __model__ = PersonalityConfig
 
 
 class SkillSetFactory(ModelFactory[SkillSet]):

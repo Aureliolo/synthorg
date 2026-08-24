@@ -167,14 +167,14 @@ class TestSessionReplay:
 
     async def test_replay_empty_events(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         reader = StubEventReader()
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.replay_completeness == 0.0
@@ -185,7 +185,7 @@ class TestSessionReplay:
 
     async def test_replay_full_event_stream(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         events = (
@@ -194,7 +194,7 @@ class TestSessionReplay:
                 EXECUTION_CONTEXT_CREATED,
                 EXEC_ID,
                 1,
-                agent_id=str(sample_agent_with_personality.id),
+                agent_id=str(sample_agent.id),
             ),
             _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 2, turn=1, cost=0.01),
             _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 3, turn=2, cost=0.02),
@@ -211,7 +211,7 @@ class TestSessionReplay:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.context.turn_count == 3
@@ -227,7 +227,7 @@ class TestSessionReplay:
 
     async def test_replay_partial_event_stream(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         events = (
@@ -238,7 +238,7 @@ class TestSessionReplay:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.context.turn_count == 2
@@ -248,20 +248,20 @@ class TestSessionReplay:
 
     async def test_replay_preserves_identity(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         events = (_event(EXECUTION_ENGINE_START, EXEC_ID, 0),)
         reader = StubEventReader(events)
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
-        assert result.context.identity is sample_agent_with_personality
+        assert result.context.identity is sample_agent
 
     async def test_replay_preserves_task(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         events = (_event(EXECUTION_ENGINE_START, EXEC_ID, 0),)
@@ -269,7 +269,7 @@ class TestSessionReplay:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
         assert result.context.task_execution is not None
@@ -286,7 +286,7 @@ class TestSessionReplay:
     )
     async def test_replay_completeness_scoring(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         *,
         scenario: str,
         expected_min: float,
@@ -297,7 +297,7 @@ class TestSessionReplay:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
         assert expected_min <= result.replay_completeness <= expected_max, (
             f"completeness={result.replay_completeness:.2f} "
@@ -311,7 +311,7 @@ class TestSessionReplayErrorHandling:
 
     async def test_event_reader_exception_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """EventReader exception is logged and re-raised."""
 
@@ -327,7 +327,7 @@ class TestSessionReplayErrorHandling:
             await Session.replay(
                 execution_id=EXEC_ID,
                 event_reader=FailingReader(),
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
             )
 
     @pytest.mark.parametrize(
@@ -357,7 +357,7 @@ class TestSessionReplayErrorHandling:
     )
     async def test_malformed_turn_event_skipped(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         data: dict[str, object],
         error_id: str,
     ) -> None:
@@ -382,7 +382,7 @@ class TestSessionReplayErrorHandling:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
         assert result.events_processed == 3
         assert result.context.turn_count == 1
@@ -397,7 +397,7 @@ class TestSessionReplayTaskNone:
 
     async def test_replay_without_task(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Replay works when task is None (no task_execution)."""
         events = (
@@ -408,7 +408,7 @@ class TestSessionReplayTaskNone:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=None,
         )
         assert result.context.task_execution is None
@@ -423,7 +423,7 @@ class TestSessionReplayExecutionLineage:
 
     async def test_started_at_from_earliest_event(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Replayed context started_at comes from earliest event."""
         events = (
@@ -434,6 +434,6 @@ class TestSessionReplayExecutionLineage:
         result = await Session.replay(
             execution_id=EXEC_ID,
             event_reader=reader,
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
         )
         assert result.context.started_at == _ts(5)

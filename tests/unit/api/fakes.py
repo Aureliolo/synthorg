@@ -63,7 +63,6 @@ from synthorg.persistence.lifecycle_transition_protocol import (
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
-from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
@@ -1768,47 +1767,6 @@ class FakeAgentStateRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._states.pop(entity_id, None) is not None
-
-
-class FakePersonalityPresetRepository:
-    """In-memory custom personality preset repository for tests."""
-
-    def __init__(self) -> None:
-        self._presets: dict[str, Preset] = {}
-
-    async def save(self, entity: Preset) -> None:
-        existing = self._presets.get(entity.name)
-        created_at = existing.created_at if existing else entity.created_at
-        self._presets[entity.name] = entity.model_copy(
-            update={"created_at": created_at},
-        )
-
-    async def get(self, entity_id: NotBlankStr) -> Preset | None:
-        return self._presets.get(entity_id)
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[Preset, ...]:
-        rows = tuple(p for _, p in sorted(self._presets.items()))
-        return rows[offset : offset + limit]
-
-    async def query(
-        self,
-        filter_spec: object,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[Preset, ...]:
-        return await self.list_items(limit=limit, offset=offset)
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        return self._presets.pop(entity_id, None) is not None
-
-    async def count(self, filter_spec: object | None = None) -> int:
-        return len(self._presets)
 
 
 class FakeSettingsRepository:

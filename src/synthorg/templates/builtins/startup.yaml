@@ -6,7 +6,7 @@ template:
     manager iterating in agile sprints, and a completion reviewer
     signing off finished work. Semi-autonomous with hybrid
     communication for fast decision-making.
-  version: "1.1.0"
+  version: "1.2.0"
   min_agents: 4
   max_agents: 7
   tags:
@@ -63,12 +63,11 @@ template:
       head_role: "Product Manager"
 
   agents:
-    # Override parent's Full-Stack Developer: change personality
+    # Override parent's Full-Stack Developer: different model
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     # New agents
     - role: "CTO"
@@ -76,19 +75,16 @@ template:
         priority: "quality"
         min_context: 100000
         requires_reasoning: true
-      personality_preset: "rapid_prototyper"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       model:
         priority: "balanced"
-      personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Product Manager"
       model:
         priority: "speed"
-      personality_preset: "strategic_planner"
       department: "product"
 
   workflow: "agile_kanban"

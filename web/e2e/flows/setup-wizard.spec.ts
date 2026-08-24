@@ -86,7 +86,6 @@ const COMPANY: SetupCompanyResponse = {
       department: 'engineering',
       model_provider: null,
       model_id: null,
-      personality_preset: null,
       capability: 'capable',
     },
   ],

@@ -43,7 +43,7 @@ complexity), what rung an agent runs at, and whether that agent may take the
 work. One instance is built at boot and shared, so selection and dispatch cannot
 reach different verdicts about the same pair.
 
-An agent is a fixed `(role, personality, model)` unit, so a piece of work that
+An agent is a fixed `(role, model)` unit, so a piece of work that
 needs more capability goes to a **different agent**. The ladder is: the exact
 rung the work demands, else the nearest rung above, else the nearest rung below
 with the concession logged (`TASK_ASSIGNMENT_UNDER_CAPABILITY`). At or above the

@@ -13,11 +13,6 @@ TEMPLATE_RENDER_VARIABLE_ERROR: Final[str] = "template.render.variable_error"
 TEMPLATE_RENDER_JINJA2_ERROR: Final[str] = "template.render.jinja2_error"
 TEMPLATE_RENDER_YAML_ERROR: Final[str] = "template.render.yaml_error"
 TEMPLATE_RENDER_VALIDATION_ERROR: Final[str] = "template.render.validation_error"
-TEMPLATE_PERSONALITY_PRESET_INVALID: Final[str] = "template.personality_preset.invalid"
-TEMPLATE_PERSONALITY_PRESET_UNKNOWN: Final[str] = "template.personality_preset.unknown"
-TEMPLATE_PRESET_RESOLVED_CUSTOM: Final[str] = (
-    "template.personality_preset.resolved_custom"
-)
 TEMPLATE_PASS1_FLOAT_FALLBACK: Final[str] = "template.pass1.float_fallback"
 TEMPLATE_INHERIT_RESOLVE_START: Final[str] = "template.inherit.resolve_start"
 TEMPLATE_INHERIT_RESOLVE_SUCCESS: Final[str] = "template.inherit.resolve_success"
@@ -64,11 +59,6 @@ TEMPLATE_MODEL_MATCH_SKIPPED: Final[str] = "template.model_match.skipped"
 # fallback ALSO fails (no models available at all), which after the
 # wizard provider gate should not fire in practice.
 TEMPLATE_MODEL_MATCH_FALLBACK: Final[str] = "template.model_match.fallback"
-# Emitted at WARNING when an agent dict carries a non-string
-# ``personality_preset``; the matcher proceeds on a dropped preset rather
-# than crashing, but the malformed input is surfaced so the template author
-# can correct it.
-TEMPLATE_MODEL_MATCH_COERCED: Final[str] = "template.model_match.coerced"
 
 # Template packs
 TEMPLATE_PACK_LOAD_START: Final[str] = "template.pack.load.start"

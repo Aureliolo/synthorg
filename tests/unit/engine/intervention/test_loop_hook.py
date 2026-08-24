@@ -87,8 +87,8 @@ class TestBuildSteeringMessage:
 class TestResolveScope:
     """Scope resolution returns None outside a project-bound task run."""
 
-    def test_no_task(self, sample_agent_with_personality: AgentIdentity) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    def test_no_task(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         assert resolve_steering_scope(ctx) is None
 
     def test_resolves_scope(self, sample_agent_context: AgentContext) -> None:
@@ -110,10 +110,8 @@ class TestCheckSteering:
         result = await check_steering(sample_agent_context, None)
         assert result is None
 
-    async def test_no_scope_returns_none(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+    async def test_no_scope_returns_none(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
         inbox = _StubInbox((_directive(),))
         assert await check_steering(ctx, inbox) is None
 

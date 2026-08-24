@@ -8,7 +8,7 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.tool_disclosure import ToolL1Metadata
@@ -29,14 +29,6 @@ from synthorg.engine.prompt_template import (
     TOOL_CATALOGUE_HEADING,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator
-from synthorg.hr.enums import (
-    CollaborationPreference,
-    CommunicationVerbosity,
-    ConflictApproach,
-    CreativityLevel,
-    DecisionMakingStyle,
-    RiskTolerance,
-)
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
@@ -61,36 +53,39 @@ class TestBuildSystemPrompt:
 
     def test_minimal_agent_produces_valid_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Minimal call with only agent produces a prompt with identity."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert isinstance(result, SystemPrompt)
-        assert sample_agent_with_personality.name in result.content
-        assert sample_agent_with_personality.role in result.content
-        assert sample_agent_with_personality.department in result.content
+        assert sample_agent.name in result.content
+        assert sample_agent.role in result.content
+        assert sample_agent.department in result.content
         assert result.estimated_tokens > 0
         assert result.content.strip()
 
-    def test_personality_traits_in_prompt(
+    def test_no_persona_section_is_rendered(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        """All personality dimensions appear in the rendered prompt."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
-        p = sample_agent_with_personality.personality
+        """An agent is a bound ``(role, model)`` unit: no persona ships."""
+        result = build_system_prompt(agent=sample_agent)
 
-        assert p.communication_style in result.content
-        assert p.risk_tolerance.value in result.content
-        assert p.creativity.value in result.content
-        for trait in p.traits:
-            assert trait in result.content
+        assert "## Personality" not in result.content
+        for label in (
+            "Communication style",
+            "Risk tolerance",
+            "Creativity",
+            "Decision-making",
+            "Collaboration preference",
+            "Conflict approach",
+            "Traits",
+        ):
+            assert f"**{label}**" not in result.content
 
-    def test_different_personalities_produce_different_prompts(
-        self,
-    ) -> None:
-        """Two agents with different personality configs get different prompts."""
+    def test_two_agents_differ_only_by_identity(self) -> None:
+        """Role and department are what separate one agent's prompt from another."""
         model_cfg = ModelConfig(provider="test-provider", model_id="test-basic-001")
         hiring = date(2026, 1, 1)
 
@@ -100,40 +95,30 @@ class TestBuildSystemPrompt:
             department="Engineering",
             model=model_cfg,
             hiring_date=hiring,
-            personality=PersonalityConfig(
-                communication_style="verbose and friendly",
-                risk_tolerance=RiskTolerance.HIGH,
-                creativity=CreativityLevel.HIGH,
-            ),
         )
         agent_b = AgentIdentity(
             name="Agent B",
-            role="Developer",
-            department="Engineering",
+            role="Designer",
+            department="Design",
             model=model_cfg,
             hiring_date=hiring,
-            personality=PersonalityConfig(
-                communication_style="terse and formal",
-                risk_tolerance=RiskTolerance.LOW,
-                creativity=CreativityLevel.LOW,
-            ),
         )
 
         prompt_a = build_system_prompt(agent=agent_a)
         prompt_b = build_system_prompt(agent=agent_b)
 
         assert prompt_a.content != prompt_b.content
-        assert "verbose and friendly" in prompt_a.content
-        assert "terse and formal" in prompt_b.content
+        assert "Developer" in prompt_a.content
+        assert "Designer" in prompt_b.content
 
     def test_role_description_included(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_role_with_description: Role,
     ) -> None:
         """Role description appears in prompt when role is provided."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             role=sample_role_with_description,
         )
 
@@ -141,27 +126,26 @@ class TestBuildSystemPrompt:
 
     def test_custom_template_overrides_default(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Custom template string is used instead of the default."""
         custom = "Hello, I am {{ agent_name }} working as {{ agent_role }}."
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             custom_template=custom,
         )
 
         assert result.content == (
-            f"Hello, I am {sample_agent_with_personality.name} "
-            f"working as {sample_agent_with_personality.role}."
+            f"Hello, I am {sample_agent.name} working as {sample_agent.role}."
         )
 
     def test_authority_boundaries_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Authority fields (can_approve, reports_to, etc.) appear in prompt."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
-        auth = sample_agent_with_personality.authority
+        result = build_system_prompt(agent=sample_agent)
+        auth = sample_agent.authority
 
         for approval in auth.can_approve:
             assert approval in result.content
@@ -173,12 +157,12 @@ class TestBuildSystemPrompt:
 
     def test_company_context_injected(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_company: Company,
     ) -> None:
         """Company name and department names appear when provided."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             company=sample_company,
         )
 
@@ -188,12 +172,12 @@ class TestBuildSystemPrompt:
 
     def test_tools_not_in_default_template(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_tool_definitions: tuple[ToolDefinition, ...],
     ) -> None:
         """Tools passed to build_system_prompt don't appear (D22)."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             available_tools=sample_tool_definitions,
         )
 
@@ -204,7 +188,7 @@ class TestBuildSystemPrompt:
 
     def test_web_research_guidance_only_when_a_web_tool_is_present(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_tool_definitions: tuple[ToolDefinition, ...],
     ) -> None:
         """Telling an agent to verify online without a web tool is a trap.
@@ -214,7 +198,7 @@ class TestBuildSystemPrompt:
         page it is being told to read.
         """
         without = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             available_tools=sample_tool_definitions,
         )
         assert "Working From Current Sources" not in without.content
@@ -223,7 +207,7 @@ class TestBuildSystemPrompt:
             update={"name": "web_search"}
         )
         with_search = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             available_tools=(*sample_tool_definitions, web_search),
         )
         assert "Working From Current Sources" in with_search.content
@@ -231,7 +215,7 @@ class TestBuildSystemPrompt:
 
     def test_discovery_instruction_omitted_without_the_discovery_tools(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """A session lacking them is told to call its tools directly.
 
@@ -240,7 +224,7 @@ class TestBuildSystemPrompt:
         (``load_tool_resource``) is never mentioned by it.
         """
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             l1_summaries=(
                 ToolL1Metadata(
                     name="submit_decomposition_plan",
@@ -257,11 +241,11 @@ class TestBuildSystemPrompt:
 
     def test_discovery_instruction_kept_when_the_discovery_tools_are_granted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Progressive disclosure is still explained where it is available."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             l1_summaries=(
                 ToolL1Metadata(
                     name="list_tools",
@@ -295,7 +279,7 @@ class TestBuildSystemPrompt:
 
     def test_stripping_the_catalogue_equals_never_rendering_it(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """A stripped prompt contains the prompt built without tools, verbatim.
 
@@ -319,10 +303,8 @@ class TestBuildSystemPrompt:
                 typical_cost_tier="cheap",
             ),
         )
-        with_tools = build_system_prompt(
-            agent=sample_agent_with_personality, l1_summaries=tools
-        )
-        without_tools = build_system_prompt(agent=sample_agent_with_personality)
+        with_tools = build_system_prompt(agent=sample_agent, l1_summaries=tools)
+        without_tools = build_system_prompt(agent=sample_agent)
 
         stripped = without_tool_catalogue(with_tools.content)
 
@@ -333,10 +315,10 @@ class TestBuildSystemPrompt:
 
     def test_stripping_a_prompt_that_has_no_catalogue_changes_nothing(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """The native loop's own prompt is never rewritten by this path."""
-        content = build_system_prompt(agent=sample_agent_with_personality).content
+        content = build_system_prompt(agent=sample_agent).content
 
         assert without_tool_catalogue(content) == content
 
@@ -374,7 +356,7 @@ class TestBuildSystemPrompt:
 
     def test_tools_render_in_custom_template(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_tool_definitions: tuple[ToolDefinition, ...],
     ) -> None:
         """Custom templates with {% if tools %} still render tools."""
@@ -388,7 +370,7 @@ class TestBuildSystemPrompt:
             "{% endif %}"
         )
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             available_tools=sample_tool_definitions,
             custom_template=custom,
         )
@@ -399,12 +381,12 @@ class TestBuildSystemPrompt:
 
     def test_task_context_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Task title, description, and acceptance criteria appear."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -415,78 +397,43 @@ class TestBuildSystemPrompt:
 
     def test_task_budget_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Task budget appears in prompt when > 0."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
         )
 
         assert f"{sample_task_with_criteria.budget_limit:.2f}" in result.content
 
-    def test_new_personality_dimensions_in_prompt(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-    ) -> None:
-        """New personality dimensions (verbosity, decision_making, etc.) appear."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
-        p = sample_agent_with_personality.personality
-
-        assert p.verbosity.value in result.content
-        assert p.decision_making.value in result.content
-        assert p.collaboration.value in result.content
-        assert p.conflict_approach.value in result.content
-
-    def test_new_personality_dimensions_with_custom_values(self) -> None:
-        """Prompt reflects explicitly set personality dimensions."""
-        model_cfg = ModelConfig(provider="test-provider", model_id="test-basic-001")
-        agent = AgentIdentity(
-            name="Custom Agent",
-            role="Dev",
-            department="Eng",
-            model=model_cfg,
-            hiring_date=date(2026, 1, 1),
-            personality=PersonalityConfig(
-                verbosity=CommunicationVerbosity.TERSE,
-                decision_making=DecisionMakingStyle.DIRECTIVE,
-                collaboration=CollaborationPreference.INDEPENDENT,
-                conflict_approach=ConflictApproach.COMPETE,
-            ),
-        )
-        result = build_system_prompt(agent=agent)
-        assert "terse" in result.content
-        assert "directive" in result.content
-        assert "independent" in result.content
-        assert "compete" in result.content
-
     def test_no_task_section_when_task_is_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """No 'Current Task' section when task is None."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert "Current Task" not in result.content
         assert "task" not in result.sections
 
     def test_no_tools_section_in_default_template(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Default template never includes 'Available Tools' section (D22)."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert "Available Tools" not in result.content
         assert "tools" not in result.sections
 
     def test_no_company_section_when_company_is_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """No 'Company Context' section when company is None."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert "Company Context" not in result.content
         assert "company" not in result.sections
@@ -501,12 +448,12 @@ class TestUntrustedContentDirectiveInjection:
 
     def test_task_prompt_fences_and_directs(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A task prompt fences task data and names the tag in a directive."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -520,22 +467,22 @@ class TestUntrustedContentDirectiveInjection:
 
     def test_no_directive_when_no_untrusted_sources(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """With no task / org policies, no directive section is appended."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert "untrusted_content_directive" not in result.sections
         assert "## Untrusted Content" not in result.content
 
     def test_tool_capable_agent_declares_tool_result_fence(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_tool_definitions: tuple[ToolDefinition, ...],
     ) -> None:
         """A tool-capable agent declares <tool-result> as untrusted up front."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             available_tools=sample_tool_definitions,
         )
 
@@ -544,20 +491,20 @@ class TestUntrustedContentDirectiveInjection:
 
     def test_no_tool_result_fence_without_tools(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """An agent with no tools never declares the <tool-result> fence."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
 
         assert "<tool-result>" not in result.content
 
     def test_org_policies_fenced_and_directed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Org policies are config-value fenced with a matching directive."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             org_policies=("All responses must include a correlation id",),
         )
 
@@ -567,13 +514,13 @@ class TestUntrustedContentDirectiveInjection:
 
     def test_final_prompt_respects_budget_including_directive(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
         """The directive cost is reserved so the final prompt fits the budget."""
         full = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
         )
@@ -581,7 +528,7 @@ class TestUntrustedContentDirectiveInjection:
         # fits once the (post-trim) directive has been appended.
         budget = full.estimated_tokens - 5
         trimmed = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
             max_tokens=budget,
@@ -670,22 +617,22 @@ class TestTokenEstimation:
 
     def test_estimated_tokens_populated(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """SystemPrompt.estimated_tokens is set and positive."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
         assert result.estimated_tokens > 0
 
     def test_max_tokens_triggers_trimming(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
         """Very low max_tokens causes optional sections to be removed."""
         # First build without limit to know the full size.
         full = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
         )
@@ -694,7 +641,7 @@ class TestTokenEstimation:
 
         # Now build with a tight token budget to force trimming.
         trimmed = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
             max_tokens=10,
@@ -705,11 +652,11 @@ class TestTokenEstimation:
         assert "task" not in trimmed.sections
         # Core sections remain.
         assert "identity" in trimmed.sections
-        assert "personality" in trimmed.sections
+        assert "skills" in trimmed.sections
 
     def test_custom_estimator_used(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Custom token estimator is called during prompt construction."""
         call_count = 0
@@ -727,7 +674,7 @@ class TestTokenEstimation:
                 return 0
 
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             token_estimator=CountingEstimator(),
         )
 
@@ -744,7 +691,7 @@ class TestPolicyValidationIntegration:
 
     def test_policy_validation_error_does_not_block_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When validate_policy_quality raises, prompt is still built."""
         from unittest.mock import patch
@@ -754,7 +701,7 @@ class TestPolicyValidationIntegration:
             side_effect=RuntimeError("boom"),
         ):
             result = build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 org_policies=("All responses must include correlation_id",),
             )
 
@@ -772,14 +719,14 @@ class TestPolicyValidationIntegration:
     )
     def test_invalid_org_policy_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         *,
         policies: tuple[str, ...],
     ) -> None:
         """Empty or whitespace-only policy is rejected with PromptBuildError."""
         with pytest.raises(PromptBuildError, match="org_policies"):
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 org_policies=policies,
             )
 
@@ -797,29 +744,28 @@ class TestPromptVersioning:
 
     def test_template_version_in_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """SystemPrompt.template_version matches the constant."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
         assert result.template_version == PROMPT_TEMPLATE_VERSION
 
     def test_sections_tracked(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_tool_definitions: tuple[ToolDefinition, ...],
         sample_company: Company,
     ) -> None:
         """Sections tuple lists all included sections (tools excluded per D22)."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             available_tools=sample_tool_definitions,
             company=sample_company,
         )
 
         assert "identity" in result.sections
-        assert "personality" in result.sections
         assert "skills" in result.sections
         assert "authority" in result.sections
         assert "autonomy" in result.sections
@@ -849,11 +795,11 @@ class TestSystemPromptModel:
 
     def test_metadata_contains_all_agent_info(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Metadata contains expected keys with correct values."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
-        agent = sample_agent_with_personality
+        result = build_system_prompt(agent=sample_agent)
+        agent = sample_agent
 
         assert result.metadata == {
             "agent_id": str(agent.id),
@@ -873,11 +819,11 @@ class TestPromptLogging:
 
     def test_build_logs_start_and_success(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Build logs prompt.build.start and prompt.build.success events."""
         with structlog.testing.capture_logs() as logs:
-            build_system_prompt(agent=sample_agent_with_personality)
+            build_system_prompt(agent=sample_agent)
 
         events = [entry["event"] for entry in logs]
         assert PROMPT_BUILD_START in events
@@ -885,14 +831,14 @@ class TestPromptLogging:
 
     def test_trim_logs_warning(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
         """Token trimming logs a warning with the trimmed section names."""
         with structlog.testing.capture_logs() as logs:
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 task=sample_task_with_criteria,
                 company=sample_company,
                 max_tokens=10,
@@ -913,23 +859,23 @@ class TestPromptErrorHandling:
 
     def test_invalid_custom_template_raises_prompt_build_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Syntactically invalid custom template raises PromptBuildError."""
         with pytest.raises(PromptBuildError, match="invalid Jinja2 syntax"):
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 custom_template="{% if %}",
             )
 
     def test_invalid_template_preserves_exception_chain(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """PromptBuildError chains the original TemplateSyntaxError."""
         with pytest.raises(PromptBuildError) as exc_info:
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 custom_template="{% if %}",
             )
 
@@ -937,12 +883,12 @@ class TestPromptErrorHandling:
 
     def test_render_error_raises_prompt_build_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Template with undefined filter raises PromptBuildError at render time."""
         with pytest.raises(PromptBuildError, match="rendering failed"):
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 custom_template="{{ agent_name | nonexistent_filter }}",
             )
 
@@ -956,14 +902,14 @@ class TestTrimmingPriority:
 
     def test_company_trimmed_before_task(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
         """With a moderately tight budget, only company is trimmed first."""
         # Build full prompt to get its token count.
         full = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
         )
@@ -972,14 +918,14 @@ class TestTrimmingPriority:
         # Build without company to find a budget that fits without company
         # but not with it.
         without_company = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
         )
 
         # Set max_tokens between without-company and full sizes.
         budget = (without_company.estimated_tokens + full.estimated_tokens) // 2
         trimmed = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
             max_tokens=budget,
@@ -991,7 +937,7 @@ class TestTrimmingPriority:
 
     def test_trimming_order_without_tools(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
@@ -999,7 +945,7 @@ class TestTrimmingPriority:
         # Build with company + task + org_policies.
         org_policies = ("All responses must include correlation_id",)
         full = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
             org_policies=org_policies,
@@ -1010,7 +956,7 @@ class TestTrimmingPriority:
 
         # With very tight budget, all optional sections are removed.
         trimmed = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             company=sample_company,
             org_policies=org_policies,
@@ -1030,7 +976,7 @@ class TestDefaultAgentPrompt:
     """Tests for agents with minimal/default configuration."""
 
     def test_empty_optional_fields_render_without_error(self) -> None:
-        """Agent with default personality renders without errors."""
+        """An agent with every optional field defaulted renders cleanly."""
         agent = AgentIdentity(
             name="Default Agent",
             role="Worker",
@@ -1085,12 +1031,12 @@ class TestBudgetExceeded:
 
     def test_budget_exceeded_logs_warning(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When prompt exceeds max_tokens after trimming, log budget_exceeded."""
         with structlog.testing.capture_logs() as logs:
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 max_tokens=1,
             )
 
@@ -1102,23 +1048,23 @@ class TestBudgetExceeded:
 
     def test_max_tokens_zero_raises_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """max_tokens=0 raises PromptBuildError."""
         with pytest.raises(PromptBuildError, match="max_tokens must be > 0"):
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 max_tokens=0,
             )
 
     def test_max_tokens_negative_raises_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Negative max_tokens raises PromptBuildError."""
         with pytest.raises(PromptBuildError, match="max_tokens must be > 0"):
             build_system_prompt(
-                agent=sample_agent_with_personality,
+                agent=sample_agent,
                 max_tokens=-1,
             )
 
@@ -1132,12 +1078,12 @@ class TestBuildErrorPrompt:
 
     def test_returns_existing_prompt_when_provided(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When system_prompt is not None, it is returned as-is."""
-        existing = build_system_prompt(agent=sample_agent_with_personality)
+        existing = build_system_prompt(agent=sample_agent)
         result = build_error_prompt(
-            sample_agent_with_personality,
+            sample_agent,
             "override-id",
             existing,
         )
@@ -1145,18 +1091,18 @@ class TestBuildErrorPrompt:
 
     def test_returns_placeholder_when_no_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When system_prompt is None, a placeholder is returned."""
         result = build_error_prompt(
-            sample_agent_with_personality,
+            sample_agent,
             "custom-agent-id",
             None,
         )
         assert result.content == ""
         assert result.template_version == "error"
         assert result.metadata["agent_id"] == "custom-agent-id"
-        assert result.metadata["name"] == sample_agent_with_personality.name
+        assert result.metadata["name"] == sample_agent.name
 
 
 # ── TestCatchAllExceptionWrapping ──────────────────────────────
@@ -1168,7 +1114,7 @@ class TestCatchAllExceptionWrapping:
 
     def test_unexpected_error_wrapped_in_prompt_build_error(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Non-PromptBuildError exceptions are wrapped with context."""
@@ -1181,7 +1127,7 @@ class TestCatchAllExceptionWrapping:
         monkeypatch.setattr(prompt_module, "render_with_trimming", _broken_render)
 
         with pytest.raises(PromptBuildError, match="Unexpected error") as exc_info:
-            build_system_prompt(agent=sample_agent_with_personality)
+            build_system_prompt(agent=sample_agent)
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
 
@@ -1195,7 +1141,7 @@ class TestEffectiveAutonomyInPrompt:
 
     def test_autonomy_level_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Effective autonomy level appears in the rendered prompt."""
         autonomy = EffectiveAutonomy(
@@ -1205,14 +1151,14 @@ class TestEffectiveAutonomyInPrompt:
             security_agent=False,
         )
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             effective_autonomy=autonomy,
         )
         assert "semi" in result.content
 
     def test_auto_approve_actions_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Auto-approved actions are listed in the prompt."""
         autonomy = EffectiveAutonomy(
@@ -1222,7 +1168,7 @@ class TestEffectiveAutonomyInPrompt:
             security_agent=False,
         )
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             effective_autonomy=autonomy,
         )
         assert "code:read" in result.content
@@ -1230,7 +1176,7 @@ class TestEffectiveAutonomyInPrompt:
 
     def test_human_approval_actions_in_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Human-approval-required actions are listed in the prompt."""
         autonomy = EffectiveAutonomy(
@@ -1240,7 +1186,7 @@ class TestEffectiveAutonomyInPrompt:
             security_agent=False,
         )
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             effective_autonomy=autonomy,
         )
         assert "infra:deploy" in result.content
@@ -1248,10 +1194,10 @@ class TestEffectiveAutonomyInPrompt:
 
     def test_no_autonomy_omits_section(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When no effective_autonomy is provided, no autonomy level section."""
-        result = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_system_prompt(agent=sample_agent)
         assert "Autonomy level" not in result.content
         assert "Auto-approved actions" not in result.content
 
@@ -1265,27 +1211,25 @@ class TestPromptProfileIntegration:
 
     def test_no_capability_produces_full_prompt(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """No rung = full profile."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             capability=None,
         )
-        p = sample_agent_with_personality.personality
 
-        assert p.risk_tolerance.value in result.content
-        assert p.creativity.value in result.content
-        assert p.verbosity.value in result.content
+        assert result.metadata["profile_capability"] == "expert"
+        assert "Autonomy" in result.content
 
     def test_basic_omits_org_policies(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """The basic profile excludes org policies from the prompt."""
         policies = ("All code must be reviewed.", "Follow security guidelines.")
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             org_policies=policies,
             capability="basic",
         )
@@ -1296,12 +1240,12 @@ class TestPromptProfileIntegration:
 
     def test_expert_includes_org_policies(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """The expert profile includes org policies in the prompt."""
         policies = ("All code must be reviewed.",)
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             org_policies=policies,
             capability="expert",
         )
@@ -1312,12 +1256,12 @@ class TestPromptProfileIntegration:
 
     def test_basic_simplifies_acceptance_criteria(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The basic profile renders criteria as a flat semicolon line."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             capability="basic",
         )
@@ -1329,63 +1273,42 @@ class TestPromptProfileIntegration:
 
     def test_expert_full_acceptance_criteria(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The expert profile renders full nested acceptance criteria."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             capability="expert",
         )
 
         assert "### Acceptance Criteria" in result.content
 
-    def test_basic_minimal_personality(
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
+    def test_no_profile_renders_a_persona(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
+        tier: str,
     ) -> None:
-        """The basic profile shows only communication style, not enums."""
+        """Every rung renders the same identity line and no persona."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
-            capability="basic",
+            agent=sample_agent,
+            capability=tier,  # type: ignore[arg-type]
         )
-        p = sample_agent_with_personality.personality
 
-        assert p.communication_style in result.content
-        # Behavioral enums should NOT appear.
-        assert "Risk tolerance" not in result.content
-        assert "Verbosity" not in result.content
-        assert "Decision-making" not in result.content
-
-    def test_capable_condensed_personality(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-    ) -> None:
-        """The capable profile shows description + style + traits, no enums."""
-        result = build_system_prompt(
-            agent=sample_agent_with_personality,
-            capability="capable",
-        )
-        p = sample_agent_with_personality.personality
-
-        assert p.description in result.content
-        assert p.communication_style in result.content
-        for trait in p.traits:
-            assert trait in result.content
-        # Behavioral enums should NOT appear in condensed mode.
-        assert "Risk tolerance" not in result.content
-        assert "Creativity" not in result.content
+        assert "## Personality" not in result.content
+        assert sample_agent.role in result.content
 
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_authority_always_present(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         tier: str,
     ) -> None:
         """Authority section is never stripped by any profile."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             capability=tier,  # type: ignore[arg-type]
         )
 
@@ -1395,26 +1318,26 @@ class TestPromptProfileIntegration:
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_identity_always_present(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         tier: str,
     ) -> None:
         """Identity section is never stripped by any profile."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             capability=tier,  # type: ignore[arg-type]
         )
 
         assert "## Identity" in result.content
-        assert sample_agent_with_personality.name in result.content
+        assert sample_agent.name in result.content
         assert "identity" in result.sections
 
     def test_profile_capability_in_metadata(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Metadata includes profile_capability when profile is applied."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             capability="capable",
         )
 
@@ -1422,19 +1345,19 @@ class TestPromptProfileIntegration:
 
     def test_basic_prompt_shorter_than_expert(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A basic prompt uses fewer tokens than an expert one."""
         policies = ("All code must be reviewed.", "Follow security guidelines.")
         expert = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             org_policies=policies,
             capability="expert",
         )
         basic = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             task=sample_task_with_criteria,
             org_policies=policies,
             capability="basic",
@@ -1452,13 +1375,13 @@ class TestPromptProfileIntegration:
     )
     def test_autonomy_text_varies_by_capability(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         capability: str,
         autonomy_map: Mapping[AutonomyLevel, str],
     ) -> None:
         """Each rung renders the matching autonomy instruction text."""
         result = build_system_prompt(
-            agent=sample_agent_with_personality,
+            agent=sample_agent,
             capability=capability,  # type: ignore[arg-type]
         )
         expected = autonomy_map[AutonomyLevel.SEMI]
@@ -1475,17 +1398,13 @@ class TestBuildCoreContextDefaults:
 
     def test_none_profile_defaults_to_full(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """When profile is None, context uses full-profile defaults."""
         from synthorg.engine._prompt_helpers import build_core_context
 
-        ctx, trim_info = build_core_context(
-            sample_agent_with_personality,
-            role=None,
-        )
+        ctx = build_core_context(sample_agent, role=None)
 
-        assert ctx["personality_mode"] == "full"
+        assert ctx["autonomy_detail_level"] == "full"
         assert ctx["include_org_policies"] is True
         assert ctx["simplify_acceptance_criteria"] is False
-        assert trim_info is None

@@ -423,9 +423,9 @@ def test_repo_class_discovery_includes_repo_suffix_files(tmp_path: Path) -> None
     )
     _make_protocol_file(
         tmp_path,
-        "preset_repository.py",
+        "preset_override_repository.py",
         "from typing import Protocol\n"
-        "class PersonalityPresetRepository(Protocol):\n"
+        "class PresetOverrideRepository(Protocol):\n"
         "    pass\n",
     )
     _make_protocol_file(
@@ -438,7 +438,7 @@ def test_repo_class_discovery_includes_repo_suffix_files(tmp_path: Path) -> None
     found = _MODULE._discover_repo_classes(tmp_path / "protocols")  # type: ignore[attr-defined]
     assert {
         "VersionRepository",
-        "PersonalityPresetRepository",
+        "PresetOverrideRepository",
         "TrainingPlanRepository",
     } <= found
 

@@ -16,12 +16,10 @@ class TestRoutingCandidate:
     """Tests for RoutingCandidate model."""
 
     @pytest.mark.unit
-    def test_valid_candidate(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
+    def test_valid_candidate(self, sample_agent: AgentIdentity) -> None:
         """Valid candidate with score and reason."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.8,
             matched_skills=("python",),
             reason="Good skill match",
@@ -30,26 +28,26 @@ class TestRoutingCandidate:
         assert candidate.matched_skills == ("python",)
 
     @pytest.mark.unit
-    def test_score_bounds(self, sample_agent_with_personality: AgentIdentity) -> None:
+    def test_score_bounds(self, sample_agent: AgentIdentity) -> None:
         """Score must be between 0.0 and 1.0."""
         with pytest.raises(ValueError, match="less than or equal to 1"):
             RoutingCandidate(
-                agent_identity=sample_agent_with_personality,
+                agent_identity=sample_agent,
                 score=1.5,
                 reason="Invalid",
             )
         with pytest.raises(ValueError, match="greater than or equal to 0"):
             RoutingCandidate(
-                agent_identity=sample_agent_with_personality,
+                agent_identity=sample_agent,
                 score=-0.1,
                 reason="Invalid",
             )
 
     @pytest.mark.unit
-    def test_frozen(self, sample_agent_with_personality: AgentIdentity) -> None:
+    def test_frozen(self, sample_agent: AgentIdentity) -> None:
         """RoutingCandidate is immutable."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.5,
             reason="Test",
         )
@@ -61,10 +59,10 @@ class TestRoutingDecision:
     """Tests for RoutingDecision model."""
 
     @pytest.mark.unit
-    def test_valid_decision(self, sample_agent_with_personality: AgentIdentity) -> None:
+    def test_valid_decision(self, sample_agent: AgentIdentity) -> None:
         """Valid routing decision with candidate and topology."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.7,
             reason="Match",
         )
@@ -78,16 +76,16 @@ class TestRoutingDecision:
 
     @pytest.mark.unit
     def test_selected_in_alternatives_rejected(
-        self, sample_agent_with_personality: AgentIdentity
+        self, sample_agent: AgentIdentity
     ) -> None:
         """Selected candidate duplicated in alternatives is rejected."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.9,
             reason="Match",
         )
         alt = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.5,
             reason="Also match",
         )
@@ -114,12 +112,10 @@ class TestRoutingResult:
         assert result.unroutable == ("sub-1",)
 
     @pytest.mark.unit
-    def test_overlap_rejected(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
+    def test_overlap_rejected(self, sample_agent: AgentIdentity) -> None:
         """Subtask in both decisions and unroutable is rejected."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.5,
             reason="Match",
         )
@@ -136,12 +132,10 @@ class TestRoutingResult:
             )
 
     @pytest.mark.unit
-    def test_duplicate_decision_ids_rejected(
-        self, sample_agent_with_personality: AgentIdentity
-    ) -> None:
+    def test_duplicate_decision_ids_rejected(self, sample_agent: AgentIdentity) -> None:
         """Duplicate subtask IDs within decisions are rejected."""
         candidate = RoutingCandidate(
-            agent_identity=sample_agent_with_personality,
+            agent_identity=sample_agent,
             score=0.5,
             reason="Match",
         )

@@ -12,7 +12,6 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
@@ -55,10 +54,6 @@ def make_identity(
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        personality=PersonalityConfig(
-            traits=(NotBlankStr("analytical"),),
-            communication_style=NotBlankStr("concise"),
-        ),
         model=ModelConfig(
             provider=NotBlankStr(provider),
             model_id=NotBlankStr(model_id),

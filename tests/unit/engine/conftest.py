@@ -9,7 +9,6 @@ import pytest
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.company import Company, CompanyConfig
@@ -51,7 +50,7 @@ from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
 )
-from synthorg.hr.enums import AgentStatus, CreativityLevel, RiskTolerance
+from synthorg.hr.enums import AgentStatus
 from synthorg.organization.enums import DepartmentName
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
@@ -73,20 +72,13 @@ def sample_model_config() -> ModelConfig:
 
 
 @pytest.fixture
-def sample_agent_with_personality(sample_model_config: ModelConfig) -> AgentIdentity:
-    """Agent with rich personality config for prompt testing."""
+def sample_agent(sample_model_config: ModelConfig) -> AgentIdentity:
+    """Fully populated agent identity for prompt testing."""
     return AgentIdentity(
         id=uuid4(),
         name="Ada Lovelace",
         role="Senior Backend Developer",
         department="Engineering",
-        personality=PersonalityConfig(
-            traits=("analytical", "methodical", "detail-oriented"),
-            communication_style="concise and technical",
-            risk_tolerance=RiskTolerance.LOW,
-            creativity=CreativityLevel.HIGH,
-            description="A precise thinker who values correctness above all.",
-        ),
         skills=SkillSet(
             primary=(
                 Skill(id="python", name="Python"),
@@ -122,7 +114,7 @@ def sample_role_with_description() -> Role:
 
 @pytest.fixture
 def sample_task_with_criteria(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
 ) -> Task:
     """Task with acceptance criteria and budget for prompt testing."""
     return Task(
@@ -140,7 +132,7 @@ def sample_task_with_criteria(
         estimated_complexity=Complexity.MEDIUM,
         budget_limit=5.0,
         deadline="2026-04-01T00:00:00",
-        assigned_to=str(sample_agent_with_personality.id),
+        assigned_to=str(sample_agent.id),
         status=TaskStatus.ASSIGNED,
     )
 
@@ -182,12 +174,12 @@ def sample_task_execution(sample_task_with_criteria: Task) -> TaskExecution:
 
 @pytest.fixture
 def sample_agent_context(
-    sample_agent_with_personality: AgentIdentity,
+    sample_agent: AgentIdentity,
     sample_task_with_criteria: Task,
 ) -> AgentContext:
     """AgentContext from sample agent + sample task."""
     return AgentContext.from_identity(
-        sample_agent_with_personality,
+        sample_agent,
         task=sample_task_with_criteria,
     )
 

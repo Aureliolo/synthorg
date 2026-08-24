@@ -234,10 +234,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "objectives.submit": (30, 60),
     # observability (Prometheus scrape)
     "observability.metrics": (60, 60),
-    # personalities
-    "personalities.create": (20, 60),
-    "personalities.delete": (10, 60),
-    "personalities.update": (30, 60),
     # plans (durable plan-review revision)
     "plans.edit": (30, 60),
     # A re-plan retires a dispatched plan and cancels its in-flight work, so

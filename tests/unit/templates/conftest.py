@@ -115,7 +115,6 @@ template:
     - role: "QA Engineer"
       name: "Ava Testington"
       model: "small"
-      personality_preset: "quality_guardian"
       department: "engineering"
 """
 
@@ -136,7 +135,6 @@ template:
       merge_id: "fullstack-senior"
       name: "Override Dev Lead"
       model: "large"
-      personality_preset: "visionary_leader"
       department: "engineering"
 """
 
@@ -160,7 +158,6 @@ template:
     - role: "Backend Developer"
       name: "Liam Codsworth"
       model: "medium"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
 """
 

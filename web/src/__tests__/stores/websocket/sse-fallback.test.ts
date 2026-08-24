@@ -126,7 +126,7 @@ describe('sse-fallback event validation', () => {
   // that contract: only a well-formed, supported-version WsEvent dispatches.
   function validFrame(overrides: Record<string, unknown> = {}): string {
     return JSON.stringify({
-      event_type: 'personality.trimmed',
+      event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-04-01T12:00:00Z',
       payload: { agent_id: 'agent-001', agent_name: 'Alice' },
@@ -156,7 +156,7 @@ describe('sse-fallback event validation', () => {
     // Unknown event_type / channel and a missing timestamp all fail isWsEvent.
     emit(validFrame({ event_type: 'totally.unknown' }))
     emit(validFrame({ channel: 'no-such-channel' }))
-    emit(JSON.stringify({ event_type: 'personality.trimmed', channel: 'agents' }))
+    emit(JSON.stringify({ event_type: 'agent.hired', channel: 'agents' }))
     expect(vi.mocked(dispatchEvent)).not.toHaveBeenCalled()
   })
 

@@ -77,9 +77,6 @@ function updateFromWsEventImpl(set: AgentsSet, event: WsEvent): void {
     handleStatusChanged(set, event.payload)
     return
   }
-  // personality.trimmed is dispatched to the notifications pipeline
-  // (useNotificationsStore.handleWsEvent); nothing to do on the agents store.
-  if (event.event_type === 'personality.trimmed') return
   log.debug('WS event ignored: unhandled event_type', {
     event_type: sanitizeForLog(event.event_type),
   })

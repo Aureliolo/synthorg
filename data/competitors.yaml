@@ -76,7 +76,7 @@ dimensions:
     description: "Kanban, sprints, ceremonies, velocity tracking"
   - key: template_system
     label: "Templates"
-    description: "Pre-built configurations, inheritance, personality presets"
+    description: "Pre-built configurations, inheritance, per-agent model requirements"
 
 categories:
   - key: multi_agent_framework
@@ -126,7 +126,7 @@ competitors:
       cli: {support: partial, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
       production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is pre-alpha and operator-facing onboarding against a real provider has not been exercised end to end by a human"}
       workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints, velocity, and ceremony scheduling execute through the agent runtime, exercised by a deterministic e2e harness; real-provider acceptance is in active development"}
-      template_system: {support: full, note: "Company templates, personality presets, and locale-aware name generation ship and are usable today without the runtime"}
+      template_system: {support: full, note: "Company templates and locale-aware name generation ship and are usable today without the runtime"}
 
   - name: "CrewAI"
     slug: crewai

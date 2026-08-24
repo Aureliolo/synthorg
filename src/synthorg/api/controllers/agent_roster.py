@@ -39,7 +39,7 @@ class ActiveAgentSummary(BaseModel):
 
     Carries only what the dashboard needs to reference an agent by its
     stable runtime id (and show who it is); the full identity (model,
-    personality, authority) is deliberately not exposed on a roster read.
+    authority) is deliberately not exposed on a roster read.
 
     Attributes:
         id: The agent's stable runtime identifier (``AgentIdentity.id``).

@@ -120,7 +120,7 @@ def _claiming_repository(
 class TestTheLiveStateFollowsTheRun:
     async def test_a_turn_records_the_runs_own_numbers(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         saved: list[AgentRuntimeState] = []
@@ -133,7 +133,7 @@ class TestTheLiveStateFollowsTheRun:
 
         await observer(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=12,
                 cost=0.75,
@@ -149,7 +149,7 @@ class TestTheLiveStateFollowsTheRun:
 
     async def test_no_store_yet_is_not_a_failure(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A run can start before persistence connects; it still has to run."""
@@ -161,7 +161,7 @@ class TestTheLiveStateFollowsTheRun:
 
         await observer(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=1,
                 cost=0.0,
@@ -170,7 +170,7 @@ class TestTheLiveStateFollowsTheRun:
 
     async def test_a_storage_fault_never_reaches_the_run(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Watching a run must not be able to fail it."""
@@ -185,7 +185,7 @@ class TestTheLiveStateFollowsTheRun:
 
         await observer(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=1,
                 cost=0.0,
@@ -292,7 +292,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 
     async def test_a_row_is_written_at_dispatch(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         saved: list[AgentRuntimeState] = []
@@ -301,7 +301,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
         await mark_agent_running(
             repository_provider=lambda: repository,
             context=_context(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=0,
                 cost=0.0,
@@ -316,7 +316,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 
     async def test_the_running_write_asserts_its_own_execution(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The row is per agent, and an agent can hold two dispatches.
@@ -333,7 +333,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
         await mark_agent_running(
             repository_provider=lambda: repository,
             context=_context(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=0,
                 cost=0.0,
@@ -351,7 +351,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 
     async def test_a_sibling_holding_the_row_is_not_overwritten(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """A refused claim is not a failure, and must not fail the run.
@@ -372,7 +372,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 
         await observer(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=3,
                 cost=0.5,
@@ -384,13 +384,13 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 
     async def test_no_store_is_a_noop(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         await mark_agent_running(
             repository_provider=lambda: None,
             context=_context(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=0,
                 cost=0.0,
@@ -402,7 +402,7 @@ class TestARunIsVisibleBeforeItsFirstTurnEnds:
 class TestOneReportReachesEveryListener:
     async def test_every_wired_observer_sees_the_turn(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         seen: list[str] = []
@@ -417,7 +417,7 @@ class TestOneReportReachesEveryListener:
         assert composed is not None
         await composed(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=4,
                 cost=0.0,
@@ -432,7 +432,7 @@ class TestOneReportReachesEveryListener:
 
     async def test_a_lone_failing_observer_is_guarded_too(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The guard is a promise about the run, not about the other watchers.
@@ -450,7 +450,7 @@ class TestOneReportReachesEveryListener:
 
         await composed(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=4,
                 cost=0.0,
@@ -459,7 +459,7 @@ class TestOneReportReachesEveryListener:
 
     async def test_one_failing_listener_does_not_silence_the_others(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """They watch different things for different people.
@@ -481,7 +481,7 @@ class TestOneReportReachesEveryListener:
         assert composed is not None
         await composed(
             _progress(
-                sample_agent_with_personality,
+                sample_agent,
                 sample_task_with_criteria,
                 turn=4,
                 cost=0.0,
@@ -492,7 +492,7 @@ class TestOneReportReachesEveryListener:
 
     async def test_cancellation_stops_every_listener(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """The run is being torn down, so continuing to watch it is wrong."""
@@ -509,7 +509,7 @@ class TestOneReportReachesEveryListener:
         with pytest.raises(asyncio.CancelledError):
             await composed(
                 _progress(
-                    sample_agent_with_personality,
+                    sample_agent,
                     sample_task_with_criteria,
                     turn=4,
                     cost=0.0,

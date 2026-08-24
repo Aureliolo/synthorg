@@ -14,45 +14,9 @@ from pydantic import (
 )
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.templates.enums import PostureName, SkillPattern
 from synthorg.templates.model_requirements import CapabilityLevel
-
-
-def _normalize_and_validate_preset(
-    raw: object,
-    fallback: str = "",
-) -> str:
-    """Normalize *raw* to a valid personality preset key.
-
-    Args:
-        raw: Raw preset value from the request payload.
-        fallback: Default key when *raw* is falsy.
-
-    Returns:
-        Normalized lowercase preset key.
-
-    Raises:
-        ValueError: If the resolved key is not in ``PERSONALITY_PRESETS``.
-    """
-    from synthorg.templates.presets import (  # noqa: PLC0415
-        PERSONALITY_PRESETS,
-    )
-
-    if not raw or not str(raw).strip():
-        if not fallback:
-            msg = "personality_preset is required"
-            raise ValueError(msg)
-        key = fallback
-    else:
-        key = normalize_ascii_lowercase(str(raw))
-
-    if key not in PERSONALITY_PRESETS:
-        available = sorted(PERSONALITY_PRESETS)
-        msg = f"Unknown personality preset {raw!r}. Available: {available}"
-        raise ValueError(msg)
-    return key
 
 
 class SetupStatusResponse(BaseModel):
@@ -225,7 +189,6 @@ class SetupAgentSummary(BaseModel):
         model_provider: LLM provider name (``None`` if unassigned).
         model_id: Model identifier (``None`` if unassigned).
         capability: Original capability requirement from the template.
-        personality_preset: Personality preset name, if any.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -236,7 +199,6 @@ class SetupAgentSummary(BaseModel):
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
     capability: CapabilityLevel = "capable"
-    personality_preset: NotBlankStr | None = None
 
 
 class SetupCompanyResponse(BaseModel):
@@ -276,7 +238,6 @@ class SetupAgentRequest(BaseModel):
     Attributes:
         name: Agent display name.
         role: Agent role name.
-        personality_preset: Personality preset name.
         model_provider: Provider name for the agent's model.
         model_id: Model identifier from that provider.
         department: Department to assign the agent to.
@@ -287,11 +248,6 @@ class SetupAgentRequest(BaseModel):
 
     name: NotBlankStr = Field(max_length=200, examples=["Alice Lin", "Bob Chen"])
     role: NotBlankStr = Field(max_length=100, examples=["CEO", "Engineer", "Designer"])
-    personality_preset: NotBlankStr = Field(
-        default="pragmatic_builder",
-        max_length=100,
-        examples=["pragmatic_builder", "visionary_leader"],
-    )
     model_provider: NotBlankStr = Field(
         max_length=100,
         examples=["example-provider"],
@@ -311,23 +267,6 @@ class SetupAgentRequest(BaseModel):
         le=1_000_000.0,
         examples=[100.0, 500.0],
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_preset_exists(cls, values: object) -> object:
-        """Normalize and validate the personality preset before construction.
-
-        Returns:
-            ``object`` instance.
-        """
-        if not isinstance(values, dict):
-            return values
-        raw = values.get("personality_preset", "pragmatic_builder")
-        normalized = _normalize_and_validate_preset(
-            raw,
-            fallback="pragmatic_builder",
-        )
-        return {**values, "personality_preset": normalized}
 
 
 class SetupAgentResponse(BaseModel):
@@ -383,50 +322,6 @@ class UpdateAgentNameRequest(BaseModel):
         max_length=200,
         description="New agent display name.",
     )
-
-
-class UpdateAgentPersonalityRequest(BaseModel):
-    """Request to update an agent's personality preset during setup.
-
-    Attributes:
-        personality_preset: Personality preset name (must exist in
-            ``PERSONALITY_PRESETS``).
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    personality_preset: NotBlankStr = Field(
-        max_length=100,
-        description="Personality preset name; must exist in PERSONALITY_PRESETS.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_preset_exists(cls, values: object) -> object:
-        """Normalize and validate the personality preset.
-
-        Returns:
-            ``object`` instance.
-        """
-        if not isinstance(values, dict):
-            return values
-        raw = values.get("personality_preset")
-        normalized = _normalize_and_validate_preset(raw)
-        return {**values, "personality_preset": normalized}
-
-
-class PersonalityPresetInfoResponse(BaseModel):
-    """Summary of a personality preset for the setup wizard.
-
-    Attributes:
-        name: Preset identifier key.
-        description: Human-readable description.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    name: NotBlankStr
-    description: str = ""
 
 
 class SetupNameLocalesRequest(BaseModel):

@@ -93,57 +93,6 @@ class AgentStatus(StrEnum):
     TERMINATED = "terminated"
 
 
-class RiskTolerance(StrEnum):
-    """Risk tolerance level for agent personality."""
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
-class CreativityLevel(StrEnum):
-    """Creativity level for agent personality."""
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-
-
-class DecisionMakingStyle(StrEnum):
-    """Decision-making approach used by an agent."""
-
-    ANALYTICAL = "analytical"
-    INTUITIVE = "intuitive"
-    CONSULTATIVE = "consultative"
-    DIRECTIVE = "directive"
-
-
-class CollaborationPreference(StrEnum):
-    """Preferred collaboration mode for an agent."""
-
-    INDEPENDENT = "independent"
-    PAIR = "pair"
-    TEAM = "team"
-
-
-class CommunicationVerbosity(StrEnum):
-    """Communication verbosity level for an agent."""
-
-    TERSE = "terse"
-    BALANCED = "balanced"
-    VERBOSE = "verbose"
-
-
-class ConflictApproach(StrEnum):
-    """Conflict resolution approach used by an agent."""
-
-    AVOID = "avoid"
-    ACCOMMODATE = "accommodate"
-    COMPETE = "compete"
-    COMPROMISE = "compromise"
-    COLLABORATE = "collaborate"
-
-
 class CostTier(StrEnum):
     """Built-in cost tier identifiers.
 

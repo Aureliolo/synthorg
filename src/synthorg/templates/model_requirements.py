@@ -1,11 +1,9 @@
 # module-kind: code
-"""Structured model requirements and personality-based model affinity.
+"""Structured model requirements for template agents.
 
 Provides :class:`ModelRequirement` for expressing what kind of LLM an
-agent needs (priority, context window, capability flags, family/pattern,
-or an explicit example id) and a preset-keyed affinity mapping that
-supplies capability defaults when the template does not state full
-requirements.
+agent needs: priority, context window, capability flags, family/pattern,
+or an explicit example id.
 
 A template agent references a model by one of three forms, all expressed
 through :class:`ModelRequirement`:
@@ -26,8 +24,7 @@ There is no rung-string selection axis: the matcher classifies models by
 real metadata, and ``ModelMatch.capability`` is report-only.
 """
 
-from types import MappingProxyType
-from typing import Literal, Self, get_args
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -38,7 +35,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -55,11 +51,6 @@ logger = get_logger(__name__)
 
 # Valid priority literals for the capability-scoring axis.
 ModelPriority = Literal["quality", "balanced", "speed", "cost"]
-
-# Closed value set for personality affinity entries: a string ``priority``
-# axis, an integer ``min_context`` floor, boolean ``requires_*`` flags, and
-# an optional string ``family`` hint.
-type AffinityValue = str | int | bool
 
 
 class ModelRequirement(BaseModel):
@@ -188,130 +179,30 @@ def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement
     return result
 
 
-# ── Model affinity per personality preset ────────────────────
-#
-# Separated from the preset dicts because PersonalityConfig has
-# extra="forbid".  Each profile supplies capability defaults (priority,
-# context floor, and hard requirement flags) that apply when the template
-# agent does not state them explicitly; explicit template fields always win.
-
-_VISIONARY_CONTEXT_FLOOR: int = 100_000
-
-_RAW_AFFINITY: dict[str, dict[str, AffinityValue]] = {
-    # Leaders and strategists reason over wide context.
-    "visionary_leader": {
-        "priority": "quality",
-        "min_context": _VISIONARY_CONTEXT_FLOOR,
-        "requires_reasoning": True,
-    },
-    "strategic_planner": {"priority": "quality", "requires_reasoning": True},
-    "systems_thinker": {"priority": "quality", "requires_reasoning": True},
-    # Analysts and guardians need precision.
-    "methodical_analyst": {"priority": "quality", "requires_reasoning": True},
-    "quality_guardian": {"priority": "quality"},
-    "security_sentinel": {"priority": "quality", "requires_reasoning": True},
-    "data_driven_optimizer": {"priority": "quality"},
-    "code_craftsman": {"priority": "quality"},
-    "devil_advocate": {"priority": "quality", "requires_reasoning": True},
-    # Fast movers prefer speed.
-    "eager_learner": {"priority": "speed"},
-    "rapid_prototyper": {"priority": "speed"},
-    "growth_hacker": {"priority": "speed"},
-    # Cost-conscious executors.
-    "disciplined_executor": {"priority": "cost"},
-    # Balanced defaults for everyone else.
-    "pragmatic_builder": {"priority": "balanced"},
-    "creative_innovator": {"priority": "balanced"},
-    "team_diplomat": {"priority": "balanced"},
-    "independent_researcher": {"priority": "balanced", "requires_reasoning": True},
-    "empathetic_mentor": {"priority": "balanced"},
-    "communication_bridge": {"priority": "balanced"},
-    "user_advocate": {"priority": "balanced"},
-    "process_optimizer": {"priority": "balanced"},
-    "technical_communicator": {"priority": "balanced"},
-    "client_advisor": {"priority": "balanced"},
-}
-
-# Both the outer mapping and each inner mapping are read-only.
-MODEL_AFFINITY: MappingProxyType[str, MappingProxyType[str, AffinityValue]] = (
-    MappingProxyType(
-        {k: MappingProxyType(v) for k, v in _RAW_AFFINITY.items()},
-    )
-)
-del _RAW_AFFINITY
-
-_VALID_PRIORITIES: frozenset[str] = frozenset(get_args(ModelPriority))
-assert all(  # noqa: S101
-    v.get("priority", "balanced") in _VALID_PRIORITIES for v in MODEL_AFFINITY.values()
-), "MODEL_AFFINITY has invalid priority values"
-
-# Capability-default keys a profile may contribute to a requirement.
-_AFFINITY_DEFAULT_KEYS: tuple[str, ...] = (
-    "priority",
-    "min_context",
-    "requires_vision",
-    "requires_reasoning",
-    "family",
-)
-
-
 def resolve_model_requirement(
-    preset_name: str | None = None,
     overrides: dict[str, JsonValue] | None = None,
 ) -> ModelRequirement:
-    """Merge a personality-preset affinity profile with explicit overrides.
-
-    The affinity profile supplies capability defaults (priority, context
-    floor, hard requirement flags, optional family hint); any field the
-    template states explicitly via *overrides* always wins.
+    """Parse a template agent's explicit model reference.
 
     Args:
-        preset_name: Optional personality preset name for affinity lookup.
         overrides: Explicit ``ModelRequirement`` fields from the template
-            agent that take precedence over the affinity defaults.
+            agent. A contradictory ``model_id`` + ``family`` /
+            ``model_pattern`` pairing is rejected by the validator.
 
     Returns:
         Resolved ``ModelRequirement``.
     """
-    if overrides:
-        pin = overrides.get("model_id")
-        if isinstance(pin, str) and pin.strip():
-            # A pin is selected verbatim and bypasses capability scoring, so
-            # affinity flags would be inert against it and are NOT merged in.
-            # The full overrides dict is parsed (not just the pin) so any
-            # explicit field the template set alongside model_id is preserved,
-            # and a contradictory model_id + family/model_pattern pairing is
-            # rejected by the ModelRequirement validator.
-            pinned = parse_model_requirement(
-                {key: value for key, value in overrides.items() if value is not None}
-            )
-            logger.debug(
-                TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
-                model_id=pinned.model_id,
-                priority=pinned.priority,
-                min_context=pinned.min_context,
-                family=pinned.family,
-                preset=preset_name,
-            )
-            return pinned
-
-    affinity = MODEL_AFFINITY.get(
-        normalize_ascii_lowercase_or_default(preset_name),
-        MappingProxyType({}),
+    stated: dict[str, JsonValue] = (
+        {key: value for key, value in overrides.items() if value is not None}
+        if overrides
+        else {}
     )
-    merged: dict[str, JsonValue] = {
-        key: affinity[key] for key in _AFFINITY_DEFAULT_KEYS if key in affinity
-    }
-    if overrides:
-        merged.update({k: v for k, v in overrides.items() if v is not None})
-
-    result = parse_model_requirement(merged)
+    result = parse_model_requirement(stated)
     logger.debug(
         TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
         model_id=result.model_id,
         priority=result.priority,
         min_context=result.min_context,
         family=result.family,
-        preset=preset_name,
     )
     return result

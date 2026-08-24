@@ -5,7 +5,7 @@ template:
     any build begins. Designers, engineers, QA, and a data analyst
     coordinate through structured meetings. Knowledge-heavy: discovery and
     decisions are grounded in the shared knowledge base.
-  version: "1.1.0"
+  version: "1.2.0"
   min_agents: 9
   max_agents: 14
   tags:
@@ -99,18 +99,15 @@ template:
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "strategic_planner"
     - role: "CTO"
       department: "executive"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "pragmatic_builder"
-    # Override first Full-Stack Developer (matched by role+department): change personality
+    # Override first Full-Stack Developer (matched by role+department)
     - role: "Full-Stack Developer"
       model:
         priority: "balanced"
-      personality_preset: "communication_bridge"
       department: "engineering"
     # Remove second Full-Stack Developer (matched by role+department)
     - role: "Full-Stack Developer"
@@ -122,44 +119,36 @@ template:
       merge_id: "backend-senior"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-mid"
       model:
         priority: "balanced"
-      personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Frontend Developer"
       model:
         priority: "balanced"
-      personality_preset: "creative_innovator"
       department: "engineering"
     - role: "UX Designer"
       model:
         priority: "balanced"
-      personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "methodical_analyst"
       department: "design"
     - role: "QA Engineer"
       model:
         priority: "cost"
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "Automation Engineer"
       model:
         priority: "cost"
-      personality_preset: "disciplined_executor"
       department: "quality_assurance"
     - role: "Data Analyst"
       model:
         priority: "quality"
-      personality_preset: "data_driven_optimizer"
       department: "data_analytics"
 
   workflow_config:

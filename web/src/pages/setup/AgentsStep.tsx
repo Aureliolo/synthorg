@@ -117,16 +117,11 @@ interface AgentsStepController {
   agentsFetched: boolean
   agentsError: string | null
   providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
-  personalityPresets: ReturnType<typeof useSetupWizardStore.getState>['personalityPresets']
-  personalityPresetsLoading: boolean
-  personalityPresetsError: string | null
   unresolvedAgents: readonly UnresolvedAgent[]
   fetchAgents: () => Promise<void>
-  fetchPersonalityPresets: () => Promise<void>
   handleNameChange: (index: number, name: string) => Promise<void>
   handleModelChange: (index: number, provider: string, modelId: string) => Promise<void>
   handleRandomizeName: (index: number) => Promise<void>
-  handlePersonalityChange: (index: number, preset: string) => Promise<void>
   goToProvidersStep: () => void
 }
 
@@ -135,16 +130,11 @@ function useAgentsStepController(): AgentsStepController {
   const agentsLoading = useSetupWizardStore((s) => s.agentsLoading)
   const agentsError = useSetupWizardStore((s) => s.agentsError)
   const providers = useSetupWizardStore((s) => s.providers)
-  const personalityPresets = useSetupWizardStore((s) => s.personalityPresets)
-  const personalityPresetsLoading = useSetupWizardStore((s) => s.personalityPresetsLoading)
-  const personalityPresetsError = useSetupWizardStore((s) => s.personalityPresetsError)
   const agentsFetched = useSetupWizardStore((s) => s.agentsFetched)
   const fetchAgents = useSetupWizardStore((s) => s.fetchAgents)
-  const fetchPersonalityPresets = useSetupWizardStore((s) => s.fetchPersonalityPresets)
   const updateAgentName = useSetupWizardStore((s) => s.updateAgentName)
   const updateAgentModel = useSetupWizardStore((s) => s.updateAgentModel)
   const randomizeAgentName = useSetupWizardStore((s) => s.randomizeAgentName)
-  const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
   const goToProvidersStep = useGoToStep('providers')
 
   // Fetch agents if not already loaded (e.g., direct URL navigation). Gate on
@@ -158,28 +148,11 @@ function useAgentsStepController(): AgentsStepController {
     }
   }, [agentsFetched, agentsLoading, agentsError, fetchAgents])
 
-  // Fetch personality presets on mount (stop on error to avoid loop)
-  useEffect(() => {
-    if (
-      personalityPresets.length === 0 &&
-      !personalityPresetsLoading &&
-      !personalityPresetsError
-    ) {
-      void fetchPersonalityPresets()
-    }
-  }, [
-    personalityPresets.length,
-    personalityPresetsLoading,
-    personalityPresetsError,
-    fetchPersonalityPresets,
-  ])
-
   // These are stable store actions; ``useCallback(fn, [fn])`` only re-wraps the
   // same identity, so reference them directly.
   const handleNameChange = updateAgentName
   const handleModelChange = updateAgentModel
   const handleRandomizeName = randomizeAgentName
-  const handlePersonalityChange = updateAgentPersonality
 
   // Detect agents whose model_provider / model_id no longer resolves against
   // the current providers map (the operator removed the provider, swapped the
@@ -204,18 +177,17 @@ function useAgentsStepController(): AgentsStepController {
   useClearStepRevalidationOnMount('agents')
 
   return {
-    agents, agentsLoading, agentsFetched, agentsError, providers, personalityPresets,
-    personalityPresetsLoading, personalityPresetsError, unresolvedAgents,
-    fetchAgents, fetchPersonalityPresets,
-    handleNameChange, handleModelChange, handleRandomizeName, handlePersonalityChange,
+    agents, agentsLoading, agentsFetched, agentsError, providers, unresolvedAgents,
+    fetchAgents,
+    handleNameChange, handleModelChange, handleRandomizeName,
     goToProvidersStep,
   }
 }
 
 function AgentsStepBanners({ c }: { c: AgentsStepController }) {
   // Persistent polite live region so a banner appearing after an action (an
-  // agent edit breaking a model, a preset fetch failing) is announced. Collapse
-  // when empty so it adds no gap in the parent ``space-y-section-gap`` flow.
+  // agent edit breaking a model) is announced. Collapse when empty so it adds
+  // no gap in the parent ``space-y-section-gap`` flow.
   return (
     <div aria-live="polite" className="space-y-section-gap empty:hidden">
       {c.agentsError && (
@@ -223,15 +195,6 @@ function AgentsStepBanners({ c }: { c: AgentsStepController }) {
           title="Could not update agent"
           description={c.agentsError}
           onRetry={() => void c.fetchAgents()}
-        />
-      )}
-
-      {c.personalityPresetsError && (
-        <ErrorBanner
-          severity="warning"
-          title="Could not load personality presets"
-          description="Agents can still be configured without them."
-          onRetry={() => void c.fetchPersonalityPresets()}
         />
       )}
 
@@ -264,7 +227,7 @@ export function AgentsStep() {
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Customise Your Agents</h2>
         <p className="text-sm text-muted-foreground">
-          Adjust agent names, personalities, and model assignments.
+          Adjust agent names and model assignments.
         </p>
       </div>
 
@@ -276,12 +239,9 @@ export function AgentsStep() {
         <SetupAgentsTable
           agents={c.agents}
           providers={c.providers}
-          personalityPresets={c.personalityPresets}
-          personalityPresetsLoading={c.personalityPresetsLoading}
           onNameChange={c.handleNameChange}
           onModelChange={c.handleModelChange}
           onRandomizeName={c.handleRandomizeName}
-          onPersonalityChange={c.handlePersonalityChange}
         />
       </SectionCard>
     </div>

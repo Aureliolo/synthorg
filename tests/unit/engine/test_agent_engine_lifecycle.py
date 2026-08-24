@@ -41,7 +41,7 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_completed_parks_at_in_review(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -51,7 +51,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -61,7 +61,7 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_completed_transition_log_has_two_entries(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -71,7 +71,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -85,7 +85,7 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_completed_does_not_set_completed_at(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -95,7 +95,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -106,13 +106,13 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_max_turns_terminalises_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A run out of turns did not finish, so it does not stay running."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         # Simulate ASSIGNED→IP transition that _prepare_context does
@@ -133,7 +133,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -144,7 +144,7 @@ class TestAgentEnginePostExecutionTransitions:
     async def test_a_run_that_changed_nothing_ends_as_a_no_op_not_an_error(
         self,
         tmp_path: Path,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -173,7 +173,7 @@ class TestAgentEnginePostExecutionTransitions:
         declared.write_text("unchanged\n", encoding="utf-8")
 
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality, task=work_task
+            sample_agent, task=work_task
         ).with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         mock_loop = mock_of[ExecutionLoop](
             execute=AsyncMock(
@@ -211,9 +211,7 @@ class TestAgentEnginePostExecutionTransitions:
             ),
         )
 
-        result = await engine.run(
-            identity=sample_agent_with_personality, task=work_task
-        )
+        result = await engine.run(identity=sample_agent, task=work_task)
 
         task_execution = result.execution_result.context.task_execution
         assert task_execution is not None
@@ -225,13 +223,13 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_budget_exhausted_terminalises_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Out of budget is out of budget, not still working."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -251,7 +249,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -261,12 +259,12 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_error_transitions_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -287,7 +285,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -297,13 +295,13 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_shutdown_transitions_to_interrupted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """SHUTDOWN → task transitions to INTERRUPTED."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -323,7 +321,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -333,13 +331,13 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_shutdown_from_assigned_transitions_to_interrupted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """SHUTDOWN before loop starts → ASSIGNED → INTERRUPTED."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         # Simulate the loop returning SHUTDOWN while still ASSIGNED
@@ -357,7 +355,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -370,12 +368,12 @@ class TestAgentEnginePostExecutionTransitions:
 
     async def test_no_task_execution_passes_through(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """No task_execution in context → transitions skipped."""
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         mock_result = ExecutionResult(
             context=ctx,
             termination_reason=TerminationReason.COMPLETED,
@@ -389,7 +387,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -402,7 +400,7 @@ class TestAgentEngineTimeout:
 
     async def test_timeout_produces_error_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -422,7 +420,7 @@ class TestAgentEngineTimeout:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             timeout_seconds=0.1,
         )
@@ -433,7 +431,7 @@ class TestAgentEngineTimeout:
 
     async def test_no_timeout_by_default(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -443,7 +441,7 @@ class TestAgentEngineTimeout:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -456,7 +454,7 @@ class TestAgentEngineTimeout:
     )
     async def test_non_positive_timeout_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         *,
@@ -467,7 +465,7 @@ class TestAgentEngineTimeout:
 
         with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
                 timeout_seconds=timeout_seconds,
             )
@@ -479,7 +477,7 @@ class TestAgentEngineCompletionMetrics:
 
     async def test_metrics_logged_on_completion(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -495,7 +493,7 @@ class TestAgentEngineCompletionMetrics:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -505,7 +503,7 @@ class TestAgentEngineCompletionMetrics:
         assert metrics.tokens_per_task > 0
         assert metrics.cost_per_task > 0
         assert metrics.duration_seconds > 0
-        assert metrics.agent_id == str(sample_agent_with_personality.id)
+        assert metrics.agent_id == str(sample_agent.id)
         assert metrics.task_id == str(sample_task_with_criteria.id)
         assert 0.0 <= metrics.prompt_token_ratio <= 1.0
 
@@ -516,7 +514,7 @@ class TestAgentEngineTimeoutEdgeCases:
 
     async def test_inner_timeout_propagates_without_engine_timeout(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -535,7 +533,7 @@ class TestAgentEngineTimeoutEdgeCases:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -544,7 +542,7 @@ class TestAgentEngineTimeoutEdgeCases:
 
     async def test_timeout_records_no_costs(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -573,7 +571,7 @@ class TestAgentEngineTimeoutEdgeCases:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             timeout_seconds=0.1,
         )
@@ -588,13 +586,13 @@ class TestAgentEnginePostExecutionResilience:
 
     async def test_transition_failure_preserves_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Transition failure preserves execution result unchanged."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -621,7 +619,7 @@ class TestAgentEnginePostExecutionResilience:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -631,13 +629,13 @@ class TestAgentEnginePostExecutionResilience:
 
     async def test_interrupted_transition_failure_preserves_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """SHUTDOWN with invalid task status → transition fails, result kept."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(
@@ -665,7 +663,7 @@ class TestAgentEnginePostExecutionResilience:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 

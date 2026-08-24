@@ -113,12 +113,12 @@ class TestCheckpointRecoveryResume:
 
     async def test_resume_with_valid_checkpoint(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Returns RecoveryResult with can_resume=True when checkpoint exists."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -140,12 +140,12 @@ class TestCheckpointRecoveryResume:
 
     async def test_task_not_transitioned_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Task execution is NOT transitioned to FAILED (unlike FailAndReassign)."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -169,12 +169,12 @@ class TestCheckpointRecoveryFallback:
 
     async def test_no_checkpoint_delegates_to_fallback(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Falls back when no checkpoint found."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         repo = _make_mock_repo(checkpoint=None)
@@ -193,12 +193,12 @@ class TestCheckpointRecoveryFallback:
 
     async def test_max_resume_attempts_exhausted(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Falls back after max_resume_attempts reached."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -234,12 +234,12 @@ class TestCheckpointRecoveryFallback:
 
     async def test_zero_max_resume_attempts_always_fallback(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """max_resume_attempts=0 always falls back."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -258,12 +258,12 @@ class TestCheckpointRecoveryFallback:
 
     async def test_repo_error_delegates_to_fallback(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Falls back when checkpoint repo raises an exception."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         repo = _make_mock_repo(error=QueryError("DB connection lost"))
@@ -281,12 +281,12 @@ class TestCheckpointRecoveryFallback:
 
     async def test_custom_fallback_used(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Custom fallback strategy is used when provided."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         repo = _make_mock_repo(checkpoint=None)
@@ -323,12 +323,12 @@ class TestCheckpointRecoveryCounter:
 
     async def test_counter_increments_per_execution(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Resume attempts are tracked per execution_id."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -352,12 +352,12 @@ class TestCheckpointRecoveryCounter:
 
     async def test_clear_resume_count_resets(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """clear_resume_count resets the counter for an execution."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -390,7 +390,7 @@ class TestCheckpointRecoveryCounter:
 
     async def test_independent_counters_per_execution(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         """Different execution IDs have independent counters."""
         task_a = Task(
@@ -400,7 +400,7 @@ class TestCheckpointRecoveryCounter:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.ASSIGNED,
         )
         task_b = Task(
@@ -410,12 +410,12 @@ class TestCheckpointRecoveryCounter:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to=str(sample_agent_with_personality.id),
+            assigned_to=str(sample_agent.id),
             status=TaskStatus.ASSIGNED,
         )
 
-        ctx_a, exec_a = _make_in_progress_ctx(sample_agent_with_personality, task_a)
-        ctx_b, exec_b = _make_in_progress_ctx(sample_agent_with_personality, task_b)
+        ctx_a, exec_a = _make_in_progress_ctx(sample_agent, task_a)
+        ctx_b, exec_b = _make_in_progress_ctx(sample_agent, task_b)
 
         cp_a = _make_checkpoint(execution_id=ctx_a.execution_id)
         cp_b = _make_checkpoint(execution_id=ctx_b.execution_id)
@@ -450,12 +450,12 @@ class TestCheckpointRecoveryFinalize:
 
     async def test_finalize_clears_counter(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """finalize() resets the counter for the execution."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -495,12 +495,12 @@ class TestCheckpointRecoveryFallbackCleanup:
 
     async def test_no_checkpoint_calls_cleanup(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When no checkpoint exists, cleanup is called before fallback."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         cp_repo = mock_of[CheckpointRepository](
@@ -529,12 +529,12 @@ class TestCheckpointRecoveryFallbackCleanup:
 
     async def test_exhausted_attempts_calls_cleanup(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """After max_resume_attempts, cleanup is called before fallback."""
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
@@ -569,11 +569,11 @@ class TestCheckpointRecoveryExceptionPropagation:
 
     async def test_memory_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         repo = _make_mock_repo(error=MemoryError("out of memory"))
@@ -588,11 +588,11 @@ class TestCheckpointRecoveryExceptionPropagation:
 
     async def test_recursion_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx, task_exec = _make_in_progress_ctx(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         repo = _make_mock_repo(error=RecursionError("max depth"))

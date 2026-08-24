@@ -5,7 +5,7 @@ template:
     prototypes, and visual designs, and a UX Researcher conducting
     user interviews, usability testing, and synthesizing research
     insights to drive design decisions.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 2
   max_agents: 2
   tags:
@@ -31,13 +31,11 @@ template:
     - role: "UX Designer"
       model:
         priority: "balanced"
-      personality_preset: "rapid_prototyper"
       department: "design"
     - role: "UX Researcher"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "methodical_analyst"
       department: "design"
 
   workflow: "agile_kanban"

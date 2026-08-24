@@ -18,7 +18,6 @@
 --     stores as JSONB.  Affected columns:
 --       workflow_definitions.{inputs, outputs, nodes, edges},
 --       workflow_definition_versions.snapshot,
---       custom_presets.config_json,
 --       fine_tune_runs.{config_json, stages_completed},
 --       fine_tune_checkpoints.{eval_metrics_json, backup_config_json},
 --       agent_identity_versions.snapshot,
@@ -888,15 +887,6 @@ CREATE TABLE project_cost_aggregates (
     last_updated TEXT NOT NULL CHECK (
         last_updated LIKE '%+00:00' OR last_updated LIKE '%Z'
     )
-);
-
--- ── Custom personality presets (user-defined) ────────────────
-CREATE TABLE custom_presets (
-    name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(name) > 0),
-    config_json TEXT NOT NULL CHECK (LENGTH(config_json) > 0),
-    description TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
 );
 
 CREATE TABLE workflow_definitions (

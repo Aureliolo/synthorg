@@ -215,36 +215,36 @@ class TestAgentContextBudgetFields:
 
     def test_context_fill_percent_with_capacity(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             context_capacity_tokens=10_000,
         ).model_copy(update={"context_fill_tokens": 5_000})
         assert ctx.context_fill_percent == pytest.approx(50.0)
 
     def test_context_fill_percent_without_capacity(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         assert ctx.context_fill_percent is None
 
     def test_with_context_fill(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        ctx = AgentContext.from_identity(sample_agent)
         updated = ctx.with_context_fill(500)
         assert updated.context_fill_tokens == 500
         assert ctx.context_fill_tokens == 0  # original unchanged
 
     def test_with_compression(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             context_capacity_tokens=10_000,
         )
         msg = ChatMessage(role=MessageRole.SYSTEM, content="summary")
@@ -261,20 +261,20 @@ class TestAgentContextBudgetFields:
 
     def test_from_identity_with_capacity(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             context_capacity_tokens=200_000,
         )
         assert ctx.context_capacity_tokens == 200_000
 
     def test_snapshot_includes_fill_fields(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             context_capacity_tokens=10_000,
         ).model_copy(update={"context_fill_tokens": 3_000})
         snapshot = ctx.to_snapshot()
@@ -283,7 +283,7 @@ class TestAgentContextBudgetFields:
 
     def test_make_context_indicator_with_compression(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         metadata = CompressionMetadata(
             compression_point=5,
@@ -292,7 +292,7 @@ class TestAgentContextBudgetFields:
             compactions_performed=2,
         )
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             context_capacity_tokens=10_000,
         ).model_copy(
             update={

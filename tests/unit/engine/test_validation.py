@@ -77,9 +77,9 @@ class TestValidateAgent:
 
     def test_rejects_onboarding_agent(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        agent = sample_agent_with_personality.model_copy(
+        agent = sample_agent.model_copy(
             update={"status": AgentStatus.ONBOARDING},
         )
         with pytest.raises(ExecutionStateError, match="onboarding"):
@@ -87,9 +87,9 @@ class TestValidateAgent:
 
     def test_rejects_terminated_agent(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
-        agent = sample_agent_with_personality.model_copy(
+        agent = sample_agent.model_copy(
             update={"status": AgentStatus.TERMINATED},
         )
         with pytest.raises(ExecutionStateError, match="terminated"):
@@ -97,11 +97,11 @@ class TestValidateAgent:
 
     def test_accepts_active_agent(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
     ) -> None:
         validate_agent(
-            sample_agent_with_personality,
-            str(sample_agent_with_personality.id),
+            sample_agent,
+            str(sample_agent.id),
         )
 
 

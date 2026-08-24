@@ -24,7 +24,6 @@ from litestar.channels import (
 )
 
 from synthorg.api.channels import (
-    CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
     CHANNEL_COCKPIT,
 )
@@ -33,19 +32,12 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.agent_engine import (
-    PersonalityTrimNotifier,
-    PersonalityTrimPayload,
-)
 from synthorg.engine.intervention import SteeringNotifier
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
     API_WS_SEND_FAILED,
-)
-from synthorg.observability.events.prompt import (
-    PROMPT_PERSONALITY_NOTIFY_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -250,51 +242,6 @@ def resolve_agent_workspace_root_env() -> Path | None:
     if os.environ.get("SYNTHORG_DATABASE_URL", "").strip():
         return Path(_POSTGRES_VOLUME_DATA_DIR) / _AGENT_WORKSPACES_SUBDIR
     return None
-
-
-def make_personality_trim_notifier(
-    channels_plugin: ChannelsPlugin,
-) -> PersonalityTrimNotifier:
-    """Create an async callback that publishes ``personality.trimmed`` events.
-
-    The returned callback matches the ``PersonalityTrimNotifier`` contract
-    and is intended for passing to ``AgentEngine`` via the
-    ``personality_trim_notifier`` constructor parameter.
-
-    Returns:
-        ``PersonalityTrimNotifier`` instance.
-    """
-
-    async def _on_personality_trimmed(payload: PersonalityTrimPayload) -> None:
-        """Handle the personality trimmed event."""
-        event = WsEvent(
-            event_type=WsEventType.PERSONALITY_TRIMMED,
-            channel=CHANNEL_AGENTS,
-            timestamp=datetime.now(UTC),
-            payload=dict(payload),
-        )
-        try:
-            await asyncio.to_thread(
-                channels_plugin.publish,
-                event.model_dump_json(),
-                channels=[CHANNEL_AGENTS],
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                PROMPT_PERSONALITY_NOTIFY_FAILED,
-                reason="failed to publish personality.trimmed WebSocket event",
-                agent_id=payload.get("agent_id"),
-                agent_name=payload.get("agent_name"),
-                task_id=payload.get("task_id"),
-                trim_tier=payload.get("trim_tier"),
-                before_tokens=payload.get("before_tokens"),
-                after_tokens=payload.get("after_tokens"),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
-    return _on_personality_trimmed
 
 
 def make_steering_notifier(channels_plugin: ChannelsPlugin) -> SteeringNotifier:

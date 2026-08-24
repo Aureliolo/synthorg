@@ -13,7 +13,7 @@ SynthOrg Engine: {
       Hierarchy
     |
     Agent Engine: |
-      Lifecycle, Personality,
+      Lifecycle, Prompting,
       Execution
     |
     Task/Workflow Eng.: |
@@ -145,7 +145,6 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Tool permission checking** | Adopted | Category-level gating based on `ToolAccessLevel`. Priority-based resolution: denied list, allowed list, level categories, then deny. |
 | **Tool sandboxing** | Adopted | Layered: in-process path validation for file system tools, `SubprocessSandbox` for git tools, `DockerSandbox` for code execution. Per-category backend selection via `SandboxingConfig` and sandbox factory. |
 | **Crash recovery** | Adopted | Pluggable `RecoveryStrategy` protocol. Current strategies: `FailAndReassignStrategy` and `CheckpointRecoveryStrategy` (per-turn checkpoint resume). |
-| **Personality compatibility** | Adopted | Weighted composite scoring: 60% Big Five similarity, 20% collaboration alignment, 20% conflict approach. |
 | **Agent behaviour testing** | Planned | Scripted `FakeProvider` for unit tests; behavioural outcome assertions for integration tests. |
 | **LLM call analytics** | Adopted | Proxy metrics (`turns_per_task`, `tokens_per_task`) and data models for call categorisation, coordination metrics, and orchestration ratio. |
 | **Cost tiers and quota tracking** | Adopted | Configurable `CostTierDefinition` with merge/override semantics. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. |

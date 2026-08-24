@@ -66,17 +66,17 @@ class TestStartupExtendsSoloFounder:
         assert ceo.department == "executive"
 
     def test_fullstack_senior_overridden(self) -> None:
-        """The overridden Full-Stack Developer has pragmatic_builder traits."""
+        """The merge_id override lands on the parent's agent, not beside it."""
         config = _render("startup")
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
-        # The pragmatic_builder override seats "practical" on one full-stack
-        # agent; the reporting graph, not seniority, now carries authority.
-        all_traits: list[object] = []
-        for agent in fs_agents:
-            traits = agent.personality.get("traits", ()) if agent.personality else ()
-            if isinstance(traits, (list, tuple)):
-                all_traits.extend(traits)
-        assert "practical" in all_traits
+        # solo_founder ships one (fullstack-senior); startup overrides that
+        # one by merge_id and adds fullstack-mid. Three would mean the
+        # override appended rather than merged.
+        assert len(fs_agents) == 2
+        assert all(a.model_requirement is not None for a in fs_agents)
+        assert all(
+            (a.model_requirement or {}).get("priority") == "balanced" for a in fs_agents
+        )
 
     def test_departments(self) -> None:
         config = _render("startup")
@@ -351,13 +351,11 @@ class TestThreeLevelInheritanceRegression:
 
         Chain: solo_founder defines FS Dev -> startup overrides via
         merge_id -> merge strips merge_id -> product_team overrides
-        by (role, dept, '') key -> personality is communication_bridge.
+        by (role, dept, '') key and removes the sibling.
         """
         config = _render("product_team")
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
         assert len(fs_agents) == 1
-        assert fs_agents[0].personality is not None
-        # communication_bridge preset has articulate, sociable, diplomatic
-        traits = fs_agents[0].personality.get("traits", ())
-        assert isinstance(traits, (list, tuple))
-        assert "articulate" in traits
+        requirement = fs_agents[0].model_requirement
+        assert requirement is not None
+        assert requirement.get("priority") == "balanced"

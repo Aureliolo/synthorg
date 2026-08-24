@@ -68,9 +68,6 @@ def capability_below(level: CapabilityLevel) -> CapabilityLevel | None:
 AutonomyDetailLevel = Literal["full", "summary", "minimal"]
 """Level of autonomy instruction detail in prompt profiles."""
 
-PersonalityMode = Literal["full", "condensed", "minimal"]
-"""Personality section verbosity in prompt profiles."""
-
 
 def _check_not_whitespace(value: str) -> str:
     """Reject whitespace-only strings.

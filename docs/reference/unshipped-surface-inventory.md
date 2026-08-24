@@ -71,7 +71,6 @@ owning `feature.py` `ghost_wired_symbols` claim.
 
 | Service | Construction site | Tools |
 | --- | --- | --- |
-| `PersonalityService` | `api/lifecycle_helpers/persistence_autowire.py::_wire_personality_service` | `synthorg_personalities_*` |
 | `ActivityFeedService` | `api/lifecycle_helpers/persistence_autowire.py::_wire_activity_feed_service` | `synthorg_agents_get_activity`, `synthorg_activities_list` |
 | `AgentHealthService` | `hr/_construction.py::wire_construction` | `synthorg_agents_get_health` |
 | `CoordinationService` | `coordination/_construction.py::wire_construction` | `synthorg_coordination_*` |
@@ -114,7 +113,6 @@ report the real runtime condition.
 | `service_fallback` + `MCP_HANDLER_SERVICE_FALLBACK` | Removed: the helper and its event had zero `src/` call sites. Live handlers route through `not_supported` (backend cannot perform the op) or `capability_gap` (wired handler, primitive gap). |
 | `ToolInvocationTracker` construction | Constructed only in tests, not wired at boot; a separate dead-construction cleanup, outside the `capability_gap` surface this inventory covers. |
 | `api/controllers/meta.py::get_signals` | Reports real per-domain availability from the wired `SignalsService`. |
-| `agents_personalities.py` `_WHY_*` capability reasons | Read the "service not wired in this deployment" runtime condition for the personality service. |
 | `agents_crud.py` `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment") for the activity-feed / agent-version / agent-health services. |
 
 ## Idioms 3-7 sweep of `src/synthorg`

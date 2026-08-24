@@ -1,9 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { AgentsStep } from "@/pages/setup/AgentsStep";
 import { useSetupWizardStore } from "@/stores/setup-wizard";
-import { server } from "@/test-setup";
-import { apiSuccess } from "@/mocks/handlers";
 import { renderWithRouter } from "@/__tests__/test-utils";
 import type { SetupAgentSummary } from "@/api/types/setup";
 import type {
@@ -19,7 +16,6 @@ function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
     model_provider: "cloud-x",
     model_id: "cloud-x-large",
     capability: "capable",
-    personality_preset: null,
     ...overrides,
   };
 }
@@ -76,12 +72,6 @@ function provider(name: string, models: ProviderModelConfig[]): ProviderConfig {
 describe("AgentsStep: unresolved-agent detection", () => {
   beforeEach(() => {
     useSetupWizardStore.getState().reset();
-    // Personality presets endpoint always returns []; keeps fetchPresets quiet
-    server.use(
-      http.get("/api/v1/setup/personality-presets", () =>
-        HttpResponse.json(apiSuccess({ presets: [] })),
-      ),
-    );
   });
 
   function findBanner(): HTMLElement {
@@ -203,19 +193,16 @@ describe("AgentsStep: empty-state copy", () => {
   // no-op stubs below would leak into any later describe block. Capture the
   // real actions and restore them in afterEach to keep the override local.
   let realFetchAgents: () => Promise<void>;
-  let realFetchPersonalityPresets: () => Promise<void>;
 
   beforeEach(() => {
     const state = useSetupWizardStore.getState();
     realFetchAgents = state.fetchAgents;
-    realFetchPersonalityPresets = state.fetchPersonalityPresets;
     state.reset();
-    // Stub the mount-time fetches to no-ops so the empty fallback renders
+    // Stub the mount-time fetch to a no-op so the empty fallback renders
     // synchronously: the store keeps ``agents: []`` and no async refetch
     // fires, isolating the test to the empty-state copy branch.
     useSetupWizardStore.setState({
       fetchAgents: async () => {},
-      fetchPersonalityPresets: async () => {},
       agents: [],
       // A completed fetch that returned an empty roster: the empty-state copy
       // only renders once the fetch has run (otherwise the skeleton shows), so
@@ -227,10 +214,7 @@ describe("AgentsStep: empty-state copy", () => {
   });
 
   afterEach(() => {
-    useSetupWizardStore.setState({
-      fetchAgents: realFetchAgents,
-      fetchPersonalityPresets: realFetchPersonalityPresets,
-    });
+    useSetupWizardStore.setState({ fetchAgents: realFetchAgents });
     useSetupWizardStore.getState().reset();
   });
 

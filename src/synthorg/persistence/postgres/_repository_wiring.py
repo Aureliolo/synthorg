@@ -147,9 +147,6 @@ from synthorg.persistence.postgres.plan_repo import PostgresPlanRepository
 from synthorg.persistence.postgres.preset_override_repo import (
     PostgresPresetOverrideRepo,
 )
-from synthorg.persistence.postgres.preset_repo import (
-    PostgresPersonalityPresetRepository,
-)
 from synthorg.persistence.postgres.principle_override_repo import (
     PostgresPrincipleOverrideRepository,
 )
@@ -275,7 +272,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
-        self._custom_presets = None
         self._workflow_definitions = None
         self._workflow_executions = None
         self._subworkflows = None
@@ -372,7 +368,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._heartbeats = PostgresHeartbeatRepository(pool)
         self._agent_states = PostgresAgentStateRepository(pool)
         self._settings = PostgresSettingsRepository(pool)
-        self._custom_presets = PostgresPersonalityPresetRepository(pool)
 
         # Workflow repositories.
         self._workflow_definitions = PostgresWorkflowDefinitionRepository(pool)

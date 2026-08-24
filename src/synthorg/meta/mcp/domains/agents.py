@@ -1,6 +1,6 @@
 """Agent domain MCP tools.
 
-Covers the agents and personalities controllers.
+Covers the agents controllers.
 """
 
 from typing import TYPE_CHECKING
@@ -19,8 +19,6 @@ from synthorg.meta.mcp.domains._agents_args import (
     AgentsUpdateArgs,
     AutonomyGetArgs,
     AutonomyUpdateArgs,
-    PersonalitiesGetArgs,
-    PersonalitiesListArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
@@ -131,24 +129,6 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         _AGENT_NAME,
         required=("agent_name",),
         args_model=AgentsGetHealthArgs,
-    ),
-    # --- Personalities ---
-    read_tool(
-        "personalities",
-        "list",
-        "List available personality configurations.",
-        PAGINATION_PROPERTIES,
-        args_model=PersonalitiesListArgs,
-    ),
-    read_tool(
-        "personalities",
-        "get",
-        "Get a personality configuration by name.",
-        {
-            "name": {"type": "string", "description": "Personality name"},
-        },
-        required=("name",),
-        args_model=PersonalitiesGetArgs,
     ),
     # --- Autonomy ---
     read_tool(

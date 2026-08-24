@@ -1,11 +1,11 @@
 ---
 title: Agent Roles & Hierarchy
-description: Define agents, roles, personality, departments, and reporting lines.
+description: Define agents, roles, departments, and reporting lines.
 ---
 
 # Agent Roles & Hierarchy
 
-Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name, personality), a position in the hierarchy (department, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
+Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name), a position in the hierarchy (department, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
 
 ---
 
@@ -13,7 +13,7 @@ Agents are the core building blocks of a synthetic organisation. Each agent has 
 
 An agent's configuration is split into two layers:
 
-- **Config layer** (frozen): identity, personality, role, model, department. Set at creation time and never mutated.
+- **Config layer** (frozen): identity, role, model, department. Set at creation time and never mutated.
 - **Runtime state** (mutable-via-copy): execution status, current task, cost spent. Evolves during operation using `model_copy(update=...)`.
 
 This separation means you configure *who an agent is* in YAML, and the engine manages *what the agent is doing* at runtime.
@@ -32,11 +32,6 @@ agents:
     model:
       priority: "balanced"
       min_context: 50000
-    personality:
-      openness: 0.5
-      conscientiousness: 0.85
-      decision_making: analytical
-      verbosity: balanced
     autonomy_level: semi  # override company-wide level
 ```
 
@@ -47,7 +42,6 @@ agents:
 | `name` | string | *(required)* | Display name |
 | `role` | string | *(required)* | Role from the built-in catalog or `custom_roles` |
 | `department` | string | *(required)* | Department this agent belongs to |
-| `personality` | dict | `{}` | Personality config injected into the system prompt (see [Personality](#personality-configuration)) |
 | `model` | dict | `{}` | Model assignment: structured config with priority, min_context |
 | `memory` | dict | `{}` | Per-agent memory overrides |
 | `tools` | dict | `{}` | Tool access configuration |
@@ -56,7 +50,7 @@ agents:
 
 !!! tip "Template-only fields"
 
-    When using a **template** (e.g. `company_type: startup`), the template format supports additional fields: `personality_preset` (named preset resolved into a `personality` dict) and `merge_id` (disambiguation ID for multiple agents with the same role). These are resolved by the template engine before constructing the final config. Templates also auto-generate agent names via Faker when `name` is omitted.
+    When using a **template** (e.g. `company_type: startup`), the template format supports an additional `merge_id` field (disambiguation ID for multiple agents with the same role), resolved by the template engine before constructing the final config. Templates also auto-generate agent names via Faker when `name` is omitted.
 
 !!! note "Unique agent identity"
 
@@ -174,68 +168,12 @@ Use `subordinate_id` in reporting lines when you have multiple agents with the s
 
 ---
 
-## Personality Configuration
+## How Agent Output Reads
 
-Agent personality is injected into the LLM system prompt and influences the agent's behaviour, communication style, and decision-making.
-
-### Big Five Dimensions
-
-Each dimension is a float from 0.0 to 1.0:
-
-| Dimension | Low (0.0) | High (1.0) |
-|-----------|-----------|------------|
-| `openness` | Conservative, routine-oriented | Curious, creative, experimental |
-| `conscientiousness` | Flexible, spontaneous | Organised, reliable, thorough |
-| `extraversion` | Reserved, independent | Sociable, energetic, assertive |
-| `agreeableness` | Competitive, direct | Cooperative, empathetic |
-| `stress_response` | Reactive, anxious | Calm, resilient, composed |
-
-### Behavioural Traits
-
-| Trait | Values |
-|-------|--------|
-| `decision_making` | `analytical`, `intuitive`, `consultative`, `directive` |
-| `collaboration` | `independent`, `pair`, `team` |
-| `verbosity` | `terse`, `balanced`, `verbose` |
-| `conflict_approach` | `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` |
-
-### Personality Presets
-
-Rather than configuring each dimension manually, use a named preset:
-
-| Preset | Key Traits |
-|--------|-----------|
-| `visionary_leader` | High openness (0.85), directive decisions, authoritative communication |
-| `pragmatic_builder` | High conscientiousness (0.85), analytical decisions, concise communication |
-| `rapid_prototyper` | High openness (0.85), intuitive decisions, informal communication |
-| `eager_learner` | High openness (0.8), consultative decisions, enthusiastic communication |
-| `methodical_analyst` | Very high conscientiousness (0.9), analytical decisions, formal communication |
-| `creative_innovator` | Very high openness (0.95), intuitive decisions, verbose communication |
-| `strategic_planner` | Moderate conscientiousness (0.7), consultative decisions, structured communication |
-| `team_diplomat` | Very high agreeableness (0.9), consultative decisions, collaborative conflict approach |
-
-These are 8 of the 22 built-in presets. See the [library reference](../api/templates.md) for the complete preset catalog.
-
-!!! tip "Using presets"
-
-    Personality presets are available when using **templates** (via `personality_preset` in the template agent config). In raw YAML config, use the `personality` dict directly with the resolved values.
-
-Provide a full personality object for fine-grained control:
-
-```yaml
-agents:
-  - role: "CEO"
-    personality:
-      openness: 0.9
-      conscientiousness: 0.7
-      extraversion: 0.8
-      agreeableness: 0.6
-      stress_response: 0.8
-      decision_making: directive
-      collaboration: team
-      verbosity: balanced
-      conflict_approach: collaborate
-```
+How an agent writes is not configured per agent. The organisation sets one house
+writing style, scoped org-wide with per-role and per-department overrides, and a
+deterministic guardrail enforces the hard rules at the boundary where work is kept
+or sent. See [Output Style Policy](../design/output-style-policy.md).
 
 ---
 

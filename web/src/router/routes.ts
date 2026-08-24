@@ -49,7 +49,6 @@ export const ROUTES = {
   COORDINATION_METRICS: '/analytics/coordination',
   META_ANALYTICS: '/analytics/meta',
   LEARNING_CURVE: '/analytics/learning',
-  PERSONALITIES_ADMIN: '/admin/personalities',
   ADMIN_AUDIT_LOG: '/admin/audit',
   ADMIN_BACKUPS: '/admin/backups',
   BUDGET_VERSIONS: '/budget/versions',

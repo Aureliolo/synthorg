@@ -11,7 +11,7 @@ The design specification has been split into focused documentation pages for bet
 | Page | Sections | Description |
 |------|----------|-------------|
 | [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
-| [Agents](design/agents.md) | Agent Identity | Identity card, personality (OCEAN + behavioural enums), skill model, tool namespaces, identity versioning |
+| [Agents](design/agents.md) | Agent Identity | Identity card, the bound (role, model) unit, skill model, tool namespaces, identity versioning |
 | [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Role catalog, reporting-graph authority, hiring (templates + LLM), pruning, firing, performance ledger, evolution, client agents |
 | [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config, and lifecycle |

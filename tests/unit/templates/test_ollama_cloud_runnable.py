@@ -49,11 +49,7 @@ class TestOllamaCloudRunnable:
     def test_every_agent_resolves(self, name: str) -> None:
         config = render_template(load_template(name))
         agents = [
-            {
-                "model_requirement": agent.model_requirement,
-                "personality_preset": agent.personality_preset,
-            }
-            for agent in config.agents
+            {"model_requirement": agent.model_requirement} for agent in config.agents
         ]
         assert agents, f"{name} rendered no agents"
 

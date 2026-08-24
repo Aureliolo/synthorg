@@ -58,11 +58,11 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_returns_agent_context(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(
@@ -78,11 +78,11 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_reconciliation_message_injected(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
             turn_count=5,
         )
@@ -103,12 +103,12 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_reconciliation_includes_failure_category(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Reconciliation message includes the failure_category value."""
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(
@@ -124,12 +124,12 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_reconciliation_includes_criteria_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Reconciliation message lists unmet criteria when provided."""
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(
@@ -147,12 +147,12 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_reconciliation_without_criteria_omits_unmet_criteria(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """When criteria_failed is empty the 'Unmet criteria:' line is omitted."""
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(
@@ -168,12 +168,12 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_reconciliation_sanitizes_criteria(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Criteria strings are sanitized before injection into LLM context."""
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(
@@ -191,11 +191,11 @@ class TestDeserializeAndReconcileSuccess:
 
     def test_preserves_original_turn_count(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
             turn_count=7,
         )
@@ -232,14 +232,14 @@ class TestDeserializeAndReconcileSanitization:
     )
     def test_error_is_sanitized(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         error_message: str,
         expected_token: str,
         forbidden_substr: str,
     ) -> None:
         ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
+            sample_agent,
             sample_task_with_criteria,
         )
         result = deserialize_and_reconcile(

@@ -56,7 +56,7 @@ Templates -> Config
 | **tools** | Tool system: registry, built-in tools (file system, git, sandbox, code runner), MCP bridge, role-based access |
 | **api** | REST + WebSocket API: Litestar controllers, JWT + API key + WS ticket auth, guards, channels, RFC 9457 structured error responses |
 | **config** | Company configuration: YAML schema, loader, validation, defaults |
-| **templates** | Pre-built company templates: personality presets, template builder |
+| **templates** | Pre-built company templates: inheritance, model matching, template builder |
 | **persistence** | Operational data: pluggable backend protocol with SQLite and Postgres implementations |
 | **observability** | Structured logging: structlog, event constants, correlation tracking, log sinks |
 | **meta** | Self-extending and self-improving organisation: MCP tool surface, charter, toolsmith, rollout mutators, Chief of Staff |

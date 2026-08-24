@@ -4,9 +4,6 @@ import type { WizardStep } from '@/stores/setup-wizard'
 const GENERIC_NEXT_DISABLED_REASON =
   'Complete the required fields on this step to continue.'
 
-const AGENTS_MISSING_PERSONALITY_REASON =
-  'Assign a personality to every agent to continue.'
-
 interface StepLoadingFlags {
   providersLoading: boolean
   presetsLoading: boolean
@@ -65,20 +62,6 @@ function useNextDisabledReason(
   })
 }
 
-/**
- * True when the agents step has agents that still lack a personality. An agent
- * with no personality preset is an incomplete configuration, so Next is gated
- * until the operator assigns one to every agent. Off every other step.
- */
-function useAgentsMissingPersonality(currentStep: WizardStep): boolean {
-  const agents = useSetupWizardStore((s) => s.agents)
-  return (
-    currentStep === 'agents' &&
-    agents.length > 0 &&
-    agents.some((agent) => !agent.personality_preset)
-  )
-}
-
 export interface WizardNextGate {
   disabled: boolean
   reason: string | null
@@ -86,15 +69,10 @@ export interface WizardNextGate {
 
 /**
  * Combined Next-button gate for the current step: whether Next is disabled and
- * the caption explaining why. On top of the per-step completion flag, the
- * agents step additionally requires every agent to have a personality assigned.
+ * the caption explaining why.
  */
 export function useWizardNextGate(currentStep: WizardStep): WizardNextGate {
   const stepComplete = useSetupWizardStore((s) => s.stepsCompleted[currentStep])
   const baseReason = useNextDisabledReason(currentStep, stepComplete)
-  const agentsMissingPersonality = useAgentsMissingPersonality(currentStep)
-  if (agentsMissingPersonality) {
-    return { disabled: true, reason: AGENTS_MISSING_PERSONALITY_REASON }
-  }
   return { disabled: !stepComplete, reason: baseReason }
 }

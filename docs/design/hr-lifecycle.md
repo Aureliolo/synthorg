@@ -7,7 +7,7 @@ description: Role catalog, reporting-graph authority, dynamic roles, hiring (tem
 
 This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
 
-See [Agents](agents.md) for the identity layer (personality, skills, tool namespaces, identity versioning).
+See [Agents](agents.md) for the identity layer (skills, tool namespaces, identity versioning).
 
 ## Authority: role + reporting graph
 
@@ -112,7 +112,6 @@ The HR system manages the agent workforce dynamically:
 2. HR generates **candidate cards** based on team needs:
     - What skills are underrepresented?
     - What role (and where in the reporting graph) is needed?
-    - What personality would complement the team?
     - What model/provider fits the budget?
 3. Candidate cards are presented for approval (to CEO or human) as an
    `ORG_HIRE` approval item, whose risk level comes from the risk map rather
@@ -429,11 +428,10 @@ MCP handlers and REST controllers never reach into HR repositories directly; eve
 | `ActivityFeedService` | `src/synthorg/hr/activity_service.py` | Aggregates lifecycle events, task metrics, cost records, tool invocations, and delegation records into a single agent-scoped timeline for `synthorg_agents_get_activity`. Uses `asyncio.TaskGroup` with per-source safe-default helpers so one failing tracker cannot abort the merge. |
 | `AgentHealthService` | `src/synthorg/hr/health/service.py` | Derives a compact `AgentHealthReport` (`healthy` / `degraded` / `unavailable`) from the tightest populated `PerformanceTracker` window. Rejects reports where `recent_failed_count > recent_task_count` via a cross-field validator. |
 | `AgentVersionService` | `src/synthorg/hr/identity/version_service.py` | Reads paged identity-version history for `synthorg_agents_get_history`. Lifted out of the REST controller so the MCP surface doesn't depend on HTTP request/response shapes. |
-| `PersonalityService` | `src/synthorg/hr/personalities/service.py` | Thin facade over `PersonalityPresetService` for MCP list/get endpoints. |
 
 ## See Also
 
-- [Agents](agents.md): agent identity, personality, skills, identity versioning
+- [Agents](agents.md): agent identity, skills, identity versioning
 - [Organisation](organization.md): company types, departments, templates
 - [Budget & Cost](budget.md): performance-driven downgrade, risk budget
 - [Design Overview](index.md): full index

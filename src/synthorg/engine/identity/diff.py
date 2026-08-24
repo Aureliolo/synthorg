@@ -1,8 +1,8 @@
 """Agent identity diff -- field-level changes between two AgentIdentity snapshots.
 
 Compares ``model_dump(mode="json")`` representations recursively so nested
-sub-models (e.g. ``personality.risk_tolerance``) produce dot-notation paths
-like ``personality.risk_tolerance``.
+sub-models (e.g. ``authority.budget_limit``) produce dot-notation paths
+like ``authority.budget_limit``.
 """
 
 import json
@@ -24,7 +24,7 @@ class IdentityFieldChange(BaseModel):
 
     Attributes:
         field_path: Dot-notation path to the changed field (e.g.
-            ``personality.risk_tolerance``).
+            ``authority.budget_limit``).
         change_type: Whether the field was modified, added, or removed.
         old_value: JSON-serialized previous value, or ``None`` if added.
         new_value: JSON-serialized new value, or ``None`` if removed.

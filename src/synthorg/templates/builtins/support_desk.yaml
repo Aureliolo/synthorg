@@ -6,7 +6,7 @@ template:
     small engineering pair reproduces and fixes defects. Supervised and
     client-facing: group chat, agent invite, and clarify proposals are
     pre-enabled so customers and stakeholders collaborate in the loop.
-  version: "1.0.0"
+  version: "1.1.0"
   min_agents: 5
   max_agents: 7
   tags:
@@ -64,34 +64,28 @@ template:
     - role: "Project Manager"
       model:
         priority: "speed"
-      personality_preset: "client_advisor"
       department: "support"
     - role: "Product Manager"
       model:
         priority: "balanced"
-      personality_preset: "user_advocate"
       department: "support"
     - role: "Technical Writer"
       model:
         priority: "quality"
-      personality_preset: "technical_communicator"
       department: "support"
     - role: "Backend Developer"
       merge_id: "support-eng"
       model:
         priority: "balanced"
-      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
       model:
         priority: "cost"
-      personality_preset: "methodical_analyst"
       department: "engineering"
     - role: "Completion Reviewer"
       model:
         priority: "quality"
         requires_reasoning: true
-      personality_preset: "quality_guardian"
       department: "quality_assurance"
 
   workflow: "kanban"

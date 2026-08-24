@@ -1,8 +1,8 @@
 """Integration test: Agent Card served at well-known URI.
 
 Verifies the safe-subset projection -- the card MUST NOT contain
-personality, budget, authority, model config, or other sensitive
-fields from AgentIdentity.
+budget, authority, model config, or other sensitive fields from
+AgentIdentity.
 """
 
 from datetime import date
@@ -14,7 +14,6 @@ from synthorg.a2a.models import A2AAuthSchemeInfo
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
-    PersonalityConfig,
     SkillSet,
 )
 from synthorg.core.role import Skill
@@ -32,12 +31,6 @@ def test_agent_card_safe_subset() -> None:
             model_id="test-expert-001",
             temperature=0.9,
             max_tokens=8192,
-        ),
-        personality=PersonalityConfig(
-            traits=("perfectionist", "analytical"),
-            communication_style="terse",
-            openness=0.8,
-            conscientiousness=0.9,
         ),
         skills=SkillSet(
             primary=(

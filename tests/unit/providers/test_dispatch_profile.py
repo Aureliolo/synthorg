@@ -4,9 +4,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import CreativityLevel, DecisionMakingStyle, RiskTolerance
 from synthorg.providers.dispatch_profile import (
     DEFAULT_MIN_CALLS_FOR_PROFILE,
     build_dispatch_profile,
@@ -32,12 +31,6 @@ def _identity(label: str = "agent-a") -> AgentIdentity:
         role="Developer",
         department="Engineering",
         hiring_date=date(2026, 1, 15),
-        personality=PersonalityConfig(
-            traits=(NotBlankStr("analytical"),),
-            risk_tolerance=RiskTolerance.LOW,
-            decision_making=DecisionMakingStyle.ANALYTICAL,
-            creativity=CreativityLevel.LOW,
-        ),
         model=ModelConfig(
             provider=NotBlankStr(_PROVIDER),
             model_id=NotBlankStr(_MODEL),
@@ -78,15 +71,6 @@ class TestJoin:
         assert profile.provider_name == _PROVIDER
         assert profile.model == _MODEL
         assert profile.capability == "capable"
-
-    def test_personality_axes_travel_with_the_numbers(self) -> None:
-        # Two agents on the same model differing only in temperament is the
-        # comparison the fixed-unit ruling exists to make answerable.
-        profile = build_dispatch_profile(_identity(), [_record(_SUCCESS)])
-
-        assert profile.risk_tolerance is RiskTolerance.LOW
-        assert profile.decision_making is DecisionMakingStyle.ANALYTICAL
-        assert profile.creativity is CreativityLevel.LOW
 
 
 _SUCCESS = ProviderOutcomeClass.SUCCESS

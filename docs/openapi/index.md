@@ -83,7 +83,6 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Company | `/company` | 5 routes under Company. |
 | Departments | `/departments` | 8 routes under Departments. |
 | Ontology | `/ontology` | 10 routes under Ontology. |
-| Personalities | `/personalities` | 3 routes under Personalities. |
 | Roles | `/roles/{role_name}/versions` | 2 routes under Roles. |
 
 ### Work and coordination
@@ -113,7 +112,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Setup | `/setup` | 14 routes under Setup. |
+| Setup | `/setup` | 12 routes under Setup. |
 | Subworkflows | `/subworkflows` | 5 routes under Subworkflows. |
 | Template Packs | `/template-packs` | 2 routes under Template Packs. |
 | Workflow Executions | `/workflow-executions` | 4 routes under Workflow Executions. |

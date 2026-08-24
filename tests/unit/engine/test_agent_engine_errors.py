@@ -47,7 +47,7 @@ class TestAgentEngineErrorHandling:
 
     async def test_provider_error_returns_error_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         provider = MagicMock(spec=CompletionProvider)
@@ -55,7 +55,7 @@ class TestAgentEngineErrorHandling:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -65,7 +65,7 @@ class TestAgentEngineErrorHandling:
 
     async def test_prompt_build_error_returns_error_result(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -77,7 +77,7 @@ class TestAgentEngineErrorHandling:
             side_effect=RuntimeError("template broken"),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -91,7 +91,7 @@ class TestAgentEngineNonRecoverable:
 
     async def test_memory_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -106,13 +106,13 @@ class TestAgentEngineNonRecoverable:
             pytest.raises(MemoryError),
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
     async def test_recursion_error_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -127,7 +127,7 @@ class TestAgentEngineNonRecoverable:
             pytest.raises(RecursionError),
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -138,7 +138,7 @@ class TestAgentEngineMaxTurnsValidation:
 
     async def test_zero_max_turns_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -147,14 +147,14 @@ class TestAgentEngineMaxTurnsValidation:
 
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
                 max_turns=0,
             )
 
     async def test_negative_max_turns_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -163,7 +163,7 @@ class TestAgentEngineMaxTurnsValidation:
 
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
                 max_turns=-5,
             )
@@ -180,7 +180,7 @@ class TestAgentEngineTimeoutValidation:
     )
     async def test_invalid_timeout_raises(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         timeout_val: float,
@@ -191,7 +191,7 @@ class TestAgentEngineTimeoutValidation:
 
         with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
                 timeout_seconds=timeout_val,
             )
@@ -203,7 +203,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
 
     async def test_memory_error_in_cost_recording_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -219,13 +219,13 @@ class TestAgentEngineCostRecordingNonRecoverable:
 
         with pytest.raises(MemoryError, match="OOM in tracker"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
     async def test_recursion_error_in_cost_recording_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -243,7 +243,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
 
         with pytest.raises(RecursionError, match="infinite in tracker"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -254,7 +254,7 @@ class TestAgentEngineFatalErrorResult:
 
     async def test_error_result_has_error_message(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -267,21 +267,21 @@ class TestAgentEngineFatalErrorResult:
             side_effect=RuntimeError("LLM is down"),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
         assert result.termination_reason == TerminationReason.ERROR
         assert result.is_success is False
         assert "LLM is down" in (result.execution_result.error_message or "")
-        assert result.agent_id == str(sample_agent_with_personality.id)
+        assert result.agent_id == str(sample_agent.id)
         assert result.task_id == str(sample_task_with_criteria.id)
         assert result.system_prompt.template_version == "error"
         assert result.duration_seconds > 0
 
     async def test_error_message_with_path_is_sanitized(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -294,7 +294,7 @@ class TestAgentEngineFatalErrorResult:
             side_effect=RuntimeError(r"Failed reading C:\Users\dev\secret.key"),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -304,7 +304,7 @@ class TestAgentEngineFatalErrorResult:
 
     async def test_handle_fatal_error_secondary_failure_raises_original(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -324,7 +324,7 @@ class TestAgentEngineFatalErrorResult:
             pytest.raises(RuntimeError, match="original error") as exc_info,
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
         # exc.add_note() preserves the secondary failure info
@@ -339,7 +339,7 @@ class TestFatalErrorBeforeAContextExists:
 
     async def test_the_engine_is_told_even_with_no_context_built(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -364,7 +364,7 @@ class TestFatalErrorBeforeAContextExists:
             side_effect=RuntimeError("prepared nothing"),
         ):
             result = await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -382,7 +382,7 @@ class TestAgentEngineFatalErrorNonRecoverable:
 
     async def test_memory_error_in_error_build_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -402,7 +402,7 @@ class TestAgentEngineFatalErrorNonRecoverable:
             pytest.raises(MemoryError, match="OOM in error build"),
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -413,7 +413,7 @@ class TestAgentEngineBudgetErrorSecondaryFailure:
 
     async def test_handle_budget_error_secondary_failure_preserves_note(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -439,7 +439,7 @@ class TestAgentEngineBudgetErrorSecondaryFailure:
             ) as exc_info,
         ):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
@@ -453,13 +453,13 @@ class TestAgentEngineMemoryMessages:
 
     async def test_memory_messages_in_context(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Memory messages appear between system prompt and task instruction."""
         ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
+            sample_agent,
             task=sample_task_with_criteria,
         )
         mock_result = ExecutionResult(
@@ -487,7 +487,7 @@ class TestAgentEngineMemoryMessages:
         engine = AgentEngine(provider=provider, execution_loop=mock_loop)
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             memory_messages=memory,
         )
@@ -520,7 +520,7 @@ class TestAgentEngineRecovery:
 
     async def test_provider_error_transitions_task_to_failed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Provider exception -> task status is FAILED."""
@@ -529,7 +529,7 @@ class TestAgentEngineRecovery:
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -540,7 +540,7 @@ class TestAgentEngineRecovery:
 
     async def test_recovery_strategy_invoked_on_failure(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -558,7 +558,7 @@ class TestAgentEngineRecovery:
         engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -566,7 +566,7 @@ class TestAgentEngineRecovery:
 
     async def test_recovery_failure_is_swallowed(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """If recovery itself fails, engine still returns error result."""
@@ -580,7 +580,7 @@ class TestAgentEngineRecovery:
         engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -590,7 +590,7 @@ class TestAgentEngineRecovery:
 
     async def test_no_recovery_when_strategy_is_none(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Opting out of recovery: task stays IN_PROGRESS (not FAILED)."""
@@ -599,7 +599,7 @@ class TestAgentEngineRecovery:
         engine = AgentEngine(provider=provider, recovery_strategy=None)
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -612,7 +612,7 @@ class TestAgentEngineRecovery:
 
     async def test_loop_timeout_triggers_recovery(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -622,7 +622,7 @@ class TestAgentEngineRecovery:
         async def slow_execute(**_kwargs: object) -> ExecutionResult:
             await asyncio.Event().wait()  # blocks until cancelled by timeout
             ctx = AgentContext.from_identity(
-                sample_agent_with_personality,
+                sample_agent,
                 task=sample_task_with_criteria,
             )
             return ExecutionResult(
@@ -641,7 +641,7 @@ class TestAgentEngineRecovery:
         )
 
         result = await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
             timeout_seconds=0.01,
         )
@@ -653,7 +653,7 @@ class TestAgentEngineRecovery:
 
     async def test_timeout_does_not_block_on_cancellation_ignoring_loop(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -670,7 +670,7 @@ class TestAgentEngineRecovery:
                 # the engine must not wait on this task past the wall clock.
                 await release.wait()
             ctx = AgentContext.from_identity(
-                sample_agent_with_personality,
+                sample_agent,
                 task=sample_task_with_criteria,
             )
             return ExecutionResult(
@@ -688,7 +688,7 @@ class TestAgentEngineRecovery:
         try:
             result = await asyncio.wait_for(
                 engine.run(
-                    identity=sample_agent_with_personality,
+                    identity=sample_agent,
                     task=sample_task_with_criteria,
                     timeout_seconds=0.01,
                 ),
@@ -703,7 +703,7 @@ class TestAgentEngineRecovery:
 
     async def test_custom_recovery_strategy_used(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Engine uses the custom strategy, not the default."""
@@ -741,7 +741,7 @@ class TestAgentEngineRecovery:
         )
 
         await engine.run(
-            identity=sample_agent_with_personality,
+            identity=sample_agent,
             task=sample_task_with_criteria,
         )
 
@@ -749,7 +749,7 @@ class TestAgentEngineRecovery:
 
     async def test_memory_error_in_recovery_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """MemoryError from recovery strategy is not swallowed."""
@@ -765,13 +765,13 @@ class TestAgentEngineRecovery:
 
         with pytest.raises(MemoryError, match="OOM"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
 
     async def test_recursion_error_in_recovery_propagates(
         self,
-        sample_agent_with_personality: AgentIdentity,
+        sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """RecursionError from recovery strategy is not swallowed."""
@@ -789,6 +789,6 @@ class TestAgentEngineRecovery:
 
         with pytest.raises(RecursionError, match="max depth"):
             await engine.run(
-                identity=sample_agent_with_personality,
+                identity=sample_agent,
                 task=sample_task_with_criteria,
             )
