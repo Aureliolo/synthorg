@@ -27,7 +27,6 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 - `BackupScheduler` (`backup/scheduler.py`); surfaced through `BackupService.is_unrestartable` (`backup/service.py`)
 - `SharedRateLimitCoordinator` (`integrations/rate_limiting/shared_state.py`)
 - `OAuthTokenManager` (`integrations/oauth/token_manager.py`)
-- `WebhookEventBridge` (`engine/workflow/webhook_bridge.py`)
 - `QuotaPoller` (`budget/quota_poller.py`)
 - `NotificationDispatcher` (`notifications/dispatcher.py`): no spawned background task; the drain is the bounded `aclose()` idle-wait wrapped in `asyncio.wait_for(asyncio.shield(...), timeout=...)`.
 - `MessageBus` NATS connection (`communication/bus/nats.py`, `communication/bus/_nats_connection.py`): the client `drain()` is shielded under the timeout so a timeout marks `stop_failed` without cancelling the in-flight drain.

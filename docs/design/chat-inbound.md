@@ -133,7 +133,7 @@ authorisation model for a governed action.
 ## Kill-switch + resilience
 
 The consumer is a resident `start()`/`stop()` service wired like
-`WebhookEventBridge` (constructed at boot, started in the on-startup runner,
+`OAuthTokenManager` (constructed at boot, started in the on-startup runner,
 drained at shutdown). Its loop reads `tools.chat_inbound_enabled` live per
 iteration and **fail-safes to DISABLED**: an inbound control surface must
 never self-enable on a settings outage. Reconnect-on-drop is delegated to

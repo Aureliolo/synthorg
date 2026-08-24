@@ -177,6 +177,26 @@ class TestGetTaskMetrics:
         assert body["status"] == "error"
         assert body["domain_code"] == "invalid_argument"
 
+    async def test_service_raises_maps_to_err(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        service = AsyncMock()
+        service.get_task_metrics.side_effect = RuntimeError("store down")
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
+        )
+        handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
+
+        raw = await handler(
+            app_state=state,
+            arguments={"task_id": "t-1"},
+            actor=actor,
+        )
+
+        body = _parse(raw)
+        assert body["status"] == "error"
+
     async def test_no_record_returns_not_found(
         self,
         actor: AgentIdentity,

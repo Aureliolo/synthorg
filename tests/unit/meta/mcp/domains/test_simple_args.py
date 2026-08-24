@@ -19,6 +19,8 @@ from synthorg.meta.mcp.domains._simple_args import (
     BudgetGetAgentSpendingArgs,
     BudgetListRecordsArgs,
     BudgetVersionsGetArgs,
+    CoordinationGetTaskMetricsArgs,
+    CoordinationMetricsListArgs,
     MetaTriggerCycleArgs,
     ReportsGenerateArgs,
     ReviewsCreateArgs,
@@ -98,6 +100,27 @@ class TestQualityArgs:
         assert args_with_comment.comments == "looks good"
         with pytest.raises(ValidationError):
             ReviewsCreateArgs.model_validate({"task_id": "t1"})
+
+
+class TestCoordinationArgs:
+    def test_get_task_metrics_requires_a_non_blank_task(self) -> None:
+        assert CoordinationGetTaskMetricsArgs(task_id="t1").task_id == "t1"
+        with pytest.raises(ValidationError):
+            CoordinationGetTaskMetricsArgs.model_validate({"task_id": "  "})
+
+    def test_metrics_list_filters_are_all_optional(self) -> None:
+        args = CoordinationMetricsListArgs.model_validate({})
+        assert args.task_id is None
+        assert args.agent_id is None
+
+    def test_metrics_list_rejects_a_reversed_window(self) -> None:
+        with pytest.raises(ValidationError):
+            CoordinationMetricsListArgs.model_validate(
+                {
+                    "since": "2026-02-01T00:00:00+00:00",
+                    "until": "2026-01-01T00:00:00+00:00",
+                }
+            )
 
 
 class TestSignalsArgs:
