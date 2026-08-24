@@ -342,9 +342,7 @@ class SetupAgentsController(Controller):
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
-            role_value = agents[agent_index].get("role", "Agent")
-            role = role_value if isinstance(role_value, str) else "Agent"
-            new_name = generate_auto_name(role, locales=locales)
+            new_name = generate_auto_name(locales=locales)
 
             updated_agent = {
                 **agents[agent_index],

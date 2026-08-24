@@ -6,7 +6,7 @@
 -- no caller at all, and the half that reached a prompt is persona injection,
 -- which steers what a model says about itself and not what it does.
 --
--- Three of the four statements here rewrite ROWS rather than shapes, and the
+-- Five of the six statements here rewrite ROWS rather than shapes, and the
 -- schema-drift gate cannot see any of them: it builds both schemas from empty
 -- and compares, and only custom_presets changes shape. AgentConfig and
 -- AgentIdentity are both extra="forbid", so a stored key the model no longer
@@ -18,12 +18,23 @@
 --     reason=schema_drift
 --     error="Extra inputs are not permitted [personality]"
 --
+-- Four tables carry a serialised identity, not two. personality was declared
+-- with a default_factory, so it is present in EVERY dump written before this
+-- revision rather than only in the ones an operator customised.
+--
 -- content_hash on the archive is deliberately left alone. It is a dedupe key,
 -- not an integrity check (get_by_content_hash is a lookup and no reader
 -- verifies it), and it is computed in Python over the model dump, so SQL
 -- cannot recompute it correctly. A stale hash costs one redundant version row
 -- the next time that identity is saved; a hash rewritten to something wrong
 -- would cost more.
+--
+-- This arm is not byte-identical to the SQLite one and is not meant to be.
+-- JSONB_AGG(...)::TEXT emits jsonb's canonical form, which reorders object
+-- keys, collapses duplicates and normalises numbers; SQLite emits minified
+-- text in the original key order. Nothing observable diverges, because every
+-- reader parses before comparing and the company snapshot's ETag hashes the
+-- PARSED models rather than the stored text.
 
 -- ── 1. The custom preset store ────────────────────────────────
 --
@@ -53,14 +64,24 @@ WHERE
 --
 -- Two guards, because `settings` is one table holding every namespace's values
 -- and only this row is JSON. Postgres does not promise to evaluate a WHERE
--- clause left to right, so the namespace/key equality alone does not stop
--- `value::JSONB` being attempted on the Fernet blob under providers.configs or
--- on a bare string like `log_only`; a CASE is the documented construct that
--- does. And `jsonb - text` raises on a scalar operand, so the removal is
--- applied per element rather than to whatever the array happens to contain:
--- one hand-edited non-object element beside one well-formed agent would
--- otherwise roll back this whole revision. The SQLite arm gets both properties
--- for free, since JSON_REMOVE returns a scalar unchanged.
+-- clause left to right, so neither the namespace/key equality nor an earlier
+-- AND-term stops `value::JSONB` being attempted on the Fernet blob under
+-- providers.configs or on a bare string like `log_only`; a CASE is the
+-- documented construct that does.
+--
+-- The CASE tests `value IS JSON ARRAY` rather than the namespace and key,
+-- because that predicate is TOTAL: it answers false for every unparseable
+-- value instead of raising, which the `JSONB_TYPEOF(value::JSONB)` it replaces
+-- did not. Gating on the row's identity only moved the problem, since this
+-- statement's whole purpose is to touch that row, so a hand-edited or
+-- truncated roster still reached the cast and took the upgrade down with a
+-- 22P02 naming a cast rather than a row. The SQLite arm skips such a row.
+--
+-- `jsonb - text` raises on a scalar operand, so the removal is applied per
+-- element rather than to whatever the array happens to contain: one
+-- hand-edited non-object element beside one well-formed agent would otherwise
+-- roll back this whole revision. The SQLite arm gets that for free, since
+-- JSON_REMOVE returns a scalar unchanged.
 UPDATE settings
 SET
     value = (
@@ -82,19 +103,17 @@ WHERE
     namespace = 'company'
     AND key = 'agents'
     AND CASE
-        WHEN namespace = 'company' AND key = 'agents'
-            THEN
-                JSONB_TYPEOF(value::JSONB) = 'array'
-                AND EXISTS (
-                    SELECT 1
-                    FROM JSONB_ARRAY_ELEMENTS(value::JSONB) AS agent
-                    WHERE
-                        JSONB_TYPEOF(agent) = 'object'
-                        AND (
-                            JSONB_EXISTS(agent, 'personality')
-                            OR JSONB_EXISTS(agent, 'personality_preset')
-                        )
-                )
+        WHEN value IS JSON ARRAY
+            THEN EXISTS (
+                SELECT 1
+                FROM JSONB_ARRAY_ELEMENTS(value::JSONB) AS agent
+                WHERE
+                    JSONB_TYPEOF(agent) = 'object'
+                    AND (
+                        JSONB_EXISTS(agent, 'personality')
+                        OR JSONB_EXISTS(agent, 'personality_preset')
+                    )
+            )
         ELSE FALSE
     END;
 
@@ -103,7 +122,46 @@ WHERE
 -- JSONB_EXISTS is the existence test that survives a JSON null, and the guard
 -- keeps the rewrite off rows that never carried the key, which is what keeps
 -- their content_hash meaningful.
+--
+-- The typeof guard is not redundant with it. `jsonb ? text` is a containment
+-- test, not a key test: on the scalar '"personality"' it answers true, and
+-- `snapshot - 'personality'` then raises "cannot delete from scalar" and rolls
+-- the revision back. The column is JSONB NOT NULL with no object CHECK, so
+-- nothing else refuses a scalar. Step 3 above guards per element for the same
+-- reason; SQLite needs neither, since JSON_TYPE with a path is a true key test.
 
 UPDATE agent_identity_versions
 SET snapshot = snapshot - 'personality'
-WHERE JSONB_EXISTS(snapshot, 'personality');
+WHERE
+    JSONB_TYPEOF(snapshot) = 'object'
+    AND JSONB_EXISTS(snapshot, 'personality');
+
+-- ── 5. In-flight execution contexts ───────────────────────────
+--
+-- AgentContext embeds the whole AgentIdentity, and both of these tables store
+-- the context verbatim as AgentContext.model_dump_json(). They outlive a
+-- restart on purpose, which is exactly what puts them on the far side of an
+-- upgrade: a parked context waits for a human under the shipped SUPERVISED
+-- default with no deadline, and a checkpoint is what crash recovery replays.
+--
+-- Leaving them would not degrade, it would strand. Both read paths validate
+-- into AgentContext and raise, and the parked reader preserves the row after
+-- the failure, so a resume that cannot parse fails identically on every retry
+-- with the approval already decided.
+--
+-- `#-` takes a path, which is what reaches the key under $.identity, and it
+-- raises on a scalar exactly as `-` does, so both levels are typed first.
+
+UPDATE checkpoints
+SET context_json = context_json #- '{identity,personality}'
+WHERE
+    JSONB_TYPEOF(context_json) = 'object'
+    AND JSONB_TYPEOF(context_json -> 'identity') = 'object'
+    AND JSONB_EXISTS(context_json -> 'identity', 'personality');
+
+UPDATE parked_contexts
+SET context_json = context_json #- '{identity,personality}'
+WHERE
+    JSONB_TYPEOF(context_json) = 'object'
+    AND JSONB_TYPEOF(context_json -> 'identity') = 'object'
+    AND JSONB_EXISTS(context_json -> 'identity', 'personality');

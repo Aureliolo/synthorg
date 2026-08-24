@@ -66,17 +66,23 @@ class TestStartupExtendsSoloFounder:
         assert ceo.department == "executive"
 
     def test_fullstack_senior_overridden(self) -> None:
-        """The merge_id override lands on the parent's agent, not beside it."""
+        """The merge_id override lands on the parent's agent, not beside it.
+
+        The COUNT is what proves it. Base and override now agree on every
+        field they both declare, so no assertion on a value can tell an
+        override that landed from a base that was simply inherited, and one
+        that looks like it can is reading its own fixture back.
+        """
         config = _render("startup")
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
         # solo_founder ships one (fullstack-senior); startup overrides that
         # one by merge_id and adds fullstack-mid. Three would mean the
         # override appended rather than merged.
         assert len(fs_agents) == 2
+        # The merge carries each agent's model block through rather than
+        # dropping it on the way, which is a separate failure from appending.
         assert all(a.model_requirement is not None for a in fs_agents)
-        assert all(
-            (a.model_requirement or {}).get("priority") == "balanced" for a in fs_agents
-        )
+        assert {a.department for a in fs_agents} == {"engineering"}
 
     def test_departments(self) -> None:
         config = _render("startup")
@@ -352,10 +358,14 @@ class TestThreeLevelInheritanceRegression:
         Chain: solo_founder defines FS Dev -> startup overrides via
         merge_id -> merge strips merge_id -> product_team overrides
         by (role, dept, '') key and removes the sibling.
+
+        The COUNT is what proves it, for the same reason as its sibling above:
+        every link in the chain declares the same values, so a value assertion
+        would pass whether or not any override in it landed.
         """
         config = _render("product_team")
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
+        # Two arrive from startup; the override merges onto one and _remove
+        # takes the other. Two here would mean neither matched.
         assert len(fs_agents) == 1
-        requirement = fs_agents[0].model_requirement
-        assert requirement is not None
-        assert requirement.get("priority") == "balanced"
+        assert fs_agents[0].model_requirement is not None

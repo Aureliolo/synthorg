@@ -60,7 +60,6 @@ def _two_part_name(first: Callable[[], str], last: Callable[[], str]) -> str:
 
 
 def generate_auto_name(
-    role: str,  # noqa: ARG001
     *,
     seed: int | None = None,
     locales: list[str] | None = None,
@@ -68,9 +67,8 @@ def generate_auto_name(
     """Generate an internationally diverse agent name using Faker.
 
     With *seed*, a fresh single-locale Faker instance is used so the
-    shared cached instance is never mutated.  *role* is accepted for
-    positional-caller compatibility but does not influence the name;
-    *locales* defaults to all Latin-script locales when None or empty.
+    shared cached instance is never mutated. *locales* defaults to all
+    Latin-script locales when None or empty.
 
     Returns:
         A generated full name string.

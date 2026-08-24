@@ -78,7 +78,9 @@ class TestRenderAgentSystemPrompt:
         assert expected in prompt
 
     def test_carries_no_persona_lines(self) -> None:
+        """Anchored on the preamble: an empty prompt passes both negatives."""
         prompt = render_agent_system_prompt(_identity())
+        assert "You are Casey, a CFO in the executive department." in prompt
         assert "Personality traits" not in prompt
         assert "Communication style" not in prompt
 

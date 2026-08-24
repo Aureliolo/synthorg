@@ -69,9 +69,14 @@ class TestBuildSystemPrompt:
         self,
         sample_agent: AgentIdentity,
     ) -> None:
-        """An agent is a bound ``(role, model)`` unit: no persona ships."""
+        """An agent is a bound ``(role, model)`` unit: no persona ships.
+
+        Anchored on what the prompt still says, because every assertion below
+        is a negative and a renderer returning nothing would satisfy them all.
+        """
         result = build_system_prompt(agent=sample_agent)
 
+        assert sample_agent.role in result.content
         assert "## Personality" not in result.content
         for label in (
             "Communication style",

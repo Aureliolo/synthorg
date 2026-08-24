@@ -772,6 +772,7 @@ describe('unhandled agents-channel events', () => {
     })
 
     expect(useToastStore.getState().toasts).toHaveLength(0)
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 })
 

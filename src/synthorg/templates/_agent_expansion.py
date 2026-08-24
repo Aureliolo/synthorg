@@ -159,7 +159,7 @@ def _expand_single_agent(
     name = str(agent.get("name") or "").strip()
 
     if not name or name.startswith("{{") or "__JINJA2__" in name:
-        name = generate_auto_name(role, seed=idx, locales=locales)
+        name = generate_auto_name(seed=idx, locales=locales)
 
     base_name = name
     counter = 2

@@ -61,7 +61,7 @@ interface MetaItemData {
   value: string
   /** Render the value in a monospace font (model ids). */
   mono?: boolean
-  /** Span both grid columns (long values like traits / current task). */
+  /** Span both grid columns (e.g. a long current-task value). */
   span?: boolean
   /** Muted qualifier shown after the value (e.g. the model's capability tier). */
   suffix?: string | undefined

@@ -345,13 +345,14 @@ def _resolve_agent_requirement(
     idx: int,
     model_requirement_cls: type[ModelRequirement],
     parse_fn: Callable[[str | dict[str, JsonValue]], ModelRequirement],
-    resolve_fn: Callable[[dict[str, JsonValue] | None], ModelRequirement],
 ) -> ModelRequirement | None:
     """Resolve a single agent's model requirement.
 
     Checks ``model_requirement`` (object then dict) first; otherwise falls
     back to the empty requirement, which the capability matcher scores
-    against every configured model.
+    against every configured model. Empty is built directly rather than
+    resolved: every field carries a default and the model_id/family
+    exclusion cannot fire on no fields, so there is nothing to fail.
 
     Returns:
         The resolved ``ModelRequirement``, or ``None`` if the agent
@@ -374,17 +375,7 @@ def _resolve_agent_requirement(
             )
             return None
 
-    try:
-        return resolve_fn(None)
-    except (ValidationError, ValueError) as exc:
-        logger.warning(
-            TEMPLATE_MODEL_MATCH_SKIPPED,
-            agent_index=idx,
-            reason="invalid_requirement",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
+    return model_requirement_cls()
 
 
 def match_all_agents(
@@ -425,7 +416,6 @@ def match_all_agents(
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
         ModelRequirement,
         parse_model_requirement,
-        resolve_model_requirement,
     )
 
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
@@ -444,7 +434,6 @@ def match_all_agents(
             idx,
             ModelRequirement,
             parse_model_requirement,
-            resolve_model_requirement,
         )
         if req is None:
             continue

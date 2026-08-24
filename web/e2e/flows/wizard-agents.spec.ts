@@ -17,8 +17,8 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
  * Critical-flow E2E: setup wizard agents step.
  *
  * After a template generates the org's agents, the guided wizard's Agents
- * step lets the operator rename, re-model, and re-personalise each one
- * before the company goes live. This flow drives the rename round-trip:
+ * step lets the operator rename and re-model each one before the company
+ * goes live. This flow drives the rename round-trip:
  * the agent card renders, the operator edits the inline name field, and
  * "save" fires the ``PUT /setup/agents/{index}/name`` the wizard store
  * owns. A regression in the agents fetch, the card render, or the update

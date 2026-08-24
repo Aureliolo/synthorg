@@ -226,7 +226,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | meta/appliers/architecture_applier.py | 79 | `ArchitectureApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/appliers/prompt_applier.py | 35 | `PromptApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/evolution/outcome_store_protocol.py | 31 | `EvolutionOutcomeStore` | 1 | 0 | 3 | KEEP | Plug-in `Store`. |
-| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->227<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
+| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->225<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
 | meta/protocol.py | 38 | `SignalAggregator` | 1 | 0 | 4 | KEEP | Plug-in `Aggregator`. |
 | meta/protocol.py | 78 | `SignalRule` | 1 | 0 | 6 | KEEP | Plug-in `Rule`. |
 | meta/protocol.py | 108 | `ImprovementStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |
@@ -260,7 +260,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 
 ### `src/synthorg/persistence/`
 
-All 45 persistence protocols are listed; every one is a plug-in `Repository` / `Backend` / `Store` / `Capability` per `docs/reference/persistence-boundary.md`, so they all classify as **KEEP**. No `REMOVE` candidates. The single anomaly is `IsDuplicate` (private internal seam, classified `REVIEW`).
+All 46 persistence protocols are listed; every one is a plug-in `Repository` / `Backend` / `Store` / `Capability` per `docs/reference/persistence-boundary.md`, so they all classify as **KEEP**. No `REMOVE` candidates. The single anomaly is `IsDuplicate` (private internal seam, classified `REVIEW`).
 
 | Path | Line | Name | rc | impl | testuse | Recommendation |
 |---|---|---|---|---|---|---|

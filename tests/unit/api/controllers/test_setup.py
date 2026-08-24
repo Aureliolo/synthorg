@@ -1233,7 +1233,7 @@ class TestRandomizeAgentName:
         # initialization that causes xdist worker crashes on Windows.
         monkeypatch.setattr(
             "synthorg.templates.agent_naming.generate_auto_name",
-            lambda role, *, seed=None, locales=None: "Ada Lovelace",
+            lambda *, seed=None, locales=None: "Ada Lovelace",
         )
         app_state, original = _setup_mock_providers(async_test_client)
         try:

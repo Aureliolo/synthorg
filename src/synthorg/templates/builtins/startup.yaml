@@ -63,7 +63,9 @@ template:
       head_role: "Product Manager"
 
   agents:
-    # Override parent's Full-Stack Developer: different model
+    # Pins the parent's Full-Stack Developer by merge_id so the mid-level one
+    # below joins it rather than replacing it. Same values as the parent: what
+    # the entry decides is identity, not fields.
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:

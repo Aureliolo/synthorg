@@ -175,17 +175,27 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
 
 ### Agent Configuration Example
 
-???+ example "Full agent identity YAML"
+An agent is a bound `(role, model)` unit. How its output reads is governed
+separately and deterministically; see
+[Output-Style Policy](output-style-policy.md).
+
+The example below is the whole agent record, which spans both layers rather
+than matching either model exactly. `AgentConfig` is what an operator writes
+and what `company.agents` persists; `AgentIdentity` is what `identity_from_config`
+derives at bootstrap and what the engine runs. Both forbid extra keys, so each
+field marked below belongs to one layer and is rejected by the other.
+
+???+ example "Full agent record across both layers"
 
     ```yaml
-    # --- Config layer -- AgentIdentity (frozen) ---
+    # --- Config layer -- AgentConfig, plus the identity-only fields ---
     agent:
       # id is derived deterministically from name (uuid5); not user-set.
       id: "<derived-from-name>"
       name: "Sarah Chen"
       role: "Senior Backend Developer"
       department: "Engineering"
-      skills:
+      skills:                     # AgentIdentity only
         primary:
           - id: python
             name: Python
@@ -220,7 +230,7 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
         temperature: 0.3
         max_tokens: 8192
         capability: "capable"  # derived by the matcher from the selected model's context window
-      model_requirement:            # capability requirements from template
+      model_requirement:            # AgentConfig only: requirements from template
         priority: "balanced"        # quality / balanced / speed / cost
         min_context: 0
         requires_vision: false      # hard-require image input
@@ -254,8 +264,8 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
         budget_limit: 5.00
       autonomy_level: null       # full, semi, supervised, locked (overrides defaults)
       strategic_output_mode: null  # option_expander, advisor, decision_maker, context_dependent (see strategy.md)
-      hiring_date: "2026-02-27"
-      status: "active"           # active, on_leave, terminated
+      hiring_date: "2026-02-27"  # AgentIdentity only
+      status: "active"           # AgentIdentity only: active, on_leave, terminated
     ```
 
 ### Runtime State

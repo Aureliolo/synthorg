@@ -6,7 +6,7 @@
 -- no caller at all, and the half that reached a prompt is persona injection,
 -- which steers what a model says about itself and not what it does.
 --
--- Three of the four statements here rewrite ROWS rather than shapes, and the
+-- Five of the six statements here rewrite ROWS rather than shapes, and the
 -- schema-drift gate cannot see any of them: it builds both schemas from empty
 -- and compares, and only custom_presets changes shape. AgentConfig and
 -- AgentIdentity are both extra="forbid", so a stored key the model no longer
@@ -17,6 +17,10 @@
 --   persistence.settings.fetch_failed  namespace=company key=agents
 --     reason=schema_drift
 --     error="Extra inputs are not permitted [personality]"
+--
+-- Four tables carry a serialised identity, not two. personality was declared
+-- with a default_factory, so it is present in EVERY dump written before this
+-- revision rather than only in the ones an operator customised.
 --
 -- content_hash on the archive is deliberately left alone. It is a dedupe key,
 -- not an integrity check (get_by_content_hash is a lookup and no reader
@@ -73,6 +77,15 @@ SET
         -- subquery, because a value loses its JSON subtype crossing that
         -- boundary and JSON_GROUP_ARRAY would then aggregate every element as
         -- a STRING holding its own text.
+        --
+        -- Roster ORDER is preserved, and preserving it matters: agents are
+        -- addressed positionally in a few dashboard reads. It rests on two
+        -- guarantees rather than on the subquery alone, since a bare subquery
+        -- has no ordering contract an aggregate above it must honour. json_each
+        -- emits array elements in index order, and SQLite's flattening
+        -- constraint 16 forbids flattening a subquery whose outer query is an
+        -- aggregate, so the ORDER BY here survives into the aggregate step
+        -- rather than being optimised away.
         SELECT JSON_GROUP_ARRAY(JSON(element))
         FROM (
             SELECT
@@ -123,3 +136,29 @@ SET snapshot = JSON_REMOVE(snapshot, '$.personality')
 WHERE
     JSON_VALID(snapshot)
     AND JSON_TYPE(snapshot, '$.personality') IS NOT NULL;
+
+-- ── 5. In-flight execution contexts ───────────────────────────
+--
+-- AgentContext embeds the whole AgentIdentity, and both of these tables store
+-- the context verbatim as AgentContext.model_dump_json(). They outlive a
+-- restart on purpose, which is exactly what puts them on the far side of an
+-- upgrade: a parked context waits for a human under the shipped SUPERVISED
+-- default with no deadline, and a checkpoint is what crash recovery replays.
+--
+-- Leaving them would not degrade, it would strand. Both read paths validate
+-- into AgentContext and raise, and the parked reader preserves the row after
+-- the failure, so a resume that cannot parse fails identically on every retry
+-- with the approval already decided. The nested path is what differs from the
+-- archive above: the key sits under $.identity, not at the top level.
+
+UPDATE checkpoints
+SET context_json = JSON_REMOVE(context_json, '$.identity.personality')
+WHERE
+    JSON_VALID(context_json)
+    AND JSON_TYPE(context_json, '$.identity.personality') IS NOT NULL;
+
+UPDATE parked_contexts
+SET context_json = JSON_REMOVE(context_json, '$.identity.personality')
+WHERE
+    JSON_VALID(context_json)
+    AND JSON_TYPE(context_json, '$.identity.personality') IS NOT NULL;

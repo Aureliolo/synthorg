@@ -167,8 +167,8 @@ class TemplateVariable(BaseModel):
 class TemplateAgentConfig(BaseModel):
     """Agent definition within a template.
 
-    Uses string references and presets rather than full ``AgentConfig``.
-    The renderer expands these into full agent configuration dicts.
+    Uses string references rather than full ``AgentConfig``. The renderer
+    expands these into full agent configuration dicts.
 
     Attributes:
         role: Built-in role name (case-insensitive match to role catalog).

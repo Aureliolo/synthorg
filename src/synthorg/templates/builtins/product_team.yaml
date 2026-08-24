@@ -104,7 +104,9 @@ template:
       model:
         priority: "quality"
         requires_reasoning: true
-    # Override first Full-Stack Developer (matched by role+department)
+    # Claims the first Full-Stack Developer by role+department so the _remove
+    # below takes the sibling rather than this one. Same values as the parent:
+    # what the entry decides is which of the two survives.
     - role: "Full-Stack Developer"
       model:
         priority: "balanced"

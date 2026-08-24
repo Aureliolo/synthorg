@@ -67,8 +67,7 @@ class PersistenceBackend(Protocol):
     def messages(self) -> MessageRepository: ...
     # ... plus lifecycle_events, task_metrics,
     #     parked_contexts, audit_entries, users, api_keys, checkpoints,
-    #     heartbeats, agent_states, settings, artifacts, projects,
-    #     custom_presets
+    #     heartbeats, agent_states, settings, artifacts, projects
 ```
 
 Each entity type has its own repository protocol:
