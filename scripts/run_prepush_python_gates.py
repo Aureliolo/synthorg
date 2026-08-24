@@ -100,6 +100,7 @@ _GATES: tuple[str, ...] = (
     "check_license_compat",
     "check_signing_identity_pins",
     "check_apko_lock_applied",
+    "check_compose_template_comments",
     "check_vex_triage_sync",
     "check_no_stdlib_logging",
     "check_no_stubs",

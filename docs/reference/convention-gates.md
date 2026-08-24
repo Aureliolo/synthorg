@@ -25,37 +25,25 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_apko_lock_applied.py` | push | `.github/workflows/` + `.github/actions/` + `docker/*/apko.{yaml,lock.json}` + `api/lifecycle_helpers/binary_preflight.py` | full | no | none | add |
 | `check_architecture_drift.py` | push | `src/synthorg/` | full | no | `data/architecture_report.json` | keep |
 | `check_argument_count_suppression.py` | push | whole tree (via ruff) | full | no | `argument_count_suppression_baseline.txt` | add |
+| `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
 | `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `providers/health.py` + `*.gen.ts` | full | no | none | keep |
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
+| `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
+| `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
-| `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |
-| `check_enum_check_constraint_parity.py` | push | `src/synthorg/` + both `schema.sql` | full | no | none | add |
-| `check_wave_dispatch_gated.py` | push | `engine/coordination/` | full | no | none | add |
-| `check_run_recovery_covers_plan_statuses.py` | push | `core/plan_enums.py` + `engine/run_recovery/` | full | no | none | add |
-| `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
-| `check_gate_roles_not_assignable.py` | push | `src/synthorg/` + `evals/` | full | no | none | add |
-| `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
-| `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
-| `check_single_planning_strategy_writer.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
-| `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
-| `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
-| `check_autonomy_auto_approve_confined.py` | push | `security/autonomy/` | full | no | none | add |
-| `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
-| `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
-| `check_mcp_catalog_launchable.py` | push | `tools/mcp/runtime_provision.py`, `mcp_catalog/bundled.json`, `mcp_catalog/install.py`, `docker/sandbox/apko.yaml` | full | no | none | add |
-| `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
-| `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
-| `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
+| `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |
 | `check_doc_drift_counts.py` | commit+push | design/research docs + `events/` | full | no | none | keep |
 | `check_doc_numeric_macros.py` | push | README + public docs + `runtime_stats.yaml` | full | no | none | keep |
@@ -64,6 +52,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_domain_error_hierarchy.py` | push | `src/synthorg/` | full | no | `domain_error_hierarchy_baseline.txt` | keep |
 | `check_dto_types_ts_in_sync.py` | commit+push | `api/` + `core/` + `*.gen.ts` | full | no | none | keep |
 | `check_dual_backend_test_parity.py` | push | persistence protocols + conformance | full | no | `dual_backend_parity_baseline.txt` | keep |
+| `check_enum_check_constraint_parity.py` | push | `src/synthorg/` + both `schema.sql` | full | no | none | add |
 | `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |
 | `check_every_gate_is_wired.py` | push | `scripts/check_*.py` vs every wiring source | full | no | `unwired_gate_allowlist.yaml` | add |
@@ -71,8 +60,11 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_feature_index_freshness.py` | push | `src/synthorg/` + `data/*.json` | full | no | none | keep |
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_forbidden_literals.py` | push | `src/synthorg/` | full | no | none | keep |
-| `check_gateway_explicit_binding.py` | push | `api/gateway/` | full | no | none | add |
+| `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
 | `check_frozen_model_extra_forbid.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
+| `check_gate_roles_not_assignable.py` | push | `src/synthorg/` + `evals/` | full | no | none | add |
+| `check_gateway_explicit_binding.py` | push | `api/gateway/` | full | no | none | add |
+| `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | add |
 | `check_image_signatures.py` | CI (`build-images.yml`) | published image digests | n/a | n/a | none | keep |
 | `check_license_compat.py` | push | `pyproject.toml` + `uv.lock` + `cli/go.{mod,sum}` + `web/package-lock.json` + `NOTICE` | full | no | none | add |
@@ -83,12 +75,16 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_long_running_loops_have_kill_switch.py` | push | `src/synthorg/` | full | no | `long_running_loops_kill_switch_baseline.txt` | keep |
 | `check_mcp_admin_tool_guardrails.py` | push | `meta/mcp/` | full | no | none | keep |
 | `check_mcp_capability_gap_documented.py` | push | `meta/mcp/handlers/` + `*state*.py` slices + `src/synthorg/` construction sites + `*_of` accessors + manifest | full | no | manifest | add |
+| `check_mcp_catalog_launchable.py` | push | `tools/mcp/runtime_provision.py`, `mcp_catalog/bundled.json`, `mcp_catalog/install.py`, `docker/sandbox/apko.yaml` | full | no | none | add |
+| `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
+| `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
 | `check_mock_spec.py` | commit+push | `tests/` | staged | yes | none | keep (zero-tolerance) |
 | `check_module_depth.py` | push | `src/synthorg/` | full | no | `_module_depth_baseline.txt` | keep |
 | `check_module_size_budget.py` | push | `src/synthorg/` | full | no | `_module_size_baseline.json` (drained) | keep |
 | `check_no_api_dto_in_persistence_or_service.py` | commit+push | `persistence/` + `*_service.py` | full | no | none | keep |
 | `check_no_bare_time_in_business_logic.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_no_boilerplate_docstrings.py` | commit+push | `src/synthorg/` | full | no | none | keep |
+| `check_no_bound_pair_rewrite.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_bulk_edit.py` | PreToolUse | `Bash` in-place rewrites | n/a | n/a | none | keep |
 | `check_no_central_junk_drawer.py` | commit+push | `core/enums.py` | full | no | none | keep |
 | `check_no_circular_imports.py` | push | `src/synthorg/` | full | no | `_circular_imports_baseline.txt` | harden |
@@ -110,25 +106,28 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_provider_auto_pick.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_raw_id_in_ui.py` | push | `web/src/**/*.{tsx,ts}` + `src/synthorg/` | full | no | none | add |
 | `check_no_raw_playwright_imports.py` | push | `src/synthorg/` | full | no | none | keep |
-| `check_no_silent_embedder_fallback.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_redundant_timeout.py` | commit+push | `tests/` | staged | yes | none | harden |
 | `check_no_release_please_token.py` | commit+push | `.github/**/*.yml` | staged | yes | none | keep |
 | `check_no_review_origin_in_code.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_no_ruff100_self_cloak.py` | commit+push | every tracked `.py` | full | no | none | **add** |
+| `check_no_silent_embedder_fallback.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_stdlib_logging.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_stubs.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_no_synthetic_agent_identity.py` | push | `src/synthorg/` | full | no | none | add |
+| `check_no_synthetic_cost_owner.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_synthorg_any_override.py` | commit+push | `pyproject.toml` | full | no | none | keep |
 | `check_openapi_liveness.py` | CI (`verify-backend.yml`) | exported OpenAPI schema | n/a | n/a | none | keep |
 | `check_orphan_fixtures.py` | push | `tests/` | full | no | none | harden |
-| `check_output_boundaries_guarded.py` | push | the output-style boundary files | full | no | none | add |
 | `check_otlp_span_redaction.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
+| `check_output_boundaries_guarded.py` | push | the output-style boundary files | full | no | none | add |
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |
 | `check_pin_golden_fresh.py` | CI (`verify-backend.yml :: pin-drift-regression`) | live pins vs `llm/pin_validation/golden.json` | full | no | none | add |
 | `check_prompt_class_metadata.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
-| `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |
+| `check_run_recovery_covers_plan_statuses.py` | push | `core/plan_enums.py` + `engine/run_recovery/` | full | no | none | add |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
 | `check_sandbox_category_forwarded.py` | push | `src/synthorg/tools/` | full | no | none | add |
@@ -139,6 +138,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
 | `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `.github/scripts/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
+| `check_single_planning_strategy_writer.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
 | `check_subsystem_decline_reason.py` | push | `api/subsystems/registry.py` + activation chain | full | no | none | add |
@@ -147,16 +147,17 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_vale_ledger_complete.py` | push (CI: vale step) | `.vale.ini` + `.vale/styles/` | full | no | none (no opt-out) | add |
 | `check_verified_completion_paths.py` | push | plan/project transitions + `src/synthorg/` | full | no | none | add |
 | `check_vex_triage_sync.py` | push | `.github/vex/triage.yaml` + the files it renders | full | no | none (no opt-out) | add |
+| `check_wave_dispatch_gated.py` | push | `engine/coordination/` | full | no | none | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |
 | `check_workflow_shell_git_commits.py` | commit+push | `.github/workflows/` | staged | yes | none | keep |
-| `check_workspace_share_modes.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |
+| `check_workspace_share_modes.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_ws_protocol_version_in_sync.py` | commit+push | `ws_models.py` + `constants.ts` | full | no | none | keep |
 | `check_zap_rules_documented.py` | push | `.github/zap-rules.tsv` + `docs/security.md` | full | no | none | add |
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->133<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->134<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
