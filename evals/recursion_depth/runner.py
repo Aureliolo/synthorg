@@ -49,6 +49,7 @@ from evals.harness.journal import RecordedCells
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
+from evals.recursion_depth.forecast import estimate_sessions
 from evals.recursion_depth.gate import (
     BlindMergeReviewer,
     MergeReviewer,
@@ -267,6 +268,8 @@ async def _run_and_record(
         MemoryError: Never handled here.
         RecursionError: Never handled here.
     """
+    if _refused_on_budget(context, cell, records, caveats):
+        return True
     try:
         records.add(await _run_cell(context, cell, units, resumed))
     except MemoryError, RecursionError:
@@ -327,6 +330,38 @@ class SessionBudget:
     def spent(self) -> int:
         """How many sessions the sweep has run."""
         return self._spent
+
+    @property
+    def ceiling(self) -> int:
+        """The ceiling this budget actually enforces.
+
+        Read from here rather than from ``manifest.max_sessions`` wherever a
+        figure is reported: the manifest is what the budget was BUILT from, and
+        a caller that built one from anything else would otherwise be described
+        by a number nothing is holding it to.
+        """
+        return self._ceiling
+
+    @property
+    def remaining(self) -> int:
+        """Sessions left before the ceiling, never negative."""
+        return max(0, self._ceiling - self._spent)
+
+    def can_afford(self, sessions: int) -> bool:
+        """Whether *sessions* more would still fit under the ceiling.
+
+        Asked BEFORE a cell rather than after each unit, because the two
+        answer different questions. :meth:`spend` stops a sweep that has
+        already overrun; this stops one from starting work it cannot finish,
+        which is the only point at which that spend can still be saved.
+
+        Args:
+            sessions: What the cell about to run is expected to cost.
+
+        Returns:
+            True when the budget covers it.
+        """
+        return self._spent + sessions <= self._ceiling
 
     def spend(self, sessions: int) -> None:
         """Book *sessions* and refuse to go past the ceiling.
@@ -554,6 +589,55 @@ async def run_sweep(
         achieved_depth_histogram=achieved_depth_histogram(measured),
         caveats=tuple(caveats),
     )
+
+
+def _refused_on_budget(
+    context: SweepContext,
+    cell: SweepCell,
+    records: RecordedCells[CellRecord],
+    caveats: list[str],
+) -> bool:
+    """Decline to start a cell the remaining budget cannot finish.
+
+    The ceiling itself books sessions after they run, so it can only stop a
+    sweep that has already overrun. A cell entered without the budget to
+    complete it spends everything left, records no ``achieved_depth``, and
+    enters no curve: the measurement is lost either way, and the spend is lost
+    with it. Refusing first is what makes the difference recoverable, since the
+    sweep can be resumed against a raised ceiling or a narrower ``--depths``
+    with every finished cell replayed free.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: The run about to start.
+        records: Sink the refusal is recorded to.
+        caveats: Sink the stopping reason is appended to.
+
+    Returns:
+        True when the cell was refused and the sweep must stop.
+    """
+    estimate = estimate_sessions(context.manifest, records.cells, cell.depth_cap)
+    if context.budget.can_afford(estimate):
+        return False
+    msg = (
+        f"a cell at depth cap {cell.depth_cap} is expected to cost "
+        f"{estimate} sessions and {context.budget.remaining} remain of the "
+        f"{context.budget.ceiling}-session ceiling, so it was not "
+        f"started; raise max_sessions or narrow --depths and resume"
+    )
+    exc = RecursionDepthSessionCeilingError(msg)
+    logger.warning(
+        EVALS_RECURSION_SESSION_CEILING,
+        spent=context.budget.spent,
+        ceiling=context.budget.ceiling,
+        estimated=estimate,
+        depth_cap=cell.depth_cap,
+        measured_cells=len(records),
+        error=safe_error_description(exc),
+    )
+    records.add(_unavailable(cell, exc, ()))
+    caveats.append(_CEILING_CAVEAT)
+    return True
 
 
 def _unavailable(

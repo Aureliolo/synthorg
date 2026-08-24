@@ -68,6 +68,11 @@ merge_attempts: 3
 # it is set with that job in mind. A live run put 52 turns and 1.58M tokens
 # into one leaf that delivered nothing.
 unit_max_turns: 40
+# The planning session's own budget, separate because a planner writes a plan
+# and a unit builds software: the two need different amounts of room, and the
+# shipped decomposition config refuses anything above 50, so a shared value
+# would cap what a unit may have at what a planner is allowed.
+planner_max_turns: 40
 unit_cost_ceiling: 5.0
 # Roughly what `unit_cost_ceiling` buys at mid-tier per-token pricing, so the
 # two bounds mean about the same thing wherever both can fire. Where only one

@@ -500,8 +500,12 @@ async def _build_context(
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
     )
-    limits = SessionLimits(
-        max_turns=manifest.unit_max_turns,
+    # What a PLANNING session gets. The units are bounded by
+    # ``SweepContext.limits``, which reads the manifest itself; the two share a
+    # spend ceiling and differ in turns, because the shipped decomposition
+    # config caps a planner's turns and nothing caps a unit's.
+    planner_limits = SessionLimits(
+        max_turns=manifest.planner_max_turns,
         cost_ceiling=manifest.unit_cost_ceiling,
         token_ceiling=manifest.unit_token_ceiling,
     )
@@ -516,7 +520,7 @@ async def _build_context(
             deps=deps,
             roster=roster,
             executor=manifest.executor,
-            limits=limits,
+            limits=planner_limits,
             config_resolver=config_resolver_of(app_state),
         ),
         # The override is already folded into the manifest by `narrow`, so the

@@ -52,11 +52,16 @@ MAX_DEPTH: Final[int] = 6
 _SESSIONS_PER_ASSEMBLY: Final[int] = 2
 
 #: What the shipped planning session accepts as its turn cap
-#: (``AgentSessionDecompositionConfig.max_turns``). ``unit_max_turns`` is handed
-#: to that session as well as to the units, so a bound wider than the product's
-#: admits a value that boots a host and then fails every cell at dispatch,
-#: against a matrix nobody can record until it is corrected.
+#: (``AgentSessionDecompositionConfig.max_turns``). Mirrored here so a value the
+#: product would refuse is refused at manifest load, rather than after a host
+#: has booted and against a matrix nobody can record until it is corrected.
 _PLANNER_TURN_CAP: Final[int] = 50
+
+#: A sanity bound on a unit's turns. The unit loop takes its cap as a plain
+#: argument with no ceiling of its own, so nothing but this refuses a typo, and
+#: a unit is bounded in practice by ``unit_token_ceiling`` instead: turns are a
+#: BASE budget that re-earns itself, which is why they cannot hold a runaway.
+_UNIT_TURN_CAP: Final[int] = 200
 
 
 class Arm(StrEnum):
@@ -204,13 +209,17 @@ class RecursionDepthManifest(BaseModel):
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
-        unit_max_turns: The turn ceiling one unit's session gets. Bounded by
-            what the PLANNER accepts rather than by what a unit could use:
-            the sweep hands this one value to the decomposition session as
-            well as to the units, and that config refuses anything above 50,
-            so a larger value here fails every cell at dispatch instead of
-            being refused at load. A unit that genuinely needs more turns
-            wants its own knob, not a wider bound on this one.
+        planner_max_turns: The turn ceiling one PLANNING session gets. Its own
+            field rather than a share of ``unit_max_turns`` because the two
+            bound different things and only one of them has a product limit:
+            a planner writes a plan and a unit builds software, so what is
+            generous for the first is not necessarily enough for the second,
+            and one value serving both means raising either raises both until
+            the stricter limit refuses the pair.
+        unit_max_turns: The turn ceiling one unit's session gets. Bounded
+            loosely, because a unit is held by ``unit_token_ceiling`` in
+            practice: turns are a base budget that re-earns itself up to
+            ``engine.max_turn_extensions`` times, so they never stop a runaway.
         unit_cost_ceiling: What one unit's session may spend before the
             gateway's own hard kill stops it. Money only, so it is half a
             bound: see ``unit_token_ceiling``.
@@ -247,13 +256,16 @@ class RecursionDepthManifest(BaseModel):
     reviewer: ModelPair
     independence: Independence
     merge_attempts: int = Field(ge=1, le=10)
-    unit_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
+    planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
+    unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
     projected_branching: int = Field(ge=2, le=50)
 
-    def projected_sessions(self, depth_cap: int) -> int:
+    def projected_sessions(
+        self, depth_cap: int, *, branching: int | None = None
+    ) -> int:
         """How many sessions one cell at *depth_cap* is expected to cost.
 
         A cap of ``d`` admits ``d`` levels of PLANNING (a node plans at
@@ -273,11 +285,17 @@ class RecursionDepthManifest(BaseModel):
 
         Args:
             depth_cap: The cap this cell runs at.
+            branching: How wide one planning session splits. Defaults to the
+                manifest's assumption, which is what the plan projection
+                prints before any tree exists. A running sweep passes what it
+                has MEASURED instead: the assumption is the one input a
+                recording can correct about itself, and it is wrong in the
+                direction that compounds with depth.
 
         Returns:
             The projected session count for one cell.
         """
-        branching = self.projected_branching
+        branching = self.projected_branching if branching is None else branching
         # Annotated because ``int ** int`` widens to Any: the exponent could be
         # negative, and this one is bounded at one by the caller's own field.
         leaves: int = branching**depth_cap

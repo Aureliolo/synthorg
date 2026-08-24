@@ -1263,6 +1263,7 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "independence": Independence.SAME_FAMILY,
         "merge_attempts": 2,
         "unit_max_turns": 4,
+        "planner_max_turns": 4,
         "unit_cost_ceiling": 1.0,
         "unit_token_ceiling": 1000,
         "max_sessions": 100,
@@ -1759,9 +1760,31 @@ class TestTheMatrix:
         self, tmp_path: Path
     ) -> None:
         # Aborts rather than overruns, and never loses what it has paid for.
+        # The ceiling AFFORDS the estimate here, so the cell is started and the
+        # retroactive bound is the one that fires: an estimate is a forecast,
+        # and a cell that costs more than it was forecast to still has to stop.
         planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=99))
-        context = await _context(tmp_path, planner=planner, ceiling=1)
+        context = await _context(tmp_path, planner=planner, ceiling=50)
 
         with pytest.raises(RecursionDepthNoCellsMeasuredError):
             await _swept(context, tmp_path)
         assert context.budget.spent == 99
+
+    async def test_a_cell_the_budget_cannot_finish_is_never_started(
+        self, tmp_path: Path
+    ) -> None:
+        # The ceiling books sessions AFTER they run, so on its own it stops a
+        # sweep that has already overrun. Entering a cell that cannot finish
+        # spends everything left and records no `achieved_depth`, so the
+        # measurement is lost AND the spend with it. A ceiling below what one
+        # cell is projected to cost must therefore stop before dispatching.
+        planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
+        context = await _context(tmp_path, planner=planner, ceiling=1)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(context, tmp_path)
+
+        # Nothing dispatched, so nothing was paid for. Zero is the whole
+        # assertion: the planner books its sessions on every call including a
+        # failing one, so a spend of zero is a planner that never ran.
+        assert context.budget.spent == 0

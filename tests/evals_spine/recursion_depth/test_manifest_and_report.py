@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
@@ -29,6 +30,9 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -63,6 +67,7 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "independence": "same_family",
         "merge_attempts": 3,
         "unit_max_turns": 40,
+        "planner_max_turns": 40,
         "unit_cost_ceiling": 2.0,
         "unit_token_ceiling": 600000,
         "max_sessions": 100,
@@ -70,6 +75,42 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+class TestThePlannerAndTheUnitsAreBoundedSeparately:
+    """One turn budget for both is a limit on one deciding the other.
+
+    The shipped decomposition config refuses more than 50 turns and the unit
+    loop takes its cap as a plain argument, so a shared field means a unit may
+    never have more room than a planner is allowed, and a value chosen for a
+    unit is refused for reasons that have nothing to do with units.
+    """
+
+    def test_the_planner_is_held_to_what_the_product_accepts(self) -> None:
+        # Refused at LOAD. Accepted here, it would boot a host and then fail
+        # every cell at dispatch, against a matrix nobody can record.
+        with pytest.raises(ValidationError, match="planner_max_turns"):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(planner_max_turns=51)
+            )
+
+    def test_a_unit_may_exceed_the_planners_ceiling(self) -> None:
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(unit_max_turns=120)
+        )
+
+        assert manifest.unit_max_turns == 120
+        assert manifest.planner_max_turns == 40
+
+    def test_the_shipped_planner_budget_is_one_the_product_accepts(self) -> None:
+        # Against the real consumer rather than against the manifest's mirror
+        # of its bound: a mirror that drifts is exactly the failure this pins,
+        # and it can only be caught by asking the thing being mirrored.
+        manifest = load_manifest(_COMMITTED_MANIFEST)
+
+        config = AgentSessionDecompositionConfig(max_turns=manifest.planner_max_turns)
+
+        assert config.max_turns == manifest.planner_max_turns
 
 
 class TestTheJudgeMustBeIndependent:
