@@ -27,12 +27,12 @@ When multi-agent coordination exists, each `CostRecord` is tagged with a **call 
 | Category | Description | Examples |
 |----------|-------------|---------|
 | `productive` | Direct task work: tool calls, code generation, task output | Agent writing code, running tests |
-| `coordination` | Inter-agent communication: delegation, reviews, meetings | Manager reviewing work, agent presenting in meeting |
+| `coordination` | Inter-agent communication: delegation, reviews, group discussion | Manager reviewing work, agents aligning in a group chat |
 | `system` | Framework overhead: system prompt injection, context loading | Initial prompt, [memory retrieval injection](memory-learning.md#memory-injection-strategies) |
 | `embedding` | Embedding model calls: memory store/retrieve vectorization | Memory store embedding, similarity search query embedding |
 | `image_generation` | Image-output model calls: generating image assets from prompts | Design tool generating a mockup image |
 
-The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If coordination tokens consistently exceed productive tokens, the company configuration needs tuning (fewer approval layers, simpler [meeting protocols](communication-coordination.md#meeting-protocol), etc.). Image-generation spend is flat per-image (not token-scaled), so it folds into the **productive** bucket for the ratio rather than being counted as overhead.
+The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If coordination tokens consistently exceed productive tokens, the company configuration needs tuning (fewer approval layers, shallower delegation chains, etc.). Image-generation spend is flat per-image (not token-scaled), so it folds into the **productive** bucket for the ratio rather than being counted as overhead.
 
 ???+ note "Coordination Metrics Suite"
 

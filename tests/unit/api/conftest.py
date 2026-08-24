@@ -678,13 +678,6 @@ def _clear_appstate_stores(shared_app: Litestar, app_state: AppState) -> None:
     settings_service = app_state.slice(SettingsStateSlice).settings_service
     if settings_service is not None:
         settings_service._cache.clear()
-    # Clear the escalation queue + pending-future registry so a prior
-    # test's in-flight escalations cannot bleed into the next one.
-    if communication.escalation_store is not None:
-        communication.escalation_store._rows.clear()  # type: ignore[attr-defined]
-    if communication.escalation_registry is not None:
-        communication.escalation_registry._futures.clear()
-
     # Clear the per-op rate-limit sliding-window store so a prior test's
     # 429 buckets (e.g. ``setup.complete`` at 5/3600s) cannot bleed over.
     per_op_store = getattr(shared_app.state, "per_op_rate_limit_store", None)

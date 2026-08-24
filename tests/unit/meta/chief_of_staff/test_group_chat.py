@@ -10,7 +10,7 @@ from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
-from synthorg.communication.meeting._token_tracker import TokenTracker
+from synthorg.communication.multi_agent import TokenTracker
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig

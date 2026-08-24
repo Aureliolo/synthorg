@@ -17,7 +17,6 @@ invariants that the engine tests rely on.
 """
 
 from collections.abc import Iterator
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -39,7 +38,6 @@ from synthorg.observability.prometheus_labels import (
     register_mcp_tool_names,
     update_label_snapshot,
 )
-from synthorg.organization.state import OrganizationStateSlice
 from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
@@ -142,7 +140,6 @@ def _stub_app_state(
     *,
     agents: tuple[MagicMock, ...],
     workflow_repo_raises: bool = False,
-    department_service_raises: bool = False,
 ) -> AppState:
     registry = MagicMock()
     registry.list_active = AsyncMock(return_value=agents)
@@ -157,24 +154,9 @@ def _stub_app_state(
             return_value=(MagicMock(id="wf-1"),),
         )
 
-    dept_service = MagicMock()
-    if department_service_raises:
-        dept_service.list_departments = AsyncMock(
-            side_effect=RuntimeError("dept service down"),
-        )
-    else:
-        # ``MagicMock(name=...)`` sets the mock's REPR name, not a
-        # ``name`` attribute on the returned object, so the
-        # collector's ``str(r.name)`` would yield a Mock repr
-        # instead of "engineering". ``SimpleNamespace`` gives a
-        # real ``name`` attribute that survives the str() coercion.
-        dept_service.list_departments = AsyncMock(
-            return_value=((SimpleNamespace(name="engineering"),), 1),
-        )
     return make_app_state(
         agent_registry=registry,
         persistence=backend,
-        slices={OrganizationStateSlice: {"department_service": dept_service}},
     )
 
 
@@ -210,24 +192,6 @@ async def test_rebuild_label_snapshot_partial_when_workflow_repo_fails() -> None
     )
 
 
-async def test_rebuild_label_snapshot_partial_when_department_service_fails() -> None:
-    collector = PrometheusCollector()
-    agents = (_stub_agent("agent-1"),)
-    state = _stub_app_state(
-        agents=agents,
-        department_service_raises=True,
-    )
-    with structlog.testing.capture_logs() as logs:
-        await collector.refresh(state)
-
-    assert is_known_agent_id("agent-1") is True
-    assert any(
-        rec.get("event") == METRICS_SCRAPE_FAILED
-        and rec.get("component") == "department_service"
-        for rec in logs
-    )
-
-
 # -- record_approval_decision ------------------------------------------------
 
 
@@ -244,24 +208,6 @@ def test_record_approval_decision_rejects_unknown_outcome() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="Unknown"):
         collector.record_approval_decision(outcome="bogus")
-
-
-# -- record_escalation_outcome -----------------------------------------------
-
-
-def test_record_escalation_outcome_increments_counter() -> None:
-    collector = PrometheusCollector()
-    collector.record_escalation_outcome(outcome="resolved")
-    samples = _samples(collector, "synthorg_escalation_outcomes")
-    assert any(
-        labels == {"outcome": "resolved"} and value == 1.0 for labels, value in samples
-    )
-
-
-def test_record_escalation_outcome_rejects_unknown_outcome() -> None:
-    collector = PrometheusCollector()
-    with pytest.raises(ValueError, match="Unknown"):
-        collector.record_escalation_outcome(outcome="bogus")
 
 
 # -- record_blueprint_instantiation ------------------------------------------

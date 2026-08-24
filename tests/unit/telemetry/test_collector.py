@@ -519,7 +519,7 @@ class TestTelemetryCollectorWithMockReporter:
                 tasks_failed=2,
                 error_rate_limit=1,
                 provider_count=2,
-                meetings_held=3,
+                delegations_executed=3,
             ),
         )
 
@@ -528,7 +528,7 @@ class TestTelemetryCollectorWithMockReporter:
         assert event.event_type == "deployment.session_summary"
         assert event.properties["tasks_created"] == 10
         assert event.properties["tasks_completed"] == 8
-        assert event.properties["meetings_held"] == 3
+        assert event.properties["delegations_executed"] == 3
 
     async def test_reporter_exception_is_caught(self, tmp_path: Path) -> None:
         """Reporter raising Exception should not crash the collector."""

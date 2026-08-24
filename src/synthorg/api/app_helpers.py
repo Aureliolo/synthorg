@@ -27,7 +27,6 @@ from synthorg.api.channels import (
     CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
     CHANNEL_COCKPIT,
-    CHANNEL_MEETINGS,
 )
 from synthorg.api.controllers.approvals._shared import to_response_without_context
 from synthorg.api.ws_models import WsEvent, WsEventType
@@ -251,48 +250,6 @@ def resolve_agent_workspace_root_env() -> Path | None:
     if os.environ.get("SYNTHORG_DATABASE_URL", "").strip():
         return Path(_POSTGRES_VOLUME_DATA_DIR) / _AGENT_WORKSPACES_SUBDIR
     return None
-
-
-def _make_meeting_publisher(
-    channels_plugin: ChannelsPlugin,
-) -> Callable[[str, dict[str, object]], None]:
-    """Create a sync callback that publishes meeting events to WS.
-
-    Returns:
-        ``Callable[[str, dict[str, object]], None]`` instance.
-    """
-
-    def _on_meeting_event(
-        event_name: str,
-        payload: dict[str, object],
-    ) -> None:
-        # Construct the WsEvent inside the guarded block: an unknown
-        # ``event_name`` raises ``ValueError`` from the enum lookup and
-        # must never abort the meeting-path caller. Failures are logged
-        # at WARNING and swallowed.
-        """Handle the meeting event event."""
-        try:
-            event = WsEvent(
-                event_type=WsEventType(event_name),
-                channel=CHANNEL_MEETINGS,
-                timestamp=datetime.now(UTC),
-                payload=payload,
-            )
-            channels_plugin.publish(
-                event.model_dump_json(),
-                channels=[CHANNEL_MEETINGS],
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_WS_SEND_FAILED,
-                note="Failed to publish meeting WebSocket event",
-                event_name=event_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
-    return _on_meeting_event
 
 
 def make_personality_trim_notifier(

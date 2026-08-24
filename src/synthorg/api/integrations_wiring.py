@@ -18,7 +18,6 @@ from synthorg.api._tunnel_wiring import (
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.secret_capture import SecretCaptureService
@@ -54,7 +53,6 @@ class IntegrationsBundle:
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
     tunnel_provider: TunnelManager | None = None
-    webhook_event_bridge: WebhookEventBridge | None = None
     inbound_thread_registry: InboundThreadRegistry | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None

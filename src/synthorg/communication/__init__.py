@@ -11,35 +11,8 @@ if TYPE_CHECKING:
     from synthorg.communication.config import (
         CommunicationConfig,
         HierarchyConfig,
-        MeetingsConfig,
         MessageBusConfig,
         MessageRetentionConfig,
-    )
-    from synthorg.communication.conflict_resolution import (
-        Conflict,
-        ConflictPosition,
-        ConflictResolution,
-        ConflictResolutionConfig,
-        ConflictResolutionOutcome,
-        ConflictResolutionService,
-        ConflictResolver,
-        DebateConfig,
-        DissentRecord,
-        HybridConfig,
-        JudgeDecision,
-        JudgeEvaluator,
-    )
-    from synthorg.communication.conflict_resolution.authority_strategy import (
-        AuthorityResolver,
-    )
-    from synthorg.communication.conflict_resolution.debate_strategy import (
-        DebateResolver,
-    )
-    from synthorg.communication.conflict_resolution.human_strategy import (
-        HumanEscalationResolver,
-    )
-    from synthorg.communication.conflict_resolution.hybrid_strategy import (
-        HybridResolver,
     )
     from synthorg.communication.delegation import (
         AuthorityCheckResult,
@@ -54,8 +27,6 @@ if TYPE_CHECKING:
     from synthorg.communication.enums import (
         ChannelType,
         CommunicationPattern,
-        ConflictResolutionStrategy,
-        ConflictType,
         MessageBusBackend,
         MessagePriority,
         MessageType,
@@ -64,9 +35,6 @@ if TYPE_CHECKING:
         ChannelAlreadyExistsError,
         ChannelNotFoundError,
         CommunicationError,
-        ConflictHierarchyError,
-        ConflictResolutionError,
-        ConflictStrategyError,
         DelegationAncestryError,
         DelegationAuthorityError,
         DelegationCircuitOpenError,
@@ -101,37 +69,6 @@ if TYPE_CHECKING:
         LoopPreventionConfig,
         RateLimitConfig,
     )
-    from synthorg.communication.meeting import (
-        ActionItem,
-        AgentCaller,
-        AgentResponse,
-        ConflictDetector,
-        KeywordConflictDetector,
-        MeetingAgenda,
-        MeetingAgendaItem,
-        MeetingAgentError,
-        MeetingBudgetExhaustedError,
-        MeetingContribution,
-        MeetingError,
-        MeetingMinutes,
-        MeetingOrchestrator,
-        MeetingParticipantError,
-        MeetingPhase,
-        MeetingProtocol,
-        MeetingProtocolConfig,
-        MeetingProtocolNotFoundError,
-        MeetingProtocolType,
-        MeetingRecord,
-        MeetingStatus,
-        PositionPapersConfig,
-        PositionPapersProtocol,
-        RoundRobinConfig,
-        RoundRobinProtocol,
-        StructuredPhasesConfig,
-        StructuredPhasesProtocol,
-        TaskCreator,
-    )
-    from synthorg.communication.meeting.config import MeetingTypeConfig
     from synthorg.communication.message import (
         DataPart,
         FilePart,
@@ -173,7 +110,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.loop_prevention.config",
         "LoopPreventionConfig",
     ),
-    "MeetingsConfig": ("synthorg.communication.config", "MeetingsConfig"),
     "MessageBusConfig": ("synthorg.communication.config", "MessageBusConfig"),
     "MessageRetentionConfig": (
         "synthorg.communication.config",
@@ -182,67 +118,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "RateLimitConfig": (
         "synthorg.communication.loop_prevention.config",
         "RateLimitConfig",
-    ),
-    "Conflict": ("synthorg.communication.conflict_resolution", "Conflict"),
-    "ConflictPosition": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictPosition",
-    ),
-    "ConflictResolution": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictResolution",
-    ),
-    "ConflictResolutionConfig": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictResolutionConfig",
-    ),
-    "ConflictResolutionOutcome": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictResolutionOutcome",
-    ),
-    "ConflictResolutionService": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictResolutionService",
-    ),
-    "ConflictResolver": (
-        "synthorg.communication.conflict_resolution",
-        "ConflictResolver",
-    ),
-    "DebateConfig": (
-        "synthorg.communication.conflict_resolution",
-        "DebateConfig",
-    ),
-    "DissentRecord": (
-        "synthorg.communication.conflict_resolution",
-        "DissentRecord",
-    ),
-    "HybridConfig": (
-        "synthorg.communication.conflict_resolution",
-        "HybridConfig",
-    ),
-    "JudgeDecision": (
-        "synthorg.communication.conflict_resolution",
-        "JudgeDecision",
-    ),
-    "JudgeEvaluator": (
-        "synthorg.communication.conflict_resolution",
-        "JudgeEvaluator",
-    ),
-    "AuthorityResolver": (
-        "synthorg.communication.conflict_resolution.authority_strategy",
-        "AuthorityResolver",
-    ),
-    "DebateResolver": (
-        "synthorg.communication.conflict_resolution.debate_strategy",
-        "DebateResolver",
-    ),
-    "HumanEscalationResolver": (
-        "synthorg.communication.conflict_resolution.human_strategy",
-        "HumanEscalationResolver",
-    ),
-    "HybridResolver": (
-        "synthorg.communication.conflict_resolution.hybrid_strategy",
-        "HybridResolver",
     ),
     "AuthorityCheckResult": (
         "synthorg.communication.delegation",
@@ -270,11 +145,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.enums",
         "CommunicationPattern",
     ),
-    "ConflictResolutionStrategy": (
-        "synthorg.communication.enums",
-        "ConflictResolutionStrategy",
-    ),
-    "ConflictType": ("synthorg.communication.enums", "ConflictType"),
     "MessageBusBackend": (
         "synthorg.communication.enums",
         "MessageBusBackend",
@@ -292,18 +162,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "CommunicationError": (
         "synthorg.communication.errors",
         "CommunicationError",
-    ),
-    "ConflictHierarchyError": (
-        "synthorg.communication.errors",
-        "ConflictHierarchyError",
-    ),
-    "ConflictResolutionError": (
-        "synthorg.communication.errors",
-        "ConflictResolutionError",
-    ),
-    "ConflictStrategyError": (
-        "synthorg.communication.errors",
-        "ConflictStrategyError",
     ),
     "DelegationAncestryError": (
         "synthorg.communication.errors",
@@ -392,89 +250,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.loop_prevention",
         "check_delegation_depth",
     ),
-    "ActionItem": ("synthorg.communication.meeting", "ActionItem"),
-    "AgentCaller": ("synthorg.communication.meeting", "AgentCaller"),
-    "AgentResponse": ("synthorg.communication.meeting", "AgentResponse"),
-    "ConflictDetector": (
-        "synthorg.communication.meeting",
-        "ConflictDetector",
-    ),
-    "KeywordConflictDetector": (
-        "synthorg.communication.meeting",
-        "KeywordConflictDetector",
-    ),
-    "MeetingAgenda": ("synthorg.communication.meeting", "MeetingAgenda"),
-    "MeetingAgendaItem": (
-        "synthorg.communication.meeting",
-        "MeetingAgendaItem",
-    ),
-    "MeetingAgentError": (
-        "synthorg.communication.meeting",
-        "MeetingAgentError",
-    ),
-    "MeetingBudgetExhaustedError": (
-        "synthorg.communication.meeting",
-        "MeetingBudgetExhaustedError",
-    ),
-    "MeetingContribution": (
-        "synthorg.communication.meeting",
-        "MeetingContribution",
-    ),
-    "MeetingError": ("synthorg.communication.meeting", "MeetingError"),
-    "MeetingMinutes": ("synthorg.communication.meeting", "MeetingMinutes"),
-    "MeetingOrchestrator": (
-        "synthorg.communication.meeting",
-        "MeetingOrchestrator",
-    ),
-    "MeetingParticipantError": (
-        "synthorg.communication.meeting",
-        "MeetingParticipantError",
-    ),
-    "MeetingPhase": ("synthorg.communication.meeting", "MeetingPhase"),
-    "MeetingProtocol": ("synthorg.communication.meeting", "MeetingProtocol"),
-    "MeetingProtocolConfig": (
-        "synthorg.communication.meeting",
-        "MeetingProtocolConfig",
-    ),
-    "MeetingProtocolNotFoundError": (
-        "synthorg.communication.meeting",
-        "MeetingProtocolNotFoundError",
-    ),
-    "MeetingProtocolType": (
-        "synthorg.communication.meeting",
-        "MeetingProtocolType",
-    ),
-    "MeetingRecord": ("synthorg.communication.meeting", "MeetingRecord"),
-    "MeetingStatus": ("synthorg.communication.meeting", "MeetingStatus"),
-    "PositionPapersConfig": (
-        "synthorg.communication.meeting",
-        "PositionPapersConfig",
-    ),
-    "PositionPapersProtocol": (
-        "synthorg.communication.meeting",
-        "PositionPapersProtocol",
-    ),
-    "RoundRobinConfig": (
-        "synthorg.communication.meeting",
-        "RoundRobinConfig",
-    ),
-    "RoundRobinProtocol": (
-        "synthorg.communication.meeting",
-        "RoundRobinProtocol",
-    ),
-    "StructuredPhasesConfig": (
-        "synthorg.communication.meeting",
-        "StructuredPhasesConfig",
-    ),
-    "StructuredPhasesProtocol": (
-        "synthorg.communication.meeting",
-        "StructuredPhasesProtocol",
-    ),
-    "TaskCreator": ("synthorg.communication.meeting", "TaskCreator"),
-    "MeetingTypeConfig": (
-        "synthorg.communication.meeting.config",
-        "MeetingTypeConfig",
-    ),
     "DataPart": ("synthorg.communication.message", "DataPart"),
     "FilePart": ("synthorg.communication.message", "FilePart"),
     "Message": ("synthorg.communication.message", "Message"),
@@ -535,12 +310,8 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    "ActionItem",
-    "AgentCaller",
     "AgentMessenger",
-    "AgentResponse",
     "AuthorityCheckResult",
-    "AuthorityResolver",
     "AuthorityValidator",
     "Channel",
     "ChannelAlreadyExistsError",
@@ -551,22 +322,7 @@ __all__ = [
     "CommunicationConfig",
     "CommunicationError",
     "CommunicationPattern",
-    "Conflict",
-    "ConflictDetector",
-    "ConflictHierarchyError",
-    "ConflictPosition",
-    "ConflictResolution",
-    "ConflictResolutionConfig",
-    "ConflictResolutionError",
-    "ConflictResolutionOutcome",
-    "ConflictResolutionService",
-    "ConflictResolutionStrategy",
-    "ConflictResolver",
-    "ConflictStrategyError",
-    "ConflictType",
     "DataPart",
-    "DebateConfig",
-    "DebateResolver",
     "DelegationAncestryError",
     "DelegationAuthorityError",
     "DelegationCircuitBreaker",
@@ -582,7 +338,6 @@ __all__ = [
     "DelegationService",
     "DeliveryEnvelope",
     "DispatchResult",
-    "DissentRecord",
     "FilePart",
     "FunctionHandler",
     "GuardCheckOutcome",
@@ -590,32 +345,8 @@ __all__ = [
     "HierarchyConfig",
     "HierarchyResolutionError",
     "HierarchyResolver",
-    "HumanEscalationResolver",
-    "HybridConfig",
-    "HybridResolver",
     "InMemoryMessageBus",
-    "JudgeDecision",
-    "JudgeEvaluator",
-    "KeywordConflictDetector",
     "LoopPreventionConfig",
-    "MeetingAgenda",
-    "MeetingAgendaItem",
-    "MeetingAgentError",
-    "MeetingBudgetExhaustedError",
-    "MeetingContribution",
-    "MeetingError",
-    "MeetingMinutes",
-    "MeetingOrchestrator",
-    "MeetingParticipantError",
-    "MeetingPhase",
-    "MeetingProtocol",
-    "MeetingProtocolConfig",
-    "MeetingProtocolNotFoundError",
-    "MeetingProtocolType",
-    "MeetingRecord",
-    "MeetingStatus",
-    "MeetingTypeConfig",
-    "MeetingsConfig",
     "Message",
     "MessageBus",
     "MessageBusAlreadyRunningError",
@@ -631,15 +362,8 @@ __all__ = [
     "MessageType",
     "NotSubscribedError",
     "Part",
-    "PositionPapersConfig",
-    "PositionPapersProtocol",
     "RateLimitConfig",
-    "RoundRobinConfig",
-    "RoundRobinProtocol",
-    "StructuredPhasesConfig",
-    "StructuredPhasesProtocol",
     "Subscription",
-    "TaskCreator",
     "TextPart",
     "UriPart",
     "check_ancestry",

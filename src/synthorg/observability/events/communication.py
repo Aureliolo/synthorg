@@ -131,22 +131,10 @@ COMM_TOOL_TEMPLATE_RENDER_INVALID: Final[str] = (
     "communication.tool.template.render_invalid"
 )
 
-# Dissent publication
-COMM_DISSENT_PUBLISHED: Final[str] = "communication.dissent.published"
-COMM_DISSENT_PUBLISH_FAILED: Final[str] = "communication.dissent.publish_failed"
-COMM_DISSENT_EMITTED: Final[str] = "communication.dissent.emitted"
-
 # MCP facade events.
 COMMUNICATION_MESSAGE_SENT_VIA_MCP: Final[str] = "communication.message.sent_via_mcp"
 COMMUNICATION_MESSAGE_DELETED: Final[str] = "communication.message.deleted"
 COMMUNICATION_MESSAGE_DELETE_FAILED: Final[str] = "communication.message.delete_failed"
-COMMUNICATION_MEETING_CREATED: Final[str] = "communication.meeting.created"
-COMMUNICATION_MEETING_UPDATED: Final[str] = "communication.meeting.updated"
-COMMUNICATION_MEETING_DELETED: Final[str] = "communication.meeting.deleted"
-COMMUNICATION_MEETING_DELETE_FAILED: Final[str] = "communication.meeting.delete_failed"
-COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED: Final[str] = (
-    "communication.meeting.capability_unsupported"
-)
 COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
     "communication.connection.health_checked"
 )

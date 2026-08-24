@@ -154,7 +154,7 @@ at write time, naming the token ceiling as the bound that does bind.
    `None`) is stamped onto `CostRecord.prompt_class_id` so spend can be sliced
    by prompt purpose. Every non-engine LLM call site (memory consolidation,
    classification, verification graders, intake, evolution, HR judges, security
-   evaluators, meetings, Chief of Staff, etc.) opens this scope so every paid
+   evaluators, group chat, Chief of Staff, etc.) opens this scope so every paid
    LLM call is accounted for. Two pre-push lints guard it:
    `scripts/check_provider_complete_chokepoint.py` blocks any new call site that
    bypasses the chokepoint, and `scripts/check_cost_scope_purpose.py` blocks any

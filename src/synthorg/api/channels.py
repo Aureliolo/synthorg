@@ -33,7 +33,6 @@ CHANNEL_BUDGET: Final[str] = "budget"
 CHANNEL_MESSAGES: Final[str] = "messages"
 CHANNEL_SYSTEM: Final[str] = "system"
 CHANNEL_APPROVALS: Final[str] = "approvals"
-CHANNEL_MEETINGS: Final[str] = "meetings"
 CHANNEL_ARTIFACTS: Final[str] = "artifacts"
 CHANNEL_PROJECTS: Final[str] = "projects"
 CHANNEL_PLANS: Final[str] = "plans"
@@ -47,7 +46,6 @@ CHANNEL_EVENTS: Final[str] = "events"
 CHANNEL_INTERRUPTS: Final[str] = "interrupts"
 CHANNEL_COCKPIT: Final[str] = "cockpit"
 CHANNEL_WORKFLOWS: Final[str] = "workflows"
-CHANNEL_DISSENT: Final[str] = "#dissent"
 CHANNEL_WEBHOOKS: Final[str] = "#webhooks"
 CHANNEL_RATELIMIT: Final[str] = "#ratelimit"
 
@@ -60,7 +58,6 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_MESSAGES,
     CHANNEL_SYSTEM,
     CHANNEL_APPROVALS,
-    CHANNEL_MEETINGS,
     CHANNEL_ARTIFACTS,
     CHANNEL_PROJECTS,
     CHANNEL_PLANS,
@@ -74,20 +71,18 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_INTERRUPTS,
     CHANNEL_COCKPIT,
     CHANNEL_WORKFLOWS,
-    CHANNEL_DISSENT,
     CHANNEL_WEBHOOKS,
     CHANNEL_RATELIMIT,
 )
 
 # Channels whose events are sensitive and restricted to system roles
-# (CEO/MANAGER): budget figures, internal integration coordination
-# channels that carry secrets or rate-limit signals, and the dissent
-# channel that broadcasts internal conflict-resolution deliberations.
+# (CEO/MANAGER): budget figures, and internal integration coordination
+# channels that carry secrets or rate-limit signals.
 # The dashboard SSE feed auto-subscribes every channel a caller may
 # read, so an unrestricted sensitive channel would otherwise stream to
 # any authenticated role; gating here closes that for both transports.
 BUDGET_CHANNELS: Final[frozenset[str]] = frozenset(
-    {CHANNEL_BUDGET, CHANNEL_WEBHOOKS, CHANNEL_RATELIMIT, CHANNEL_DISSENT}
+    {CHANNEL_BUDGET, CHANNEL_WEBHOOKS, CHANNEL_RATELIMIT}
 )
 
 

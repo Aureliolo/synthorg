@@ -188,18 +188,6 @@ export const BUCKET_SIZE_VALUES = [
 ] as const
 export type BucketSize = (typeof BUCKET_SIZE_VALUES)[number]
 
-export const CEREMONY_STRATEGY_TYPE_VALUES = [
-    'task_driven',
-    'calendar',
-    'hybrid',
-    'event_driven',
-    'budget_driven',
-    'throughput_adaptive',
-    'external_trigger',
-    'milestone_driven',
-] as const
-export type CeremonyStrategyType = (typeof CEREMONY_STRATEGY_TYPE_VALUES)[number]
-
 export const CHANNEL_TYPE_VALUES = [
     'topic',
     'direct',
@@ -304,16 +292,6 @@ export const CONFLICT_APPROACH_VALUES = [
     'collaborate',
 ] as const
 export type ConflictApproach = (typeof CONFLICT_APPROACH_VALUES)[number]
-
-export const CONFLICT_TYPE_VALUES = [
-    'architecture',
-    'implementation',
-    'priority',
-    'resource',
-    'process',
-    'other',
-] as const
-export type ConflictType = (typeof CONFLICT_TYPE_VALUES)[number]
 
 export const CONNECTION_STATUS_VALUES = [
     'healthy',
@@ -460,14 +438,6 @@ export const ERROR_CATEGORY_VALUES = [
     'internal',
 ] as const
 export type ErrorCategory = (typeof ERROR_CATEGORY_VALUES)[number]
-
-export const ESCALATION_STATUS_VALUES = [
-    'pending',
-    'decided',
-    'expired',
-    'cancelled',
-] as const
-export type EscalationStatus = (typeof ESCALATION_STATUS_VALUES)[number]
 
 export const EVALUATION_CONFIDENCE_VALUES = [
     'high',
@@ -637,36 +607,6 @@ export const LIFECYCLE_EVENT_TYPE_VALUES = [
 ] as const
 export type LifecycleEventType = (typeof LIFECYCLE_EVENT_TYPE_VALUES)[number]
 
-export const MEETING_PHASE_VALUES = [
-    'agenda_broadcast',
-    'round_robin_turn',
-    'position_paper',
-    'input_gathering',
-    'discussion',
-    'synthesis',
-    'summary',
-    'premortem',
-    'devil_advocate',
-] as const
-export type MeetingPhase = (typeof MEETING_PHASE_VALUES)[number]
-
-export const MEETING_PROTOCOL_TYPE_VALUES = [
-    'round_robin',
-    'position_papers',
-    'structured_phases',
-] as const
-export type MeetingProtocolType = (typeof MEETING_PROTOCOL_TYPE_VALUES)[number]
-
-export const MEETING_STATUS_VALUES = [
-    'scheduled',
-    'in_progress',
-    'completed',
-    'failed',
-    'cancelled',
-    'budget_exhausted',
-] as const
-export type MeetingStatus = (typeof MEETING_STATUS_VALUES)[number]
-
 export const MEMORY_CATEGORY_VALUES = [
     'working',
     'episodic',
@@ -712,9 +652,7 @@ export const MESSAGE_TYPE_VALUES = [
     'delegation',
     'status_report',
     'escalation',
-    'meeting_contribution',
     'hr_notification',
-    'dissent',
     'context_injection',
 ] as const
 export type MessageType = (typeof MESSAGE_TYPE_VALUES)[number]
@@ -782,13 +720,6 @@ export const PLAN_STATUS_VALUES = [
     'failed',
 ] as const
 export type PlanStatus = (typeof PLAN_STATUS_VALUES)[number]
-
-export const POLICY_FIELD_ORIGIN_VALUES = [
-    'project',
-    'department',
-    'default',
-] as const
-export type PolicyFieldOrigin = (typeof POLICY_FIELD_ORIGIN_VALUES)[number]
 
 export const POSTURE_NAME_VALUES = [
     'autonomous',
@@ -1077,7 +1008,6 @@ export const SETTING_NAMESPACE_VALUES = [
     'dashboard',
     'design',
     'output_style',
-    'strategy',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 
@@ -1373,15 +1303,6 @@ export const VALIDATION_ERROR_CODE_VALUES = [
     'verification_missing_config',
 ] as const
 export type ValidationErrorCode = (typeof VALIDATION_ERROR_CODE_VALUES)[number]
-
-export const VELOCITY_CALC_TYPE_VALUES = [
-    'task_driven',
-    'calendar',
-    'multi_dimensional',
-    'budget',
-    'points_per_sprint',
-] as const
-export type VelocityCalcType = (typeof VELOCITY_CALC_TYPE_VALUES)[number]
 
 export const WEB_SEARCH_BLOCKER_VALUES = [
     'none',

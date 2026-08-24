@@ -7,7 +7,6 @@ from synthorg.communication.config import (
     _DEFAULT_CHANNELS,
     CommunicationConfig,
     HierarchyConfig,
-    MeetingsConfig,
     MessageBusConfig,
     NatsConfig,
 )
@@ -20,8 +19,6 @@ from synthorg.communication.loop_prevention.config import (
     LoopPreventionConfig,
     RateLimitConfig,
 )
-from synthorg.communication.meeting.config import MeetingTypeConfig
-from synthorg.communication.meeting.frequency import MeetingFrequency
 
 _TEST_NATS_URL = "nats://localhost:4222"
 
@@ -108,197 +105,6 @@ class TestMessageBusConfigSerialization:
 
         cfg = MessageBusConfigFactory.build()
         assert isinstance(cfg, MessageBusConfig)
-
-
-# ── MeetingTypeConfig ───────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestMeetingTypeConfigConstruction:
-    def test_with_frequency(self) -> None:
-        mt = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        assert mt.name == "standup"
-        assert mt.frequency == "daily"
-        assert mt.trigger is None
-        assert mt.participants == ()
-        assert mt.duration_tokens == 2000
-
-    def test_with_trigger(self) -> None:
-        mt = MeetingTypeConfig(name="code_review", trigger="on_pr")
-        assert mt.trigger == "on_pr"
-        assert mt.frequency is None
-
-    def test_custom_values(self) -> None:
-        mt = MeetingTypeConfig(
-            name="planning",
-            frequency=MeetingFrequency.BI_WEEKLY,
-            participants=("all",),
-            duration_tokens=5000,
-        )
-        assert mt.participants == ("all",)
-        assert mt.duration_tokens == 5000
-
-
-@pytest.mark.unit
-class TestMeetingTypeConfigValidation:
-    def test_both_frequency_and_trigger_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="Only one of frequency or trigger may be set",
-        ):
-            MeetingTypeConfig(
-                name="bad", frequency=MeetingFrequency.DAILY, trigger="on_pr"
-            )
-
-    def test_neither_frequency_nor_trigger_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="Exactly one of frequency or trigger must be set",
-        ):
-            MeetingTypeConfig(name="bad")
-
-    def test_empty_name_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            MeetingTypeConfig(name="", frequency=MeetingFrequency.DAILY)
-
-    def test_whitespace_name_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            MeetingTypeConfig(name="   ", frequency=MeetingFrequency.DAILY)
-
-    def test_whitespace_frequency_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Input should be"):
-            MeetingTypeConfig(name="standup", frequency="   ")  # type: ignore[arg-type]
-
-    def test_whitespace_trigger_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            MeetingTypeConfig(name="review", trigger="   ")
-
-    def test_whitespace_participant_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="whitespace-only",
-        ):
-            MeetingTypeConfig(
-                name="standup",
-                frequency=MeetingFrequency.DAILY,
-                participants=("eng", "  "),
-            )
-
-    def test_empty_participant_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="at least 1 character",
-        ):
-            MeetingTypeConfig(
-                name="standup",
-                frequency=MeetingFrequency.DAILY,
-                participants=("eng", ""),
-            )
-
-    def test_duplicate_participants_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Duplicate entries in participants"):
-            MeetingTypeConfig(
-                name="standup",
-                frequency=MeetingFrequency.DAILY,
-                participants=("eng", "qa", "eng"),
-            )
-
-    def test_zero_duration_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            MeetingTypeConfig(
-                name="bad", frequency=MeetingFrequency.DAILY, duration_tokens=0
-            )
-
-    def test_negative_duration_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            MeetingTypeConfig(
-                name="bad", frequency=MeetingFrequency.DAILY, duration_tokens=-1
-            )
-
-
-@pytest.mark.unit
-class TestMeetingTypeConfigImmutability:
-    def test_frozen(self) -> None:
-        mt = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        with pytest.raises(ValidationError):
-            mt.name = "new"  # type: ignore[misc]
-
-    def test_model_copy(self) -> None:
-        original = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        updated = original.model_copy(update={"duration_tokens": 3000})
-        assert updated.duration_tokens == 3000
-        assert original.duration_tokens == 2000
-
-
-@pytest.mark.unit
-class TestMeetingTypeConfigSerialization:
-    def test_json_roundtrip(self) -> None:
-        mt = MeetingTypeConfig(
-            name="standup",
-            frequency=MeetingFrequency.DAILY,
-            participants=("eng",),
-            duration_tokens=1500,
-        )
-        restored = MeetingTypeConfig.model_validate_json(mt.model_dump_json())
-        assert restored == mt
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import MeetingTypeConfigFactory
-
-        mt = MeetingTypeConfigFactory.build()
-        assert isinstance(mt, MeetingTypeConfig)
-
-
-# ── MeetingsConfig ──────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestMeetingsConfigConstruction:
-    def test_defaults(self) -> None:
-        cfg = MeetingsConfig()
-        assert cfg.enabled is True
-        assert cfg.types == ()
-
-    def test_custom_values(self) -> None:
-        mt = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        cfg = MeetingsConfig(enabled=False, types=(mt,))
-        assert cfg.enabled is False
-        assert len(cfg.types) == 1
-
-
-@pytest.mark.unit
-class TestMeetingsConfigValidation:
-    def test_duplicate_meeting_names_rejected(self) -> None:
-        mt1 = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        mt2 = MeetingTypeConfig(name="standup", trigger="on_pr")
-        with pytest.raises(ValidationError, match="Duplicate meeting type names"):
-            MeetingsConfig(types=(mt1, mt2))
-
-    def test_unique_meeting_names_accepted(self) -> None:
-        mt1 = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        mt2 = MeetingTypeConfig(name="review", trigger="on_pr")
-        cfg = MeetingsConfig(types=(mt1, mt2))
-        assert len(cfg.types) == 2
-
-
-@pytest.mark.unit
-class TestMeetingsConfigImmutability:
-    def test_frozen(self) -> None:
-        cfg = MeetingsConfig()
-        with pytest.raises(ValidationError):
-            cfg.enabled = False  # type: ignore[misc]
-
-    def test_json_roundtrip(self) -> None:
-        mt = MeetingTypeConfig(name="standup", frequency=MeetingFrequency.DAILY)
-        cfg = MeetingsConfig(types=(mt,))
-        restored = MeetingsConfig.model_validate_json(cfg.model_dump_json())
-        assert restored == cfg
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import MeetingsConfigFactory
-
-        cfg = MeetingsConfigFactory.build()
-        assert isinstance(cfg, MeetingsConfig)
 
 
 # ── HierarchyConfig ────────────────────────────────────────────
@@ -511,7 +317,6 @@ class TestCommunicationConfigDefaults:
         cfg = CommunicationConfig()
         assert cfg.default_pattern is CommunicationPattern.HYBRID
         assert isinstance(cfg.message_bus, MessageBusConfig)
-        assert isinstance(cfg.meetings, MeetingsConfig)
         assert isinstance(cfg.hierarchy, HierarchyConfig)
         assert isinstance(cfg.loop_prevention, LoopPreventionConfig)
 
@@ -549,7 +354,7 @@ class TestCommunicationConfigImmutability:
 class TestCommunicationConfigSerialization:
     def test_json_roundtrip(self) -> None:
         cfg = CommunicationConfig(
-            default_pattern=CommunicationPattern.MEETING_BASED,
+            default_pattern=CommunicationPattern.HIERARCHICAL,
             message_bus=MessageBusConfig(
                 backend=MessageBusBackend.NATS,
                 nats=NatsConfig(url=_TEST_NATS_URL),
@@ -578,10 +383,6 @@ class TestCommunicationConfigFixtures:
     ) -> None:
         expected = CommunicationPattern.HYBRID
         assert sample_communication_config.default_pattern is expected
-
-    def test_sample_meeting_type(self, sample_meeting_type: MeetingTypeConfig) -> None:
-        assert sample_meeting_type.name == "daily_standup"
-        assert sample_meeting_type.frequency == "per_sprint_day"
 
 
 @pytest.mark.unit

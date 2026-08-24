@@ -84,7 +84,7 @@ def _make_collab_metric(
     delegation_success: bool | None = True,
     delegation_response_seconds: float | None = 5.0,
     conflict_constructiveness: float | None = 0.8,
-    meeting_contribution: float | None = 0.7,
+    discussion_contribution: float | None = 0.7,
     loop_triggered: bool = False,
     handoff_completeness: float | None = 0.9,
     recorded_at: datetime | None = None,
@@ -95,7 +95,7 @@ def _make_collab_metric(
         delegation_success=delegation_success,
         delegation_response_seconds=delegation_response_seconds,
         conflict_constructiveness=conflict_constructiveness,
-        meeting_contribution=meeting_contribution,
+        discussion_contribution=discussion_contribution,
         loop_triggered=loop_triggered,
         handoff_completeness=handoff_completeness,
     )
@@ -357,7 +357,7 @@ class TestSQLiteCollaborationMetricRepository:
             delegation_success=None,
             delegation_response_seconds=None,
             conflict_constructiveness=None,
-            meeting_contribution=None,
+            discussion_contribution=None,
             handoff_completeness=None,
         )
         await repo.save(record)
@@ -366,7 +366,7 @@ class TestSQLiteCollaborationMetricRepository:
         assert records[0].delegation_success is None
         assert records[0].delegation_response_seconds is None
         assert records[0].conflict_constructiveness is None
-        assert records[0].meeting_contribution is None
+        assert records[0].discussion_contribution is None
         assert records[0].handoff_completeness is None
 
     async def test_round_trip_loop_triggered_true(

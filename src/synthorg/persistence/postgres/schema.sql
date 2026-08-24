@@ -19,7 +19,7 @@
 -- Postgres-native features the SQLite schema cannot mirror:
 --   * GIN indexes over JSONB columns
 --     (audit_entries.matched_rules, messages.metadata,
---      lifecycle_events.metadata, conflict_escalations.conflict_json).
+--      lifecycle_events.metadata).
 --     The Postgres-only ``query_jsonb_contains`` /
 --     ``query_jsonb_key_exists`` capability protocol exposes these.
 --   * ``CONSTRAINT TRIGGER`` enforcement of HR invariants
@@ -250,7 +250,7 @@ CREATE TABLE collaboration_metrics (
     delegation_success BOOLEAN,
     delegation_response_seconds DOUBLE PRECISION,
     conflict_constructiveness DOUBLE PRECISION,
-    meeting_contribution DOUBLE PRECISION,
+    discussion_contribution DOUBLE PRECISION,
     loop_triggered BOOLEAN NOT NULL DEFAULT FALSE,
     handoff_completeness DOUBLE PRECISION
 );
@@ -1646,82 +1646,6 @@ ON training_results (plan_id);
 CREATE INDEX idx_training_results_agent
 ON training_results (new_agent_id, completed_at DESC);
 
--- ── Conflict escalations ───────────────────────────────────────
--- Human escalation approval queue: one row per conflict awaiting a
--- human decision.  Matches the SQLite sibling ``conflict_escalations``
--- but uses JSONB for payloads and TIMESTAMPTZ for timestamps.
-CREATE TABLE conflict_escalations (
-    id TEXT NOT NULL PRIMARY KEY,
-    conflict_id TEXT NOT NULL,
-    conflict_json JSONB NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'decided', 'expired', 'cancelled')
-    ),
-    created_at TIMESTAMPTZ NOT NULL,
-    expires_at TIMESTAMPTZ,
-    decided_at TIMESTAMPTZ,
-    decided_by TEXT,
-    decision_json JSONB,
-    CHECK (LENGTH(TRIM(id)) > 0),
-    CHECK (LENGTH(TRIM(conflict_id)) > 0),
-    -- Payload columns must be JSON objects (not scalars, arrays,
-    -- nulls, or strings), matching the SQLite sibling's
-    -- ``json_type = 'object'`` invariant so both backends refuse
-    -- malformed payloads at the schema layer.
-    CHECK (JSONB_TYPEOF(conflict_json) = 'object'),
-    CHECK (decision_json IS NULL OR JSONB_TYPEOF(decision_json) = 'object'),
-    -- DECIDED rows carry the full decision triple; decided_by must
-    -- be a nonblank actor identifier.
-    CHECK (
-        status != 'decided'
-        OR (
-            decision_json IS NOT NULL
-            AND JSONB_TYPEOF(decision_json) = 'object'
-            AND decided_at IS NOT NULL
-            AND decided_by IS NOT NULL
-            AND LENGTH(TRIM(decided_by)) > 0
-        )
-    ),
-    -- PENDING rows carry no decision triple at all.
-    CHECK (
-        status != 'pending'
-        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
-    ),
-    -- EXPIRED / CANCELLED rows drop any decision payload but MUST
-    -- carry audit-trail columns (transition timestamp + nonblank
-    -- actor) so auditors can always answer "who transitioned this,
-    -- and when".
-    CHECK (
-        status NOT IN ('expired', 'cancelled')
-        OR (
-            decision_json IS NULL
-            AND decided_at IS NOT NULL
-            AND decided_by IS NOT NULL
-            AND LENGTH(TRIM(decided_by)) > 0
-        )
-    )
-);
-CREATE INDEX idx_conflict_escalations_status_created
-ON conflict_escalations (status, created_at);
-CREATE INDEX idx_conflict_escalations_conflict_id
-ON conflict_escalations (conflict_id);
-CREATE INDEX idx_conflict_escalations_status_expires_at
-ON conflict_escalations (status, expires_at);
--- Enforce "at most one PENDING escalation per conflict" so two
--- concurrent resolvers cannot enqueue competing queue rows for the
--- same conflict.
-CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
-ON conflict_escalations (conflict_id) WHERE status = 'pending';
-
--- LISTEN/NOTIFY wiring for cross-instance resolver wake-up
--- is emitted by the application (``PostgresEscalationRepository._
--- publish_notify``) using ``EscalationQueueConfig.notify_channel``
--- so operators can rename the channel without a schema change.  We
--- intentionally do NOT install a DB-side trigger: a hard-coded
--- channel in the trigger would break deployments that override the
--- notify channel, and double-publishing (trigger + app) would cause
--- duplicate wake-ups.
-
 -- ── Custom signal rules ─────────────────────────────────────────
 -- Mirror of the SQLite ``custom_rules`` table; existed on SQLite
 -- only until the parity sweep.  Boolean ``enabled`` uses native
@@ -2186,37 +2110,12 @@ CREATE TABLE principle_overrides (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
--- Restart-safety tables: persist scheduler / cooldown / sandbox
--- state across process restarts. Backed by single-row-per-key
--- repositories; see the matching ``*_protocol.py`` files for the full
--- semantics. JSON columns are TEXT (not JSONB) so save/get round-trips
--- the serialized strings unchanged across both backends; the tables
--- are tiny (one row per sprint / meeting type / container) so JSONB
--- indexing offers no benefit.
-
--- Ceremony scheduler per-sprint snapshot. CeremonyScheduler owns four
--- in-memory state attributes describing the ceremony-trigger position
--- of one active sprint.
-CREATE TABLE ceremony_scheduler_state (
-    sprint_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(sprint_id)) > 0),
-    completion_counters_json TEXT NOT NULL,
-    fired_once_triggers_json TEXT NOT NULL,
-    total_completions INTEGER NOT NULL CHECK (total_completions >= 0),
-    velocity_history_json TEXT NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-
--- MeetingScheduler per-meeting-type last-triggered timestamp for the
--- recurring-meeting cooldown. Wall-clock (not monotonic) so the value
--- survives process restart meaningfully. SQLite stores the same field
--- as TEXT via parse_iso_utc / format_iso_utc; the divergence is
--- intentional and exercised by the dual-backend conformance suite.
--- One row per meeting type so no secondary index beyond the PK.
-CREATE TABLE meeting_cooldown (
-    meeting_type_name TEXT NOT NULL PRIMARY KEY
-    CHECK (LENGTH(TRIM(meeting_type_name)) > 0),
-    last_triggered_at TIMESTAMPTZ NOT NULL
-);
+-- Restart-safety tables: persist sandbox state across process
+-- restarts. Backed by single-row-per-key repositories; see the
+-- matching ``*_protocol.py`` files for the full semantics. JSON columns
+-- are TEXT (not JSONB) so save/get round-trips the serialized strings
+-- unchanged across both backends; the tables are tiny (one row per
+-- container) so JSONB indexing offers no benefit.
 
 -- Docker sandbox container tracking. The sandbox lifecycle persists
 -- one row per managed container (sandbox + optional paired sidecar).

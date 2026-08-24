@@ -18,7 +18,6 @@ from synthorg.api.lifecycle_helpers.sprint_wiring import wire_sprint_service
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend
@@ -54,7 +53,6 @@ def _task_engine() -> _Configured:
 def _deps() -> dict[str, _Configured]:
     return {
         "task_engine": _task_engine(),
-        "ceremony_scheduler": mock_of[CeremonyScheduler](),
         "config_resolver": mock_of[ConfigResolverProtocol](),
     }
 
@@ -89,16 +87,15 @@ async def test_unwired_without_persistence() -> None:
     assert app_state.slice(EngineStateSlice).sprint_service is None
 
 
-async def test_unwired_without_ceremony_scheduler(
+async def test_unwired_without_settings_resolver(
     sqlite_backend: PersistenceBackend,
 ) -> None:
     app_state = make_app_state(
         persistence=sqlite_backend,
         task_engine=_task_engine(),
-        config_resolver=mock_of[ConfigResolverProtocol](),
     )
 
-    with pytest.raises(SubsystemDeclinedError, match="ceremony scheduler"):
+    with pytest.raises(SubsystemDeclinedError, match="settings resolver"):
         await wire_sprint_service(app_state)
 
     assert app_state.slice(EngineStateSlice).sprint_service is None

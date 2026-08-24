@@ -3,22 +3,18 @@
 
 Declares the communication feature's surface: its ``communication``
 settings namespace, the :class:`CommunicationStateSlice` (message
-bus + service, meetings, event stream, escalation stack), its REST
-controllers (messages, meetings, ceremony policy, event stream,
-interrupts, escalations), and the communication MCP domain mounted by
-the composition root.
+bus + service, event stream), its REST controllers (messages, event
+stream, interrupts), and the communication MCP domain mounted by the
+composition root.
 """
 
 from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
-from synthorg.api.controllers.ceremony_policy import CeremonyPolicyController
-from synthorg.api.controllers.escalations import EscalationsController
 from synthorg.api.controllers.events.interrupts import InterruptController
 from synthorg.api.controllers.events.stream import (
     EventStreamController,
 )
-from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.communication._construction import wire_construction
 from synthorg.communication.state import CommunicationStateSlice
@@ -46,11 +42,8 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=CommunicationStateSlice,
     controllers=(
         MessageController,
-        MeetingController,
-        CeremonyPolicyController,
         EventStreamController,
         InterruptController,
-        EscalationsController,
     ),
     mcp_handlers=(
         mcp_descriptor(
@@ -61,10 +54,5 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=(
-        "ConsensusVelocityDetector",
-        "DefaultPremortemExecutor",
-        "ProgressiveTierResolver",
-    ),
     depends_on=(),
 )

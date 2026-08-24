@@ -7,20 +7,18 @@ The service:
   ``ASSIGNED`` for a project with no open sprint, it auto-creates a
   sprint seeded with the project's open tasks and starts it (``ACTIVE``);
   on a task entering ``COMPLETED``, it marks the task done in the open
-  sprint's backlog and forwards to the :class:`CeremonyScheduler`, which
-  fires ceremonies and auto-transitions the sprint;
+  sprint's backlog and advances ``ACTIVE -> IN_REVIEW`` once every task
+  in the backlog has been delivered;
 * drives the tail of the lifecycle (``IN_REVIEW -> RETROSPECTIVE ->
-  COMPLETED``) once the backlog is fully delivered, then deactivates the
-  scheduler;
+  COMPLETED``) once the backlog is fully delivered;
 * exposes explicit control (``create_sprint`` builds an empty PLANNING
   shell; ``add_task`` / ``start_sprint`` / ``advance_sprint`` are the
   REST overrides);
 * answers ``is_task_workable`` for the advisory Kanban board gate.
 
-The DB writes (backlog + lifecycle CAS) run inline; the ceremony-scheduler
-notifications, which can fire LLM-backed meetings, run in tracked
-background tasks so the single-consumer observer-dispatch loop never
-blocks on a meeting.
+The DB writes (backlog + lifecycle CAS) run inline; the tail advancement
+runs in tracked background tasks so the single-consumer observer-dispatch
+loop never blocks on a sequence of CAS writes.
 
 Persistence is the sole source of truth: the sprint is read back from
 the repository on every operation, mutated via the immutable domain
@@ -53,8 +51,6 @@ from synthorg.engine.workflow._sprint_ops import (
     story_points_for,
     transition_overrides,
 )
-from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.sprint_backlog import (
     add_task_to_sprint,
@@ -62,8 +58,6 @@ from synthorg.engine.workflow.sprint_backlog import (
 )
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.engine.workflow.sprint_strategy_factory import strategy_for
-from synthorg.engine.workflow.sprint_velocity import VelocityRecord, record_velocity
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -91,19 +85,15 @@ class SprintService:
     Args:
         sprint_repository: Durable sprint store.
         task_repository: Task store, read to seed a sprint backlog.
-        ceremony_scheduler: Runtime ceremony coordinator, or ``None`` when
-            the meeting stack is unwired (advancement still persists; no
-            ceremonies fire).
         config_resolver: Settings resolver for the hot ``sprint_enabled``
             and ``workflow_type`` gates.
         sprint_config: Effective sprint configuration (duration, backlog
-            cap, ceremony policy). Captured at wire time; locked per sprint.
+            cap, velocity window). Captured at wire time; locked per sprint.
         clock: Clock seam for the start/end timestamps.
     """
 
     __slots__ = (
         "_bg_tasks",
-        "_ceremony_scheduler",
         "_clock",
         "_config_resolver",
         "_lock",
@@ -117,14 +107,12 @@ class SprintService:
         *,
         sprint_repository: SprintRepository,
         task_repository: TaskRepository,
-        ceremony_scheduler: CeremonyScheduler | None,
         config_resolver: ConfigResolverProtocol,
         sprint_config: SprintConfig | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sprints = sprint_repository
         self._tasks = task_repository
-        self._ceremony_scheduler = ceremony_scheduler
         self._config_resolver = config_resolver
         self._sprint_config = sprint_config or SprintConfig()
         self._clock = clock or SystemClock()
@@ -132,8 +120,9 @@ class SprintService:
         # concurrent completions in this process cannot both advance the
         # same sprint; transition_if is the cross-process backstop.
         self._lock = asyncio.Lock()
-        # In-flight ceremony-forwarding tasks spawned off the observer so
-        # a meeting never blocks the dispatch loop; drained on shutdown.
+        # In-flight tail-advancement tasks spawned off the observer so a
+        # chain of CAS writes never blocks the dispatch loop; drained on
+        # shutdown.
         self._bg_tasks: set[asyncio.Task[None]] = set()
 
     def _spawn(self, coro: Coroutine[object, object, None]) -> None:
@@ -153,14 +142,14 @@ class SprintService:
                 logger,
                 SPRINT_SERVICE_OBSERVER_FAILED,
                 exc,
-                phase="ceremony_forward",
+                phase="tail_advance",
             )
 
     async def drain(self) -> None:
-        """Await all in-flight background ceremony tasks.
+        """Await all in-flight background tail-advancement tasks.
 
         Used by graceful shutdown and by tests that assert on the state a
-        forwarded ceremony leaves behind.
+        spawned advancement leaves behind.
         """
         while self._bg_tasks:
             await asyncio.gather(*tuple(self._bg_tasks), return_exceptions=True)
@@ -272,7 +261,6 @@ class SprintService:
             if sprint.status is not SprintStatus.PLANNING:
                 msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 raise SprintTransitionConflictError(msg)
-            self._validate_ceremonies(sprint)
             started = sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
             )
@@ -286,19 +274,13 @@ class SprintService:
                 msg = f"Sprint {sprint_id!r} is not in 'planning'"
                 raise SprintTransitionConflictError(msg)
         self._log_transition(started, SprintStatus.PLANNING)
-        # Off-load scheduler activation: the transition is durably committed,
-        # so a ceremony-activation failure must be logged, not surfaced as a
-        # request error that a retry would then hit as a 409.  What a log
-        # cannot answer for is a deterministic refusal, which would never
-        # clear on its own, so those are raised above before the commit.
-        self._spawn(self._activate_scheduler(started))
         return started
 
     async def advance_sprint(self, sprint_id: str) -> Sprint:
         """Advance a sprint one hop along its linear lifecycle.
 
-        The explicit override the REST surface exposes; the ceremony
-        scheduler drives most transitions automatically. Stamps
+        The explicit override the REST surface exposes; delivery of the
+        whole backlog advances the sprint on its own. Stamps
         ``start_date`` on activation and ``end_date`` on completion.
 
         Returns:
@@ -312,8 +294,6 @@ class SprintService:
         async with self._lock:
             sprint = await self._require(sprint_id)
             target = next_status(sprint)
-            if target is SprintStatus.ACTIVE:
-                self._validate_ceremonies(sprint)
             overrides = transition_overrides(sprint, target, now_iso=self._now_iso())
             advanced = sprint.with_transition(target, **overrides)
             ok = await self._sprints.transition_if(
@@ -323,9 +303,6 @@ class SprintService:
                 msg = f"Sprint {sprint_id!r} is not in {sprint.status.value!r}"
                 raise SprintTransitionConflictError(msg)
         self._log_transition(advanced, sprint.status)
-        # See start_sprint: the hop is committed, so scheduler reconciliation
-        # runs off the request path and its failures are logged, not raised.
-        self._spawn(self._reconcile_scheduler(sprint.status, advanced))
         return advanced
 
     # -- Task-engine observer ------------------------------------------
@@ -336,8 +313,8 @@ class SprintService:
         On a task entering ``ASSIGNED`` for an ``agile_kanban`` project
         with no open sprint, auto-create + start one seeded with the
         project's open tasks. On a task entering ``COMPLETED``, mark it
-        done in the open sprint and forward to the ceremony scheduler.
-        Never raises into the engine's observer dispatch.
+        done in the open sprint and open review once the backlog is
+        delivered. Never raises into the engine's observer dispatch.
         """
         phase = "unknown"
         try:
@@ -382,12 +359,6 @@ class SprintService:
                     NotBlankStr(str(backlog_task.id)),
                     story_points_for(backlog_task),
                 )
-            # Same reason as ``start_sprint``: activation is off-loaded,
-            # so a refusal raised there reaches only a log while the
-            # sprint stays active with ceremonies that never fire. This
-            # path creates the sprint too, so refusing here leaves
-            # nothing half-made.
-            self._validate_ceremonies(sprint)
             await self._sprints.save(sprint)
             started = sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
@@ -414,14 +385,13 @@ class SprintService:
                 seeded_tasks=len(sprint.task_ids),
             )
         self._log_transition(started, SprintStatus.PLANNING)
-        self._spawn(self._activate_scheduler(started))
 
     async def _handle_completion(self, task: Task) -> None:
         """Mark *task* done in the open sprint, then advance off-loop.
 
-        The backlog write commits inline (source of truth); the ceremony
-        forward + lifecycle tail run in a background task so the observer
-        dispatch loop never waits on a meeting.
+        The backlog write commits inline (source of truth); the lifecycle
+        tail runs in a background task so the observer dispatch loop never
+        waits on a chain of CAS writes.
         """
         task_id = str(task.id)
         async with self._lock:
@@ -430,7 +400,6 @@ class SprintService:
                 return
             if task_id in sprint.completed_task_ids:
                 return
-            points = sprint.task_points.get(task_id, 0.0)
             updated = complete_task_in_sprint(sprint, NotBlankStr(task_id))
             try:
                 await self._sprints.save(updated)
@@ -451,41 +420,53 @@ class SprintService:
                 )
                 raise
         logger.info(SPRINT_TASK_COMPLETED, sprint_id=updated.id, task_id=task_id)
-        self._spawn(self._forward_and_finalize(updated, task_id, points))
+        self._spawn(self._advance_and_finalize(updated))
 
-    async def _forward_and_finalize(
-        self, sprint: Sprint, task_id: str, points: float
-    ) -> None:
-        """Off-loop tail: forward the completion to the scheduler, then finalize."""
-        transitioned = await self._forward_completion(sprint, task_id, points)
-        await self._finalize_if_delivered(transitioned)
+    async def _advance_and_finalize(self, sprint: Sprint) -> None:
+        """Off-loop tail: open review when delivered, then walk to COMPLETED."""
+        reviewing = await self._open_review_if_delivered(sprint)
+        await self._finalize_if_delivered(reviewing)
 
-    async def _forward_completion(
-        self, sprint: Sprint, task_id: str, points: float
-    ) -> Sprint:
-        """Forward a completion to the scheduler; persist any auto-transition.
+    @staticmethod
+    def _backlog_fully_delivered(sprint: Sprint) -> bool:
+        """Whether every task in *sprint*'s backlog has been completed.
+
+        A sprint whose backlog is empty is not delivered: it has nothing
+        to review, and treating "no tasks" as "all tasks done" would end
+        a sprint the moment it was created. The counts alone decide it
+        because ``Sprint``'s own validator holds ``completed_task_ids`` to
+        a duplicate-free subset of ``task_ids``.
 
         Returns:
-            The sprint after any scheduler-driven auto-transition.
+            ``True`` when the backlog is non-empty and fully delivered.
         """
-        if self._ceremony_scheduler is None:
+        if not sprint.task_ids:
+            return False
+        return len(sprint.completed_task_ids) >= len(sprint.task_ids)
+
+    async def _open_review_if_delivered(self, sprint: Sprint) -> Sprint:
+        """Advance ACTIVE to IN_REVIEW once the whole backlog is delivered.
+
+        Returns:
+            The sprint after the transition, or unchanged when the
+            backlog is not yet fully delivered or the CAS was lost.
+        """
+        if sprint.status is not SprintStatus.ACTIVE:
             return sprint
-        transitioned = await self._ceremony_scheduler.on_task_completed(
-            sprint, task_id, points
-        )
-        if transitioned.status is sprint.status:
+        if not self._backlog_fully_delivered(sprint):
             return sprint
         if not await self._sprints.transition_if(
-            NotBlankStr(sprint.id), sprint.status, transitioned.status
+            NotBlankStr(sprint.id), sprint.status, SprintStatus.IN_REVIEW
         ):
             logger.warning(
                 SPRINT_TRANSITION_LOST,
                 sprint_id=sprint.id,
                 from_status=sprint.status.value,
-                to_status=transitioned.status.value,
-                note="ceremony_auto_transition",
+                to_status=SprintStatus.IN_REVIEW.value,
+                note="backlog_delivered",
             )
             return sprint
+        transitioned = sprint.with_transition(SprintStatus.IN_REVIEW)
         self._log_transition(transitioned, sprint.status)
         return transitioned
 
@@ -493,9 +474,7 @@ class SprintService:
         """Walk IN_REVIEW -> RETROSPECTIVE -> COMPLETED when all tasks are done."""
         if sprint.status is not SprintStatus.IN_REVIEW:
             return
-        if not sprint.task_ids:
-            return
-        if len(sprint.completed_task_ids) < len(sprint.task_ids):
+        if not self._backlog_fully_delivered(sprint):
             return
         async with self._lock:
             if not await self._sprints.transition_if(
@@ -529,67 +508,6 @@ class SprintService:
                 )
                 return
         self._log_transition(completed, SprintStatus.IN_REVIEW)
-        if self._ceremony_scheduler is not None:
-            await self._ceremony_scheduler.deactivate_sprint()
-
-    # -- Scheduler bridge ----------------------------------------------
-
-    def _validate_ceremonies(self, sprint: Sprint) -> None:
-        """Refuse a sprint whose ceremonies could never be registered.
-
-        Runs before the ``ACTIVE`` commit because activation itself is
-        off-loaded: a deterministic refusal raised there would leave the
-        sprint durably active with a scheduler that never came up, and
-        no retry would ever clear it.
-
-        Raises:
-            MeetingCeremonyRegistrationError: When this sprint's
-                ceremonies cannot be registered.
-        """
-        if self._ceremony_scheduler is None:
-            return
-        self._ceremony_scheduler.validate_ceremony_registration(
-            self._sprint_config, sprint.id
-        )
-
-    async def _activate_scheduler(self, sprint: Sprint) -> None:
-        """Activate the ceremony scheduler for a freshly-started sprint."""
-        if self._ceremony_scheduler is None:
-            return
-        policy = self._sprint_config.ceremony_policy
-        strategy = strategy_for(
-            policy.strategy or CeremonyStrategyType.TASK_DRIVEN,
-            clock=self._clock,
-        )
-        history = await self._velocity_history(sprint.project)
-        await self._ceremony_scheduler.activate_sprint(
-            sprint, self._sprint_config, strategy, velocity_history=history
-        )
-
-    async def _reconcile_scheduler(
-        self, previous: SprintStatus, sprint: Sprint
-    ) -> None:
-        """Start / stop the scheduler after an explicit ``advance_sprint``."""
-        if self._ceremony_scheduler is None:
-            return
-        if previous is SprintStatus.PLANNING and sprint.status is SprintStatus.ACTIVE:
-            await self._activate_scheduler(sprint)
-        elif sprint.status is SprintStatus.COMPLETED:
-            await self._ceremony_scheduler.deactivate_sprint()
-
-    async def _velocity_history(
-        self, project: NotBlankStr | None
-    ) -> tuple[VelocityRecord, ...]:
-        """Reconstruct velocity records from completed sprints, oldest-first.
-
-        Returns:
-            The velocity records for the project's completed sprints,
-            oldest-first (the order the rolling-average window expects).
-        """
-        completed = await self._sprints.query(
-            SprintFilterSpec(project=project, status=SprintStatus.COMPLETED)
-        )
-        return tuple(record_velocity(sprint) for sprint in reversed(completed))
 
     # -- Helpers -------------------------------------------------------
 

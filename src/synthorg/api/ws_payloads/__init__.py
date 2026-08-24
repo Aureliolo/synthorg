@@ -11,9 +11,9 @@ Models are split across two submodules to keep each file under the
 800-line guideline:
 
 * :mod:`._lifecycle` -- task, agent, company, budget, message, system,
-  approval, coordination, meeting events.
+  approval, coordination events.
 * :mod:`._domain` -- artifact, project, memory fine-tune, client,
-  request, review, simulation, interrupt/dissent events.
+  request, review, simulation, interrupt events.
 
 Maintainer notes:
 
@@ -43,7 +43,6 @@ from synthorg.api.ws_payloads._domain import (
     WsClientDeactivatedPayload,
     WsClientDeletedPayload,
     WsClientUpdatedPayload,
-    WsDissentPublishedPayload,
     WsInterruptCreatedPayload,
     WsInterruptResumedPayload,
     WsMemoryFineTuneCompletedPayload,
@@ -100,9 +99,6 @@ from synthorg.api.ws_payloads._lifecycle import (
     WsDepartmentDeletedPayload,
     WsDepartmentsReorderedPayload,
     WsDepartmentUpdatedPayload,
-    WsMeetingCompletedPayload,
-    WsMeetingFailedPayload,
-    WsMeetingStartedPayload,
     WsMessageSentPayload,
     WsPersonalityTrimmedPayload,
     WsSystemErrorPayload,
@@ -146,9 +142,6 @@ WsEventPayload = Annotated[
     | WsCoordinationPhaseCompletedPayload
     | WsCoordinationCompletedPayload
     | WsCoordinationFailedPayload
-    | WsMeetingStartedPayload
-    | WsMeetingCompletedPayload
-    | WsMeetingFailedPayload
     | WsArtifactCreatedPayload
     | WsArtifactDeletedPayload
     | WsArtifactContentUploadedPayload
@@ -185,7 +178,6 @@ WsEventPayload = Annotated[
     | WsSimulationFailedPayload
     | WsInterruptCreatedPayload
     | WsInterruptResumedPayload
-    | WsDissentPublishedPayload
     | WsSteeringDirectiveIssuedPayload
     | WsSteeringSupersessionProposedPayload
     | WsSteeringTasksSupersededPayload,
@@ -231,13 +223,9 @@ __all__ = [
     "WsDepartmentDeletedPayload",
     "WsDepartmentUpdatedPayload",
     "WsDepartmentsReorderedPayload",
-    "WsDissentPublishedPayload",
     "WsEventPayload",
     "WsInterruptCreatedPayload",
     "WsInterruptResumedPayload",
-    "WsMeetingCompletedPayload",
-    "WsMeetingFailedPayload",
-    "WsMeetingStartedPayload",
     "WsMemoryFineTuneCompletedPayload",
     "WsMemoryFineTuneFailedPayload",
     "WsMemoryFineTuneProgressPayload",

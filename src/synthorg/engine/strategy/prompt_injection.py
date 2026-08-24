@@ -81,7 +81,7 @@ def build_strategic_prompt_sections(
     output_mode = agent.strategic_output_mode or config.output_mode
 
     # Strategic context section. Prefer the ambient resolved context
-    # (memory / meeting / composite source, refreshed at boot + on
+    # (memory / composite source, refreshed at boot + on
     # settings reload) when one is bound; otherwise read the static
     # config fields. The fields are admin-set but may carry per-tenant
     # content in a multi-tenant deployment, so we wrap each value in a

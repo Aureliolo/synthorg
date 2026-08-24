@@ -1,9 +1,9 @@
 """Coordination feature state slice.
 
 Holds the coordination-metrics store (per-run multi-agent coordination
-signals), the single-agent baseline window those metrics compare against, the
-coordination service, and the ceremony-policy service. All ``None`` until
-wired; the coordination controllers raise 503 on a ``None`` field.
+signals), the single-agent baseline window those metrics compare against,
+and the coordination service. All ``None`` until wired; the coordination
+controllers raise 503 on a ``None`` field.
 """
 
 from typing import TYPE_CHECKING
@@ -14,9 +14,6 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
-)
-from synthorg.coordination.ceremony_policy.service import (
-    CeremonyPolicyService,
 )
 from synthorg.coordination.service import CoordinationService
 
@@ -32,7 +29,6 @@ class CoordinationStateSlice(BaseFeatureStateSlice):
     metrics_store: CoordinationMetricsStore | None = None
     baseline_store: BaselineStore | None = None
     coordination_service: CoordinationService | None = None
-    ceremony_policy_service: CeremonyPolicyService | None = None
 
 
 def coordination_metrics_store_of(
@@ -58,18 +54,4 @@ def coordination_service_of(app_state: AppStateSliceMixin) -> CoordinationServic
     return require_service(
         app_state.slice(CoordinationStateSlice).coordination_service,
         "Coordination Service",
-    )
-
-
-def ceremony_policy_service_of(
-    app_state: AppStateSliceMixin,
-) -> CeremonyPolicyService:
-    """Resolve the ceremony policy service from its slice, or raise 503.
-
-    Returns:
-        The wired ceremony policy service.
-    """
-    return require_service(
-        app_state.slice(CoordinationStateSlice).ceremony_policy_service,
-        "Ceremony Policy Service",
     )

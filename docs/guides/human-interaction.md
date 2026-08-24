@@ -63,7 +63,6 @@ API -> CLI
 | `/api/v1/tasks` | Task management |
 | `POST /api/v1/tasks/{task_id}/coordinate` | Trigger multi-agent coordination |
 | `/api/v1/messages` | Communication log |
-| `/api/v1/meetings` | Schedule, view meeting outputs |
 | `/api/v1/artifacts` | Artifact listing, creation, retrieval, deletion with binary content upload/download |
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
@@ -212,7 +211,6 @@ For the full-page list, navigation hierarchy, URL routing map, and WebSocket cha
 
 - **Agents** (`/agents`): Agent profile cards/table. Click navigates to Agent Detail page (`/agents/{agentName}`)
 - **Messages** (`/messages`): Channel-filtered agent-to-agent communication feed
-- **Meetings** (`/meetings`): Meeting history, transcripts, outcomes. Trigger meeting action
 - **Providers** (`/providers`): LLM provider CRUD, connection test, preset-based creation, model auto-discovery, model pull dialog with SSE streaming progress, model deletion, per-model launch parameter configuration drawer
 - **Settings** (`/settings`): Configuration for UI-visible namespaces (api, memory, budget, security, coordination, observability, backup). Namespace tab bar navigation with single-column layout, basic/advanced mode, GUI/Code edit toggle. Observability sinks sub-page (`/settings/observability/sinks`) for log sink management.
 

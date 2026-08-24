@@ -8,7 +8,6 @@ resolution) import from here without pulling the heavy autonomy-config
 graph.
 """
 
-import copy
 from collections import Counter
 from typing import Self
 
@@ -329,12 +328,6 @@ class Department(BaseModel):
         autonomy_level: Per-department autonomy level override
             (``None`` to inherit company default).
         policies: Department-level operational policies.
-        ceremony_policy: Per-department ceremony scheduling policy
-            override as a raw dict for YAML-level flexibility
-            (templates pass raw dicts before full validation).
-            ``None`` inherits the project-level policy.  Consumers
-            construct ``CeremonyPolicyConfig`` from this dict when
-            needed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -370,26 +363,6 @@ class Department(BaseModel):
         default_factory=DepartmentPolicies,
         description="Department-level operational policies",
     )
-    ceremony_policy: dict[str, object] | None = Field(
-        default=None,
-        description="Per-department ceremony policy override",
-    )
-
-    @model_validator(mode="after")
-    def _deepcopy_ceremony_policy(self) -> Self:
-        """Defensive copy so callers cannot mutate the frozen model.
-
-        Returns:
-            The instance with ``ceremony_policy`` deep-copied so the
-            caller's original dict cannot mutate the frozen model.
-        """
-        if self.ceremony_policy is not None:
-            object.__setattr__(
-                self,
-                "ceremony_policy",
-                copy.deepcopy(self.ceremony_policy),
-            )
-        return self
 
     @model_validator(mode="after")
     def _validate_head_id_requires_head(self) -> Self:

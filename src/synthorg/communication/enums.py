@@ -17,9 +17,7 @@ class MessageType(StrEnum):
     DELEGATION = "delegation"
     STATUS_REPORT = "status_report"
     ESCALATION = "escalation"
-    MEETING_CONTRIBUTION = "meeting_contribution"
     HR_NOTIFICATION = "hr_notification"
-    DISSENT = "dissent"
     CONTEXT_INJECTION = "context_injection"
 
 
@@ -58,48 +56,7 @@ class CommunicationPattern(StrEnum):
 
     EVENT_DRIVEN = "event_driven"
     HIERARCHICAL = "hierarchical"
-    MEETING_BASED = "meeting_based"
     HYBRID = "hybrid"
-
-
-class ConflictType(StrEnum):
-    """Type of inter-agent conflict (see Communication design page).
-
-    Members:
-        ARCHITECTURE: Disagreement on system design choices.
-        IMPLEMENTATION: Disagreement on implementation approach.
-        PRIORITY: Disagreement on task priority or ordering.
-        RESOURCE: Disagreement on resource allocation.
-        PROCESS: Disagreement on process or methodology.
-        OTHER: Any other type of conflict.
-    """
-
-    ARCHITECTURE = "architecture"
-    IMPLEMENTATION = "implementation"
-    PRIORITY = "priority"
-    RESOURCE = "resource"
-    PROCESS = "process"
-    OTHER = "other"
-
-
-class ConflictResolutionStrategy(StrEnum):
-    """Strategy for resolving inter-agent conflicts (see Communication design page).
-
-    Members:
-        AUTHORITY: Resolve by seniority/hierarchy with dissent log.
-        DEBATE: Structured debate with judge evaluation.
-        HUMAN: Escalate to human for resolution.
-        HYBRID: Combination of automated review and escalation.
-        EVIDENCE_WEIGHTED: Deterministic synthesis that scores each
-            position by the strength of its reasoning/evidence and selects
-            the best-supported one (no LLM, no human).
-    """
-
-    AUTHORITY = "authority"
-    DEBATE = "debate"
-    HUMAN = "human"
-    HYBRID = "hybrid"
-    EVIDENCE_WEIGHTED = "evidence_weighted"
 
 
 class QuadraticEnforcementStrategy(StrEnum):

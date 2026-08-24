@@ -253,7 +253,7 @@ def _reset_if_tasks_dead(
     """Flip *running_attr* to ``False`` when all background tasks are dead.
 
     Services with tasks bound to the event loop (``MessageBusBridge``,
-    ``MeetingScheduler``, ``SettingsChangeDispatcher``) leave ``_running=True``
+    ``SettingsChangeDispatcher``) leave ``_running=True``
     after the owning loop closes and cancels their tasks. Without this reset the
     next startup skips ``start()``, leaving the service non-functional.
 
@@ -417,7 +417,7 @@ async def _safe_startup(
         # services ``_running`` is a bool, so both forms agree.
         #
         # Task-liveness guard: for services whose background tasks get bound to
-        # the event loop (bridge, meeting_scheduler), a prior TestClient's event
+        # the event loop (the bus bridge), a prior TestClient's event
         # loop can close and cancel those tasks while ``_running`` still reads
         # ``True``. Detect dead tasks and flip ``_running`` back to ``False`` so
         # this startup actually restarts the service.

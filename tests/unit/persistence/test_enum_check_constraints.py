@@ -25,9 +25,6 @@ import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.budget.forecast_models import ForecastDecision
-from synthorg.communication.conflict_resolution.escalation.models import (
-    EscalationStatus,
-)
 from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
@@ -101,7 +98,6 @@ _ENUM_CHECKED_COLUMNS: Final[tuple[tuple[str, str, type[StrEnum]], ...]] = (
     ("approvals", "status", ApprovalStatus),
     ("code_execution_record", "purpose", CodeExecutionPurpose),
     ("completion_oracle_reports", "verdict", CompletionOracleVerdict),
-    ("conflict_escalations", "status", EscalationStatus),
     ("connections", "auth_method", AuthMethod),
     ("connections", "connection_type", ConnectionType),
     ("connections", "health_status", ConnectionStatus),

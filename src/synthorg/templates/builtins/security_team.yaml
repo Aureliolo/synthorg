@@ -113,10 +113,6 @@ template:
         - column: "review"
           limit: 2
       enforce_wip: true
-    sprint:
-      ceremony_policy:
-        strategy: "calendar"
-        velocity_calculator: "calendar"
 
   workflow_handoffs:
     - from_department: "engineering"

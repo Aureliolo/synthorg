@@ -4,7 +4,6 @@
  * Domain-specific constant clusters live with their owners:
  *   - WebSocket / SSE transport: `@/utils/ws-constants`
  *   - Task status ordering + transitions: `@/utils/tasks`
- *   - Ceremony / velocity display: `@/stores/ceremony-policy-constants`
  *   - Settings-page structure: `@/pages/settings/settings-constants`
  *   - Workflow creation: `@/pages/workflows/workflow-constants`
  */

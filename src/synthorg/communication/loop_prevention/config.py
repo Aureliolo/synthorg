@@ -3,8 +3,7 @@
 
 Lives beside the guards that read it rather than in the communication
 config module: ``rate_limit``, ``circuit_breaker`` and ``guard`` are the
-only consumers, and the top-level config reaches these the same way it
-reaches ``conflict_resolution.config``.
+only consumers.
 """
 
 from typing import Literal, Self

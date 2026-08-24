@@ -64,7 +64,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     - the conversational repositories could not be built (persistence
       absent / not connected).
 
-    Per-agent dispatch reuses ``build_meeting_agent_caller`` so each
+    Per-agent dispatch reuses ``build_agent_caller`` so each
     participant answers on its own configured provider; participant
     identities are resolved against *agent_registry*.
 
@@ -77,8 +77,8 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     Returns:
         The ``GroupChatService`` value when present, ``None`` otherwise.
     """
-    from synthorg.communication.meeting.agent_caller import (  # noqa: PLC0415
-        build_meeting_agent_caller,
+    from synthorg.communication.multi_agent import (  # noqa: PLC0415
+        build_agent_caller,
     )
     from synthorg.meta.chief_of_staff.group_chat import (  # noqa: PLC0415
         GroupChatService,
@@ -99,7 +99,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
         )
         return None
 
-    agent_caller = build_meeting_agent_caller(
+    agent_caller = build_agent_caller(
         agent_registry=agent_registry,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,

@@ -93,27 +93,11 @@
       "gridPos": {"h": 6, "w": 6, "x": 18, "y": 1}
     },
     {
-      "type": "stat",
-      "id": 4,
-      "title": "Escalation queue depth",
-      "description": "Pending escalations by department. Sustained values > 5 indicate a backlog. Filter via $department.",
-      "targets": [
-        {
-          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum(synthorg_escalation_queue_depth{department=~\"$department\"}) by (department)",
-          "legendFormat": "{{department}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 7}
-    },
-    {
       "type": "row",
       "id": 200,
       "title": "Tasks",
       "collapsed": true,
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
       "panels": [
         {
           "type": "timeseries",
@@ -658,22 +642,6 @@
         },
         {
           "type": "timeseries",
-          "id": 802,
-          "title": "Escalation outcomes / sec",
-          "description": "synthorg_escalation_outcomes_total partitioned by outcome (resolved / escalated_to_human / auto_resolved / notify_failed / sweeper_failed). Disjoint from the approval-decisions counter; emitted from the conflict-resolution + escalation modules.",
-          "targets": [
-            {
-              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "sum by (outcome) (rate(synthorg_escalation_outcomes_total[5m]))",
-              "legendFormat": "{{outcome}}",
-              "refId": "A"
-            }
-          ],
-          "fieldConfig": {"defaults": {"unit": "ops"}},
-          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 41}
-        },
-        {
-          "type": "timeseries",
           "id": 803,
           "title": "Blueprint instantiations / sec",
           "description": "synthorg_blueprint_instantiations_total partitioned by outcome (success / validation_error / not_found / unknown_error). Use rate(.._total{outcome=\"success\"}) / rate(.._total) for a success-rate panel.",
@@ -686,7 +654,7 @@
             }
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}},
-          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 41}
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 41}
         },
         {
           "type": "timeseries",
@@ -702,7 +670,7 @@
             }
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}},
-          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 49}
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 41}
         }
       ]
     },
@@ -1008,19 +976,6 @@
         "type": "query",
         "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
         "query": {"query": "label_values(synthorg_workflow_execution_seconds_count, workflow_definition_id)", "refId": "Prometheus-workflow-Variable-Query"},
-        "regex": "",
-        "sort": 1,
-        "multi": true,
-        "includeAll": true,
-        "allValue": ".*",
-        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
-        "hide": 0
-      },
-      {
-        "name": "department",
-        "type": "query",
-        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-        "query": {"query": "label_values(synthorg_escalation_queue_depth, department)", "refId": "Prometheus-department-Variable-Query"},
         "regex": "",
         "sort": 1,
         "multi": true,

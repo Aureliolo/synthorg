@@ -1,11 +1,8 @@
 """Coordination domain MCP handlers.
 
-Wires 5 tools across coordination and ceremony-policy to their service
-facades:
+Wires 2 tools to their service facade:
 
 - :class:`CoordinationService` (``get_task_metrics``, ``metrics_list``)
-- :class:`CeremonyPolicyService` (``ceremony_policy_get``,
-  ``_get_resolved``, ``_get_active_strategy``)
 
 Handlers gracefully degrade to ``capability_gap`` when the
 corresponding service is not attached to ``app_state`` (happens in
@@ -19,7 +16,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.coordination.state import (
     CoordinationStateSlice,
-    ceremony_policy_service_of,
     coordination_service_of,
 )
 from synthorg.core.agent import (
@@ -30,7 +26,6 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._simple_args import (
-    CeremonyPolicyGetResolvedArgs,
     CoordinationGetTaskMetricsArgs,
     CoordinationMetricsListArgs,
 )
@@ -64,10 +59,6 @@ logger = get_logger(__name__)
 _WHY_COORDINATION_NOT_WIRED = (
     "coordination_service is not attached to app_state; wire it in "
     "application bootstrap"
-)
-_WHY_CEREMONY_NOT_WIRED = (
-    "ceremony_policy_service is not attached to app_state; wire it "
-    "in application bootstrap"
 )
 
 
@@ -153,96 +144,9 @@ async def _coordination_metrics_list(
     return ok(data=dump_many(records), pagination=meta)
 
 
-# --- Ceremony policy ------------------------------------------------------
-
-
-async def _ceremony_policy_get(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_ceremony_policy_get`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_ceremony_policy_get"
-    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
-        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
-    try:
-        policy = await ceremony_policy_service_of(app_state).get_policy()
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=policy.model_dump(mode="json"))
-
-
-async def _ceremony_policy_get_resolved(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_ceremony_policy_get_resolved`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_ceremony_policy_get_resolved"
-    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
-        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
-    try:
-        department = typed_args(arguments, CeremonyPolicyGetResolvedArgs).department
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    try:
-        resolved = await ceremony_policy_service_of(app_state).get_resolved_policy(
-            department=department,
-        )
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=resolved.model_dump(mode="json"))
-
-
-async def _ceremony_policy_get_active_strategy(
-    *,
-    app_state: AppState,
-    arguments: dict[str, object],  # noqa: ARG001
-    actor: AgentIdentity | None = None,  # noqa: ARG001
-) -> str:
-    """Handle the ``synthorg_ceremony_policy_get_active_strategy`` MCP tool.
-
-    Returns:
-        JSON-encoded MCP envelope string.
-    """
-    tool = "synthorg_ceremony_policy_get_active_strategy"
-    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
-        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
-    try:
-        active = await ceremony_policy_service_of(app_state).get_active_strategy()
-    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
-        reraise_critical(exc)
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=active.model_dump(mode="json"))
-
-
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
         "synthorg_coordination_metrics_list": _coordination_metrics_list,
-        "synthorg_ceremony_policy_get": _ceremony_policy_get,
-        "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
-        "synthorg_ceremony_policy_get_active_strategy": (
-            _ceremony_policy_get_active_strategy
-        ),
     },
 )

@@ -29,7 +29,6 @@ import {
   Sparkles,
   UserCheck,
   Users,
-  Video,
   Workflow,
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
@@ -74,7 +73,6 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.SUBWORKFLOWS} icon={Layers} label="Subworkflows" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ARTIFACTS} icon={Package} label="Artifacts" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MESSAGES} icon={MessageSquare} label="Messages" collapsed={collapsed} badge={0} />
-          <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROVIDERS} icon={Cpu} label="Providers" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ONTOLOGY} icon={Shapes} label="Ontology" collapsed={collapsed} />
         </SidebarNavGroup>

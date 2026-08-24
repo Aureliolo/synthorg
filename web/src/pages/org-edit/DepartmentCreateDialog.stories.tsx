@@ -10,7 +10,6 @@ const MOCK_DEPARTMENT: Department = {
   head_id: null,
   budget_percent: 0,
   autonomy_level: null,
-  ceremony_policy: null,
   policies: {
     approval_chains: [],
     review_requirements: {

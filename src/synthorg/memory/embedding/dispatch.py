@@ -67,8 +67,8 @@ def _retryable_embedding_errors() -> tuple[type[Exception], ...]:
     driver's own mapping.
 
     Resolved on first use rather than at import. This module sits on the
-    import path of ``synthorg.api.app`` (via the memory embedder, reached
-    from the meeting conflict detector), and importing litellm costs ~2.5s,
+    import path of ``synthorg.api.app`` (via the memory embedder), and
+    importing litellm costs ~2.5s,
     which every app boot, every cold-import test and every xdist worker's
     collection was paying to build a tuple used by one ``isinstance``.
 

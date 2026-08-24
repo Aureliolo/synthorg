@@ -438,16 +438,8 @@ def test_scheduler_no_longer_flagged() -> None:
     assert all("ApprovalTimeoutScheduler" not in f for f in findings)
 
 
-def test_sweeper_no_longer_flagged() -> None:
-    """``EscalationExpirationSweeper`` is the canonical fixed exemplar."""
-    path = (
-        _REPO_ROOT
-        / "src"
-        / "synthorg"
-        / "communication"
-        / "conflict_resolution"
-        / "escalation"
-        / "sweeper.py"
-    )
+def test_backup_scheduler_no_longer_flagged() -> None:
+    """``BackupScheduler`` is the second canonical fixed exemplar."""
+    path = _REPO_ROOT / "src" / "synthorg" / "backup" / "scheduler.py"
     findings = _MODULE._scan_file(path)  # type: ignore[attr-defined]
-    assert all("EscalationExpirationSweeper" not in f for f in findings)
+    assert all("BackupScheduler" not in f for f in findings)

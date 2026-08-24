@@ -637,15 +637,6 @@ class TestBuildDepartmentsTypeValidation:
                 [{"name": "eng", "policies": ["not-a-dict"]}],
             )
 
-    def test_non_dict_ceremony_policy_raises(self) -> None:
-        """Non-dict ceremony_policy raises TemplateRenderError."""
-        from synthorg.templates._render_helpers import build_departments
-
-        with pytest.raises(TemplateRenderError, match="ceremony_policy"):
-            build_departments(
-                [{"name": "eng", "ceremony_policy": "calendar"}],
-            )
-
 
 @pytest.mark.unit
 class TestEscalationPathsPassthrough:

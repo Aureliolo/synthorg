@@ -361,15 +361,6 @@ def record_autonomy_promotion(*, outcome: str) -> None:
     collector.record_autonomy_promotion(outcome=outcome)
 
 
-@_safe_record(METRICS_RECORD_FAILED, "record_escalation_outcome")
-def record_escalation_outcome(*, outcome: str) -> None:
-    """Forward to :meth:`PrometheusCollector.record_escalation_outcome`."""
-    collector = _active()
-    if collector is None:
-        return
-    collector.record_escalation_outcome(outcome=outcome)
-
-
 @_safe_record(METRICS_RECORD_FAILED, "record_push_queue_event")
 def record_push_queue_event(*, outcome: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_push_queue_event`.

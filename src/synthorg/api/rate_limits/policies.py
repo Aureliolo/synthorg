@@ -145,7 +145,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # departments
     "departments.create": (10, 60),
     "departments.delete": (5, 60),
-    "departments.delete_ceremony_policy": (10, 60),
     "departments.health": (30, 60),
     # One grant here costs one assembly per department, so it is bucketed
     # apart from the single-department route rather than sharing a budget
@@ -153,14 +152,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "departments.health_all": (10, 60),
     "departments.reorder_agents": (30, 60),
     "departments.update": (20, 60),
-    "departments.update_ceremony_policy": (20, 60),
     # docs (project docs)
     "docs.search": (30, 60),
-    # escalations
-    "escalations.cancel": (30, 60),
-    "escalations.decide": (30, 60),
-    "escalations.get": (120, 60),
-    "escalations.list": (120, 60),
     # events
     "events.stream": (
         EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
@@ -194,8 +187,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "knowledge.ask": (10, 60),
     # learning
     "learning.curve": (30, 60),
-    # meetings
-    "meetings.create": (20, 60),
     # messages
     "messages.delete": (100, 3600),
     # meta

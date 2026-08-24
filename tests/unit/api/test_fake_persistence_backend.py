@@ -6,9 +6,8 @@ as a single, named test failure instead of a 75-error mypy cascade at
 the typed-boundary call sites where the fake is consumed.
 
 The lazy-stub property suite (``sessions`` / ``refresh_tokens`` /
-``idempotency_keys`` / ``seen_claims`` / ``principle_overrides`` /
-``meeting_cooldown`` / ``ceremony_scheduler_state`` /
-``tracked_containers``) is exercised explicitly so a regression that
+``idempotency_keys`` / ``seen_claims`` / ``principle_overrides``) is
+exercised explicitly so a regression that
 breaks the cached-on-first-access contract or the spec-bound
 ``AsyncMock`` surface surfaces here, not at a random consumer site.
 ``clear()`` is invoked between the two access waves to assert the

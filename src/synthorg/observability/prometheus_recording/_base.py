@@ -38,14 +38,12 @@ class _RecordingMetricsBase:
     _log_sink_events: PromCounter
     _coordination_efficiency: Gauge
     _coordination_overhead_percent: Gauge
-    _escalation_queue_depth: Gauge
     _security_audit_log_fill_ratio: Gauge
     _agent_identity_changes: PromCounter
     _workflow_execution_duration: Histogram
     _client_disconnects: PromCounter
     _approval_decisions: PromCounter
     _autonomy_promotion_decisions: PromCounter
-    _escalation_outcomes: PromCounter
     _push_queue_events: PromCounter
     _blueprint_instantiations: PromCounter
     _settings_mutations: PromCounter
@@ -66,12 +64,12 @@ _PUSH_ALIASED_METRICS: tuple[str, ...] = (
     "task_duration", "task_transitions",
     "tool_invocations", "tool_duration", "audit_chain_appends",
     "audit_chain_depth", "audit_chain_last_append_ts", "otlp_export_batches",
-    "otlp_export_dropped", "log_sink_events", "escalation_queue_depth",
+    "otlp_export_dropped", "log_sink_events",
     "security_audit_log_fill_ratio", "agent_identity_changes",
     "workflow_execution_duration", "provider_errors", "cache_operations",
     "api_error_classification", "client_disconnects", "approval_decisions",
     "autonomy_promotion_decisions",
-    "escalation_outcomes", "push_queue_events", "blueprint_instantiations",
+    "push_queue_events", "blueprint_instantiations",
     "settings_mutations", "mcp_handler_outcomes", "mcp_handler_duration",
     "budget_query_duration", "audit_chain_verifications", "ws_connection_lifetime",
     "ws_revalidation_outcomes", "ws_active_connections", "pg_pool_size",

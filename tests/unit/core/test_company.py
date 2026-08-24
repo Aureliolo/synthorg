@@ -230,52 +230,6 @@ class TestDepartment:
         dept = Department(name="eng", head="cto")
         assert isinstance(dept.policies, DepartmentPolicies)
 
-    def test_ceremony_policy_none_by_default(self) -> None:
-        """ceremony_policy defaults to None (inherits project-level)."""
-        dept = Department(name="eng", head="cto")
-        assert dept.ceremony_policy is None
-
-    def test_ceremony_policy_accepted(self) -> None:
-        """Accept a ceremony policy dict override."""
-        dept = Department(
-            name="marketing",
-            head="head",
-            ceremony_policy={"strategy": "calendar"},
-        )
-        assert dept.ceremony_policy is not None
-        assert dept.ceremony_policy["strategy"] == "calendar"
-
-    def test_ceremony_policy_complex_dict(self) -> None:
-        """Accept ceremony_policy with multiple fields."""
-        dept = Department(
-            name="design",
-            head="head",
-            ceremony_policy={
-                "strategy": "event_driven",
-                "transition_threshold": 0.8,
-            },
-        )
-        assert dept.ceremony_policy is not None
-        assert dept.ceremony_policy["transition_threshold"] == 0.8
-
-    def test_ceremony_policy_is_defensively_copied(self) -> None:
-        """Mutating the source dict must not affect the stored policy."""
-        source: dict[str, object] = {"strategy": "calendar", "cadence": "weekly"}
-        dept = Department(
-            name="marketing",
-            head="head",
-            ceremony_policy=source,
-        )
-
-        # Mutate the original dict
-        source["strategy"] = "task_driven"
-        source["new_key"] = "surprise"
-
-        # Department's copy must be unaffected
-        assert dept.ceremony_policy is not None
-        assert dept.ceremony_policy["strategy"] == "calendar"
-        assert "new_key" not in dept.ceremony_policy
-
 
 # ── CompanyConfig ──────────────────────────────────────────────────
 

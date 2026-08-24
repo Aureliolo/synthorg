@@ -168,14 +168,6 @@ class PushMetrics:
             registry=registry,
         )
 
-        # -- Escalation queue depth (per department) -----------------
-        self.escalation_queue_depth = Gauge(
-            f"{prefix}_escalation_queue_depth",
-            "Pending escalations awaiting decision",
-            ["department"],
-            registry=registry,
-        )
-
         # -- Security audit log fill ratio ---------------------------
         # Bounded gauge in [0.0, 1.0] tracking ``len(_entries) /
         # _max_entries`` on the in-memory ``AuditLog``. A value near
@@ -291,19 +283,6 @@ class PushMetrics:
         self.autonomy_promotion_decisions = PromCounter(
             f"{prefix}_autonomy_promotion_decisions_total",
             "Autonomy-promotion workflow terminal decisions by outcome",
-            ["outcome"],
-            registry=registry,
-        )
-
-        # -- Escalation outcomes counter -----------------------------
-        # Outcome label is bounded via ``VALID_ESCALATION_OUTCOMES``.
-        # Disjoint from ``approval_decisions`` because the two flows
-        # have different terminal vocabularies and live in different
-        # modules; combining them under one Counter with a ``kind``
-        # label would force a synthetic taxonomy on dashboards.
-        self.escalation_outcomes = PromCounter(
-            f"{prefix}_escalation_outcomes_total",
-            "Conflict-resolution escalation terminal outcomes",
             ["outcome"],
             registry=registry,
         )

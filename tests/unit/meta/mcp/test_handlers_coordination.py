@@ -1,10 +1,9 @@
 """Unit tests for coordination-domain MCP handlers.
 
-Covers the five handlers exposed by
+Covers the two handlers exposed by
 ``meta/mcp/handlers/coordination.py``:
 
 - coordination: ``get_task_metrics``, ``metrics_list``
-- ceremony policy: ``get``, ``get_resolved``, ``get_active_strategy``
 
 Each handler gets a focused test per branch (happy path, capability
 gap, argument validation, not-found, service raise) so a future
@@ -23,7 +22,6 @@ import structlog.testing
 from synthorg.api.state import AppState
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
@@ -179,6 +177,26 @@ class TestGetTaskMetrics:
         assert body["status"] == "error"
         assert body["domain_code"] == "invalid_argument"
 
+    async def test_service_raises_maps_to_err(
+        self,
+        actor: AgentIdentity,
+    ) -> None:
+        service = AsyncMock()
+        service.get_task_metrics.side_effect = RuntimeError("store down")
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
+        )
+        handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
+
+        raw = await handler(
+            app_state=state,
+            arguments={"task_id": "t-1"},
+            actor=actor,
+        )
+
+        body = _parse(raw)
+        assert body["status"] == "error"
+
     async def test_no_record_returns_not_found(
         self,
         actor: AgentIdentity,
@@ -293,180 +311,3 @@ class TestMetricsList:
 
         body = _parse(raw)
         assert body["status"] == "error"
-
-
-# ── Ceremony policy ──────────────────────────────────────────────
-
-
-class TestCeremonyPolicyGet:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        policy = SimpleNamespace(
-            model_dump=lambda mode="json": {"strategy": "task_driven"},
-        )
-        service = AsyncMock()
-        service.get_policy.return_value = policy
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == {"strategy": "task_driven"}
-
-
-class TestCeremonyPolicyGetResolved:
-    async def test_happy_path_no_department(
-        self,
-        actor: AgentIdentity,
-    ) -> None:
-        resolved = SimpleNamespace(
-            model_dump=lambda mode="json": {"strategy": {"value": "hybrid"}},
-        )
-        service = AsyncMock()
-        service.get_resolved_policy.return_value = resolved
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        service.get_resolved_policy.assert_awaited_once_with(department=None)
-
-    async def test_happy_path_with_department(
-        self,
-        actor: AgentIdentity,
-    ) -> None:
-        resolved = SimpleNamespace(
-            model_dump=lambda mode="json": {"department": "engineering"},
-        )
-        service = AsyncMock()
-        service.get_resolved_policy.return_value = resolved
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"department": "engineering"},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        # The service receives a stripped ``NotBlankStr`` matching the
-        # input (implicit normalization). Assert the value separately
-        # so a future signature change (kwarg name rename) fails loudly.
-        call = service.get_resolved_policy.await_args
-        assert str(call.kwargs["department"]) == "engineering"
-
-    @pytest.mark.parametrize(
-        "bad_value",
-        ["", "   "],
-        ids=["empty_string", "whitespace"],
-    )
-    async def test_rejects_blank_department(
-        self,
-        actor: AgentIdentity,
-        bad_value: object,
-    ) -> None:
-        service = AsyncMock()
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"department": bad_value},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "error"
-        assert body["domain_code"] == "invalid_argument"
-        service.get_resolved_policy.assert_not_awaited()
-
-    async def test_null_department_treated_as_no_filter(
-        self,
-        actor: AgentIdentity,
-    ) -> None:
-        resolved = SimpleNamespace(model_dump=lambda mode="json": {"strategy": "x"})
-        service = AsyncMock()
-        service.get_resolved_policy.return_value = resolved
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"department": None},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        service.get_resolved_policy.assert_awaited_once_with(department=None)
-
-    async def test_service_raises_not_found_propagates(
-        self,
-        actor: AgentIdentity,
-    ) -> None:
-        service = AsyncMock()
-        service.get_resolved_policy.side_effect = NotFoundError(
-            "department 'eng' not found",
-        )
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={"department": "eng"},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "error"
-
-
-class TestCeremonyPolicyGetActiveStrategy:
-    async def test_happy_path(self, actor: AgentIdentity) -> None:
-        active = SimpleNamespace(
-            model_dump=lambda mode="json": {
-                "strategy": None,
-                "sprint_id": None,
-            },
-        )
-        service = AsyncMock()
-        service.get_active_strategy.return_value = active
-        state = make_app_state(
-            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
-        )
-        handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_active_strategy"]
-
-        raw = await handler(
-            app_state=state,
-            arguments={},
-            actor=actor,
-        )
-
-        body = _parse(raw)
-        assert body["status"] == "ok"
-        assert body["data"] == {"strategy": None, "sprint_id": None}

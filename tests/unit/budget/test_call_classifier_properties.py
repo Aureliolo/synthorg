@@ -21,7 +21,7 @@ def _ctx_strategy() -> st.SearchStrategy[ClassificationContext]:
         task_id=st.from_regex(r"task-[a-z0-9]{1,8}", fullmatch=True),
         is_delegation=st.booleans(),
         is_review=st.booleans(),
-        is_meeting=st.booleans(),
+        is_group_discussion=st.booleans(),
         is_planning_phase=st.booleans(),
         is_system_prompt=st.booleans(),
         is_embedding_operation=st.booleans(),
@@ -52,7 +52,7 @@ class TestCallClassifierProperties:
             is_embedding_operation=st.just(True),
             is_delegation=st.booleans(),
             is_review=st.booleans(),
-            is_meeting=st.booleans(),
+            is_group_discussion=st.booleans(),
             is_planning_phase=st.booleans(),
             is_system_prompt=st.booleans(),
             is_quality_judge=st.booleans(),
@@ -75,7 +75,7 @@ class TestCallClassifierProperties:
             is_embedding_operation=st.just(False),
             is_delegation=st.just(False),
             is_review=st.just(False),
-            is_meeting=st.just(False),
+            is_group_discussion=st.just(False),
             is_planning_phase=st.just(False),
             is_system_prompt=st.just(False),
             is_quality_judge=st.just(False),
@@ -96,13 +96,13 @@ class TestCallClassifierProperties:
             is_embedding_operation=st.just(False),
             is_delegation=st.booleans(),
             is_review=st.booleans(),
-            is_meeting=st.booleans(),
+            is_group_discussion=st.booleans(),
             is_planning_phase=st.booleans(),
             is_system_prompt=st.booleans(),
             is_quality_judge=st.booleans(),
             tool_calls_made=st.just(()),
             agent_role=st.none(),
-        ).filter(lambda c: c.is_delegation or c.is_review or c.is_meeting)
+        ).filter(lambda c: c.is_delegation or c.is_review or c.is_group_discussion)
     )
     def test_coordination_wins_over_system(self, ctx: ClassificationContext) -> None:
         """COORDINATION wins over SYSTEM when any coordination flag is True."""

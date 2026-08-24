@@ -30,7 +30,6 @@ export interface MockDepartment {
   budget_percent: number
   teams: unknown[]
   autonomy_level: 'supervised' | 'autonomous' | 'manual'
-  ceremony_policy: null
   reporting_lines: unknown[]
   policies: MockDepartmentPolicies
 }
@@ -72,7 +71,6 @@ export function makeDepartment(overrides: Partial<MockDepartment> = {}): MockDep
     budget_percent: 0,
     teams: [],
     autonomy_level: 'supervised',
-    ceremony_policy: null,
     reporting_lines: [],
     policies: {
       approval_chains: [],

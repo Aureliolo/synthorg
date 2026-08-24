@@ -1,21 +1,16 @@
 """Communication configuration models (see Communication design page)."""
 
-from collections import Counter
 from typing import ClassVar, Final, Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.communication.conflict_resolution.config import (
-    ConflictResolutionConfig,
-)
 from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
     QuadraticEnforcementStrategy,
 )
 from synthorg.communication.loop_prevention.config import LoopPreventionConfig
-from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,
@@ -25,7 +20,6 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
-    parse_bool,
 )
 
 _VALID_NATS_URL_SCHEMES: frozenset[str] = frozenset({"nats", "tls", "nats+tls"})
@@ -371,73 +365,6 @@ class MessageBusConfig(BaseModel):
         return self
 
 
-class MeetingsConfig(BaseModel):
-    """Meetings subsystem configuration.
-
-    Maps to the Communication design page ``meetings``.
-
-    Attributes:
-        enabled: Whether the meetings subsystem is active.
-        types: Configured meeting types (unique by name).
-        cooldown_write_timeout_seconds: Deadline for one durable cooldown
-            write or delete. Both run while the scheduler holds its
-            cooldown lock, which every trigger and every sprint teardown
-            queues behind, so an unbounded store stalls the whole
-            subsystem rather than one meeting.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
-        MirrorField(
-            field="enabled",
-            namespace=SettingNamespace.COMMUNICATION,
-            key="meetings_enabled",
-            parse=parse_bool,
-            only_if_env_set=True,
-        ),
-    )
-
-    enabled: bool = Field(default=True, description="Meetings subsystem active")
-    types: tuple[MeetingTypeConfig, ...] = Field(
-        default=(),
-        description="Configured meeting types",
-    )
-    cooldown_write_timeout_seconds: float = Field(
-        default=10.0,
-        gt=0.0,
-        le=300.0,
-        description="Deadline for one durable cooldown write or delete",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_mirrors(cls, data: object) -> object:
-        """Overlay setting-namespace mirrors onto the raw input.
-
-        Returns:
-            The input data with mirrored settings applied.
-        """
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
-
-    @model_validator(mode="after")
-    def _validate_unique_meeting_names(self) -> Self:
-        """Ensure meeting type names are unique.
-
-        Returns:
-            The validated meetings config.
-
-        Raises:
-            ValueError: If two meeting types share a name.
-        """
-        names = [mt.name for mt in self.types]
-        if len(names) != len(set(names)):
-            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
-            msg = f"Duplicate meeting type names: {dupes}"
-            raise ValueError(msg)
-        return self
-
-
 class HierarchyConfig(BaseModel):
     """Hierarchy enforcement configuration.
 
@@ -468,7 +395,6 @@ class CommunicationConfig(BaseModel):
     Attributes:
         default_pattern: High-level communication pattern.
         message_bus: Message bus configuration.
-        meetings: Meetings subsystem configuration.
         hierarchy: Hierarchy enforcement settings.
         loop_prevention: Loop prevention safeguards.
     """
@@ -483,10 +409,6 @@ class CommunicationConfig(BaseModel):
         default_factory=MessageBusConfig,
         description="Message bus configuration",
     )
-    meetings: MeetingsConfig = Field(
-        default_factory=MeetingsConfig,
-        description="Meetings subsystem configuration",
-    )
     hierarchy: HierarchyConfig = Field(
         default_factory=HierarchyConfig,
         description="Hierarchy enforcement settings",
@@ -494,8 +416,4 @@ class CommunicationConfig(BaseModel):
     loop_prevention: LoopPreventionConfig = Field(
         default_factory=LoopPreventionConfig,
         description="Loop prevention safeguards",
-    )
-    conflict_resolution: ConflictResolutionConfig = Field(
-        default_factory=ConflictResolutionConfig,
-        description="Conflict resolution configuration (see Communication design page)",
     )

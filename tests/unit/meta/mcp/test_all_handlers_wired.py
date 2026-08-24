@@ -49,7 +49,6 @@ DESTRUCTIVE_TOOLS: tuple[str, ...] = (
     "synthorg_subworkflows_delete",
     "synthorg_workflow_executions_cancel",
     "synthorg_messages_delete",
-    "synthorg_meetings_delete",
     "synthorg_connections_delete",
     "synthorg_webhooks_delete",
     "synthorg_memory_cancel_fine_tune",
@@ -197,19 +196,19 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has exactly the documented 243-tool surface.
+        """Registry has exactly the documented 235-tool surface.
 
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the
         MCP tool surface is intentionally grown or shrunk (current
-        composition: 214 baseline + 8 cockpit + 5 charter +
+        composition: 206 baseline + 8 cockpit + 5 charter +
         1 query_feature_map + 1 demo + 8 project-brain +
         3 security risk-override + 1 knowledge ask +
         1 connections field_metadata + 1 connections
         request_secret_capture).
         """
         registry = build_full_registry()
-        assert registry.tool_count == 243
+        assert registry.tool_count == 235
 
 
 class TestNoPlaceholderInProduction:
@@ -401,7 +400,6 @@ _ID_KEY_BY_PREFIX: tuple[tuple[str, str], ...] = (
     ("synthorg_subworkflows_", "subworkflow_id"),
     ("synthorg_workflow_executions_", "execution_id"),
     ("synthorg_messages_", "message_id"),
-    ("synthorg_meetings_", "meeting_id"),
     ("synthorg_connections_", "connection_id"),
     ("synthorg_webhooks_", "webhook_id"),
     ("synthorg_memory_", "checkpoint_id"),

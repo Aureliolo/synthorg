@@ -19,8 +19,7 @@ pytestmark = pytest.mark.unit
 
 async def test_started_runtime_services_are_stopped() -> None:
     event_stream_hub = mock_of[_AsyncStartStop]()
-    escalation_notify_subscriber = mock_of[_AsyncStartStop]()
-    escalation_sweeper = mock_of[_AsyncStartStop]()
+    oauth_token_manager = mock_of[_AsyncStartStop]()
     provider_health_prober = mock_of[_AsyncStartStop]()
 
     await _cleanup_on_failure(
@@ -30,17 +29,14 @@ async def test_started_runtime_services_are_stopped() -> None:
         started_bus=False,
         event_stream_hub=event_stream_hub,
         started_event_stream_hub=True,
-        escalation_notify_subscriber=escalation_notify_subscriber,
-        started_escalation_notify_subscriber=True,
-        escalation_sweeper=escalation_sweeper,
-        started_escalation_sweeper=True,
+        oauth_token_manager=oauth_token_manager,
+        started_oauth_token_manager=True,
         provider_health_prober=provider_health_prober,
         started_provider_health_prober=True,
     )
 
     event_stream_hub.stop.assert_awaited_once()
-    escalation_notify_subscriber.stop.assert_awaited_once()
-    escalation_sweeper.stop.assert_awaited_once()
+    oauth_token_manager.stop.assert_awaited_once()
     provider_health_prober.stop.assert_awaited_once()
 
 

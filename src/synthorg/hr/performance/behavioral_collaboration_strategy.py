@@ -24,7 +24,7 @@ _DEFAULT_WEIGHTS: dict[str, float] = {
     "delegation_success": 0.25,
     "delegation_response_latency": 0.15,
     "conflict_constructiveness": 0.15,
-    "meeting_contribution": 0.15,
+    "discussion_contribution": 0.15,
     "loop_prevention": 0.15,
     "handoff_completeness": 0.15,
 }
@@ -52,7 +52,7 @@ class BehavioralTelemetryStrategy:
         - delegation_success: Average delegation success rate.
         - delegation_response_latency: Average response time (inverted).
         - conflict_constructiveness: Average constructiveness score.
-        - meeting_contribution: Average meeting contribution score.
+        - discussion_contribution: Average group-discussion contribution score.
         - loop_prevention: Inverse of loop trigger rate.
         - handoff_completeness: Average handoff completeness.
 
@@ -114,7 +114,7 @@ class BehavioralTelemetryStrategy:
                 records,
             ),
             "conflict_constructiveness": self._avg_conflict(records),
-            "meeting_contribution": self._avg_meeting(records),
+            "discussion_contribution": self._avg_discussion(records),
             "loop_prevention": self._loop_prevention_score(records),
             "handoff_completeness": self._avg_handoff(records),
         }
@@ -213,18 +213,18 @@ class BehavioralTelemetryStrategy:
         return (sum(vals) / len(vals)) * _MAX_SCORE
 
     @staticmethod
-    def _avg_meeting(
+    def _avg_discussion(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average meeting contribution as 0-10 score.
+        """Average group-discussion contribution as 0-10 score.
 
         Returns:
             The resulting ``float``, or ``None`` when unavailable.
         """
         vals = [
-            r.meeting_contribution
+            r.discussion_contribution
             for r in records
-            if r.meeting_contribution is not None
+            if r.discussion_contribution is not None
         ]
         if not vals:
             return None

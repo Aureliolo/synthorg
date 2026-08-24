@@ -91,7 +91,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Resolve, view, and edit the <!--RS:settings_namespaces-->36<!--/RS--> settings namespaces at runtime.
+    Resolve, view, and edit the <!--RS:settings_namespaces-->35<!--/RS--> settings namespaces at runtime.
 
     [:octicons-arrow-right-24: Settings Reference](settings-reference.md)
 
@@ -158,14 +158,6 @@ Practical guides for configuring, operating, and extending your synthetic organi
     Federate agents across organisations with the agent-to-agent protocol.
 
     [:octicons-arrow-right-24: A2A Federation](a2a-federation.md)
-
--   :material-calendar-clock:{ .lg .middle } **Ceremony Scheduling Tuning**
-
-    ---
-
-    Tune sprint ceremonies, cadences, and scheduling strategies.
-
-    [:octicons-arrow-right-24: Ceremony Scheduling](ceremony-scheduling-tuning.md)
 
 -   :material-chart-pie:{ .lg .middle } **Cost Attribution**
 

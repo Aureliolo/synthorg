@@ -2,14 +2,13 @@
 """Cached snapshot of the resolved strategic context for the prompt path.
 
 The prompt-build read path (``build_strategic_prompt_sections``) is
-synchronous, but resolving strategic context can be async (memory reads,
-meeting orchestrator reads via :func:`build_context`). This provider
-bridges the gap: it resolves a :class:`StrategicContext` snapshot via an
-injected async resolver, caches it, and serves a synchronous read. The
-boot wiring refreshes the snapshot after the engine is built and on a
-strategy settings hot-reload, so the prompt path stays await-free while
-still reflecting the configured ``ContextSource`` (config / memory /
-meeting / composite).
+synchronous, but resolving strategic context can be async (memory reads
+via :func:`build_context`). This provider bridges the gap: it resolves a
+:class:`StrategicContext` snapshot via an injected async resolver, caches
+it, and serves a synchronous read. The boot wiring refreshes the snapshot
+after the engine is built and on a strategy settings hot-reload, so the
+prompt path stays await-free while still reflecting the configured
+``ContextSource`` (config / memory / composite).
 
 Strategic context is slow-changing, organisation-wide state, so a cached
 snapshot refreshed at boot / reload is the right granularity -- the same
@@ -37,7 +36,7 @@ class CachedStrategicContextProvider:
     Args:
         resolver: Async callable that resolves a fresh snapshot. Built at
             the wiring layer from :func:`build_context` bound to the live
-            config, memory backend, and meeting orchestrator.
+            config and memory backend.
     """
 
     def __init__(self, *, resolver: StrategicContextResolver) -> None:

@@ -1,13 +1,12 @@
 """Communication-domain MCP args.
 
-Covers messages, meetings, connections, webhooks, tunnel.
+Covers messages, connections, webhooks, tunnel.
 """
 
 from typing import Self
 
 from pydantic import Field, model_validator
 
-from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
 from synthorg.integrations.connections.models import ConnectionType
@@ -46,45 +45,6 @@ class MessagesDeleteArgs(AdminGuardrailFields):
     """Args for ``messages.delete`` (destructive)."""
 
     message_id: NotBlankStr = Field(description="Message UUID")
-
-
-class MeetingsListArgs(PaginationFields):
-    """Args for ``meetings.list``."""
-
-    status: MeetingStatus | None = Field(default=None, description="Filter by status")
-    meeting_type: NotBlankStr | None = Field(
-        default=None,
-        description="Filter by meeting type",
-    )
-
-
-class MeetingsGetArgs(_ArgsBase):
-    """Args for ``meetings.get``."""
-
-    meeting_id: NotBlankStr = Field(description="Meeting UUID")
-
-
-class MeetingsCreateArgs(_ArgsBase):
-    """Args for ``meetings.create``."""
-
-    title: NotBlankStr = Field(description="Meeting title")
-    participants: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Participant names",
-    )
-
-
-class MeetingsUpdateArgs(_ArgsBase):
-    """Args for ``meetings.update``."""
-
-    meeting_id: NotBlankStr = Field(description="Meeting UUID")
-    updates: dict[str, object] = Field(description="Fields to update")
-
-
-class MeetingsDeleteArgs(AdminGuardrailFields):
-    """Args for ``meetings.delete`` (destructive)."""
-
-    meeting_id: NotBlankStr = Field(description="Meeting UUID")
 
 
 class ConnectionsListArgs(PaginationFields):

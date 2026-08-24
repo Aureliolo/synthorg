@@ -549,27 +549,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
-        key="department_policy_cas_retry_attempts",
-        type=SettingType.INTEGER,
-        default="3",
-        description=(
-            "Maximum compare-and-swap retry attempts for the"
-            " dept_ceremony_policies JSON blob.  A losing CAS writer"
-            " re-reads, mutates, and re-attempts up to this many"
-            " times before surfacing a VersionConflictError to the"
-            " caller (HTTP 409). Resolved per mutation so a runtime"
-            " change applies to the next request."
-        ),
-        group="Concurrency",
-        level=SettingLevel.ADVANCED,
-        min_value=1,
-        max_value=10,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
         key="company_departments_cas_retry_attempts",
         type=SettingType.INTEGER,
         default="3",
@@ -586,109 +565,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10,
-    )
-)
-
-# ── Ceremony Policy ──────────────────────────────────────────
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="ceremony_strategy",
-        type=SettingType.ENUM,
-        default="task_driven",
-        description="Ceremony scheduling strategy for sprint ceremonies",
-        group="Ceremony Policy",
-        # Must be kept in sync with CeremonyStrategyType members;
-        # test_ceremony_settings.py verifies this.
-        enum_values=(
-            "task_driven",
-            "calendar",
-            "hybrid",
-            "event_driven",
-            "budget_driven",
-            "throughput_adaptive",
-            "external_trigger",
-            "milestone_driven",
-        ),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="ceremony_strategy_config",
-        type=SettingType.JSON,
-        default="{}",
-        description="Strategy-specific configuration as JSON",
-        group="Ceremony Policy",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="ceremony_velocity_calculator",
-        type=SettingType.ENUM,
-        default="task_driven",
-        description="Velocity calculator for sprint metrics",
-        group="Ceremony Policy",
-        # Must be kept in sync with VelocityCalcType members;
-        # test_ceremony_settings.py verifies this.
-        enum_values=(
-            "task_driven",
-            "calendar",
-            "multi_dimensional",
-            "budget",
-            "points_per_sprint",
-        ),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="ceremony_auto_transition",
-        type=SettingType.BOOLEAN,
-        default="true",
-        description="Automatically transition sprints when strategy conditions are met",
-        group="Ceremony Policy",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="ceremony_transition_threshold",
-        type=SettingType.FLOAT,
-        default="1.0",
-        description=(
-            "Fraction of tasks/time/budget that must be reached "
-            "before auto-transition fires (0.01 to 1.0)"
-        ),
-        group="Ceremony Policy",
-        min_value=0.01,
-        max_value=1.0,
-    )
-)
-
-# The next two settings are aggregate JSON blobs managed entirely through the
-# settings service (keyed by department or ceremony name).
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COORDINATION,
-        key="dept_ceremony_policies",
-        type=SettingType.JSON,
-        default="{}",
-        description=(
-            "Per-department ceremony policy overrides as JSON. "
-            "Keys are department names, values are partial "
-            "CeremonyPolicyConfig objects. Null values inherit "
-            "the project-level policy."
-        ),
-        group="Ceremony Policy",
-        level=SettingLevel.ADVANCED,
     )
 )
 

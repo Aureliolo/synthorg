@@ -22,7 +22,6 @@ from synthorg.engine.prompt_safety import (
     TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
-    TAG_CONFLICT_POSITION,
     TAG_CRITERIA_JSON,
     TAG_DECIDER_NAME,
     TAG_DECISION_OPTION,
@@ -91,7 +90,6 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_LIVING_DOC,
     TAG_BRAIN_STATE,
     TAG_KNOWLEDGE,
-    TAG_CONFLICT_POSITION,
     TAG_DECIDER_NAME,
     TAG_DECISION_OPTION,
 )

@@ -343,7 +343,7 @@ class TestCollaborationMetricRepository:
             delegation_success=True,
             delegation_response_seconds=5.2,
             conflict_constructiveness=0.8,
-            meeting_contribution=0.9,
+            discussion_contribution=0.9,
             loop_triggered=False,
             handoff_completeness=0.95,
         )
@@ -372,7 +372,7 @@ class TestCollaborationMetricRepository:
             delegation_success=False,
             delegation_response_seconds=10.0,
             conflict_constructiveness=0.5,
-            meeting_contribution=0.6,
+            discussion_contribution=0.6,
             loop_triggered=True,
             handoff_completeness=0.7,
         )
@@ -397,7 +397,7 @@ class TestCollaborationMetricRepository:
             delegation_success=None,
             delegation_response_seconds=None,
             conflict_constructiveness=None,
-            meeting_contribution=None,
+            discussion_contribution=None,
             loop_triggered=False,
             handoff_completeness=None,
         )
@@ -425,7 +425,7 @@ class TestCollaborationMetricRepository:
             delegation_success=True,
             delegation_response_seconds=5.0,
             conflict_constructiveness=0.8,
-            meeting_contribution=0.9,
+            discussion_contribution=0.9,
             loop_triggered=False,
             handoff_completeness=0.95,
         )

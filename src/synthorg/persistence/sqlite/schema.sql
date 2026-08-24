@@ -268,7 +268,7 @@ CREATE TABLE collaboration_metrics (
     delegation_success INTEGER,
     delegation_response_seconds REAL,
     conflict_constructiveness REAL,
-    meeting_contribution REAL,
+    discussion_contribution REAL,
     loop_triggered INTEGER NOT NULL DEFAULT 0,
     handoff_completeness REAL
 );
@@ -1943,83 +1943,6 @@ ON cost_forecasts (brief_hash);
 CREATE INDEX idx_cost_forecasts_decision
 ON cost_forecasts (decision);
 
--- Conflict escalations: human escalation approval queue.
--- Persists one row per conflict awaiting a human decision so the
--- queue survives process restarts and auditors can replay decisions.
-CREATE TABLE conflict_escalations (
-    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    conflict_id TEXT NOT NULL CHECK (LENGTH(TRIM(conflict_id)) > 0),
-    conflict_json TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'decided', 'expired', 'cancelled')
-    ),
-    created_at TEXT NOT NULL CHECK (
-        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
-    ),
-    expires_at TEXT CHECK (
-        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
-    ),
-    decided_at TEXT CHECK (
-        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
-    ),
-    decided_by TEXT,
-    decision_json TEXT,
-    -- Payload columns must hold valid JSON objects (not scalars,
-    -- arrays, or nulls) so a corrupt write (e.g., from an
-    -- out-of-band migration or a faulty ETL) cannot persist shapes
-    -- the repository cannot deserialize.  ``json_valid`` and
-    -- ``json_type`` are SQLite core functions (3.38+).
-    CHECK (JSON_VALID(conflict_json) AND JSON_TYPE(conflict_json) = 'object'),
-    CHECK (
-        decision_json IS NULL
-        OR (JSON_VALID(decision_json) AND JSON_TYPE(decision_json) = 'object')
-    ),
-    -- DECIDED rows carry the full decision triple; decided_by must
-    -- be a nonblank actor identifier so audit consumers can always
-    -- attribute the transition.
-    CHECK (
-        (status != 'decided')
-        OR (
-            decision_json IS NOT NULL
-            AND decided_at IS NOT NULL
-            AND decided_by IS NOT NULL
-            AND LENGTH(TRIM(decided_by)) > 0
-        )
-    ),
-    -- PENDING rows carry no decision triple at all (decided_by must
-    -- also be NULL so audit consumers can distinguish pending from
-    -- terminal states by column nullability alone).
-    CHECK (
-        (status != 'pending')
-        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
-    ),
-    -- EXPIRED / CANCELLED rows drop any decision payload but MUST
-    -- carry both audit-trail columns (transition timestamp +
-    -- attributable nonblank actor "system:..." or "human:...") so
-    -- auditors can always answer "who expired/cancelled this, and when".
-    CHECK (
-        (status NOT IN ('expired', 'cancelled'))
-        OR (
-            decision_json IS NULL
-            AND decided_at IS NOT NULL
-            AND decided_by IS NOT NULL
-            AND LENGTH(TRIM(decided_by)) > 0
-        )
-    )
-);
-CREATE INDEX idx_conflict_escalations_status_created ON
-conflict_escalations (status, created_at);
-CREATE INDEX idx_conflict_escalations_conflict_id ON
-conflict_escalations (conflict_id);
-CREATE INDEX idx_conflict_escalations_status_expires_at ON
-conflict_escalations (status, expires_at);
--- Enforce "at most one PENDING escalation per conflict" so two
--- concurrent resolvers cannot enqueue competing queue rows for the
--- same conflict.
-CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict ON
-conflict_escalations (conflict_id)
-WHERE status = 'pending';
-
 -- Org memory: MVCC operation log + materialized snapshot.
 CREATE TABLE org_facts_operation_log (
     operation_id TEXT PRIMARY KEY,
@@ -2247,38 +2170,9 @@ CREATE TABLE principle_overrides (
     updated_at TEXT NOT NULL CHECK (LENGTH(TRIM(updated_at)) > 0)
 );
 
--- Restart-safety tables: persist scheduler / cooldown / sandbox
--- state across process restarts. Backed by single-row-per-key
--- repositories; see the matching ``*_protocol.py`` files for the full
--- semantics.
-
--- Ceremony scheduler per-sprint snapshot. CeremonyScheduler owns four
--- in-memory state attributes (completion_counters, fired_once_triggers,
--- total_completions, velocity_history) describing the ceremony-trigger
--- position of one active sprint. Persisted as one row keyed by
--- sprint_id with JSON-encoded blob columns for the dict / set / tuple
--- fields, written atomically under the scheduler's lock after every
--- mutation and read back at activate_sprint() time.
-CREATE TABLE ceremony_scheduler_state (
-    sprint_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(sprint_id)) > 0),
-    completion_counters_json TEXT NOT NULL,
-    fired_once_triggers_json TEXT NOT NULL,
-    total_completions INTEGER NOT NULL CHECK (total_completions >= 0),
-    velocity_history_json TEXT NOT NULL,
-    updated_at TEXT NOT NULL CHECK (LENGTH(TRIM(updated_at)) > 0)
-);
-
--- MeetingScheduler per-meeting-type last-triggered timestamp for the
--- recurring-meeting cooldown. Hydrated at scheduler start via
--- load_all(); upserted after every successful trigger. Wall-clock
--- timestamp (not monotonic) so the value remains meaningful across
--- process boundaries. One row per meeting type (cardinality matches
--- the static meeting catalogue), so no secondary index beyond the PK.
-CREATE TABLE meeting_cooldown (
-    meeting_type_name TEXT NOT NULL PRIMARY KEY
-    CHECK (LENGTH(TRIM(meeting_type_name)) > 0),
-    last_triggered_at TEXT NOT NULL CHECK (LENGTH(TRIM(last_triggered_at)) > 0)
-);
+-- Restart-safety tables: persist sandbox state across process
+-- restarts. Backed by single-row-per-key repositories; see the
+-- matching ``*_protocol.py`` files for the full semantics.
 
 -- Docker sandbox container tracking. The sandbox lifecycle persists
 -- one row per managed container (sandbox + optional paired sidecar)

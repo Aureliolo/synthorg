@@ -17,7 +17,7 @@ The design specification has been split into focused documentation pages for bet
 | [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config, and lifecycle |
 | [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
-| [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, conflict resolution, meeting protocols, scheduler, MCP facades, failure guardrails |
+| [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, MCP facades, failure guardrails |
 | [Communication Event Stream](design/communication-events.md) | Observability + HITL | AG-UI projection, SSE endpoint, interrupt/resume, EvidencePackage, async delegation, citations |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralised state coordination |
@@ -65,7 +65,6 @@ The design specification has been split into focused documentation pages for bet
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
 | [UX Design Guidelines](design/ux-guidelines.md) | Colour System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for the web dashboard |
 | [UX Research](design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
-| [Ceremony Scheduling](design/ceremony-scheduling.md) | Strategies, Protocols, Velocity | Pluggable ceremony scheduling, 8 strategies, velocity calculation |
 | [Client Simulation](design/client-simulation.md) | Client Types, Intake, Review Pipeline, Simulation | Synthetic client framework for workload generation and evaluation |
 | [Strategy & Trendslop Mitigation](design/strategy.md) | Lenses, Principles, Confidence, Impact | Anti-trendslop mitigation for strategic agents |
 | [Output-Style Policy](design/output-style-policy.md) | House writing style, hard guardrail, enforcement modes, sanctioned exemptions | Configurable house style injected into agent prompts, plus a deterministic hard guardrail that rejects or rewrites agent output violating a hard rule (the no-em-dash ban) at every output boundary |

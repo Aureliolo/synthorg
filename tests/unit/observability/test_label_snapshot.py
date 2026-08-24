@@ -29,7 +29,6 @@ from synthorg.observability.prometheus_labels import (
     register_mcp_tool_names,
     update_label_snapshot,
     validate_agent_id,
-    validate_department,
     validate_workflow_definition_id,
 )
 from synthorg.observability.prometheus_tool_names import (
@@ -130,17 +129,6 @@ def test_update_label_snapshot_replaces_atomically() -> None:
             "wf-unknown",
             "wf-onboarding",
             id="workflow_definition_id",
-        ),
-        pytest.param(
-            validate_department,
-            _LabelSnapshot(
-                departments=frozenset({"engineering"}),
-                departments_seeded=True,
-            ),
-            "department",
-            "ops",
-            "engineering",
-            id="department",
         ),
     ],
 )

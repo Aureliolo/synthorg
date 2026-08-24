@@ -58,13 +58,6 @@ _SUBSYSTEM_TIMEOUT_ENTRIES: tuple[tuple[str, str, SettingType, str, str], ...] =
     ("client", "human_response_timeout_seconds", SettingType.FLOAT, "60.0", "120.0"),
     ("tools", "web_request_timeout_seconds", SettingType.FLOAT, "30.0", "45.0"),
     ("tools", "git_command_timeout_seconds", SettingType.FLOAT, "60.0", "120.0"),
-    (
-        "communication",
-        "escalation_subscriber_reconnect_delay_seconds",
-        SettingType.FLOAT,
-        "1.0",
-        "2.5",
-    ),
     ("engine", "shutdown_tool_timeout_seconds", SettingType.FLOAT, "60.0", "120.0"),
     ("security", "timeout_check_interval_seconds", SettingType.FLOAT, "60.0", "30.0"),
     (

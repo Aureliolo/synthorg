@@ -370,22 +370,7 @@ def _wire_resolver_dependents(app_state: AppState) -> None:
         oauth_token_manager.set_config_resolver(
             config_resolver_of(app_state),
         )
-    webhook_event_bridge = integrations.webhook_event_bridge
-    if webhook_event_bridge is not None:
-        webhook_event_bridge.set_config_resolver(
-            config_resolver_of(app_state),
-        )
     communication = app_state.slice(CommunicationStateSlice)
-    escalation_notify_subscriber = communication.escalation_notify_subscriber
-    if escalation_notify_subscriber is not None:
-        escalation_notify_subscriber.set_config_resolver(
-            config_resolver_of(app_state),
-        )
-    conflict_escalation_bridge = communication.conflict_escalation_bridge
-    if conflict_escalation_bridge is not None:
-        conflict_escalation_bridge.set_config_resolver(
-            config_resolver_of(app_state),
-        )
     event_stream_hub = communication.event_stream_hub
     if event_stream_hub is not None:
         event_stream_hub.set_config_resolver(config_resolver_of(app_state))

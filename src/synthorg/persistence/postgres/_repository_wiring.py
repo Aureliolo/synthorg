@@ -41,9 +41,6 @@ from synthorg.persistence.postgres.audit_repository import PostgresAuditReposito
 from synthorg.persistence.postgres.capability_source_status_repo import (
     PostgresCapabilitySourceStatusRepository,
 )
-from synthorg.persistence.postgres.ceremony_scheduler_state_repo import (
-    PostgresCeremonySchedulerStateRepository,
-)
 from synthorg.persistence.postgres.checkpoint_repo import (
     PostgresCheckpointRepository,
 )
@@ -117,9 +114,6 @@ from synthorg.persistence.postgres.lifecycle_transition_repo import (
 )
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
-)
-from synthorg.persistence.postgres.meeting_cooldown_repo import (
-    PostgresMeetingCooldownRepository,
 )
 from synthorg.persistence.postgres.memory_vector_repo import (
     PostgresMemoryVectorRepository,
@@ -308,8 +302,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._model_capability_scores = None
         self._capability_source_statuses = None
         self._provider_failover_events = None
-        self._ceremony_scheduler_state = None
-        self._meeting_cooldown = None
         self._tracked_containers = None
         self._project_cost_aggregates = None
         self._training_plans = None
@@ -440,8 +432,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
             pool
         )
         self._provider_failover_events = PostgresProviderFailoverEventRepository(pool)
-        self._ceremony_scheduler_state = PostgresCeremonySchedulerStateRepository(pool)
-        self._meeting_cooldown = PostgresMeetingCooldownRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
         self._training_plans = PostgresTrainingPlanRepository(pool)

@@ -173,7 +173,7 @@ class TestWorkflowDomain:
         (APPROVAL_TOOLS, 5),  # approval lifecycle
         (BUDGET_TOOLS, 5),  # overview, limits, forecast
         (ORGANIZATION_TOOLS, 15),  # company, depts, teams
-        (COORDINATION_TOOLS, 5),  # metrics, ceremony
+        (COORDINATION_TOOLS, 2),  # metrics
         (ANALYTICS_TOOLS, 7),  # metrics, reports, dashboards
         (MEMORY_TOOLS, 10),  # fine-tune, checkpoints, search
         (QUALITY_TOOLS, 8),  # reviews, evaluations, config

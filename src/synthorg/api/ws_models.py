@@ -95,10 +95,6 @@ class WsEventType(StrEnum):
     COORDINATION_COMPLETED = "coordination.completed"
     COORDINATION_FAILED = "coordination.failed"
 
-    MEETING_STARTED = "meeting.started"
-    MEETING_COMPLETED = "meeting.completed"
-    MEETING_FAILED = "meeting.failed"
-
     ARTIFACT_CREATED = "artifact.created"
     ARTIFACT_DELETED = "artifact.deleted"
     ARTIFACT_CONTENT_UPLOADED = "artifact.content_uploaded"
@@ -145,7 +141,6 @@ class WsEventType(StrEnum):
 
     INTERRUPT_CREATED = "interrupt.created"
     INTERRUPT_RESUMED = "interrupt.resumed"
-    DISSENT_PUBLISHED = "dissent.published"
 
     STEERING_DIRECTIVE_ISSUED = "steering.directive.issued"
     STEERING_SUPERSESSION_PROPOSED = "steering.supersession.proposed"

@@ -111,33 +111,16 @@ async def _start_runtime_background_services(
             already-started services are stopped before it re-raises.
     """
     started_provider_health_prober = False
-    started_webhook_event_bridge = False
     started_integration_health_prober = False
     started_oauth_token_manager = False
-    started_escalation_sweeper = False
-    started_escalation_notify_subscriber = False
     started_event_stream_hub = False
     integrations = app_state.slice(IntegrationsStateSlice)
     communication = app_state.slice(CommunicationStateSlice)
-    webhook_event_bridge = integrations.webhook_event_bridge
     try:
         tasks.health_prober = await _maybe_start_health_prober(app_state)
         started_provider_health_prober = tasks.health_prober is not None
 
         # Start integration background services (non-fatal).
-        if webhook_event_bridge is not None:
-            try:
-                await webhook_event_bridge.start()
-                started_webhook_event_bridge = True
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    API_APP_STARTUP,
-                    phase="webhook_event_bridge_start",
-                    severity="non_fatal",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
         if integrations.health_prober_service is not None:
             try:
                 await integrations.health_prober_service.start()
@@ -160,32 +143,6 @@ async def _start_runtime_background_services(
                 logger.warning(
                     API_APP_STARTUP,
                     phase="oauth_token_manager_start",
-                    severity="non_fatal",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        if communication.escalation_sweeper is not None:
-            try:
-                await communication.escalation_sweeper.start()
-                started_escalation_sweeper = True
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    API_APP_STARTUP,
-                    phase="escalation_sweeper_start",
-                    severity="non_fatal",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        if communication.escalation_notify_subscriber is not None:
-            try:
-                await communication.escalation_notify_subscriber.start()
-                started_escalation_notify_subscriber = True
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    API_APP_STARTUP,
-                    phase="escalation_notify_subscriber_start",
                     severity="non_fatal",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -229,16 +186,10 @@ async def _start_runtime_background_services(
             started_bus=False,
             event_stream_hub=communication.event_stream_hub,
             started_event_stream_hub=started_event_stream_hub,
-            escalation_notify_subscriber=communication.escalation_notify_subscriber,
-            started_escalation_notify_subscriber=started_escalation_notify_subscriber,
-            escalation_sweeper=communication.escalation_sweeper,
-            started_escalation_sweeper=started_escalation_sweeper,
             oauth_token_manager=integrations.oauth_token_manager,
             started_oauth_token_manager=started_oauth_token_manager,
             integration_health_prober=integrations.health_prober_service,
             started_integration_health_prober=started_integration_health_prober,
-            webhook_event_bridge=webhook_event_bridge,
-            started_webhook_event_bridge=started_webhook_event_bridge,
             provider_health_prober=tasks.health_prober,
             started_provider_health_prober=started_provider_health_prober,
             chat_inbound_consumer=tasks.chat_inbound_consumer,
@@ -354,11 +305,6 @@ async def _run_startup(  # noqa: PLR0913
         log_exception_redacted(logger, API_APP_STARTUP, exc, detail=detail)
         await _safe_shutdown(
             task_engine=task_engine,
-            # Read live: the scheduler is built by its subsystem, on a pass
-            # that may already have run by the time a boot gives up here.
-            meeting_scheduler=app_state.slice(
-                CommunicationStateSlice
-            ).meeting_scheduler,
             backup_service=backup_service,
             approval_timeout_scheduler=approval_timeout_scheduler,
             # The constructor-supplied dispatcher is None on the auto-wire

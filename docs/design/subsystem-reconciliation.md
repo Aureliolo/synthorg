@@ -328,16 +328,15 @@ subsystem install an observable marker, and it reintroduces exactly the drift
 this design removes: two statements of "is it up" that can disagree.
 
 The subsystems that forced the question mutate something in place rather than
-publishing a service: four attach a collaborator to the work pipeline, one
-installs the protocol factories on the meeting orchestrator. Each grew a
-read-only counterpart to its `attach_*` / `set_*` seam
-(`WorkPipeline.attachments`, `MeetingOrchestrator.has_protocol_registry`)
+publishing a service: five attach a collaborator to the work pipeline, and the
+initiative tail attaches onto an already-wired project rollup. Each grew a
+read-only counterpart to its `attach_*` seam (`WorkPipeline.attachments`)
 computed from the same field the seam writes, so the probe cannot claim an
-installation that is not there. The orchestrator is the clearest case for why
-the probe cannot simply be "does the owner exist": it is constructed during
-the construction phase and serves reads with no registry at all, so its
-presence would tell the reconciler this had converged before the activation
-ran once.
+installation that is not there. The rollup is the clearest case for why the
+probe cannot simply be "does the owner exist": it comes up once
+persistence and the task engine do, which is before a provider is configured,
+so its presence would tell the reconciler the tail had converged before the
+activation ran once.
 
 ## Readiness is not a dependency roll-up
 

@@ -39,9 +39,6 @@ from synthorg.api.controllers.budget_config_versions import (
 )
 from synthorg.api.controllers.budget_forecast import ForecastBudgetController
 from synthorg.api.controllers.capabilities import CapabilitiesController
-from synthorg.api.controllers.ceremony_policy import (
-    CeremonyPolicyController,
-)
 from synthorg.api.controllers.charter import CharterController
 from synthorg.api.controllers.chat_questions import ChatQuestionsController
 from synthorg.api.controllers.clients import ClientController
@@ -61,12 +58,8 @@ from synthorg.api.controllers.coordination_metrics import (
 )
 from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.decomposition import DecompositionController
-from synthorg.api.controllers.departments.ceremony_policy import (
-    DepartmentCeremonyPolicyController,
-)
 from synthorg.api.controllers.departments.crud import DepartmentController
 from synthorg.api.controllers.departments.health import DepartmentHealthController
-from synthorg.api.controllers.escalations import EscalationsController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
@@ -87,7 +80,6 @@ from synthorg.api.controllers.integration_health import (
 )
 from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
-from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory.checkpoints import (
     MemoryCheckpointsController,
 )
@@ -228,7 +220,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ActivityController,
     DepartmentController,
     DepartmentHealthController,
-    DepartmentCeremonyPolicyController,
     ProjectController,
     ObjectiveController,
     BrownfieldController,
@@ -245,7 +236,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     PlanCommentController,
     ExperimentsController,
     MessageController,
-    MeetingController,
     ArtifactController,
     CharterController,
     BudgetController,
@@ -271,7 +261,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProviderFailoverController,
     ApprovalsQueryController,
     ApprovalsDecisionsController,
-    EscalationsController,
     AutonomyController,
     AuthApiKeysController,
     AuthBootstrapController,
@@ -280,7 +269,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     AuthIdentityController,
     AuthSessionsController,
     CollaborationController,
-    CeremonyPolicyController,
     CoordinationController,
     EventStreamController,
     InterruptController,
@@ -410,7 +398,6 @@ __all__ = [
     "BudgetCfoController",
     "BudgetConfigVersionController",
     "BudgetController",
-    "CeremonyPolicyController",
     "CharterController",
     "ChatQuestionsController",
     "ClientController",
@@ -425,10 +412,8 @@ __all__ = [
     "CustomRuleController",
     "DecompositionController",
     "DeliverableReceiptController",
-    "DepartmentCeremonyPolicyController",
     "DepartmentController",
     "DepartmentHealthController",
-    "EscalationsController",
     "EvaluationConfigVersionController",
     "EventStreamController",
     "ExperimentsController",
@@ -440,7 +425,6 @@ __all__ = [
     "LearningController",
     "LivenessController",
     "MCPCatalogController",
-    "MeetingController",
     "MemoryCheckpointsController",
     "MemoryEmbedderController",
     "MemoryEntriesController",

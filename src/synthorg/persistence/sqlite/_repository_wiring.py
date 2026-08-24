@@ -52,9 +52,6 @@ from synthorg.persistence.sqlite.audit_repository import (
 from synthorg.persistence.sqlite.capability_source_status_repo import (
     SQLiteCapabilitySourceStatusRepository,
 )
-from synthorg.persistence.sqlite.ceremony_scheduler_state_repo import (
-    SQLiteCeremonySchedulerStateRepository,
-)
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
@@ -131,9 +128,6 @@ from synthorg.persistence.sqlite.lockout_repo import (
 )
 from synthorg.persistence.sqlite.mcp_installation_repo import (
     SQLiteMcpInstallationRepository,
-)
-from synthorg.persistence.sqlite.meeting_cooldown_repo import (
-    SQLiteMeetingCooldownRepository,
 )
 from synthorg.persistence.sqlite.memory_vector_repo import (
     SQLiteMemoryVectorRepository,
@@ -339,8 +333,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._model_capability_scores = None
         self._capability_source_statuses = None
         self._provider_failover_events = None
-        self._ceremony_scheduler_state = None
-        self._meeting_cooldown = None
         self._tracked_containers = None
         self._project_cost_aggregates = None
         self._fine_tune_checkpoints = None
@@ -609,14 +601,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._provider_failover_events = SQLiteProviderFailoverEventRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._ceremony_scheduler_state = SQLiteCeremonySchedulerStateRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._meeting_cooldown = SQLiteMeetingCooldownRepository(
             self._db,
             write_context=self.write_context,
         )

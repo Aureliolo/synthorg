@@ -9,7 +9,6 @@ const mockDept: Department = {
   display_name: 'Engineering',
   autonomy_level: null,
   budget_percent: 0,
-  ceremony_policy: null,
   head: null,
   head_id: null,
   policies: {

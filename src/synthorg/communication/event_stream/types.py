@@ -44,7 +44,6 @@ class AgUiEventType(StrEnum):
         APPROVAL_RESUMED: Approval gate resumed execution.
         INFO_REQUEST_INTERRUPT: Agent requested clarification.
         INFO_REQUEST_RESUMED: Clarification provided, execution resumed.
-        DISSENT: Conflict dissent recorded (SynthOrg extension).
     """
 
     RUN_STARTED = "run_started"
@@ -63,7 +62,6 @@ class AgUiEventType(StrEnum):
     APPROVAL_RESUMED = "approval_resumed"
     INFO_REQUEST_INTERRUPT = "info_request_interrupt"
     INFO_REQUEST_RESUMED = "info_request_resumed"
-    DISSENT = "synthorg:dissent"
 
 
 class StreamEvent(BaseModel):

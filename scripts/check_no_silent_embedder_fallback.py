@@ -71,10 +71,6 @@ _CONSTRUCTION_ALLOWLIST: Final[frozenset[str]] = frozenset(
         # Builds it only after resolution returned the built-in binding, which
         # only happens when the operator's setting names it.
         "src/synthorg/api/lifecycle_helpers/memory_backend_wiring.py",
-        # The embedder a meeting's conflict detectors score positions with.
-        # Not a fallback: it is the only embedder that path builds, and it
-        # replaces nothing that failed.
-        "src/synthorg/communication/meeting/embedder.py",
     },
 )
 

@@ -76,7 +76,7 @@ The design spec covers the full intended architecture of SynthOrg, from agent id
 
     ---
 
-    Message bus, delegation, conflict resolution, meeting protocols.
+    Message bus, delegation, loop prevention, event stream.
 
     [:octicons-arrow-right-24: Communication](design/communication.md)
 
@@ -118,7 +118,7 @@ provider; real-provider acceptance and operator polish are in flight (see the
 - **Budget Enforcement**: per-agent cost limits, run and token ceilings, spending reports, and CFO-level cost optimisation.
 - **Security**: SecOps agent, fail-closed rule engine, autonomy levels, and audit logging.
 - **Memory**: per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
-- **Communication**: message bus, delegation, conflict resolution, and meeting protocols.
+- **Communication**: message bus, delegation, loop prevention, and the event stream.
 - **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and human-approved autonomy changes.
 - **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus an MCP bridge for external tools.
 - **LLM Providers**: provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.

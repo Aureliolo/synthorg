@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.communication.meeting.errors import MeetingCeremonyRegistrationError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -15,7 +14,6 @@ from synthorg.engine.errors import (
     SprintTransitionConflictError,
 )
 from synthorg.engine.task_engine_models import TaskStateChanged
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -152,21 +150,10 @@ def _resolver(*, enabled: bool = True, agile: bool = True) -> _Configured:
     )
 
 
-def _scheduler(*, on_complete: object | None = None) -> _Configured:
-    return mock_of[CeremonyScheduler](
-        activate_sprint=AsyncMock(return_value=None),
-        deactivate_sprint=AsyncMock(return_value=None),
-        on_task_completed=AsyncMock(
-            side_effect=on_complete or (lambda sprint, _t, _p: sprint)
-        ),
-    )
-
-
 def _service(
     *,
     sprints: _Configured = None,
     tasks: _Configured = None,
-    scheduler: _Configured = None,
     resolver: _Configured = None,
     sprint_config: SprintConfig | None = None,
 ) -> SprintService:
@@ -174,7 +161,6 @@ def _service(
     return SprintService(
         sprint_repository=sprints or _FakeSprintRepo(),
         task_repository=task_repo,
-        ceremony_scheduler=scheduler or _scheduler(),
         config_resolver=resolver or _resolver(),
         sprint_config=sprint_config,
         clock=FakeClock(),
@@ -210,15 +196,13 @@ class TestExplicitControl:
         with pytest.raises(SprintNotFoundError):
             await service.add_task("missing", "task-a", 1.0)
 
-    async def test_start_sprint_activates_scheduler(self) -> None:
-        scheduler = _scheduler()
-        service = _service(scheduler=scheduler)
+    async def test_start_sprint_activates(self) -> None:
+        service = _service()
         sprint = await service.create_sprint("proj-1")
         started = await service.start_sprint(sprint.id)
         await service.drain()
         assert started.status is SprintStatus.ACTIVE
         assert started.start_date is not None
-        scheduler.activate_sprint.assert_awaited_once()
 
     async def test_start_sprint_conflict_when_not_planning(self) -> None:
         service = _service()
@@ -283,8 +267,7 @@ class TestObserver:
         trigger = _task("t1", status=TaskStatus.ASSIGNED)
         backlog = (trigger, _task("t2", status=TaskStatus.CREATED))
         tasks = mock_of[TaskRepository](query=AsyncMock(return_value=backlog))
-        scheduler = _scheduler()
-        service = _service(sprints=repo, tasks=tasks, scheduler=scheduler)
+        service = _service(sprints=repo, tasks=tasks)
 
         await service.on_task_state_changed(_event(trigger, TaskStatus.ASSIGNED))
         await service.drain()
@@ -294,29 +277,6 @@ class TestObserver:
         active = sprints[0]
         assert active.status is SprintStatus.ACTIVE
         assert set(active.task_ids) == {str(trigger.id), str(as_uuid("t2"))}
-        scheduler.activate_sprint.assert_awaited_once()
-
-    async def test_unregisterable_ceremonies_refuse_the_auto_sprint(self) -> None:
-        """The auto path creates the sprint too, so refusing leaves nothing.
-
-        ``start_sprint`` has a row to leave in ``PLANNING``; this path
-        does not, so a refusal landing after the save would strand a
-        sprint nobody asked for and no retry would ever clear.
-        """
-        repo = _FakeSprintRepo()
-        trigger = _task("t1", status=TaskStatus.ASSIGNED)
-        tasks = mock_of[TaskRepository](query=AsyncMock(return_value=(trigger,)))
-        scheduler = _scheduler()
-        scheduler.validate_ceremony_registration.side_effect = (
-            MeetingCeremonyRegistrationError("ceremony name collides")
-        )
-        service = _service(sprints=repo, tasks=tasks, scheduler=scheduler)
-
-        await service.on_task_state_changed(_event(trigger, TaskStatus.ASSIGNED))
-        await service.drain()
-
-        assert await repo.count(SprintFilterSpec()) == 0
-        scheduler.activate_sprint.assert_not_awaited()
 
     async def test_second_assigned_does_not_create_duplicate(self) -> None:
         repo = _FakeSprintRepo()
@@ -359,11 +319,7 @@ class TestObserver:
     async def test_completion_finalizes_when_backlog_delivered(self) -> None:
         repo = _FakeSprintRepo()
 
-        def _to_in_review(sprint: Sprint, _t: str, _p: float) -> Sprint:
-            return sprint.with_transition(SprintStatus.IN_REVIEW)
-
-        scheduler = _scheduler(on_complete=_to_in_review)
-        service = _service(sprints=repo, scheduler=scheduler)
+        service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
         await service.start_sprint(sprint.id)
@@ -376,16 +332,11 @@ class TestObserver:
         assert stored is not None
         assert stored.status is SprintStatus.COMPLETED
         assert stored.end_date is not None
-        scheduler.deactivate_sprint.assert_awaited()
 
     async def test_partial_delivery_does_not_finalize(self) -> None:
         repo = _FakeSprintRepo()
 
-        def _to_in_review(sprint: Sprint, _t: str, _p: float) -> Sprint:
-            return sprint.with_transition(SprintStatus.IN_REVIEW)
-
-        scheduler = _scheduler(on_complete=_to_in_review)
-        service = _service(sprints=repo, scheduler=scheduler)
+        service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
         await service.add_task(sprint.id, str(as_uuid("t2")), 2.0)
@@ -397,17 +348,15 @@ class TestObserver:
 
         stored = await repo.get(sprint.id)
         assert stored is not None
-        # One of two tasks done: scheduler moved it to IN_REVIEW but the
-        # backlog is not fully delivered, so it must not finalize.
-        assert stored.status is SprintStatus.IN_REVIEW
-        scheduler.deactivate_sprint.assert_not_awaited()
+        # One of two tasks done: the backlog is not fully delivered, so
+        # review must not open and the sprint must not finalize.
+        assert stored.status is SprintStatus.ACTIVE
 
     async def test_explicit_add_points_credited_without_stall(self) -> None:
         # A REST add with story points that differ from task complexity must
         # still complete: completion credits the committed per-task points.
         repo = _FakeSprintRepo()
-        scheduler = _scheduler()
-        service = _service(sprints=repo, scheduler=scheduler)
+        service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 7.0)
         await service.start_sprint(sprint.id)
@@ -462,37 +411,11 @@ class _FailHopRepo(_FakeSprintRepo):
         return await super().transition_if(entity_id, from_state, to_state, **updates)
 
 
-def _completed_sprint(number: int) -> Sprint:
-    return Sprint(
-        id=f"s{number}",
-        project=NotBlankStr("proj-1"),
-        name=NotBlankStr(f"Sprint {number}"),
-        sprint_number=number,
-        status=SprintStatus.COMPLETED,
-        start_date="2026-01-01T00:00:00+00:00",
-        end_date="2026-01-14T00:00:00+00:00",
-    )
-
-
 class TestConcurrencyGuards:
-    async def test_velocity_history_reconstructed_oldest_first(self) -> None:
-        repo = _FakeSprintRepo()
-        await repo.save(_completed_sprint(1))
-        await repo.save(_completed_sprint(2))
-        service = _service(sprints=repo)
-        history = await service._velocity_history(NotBlankStr("proj-1"))
-        assert len(history) == 2
-        # Oldest-first: sprint 1's record must precede sprint 2's.
-        assert [record.sprint_number for record in history] == [1, 2]
-
-    async def test_finalize_retro_cas_lost_does_not_deactivate(self) -> None:
+    async def test_finalize_retro_cas_lost_leaves_sprint_in_retrospective(self) -> None:
         repo = _FailHopRepo(SprintStatus.RETROSPECTIVE, SprintStatus.COMPLETED)
 
-        def _to_in_review(sprint: Sprint, _t: str, _p: float) -> Sprint:
-            return sprint.with_transition(SprintStatus.IN_REVIEW)
-
-        scheduler = _scheduler(on_complete=_to_in_review)
-        service = _service(sprints=repo, scheduler=scheduler)
+        service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
         await service.start_sprint(sprint.id)
@@ -503,19 +426,14 @@ class TestConcurrencyGuards:
 
         stored = await repo.get(sprint.id)
         assert stored is not None
-        # The RETRO -> COMPLETED CAS was lost: the sprint stays at
-        # RETROSPECTIVE and the scheduler is not deactivated.
+        # The RETRO -> COMPLETED CAS was lost, so the sprint stays at
+        # RETROSPECTIVE rather than reporting a finish it never made.
         assert stored.status is SprintStatus.RETROSPECTIVE
-        scheduler.deactivate_sprint.assert_not_awaited()
 
     async def test_finalize_review_cas_lost_stops_early(self) -> None:
         repo = _FailHopRepo(SprintStatus.IN_REVIEW, SprintStatus.RETROSPECTIVE)
 
-        def _to_in_review(sprint: Sprint, _t: str, _p: float) -> Sprint:
-            return sprint.with_transition(SprintStatus.IN_REVIEW)
-
-        scheduler = _scheduler(on_complete=_to_in_review)
-        service = _service(sprints=repo, scheduler=scheduler)
+        service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
         await service.start_sprint(sprint.id)
@@ -527,4 +445,3 @@ class TestConcurrencyGuards:
         stored = await repo.get(sprint.id)
         assert stored is not None
         assert stored.status is SprintStatus.IN_REVIEW
-        scheduler.deactivate_sprint.assert_not_awaited()

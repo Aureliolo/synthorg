@@ -1,1 +1,0 @@
-"""Ceremony policy service tests."""

@@ -2,15 +2,13 @@
 """Service auto-wiring for production startup.
 
 Re-exports the construction-time wiring (services that do not need a connected
-persistence backend) from :mod:`synthorg.api.auto_wire_phase1` and
-:mod:`synthorg.api.auto_wire_meetings`, and provides the on-startup wiring that
-runs after persistence connects: ``auto_wire_settings`` (SettingsService +
-dispatcher) and ``auto_wire_ontology``.
+persistence backend) from :mod:`synthorg.api.auto_wire_phase1`, and provides the
+on-startup wiring that runs after persistence connects: ``auto_wire_settings``
+(SettingsService + dispatcher) and ``auto_wire_ontology``.
 """
 
 from typing import Protocol
 
-from synthorg.api.auto_wire_meetings import MeetingWireResult, auto_wire_meetings
 from synthorg.api.auto_wire_phase1 import Phase1Result, auto_wire_phase1
 from synthorg.api.state import AppState
 from synthorg.backup.service import BackupService
@@ -33,10 +31,8 @@ from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.service import SettingsService
 
 __all__ = [
-    "MeetingWireResult",
     "Phase1Result",
     "SettingsDispatcherBuilder",
-    "auto_wire_meetings",
     "auto_wire_ontology",
     "auto_wire_phase1",
     "auto_wire_settings",

@@ -50,9 +50,6 @@ from synthorg.persistence.auth_protocol import (
 from synthorg.persistence.capability_source_status_protocol import (
     CapabilitySourceStatusRepository,
 )
-from synthorg.persistence.ceremony_scheduler_state_protocol import (
-    CeremonySchedulerStateRepository,
-)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
@@ -90,9 +87,6 @@ from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
 from synthorg.persistence.docs_protocol import DocsRepository
-from synthorg.persistence.escalation_protocol import (
-    EscalationQueueRepository,
-)
 from synthorg.persistence.evaluation_report_protocol import (
     EvaluationReportRepository,
 )
@@ -121,9 +115,6 @@ from synthorg.persistence.lifecycle_transition_protocol import (
 )
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,
-)
-from synthorg.persistence.meeting_cooldown_protocol import (
-    MeetingCooldownRepository,
 )
 from synthorg.persistence.memory_protocol import (
     OrgFactRepository,
@@ -732,16 +723,6 @@ class PersistenceBackend(Protocol):
         ...
 
     @property
-    def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
-        """Repository for ceremony scheduler per-sprint state snapshots."""
-        ...
-
-    @property
-    def meeting_cooldown(self) -> MeetingCooldownRepository:
-        """Repository for meeting cooldown last-triggered timestamps."""
-        ...
-
-    @property
     def tracked_containers(self) -> TrackedContainerRepository:
         """Repository for Docker sandbox tracked-container records."""
         ...
@@ -882,23 +863,6 @@ class PersistenceBackend(Protocol):
         which is app-layer config, not persistence-layer.  Callers supply
         the config at startup; the returned repo shares this backend's
         connection / pool.
-
-        Raises:
-            PersistenceConnectionError: If the backend is not connected.
-        """
-        ...
-
-    def build_escalations(
-        self,
-        *,
-        notify_channel: str | None = None,
-    ) -> EscalationQueueRepository:
-        """Construct an escalation queue repository for this backend.
-
-        Method-based rather than property because Postgres escalations
-        accept an optional NOTIFY channel name -- cross-instance notify
-        config lives on the escalation subsystem, not on persistence.
-        ``notify_channel`` is ignored by the SQLite implementation.
 
         Raises:
             PersistenceConnectionError: If the backend is not connected.

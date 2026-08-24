@@ -125,7 +125,6 @@ configuration reference.
 | **Task** | A unit of work assigned to one or more agents |
 | **Project** | An initiative with a goal, deadline, and assigned team, executing one plan whose items become tasks. Its status advances from that work (see [Project lifecycle](project-lifecycle.md)) |
 | **Plan** | The reviewed decomposition of an objective into ordered items; approving one dispatches its work items as tasks (see [Plan Review](plan-review.md)) |
-| **Meeting** | A structured multi-agent interaction for decisions, reviews, or planning |
 | **Artifact** | Any output produced by agents: code, documents, designs, reports, etc. |
 
 ## Entity Relationships
@@ -199,7 +198,7 @@ Queue: Hiring Queue
 
     ---
 
-    Message bus, delegation, conflict resolution, and meeting protocols.
+    Message bus, delegation, loop prevention, and the event stream.
 
 -   [**Engine**](engine.md)
 

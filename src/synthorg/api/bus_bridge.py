@@ -500,8 +500,7 @@ class MessageBusBridge:
                 # ``wait_for`` times out the *wait* only; the shielded
                 # drain keeps running in the background but does not
                 # prevent ``stop()`` from exiting and releasing
-                # ``_lifecycle_lock``. Same pattern as
-                # ``MeetingScheduler.stop()``.
+                # ``_lifecycle_lock``.
                 async def _drain() -> list[BaseException | None]:
                     """Return drain."""
                     return await asyncio.gather(

@@ -118,9 +118,9 @@ class TestSQLiteCircuitBreakerStateRepository:
 class TestRollbackGuardNarrowing:
     """Pin the narrowed ``_rollback_quietly`` driver-error semantics.
 
-    The guard is identical across the six SQLite repos that carry it
-    (ceremony / circuit-breaker / meeting-cooldown / risk-override /
-    ssrf-violation / tracked-container); this exercises the shared shape.
+    The guard is identical across the SQLite repos that carry it
+    (circuit-breaker / risk-override / ssrf-violation / tracked-container);
+    this exercises the shared shape.
     """
 
     @staticmethod

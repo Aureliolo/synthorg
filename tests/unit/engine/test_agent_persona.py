@@ -1,9 +1,7 @@
 """Unit tests for the shared agent-persona system-prompt renderer.
 
-Verifies that the shared ``_render_system_prompt`` renderer produces
-byte-identical output to the meeting agent caller's private wrapper, that the
-untrusted-content directive is always present, and that an agent is told the
-house-style rules its output is judged against.
+Verifies that the untrusted-content directive is always present and that an
+agent is told the house-style rules its output is judged against.
 """
 
 from collections.abc import Iterator
@@ -12,7 +10,6 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.communication.meeting.agent_caller import _render_system_prompt
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
@@ -109,12 +106,6 @@ class TestRenderAgentSystemPrompt:
     def test_no_house_style_block_without_a_provider(self) -> None:
         prompt = render_agent_system_prompt(_identity())
         assert "House writing style" not in prompt
-
-    def test_meeting_caller_wrapper_matches_shared_renderer(self) -> None:
-        # Delegating to the shared renderer must not change meeting
-        # behaviour: the caller's private wrapper produces identical output.
-        identity = _identity()
-        assert _render_system_prompt(identity) == render_agent_system_prompt(identity)
 
     def test_the_agent_is_told_the_rules_its_output_is_judged_against(self) -> None:
         """A session judged on a rule it was never shown discovers it by

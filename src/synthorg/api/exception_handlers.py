@@ -51,13 +51,7 @@ from synthorg.budget.errors import (
     BudgetExhaustedError,
     MixedCurrencyAggregationError,
 )
-from synthorg.communication.errors import (
-    CommunicationError,
-    EscalationDecisionError,
-)
-from synthorg.communication.meeting.errors import (
-    MeetingCeremonyRegistrationError,
-)
+from synthorg.communication.errors import CommunicationError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import (
@@ -1229,14 +1223,6 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (MixedCurrencyAggregationError, handle_domain_error),
     (ProviderError, handle_domain_error),
     (OntologyError, handle_domain_error),
-    # Registered above its ``CommunicationError`` parent so the 422
-    # client-error mapping (an unacceptable human escalation decision)
-    # wins over the parent's 500 default when Litestar walks the MRO.
-    (EscalationDecisionError, handle_domain_error),
-    # Same reasoning: a sprint's ceremonies naming something the meeting
-    # scheduler refuses is operator-authored config, so 422 must win
-    # over the parent's 500 default.
-    (MeetingCeremonyRegistrationError, handle_domain_error),
     (CommunicationError, handle_domain_error),
     (IntegrationError, handle_domain_error),
     (ToolError, handle_domain_error),

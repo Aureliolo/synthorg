@@ -34,7 +34,6 @@ from synthorg.persistence.auth_protocol import (
     LockoutRepository,
 )
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
-from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.postgres._repository_wiring import (
     _PostgresRepositoryWiring,
 )
@@ -154,26 +153,6 @@ class PostgresPersistenceBackend(
         """
         pool = self.get_db()
         return PostgresLockoutRepository(pool, auth_config)
-
-    def build_escalations(
-        self,
-        *,
-        notify_channel: str | None = None,
-    ) -> EscalationQueueRepository:
-        """Construct an escalation queue repository on the shared pool.
-
-        ``notify_channel`` enables cross-instance pg_notify publishing
-        when the escalation subsystem has enabled it.
-
-        Returns:
-            Result of type ``EscalationQueueRepository``.
-        """
-        from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
-            PostgresEscalationRepository,
-        )
-
-        pool = self.get_db()
-        return PostgresEscalationRepository(pool, notify_channel=notify_channel)
 
     def build_ontology_versioning(
         self,

@@ -48,7 +48,7 @@ Templates -> Config
 | **engine.intake** | Intake processing: `IntakeStrategy` protocol, validation, and lifecycle orchestration for `ClientRequest` objects (the `ClientRequest` type is defined in `client`) |
 | **engine.review** | Review pipeline: ReviewStage protocol, multi-stage review orchestration, verdict tracking |
 | **providers** | LLM provider abstraction: LiteLLM adapter, capability matching, routing strategies (5), retry + rate limiting |
-| **communication** | Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution (4 strategies), meeting protocols (3) |
+| **communication** | Inter-agent messaging: bus, dispatcher, delegation, loop prevention, event stream, multi-agent conversation primitives |
 | **memory** | Persistent agent memory: retrieval pipeline (ranking, filtering, injection), shared org memory, consolidation/archival |
 | **security** | Security subsystem: SecOps agent, rule engine (soft-allow/hard-deny), output scanner, autonomy levels, timeout policies |
 | **budget** | Cost management: cost tracking, budget enforcement (pre-flight/in-flight), quota/subscription, CFO optimiser, spending reports |
@@ -62,7 +62,7 @@ Templates -> Config
 | **meta** | Self-extending and self-improving organisation: MCP tool surface, charter, toolsmith, rollout mutators, Chief of Staff |
 | **integrations** | External service connections: OAuth 2.1, webhooks, MCP catalog, rate limiting, tunnel provider |
 | **`organization`** | Company org chart, department records, team management |
-| **coordination** | Multi-agent coordination: ceremony policy plus coordination service and state |
+| **coordination** | Multi-agent coordination: coordination service and state |
 | **research** | Research mode pipeline: query planning, multi-source retrieval, credibility triage, synthesis |
 | **approval** | Approval workflow protocol, models, and decision routing |
 | **notifications** | Operator alert adapters and notification dispatch |

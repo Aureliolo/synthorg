@@ -208,7 +208,7 @@ class TestProductTeamExtendsStartup:
 
     def test_communication_overridden(self) -> None:
         config = _render("product_team")
-        assert config.config.communication_pattern == "meeting_based"
+        assert config.config.communication_pattern == "event_driven"
 
     def test_company_type(self) -> None:
         config = _render("product_team")

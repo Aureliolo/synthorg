@@ -59,7 +59,7 @@ Both groups share one cache map in `config.json` (`verified_digests`): SynthOrg 
 
 ## NATS configuration file
 
-When `--bus-backend nats` is selected, `synthorg init` writes `nats.conf` next to the generated `compose.yml` and the NATS service bind-mounts it at `/etc/nats/nats.conf` (read-only). The canonical config content lives in `cli/internal/compose/nats_config.go` (`NATSConfigContent`) and sets `max_payload: 16MB`, sized for full LLM agent outputs and meeting transcripts while staying well under NATS's 64MB ceiling.
+When `--bus-backend nats` is selected, `synthorg init` writes `nats.conf` next to the generated `compose.yml` and the NATS service bind-mounts it at `/etc/nats/nats.conf` (read-only). The canonical config content lives in `cli/internal/compose/nats_config.go` (`NATSConfigContent`) and sets `max_payload: 16MB`, sized for full LLM agent outputs and multi-agent conversation transcripts while staying well under NATS's 64MB ceiling.
 
 The helper `writeNATSConfigIfNeeded` keeps the file in sync on every compose write (init, start's digest pin rewrite, `config set`, update's compose refresh) and removes a stale `nats.conf` when switching back to the internal bus.
 

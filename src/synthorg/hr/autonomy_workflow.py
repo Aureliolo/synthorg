@@ -39,7 +39,7 @@ from synthorg.observability.metrics_hub import record_autonomy_promotion
 
 if TYPE_CHECKING:
     # Cycle breaker: ``security.autonomy.models`` pulls ``security/__init__``'s
-    # eager re-exports (engine -> communication -> meeting.participant), which
+    # eager re-exports (engine -> communication), which
     # import ``hr.registry`` back before it finishes. These types are named
     # for signatures only.
     from synthorg.security.autonomy.models import (

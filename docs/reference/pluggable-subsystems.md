@@ -81,13 +81,6 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `api/rate_limits/inflight_factory.py::build_inflight_store()`.
 - `api/rate_limits/inflight_middleware.py::PerOpConcurrencyMiddleware` (Litestar middleware that reads `opt[per_op_concurrency]` from each route handler).
 
-### Escalation queue
-
-- `communication/conflict_resolution/escalation/protocol.py`: `EscalationQueueStore`, `DecisionProcessor`.
-- In-memory / SQLite / Postgres implementations.
-- `communication/conflict_resolution/escalation/config.py::EscalationQueueConfig`: discriminator.
-- `communication/conflict_resolution/escalation/factory.py::build_escalation_queue_store()`.
-
 ### Assignment ranking and pool filtering
 
 - `engine/assignment/protocol.py`: `TaskAssignmentStrategy` (the public Protocol; strategies are still selected by the `strategy` config string).
@@ -140,13 +133,6 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import), satisfied structurally by `budget/risk_tracker.py::RiskTracker.headroom_fraction()`.
 - `change_strategy_config.py::AutonomyStrategyType` discriminator + frozen `AutonomyStrategyConfig` + `AutonomyStrategyDeps`.
 - `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. Wired at `api/construction_phase.py`, which builds the one `RiskTracker` both the strategy and the budget slice use, so every declared kind is selectable and satisfiable.
-
-### Conflict detector
-
-- `communication/meeting/protocol.py`: `ConflictDetector` Protocol.
-- `communication/meeting/conflict_detection.py`: six concrete implementations (`KeywordConflictDetector`, `StructuredComparisonDetector`, `LlmJudgeDetector`, `EmbeddingSimilarityDetector`, `HybridDetector`, `AutoDetector`).
-- `communication/meeting/enums.py::ConflictDetectorType`: discriminator.
-- `communication/meeting/factory.py::build_conflict_detector()`: `StrategyRegistry` dispatch.
 
 ### Ontology versioning (inverted backend dependency)
 

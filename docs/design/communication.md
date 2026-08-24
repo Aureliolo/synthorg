@@ -18,7 +18,7 @@ stream are split into sibling pages.
 ## Related design docs
 
 * [A2A External Gateway](communication-a2a.md): optional federation with external A2A-compatible systems (gateway, agent cards, concept mapping, SSE streaming, outbound client).
-* [Communication Coordination](communication-coordination.md): loop prevention, conflict resolution strategies, meeting protocols, meeting scheduler, MCP service facades, and multi-agent failure pattern guardrails.
+* [Communication Coordination](communication-coordination.md): loop prevention, MCP service facades, and multi-agent failure pattern guardrails.
 * [Event Stream and Async Delegation](communication-events.md): AG-UI projection, SSE endpoint, interrupt / resume protocol, EvidencePackage schema, async delegation steering tools, and citation tracking.
 
 ---
@@ -64,32 +64,16 @@ The framework supports multiple communication patterns, configurable per company
     Best for
     :   Structured organisations with clear chains of command.
 
-=== "Pattern 3: Meeting-Based"
+=== "Pattern 3: Hybrid"
 
-    ```mermaid
-    graph TD
-        SP["Sprint Planning\nPM + CTO + Devs + QA + Design\nOutput: Sprint backlog"]
-        DS["Daily Standup\nDevs + QA\nOutput: Status"]
-        SP --> DS
-    ```
-
-    - Structured multi-agent conversations at defined intervals
-    - Standup, sprint planning, retrospective, design review, code review
-
-    Best for
-    :   Agile workflows, decision-making, alignment.
-
-=== "Pattern 4: Hybrid"
-
-    Combines all three patterns:
+    Combines both patterns:
 
     - **Message bus** for async daily work and notifications
     - **Hierarchical delegation** for task assignment and approvals
-    - **Meetings** for cross-team decisions and planning ceremonies
 
 Built-in templates select the communication pattern that fits their archetype (e.g.
-`event_driven` for Solo Builder, Research Lab, and Data Team, `hierarchical` for Agency,
-Enterprise Org, and Consultancy, `meeting_based` for Product Studio). See the
+`event_driven` for Solo Builder, Research Lab, Data Team, and Product Studio,
+`hierarchical` for Agency, Enterprise Org, and Consultancy). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
 ---
@@ -171,45 +155,13 @@ All metadata fields are nullable except `extra`, which is always present (defaul
           - "#incidents"
           - "#code-review"
           - "#watercooler"
-      meetings:
-        enabled: true
-        cooldown_write_timeout_seconds: 10.0
-        types:
-          - name: "daily_standup"
-            frequency: "per_sprint_day"
-            participants: ["engineering", "qa"]
-            duration_tokens: 2000
-          - name: "sprint_planning"
-            frequency: "bi_weekly"
-            participants: ["all"]
-            duration_tokens: 5000
-          - name: "code_review"
-            trigger: "on_pr"
-            participants: ["author", "reviewers"]
       hierarchy:
         enforce_chain_of_command: true
         allow_skip_level: false    # can a junior message the CEO directly?
     ```
 
-`cooldown_write_timeout_seconds` bounds one durable cooldown write or delete.
-Both run while the scheduler holds its cooldown lock, and every trigger and
-every sprint teardown queues behind that lock, so a store that stops answering
-would stall the whole meetings subsystem rather than the one write. An
-unconfirmed write is treated as a failed one and the meeting does not fire,
-because a cooldown that was never persisted is not read back after a restart,
-and the meeting would then fire again inside the window it was meant to skip.
-
-!!! info "`meetings.types` is for hand-written meeting types"
-    Sprint ceremonies do not appear here. Each one bridges to its own
-    trigger-based meeting type that the `CeremonyScheduler` registers when a
-    sprint activates and clears when it deactivates, because the trigger name
-    carries the sprint id. See [Ceremony Scheduling](ceremony-scheduling.md#ceremony-to-meeting-bridge).
-
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
-
-!!! warning "The LLM conflict judge needs its own connection"
-    The `llm_judge` and `hybrid` conflict detectors dispatch on `communication.conflict_judge_model`, an explicit `(provider, model)` pair with no default. Leaving it unset leaves the judge off and says so rather than borrowing a connection nobody chose for it, so selecting an LLM detector is two decisions, not one. See [Providers](providers.md#multi-provider-model-resolution).
 
 ### Retention and Subscriber Bounds
 

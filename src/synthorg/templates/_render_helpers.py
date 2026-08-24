@@ -141,20 +141,6 @@ def _validate_optional_fields(
             raise TemplateRenderError(msg)
         dept_dict["policies"] = copy.deepcopy(policies)
 
-    ceremony_policy = dept.get("ceremony_policy")
-    if ceremony_policy is not None:
-        if not isinstance(ceremony_policy, dict):
-            msg = f"Department {dept_name!r} 'ceremony_policy' must be a mapping"
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                department=dept_name,
-                field="ceremony_policy",
-                expected="mapping",
-                got=type(ceremony_policy).__name__,
-            )
-            raise TemplateRenderError(msg)
-        dept_dict["ceremony_policy"] = copy.deepcopy(ceremony_policy)
-
 
 def _handle_dept_remove(
     dept: dict[str, object],

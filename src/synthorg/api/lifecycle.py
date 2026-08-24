@@ -25,7 +25,6 @@ from synthorg.api.state import AppState
 from synthorg.backup.models import BackupTrigger
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -65,10 +64,10 @@ logger = get_logger(__name__)
 # shutdown math:
 #
 #   drain (25)  +  task_engine outer (8 * 2 + 1 = 17)  +
-#   meeting (2) +  perf (2)  +  backup (5)  +  settings (2)  +
+#   perf (2)    +  backup (5)  +  settings (2)  +
 #   bridge (2)  +  distributed (3)  +  bus (3)  +  persistence (5)  +
 #   approval scheduler (1)
-#   = 25 + 42 = ~67 s worst case if the drain is held for its full budget AND
+#   = 25 + 40 = ~65 s worst case if the drain is held for its full budget AND
 #     every service uses its full budget. In practice the drain runs
 #     concurrently with no service work and most services return well under
 #     their cap. Realistic headline budget is 25 (drain) + ~26 s (services).
@@ -81,20 +80,18 @@ logger = get_logger(__name__)
 # (most at ``_SERVICE_STOP_SHUTDOWN_SECONDS`` = 2 s; the draining services at
 # ``_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS``), so each adds at most a couple of
 # seconds and stays subsumed under the 75 s ceiling. To keep the aggregate
-# inside that ceiling the three independent integration draining services
-# (OAuth manager, integration health prober, webhook bridge) drain
-# CONCURRENTLY via ``asyncio.gather`` so their cost is one drain budget, not
-# three.
+# inside that ceiling the independent integration draining services
+# (OAuth manager, integration health prober) drain CONCURRENTLY in a
+# ``TaskGroup`` so their cost is one drain budget rather than the sum.
 #
 # Internal constants by design: per-service shutdown budgets enforce a fixed
-# total worst-case drain of ~67 s, matched in api/server.py by Litestar's 75 s
-# graceful_shutdown to reserve ~8 s of headroom before the orchestrator
-# SIGKILLs the process. Raising any individual budget narrows that 8 s headroom
+# total worst-case drain of ~65 s, matched in api/server.py by Litestar's 75 s
+# graceful_shutdown to reserve ~10 s of headroom before the orchestrator
+# SIGKILLs the process. Raising any individual budget narrows that 10 s headroom
 # contract and risks SIGKILL mid-teardown; not exposed to the settings registry
 # because the shape of the contract -- not its operator-tunability -- is what
 # the orchestrator depends on.
 _TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
-_MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
 _PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0
 _BACKUP_SHUTDOWN_SECONDS: float = 5.0
 _SETTINGS_DISPATCHER_SHUTDOWN_SECONDS: float = 2.0
@@ -121,7 +118,6 @@ complete after the drain gate flips. Exceeding this budget is logged at WARNING
 async def _safe_shutdown(  # noqa: PLR0913
     *,
     task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
@@ -135,9 +131,9 @@ async def _safe_shutdown(  # noqa: PLR0913
 ) -> None:
     """Stop services in reverse startup order.
 
-    Approval timeout scheduler first, then meeting scheduler (depends on
-    orchestrator), then task engine so it can drain queued mutations and publish
-    final snapshots through the still-running bridge. The distributed task queue
+    Approval timeout scheduler first, then task engine so it can drain queued
+    mutations and publish final snapshots through the still-running bridge.
+    The distributed task queue
     stops after the engine so in-flight observer callbacks can still publish
     their final claims. Performance tracker closes after task engine (sampling
     is triggered by task events). Backup runs before persistence disconnect so
@@ -159,14 +155,6 @@ async def _safe_shutdown(  # noqa: PLR0913
             "Failed to stop approval timeout scheduler",
             timeout=_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS * 2.0 + 1.0,
             service="approval_timeout_scheduler",
-        )
-    if meeting_scheduler is not None:
-        await _try_stop(
-            meeting_scheduler.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop meeting scheduler",
-            timeout=_MEETING_SCHEDULER_SHUTDOWN_SECONDS,
-            service="meeting_scheduler",
         )
     if task_engine is not None:
         # ``TaskEngine.stop`` uses an internal hard deadline of

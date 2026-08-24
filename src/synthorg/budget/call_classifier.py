@@ -6,7 +6,7 @@ based on a ``ClassificationContext`` built from execution metadata.
 
 Classification priority (highest wins):
 1. EMBEDDING -- is_embedding_operation
-2. COORDINATION -- is_delegation or is_review or is_meeting
+2. COORDINATION -- is_delegation or is_review or is_group_discussion
 3. SYSTEM -- is_planning_phase or is_system_prompt or is_quality_judge
 4. PRODUCTIVE -- default (everything else)
 """
@@ -31,7 +31,7 @@ class ClassificationContext(BaseModel):
         task_id: Task identifier.
         is_delegation: Turn is an agent delegation handoff.
         is_review: Turn is a review/verification step.
-        is_meeting: Turn is inter-agent discussion/coordination.
+        is_group_discussion: Turn is inter-agent discussion/coordination.
         is_planning_phase: Turn is in the planning phase.
         is_system_prompt: Turn is processing a system prompt.
         is_embedding_operation: Turn uses an embedding model.
@@ -47,7 +47,9 @@ class ClassificationContext(BaseModel):
     task_id: NotBlankStr = Field(description="Task identifier")
     is_delegation: bool = Field(default=False, description="Agent delegation handoff")
     is_review: bool = Field(default=False, description="Review/verification step")
-    is_meeting: bool = Field(default=False, description="Inter-agent discussion")
+    is_group_discussion: bool = Field(
+        default=False, description="Inter-agent discussion"
+    )
     is_planning_phase: bool = Field(default=False, description="Planning phase turn")
     is_system_prompt: bool = Field(
         default=False, description="System prompt processing"
@@ -90,7 +92,7 @@ class RulesBasedClassifier:
 
     Priority order (highest wins):
     1. EMBEDDING -- ``is_embedding_operation``
-    2. COORDINATION -- ``is_delegation or is_review or is_meeting``
+    2. COORDINATION -- ``is_delegation or is_review or is_group_discussion``
     3. SYSTEM -- ``is_planning_phase or is_system_prompt or is_quality_judge``
     4. PRODUCTIVE -- default
     """
@@ -106,7 +108,7 @@ class RulesBasedClassifier:
         """
         if context.is_embedding_operation:
             return LLMCallCategory.EMBEDDING
-        if context.is_delegation or context.is_review or context.is_meeting:
+        if context.is_delegation or context.is_review or context.is_group_discussion:
             return LLMCallCategory.COORDINATION
         if (
             context.is_planning_phase

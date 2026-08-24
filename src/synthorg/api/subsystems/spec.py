@@ -40,15 +40,10 @@ class CapabilityId(StrEnum):
     COORDINATOR = "coordinator"
     WORKSPACE_SERVICE = "workspace_service"
     SETTINGS_READ_SERVICE = "settings_read_service"
-    MEETING_ORCHESTRATOR = "meeting_orchestrator"
 
     # Owned by a declared subsystem.
     AGENT_TOOL_EXECUTION = "agent_tool_execution"
     SANDBOX_RECONCILED = "sandbox_reconciled"
-    MEETING_PROTOCOL_REGISTRY = "meeting_protocol_registry"
-    MEETING_AGENT_DISPATCH = "meeting_agent_dispatch"
-    CEREMONY_SCHEDULER = "ceremony_scheduler"
-    WEBHOOK_EVENT_BRIDGE = "webhook_event_bridge"
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"
     CAPABILITY_EVIDENCE_SEED = "capability_evidence_seed"

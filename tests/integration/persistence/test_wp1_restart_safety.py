@@ -1,14 +1,12 @@
 """Restart-safety integration test for the durable state stores.
 
-The four critical state stores (ceremony scheduler state, meeting
-cooldown, tracked containers, webhook receipts) have durable
-persistence, so a process restart must rehydrate them from the backend
-instead of starting from zero. The three foreign-key-free stores
-(ceremony scheduler state, meeting cooldown, tracked containers) are
-round-tripped through a fresh backend instance here; webhook receipts
-(which require a parent connection) are smoke-checked for wiring, with
-their persistence round-trip covered by the dual-backend conformance
-suite.
+The critical state stores (tracked containers, webhook receipts) have
+durable persistence, so a process restart must rehydrate them from the
+backend instead of starting from zero. The foreign-key-free store
+(tracked containers) is round-tripped through a fresh backend instance
+here; webhook receipts (which require a parent connection) are
+smoke-checked for wiring, with their persistence round-trip covered by
+the dual-backend conformance suite.
 
 A genuine restart cycle requires constructing a *second*
 ``PersistenceBackend`` instance, pointing at the same storage, after
@@ -34,11 +32,7 @@ from pydantic import SecretStr
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence import migrations
-from synthorg.persistence.ceremony_scheduler_state_protocol import (
-    CeremonySchedulerStateRecord,
-)
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
-from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
@@ -172,63 +166,6 @@ class TestWP1RestartSafety:
     inside a single ``PersistenceBackend`` instance.
     """
 
-    async def test_ceremony_state_survives_restart(
-        self,
-        backend_factory: BackendFactory,
-    ) -> None:
-        before = CeremonySchedulerStateRecord(
-            sprint_id=NotBlankStr("sprint-restart"),
-            completion_counters_json='{"standup": 3, "retro": 1}',
-            fired_once_triggers_json='["sprint_start"]',
-            total_completions=4,
-            velocity_history_json="[]",
-            updated_at=datetime.now(UTC),
-        )
-
-        first = await backend_factory()
-        try:
-            await first.ceremony_scheduler_state.save(before)
-        finally:
-            await first.disconnect()
-
-        second = await backend_factory()
-        try:
-            after = await second.ceremony_scheduler_state.get(
-                NotBlankStr("sprint-restart"),
-            )
-            assert after is not None
-            assert after.completion_counters_json == '{"standup": 3, "retro": 1}'
-            assert after.fired_once_triggers_json == '["sprint_start"]'
-            assert after.total_completions == 4
-        finally:
-            await second.disconnect()
-
-    async def test_meeting_cooldown_survives_restart(
-        self,
-        backend_factory: BackendFactory,
-    ) -> None:
-        when = datetime(2026, 5, 15, 10, 0, tzinfo=UTC)
-
-        first = await backend_factory()
-        try:
-            await first.meeting_cooldown.save(
-                MeetingCooldownRecord(
-                    meeting_type_name=NotBlankStr("daily-standup"),
-                    last_triggered_at=when,
-                ),
-            )
-        finally:
-            await first.disconnect()
-
-        second = await backend_factory()
-        try:
-            rows = await second.meeting_cooldown.load_all()
-            match = [r for r in rows if r.meeting_type_name == "daily-standup"]
-            assert len(match) == 1
-            assert match[0].last_triggered_at == when
-        finally:
-            await second.disconnect()
-
     async def test_tracked_containers_survive_restart(
         self,
         backend_factory: BackendFactory,
@@ -263,30 +200,14 @@ class TestWP1RestartSafety:
         """Durable state stores survive a real restart cycle.
 
         Mirrors the production restart sequence: a process crash leaves
-        the backends in some persisted state. After restart, the three
-        foreign-key-free stores are re-queried on a fresh backend
+        the backends in some persisted state. After restart, the
+        foreign-key-free store is re-queried on a fresh backend
         instance without any in-memory carryover; webhook receipts are
         smoke-checked for wiring (their persistence round-trip is covered
         by the dual-backend conformance suite).
         """
         first = await backend_factory()
         try:
-            await first.ceremony_scheduler_state.save(
-                CeremonySchedulerStateRecord(
-                    sprint_id=NotBlankStr("sprint-combo"),
-                    completion_counters_json="{}",
-                    fired_once_triggers_json="[]",
-                    total_completions=0,
-                    velocity_history_json="[]",
-                    updated_at=datetime.now(UTC),
-                ),
-            )
-            await first.meeting_cooldown.save(
-                MeetingCooldownRecord(
-                    meeting_type_name=NotBlankStr("combo-meeting"),
-                    last_triggered_at=datetime.now(UTC),
-                ),
-            )
             await first.tracked_containers.save(
                 TrackedContainerRecord(
                     container_id=NotBlankStr("ctr-combo"),
@@ -303,14 +224,6 @@ class TestWP1RestartSafety:
 
         second = await backend_factory()
         try:
-            assert (
-                await second.ceremony_scheduler_state.get(
-                    NotBlankStr("sprint-combo"),
-                )
-                is not None
-            )
-            cooldown_rows = await second.meeting_cooldown.load_all()
-            assert any(r.meeting_type_name == "combo-meeting" for r in cooldown_rows)
             assert (
                 await second.tracked_containers.get(NotBlankStr("ctr-combo"))
                 is not None

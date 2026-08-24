@@ -9,9 +9,8 @@ from typing import Final
 
 # Grace period a service waits for in-flight work to drain during a
 # stop() before abandoning the wait. Shared by the background-loop
-# services (backup scheduler, escalation sweeper / notifier, HR pruning,
-# chief-of-staff monitor, provider health prober) that each previously
-# inlined this value.
+# services (backup scheduler, HR pruning, chief-of-staff monitor,
+# provider health prober) so the policy is one edit, not one per service.
 DEFAULT_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 # Overall ceiling for draining every detached initiative tail at shutdown.

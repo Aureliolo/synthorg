@@ -5,7 +5,7 @@ search:
 
 # Communication
 
-Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution, and meeting protocols.
+Inter-agent messaging: bus, dispatcher, delegation, loop prevention, and the multi-agent conversation primitives.
 
 ## Conversation Enums
 
@@ -49,22 +49,12 @@ Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict re
 
 ::: synthorg.communication.loop_prevention.models
 
-## Conflict Resolution
+## Multi-Agent Conversation
 
-::: synthorg.communication.conflict_resolution.protocol
+::: synthorg.communication.multi_agent.protocol
 
-::: synthorg.communication.conflict_resolution.config
+::: synthorg.communication.multi_agent.models
 
-::: synthorg.communication.conflict_resolution.models
+::: synthorg.communication.multi_agent.token_tracker
 
-::: synthorg.communication.conflict_resolution.service
-
-## Meeting Protocol
-
-::: synthorg.communication.meeting.protocol
-
-::: synthorg.communication.meeting.config
-
-::: synthorg.communication.meeting.models
-
-::: synthorg.communication.meeting.orchestrator
+::: synthorg.communication.multi_agent.agent_caller

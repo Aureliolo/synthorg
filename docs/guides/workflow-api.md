@@ -220,7 +220,7 @@ See the [engine design](../design/engine.md#subworkflows) for the full subworkfl
 ## Company-Level Workflow Configuration
 
 The runtime workflow type (Kanban, Agile Kanban, sequential, parallel)
-and its sub-config (board columns, sprint cadence, ceremony policy) is
+and its sub-config (board columns, sprint cadence) is
 configured in the company YAML alongside agents and providers. The
 runtime engine consults the active type only; the inactive
 sub-configs are accepted for convenience but emit a
@@ -241,11 +241,8 @@ workflow:
         wip_limit: null
   sprint:
     duration_days: 14
-    velocity_calculator: "rolling_average"
-    auto_transition: true
-    ceremonies:
-      planning_strategy: "fixed_start"
-      retro_strategy: "fixed_end"
+    max_tasks_per_sprint: 50
+    velocity_window: 3
 ```
 
 The active `workflow_type` controls which sub-config blocks the engine

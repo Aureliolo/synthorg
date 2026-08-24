@@ -429,7 +429,6 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 
 **Business health**
 
-- `synthorg_escalation_queue_depth{department}`: gauge; pending escalations awaiting decision, per department.
 - `synthorg_agent_identity_version_changes_total{agent_id, change_type}`: counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
 - `synthorg_workflow_execution_seconds{workflow_definition_id, status}`: histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
 
@@ -478,10 +477,9 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 - `synthorg_audit_chain_verifications_total{outcome}`: counter incremented once per `AuditChainVerifier.verify_chain()` call. `outcome` is one of `valid` / `broken` (bounded via `VALID_AUDIT_VERIFICATION_OUTCOMES`). Any `broken` increment is alertable -- it indicates hash-chain tampering, signature corruption, or a verifier-side failure (crypto / network).
 - `synthorg_otlp_export_batches_total{kind, outcome}`, `synthorg_otlp_export_dropped_records_total{kind}`.
 
-**Decisions (approval / escalation / blueprint)**
+**Decisions (approval / blueprint)**
 
 - `synthorg_approval_decisions_total{outcome}`: counter; terminal approval-gate decisions. `outcome` ∈ `approved` / `rejected` / `expired` (bounded via `VALID_APPROVAL_OUTCOMES`). Emitted from the approve / reject controller paths and the expiry sweeper in `api/approval_store.py`.
-- `synthorg_escalation_outcomes_total{outcome}`: counter; conflict-resolution escalation terminal outcomes. `outcome` ∈ `resolved` / `escalated_to_human` / `auto_resolved` / `notify_failed` / `sweeper_failed` (bounded via `VALID_ESCALATION_OUTCOMES`). Disjoint from the approval-decisions counter because the two flows have different terminal vocabularies and live in different modules.
 - `synthorg_blueprint_instantiations_total{outcome}`: counter; workflow blueprint instantiation attempts. `outcome` ∈ `success` / `validation_error` / `not_found` / `unknown_error` (bounded via `VALID_BLUEPRINT_OUTCOMES`). Use `rate(...{outcome="success"}[5m]) / rate(...[5m])` for a success-rate panel.
 
 **Configuration & MCP**

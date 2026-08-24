@@ -58,7 +58,7 @@ async def agent_name_map(app_state: AppState) -> dict[str, str]:
     surface falls back to naming nobody rather than failing the request. Bounded
     like every other read here, because the response is already complete without
     the names: a stalled roster must cost the rows their names, never cost the
-    caller a task, meeting or interrupt page that was ready to send.
+    caller a task or interrupt page that was ready to send.
 
     Returns:
         Map of normalised agent id to display name (empty on failure or timeout).

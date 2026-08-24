@@ -2,8 +2,8 @@
 
 Read and drive sprints for ``agile_kanban`` orgs: list / fetch, create a
 sprint, pull tasks into its backlog, and start / advance its lifecycle.
-Delivery advances sprints automatically via the ceremony scheduler; these
-endpoints are the explicit control + inspection surface.
+Delivery advances a sprint into review automatically once its backlog is
+complete; these endpoints are the explicit control + inspection surface.
 """
 
 from typing import Annotated

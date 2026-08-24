@@ -79,7 +79,7 @@ describe('useWebSocket registration rollback', () => {
           { channel: 'tasks', handler: handlerA },
           { channel: 'agents', handler: handlerB },
           { channel: 'approvals', handler: handlerC },
-          { channel: 'meetings', handler: handlerD },
+          { channel: 'plans', handler: handlerD },
         ],
       }),
     )
@@ -118,7 +118,7 @@ describe('useWebSocket registration rollback', () => {
     // wiring after a throw could silently register D in the store
     // even though the hook's ledger didn't record it.
     expect(onChannelSpy).toHaveBeenCalledTimes(3)
-    expect(onChannelSpy).not.toHaveBeenCalledWith('meetings', handlerD)
+    expect(onChannelSpy).not.toHaveBeenCalledWith('plans', handlerD)
 
     // Channel-level unsubscribe must cover every channel the hook
     // subscribed to (``uniqueChannels`` from the bindings), even the
@@ -133,7 +133,7 @@ describe('useWebSocket registration rollback', () => {
       'tasks',
       'agents',
       'approvals',
-      'meetings',
+      'plans',
     ])
   })
 
@@ -188,7 +188,7 @@ describe('useWebSocket registration rollback', () => {
     // phantom off-calls for bindings that threw or were never
     // attempted) and unsubscribes every unique channel the hook
     // handed the store at subscribe time.
-    const CHANNELS = ['tasks', 'agents', 'approvals', 'meetings'] as const
+    const CHANNELS = ['tasks', 'agents', 'approvals', 'plans'] as const
 
     await fc.assert(
       fc.asyncProperty(

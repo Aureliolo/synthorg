@@ -11,7 +11,6 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARKED,
     APPROVAL_GATE_CONTEXT_RESUMED,
 )
-from synthorg.observability.events.conflict import CONFLICT_DISSENT_RECORDED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_ERROR,
@@ -39,11 +38,6 @@ class TestProjectionMap:
     )
     def test_projection_mapping(self, key: str, expected: AgUiEventType) -> None:
         assert PROJECTION_MAP[key] == expected
-
-    def test_dissent_not_in_projection_map(self) -> None:
-        # Dissent is emitted directly by ConflictResolutionService
-        # via EventStreamHub.publish_raw(), not through projection.
-        assert CONFLICT_DISSENT_RECORDED not in PROJECTION_MAP
 
     def test_no_step_events_are_projected(self) -> None:
         # AG-UI's STEP_* members stay as protocol vocabulary, but no loop

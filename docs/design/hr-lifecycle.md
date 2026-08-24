@@ -19,7 +19,7 @@ Authority is not a scalar rank. It derives from an agent's **role** and its posi
 - `reporting_chain(role)`: the ordered chain of supervisors up to the root.
 - `outranks(a, b)` / `compare_authority(a, b)`: whether role `a` is a (transitive) superior of role `b`, and a sign-comparison by reporting depth.
 
-Consumers that need "who is more senior" (conflict resolution, owner selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model capability is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
+Consumers that need "who is more senior" (owner selection, plan-review panel selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model capability is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
 
 ---
 
@@ -78,7 +78,7 @@ The built-in catalog covers common organisational roles:
 === "Operations & Support"
 
     - **Project Manager**: Timelines, dependencies, risk management, status tracking
-    - **Scrum Master**: Agile ceremonies, impediment removal, team health
+    - **Scrum Master**: Sprint cadence, impediment removal, team health
     - **HR Manager**: Hiring recommendations, team composition, performance tracking
     - **Security Operations**: Request validation, safety checks, approval workflows
 
@@ -322,8 +322,8 @@ agent_metrics:
     collaboration_score = weighted_average(
         delegation_success_rate,
         delegation_response_latency,
-        conflict_resolution_constructiveness,
-        meeting_contribution_rate,
+        conflict_constructiveness,
+        discussion_contribution_rate,
         loop_prevention_score,
         handoff_completeness
     )

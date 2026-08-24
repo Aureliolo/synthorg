@@ -101,7 +101,6 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3009 | `ONTOLOGY_NOT_FOUND` | Ontology entry |
 | 3010 | `CONNECTION_NOT_FOUND` | Integration connection |
 | 3011 | `MODEL_NOT_FOUND` | Provider model |
-| 3012 | `ESCALATION_NOT_FOUND` | Escalation queue entry |
 | 3013 | `WORKFLOW_DEFINITION_NOT_FOUND` | Workflow definition record |
 | 3014 | `AB_TEST_NOT_FOUND` | A/B test record for a proposal |
 | 3015 | `BACKUP_NOT_FOUND` | Backup archive |
@@ -138,7 +137,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4003 | `TASK_VERSION_CONFLICT` | Same, scoped to a task update |
 | 4004 | `ONTOLOGY_DUPLICATE` | Duplicate ontology entity or alias |
 | 4005 | `CHANNEL_ALREADY_EXISTS` | Channel name already taken |
-| 4006 | `ESCALATION_ALREADY_DECIDED` | Late decision on a closed escalation |
 | 4007 | `MIXED_CURRENCY_AGGREGATION` | Cross-currency aggregation attempted |
 | 4008 | `WORKFLOW_EXECUTION_ALREADY_TERMINAL` | Cancel hit an execution already in a terminal status (no retry will succeed) |
 | 4009 | `BACKUP_IN_PROGRESS` | A backup/restore operation is already running |
@@ -223,7 +221,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8002 | `PERSISTENCE_ERROR` | DB-level failure |
 | 8003 | `ENGINE_ERROR` | Engine-layer failure |
 | 8004 | `ONTOLOGY_ERROR` | Ontology subsystem failure |
-| 8005 | `COMMUNICATION_ERROR` | Meeting/message bus failure |
+| 8005 | `COMMUNICATION_ERROR` | Message bus / delegation failure |
 | 8006 | `TOOL_ERROR` | Generic tool failure |
 | 8007 | `ARTIFACT_STORAGE_FULL` | Artifact store at capacity |
 | 8008 | `TOOL_EXECUTION_ERROR` | Tool runtime failure (subclass of `TOOL_ERROR`) |

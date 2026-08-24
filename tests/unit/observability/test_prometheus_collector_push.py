@@ -1,9 +1,8 @@
-"""Tests for the new HYG-1 push-updated Prometheus record_* methods.
+"""Tests for the push-updated Prometheus ``record_*`` methods.
 
-Covers ``record_escalation_queue_depth``, ``record_agent_identity_change``,
-and ``record_workflow_execution`` -- including the WARNING log paths,
-label-value validation, and cardinality guards that matter for
-production dashboards.
+Covers ``record_agent_identity_change`` and ``record_workflow_execution``
+-- including the WARNING log paths, label-value validation, and
+cardinality guards that matter for production dashboards.
 """
 
 from collections.abc import Iterator
@@ -28,9 +27,9 @@ def _seed_label_snapshot() -> Iterator[None]:
 
     The validators in ``prometheus_labels`` fail closed on every
     state (no bootstrap pass-through), so the test fixtures must
-    seed every ``agent_id`` / ``workflow_definition_id`` /
-    ``department`` value the tests record. This fixture covers all
-    of them for the file in one place.
+    seed every ``agent_id`` / ``workflow_definition_id`` value the
+    tests record. This fixture covers all of them for the file in
+    one place.
     """
     update_label_snapshot(
         _LabelSnapshot(
@@ -47,10 +46,8 @@ def _seed_label_snapshot() -> Iterator[None]:
             workflow_definition_ids=frozenset(
                 {"wf_onboarding_v1", "wf_a", "wf_long"},
             ),
-            departments=frozenset({"sales"}),
             agent_ids_seeded=True,
             workflow_definition_ids_seeded=True,
-            departments_seeded=True,
         ),
     )
     yield
@@ -79,40 +76,6 @@ def _sample_value(
             if sample.name == metric_name and sample.labels == labels:
                 return float(sample.value)
     return 0.0
-
-
-class TestRecordEscalationQueueDepth:
-    def test_happy_path_sets_gauge(
-        self,
-        collector: PrometheusCollector,
-    ) -> None:
-        collector.record_escalation_queue_depth(department="sales", depth=7)
-        value = _sample_value(
-            collector,
-            "synthorg_test_escalation_queue_depth",
-            {"department": "sales"},
-        )
-        assert value == 7.0
-
-    def test_empty_department_raises_and_logs(
-        self,
-        collector: PrometheusCollector,
-    ) -> None:
-        # The WARNING should fire via METRICS_SCRAPE_FAILED so dashboards
-        # surface validation failures the same way scrape errors appear.
-        with (
-            structlog.testing.capture_logs() as cap,
-            pytest.raises(ValueError, match="department must be non-empty"),
-        ):
-            collector.record_escalation_queue_depth(department="", depth=3)
-        assert any(rec.get("event") == METRICS_SCRAPE_FAILED for rec in cap)
-
-    def test_negative_depth_rejected(
-        self,
-        collector: PrometheusCollector,
-    ) -> None:
-        with pytest.raises(ValueError, match="depth"):
-            collector.record_escalation_queue_depth(department="sales", depth=-1)
 
 
 class TestRecordAgentIdentityChange:

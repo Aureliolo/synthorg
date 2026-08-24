@@ -84,7 +84,6 @@ API_WS_SEND_FAILED: Final[str] = "api.ws.send_failed"
 API_SERVICE_UNAVAILABLE: Final[str] = "api.service.unavailable"
 API_SERVICE_AUTO_WIRED: Final[str] = "api.service.auto_wired"
 API_SERVICE_AUTO_WIRE_FAILED: Final[str] = "api.service.auto_wire_failed"
-API_MEETINGS_WIRING_DEFERRED: Final[str] = "api.meetings.wiring_deferred"
 # auth.failed / token_issued / setup_complete / password_changed are
 # audit-chained security decisions and live in events.security as
 # SECURITY_AUTH_*. A *successful* per-request authentication is NOT a
@@ -189,7 +188,6 @@ API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
     "api.provider.usage_enrichment_failed"
 )
 API_ACTIVITY_FEED_QUERIED: Final[str] = "api.activity.feed_queried"
-API_MEETING_TRIGGERED: Final[str] = "api.meeting.triggered"
 API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"
 API_BUDGET_CALL_ANALYTICS_QUERIED: Final[str] = "api.budget.call_analytics_queried"
 API_BUDGET_PROMPT_CLASS_BREAKDOWN_QUERIED: Final[str] = (
@@ -260,13 +258,6 @@ API_SECURITY_CONFIG_IMPORT_FAILED: Final[str] = "api.security_config.import_fail
 API_COORDINATION_METRICS_QUERIED: Final[str] = "api.coordination_metrics.queried"
 API_INTERRUPTS_QUERIED: Final[str] = "api.interrupts.queried"
 API_AGENT_HEALTH_TREND_MISSING: Final[str] = "api.agent.health.trend_missing"
-
-# Ceremony policy
-API_CEREMONY_POLICY_QUERIED: Final[str] = "api.ceremony_policy.queried"
-API_CEREMONY_POLICY_RESOLVED: Final[str] = "api.ceremony_policy.resolved"
-API_CEREMONY_POLICY_ACTIVE_QUERIED: Final[str] = "api.ceremony_policy.active_queried"
-API_CEREMONY_POLICY_DEPT_UPDATED: Final[str] = "api.ceremony_policy.department_updated"
-API_CEREMONY_POLICY_DEPT_CLEARED: Final[str] = "api.ceremony_policy.department_cleared"
 
 # Team CRUD
 API_TEAM_CREATED: Final[str] = "api.team.created"

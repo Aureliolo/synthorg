@@ -45,7 +45,6 @@ class SettingNamespace(StrEnum):
     DASHBOARD = "dashboard"
     DESIGN = "design"
     OUTPUT_STYLE = "output_style"
-    STRATEGY = "strategy"
 
 
 class SettingType(StrEnum):

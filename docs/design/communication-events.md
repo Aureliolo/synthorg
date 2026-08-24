@@ -34,7 +34,7 @@ internal event constants to `AgUiEventType` values:
 | `approval_gate.context.resumed` | `approval_resumed` |
 
 Streaming events (`text_message_content`, `tool_call_args`, `tool_call_end`,
-`info_request_interrupt`, `info_request_resumed`) and `synthorg:dissent` are
+`info_request_interrupt`, `info_request_resumed`) are
 emitted directly by their services via `EventStreamHub.publish_raw()`, not via
 the EventProjector log projection, because they carry structured payloads that
 don't originate from a single log call.
@@ -78,7 +78,7 @@ A second, session-less SSE endpoint
 opens when the WebSocket upgrade is proxy-blocked. Unlike `/events/stream`
 (a per-task AG-UI session stream), it bridges the Litestar `ChannelsPlugin`
 feed the WebSocket handler serves: it subscribes to every channel the caller
-may read (`resolve_dashboard_channels`, gating budget / internal / `#dissent`
+may read (`resolve_dashboard_channels`, gating budget / internal
 channels by role) plus the caller's `user:{id}` channel, then forwards each
 published `WsEvent` verbatim under a single named `ws` SSE frame (so the
 client needs one listener, not one per event type). It emits periodic
@@ -160,16 +160,6 @@ arm; the `ml-dsa-65` value reserves the future quantum-safe arm), and the
 `is_fully_signed` computed field checks the `signature_threshold`.
 See `src/synthorg/observability/audit_chain/` for the signing
 infrastructure.
-
-## DissentRecord as First-Class Message Type
-
-`MessageType.DISSENT` promotes `DissentRecord` from a persistence-only
-artifact to a typed message on the bus (S1 #1254 constraint). When
-a conflict is resolved:
-
-1. Dissent records are built for overruled positions (existing)
-2. A `synthorg:dissent` SSE event is published via the `EventStreamHub`
-3. `COMM_DISSENT_PUBLISHED` observability event is logged
 
 ## A2A Projection Consolidation
 

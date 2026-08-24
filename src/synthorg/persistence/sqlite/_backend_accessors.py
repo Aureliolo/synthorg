@@ -47,9 +47,6 @@ from synthorg.persistence.auth_protocol import (
 from synthorg.persistence.capability_source_status_protocol import (
     CapabilitySourceStatusRepository,
 )
-from synthorg.persistence.ceremony_scheduler_state_protocol import (
-    CeremonySchedulerStateRepository,
-)
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
@@ -107,9 +104,6 @@ from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionRepository,
 )
 from synthorg.persistence.mcp_protocol import McpInstallationRepository
-from synthorg.persistence.meeting_cooldown_protocol import (
-    MeetingCooldownRepository,
-)
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
@@ -253,8 +247,6 @@ class _BackendRepositoryAccessors:
     _model_capability_scores: ModelCapabilityScoreRepository | None
     _capability_source_statuses: CapabilitySourceStatusRepository | None
     _provider_failover_events: ProviderFailoverEventRepository | None
-    _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
-    _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
     _connections: ConnectionRepository | None
     _connection_secrets: ConnectionSecretRepository | None
@@ -706,22 +698,6 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._provider_failover_events,
             "provider_failover_events",
-        )
-
-    @property
-    def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
-        """Repository for ceremony scheduler per-sprint state snapshots."""
-        return self._require_connected(
-            self._ceremony_scheduler_state,
-            "ceremony_scheduler_state",
-        )
-
-    @property
-    def meeting_cooldown(self) -> MeetingCooldownRepository:
-        """Repository for meeting cooldown last-triggered timestamps."""
-        return self._require_connected(
-            self._meeting_cooldown,
-            "meeting_cooldown",
         )
 
     @property

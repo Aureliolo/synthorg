@@ -29,7 +29,6 @@ from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence.auth_protocol import LockoutRepository
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
-from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.migrations import migrate_apply, to_sqlite_url
 from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.sqlite._repository_wiring import (
@@ -332,28 +331,6 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
                 write_context=self.write_context,
             )
         return self._lockouts
-
-    def build_escalations(
-        self,
-        *,
-        notify_channel: str | None = None,  # noqa: ARG002
-    ) -> EscalationQueueRepository:
-        """Construct an escalation queue repository.
-
-        ``notify_channel`` is ignored by SQLite (no cross-instance
-        NOTIFY/LISTEN). The backend's ``write_context`` is passed
-        through so escalation transactions serialize with other
-        repositories writing to the same aiosqlite connection.
-
-        Returns:
-            Result of type ``EscalationQueueRepository``.
-        """
-        from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
-            SQLiteEscalationRepository,
-        )
-
-        db = self.get_db()
-        return SQLiteEscalationRepository(db, write_context=self.write_context)
 
     def build_ontology_versioning(
         self,

@@ -73,9 +73,7 @@ const MESSAGE_TYPE_LABELS: Record<MessageType, string> = {
   delegation: 'Delegation',
   status_report: 'Status Report',
   escalation: 'Escalation',
-  meeting_contribution: 'Meeting',
   hr_notification: 'HR Notice',
-  dissent: 'Dissent',
   context_injection: 'Context',
 }
 

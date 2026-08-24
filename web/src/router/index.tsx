@@ -28,14 +28,11 @@ const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const ModelRecommendationsPage = lazy(() => import('@/pages/ModelRecommendationsPage'))
 const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
-const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'))
-const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'))
 const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const SsrfViolationsPage = lazy(() => import('@/pages/security/SsrfViolationsPage'))
 const ProviderDetailPage = lazy(() => import('@/pages/ProviderDetailPage'))
 const OntologyPage = lazy(() => import('@/pages/OntologyPage'))
 const CustomRulesPage = lazy(() => import('@/pages/CustomRulesPage'))
-const EscalationQueuePage = lazy(() => import('@/pages/EscalationQueuePage'))
 const UsersPage = lazy(() => import('@/pages/UsersPage'))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
@@ -74,7 +71,6 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
 const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
-const CeremonyPolicyPage = lazy(() => import('@/pages/settings/ceremony-policy/CeremonyPolicyPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
 
@@ -172,8 +168,6 @@ const appRoutes = [
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
               { path: ROUTES.TRAINING.slice(1), element: <TrainingPage /> },
               { path: 'messages', element: <MessagesPage /> },
-              { path: 'meetings', element: <MeetingsPage /> },
-              { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
               { path: 'providers', element: <ProvidersPage /> },
               // Registered before ':providerName' so the literal segment is not
               // captured as a provider name.
@@ -184,7 +178,6 @@ const appRoutes = [
               { path: ROUTES.MCP_CATALOG.slice(1), element: <McpCatalogPage /> },
               { path: 'ontology', element: <OntologyPage /> },
               { path: ROUTES.CUSTOM_RULES.slice(1), element: <CustomRulesPage /> },
-              { path: ROUTES.ESCALATIONS.slice(1), element: <EscalationQueuePage /> },
               { path: ROUTES.USERS.slice(1), element: <UsersPage /> },
               { path: 'projects', element: <ProjectsPage /> },
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
@@ -222,7 +215,6 @@ const appRoutes = [
               { path: 'settings', element: <SettingsPage /> },
               { path: ROUTES.SETTINGS_SECURITY_SESSIONS.slice(1), element: <SessionsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
-              { path: ROUTES.SETTINGS_CEREMONY_POLICY.slice(1), element: <CeremonyPolicyPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },
               { path: '*', element: <NotFoundPage /> },
             ],

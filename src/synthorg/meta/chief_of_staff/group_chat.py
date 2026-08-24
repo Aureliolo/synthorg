@@ -34,8 +34,7 @@ from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
-from synthorg.communication.meeting._token_tracker import TokenTracker
-from synthorg.communication.meeting.protocol import AgentCaller
+from synthorg.communication.multi_agent import AgentCaller, TokenTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -117,7 +116,7 @@ class GroupChatService:
 
     Args:
         agent_caller: Per-agent LLM dispatch (persona + untrusted-content directive),
-            built via ``build_meeting_agent_caller``.
+            built via ``build_agent_caller``.
         agent_registry: Source of truth for participant identities.
         config: Chief of Staff configuration (group-chat bounds).
         conversation_repo: Conversation header store.
@@ -127,7 +126,7 @@ class GroupChatService:
         authority_guard: Authority-cue scanner reused for peer-block
             auditing; defaults to a fresh guard with the standard config.
         cost_tracker: Optional cost tracker (the caller dispatch records
-            via the meeting chokepoint when wired).
+            via the cost chokepoint when wired).
         invite_coordinator: Agent-initiated invite coordinator;
             present only when the invite feature is on. When ``None`` the
             round runs the plain-text contribution path unchanged.

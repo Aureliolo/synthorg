@@ -14,9 +14,6 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.engine.workflow.webhook_bridge import (
-    WebhookEventBridge,
-)
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import (
     ConnectionCatalog,
@@ -70,7 +67,6 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     secret_capture_service: SecretCaptureService | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     oauth_state_service: OAuthStateService | None = None
-    webhook_event_bridge: WebhookEventBridge | None = None
     webhook_service: WebhookService | None = None
     tunnel_provider: TunnelManager | None = None
     tunnel_service: TunnelService | None = None

@@ -36,8 +36,6 @@ _PAGINATED_ACCESSORS = (
     "subworkflows",
     "risk_overrides",
     "ssrf_violations",
-    "ceremony_scheduler_state",
-    "meeting_cooldown",
     "tracked_containers",
     "connections",
     "principle_overrides",

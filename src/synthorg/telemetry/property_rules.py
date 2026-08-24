@@ -87,7 +87,6 @@ _ALLOWED_PROPERTIES: MappingProxyType[str, frozenset[str]] = MappingProxyType(
                 "topology_parallel",
                 "topology_sequential",
                 "topology_auto",
-                "meetings_held",
                 "delegations_executed",
                 "uptime_hours",
             }

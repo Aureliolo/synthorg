@@ -102,10 +102,10 @@ on resolution.
   via ``api.per_op_rate_limit.overrides`` without restart; the
   guard reads the live config on every request. Covers 85+ endpoints
   across memory, providers, agents, tasks, approvals, workflows,
-  requests, meetings, users, webhooks, custom_rules, ontology,
+  requests, users, webhooks, custom_rules, ontology,
   departments, connections, personalities, reviews,
   artifacts, backup, oauth, settings, setup, simulations, training,
-  escalations, a2a, and auth ws-ticket.
+  a2a, and auth ws-ticket.
 - **Per-operation inflight concurrency**: a companion middleware
   (``PerOpConcurrencyMiddleware``) caps simultaneous long-running
   requests per ``(operation, subject)`` for six HIGH-tier endpoints

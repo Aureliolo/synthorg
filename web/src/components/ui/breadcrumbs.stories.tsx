@@ -43,9 +43,9 @@ export const FiveLevelsCollapsed: Story = {
     items: [
       { label: 'Settings', to: '/settings' },
       { label: 'Namespaces', to: '/settings/namespaces' },
-      { label: 'Ceremony Policy', to: '/settings/namespaces/ceremony-policy' },
-      { label: 'Engineering Override', to: '/settings/namespaces/ceremony-policy/engineering' },
-      { label: 'Standup Cadence' },
+      { label: 'Coordination', to: '/settings/namespaces/coordination' },
+      { label: 'Engineering Override', to: '/settings/namespaces/coordination/engineering' },
+      { label: 'Wave Concurrency' },
     ],
     maxItems: 4,
   },

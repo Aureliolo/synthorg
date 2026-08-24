@@ -66,11 +66,10 @@ class TestConstructionWiringPopulatesSlices:
     def test_coordination_slice_wired(self, built_app_state: AppState) -> None:
         coordination = built_app_state.slice(CoordinationStateSlice)
         assert coordination.metrics_store is not None
-        # The coordination + ceremony-policy read facades wire at construction
-        # so the synthorg_coordination_* / synthorg_ceremony_policy_* tools
-        # dispatch to a real service instead of a capability gap.
+        # The coordination read facade wires at construction so the
+        # synthorg_coordination_* tools dispatch to a real service
+        # instead of a capability gap.
         assert coordination.coordination_service is not None
-        assert coordination.ceremony_policy_service is not None
 
     def test_hr_health_facade_construction_wired(
         self,

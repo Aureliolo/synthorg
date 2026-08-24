@@ -109,7 +109,6 @@ describe('Sidebar', () => {
 
     expect(screen.getByText('Agents')).toBeInTheDocument()
     expect(screen.getByText('Messages')).toBeInTheDocument()
-    expect(screen.getByText('Meetings')).toBeInTheDocument()
     expect(screen.getByText('Providers')).toBeInTheDocument()
     expect(screen.getByText('Docs')).toBeInTheDocument()
     expect(screen.getByText('Settings')).toBeInTheDocument()

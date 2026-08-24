@@ -75,7 +75,6 @@ owning `feature.py` `ghost_wired_symbols` claim.
 | `ActivityFeedService` | `api/lifecycle_helpers/persistence_autowire.py::_wire_activity_feed_service` | `synthorg_agents_get_activity`, `synthorg_activities_list` |
 | `AgentHealthService` | `hr/_construction.py::wire_construction` | `synthorg_agents_get_health` |
 | `CoordinationService` | `coordination/_construction.py::wire_construction` | `synthorg_coordination_*` |
-| `CeremonyPolicyService` | `coordination/_construction.py::wire_construction` | `synthorg_ceremony_policy_*` |
 
 ### Integrations (`IntegrationsStateSlice`)
 
@@ -118,7 +117,6 @@ report the real runtime condition.
 | `api/controllers/meta.py::get_signals` | Reports real per-domain availability from the wired `SignalsService`. |
 | `agents_training.py` `_WHY_*` capability reasons | Read the "service not wired in this deployment" runtime condition for the training / personality services. |
 | `agents_crud.py` `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment") for the activity-feed / agent-version / agent-health services. |
-| `communication/meeting/enums.py` `EMBEDDING` docstring | Describes the implemented `EmbeddingSimilarityDetector`. |
 
 ## Idioms 3-7 sweep of `src/synthorg`
 
