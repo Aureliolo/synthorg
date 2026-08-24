@@ -283,6 +283,42 @@ class TestPlanMode:
 
         assert "CAVEAT" not in plan
 
+    def test_a_matrix_the_ceiling_cannot_pay_for_says_so(self) -> None:
+        """The comparison is done for the reader, on the one screen it matters.
+
+        The projection and the ceiling used to sit on adjacent lines with
+        nothing relating them, and this is where the spend decision is taken: a
+        run was launched at a ceiling four times too small from exactly that
+        reading, and it bought a whole planned tree, six built units and no
+        measurement at all.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        assert "SHORTFALL" in plan
+        assert f"{manifest.max_sessions:,}" in plan
+        # And which of the caps the ceiling actually reaches, because "narrow
+        # --depths" is only actionable once the operator knows how far.
+        assert "caps 1, 2, 3 fit" in plan
+        assert "stop inside cap 4" in plan
+
+    def test_a_ceiling_that_covers_the_matrix_stays_quiet(self) -> None:
+        # The note is a warning, not a running commentary: printed always, it
+        # would be the line an operator stops reading.
+        covered = narrow(load_manifest(_MANIFEST), "1,2", 100_000)
+
+        assert "SHORTFALL" not in describe_plan(covered, _spec())
+
+    def test_a_ceiling_below_even_the_shallowest_cap_says_that(self) -> None:
+        # The prefix is empty, and reporting "caps  fit" would read as though
+        # something did.
+        starved = narrow(load_manifest(_MANIFEST), None, 1)
+
+        plan = describe_plan(starved, _spec())
+
+        assert "not even the shallowest cap fits" in plan
+
     def test_a_weakened_judge_puts_its_caveat_on_the_plan(self) -> None:
         # The operator is told before spending, not after reading the chart.
         shipped = load_manifest(_MANIFEST)

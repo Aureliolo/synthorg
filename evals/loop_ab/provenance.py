@@ -26,6 +26,7 @@ def capture_provenance(
     manifest_path: Path,
     brief_suite_version: str,
     images: RecordedImages,
+    out_dir: Path | None = None,
 ) -> Provenance:
     """Capture what this recording ran against.
 
@@ -34,6 +35,11 @@ def capture_provenance(
         manifest_path: The recording manifest driving the matrix.
         brief_suite_version: Stable digest of the brief suite measured.
         images: The container images the recording host resolved for its legs.
+        out_dir: Where this recording writes its scoreboard and its journal,
+            excluded from the dirty check. The committed scoreboard lives under
+            a tracked directory, so a finished matrix would otherwise dirty the
+            tree with its own artifacts and the next ``--resume`` would be
+            refused on an identity mismatch.
 
     Returns:
         The assembled :class:`Provenance`.
@@ -41,7 +47,7 @@ def capture_provenance(
     Raises:
         ProvenanceUnavailableError: The git metadata could not be read.
     """
-    git = capture_git_state(repo_root)
+    git = capture_git_state(repo_root, ignoring=out_dir)
     return Provenance(
         generated_at=datetime.now(UTC),
         git_commit=NotBlankStr(git.commit),

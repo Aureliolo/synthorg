@@ -8,11 +8,19 @@ into it rather than left in the prose beside it.
 """
 
 import json
+from collections import defaultdict
 from pathlib import Path
 
 from evals.recursion_depth.chart import render_chart
-from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import MERGE, DepthPoint, RecursionDepthReport
+from evals.recursion_depth.journal import cell_key
+from evals.recursion_depth.manifest import Arm, ModelPair
+from evals.recursion_depth.models import (
+    MERGE,
+    CellRecord,
+    DepthPoint,
+    RecursionDepthReport,
+    UnitRecord,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_REPORT_EMITTED
 
@@ -116,9 +124,26 @@ def _markdown(report: RecursionDepthReport) -> str:
         "",
         *_histogram_table(report),
         "",
-        "## Escalations and amendments",
+        "## What each arm spent, and what it bought",
         "",
         *_gate_table(report),
+        "",
+        "## Who judged whom",
+        "",
+        "The gate is the treatment, so a reviewer that came up on the executor's",
+        "own binding would bias the result toward the null while every",
+        "sweep-level field still read correctly. Every pairing that actually ran",
+        "is listed, with the families the decorrelation claim rests on.",
+        "",
+        *_pairing_table(report),
+        "",
+        "## Every merge",
+        "",
+        "Both parties per merge, which is the grain the independence claim is",
+        "made at. The same rows are in `depth_curve.json` under each cell's",
+        "`units`.",
+        "",
+        *_merge_table(report),
         "",
         "## Caveats",
         "",
@@ -179,8 +204,34 @@ def _histogram_table(report: RecursionDepthReport) -> list[str]:
     return rows
 
 
+type _Merge = tuple[CellRecord, UnitRecord]
+
+
+def _merges_of(report: RecursionDepthReport) -> tuple[_Merge, ...]:
+    """Every assembly the sweep ran, with the cell it belongs to.
+
+    The single owner of that traversal, because three tables below ask the same
+    question of it and a second walk is where two of them come to disagree about
+    how many merges there were.
+
+    Returns:
+        Each merge unit paired with its cell, in recorded order.
+    """
+    return tuple(
+        (cell, unit)
+        for cell in report.measured_cells
+        for unit in cell.units
+        if unit.kind == MERGE
+    )
+
+
 def _gate_table(report: RecursionDepthReport) -> list[str]:
-    """Render the parked escalations and contract amendments per arm.
+    """Render what each arm spent on merging and what it got for it.
+
+    Sessions, tokens and spend sit beside the escalations because the arms are
+    only comparable if their budgets were: repair in the gated arm alone would
+    let it win by spending more rather than by catching anything, and the
+    equal-budget claim is read here or nowhere.
 
     Returns:
         The table lines.
@@ -188,20 +239,91 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     parked = dict.fromkeys(Arm, 0)
     amendments = dict.fromkeys(Arm, 0)
     merges = dict.fromkeys(Arm, 0)
-    for cell in report.measured_cells:
-        for unit in cell.units:
-            if unit.kind != MERGE:
-                continue
-            merges[cell.arm] += 1
-            parked[cell.arm] += int(unit.parked)
-            amendments[cell.arm] += unit.amendments
+    attempts = dict.fromkeys(Arm, 0)
+    tokens = dict.fromkeys(Arm, 0)
+    cost = dict.fromkeys(Arm, 0.0)
+    for cell, unit in _merges_of(report):
+        merges[cell.arm] += 1
+        parked[cell.arm] += int(unit.parked)
+        amendments[cell.arm] += unit.amendments
+        attempts[cell.arm] += unit.attempts
+        tokens[cell.arm] += unit.tokens
+        cost[cell.arm] += unit.cost
     rows = [
-        "| Arm | Merges | Parked escalations | Contract amendments |",
-        "|---|---:|---:|---:|",
+        (
+            "| Arm | Merges | Sessions | Tokens | Spend | Parked escalations "
+            "| Contract amendments |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     rows.extend(
-        f"| {arm.value} | {merges[arm]} | {parked[arm]} | {amendments[arm]} |"
+        f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
+        f"| {cost[arm]:.4f} | {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
+    )
+    return rows
+
+
+def _pair_label(pair: ModelPair | None) -> str:
+    """Render one party of a merge, family included.
+
+    An absent pair is named rather than blanked: on the ungated arm nobody
+    judged, which is the arm's definition, and on the gated arm it would mean a
+    merge whose judge was not recorded at all.
+
+    Returns:
+        ``provider/model_id (family)``, or a stated absence.
+    """
+    if pair is None:
+        return "none"
+    return f"{pair.label} ({pair.family or 'family undeclared'})"
+
+
+def _pairing_table(report: RecursionDepthReport) -> list[str]:
+    """Render every ``(executor, reviewer)`` combination that actually ran.
+
+    Read off the units rather than off the manifest, because the manifest says
+    what the roster was ASKED to bind and these say what answered.
+
+    Returns:
+        The table lines.
+    """
+    counts: dict[tuple[str, str, str], int] = defaultdict(int)
+    for cell, unit in _merges_of(report):
+        pairing = (
+            cell.arm.value,
+            _pair_label(unit.executor),
+            _pair_label(unit.reviewer),
+        )
+        counts[pairing] += 1
+    rows = ["| Arm | Assembled by | Judged by | Merges |", "|---|---|---|---:|"]
+    rows.extend(
+        f"| {arm} | {executor} | {reviewer} | {count} |"
+        for (arm, executor, reviewer), count in sorted(counts.items())
+    )
+    return rows
+
+
+def _merge_table(report: RecursionDepthReport) -> list[str]:
+    """Render one row per merge, both parties named.
+
+    Returns:
+        The table lines.
+    """
+    rows = [
+        (
+            "| Cell | Depth | Assembly | Assembled by | Judged by | Verdict "
+            "| Parked | Amendments | Delivered |"
+        ),
+        "|---|---:|---|---|---|---|---|---:|---|",
+    ]
+    rows.extend(
+        f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
+        f"| {unit.title} | {_pair_label(unit.executor)} "
+        f"| {_pair_label(unit.reviewer)} | {unit.verdict or 'none'} "
+        f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
+        f"| {'yes' if unit.delivered else 'no'} |"
+        for cell, unit in _merges_of(report)
     )
     return rows
 

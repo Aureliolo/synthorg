@@ -188,6 +188,59 @@ def check_declared_families(
     raise RecursionDepthJudgeNotIndependentError(msg)
 
 
+def _reachable_caps(manifest: RecursionDepthManifest) -> str:
+    """Which of the swept caps the ceiling can pay for, cheapest first.
+
+    Returns:
+        A human-readable summary of the prefix that fits, or a statement that
+        not even the shallowest cap does.
+    """
+    arms = len(manifest.arms)
+    spent = 0
+    afforded: list[int] = []
+    for depth in sorted(manifest.depths):
+        spent += manifest.repetitions[depth] * arms * manifest.projected_sessions(depth)
+        if spent > manifest.max_sessions:
+            break
+        afforded.append(depth)
+    if not afforded:
+        return "not even the shallowest cap fits"
+    caps = ", ".join(str(depth) for depth in afforded)
+    return (
+        f"caps {caps} fit; the sweep is expected to stop inside cap {afforded[-1] + 1}"
+    )
+
+
+def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]:
+    """Say plainly when the matrix cannot be paid for, before anything is.
+
+    The projection and the ceiling were printed on adjacent lines with nothing
+    relating them, and this is the one screen where the spend decision is taken:
+    a run was launched at a ceiling four times too small from exactly that
+    reading, and it bought a whole planned tree, six built units and no
+    measurement at all. Doing the comparison for the reader costs a line.
+
+    Args:
+        manifest: The recording matrix, already narrowed by any override.
+        projected: What a full tree at the declared branching would cost.
+
+    Returns:
+        The lines to append, empty when the ceiling covers the projection.
+    """
+    if projected <= manifest.max_sessions:
+        return []
+    return [
+        "",
+        (
+            f"  SHORTFALL     : the projection is {projected:,} sessions against a "
+            f"ceiling of {manifest.max_sessions:,}, so a full tree at this "
+            f"branching cannot be recorded in one sweep. The sweep stops at the "
+            f"ceiling and reports what it measured; {_reachable_caps(manifest)}. "
+            f"Narrow --depths, raise --max-sessions, or expect a partial curve."
+        ),
+    ]
+
+
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
     """Render the matrix a record run would execute.
 
@@ -268,6 +321,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
             "money ceiling above can never fire"
         ),
     ]
+    lines.extend(_ceiling_note(manifest, projected))
     caveat = manifest.caveat()
     if caveat is not None:
         lines.extend(["", f"  CAVEAT: {caveat}"])
@@ -325,6 +379,7 @@ async def _record(
                     manifest_path=args.manifest,
                     manifest=manifest,
                     spec=spec,
+                    out_dir=args.out_dir,
                 )
             )
             report = await run_sweep(
@@ -635,7 +690,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Comma-separated depth caps to record, narrowing the manifest's "
             "own list. This is how a large sweep is staged: record the shallow "
-            "end, read the curve forming, then pay for the deep end."
+            "end, read the curve forming, then pay for the deep end. Stages are "
+            "CUMULATIVE: each one names every cap recorded so far, not only the "
+            "new one, because the report holds exactly the caps this invocation "
+            "planned. A journalled cell is replayed for free, so listing the "
+            "earlier caps again costs nothing and omitting them emits a chart "
+            "missing every cap already paid for."
         ),
     )
     parser.add_argument(

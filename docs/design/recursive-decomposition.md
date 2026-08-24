@@ -350,6 +350,12 @@ branching, the manifest carries a hard `max_sessions` ceiling, and hitting it
 stops the sweep
 and reports what was measured with a caveat saying so. `--depths` stages the
 bill: record the shallow end, read the curve forming, then pay for the deep end.
+Those stages are CUMULATIVE, and this is the one thing about them worth stating
+twice: the report holds exactly the caps the invocation planned, because
+`run_sweep` replays a journalled cell only when the narrowed matrix still asks
+for it. A final stage naming only the deepest cap therefore emits a chart
+missing every cap already paid for. A replayed cell costs nothing, so each stage
+names every cap recorded so far and adds `--resume`.
 `--max-sessions` lowers the ceiling, and it is folded into the manifest rather
 than applied to the run, so the figure the plan prints is the one the run
 enforces: a ceiling applied downstream of the plan shows the manifest's own
@@ -385,9 +391,15 @@ too low and the sweep stops early with a caveat, which is the outcome this
 whole section exists to keep survivable.
 
 Once a journal exists the manifest is frozen, so this figure is chosen once. The
-journal header pins the manifest digest along with the commit, the spec, and both
-pairs, and a resume against a changed manifest is refused rather than mixing two
-matrices into one curve. `--max-sessions` is the only lever a resume has, and it
+journal header pins the manifest digest along with the commit, the spec, both
+pairs, and whether the tree was dirty, and a resume against any of those changed
+is refused rather than mixing two matrices into one curve. That dirty flag
+deliberately excludes the recorder's OWN output directory
+(`evals/harness/provenance.py::_dirty_argv`): the default one is tracked because
+the artifact is committed, so without the exclusion a stage that finished would
+dirty the tree with its own report and refuse the next resume, forfeiting every
+cell it had just paid for. A change to the code still flips it and still refuses
+the resume, which is the point: a fix changes the system under measurement. `--max-sessions` is the only lever a resume has, and it
 works precisely because it is folded into the manifest object without touching
 the file the digest is taken over. Editing `manifest.yaml` to run a cheaper
 matrix forfeits the planning already paid for and means starting a new

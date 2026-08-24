@@ -24,6 +24,7 @@ def capture_provenance(
     manifest_path: Path,
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
+    out_dir: Path | None = None,
 ) -> Provenance:
     """Stamp what this sweep is being measured against.
 
@@ -35,11 +36,15 @@ def capture_provenance(
             the diff even when nothing else moved.
         manifest: The loaded matrix, for the pairs and the independence class.
         spec: The specification that was built.
+        out_dir: Where this sweep writes its report and its journal, excluded
+            from the dirty check. The default out-dir is tracked, so a finished
+            stage would otherwise dirty the tree with its own artifacts and the
+            next ``--resume`` would be refused on an identity mismatch.
 
     Returns:
         The provenance stamp.
     """
-    git = capture_git_state(repo_root)
+    git = capture_git_state(repo_root, ignoring=out_dir)
     return Provenance(
         generated_at=datetime.now(UTC),
         git_commit=NotBlankStr(git.commit),

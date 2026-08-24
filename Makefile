@@ -149,6 +149,15 @@ recursion-depth:
 #
 #   make recursion-depth-record ARGS="--company-config my-providers.yaml --depths 1,2"
 #
+# Stages are CUMULATIVE, and each one after the first adds `--resume`. The report
+# holds exactly the caps the invocation planned, so a stage naming only the new
+# cap emits a chart missing every cap already paid for. A journalled cell is
+# replayed for free, so listing the earlier caps again costs nothing:
+#
+#   ... --depths 1,2
+#   ... --depths 1,2,3 --resume
+#   ... --depths 1,2,3,4 --resume
+#
 # `--keep-workspaces` leaves every unit's tree on disk, which is where the thing
 # the sweep actually built ends up.
 #

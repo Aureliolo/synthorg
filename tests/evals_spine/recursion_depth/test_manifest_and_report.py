@@ -19,6 +19,7 @@ from evals.recursion_depth.manifest import (
 )
 from evals.recursion_depth.models import (
     LEAF,
+    MERGE,
     ORACLE_CAVEAT,
     SIZING_CAVEAT,
     CellRecord,
@@ -440,3 +441,125 @@ class TestTheEmittedArtifacts:
         _, md_path, _ = write_report(report, tmp_path)
 
         assert "the Docker daemon went away" in md_path.read_text(encoding="utf-8")
+
+
+_EXECUTOR_PAIR = ModelPair(
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-capable-001"),
+    capability="capable",
+    family=NotBlankStr("example-family-a"),
+)
+
+_REVIEWER_PAIR = ModelPair(
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-expert-001"),
+    capability="expert",
+    family=NotBlankStr("example-family-b"),
+)
+
+
+def _cell_with_a_merge(arm: Arm, *, reviewer: ModelPair | None) -> CellRecord:
+    """One measured run holding a leaf and the assembly above it.
+
+    Args:
+        arm: Which arm the run belongs to.
+        reviewer: The pair that judged the merge, ``None`` in the ungated arm
+            where nobody does.
+
+    Returns:
+        The cell.
+    """
+    return CellRecord(
+        depth_cap=2,
+        arm=arm,
+        repetition=0,
+        achieved_depth=1,
+        units=(
+            UnitRecord(
+                unit_id=NotBlankStr(f"{arm.value}-leaf"),
+                title=NotBlankStr("build it"),
+                kind=LEAF,
+                depth=1,
+                claimed=(RequirementId("R01"),),
+                delivered=True,
+                attempts=1,
+                tokens=100,
+                cost=0.5,
+                executor=_EXECUTOR_PAIR,
+            ),
+            UnitRecord(
+                unit_id=NotBlankStr(f"{arm.value}-merge"),
+                title=NotBlankStr("Assemble: the whole thing"),
+                kind=MERGE,
+                depth=0,
+                delivered=True,
+                attempts=4,
+                turns=9,
+                tokens=900,
+                cost=1.25,
+                executor=_EXECUTOR_PAIR,
+                reviewer=reviewer,
+                verdict=NotBlankStr("approve") if reviewer is not None else None,
+                amendments=2,
+            ),
+        ),
+        merged_passing=(RequirementId("R01"),),
+    )
+
+
+class TestTheReportNamesBothPartiesPerMerge:
+    """The gate is the treatment, so who judged is part of the result.
+
+    A reviewer that silently came up on the executor's own binding biases the
+    gated arm toward the null while every sweep-level field still reads
+    correctly, so the pairing has to be legible at the grain it happened at.
+    """
+
+    def _markdown(self, tmp_path: Path) -> str:
+        """Emit a two-arm report and return its Markdown.
+
+        Returns:
+            The rendered report.
+        """
+        report = _report(
+            cells=(
+                _cell_with_a_merge(Arm.GATED, reviewer=_REVIEWER_PAIR),
+                _cell_with_a_merge(Arm.UNGATED, reviewer=None),
+            )
+        )
+        _, md_path, _ = write_report(report, tmp_path)
+        return md_path.read_text(encoding="utf-8")
+
+    def test_the_pairing_table_names_both_families(self, tmp_path: Path) -> None:
+        rendered = self._markdown(tmp_path)
+
+        assert "## Who judged whom" in rendered
+        assert "example-provider/example-capable-001 (example-family-a)" in rendered
+        assert "example-provider/example-expert-001 (example-family-b)" in rendered
+
+    def test_an_unjudged_merge_says_so_rather_than_rendering_blank(
+        self, tmp_path: Path
+    ) -> None:
+        # The ungated arm's definition is that nobody judged, and a blank cell
+        # reads as a recording that lost the reviewer rather than as the arm
+        # working exactly as designed.
+        rendered = self._markdown(tmp_path)
+
+        assert "| none |" in rendered
+
+    def test_every_merge_gets_its_own_row(self, tmp_path: Path) -> None:
+        rendered = self._markdown(tmp_path)
+
+        assert "## Every merge" in rendered
+        assert rendered.count("| Assemble: the whole thing |") == 2
+        assert "d2-gated-r0" in rendered
+        assert "d2-ungated-r0" in rendered
+
+    def test_each_arm_reports_what_merging_cost_it(self, tmp_path: Path) -> None:
+        # Repair in the gated arm alone would let it win by spending more
+        # rather than by catching anything, so the equal-budget claim is read
+        # off this table or nowhere.
+        rendered = self._markdown(tmp_path)
+
+        assert "| gated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
+        assert "| ungated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
