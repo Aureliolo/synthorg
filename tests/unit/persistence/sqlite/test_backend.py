@@ -197,6 +197,34 @@ class TestSQLitePersistenceBackend:
             await backend.connect()
         assert backend.is_connected is False
 
+    async def test_connect_refuses_a_sqlite_too_old_for_returning(self) -> None:
+        """A library predating ``UPDATE ... RETURNING`` is refused at boot.
+
+        Every compare-and-set this backend performs reads its post-image
+        back through that clause, so an old library fails at the first
+        guarded write mid-request instead of here, where an operator can
+        act on it. Patched rather than skipped: no CI host links a SQLite
+        this old, so the branch is only reachable by saying so.
+        """
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        with (
+            patch.object(sqlite3, "sqlite_version_info", (3, 34, 1)),
+            patch.object(sqlite3, "sqlite_version", "3.34.1"),
+            pytest.raises(PersistenceConnectionError, match=r"3\.35\.0"),
+        ):
+            await backend.connect()
+        assert backend.is_connected is False
+
+    async def test_connect_accepts_the_minimum_supported_sqlite(self) -> None:
+        """Exactly 3.35.0 is admitted: the bound is inclusive."""
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        with patch.object(sqlite3, "sqlite_version_info", (3, 35, 0)):
+            await backend.connect()
+        try:
+            assert backend.is_connected is True
+        finally:
+            await backend.disconnect()
+
     async def test_health_check_returns_false_on_error(self) -> None:
         """health_check returns False (not raises) when the db errors."""
         from unittest.mock import MagicMock

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -123,6 +123,31 @@ class _RivalTakesTheNumber(FakeSprintRepository):
                     end_date="2026-01-15T00:00:00+00:00",
                 )
             )
+        await super().save(entity)
+
+
+class _EveryNumberTaken(FakeSprintRepository):
+    """Takes every number this process derives, leaving the scope free.
+
+    The retry's exhaustion arm: a scope that stays free while the number
+    collides on every attempt is not a race the service can resolve, so
+    the store's own error is what the caller gets rather than a refusal
+    claiming the scope is occupied.
+    """
+
+    @override
+    async def save(self, entity: Sprint) -> None:
+        await super().save(
+            Sprint(
+                id=NotBlankStr(f"rival-{entity.sprint_number}"),
+                project=NotBlankStr("proj-1"),
+                name=NotBlankStr("Rival"),
+                sprint_number=entity.sprint_number,
+                status=SprintStatus.COMPLETED,
+                start_date="2026-01-01T00:00:00+00:00",
+                end_date="2026-01-15T00:00:00+00:00",
+            )
+        )
         await super().save(entity)
 
 
@@ -303,6 +328,18 @@ class TestExplicitControl:
 
         assert sprint.status is SprintStatus.PLANNING
         assert sprint.sprint_number == 2
+
+    async def test_create_sprint_surfaces_a_number_that_never_frees(self) -> None:
+        """Exhausting the retries is the store refusing, not a lost scope.
+
+        Answering ``SprintAlreadyOpenError`` here would tell the caller to
+        go and finish a sprint that does not exist, since the scope stayed
+        free through every attempt.
+        """
+        service = _service(sprints=_EveryNumberTaken())
+
+        with pytest.raises(ConstraintViolationError):
+            await service.create_sprint("proj-1")
 
     async def test_create_sprint_scopes_org_wide_separately(self) -> None:
         """An org-wide sprint is its own scope, not every project's.
