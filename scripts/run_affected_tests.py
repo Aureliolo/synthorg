@@ -21,9 +21,20 @@ module, so its siblings verify nothing the change could have broken. The
 exception is the handful that other test modules DO import for a shared fake or
 helper, and for those the importers' packages are selected as well -- otherwise
 breaking a shared fake would pass a push having run only the file that defines
-it. Scoping by package instead would cost the most exactly where there is no
-source package to scope against: ``tests/unit/scripts`` is a thirteenth of the
-unit tier by collected cases, and every gate's tests share it.
+it. Scoping by package instead would cost the most in the largest package of
+all, which one changed test file does not justify: ``tests/unit/scripts`` is a
+thirteenth of the unit tier by collected cases, and every gate's tests share it.
+
+Two kinds of path have no ``src/synthorg/<module>/`` to be scoped against and
+are selected directly instead. A changed test file outside ``tests/unit/``
+selects itself, because the tier is decided by the ``unit`` MARKER and not by
+the directory: ``tests/evals_spine/`` carries unit-marked modules that the
+project's own tier command collects, so excluding the directory excluded real
+unit tests and a change to any of them reported a pass having collected
+nothing. A changed file under an out-of-package source tree that has tests of its own
+(``evals/``, ``scripts/``) selects those, narrowed to the mirrored package
+where one exists. Both are cheap because ``-m unit`` still filters: a tier
+carrying no unit-marked test collects nothing.
 
 A change can also be too broad to fit the budget without any of those triggers
 firing, simply by touching many packages at once. Past
@@ -135,6 +146,24 @@ _TEST_TIERS: Final[frozenset[str]] = frozenset(
     {"unit", "integration", "e2e", "conformance", "benchmarks", "evals", "evals_spine"}
 )
 
+# Source trees that are not under ``src/synthorg/`` but do have tests. The
+# 1:1 layout this runner is built on does not reach them -- ``classify_src_path``
+# answers ``None`` for every path outside ``src/synthorg/`` -- so a change to
+# ``evals/harness/journal.py`` or to any gate under ``scripts/`` selected
+# nothing at all and the gate reported a pass having collected no test. Between
+# them that is the eval harness and every convention gate in the repo, neither
+# of which had ever gated a push.
+#
+# Selection narrows to the mirrored package one level down where one exists
+# (``evals/<pkg>/`` -> ``tests/evals_spine/<pkg>/``); where it does not, the
+# whole mapped directory is the answer. That is the honest one, since the
+# alternative is selecting nothing, and it stays inside the budget: the largest
+# is ``tests/unit/scripts`` at roughly a thirteenth of the unit tier, and
+# ``_MAX_AFFECTED_TEST_FILES`` is the backstop if a change piles it onto others.
+_OUT_OF_PACKAGE_TESTS: Final[Mapping[str, str]] = MappingProxyType(
+    {"evals": "tests/evals_spine", "scripts": "tests/unit/scripts"}
+)
+
 # A test module imported by another test module, by dotted path. Both import
 # forms are matched because both appear in the tree, and the trailing boundary
 # stops ``tests.unit.meta.test_service`` from also matching a longer sibling
@@ -214,16 +243,38 @@ def _classify_test_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     unit tier imports without being part of it, so a change there is a
     whole-suite question. Deferring it says so; classifying it "other"
     would run nothing and announce nothing, which reads as a push with
-    nothing to check. A tier directory that is not ``unit`` is that
-    tier's own business and this runner never runs it.
+    nothing to check.
+
+    A tier directory that is not ``unit`` is that tier's own business for
+    everything except a changed TEST FILE, which selects itself. The unit
+    tier is decided by the ``unit`` MARKER rather than by the directory
+    (see :func:`_pytest_command`), and ``tests/evals_spine/`` holds
+    unit-marked modules that CLAUDE.md's own tier command collects, so
+    excluding the directory excluded real unit tests: a change to any of
+    them ran nothing and reported a pass. Selecting the file is safe in
+    every tier because the marker still filters, so a tier with no
+    unit-marked test collects nothing.
 
     Returns:
         ``(category, module)``, where module names the ``tests/unit/``
-        package the path belongs to (``"."`` for the tier root).
+        package the path belongs to (``"."`` for the tier root), or, for
+        ``"other_tier_path"``, the path to hand pytest directly.
     """
     if len(parts) < MIN_MODULE_DEPTH or parts[1] not in _TEST_TIERS:
         return "shared_test_infra", None
     if parts[1] != "unit":
+        # A tier DIRECTORY does not decide whether a test is a unit test: the
+        # run filters on the MARKER (`-m unit`, see `_pytest_command`), and
+        # `tests/evals_spine/` carries `pytestmark = pytest.mark.unit` modules
+        # that CLAUDE.md's own tier command (`pytest tests/ -m unit`) collects.
+        # Returning "other" here meant a change to any of them selected nothing
+        # and the gate reported Passed in 0.33s having run no test at all, which
+        # is how the eval harness came to be the one package its own suite never
+        # gated. Selecting the changed FILE is safe in any tier precisely
+        # because the marker filters: a tier carrying no unit-marked test
+        # collects nothing and costs about a second, which is the honest answer.
+        if _is_test_file(parts[-1]):
+            return "other_tier_path", str(PurePosixPath(*parts))
         return "other", None
 
     # The regex already rejects dotted names like test_smoke.py and
@@ -249,9 +300,13 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     Returns ``(category, module)`` where category is one of:
     ``"conftest"``, ``"blast_radius"``, ``"top_level_src"``,
     ``"src_module"``, ``"test_unit"``, ``"test_unit_file"``,
-    ``"shared_test_infra"``, ``"other"``. For ``"test_unit_file"`` the
-    module names the package the file sits in, which is what the caller
-    de-duplicates against rather than what it selects.
+    ``"other_tier_path"``, ``"shared_test_infra"``, ``"other"``.
+    For ``"test_unit_file"`` the module names the package the file sits
+    in, which is what the caller de-duplicates against rather than what
+    it selects. For ``"other_tier_path"`` it is not a module at all: it
+    is the path to hand pytest, because the package-level selection
+    resolves under ``tests/unit/`` and that is the one place these do
+    not live.
     """
     if parts[-1] == "conftest.py":
         return "conftest", None
@@ -263,7 +318,24 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     if parts[0] == "tests":
         return _classify_test_path(parts)
 
-    return "other", None
+    return _classify_out_of_package_path(parts)
+
+
+def _classify_out_of_package_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
+    """Classify a path under an out-of-package source tree.
+
+    Returns:
+        ``(category, path)``, where the path is the ``tests/`` target to
+        select, or ``("other", None)`` for a tree with no tests of its own.
+    """
+    mapped = _OUT_OF_PACKAGE_TESTS.get(parts[0])
+    if mapped is None or not parts[-1].endswith(".py"):
+        return "other", None
+    below_root = parts[1:-1]
+    package = below_root[0] if below_root else ""
+    if SAFE_MODULE_NAME.match(package) and (_REPO_ROOT / mapped / package).is_dir():
+        return "other_tier_path", f"{mapped}/{package}"
+    return "other_tier_path", mapped
 
 
 @cache
@@ -353,6 +425,7 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
     """
     modules: set[str] = set()
     changed_test_files: dict[str, set[str]] = {}
+    other_tier_paths: set[str] = set()
     deferred = False
 
     for filepath in changed:
@@ -368,7 +441,9 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
             deferred = True
         if module is None:
             continue
-        if category == "test_unit_file":
+        if category == "other_tier_path":
+            other_tier_paths.add(module)
+        elif category == "test_unit_file":
             changed_test_files.setdefault(module, set()).add(filepath)
             # A test module that other test modules import is not a leaf:
             # its importers have to run too, or breaking a shared fake
@@ -395,7 +470,37 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
         if mod not in modules:
             test_dirs.extend(_selected_test_files(mod, filepaths))
 
-    return test_dirs, deferred
+    return _surviving_paths(set(test_dirs) | other_tier_paths), deferred
+
+
+def _surviving_paths(paths: set[str]) -> list[str]:
+    """Keep the paths that still exist, contained in the repository.
+
+    A deleted path handed to pytest exits 4 and would fail the push for the
+    deletion itself; the repo-containment check is the same barrier
+    :func:`_selected_test_files` applies, against a ``..`` segment in a crafted
+    diff path reaching the argv.
+
+    The selection mixes directories with files, so one entry can sit inside
+    another (a whole tier plus one of its packages, a package plus a changed
+    test file in it). Handing pytest both collects the inner one twice, so the
+    outer one wins: it already runs everything the inner would. This is the one
+    pass over the whole selection, because the overlap arises BETWEEN the ways
+    a path can be selected and not within any one of them.
+
+    Returns:
+        Repo-relative paths, sorted, one per surviving file or directory.
+    """
+    surviving: list[Path] = []
+    for path in sorted(paths):
+        candidate = (_REPO_ROOT / path).resolve()
+        if candidate.is_relative_to(_REPO_ROOT) and candidate.exists():
+            surviving.append(candidate)
+    return [
+        str(path.relative_to(_REPO_ROOT))
+        for path in surviving
+        if not any(other != path and path.is_relative_to(other) for other in surviving)
+    ]
 
 
 _BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
