@@ -32,6 +32,12 @@ DEFAULT_SPRINT_RESYNC_INTERVAL_SECONDS: Final[float] = 600.0
 
 _TRIGGER: Final[str] = "periodic"
 
+#: The label the boot pass carries. Declared beside the cadence's own label
+#: and exported, so the one pass that runs outside this scheduler still
+#: names itself from the same place rather than from a literal at the call
+#: site that nothing holds to this vocabulary.
+BOOT_TRIGGER: Final[str] = "boot"
+
 
 class SprintTailScheduler(AsyncCycleScheduler):
     """Runs the sprint recovery sweep on a cadence.
@@ -112,4 +118,8 @@ class SprintTailScheduler(AsyncCycleScheduler):
         )
 
 
-__all__ = ["DEFAULT_SPRINT_RESYNC_INTERVAL_SECONDS", "SprintTailScheduler"]
+__all__ = [
+    "BOOT_TRIGGER",
+    "DEFAULT_SPRINT_RESYNC_INTERVAL_SECONDS",
+    "SprintTailScheduler",
+]

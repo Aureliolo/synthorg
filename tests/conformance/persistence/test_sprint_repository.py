@@ -16,8 +16,10 @@ Covers:
   ``planning -> active -> in_review -> retrospective -> completed``;
   state mismatch returns ``False``.
 * Unknown update keys on ``transition_if`` raise :class:`QueryError`.
-* ``complete_task_if``: the guarded backlog append, including the
-  lost-update case a whole-entity ``save`` cannot survive.
+* ``complete_task_if`` and ``add_task_if_planning``: the two guarded
+  backlog writes, including the lost-update case a whole-entity ``save``
+  cannot survive, and the derived story-point totals that make the last
+  completion of a sprint impossible to refuse.
 * One non-completed sprint per scope, enforced by the partial unique
   index, for both the per-project and the org-wide scope.
 
@@ -25,7 +27,8 @@ Every scenario that needs two sprints for one scope completes the first
 one, because an open pair is exactly what the database now refuses.
 """
 
-from typing import cast
+import asyncio
+from typing import ClassVar, cast
 
 import aiosqlite
 import pytest
@@ -391,9 +394,7 @@ class TestCompleteTaskIf:
         repo = _repo(backend)
         await repo.save(_open_sprint(sprint_id="ct-1"))
 
-        post = await repo.complete_task_if(
-            NotBlankStr("ct-1"), NotBlankStr("task-a"), 5.0
-        )
+        post = await repo.complete_task_if(NotBlankStr("ct-1"), NotBlankStr("task-a"))
 
         assert post is not None
         assert post.completed_task_ids == ("task-a",)
@@ -405,10 +406,10 @@ class TestCompleteTaskIf:
     ) -> None:
         repo = _repo(backend)
         await repo.save(_open_sprint(sprint_id="ct-2"))
-        await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"), 5.0)
+        await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"))
 
         assert (
-            await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"), 5.0)
+            await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"))
             is None
         )
 
@@ -422,8 +423,15 @@ class TestCompleteTaskIf:
     ) -> None:
         """The lost-update regression this whole change exists for.
 
-        Both callers hold the same pre-image, as two processes handling
-        two completions in the same window do. Under the previous
+        Dispatched TOGETHER through ``asyncio.gather`` rather than in
+        series: awaited one after the other, a single guarded UPDATE cannot
+        lose an update by construction, so a sequential pair proves the
+        primitive composes and nothing about a race. Together, the two calls
+        genuinely contend, which is what exercises SQLite's write lock and
+        Postgres' re-evaluation of the WHERE against the newer row version.
+
+        Both callers hold the same pre-image, as two processes handling two
+        completions in the same window do. Under the previous
         read-modify-``save`` path the second write clobbered the first and
         one task's completion was gone permanently.
         """
@@ -433,13 +441,105 @@ class TestCompleteTaskIf:
         assert pre is not None
         assert pre.completed_task_ids == ()
 
-        await repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-a"), 5.0)
-        await repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-b"), 3.0)
+        first, second = await asyncio.gather(
+            repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-a")),
+            repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-b")),
+        )
 
+        assert first is not None
+        assert second is not None
         fetched = await repo.get(NotBlankStr("ct-3"))
         assert fetched is not None
         assert set(fetched.completed_task_ids) == {"task-a", "task-b"}
         assert fetched.story_points_completed == pytest.approx(8.0)
+
+    async def test_concurrent_completions_of_one_task_credit_it_once(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Contending on the SAME task: exactly one call wins.
+
+        The complement of the case above. Two duplicate completion events
+        for one task arriving together must not double-credit it, and the
+        loser must be told "nothing was written" rather than raise.
+        """
+        repo = _repo(backend)
+        await repo.save(_open_sprint(sprint_id="ct-7"))
+
+        results = await asyncio.gather(
+            repo.complete_task_if(NotBlankStr("ct-7"), NotBlankStr("task-a")),
+            repo.complete_task_if(NotBlankStr("ct-7"), NotBlankStr("task-a")),
+        )
+
+        assert sum(1 for r in results if r is not None) == 1
+        fetched = await repo.get(NotBlankStr("ct-7"))
+        assert fetched is not None
+        assert fetched.completed_task_ids == ("task-a",)
+        assert fetched.story_points_completed == pytest.approx(5.0)
+
+    async def test_concurrent_adds_of_different_tasks_contend_and_both_land(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The same contention on the assembly write.
+
+        Two requests each adding a different task, dispatched together.
+        Under a whole-entity ``save`` the second wrote a backlog assembled
+        from a pre-image that never saw the first.
+        """
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="ct-8",
+                task_ids=(),
+                task_points={},
+                story_points_committed=0.0,
+            )
+        )
+
+        await asyncio.gather(
+            repo.add_task_if_planning(NotBlankStr("ct-8"), NotBlankStr("task-p"), 2.0),
+            repo.add_task_if_planning(NotBlankStr("ct-8"), NotBlankStr("task-q"), 3.0),
+        )
+
+        fetched = await repo.get(NotBlankStr("ct-8"))
+        assert fetched is not None
+        assert set(fetched.task_ids) == {"task-p", "task-q"}
+        assert fetched.story_points_committed == pytest.approx(5.0)
+
+    async def test_no_completion_can_violate_the_points_invariant(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The row's own points CHECK is unreachable from this statement.
+
+        The protocol still declares ``ConstraintViolationError`` because a
+        refusal by the ROW is a different answer from a refusal by the
+        GUARD and the caller treats them differently: ``None`` means
+        another writer got there and the sprint is fine, while a raise
+        means the write is inadmissible. What this asserts is that the
+        completion path can no longer produce the latter, which is what the
+        clamped, re-derived total buys: the credited value is pinned to the
+        committed one from below and cannot be pushed past it, whatever the
+        row already carried.
+        """
+        repo = _repo(backend)
+        # A pre-existing row whose committed total is already the smallest
+        # value its backlog admits, so there is no headroom to overshoot.
+        await repo.save(
+            _make_sprint(
+                sprint_id="ct-9",
+                status=SprintStatus.ACTIVE,
+                start_date=_START,
+                task_ids=("task-a",),
+                task_points={"task-a": 5.0},
+                story_points_committed=5.0,
+                story_points_completed=0.0,
+            )
+        )
+
+        post = await repo.complete_task_if(NotBlankStr("ct-9"), NotBlankStr("task-a"))
+
+        assert post is not None
+        assert post.story_points_completed == pytest.approx(5.0)
+        assert post.story_points_completed <= post.story_points_committed
 
     async def test_refuses_task_outside_the_backlog(
         self, backend: PersistenceBackend
@@ -449,7 +549,7 @@ class TestCompleteTaskIf:
 
         assert (
             await repo.complete_task_if(
-                NotBlankStr("ct-4"), NotBlankStr("task-elsewhere"), 5.0
+                NotBlankStr("ct-4"), NotBlankStr("task-elsewhere")
             )
             is None
         )
@@ -485,7 +585,7 @@ class TestCompleteTaskIf:
         )
 
         assert (
-            await repo.complete_task_if(NotBlankStr("ct-5"), NotBlankStr("task-a"), 5.0)
+            await repo.complete_task_if(NotBlankStr("ct-5"), NotBlankStr("task-a"))
             is None
         )
 
@@ -505,9 +605,7 @@ class TestCompleteTaskIf:
             )
         )
 
-        post = await repo.complete_task_if(
-            NotBlankStr("ct-6"), NotBlankStr("task-a"), 5.0
-        )
+        post = await repo.complete_task_if(NotBlankStr("ct-6"), NotBlankStr("task-a"))
 
         assert post is not None
         assert post.completed_task_ids == ("task-a",)
@@ -518,7 +616,261 @@ class TestCompleteTaskIf:
         repo = _repo(backend)
         assert (
             await repo.complete_task_if(
-                NotBlankStr("no-such-sprint"), NotBlankStr("task-a"), 5.0
+                NotBlankStr("no-such-sprint"), NotBlankStr("task-a")
+            )
+            is None
+        )
+
+
+class TestCompletionPointsAreDerived:
+    """The totals are re-derived, never accumulated.
+
+    Accumulating gave the row a second, independent addition order:
+    ``story_points_committed`` is folded as tasks are added, so for
+    non-dyadic values the two totals disagree by an ULP and the table's
+    ``CHECK (story_points_completed <= story_points_committed)`` refuses the
+    LAST completion of a sprint. Nothing re-fires a completion, so that
+    refusal is permanent: the sprint can never read as delivered and its
+    scope stays locked by the one-open-per-scope index.
+    """
+
+    #: Non-dyadic points whose fold order changes the total's last bit.
+    _POINTS: ClassVar[dict[str, float]] = {
+        "t0": 0.1,
+        "t1": 0.2,
+        "t2": 0.3,
+        "t3": 0.7,
+        "t4": 1.1,
+        "t5": 2.3,
+        "t6": 0.9,
+        "t7": 1.7,
+    }
+
+    async def _seed(
+        self, backend: PersistenceBackend, *, sprint_id: str
+    ) -> SprintRepository:
+        """Assemble a PLANNING sprint holding every fractional task.
+
+        Returns:
+            The repository, with the sprint ACTIVE and ready to deliver.
+        """
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id=sprint_id,
+                task_ids=(),
+                task_points={},
+                story_points_committed=0.0,
+            )
+        )
+        for task_id, points in self._POINTS.items():
+            assert (
+                await repo.add_task_if_planning(
+                    NotBlankStr(sprint_id), NotBlankStr(task_id), points
+                )
+                is not None
+            )
+        assert await repo.transition_if(
+            NotBlankStr(sprint_id),
+            SprintStatus.PLANNING,
+            SprintStatus.ACTIVE,
+            start_date=_START,
+        )
+        return repo
+
+    @pytest.mark.parametrize(
+        ("label", "order"),
+        [
+            ("ascending", ("t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7")),
+            ("descending", ("t7", "t6", "t5", "t4", "t3", "t2", "t1", "t0")),
+            ("interleaved", ("t3", "t0", "t5", "t1", "t7", "t2", "t6", "t4")),
+        ],
+    )
+    async def test_last_completion_is_never_refused(
+        self, backend: PersistenceBackend, label: str, order: tuple[str, ...]
+    ) -> None:
+        sprint_id = f"pts-{label}"
+        repo = await self._seed(backend, sprint_id=sprint_id)
+
+        for task_id in order:
+            assert (
+                await repo.complete_task_if(
+                    NotBlankStr(sprint_id), NotBlankStr(task_id)
+                )
+                is not None
+            ), f"completion of {task_id!r} was refused"
+
+        fetched = await repo.get(NotBlankStr(sprint_id))
+        assert fetched is not None
+        assert len(fetched.completed_task_ids) == len(self._POINTS)
+        assert fetched.story_points_completed == fetched.story_points_committed
+
+    async def test_partial_credit_does_not_depend_on_order(
+        self, backend: PersistenceBackend
+    ) -> None:
+        first = await self._seed(backend, sprint_id="pts-p1")
+        await first.complete_task_if(NotBlankStr("pts-p1"), NotBlankStr("t0"))
+        await first.complete_task_if(NotBlankStr("pts-p1"), NotBlankStr("t4"))
+        second = await self._seed(backend, sprint_id="pts-p2")
+        await second.complete_task_if(NotBlankStr("pts-p2"), NotBlankStr("t4"))
+        await second.complete_task_if(NotBlankStr("pts-p2"), NotBlankStr("t0"))
+
+        one = await first.get(NotBlankStr("pts-p1"))
+        two = await second.get(NotBlankStr("pts-p2"))
+        assert one is not None
+        assert two is not None
+        assert one.story_points_completed == two.story_points_completed
+
+
+class TestAddTaskIfPlanning:
+    """The guarded backlog assembly.
+
+    The same lost-update shape as completion, one state earlier: two
+    requests adding different tasks read one pre-image, and a whole-entity
+    ``save`` lets the second write a backlog that never saw the first.
+    """
+
+    async def test_appends_and_totals_the_backlog(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="at-1",
+                task_ids=(),
+                task_points={},
+                story_points_committed=0.0,
+            )
+        )
+
+        post = await repo.add_task_if_planning(
+            NotBlankStr("at-1"), NotBlankStr("task-new"), 4.0
+        )
+
+        assert post is not None
+        assert post.task_ids == ("task-new",)
+        assert post.task_points == {"task-new": 4.0}
+        assert post.story_points_committed == pytest.approx(4.0)
+
+    async def test_concurrent_adds_of_different_tasks_both_land(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="at-2",
+                task_ids=(),
+                task_points={},
+                story_points_committed=0.0,
+            )
+        )
+        pre = await repo.get(NotBlankStr("at-2"))
+        assert pre is not None
+        assert pre.task_ids == ()
+
+        await repo.add_task_if_planning(NotBlankStr("at-2"), NotBlankStr("task-p"), 2.0)
+        await repo.add_task_if_planning(NotBlankStr("at-2"), NotBlankStr("task-q"), 3.0)
+
+        fetched = await repo.get(NotBlankStr("at-2"))
+        assert fetched is not None
+        assert set(fetched.task_ids) == {"task-p", "task-q"}
+        assert fetched.story_points_committed == pytest.approx(5.0)
+
+    async def test_second_call_for_one_task_is_a_no_op(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="at-3"))
+
+        assert (
+            await repo.add_task_if_planning(
+                NotBlankStr("at-3"), NotBlankStr("task-a"), 99.0
+            )
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("at-3"))
+        assert fetched is not None
+        assert fetched.task_ids == ("task-a", "task-b")
+        assert fetched.story_points_committed == pytest.approx(8.0)
+
+    @pytest.mark.parametrize(
+        ("status", "start_date", "end_date"),
+        [
+            (SprintStatus.ACTIVE, _START, None),
+            (SprintStatus.IN_REVIEW, _START, None),
+            (SprintStatus.COMPLETED, _START, _END),
+        ],
+    )
+    async def test_refuses_a_sprint_that_has_left_planning(
+        self,
+        backend: PersistenceBackend,
+        status: SprintStatus,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="at-4",
+                status=status,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        )
+
+        assert (
+            await repo.add_task_if_planning(
+                NotBlankStr("at-4"), NotBlankStr("task-new"), 1.0
+            )
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("at-4"))
+        assert fetched is not None
+        assert fetched.task_ids == ("task-a", "task-b")
+        assert fetched.status is status
+
+    async def test_task_ids_carrying_json_metacharacters_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # ``task_points`` is keyed by an arbitrary task id, so the key is
+        # bound rather than concatenated into a JSON path: '$.' || id breaks
+        # on a dot, a bracket or a quote, and would write the points under
+        # some other key or fail outright.
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="at-5",
+                task_ids=(),
+                task_points={},
+                story_points_committed=0.0,
+            )
+        )
+        hostile = ("a.b", "x[0]", 'q"r', "$")
+        for index, task_id in enumerate(hostile, start=1):
+            assert (
+                await repo.add_task_if_planning(
+                    NotBlankStr("at-5"), NotBlankStr(task_id), float(index)
+                )
+                is not None
+            )
+
+        fetched = await repo.get(NotBlankStr("at-5"))
+        assert fetched is not None
+        assert fetched.task_ids == hostile
+        assert dict(fetched.task_points) == {
+            task_id: float(index) for index, task_id in enumerate(hostile, start=1)
+        }
+        assert fetched.story_points_committed == pytest.approx(10.0)
+
+    async def test_returns_none_for_a_missing_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        assert (
+            await repo.add_task_if_planning(
+                NotBlankStr("no-such-sprint"), NotBlankStr("task-a"), 1.0
             )
             is None
         )

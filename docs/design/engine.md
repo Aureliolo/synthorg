@@ -303,14 +303,35 @@ while one process is the only writer.
   losing one is worse than a lost row: `len(completed_task_ids)` never reaches
   `len(task_ids)`, so the sprint can never read as delivered and no completion
   event remains to re-trigger the tail.
+- **What is in the backlog**: `SprintRepository.add_task_if_planning`, the
+  same shape one state earlier. Assembling a backlog through a whole-entity
+  write is the same lost update: two requests each adding a different task
+  read one pre-image, and the second writes a backlog that never saw the
+  first. Both writes re-derive their story-point total from the row's own
+  `task_points` in the same statement rather than accumulating it, so the two
+  totals cannot acquire independent addition orders and disagree by an ULP,
+  which is what made the table's `story_points_completed <=
+  story_points_committed` check refuse the last completion of a sprint.
 - **Which lifecycle state it is in**: `transition_if`.
 - **Who opens a scope's sprint**: a partial unique index
   (`idx_sprints_one_open_per_scope`) admitting one non-completed sprint per
   scope. A project runs one sprint at a time, and an org-wide sprint (one with
   no project) is its own scope under the same rule; `POST /sprints` refuses a
-  second with a 409 naming the sprint in the way. The index keys on
+  second with a 409. That refusal names the sprint in the way when this
+  process read it, and says only that another writer claimed the scope when
+  the index caught the race instead: naming a sprint this process never read
+  would be an invention rather than an answer. The index keys on
   `COALESCE(project, '')` because both engines treat NULLs as distinct, which
   would otherwise leave the org-wide scope unguarded.
+
+Auto-creation off an `ASSIGNED` task assembles the sprint whole in memory and
+inserts it **already `ACTIVE`**, in one write. There is deliberately no
+`PLANNING` row in between: that sprint is never offered to an operator to
+edit, so a window in which it sits `PLANNING` is only a window in which a
+dead process or a lost compare-and-set leaves a row nothing activates, which
+then holds the scope's one open slot against every later task. `PLANNING` is
+therefore reached only through `POST /sprints`, and belongs to the operator
+who called it.
 
 The lifecycle tail is therefore **level-triggered as well as event-driven**.
 `SprintRecoveryReconciler` runs at boot and on a cadence
@@ -318,11 +339,20 @@ The lifecycle tail is therefore **level-triggered as well as event-driven**.
 `engine.sprint_tail_sweep_paused`) and gives every non-terminal status an
 answer, because a status nothing watches is a sprint that can strand: a
 process dying between the durable backlog write and the spawned tail, a
-swallowed transient store error, a shutdown drain timing out mid-walk, or an
-activation compare-and-set lost after creation, which under the index would
-block its scope permanently. The sweep writes lifecycle hops and nothing
+swallowed transient store error, or a shutdown drain timing out mid-walk. For
+`PLANNING` the answer is "nothing", and that is a verdict rather than a gap:
+the only `PLANNING` sprint the product produces is the shell an operator
+asked for and is still filling. The sweep writes lifecycle hops and nothing
 else, so it can advance a sprint that was already finished but can never
 invent a delivery.
+
+It is its own subsystem (`sprint_recovery`, requiring `sprint_service`)
+rather than a step inside the sprint service's wiring, so it starts and stops
+on its own path and reports its own unmet dependency through
+`GET /subsystems`. Its boot pass runs, bounded by the resync interval, before
+the cadence starts: a restart is exactly when sprints are stranded, and
+waiting out an interval first would leave the board showing work in flight
+with nothing behind it for that whole interval.
 
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration).

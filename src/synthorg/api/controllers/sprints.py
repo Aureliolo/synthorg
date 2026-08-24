@@ -170,6 +170,11 @@ class SprintController(Controller):
 
         Returns:
             ``ApiResponse[Sprint]`` for the created PLANNING sprint.
+
+        Raises:
+            SprintAlreadyOpenError: When the scope already runs a sprint
+                that has not completed (409). A project runs one at a
+                time, and an org-wide sprint is its own scope.
         """
         app_state: AppState = state.app_state
         sprint = await sprint_service_of(app_state).create_sprint(data.project)
@@ -203,6 +208,8 @@ class SprintController(Controller):
             SprintTransitionConflictError: When the sprint is not
                 ``PLANNING`` (409).
             SprintBacklogFullError: When the backlog is full (409).
+            SprintBacklogInvalidError: When the task is already in the
+                backlog, or the points are negative (400).
         """
         app_state: AppState = state.app_state
         sprint = await sprint_service_of(app_state).add_task(

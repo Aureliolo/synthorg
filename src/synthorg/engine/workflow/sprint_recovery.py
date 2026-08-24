@@ -10,14 +10,10 @@ never opened, and for which no completion event remains to fire again. It
 sits ACTIVE for ever and the board goes on showing work in flight with
 nothing behind it.
 
-Three more routes reach the same place, none of them exotic: the spawned
+Two more routes reach the same place, neither of them exotic: the spawned
 tail hits a transient store error and the observer's best-effort handler
-logs and swallows it; a graceful shutdown's drain times out mid-walk,
-leaving a sprint at RETROSPECTIVE that nothing else moves; or the
-activation that follows a sprint's creation loses its compare-and-set,
-leaving a PLANNING sprint nothing activates -- which, under the partial
-unique index admitting one non-completed sprint per scope, blocks that
-scope permanently.
+logs and swallows it; or a graceful shutdown's drain times out mid-walk,
+leaving a sprint at RETROSPECTIVE that nothing else moves.
 
 So this asks the question on a cadence instead, which is the same shape
 :class:`RunRecoveryReconciler` uses for plans: boot is the first pass, and
@@ -25,14 +21,21 @@ every later pass is the same idempotent question with a different label.
 
 Every non-terminal status gets an answer here, because a status this module
 does not name is a status nothing is watching, which is the defect rather
-than a gap in it. What this sweep will not do is invent a delivery: it
-writes lifecycle hops and nothing else, so the worst a wrong answer can do
-is advance a sprint that was already finished.
+than a gap in it. For PLANNING the answer is "nothing", and that is a
+verdict rather than an omission: the only PLANNING sprint the product now
+produces is the shell ``create_sprint`` hands an operator, which is waiting
+on their ``add_task`` and their ``start_sprint``. Auto-creation no longer
+passes through PLANNING at all -- it assembles the sprint whole and inserts
+it ACTIVE -- so a PLANNING row is never something a lost event stranded.
+
+What this sweep will not do is invent a delivery: it writes lifecycle hops
+and nothing else, so the worst a wrong answer can do is advance a sprint
+that was already finished.
 """
 
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -40,7 +43,7 @@ from synthorg.core.pagination import MAX_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow._sprint_ops import log_sprint_transition
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.engine.workflow.sprint_tail import advance_tail
+from synthorg.engine.workflow.sprint_tail import advance_tail, backlog_fully_delivered
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow import (
     SPRINT_RESUMED,
@@ -69,21 +72,45 @@ class SprintsActiveProbe(Protocol):
 
 
 class SprintRecoveryReport(BaseModel):
-    """What one sweep found and did."""
+    """What one sweep found and did.
+
+    ``examined`` is derived rather than supplied: every sprint the pass
+    reads leaves through exactly one of the four outcomes, so a separate
+    field for the total is a second answer that can disagree with them.
+
+    ``waiting`` and ``raced`` are kept apart because they mean opposite
+    things to somebody reading the log. A sweep whose passes are all
+    ``waiting`` is watching work that is genuinely in flight; one whose
+    passes are all ``raced`` is arriving after the live observer every
+    time, which is the sweep doing nothing useful and worth knowing.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    examined: int = Field(ge=0, description="Non-terminal sprints inspected")
-    activated: int = Field(
-        default=0, ge=0, description="PLANNING sprints whose activation was re-driven"
-    )
     advanced: int = Field(
         default=0, ge=0, description="Sprints moved along the delivered tail"
     )
-    unchanged: int = Field(
-        default=0, ge=0, description="Sprints correctly left where they were"
+    waiting: int = Field(
+        default=0,
+        ge=0,
+        description="Sprints with work still outstanding, correctly left alone",
+    )
+    raced: int = Field(
+        default=0,
+        ge=0,
+        description="Sprints another writer moved between this pass's read and write",
     )
     failed: int = Field(default=0, ge=0, description="Sprints this pass could not read")
+
+    @computed_field
+    @property
+    def examined(self) -> int:
+        """Non-terminal sprints inspected by this pass.
+
+        Returns:
+            The number of sprints the pass reached an outcome for.
+        """
+        return self.advanced + self.waiting + self.raced + self.failed
 
 
 class SprintRecoveryReconciler:
@@ -132,7 +159,7 @@ class SprintRecoveryReconciler:
         """
         logger.info(SPRINT_TAIL_SWEEP_STARTED, trigger=trigger)
         if not await self._sprints_active():
-            report = SprintRecoveryReport(examined=0)
+            report = SprintRecoveryReport()
             logger.info(
                 SPRINT_TAIL_SWEEP_COMPLETE,
                 trigger=trigger,
@@ -140,9 +167,8 @@ class SprintRecoveryReconciler:
                 **report.model_dump(),
             )
             return report
-        sprints = await self._unfinished_sprints()
-        activated = advanced = unchanged = failed = 0
-        for sprint in sprints:
+        advanced = waiting = raced = failed = 0
+        for sprint in await self._unfinished_sprints():
             try:
                 moved = await self._reconcile_one(sprint)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -159,81 +185,50 @@ class SprintRecoveryReconciler:
                     error=safe_error_description(exc),
                 )
                 continue
-            if moved is None:
-                unchanged += 1
-            elif moved is SprintStatus.ACTIVE:
-                activated += 1
-            else:
+            if moved is not None:
                 advanced += 1
+            elif self._nothing_owed(sprint):
+                waiting += 1
+            else:
+                raced += 1
         report = SprintRecoveryReport(
-            examined=len(sprints),
-            activated=activated,
-            advanced=advanced,
-            unchanged=unchanged,
-            failed=failed,
+            advanced=advanced, waiting=waiting, raced=raced, failed=failed
         )
         logger.info(SPRINT_TAIL_SWEEP_COMPLETE, trigger=trigger, **report.model_dump())
         return report
+
+    @staticmethod
+    def _nothing_owed(sprint: Sprint) -> bool:
+        """Whether this pass had nothing to move *sprint* to in the first place.
+
+        Asked only about a sprint the pass did not move, to tell "correctly
+        left alone" from "another writer got there first". RETROSPECTIVE is
+        never in this set: its one exit is unconditional, so a pass that did
+        not take it lost the race rather than declining it.
+
+        Returns:
+            ``True`` when the sprint was owed no hop.
+        """
+        if sprint.status is SprintStatus.PLANNING:
+            return True
+        if sprint.status is SprintStatus.RETROSPECTIVE:
+            return False
+        return not backlog_fully_delivered(sprint)
 
     async def _reconcile_one(self, sprint: Sprint) -> SprintStatus | None:
         """Move *sprint* if anything is owed to it.
 
         The status decides which question is asked, and every non-terminal
-        one is named. ``COMPLETED`` never reaches here.
+        one is named. ``COMPLETED`` never reaches here, and ``PLANNING``
+        belongs to the operator who created it.
 
         Returns:
             The status the sprint reached, or ``None`` when it was
             correctly left where it was.
-
-        Raises:
-            AssertionError: Never at runtime; the match is exhaustive over
-                a closed enum and the terminal arm is filtered upstream.
         """
         if sprint.status is SprintStatus.PLANNING:
-            return await self._activate_if_stranded(sprint)
+            return None
         return await self._advance_if_delivered(sprint)
-
-    async def _activate_if_stranded(self, sprint: Sprint) -> SprintStatus | None:
-        """Re-drive the activation a lost compare-and-set left undone.
-
-        Only for a sprint that already has a backlog. An empty PLANNING
-        sprint is the REST ``create_sprint`` product waiting on an
-        operator's ``add_task``, and activating it would both take a
-        decision that is theirs and start a sprint that is instantly
-        delivered by the empty-backlog rule.
-
-        Returns:
-            ``SprintStatus.ACTIVE`` when this pass activated it, else
-            ``None``.
-        """
-        if not sprint.task_ids:
-            return None
-        started = sprint.with_transition(
-            SprintStatus.ACTIVE, start_date=self._clock.now().isoformat()
-        )
-        if not await self._sprints.transition_if(
-            NotBlankStr(sprint.id),
-            SprintStatus.PLANNING,
-            SprintStatus.ACTIVE,
-            start_date=started.start_date,
-        ):
-            logger.debug(
-                SPRINT_TRANSITION_LOST,
-                sprint_id=sprint.id,
-                from_status=SprintStatus.PLANNING.value,
-                to_status=SprintStatus.ACTIVE.value,
-                note="recovery_activation",
-            )
-            return None
-        log_sprint_transition(started, SprintStatus.PLANNING)
-        logger.info(
-            SPRINT_RESUMED,
-            sprint_id=sprint.id,
-            from_status=SprintStatus.PLANNING.value,
-            to_status=SprintStatus.ACTIVE.value,
-            note="activation_never_landed",
-        )
-        return SprintStatus.ACTIVE
 
     async def _advance_if_delivered(self, sprint: Sprint) -> SprintStatus | None:
         """Walk a delivered ACTIVE / IN_REVIEW / RETROSPECTIVE sprint onward.
@@ -264,6 +259,14 @@ class SprintRecoveryReconciler:
 
     async def _complete_retrospective(self, sprint: Sprint) -> SprintStatus | None:
         """Close a sprint left in its retrospective by a stopped process.
+
+        Unconditional on delivery, unlike every hop before it. RETROSPECTIVE
+        has exactly one exit and nothing else in the product takes it, so a
+        delivery test here would strand the sprint an operator advanced by
+        hand with work still outstanding: the state machine refuses to go
+        back, and a state with no reachable terminal is the deadlock the
+        lifecycle rules forbid. It matches what ``advance_sprint`` does from
+        the same state for the same reason.
 
         Returns:
             ``SprintStatus.COMPLETED`` when this pass closed it, else
@@ -301,7 +304,10 @@ class SprintRecoveryReconciler:
 
         Queried per status rather than filtered from one unfiltered page,
         so a deployment with a long completed history cannot push the open
-        sprints off the end of the page and out of the sweep's sight.
+        sprints off the end of the page and out of the sweep's sight, and
+        paged to exhaustion within each status for the same reason: a
+        stranded sprint that happens to sit past the first page is exactly
+        the one nothing else is watching.
 
         Returns:
             The non-terminal sprints, in no significant order.
@@ -310,11 +316,17 @@ class SprintRecoveryReconciler:
         for status in SprintStatus:
             if status is SprintStatus.COMPLETED:
                 continue
-            collected.extend(
-                await self._sprints.query(
-                    SprintFilterSpec(status=status), limit=MAX_PAGE_SIZE
+            offset = 0
+            while True:
+                page = await self._sprints.query(
+                    SprintFilterSpec(status=status),
+                    limit=MAX_PAGE_SIZE,
+                    offset=offset,
                 )
-            )
+                collected.extend(page)
+                if len(page) < MAX_PAGE_SIZE:
+                    break
+                offset += MAX_PAGE_SIZE
         return tuple(collected)
 
 

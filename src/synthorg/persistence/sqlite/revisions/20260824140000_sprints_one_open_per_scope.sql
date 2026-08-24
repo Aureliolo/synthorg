@@ -32,6 +32,14 @@
 -- ``IF NOT EXISTS`` keeps this re-runnable: yoyo keys applied revisions on the
 -- migration id rather than on content, so a database that already carries the
 -- index reads as not having run this one and gets the file again.
+--
+-- Plain CREATE UNIQUE INDEX, not CONCURRENTLY, and that is the decision rather
+-- than the omission. CONCURRENTLY trades a write lock for a build that leaves
+-- an INVALID index behind when it meets a duplicate, which is precisely the
+-- case this revision is designed to fail loudly on: the migration would report
+-- success and the constraint would silently not be enforcing. The lock it
+-- takes is on one small table, held for the length of one index build, during
+-- a migration the deployment is already stopped for.
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sprints_one_open_per_scope
 ON sprints (COALESCE(project, ''))

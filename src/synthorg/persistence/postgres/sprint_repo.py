@@ -9,16 +9,15 @@ queries. Row <-> model marshalling is shared with the SQLite sibling via
 """
 
 from collections.abc import Mapping
+from typing import LiteralString
 
-import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.persistence.sprint import (
     PERSISTENCE_SPRINT_FAILED,
     PERSISTENCE_SPRINT_FETCHED,
@@ -28,19 +27,29 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.sprint_marshalling import (
     SPRINT_COLUMNS,
+    add_task_params,
     build_sprint_where,
     complete_task_params,
     row_to_sprint,
     sprint_save_params,
     validate_sprint_update_keys,
 )
+from synthorg.persistence.postgres._sprint_guards import read_guard, write_guard
+from synthorg.persistence.postgres._sprint_sql import (
+    ADD_TASK_SQL,
+    COMPLETE_TASK_SQL,
+    DELETE_SQL,
+    GET_SQL,
+    LIST_SQL,
+    ORDER_BY,
+    TRANSITION_SQL,
+    UPSERT_SQL,
+)
 from synthorg.persistence.sprint_protocol import SprintFilterSpec
 
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
-
-_ORDER_BY = "ORDER BY sprint_number DESC, id DESC"
 
 
 def _encode_array_jsonb(values: tuple[str, ...]) -> object:
@@ -59,53 +68,6 @@ def _encode_map_jsonb(values: Mapping[str, float]) -> object:
         A :class:`~psycopg.types.json.Jsonb` adapter.
     """
     return Jsonb(dict(values))
-
-
-_UPSERT_SQL = f"""
-    INSERT INTO sprints ({SPRINT_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (id) DO UPDATE SET
-        project = EXCLUDED.project,
-        name = EXCLUDED.name,
-        goal = EXCLUDED.goal,
-        status = EXCLUDED.status,
-        sprint_number = EXCLUDED.sprint_number,
-        duration_days = EXCLUDED.duration_days,
-        start_date = EXCLUDED.start_date,
-        end_date = EXCLUDED.end_date,
-        task_ids = EXCLUDED.task_ids,
-        completed_task_ids = EXCLUDED.completed_task_ids,
-        task_points = EXCLUDED.task_points,
-        story_points_committed = EXCLUDED.story_points_committed,
-        story_points_completed = EXCLUDED.story_points_completed
-"""  # noqa: S608 -- column list is a compile-time constant
-
-_TRANSITION_SQL = (
-    "UPDATE sprints SET "
-    "status = %s, "
-    "start_date = COALESCE(%s, start_date), "
-    "end_date = COALESCE(%s, end_date) "
-    "WHERE id = %s AND status = %s"
-)
-
-# The completion append, guarded in the statement rather than by a prior
-# read. Concatenating a JSONB scalar onto a JSONB array appends it, and
-# ``@>`` against a scalar asks whether the array contains it, so the
-# backlog-membership and not-already-completed invariants are held against
-# the row's own current value. Under READ COMMITTED an UPDATE that blocks on
-# a concurrent writer re-evaluates this WHERE against the newer row version,
-# which is what makes two simultaneous completions serialise instead of one
-# overwriting the other.
-_COMPLETE_TASK_SQL = f"""
-    UPDATE sprints
-    SET completed_task_ids = completed_task_ids || TO_JSONB(%s::TEXT),
-        story_points_completed = story_points_completed + %s
-    WHERE id = %s
-      AND status IN (%s, %s)
-      AND task_ids @> TO_JSONB(%s::TEXT)
-      AND NOT (completed_task_ids @> TO_JSONB(%s::TEXT))
-    RETURNING {SPRINT_COLUMNS}
-"""  # noqa: S608 -- column list is a compile-time constant
 
 
 class PostgresSprintRepository:
@@ -128,36 +90,12 @@ class PostgresSprintRepository:
         params = sprint_save_params(
             entity, encode_array=_encode_array_jsonb, encode_map=_encode_map_jsonb
         )
-        try:
-            async with self._pool.connection() as conn:
-                await conn.execute(_UPSERT_SQL, params)
-                await conn.commit()
-        except psycopg.errors.IntegrityError as exc:
-            msg = (
-                f"Constraint violation saving sprint {entity.id!r}: "
-                f"{safe_error_description(exc)}"
-            )
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="save",
-                sprint_id=entity.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-        except psycopg.Error as exc:
-            msg = (
-                f"Failed to save sprint {entity.id!r}: "
-                f"{type(exc).__name__} ({safe_error_description(exc)})"
-            )
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="save",
-                sprint_id=entity.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with (
+            write_guard(operation="save", doing="saving", sprint_id=entity.id),
+            self._pool.connection() as conn,
+        ):
+            await conn.execute(UPSERT_SQL, params)
+            await conn.commit()
 
     async def get(self, entity_id: NotBlankStr) -> Sprint | None:
         """Get a sprint by id, or ``None`` if not found.
@@ -168,24 +106,17 @@ class PostgresSprintRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        sql = f"SELECT {SPRINT_COLUMNS} FROM sprints WHERE id = %s"  # noqa: S608
-        try:
-            async with (
-                self._pool.connection() as conn,
-                conn.cursor(row_factory=dict_row) as cur,
-            ):
-                await cur.execute(sql, (entity_id,))
-                row = await cur.fetchone()
-        except psycopg.Error as exc:
-            msg = f"Failed to fetch sprint {entity_id!r}"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
+        async with (
+            read_guard(
                 operation="get",
+                failure=f"Failed to fetch sprint {entity_id!r}",
                 sprint_id=entity_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+            ),
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(GET_SQL, (entity_id,))
+            row = await cur.fetchone()
         if row is None:
             return None
         sprint = row_to_sprint(row)
@@ -210,29 +141,14 @@ class PostgresSprintRepository:
             limit, offset, event=PERSISTENCE_SPRINT_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        sql = (
-            f"SELECT {SPRINT_COLUMNS} FROM sprints "  # noqa: S608
-            f"{_ORDER_BY} LIMIT %s OFFSET %s"
-        )
-        try:
+        async with read_guard(operation="list_items", failure="Failed to list sprints"):
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, (effective_limit, offset))
+                await cur.execute(LIST_SQL, (effective_limit, offset))
                 rows = await cur.fetchall()
             items = tuple(row_to_sprint(r) for r in rows)
-        except QueryError:
-            raise
-        except psycopg.Error as exc:
-            msg = "Failed to list sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="list_items",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_SPRINT_LISTED, count=len(items))
         return items
 
@@ -260,10 +176,10 @@ class PostgresSprintRepository:
         sql = f"""
             SELECT {SPRINT_COLUMNS} FROM sprints
             WHERE {where}
-            {_ORDER_BY}
+            {ORDER_BY}
             LIMIT %s OFFSET %s
         """  # noqa: S608 -- ``where`` is a closed set of column predicates
-        try:
+        async with read_guard(operation="query", failure="Failed to query sprints"):
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
@@ -271,17 +187,6 @@ class PostgresSprintRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
             items = tuple(row_to_sprint(r) for r in rows)
-        except QueryError:
-            raise
-        except psycopg.Error as exc:
-            msg = "Failed to query sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="query",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_SPRINT_LISTED, count=len(items))
         return items
 
@@ -296,21 +201,15 @@ class PostgresSprintRepository:
         """
         where, params = build_sprint_where(filter_spec, placeholder="%s")
         sql = f"SELECT COUNT(*) FROM sprints WHERE {where}"  # noqa: S608
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(sql, params)
-                row = await cur.fetchone()
-                assert row is not None  # noqa: S101 -- COUNT always returns a row
-                return int(row[0])
-        except psycopg.Error as exc:
-            msg = "Failed to count sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="count",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with (
+            read_guard(operation="count", failure="Failed to count sprints"),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
+            await cur.execute(sql, params)
+            row = await cur.fetchone()
+            assert row is not None  # noqa: S101 -- COUNT always returns a row
+            return int(row[0])
 
     async def transition_if(
         self,
@@ -336,47 +235,30 @@ class PostgresSprintRepository:
             entity_id,
             from_state.value,
         )
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(_TRANSITION_SQL, params)
-                rowcount = cur.rowcount
-                await conn.commit()
-        except psycopg.errors.IntegrityError as exc:
-            msg = (
-                f"Constraint violation transitioning sprint {entity_id!r}: "
-                f"{safe_error_description(exc)}"
-            )
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
+        async with (
+            write_guard(
                 operation="transition_if",
+                doing="transitioning",
                 sprint_id=entity_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-        except psycopg.Error as exc:
-            msg = f"Failed to transition sprint {entity_id!r}"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="transition_if",
-                sprint_id=entity_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+            ),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
+            await cur.execute(TRANSITION_SQL, params)
+            rowcount = cur.rowcount
+            await conn.commit()
         return rowcount > 0
 
     async def complete_task_if(
         self,
         sprint_id: NotBlankStr,
         task_id: NotBlankStr,
-        story_points: float,
     ) -> Sprint | None:
         """Append *task_id* to ``completed_task_ids`` iff it is absent.
 
         One conditional statement, so no concurrent writer can slip
         between the check and the append. See the protocol docstring for
-        why ``story_points`` is supplied rather than read from the row.
+        why the points total is re-derived rather than accumulated.
 
         Returns:
             The sprint after the append, or ``None`` when the guard did
@@ -386,40 +268,73 @@ class PostgresSprintRepository:
             ConstraintViolationError: If a database constraint is violated.
             QueryError: If the database query fails.
         """
-        params = complete_task_params(
-            sprint_id=sprint_id, task_id=task_id, story_points=story_points
+        return await self._guarded_backlog_write(
+            COMPLETE_TASK_SQL,
+            complete_task_params(sprint_id=sprint_id, task_id=task_id),
+            operation="complete_task_if",
+            doing="completing a task in",
+            sprint_id=sprint_id,
         )
-        try:
-            async with (
-                self._pool.connection() as conn,
-                conn.cursor(row_factory=dict_row) as cur,
-            ):
-                await cur.execute(_COMPLETE_TASK_SQL, params)
-                row = await cur.fetchone()
-                await conn.commit()
-        except psycopg.errors.IntegrityError as exc:
-            msg = (
-                f"Constraint violation completing task in sprint "
-                f"{sprint_id!r}: {safe_error_description(exc)}"
-            )
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="complete_task_if",
-                sprint_id=sprint_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-        except psycopg.Error as exc:
-            msg = f"Failed to complete task in sprint {sprint_id!r}"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="complete_task_if",
-                sprint_id=sprint_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+
+    async def add_task_if_planning(
+        self,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+        story_points: float,
+    ) -> Sprint | None:
+        """Append *task_id* to the backlog iff the sprint is still PLANNING.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match and nothing was written.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        return await self._guarded_backlog_write(
+            ADD_TASK_SQL,
+            add_task_params(
+                sprint_id=sprint_id, task_id=task_id, story_points=story_points
+            ),
+            operation="add_task_if_planning",
+            doing="adding a task to",
+            sprint_id=sprint_id,
+        )
+
+    async def _guarded_backlog_write(
+        self,
+        sql: LiteralString,
+        params: tuple[object, ...],
+        *,
+        operation: str,
+        doing: str,
+        sprint_id: str,
+    ) -> Sprint | None:
+        """Run a conditional backlog UPDATE and marshal its RETURNING row.
+
+        Args:
+            sql: The guarded statement.
+            params: Its positional params.
+            operation: The repository method, for the structured log.
+            doing: The present participle for the operator-facing message.
+            sprint_id: The row the write targeted.
+
+        Returns:
+            The post-image sprint, or ``None`` when the guard did not match.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        async with (
+            write_guard(operation=operation, doing=doing, sprint_id=sprint_id),
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
+            await cur.execute(sql, params)
+            row = await cur.fetchone()
+            await conn.commit()
         return row_to_sprint(row) if row is not None else None
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
@@ -431,22 +346,14 @@ class PostgresSprintRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        sql = "DELETE FROM sprints WHERE id = %s"
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(sql, (entity_id,))
-                rowcount = cur.rowcount
-                await conn.commit()
-        except psycopg.Error as exc:
-            msg = f"Failed to delete sprint {entity_id!r}"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="delete",
-                sprint_id=entity_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+        async with (
+            write_guard(operation="delete", doing="deleting", sprint_id=entity_id),
+            self._pool.connection() as conn,
+            conn.cursor() as cur,
+        ):
+            await cur.execute(DELETE_SQL, (entity_id,))
+            rowcount = cur.rowcount
+            await conn.commit()
         return rowcount > 0
 
 

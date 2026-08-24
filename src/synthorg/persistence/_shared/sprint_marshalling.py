@@ -222,9 +222,24 @@ def build_sprint_where(
     return where, params
 
 
-def complete_task_params(
-    *, sprint_id: str, task_id: str, story_points: float
-) -> tuple[object, ...]:
+def open_status_placeholders(placeholder: LiteralString) -> LiteralString:
+    """Render one bound-parameter slot per admissible completion status.
+
+    Derived from :data:`OPEN_SPRINT_STATUS_VALUES` rather than written
+    out, because the values are already derived from it: a hand-written
+    ``IN (?, ?)`` beside a starred parameter tuple silently binds the
+    wrong number of slots the moment a third status becomes admissible.
+
+    Args:
+        placeholder: The backend's bound-parameter token (``?`` / ``%s``).
+
+    Returns:
+        The comma-separated slot list for an ``IN`` predicate.
+    """
+    return ", ".join(placeholder for _ in OPEN_SPRINT_STATUS_VALUES)
+
+
+def complete_task_params(*, sprint_id: str, task_id: str) -> tuple[object, ...]:
     """Positional params for the guarded completion statement.
 
     Shared so both backends bind the open statuses from
@@ -235,20 +250,50 @@ def complete_task_params(
 
     Args:
         sprint_id: The sprint whose backlog is being marked.
-        task_id: The delivered task; bound three times (appended, then
-            checked present in the backlog and absent from the completed
-            set).
-        story_points: Points to credit.
+        task_id: The delivered task; bound four times (appended, named as
+            the point-bearing key the re-derived total must now include,
+            then checked present in the backlog and absent from the
+            completed set).
 
     Returns:
         The params, ordered to match both backends' statement.
     """
     return (
         task_id,
-        float(story_points),
+        task_id,
         sprint_id,
         *OPEN_SPRINT_STATUS_VALUES,
         task_id,
+        task_id,
+    )
+
+
+def add_task_params(
+    *, sprint_id: str, task_id: str, story_points: float
+) -> tuple[object, ...]:
+    """Positional params for the guarded backlog-assembly statement.
+
+    Args:
+        sprint_id: The sprint whose backlog is being assembled.
+        task_id: The task to add; bound as the appended array element,
+            twice as the ``task_points`` key (once to write it, once
+            inside the subquery that re-totals the merged mapping), and
+            once more for the not-already-present guard.
+        story_points: What this task commits, bound alongside each of the
+            two ``task_points`` writes.
+
+    Returns:
+        The params, ordered to match both backends' statement.
+    """
+    points = float(story_points)
+    return (
+        task_id,
+        task_id,
+        points,
+        task_id,
+        points,
+        sprint_id,
+        SprintStatus.PLANNING.value,
         task_id,
     )
 
@@ -268,10 +313,12 @@ def validate_sprint_update_keys(updates: dict[str, object]) -> None:
 
 __all__ = [
     "SPRINT_COLUMNS",
+    "add_task_params",
     "build_sprint_where",
     "complete_task_params",
     "encode_float_map",
     "encode_str_tuple",
+    "open_status_placeholders",
     "row_to_sprint",
     "sprint_save_params",
     "validate_sprint_update_keys",

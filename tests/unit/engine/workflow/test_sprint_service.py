@@ -5,13 +5,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SprintAlreadyOpenError,
     SprintBacklogFullError,
+    SprintBacklogInvalidError,
     SprintNotFoundError,
     SprintTransitionConflictError,
 )
@@ -19,7 +20,6 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import (
-    OPEN_SPRINT_STATUSES,
     Sprint,
     SprintStatus,
 )
@@ -27,7 +27,7 @@ from synthorg.engine.workflow.sprint_service import SprintService
 from synthorg.persistence.sprint_protocol import SprintFilterSpec
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import FakeClock, as_uuid, mock_of
+from tests._shared import FakeClock, FakeSprintRepository, as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -35,127 +35,35 @@ pytestmark = pytest.mark.unit
 _Configured = Any  # type: ignore[explicit-any]
 
 
-class _FakeSprintRepo:
-    """In-memory ``SprintRepository`` for driving the service end-to-end.
-
-    Models the database's constraints, not just its methods. The
-    one-open-sprint-per-scope index and the completion guard are the two
-    things the service now relies on being true, so a fake that accepted
-    everything would keep this suite green over exactly the invariants it
-    is meant to be exercising.
-    """
+class _RecordsEveryInsert(FakeSprintRepository):
+    """Remembers the status each ``save`` carried, in order."""
 
     def __init__(self) -> None:
-        self._rows: dict[str, Sprint] = {}
+        super().__init__()
+        self.saved_statuses: list[SprintStatus] = []
 
-    @staticmethod
-    def _scope_key(sprint: Sprint) -> str:
-        """Mirror the index's ``COALESCE(project, '')`` key.
-
-        Returns:
-            The scope the sprint occupies while it is not completed.
-        """
-        return sprint.project or ""
-
+    @override
     async def save(self, entity: Sprint) -> None:
-        """Upsert, refusing a second open sprint in one scope.
-
-        Raises:
-            ConstraintViolationError: When the scope already holds a
-                different non-completed sprint, as the partial unique
-                index does.
-        """
-        if entity.status is not SprintStatus.COMPLETED:
-            key = self._scope_key(entity)
-            for existing in self._rows.values():
-                if (
-                    existing.id != entity.id
-                    and existing.status is not SprintStatus.COMPLETED
-                    and self._scope_key(existing) == key
-                ):
-                    msg = f"scope {key!r} already has open sprint {existing.id!r}"
-                    raise ConstraintViolationError(msg, constraint=msg)
-        self._rows[entity.id] = entity
-
-    async def get(self, entity_id: str) -> Sprint | None:
-        return self._rows.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self._rows.pop(entity_id, None) is not None
-
-    def _sorted(self, rows: list[Sprint]) -> list[Sprint]:
-        return sorted(rows, key=lambda s: (s.sprint_number, s.id), reverse=True)
-
-    async def list_items(
-        self, *, limit: int = 50, offset: int = 0
-    ) -> tuple[Sprint, ...]:
-        rows = self._sorted(list(self._rows.values()))
-        return tuple(rows[offset : offset + limit])
-
-    async def query(
-        self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
-    ) -> tuple[Sprint, ...]:
-        rows = [
-            s
-            for s in self._rows.values()
-            if (filter_spec.project is None or s.project == filter_spec.project)
-            and (not filter_spec.org_wide_only or s.project is None)
-            and (filter_spec.status is None or s.status is filter_spec.status)
-        ]
-        rows = self._sorted(rows)
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: SprintFilterSpec) -> int:
-        return len(await self.query(filter_spec, limit=1_000_000))
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: SprintStatus,
-        to_state: SprintStatus,
-        **updates: object,
-    ) -> bool:
-        row = self._rows.get(entity_id)
-        if row is None or row.status is not from_state:
-            return False
-        overrides = {k: v for k, v in updates.items() if v is not None}
-        self._rows[entity_id] = row.model_copy(update={"status": to_state, **overrides})
-        return True
-
-    async def complete_task_if(
-        self,
-        sprint_id: str,
-        task_id: str,
-        story_points: float,
-    ) -> Sprint | None:
-        """Append *task_id* iff the same guard the SQL applies holds.
-
-        Returns:
-            The post-image, or ``None`` when the guard did not match.
-        """
-        row = self._rows.get(sprint_id)
-        if row is None or row.status not in OPEN_SPRINT_STATUSES:
-            return None
-        if task_id not in row.task_ids or task_id in row.completed_task_ids:
-            return None
-        updated = row.model_copy(
-            update={
-                "completed_task_ids": (*row.completed_task_ids, task_id),
-                "story_points_completed": row.story_points_completed + story_points,
-            }
-        )
-        self._rows[sprint_id] = updated
-        return updated
+        self.saved_statuses.append(entity.status)
+        await super().save(entity)
 
 
-class _RivalClaimsTheScope(_FakeSprintRepo):
+class _RivalClaimsTheScope(FakeSprintRepository):
     """A second replica claims the scope between this one's check and its insert.
 
     The service reads "nothing open here", and by the time it writes, another
     writer has taken the scope. That window is precisely what a per-process
     lock cannot cover and the partial unique index can, so it is reproduced
     at the read rather than by patching a method onto the fake.
+
+    Args:
+        project: The scope the rival claims. ``None`` is the org-wide one,
+            which is its own scope under the same rule.
     """
+
+    def __init__(self, *, project: str | None = "proj-1") -> None:
+        super().__init__()
+        self._project = project
 
     @override
     async def query(
@@ -166,7 +74,11 @@ class _RivalClaimsTheScope(_FakeSprintRepo):
             await super().save(
                 Sprint(
                     id=NotBlankStr("rival"),
-                    project=NotBlankStr("proj-1"),
+                    project=(
+                        NotBlankStr(self._project)
+                        if self._project is not None
+                        else None
+                    ),
                     name=NotBlankStr("Rival"),
                     sprint_number=7,
                     status=SprintStatus.ACTIVE,
@@ -174,6 +86,28 @@ class _RivalClaimsTheScope(_FakeSprintRepo):
                 )
             )
         return rows
+
+
+class _FlakyAppend(FakeSprintRepository):
+    """Fails the completion append a set number of times, then succeeds.
+
+    Args:
+        failures: How many attempts raise before one lands.
+    """
+
+    def __init__(self, *, failures: int) -> None:
+        super().__init__()
+        self._remaining = failures
+        self.attempts = 0
+
+    @override
+    async def complete_task_if(self, sprint_id: str, task_id: str) -> Sprint | None:
+        self.attempts += 1
+        if self._remaining > 0:
+            self._remaining -= 1
+            msg = "store unreachable"
+            raise QueryError(msg)
+        return await super().complete_task_if(sprint_id, task_id)
 
 
 def _status_aware_tasks(tasks: tuple[Task, ...]) -> _Configured:
@@ -252,7 +186,7 @@ def _service(
 ) -> SprintService:
     task_repo = tasks or mock_of[TaskRepository](query=AsyncMock(return_value=()))
     return SprintService(
-        sprint_repository=sprints or _FakeSprintRepo(),
+        sprint_repository=sprints or FakeSprintRepository(),
         task_repository=task_repo,
         config_resolver=resolver or _resolver(),
         sprint_config=sprint_config,
@@ -277,7 +211,7 @@ def _completed(sprint: Sprint) -> Sprint:
 
 class TestExplicitControl:
     async def test_create_sprint_numbers_sequentially(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         first = await service.create_sprint("proj-1")
         # A scope runs one sprint at a time, so the next one follows the
@@ -336,6 +270,39 @@ class TestExplicitControl:
         with pytest.raises(SprintNotFoundError):
             await service.add_task("missing", "task-a", 1.0)
 
+    async def test_add_task_rejects_a_duplicate(self) -> None:
+        service = _service()
+        sprint = await service.create_sprint("proj-1")
+        await service.add_task(sprint.id, "task-a", 1.0)
+        with pytest.raises(SprintBacklogInvalidError, match="already in sprint"):
+            await service.add_task(sprint.id, "task-a", 1.0)
+
+    async def test_add_task_rejects_negative_points(self) -> None:
+        service = _service()
+        sprint = await service.create_sprint("proj-1")
+        with pytest.raises(SprintBacklogInvalidError, match=">= 0"):
+            await service.add_task(sprint.id, "task-a", -1.0)
+
+    async def test_concurrent_adds_both_land(self) -> None:
+        """The lost-update regression on backlog assembly.
+
+        Two callers each add a different task. Under the old read-modify-write
+        the second wrote a backlog assembled from a pre-image that never saw
+        the first, and one task vanished silently.
+        """
+        repo = FakeSprintRepository()
+        service = _service(sprints=repo)
+        sprint = await service.create_sprint("proj-1")
+        # The stale pre-image the second caller would have written back.
+        stale = await repo.get(sprint.id)
+        assert stale is not None
+
+        await service.add_task(sprint.id, "task-a", 2.0)
+        second = await service.add_task(sprint.id, "task-b", 3.0)
+
+        assert set(second.task_ids) == {"task-a", "task-b"}
+        assert second.story_points_committed == pytest.approx(5.0)
+
     async def test_start_sprint_activates(self) -> None:
         service = _service()
         sprint = await service.create_sprint("proj-1")
@@ -387,7 +354,7 @@ class TestExplicitControl:
 
 class TestObserver:
     async def test_disabled_flag_is_noop(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo, resolver=_resolver(enabled=False))
         await service.on_task_state_changed(
             _event(_task("t1", status=TaskStatus.ASSIGNED), TaskStatus.ASSIGNED)
@@ -395,7 +362,7 @@ class TestObserver:
         assert await repo.count(SprintFilterSpec()) == 0
 
     async def test_non_agile_workflow_is_noop(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo, resolver=_resolver(agile=False))
         await service.on_task_state_changed(
             _event(_task("t1", status=TaskStatus.ASSIGNED), TaskStatus.ASSIGNED)
@@ -403,7 +370,7 @@ class TestObserver:
         assert await repo.count(SprintFilterSpec()) == 0
 
     async def test_assigned_auto_creates_and_starts_sprint(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         trigger = _task("t1", status=TaskStatus.ASSIGNED)
         backlog = (trigger, _task("t2", status=TaskStatus.CREATED))
         tasks = mock_of[TaskRepository](query=AsyncMock(return_value=backlog))
@@ -418,8 +385,26 @@ class TestObserver:
         assert active.status is SprintStatus.ACTIVE
         assert set(active.task_ids) == {str(trigger.id), str(as_uuid("t2"))}
 
+    async def test_auto_created_sprint_never_exists_as_planning(self) -> None:
+        """One insert, already ACTIVE: no window for a stranded shell.
+
+        A separate activation hop after the insert leaves a PLANNING sprint
+        whenever the process dies or the CAS is lost in between. That row is
+        never offered to an operator, nothing re-drives it, and it holds the
+        scope's one open slot against every later task for good.
+        """
+        repo = _RecordsEveryInsert()
+        trigger = _task("t1", status=TaskStatus.ASSIGNED)
+        tasks = mock_of[TaskRepository](query=AsyncMock(return_value=(trigger,)))
+        service = _service(sprints=repo, tasks=tasks)
+
+        await service.on_task_state_changed(_event(trigger, TaskStatus.ASSIGNED))
+        await service.drain()
+
+        assert repo.saved_statuses == [SprintStatus.ACTIVE]
+
     async def test_second_assigned_does_not_create_duplicate(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         trigger = _task("t1", status=TaskStatus.ASSIGNED)
         tasks = mock_of[TaskRepository](query=AsyncMock(return_value=(trigger,)))
         service = _service(sprints=repo, tasks=tasks)
@@ -428,7 +413,7 @@ class TestObserver:
         assert await repo.count(SprintFilterSpec(project="proj-1")) == 1
 
     async def test_auto_create_excludes_terminal_tasks(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         trigger = _task("t1", status=TaskStatus.ASSIGNED)
         done = _task("t2", status=TaskStatus.COMPLETED)
         tasks = _status_aware_tasks((trigger, done))
@@ -442,7 +427,7 @@ class TestObserver:
         assert set(sprints[0].task_ids) == {str(trigger.id)}
 
     async def test_completion_marks_task_done(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
@@ -457,7 +442,7 @@ class TestObserver:
         assert str(as_uuid("t1")) in stored.completed_task_ids
 
     async def test_completion_finalizes_when_backlog_delivered(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
 
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
@@ -474,7 +459,7 @@ class TestObserver:
         assert stored.end_date is not None
 
     async def test_partial_delivery_does_not_finalize(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
 
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
@@ -495,7 +480,7 @@ class TestObserver:
     async def test_explicit_add_points_credited_without_stall(self) -> None:
         # A REST add with story points that differ from task complexity must
         # still complete: completion credits the committed per-task points.
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 7.0)
@@ -517,7 +502,7 @@ class TestGateHelpers:
         assert await service.is_task_workable("task-x", "proj-1") is True
 
     async def test_is_task_workable_gates_non_backlog_task(self) -> None:
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, "in-backlog", 1.0)
@@ -531,7 +516,7 @@ class TestGateHelpers:
         assert await service.is_task_workable("anything", "proj-1") is True
 
 
-class _FailHopRepo(_FakeSprintRepo):
+class _FailHopRepo(FakeSprintRepository):
     """Fake repo whose CAS fails a specific ``(from, to)`` hop, once configured."""
 
     def __init__(self, fail_from: SprintStatus, fail_to: SprintStatus) -> None:
@@ -612,14 +597,14 @@ class TestConcurrencyGuards:
         own completion, a fully-delivered sprint would sit ACTIVE with no
         completion left to fire.
         """
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
         await service.start_sprint(sprint.id)
         # Record the delivery out of band, so the service's own append finds
         # the id already there and returns None.
-        await repo.complete_task_if(sprint.id, str(as_uuid("t1")), 1.0)
+        await repo.complete_task_if(sprint.id, str(as_uuid("t1")))
 
         task = _task("t1", status=TaskStatus.COMPLETED)
         await service.on_task_state_changed(_event(task, TaskStatus.COMPLETED))
@@ -631,7 +616,7 @@ class TestConcurrencyGuards:
 
     async def test_completion_credits_points_once(self) -> None:
         """A duplicate completion event must not double the credit."""
-        repo = _FakeSprintRepo()
+        repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
         await service.add_task(sprint.id, str(as_uuid("t1")), 3.0)
@@ -647,3 +632,61 @@ class TestConcurrencyGuards:
         assert stored is not None
         assert stored.completed_task_ids == (str(as_uuid("t1")),)
         assert stored.story_points_completed == pytest.approx(3.0)
+
+    async def test_a_transient_append_failure_is_retried(self) -> None:
+        """Nothing re-fires a completion, so a store blip must not drop it.
+
+        The recovery sweep cannot repair this one: it advances lifecycle
+        state and never re-derives ``completed_task_ids``, so a completion
+        lost here is lost for good and the sprint can never read delivered.
+        """
+        repo = _FlakyAppend(failures=2)
+        service = _service(sprints=repo)
+        sprint = await service.create_sprint("proj-1")
+        await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
+        await service.start_sprint(sprint.id)
+
+        task = _task("t1", status=TaskStatus.COMPLETED)
+        await service.on_task_state_changed(_event(task, TaskStatus.COMPLETED))
+        await service.drain()
+
+        assert repo.attempts == 3
+        stored = await repo.get(sprint.id)
+        assert stored is not None
+        assert str(as_uuid("t1")) in stored.completed_task_ids
+
+    async def test_a_persistent_append_failure_surfaces(self) -> None:
+        """Past the retry ladder it is re-raised, not swallowed here.
+
+        The observer's catch-all is what finally absorbs it, but only after
+        this path has logged the divergence distinctly: the task's own
+        status is authoritative and unaffected, while the sprint's backlog
+        now disagrees with it and needs an operator.
+        """
+        repo = _FlakyAppend(failures=99)
+        service = _service(sprints=repo)
+        sprint = await service.create_sprint("proj-1")
+        await service.add_task(sprint.id, str(as_uuid("t1")), 1.0)
+        await service.start_sprint(sprint.id)
+
+        task = _task("t1", status=TaskStatus.COMPLETED)
+        # The observer is best-effort by contract, so this must not raise
+        # into the engine's dispatch loop.
+        await service.on_task_state_changed(_event(task, TaskStatus.COMPLETED))
+        await service.drain()
+
+        stored = await repo.get(sprint.id)
+        assert stored is not None
+        assert stored.completed_task_ids == ()
+        assert stored.status is SprintStatus.ACTIVE
+
+    async def test_org_wide_create_race_is_refused_too(self) -> None:
+        """The org-wide scope is guarded by the same index as a project's.
+
+        ``project=None`` on a filter means "no project predicate", so the
+        scope has to be asked for by name; a guard that reused the unset
+        value would answer about somebody else's sprint.
+        """
+        service = _service(sprints=_RivalClaimsTheScope(project=None))
+        with pytest.raises(SprintAlreadyOpenError):
+            await service.create_sprint(None)

@@ -211,7 +211,6 @@ class SprintRepository(
         /,
         sprint_id: NotBlankStr,
         task_id: NotBlankStr,
-        story_points: float,
     ) -> Sprint | None:
         """Append *task_id* to ``completed_task_ids`` iff it is absent.
 
@@ -226,17 +225,24 @@ class SprintRepository(
         is one a completion is admissible in (``active`` / ``in_review``),
         *task_id* is in the backlog, and it is not already completed.
 
+        ``story_points_completed`` is RE-DERIVED in the same statement as
+        the sum of ``task_points`` over the resulting completed set,
+        never accumulated. Accumulating it took a second, independent
+        addition order: ``story_points_committed`` is summed in Python as
+        tasks are added, so for non-dyadic floats the two totals differ
+        by an ULP and the table's
+        ``CHECK (story_points_completed <= story_points_committed)``
+        refuses the LAST completion of a sprint. That refusal is
+        unrecoverable by construction, because nothing re-fires a task's
+        completion and the recovery sweep never re-derives delivery, so
+        the sprint could never read as delivered and its scope stayed
+        locked by the one-open-per-scope index. A derived value has no
+        fold order to disagree about, and it also means no caller can
+        supply points unrelated to what the task actually committed.
+
         Args:
             sprint_id: The sprint whose backlog is being marked.
             task_id: The delivered task.
-            story_points: Points to credit, which is what *task_id*
-                committed when it entered the backlog. Supplied by the
-                caller rather than read out of the row's ``task_points``
-                because a JSON-path lookup keyed on an arbitrary task id
-                is a quoting hazard in both dialects, and the value is
-                stable for the whole window this call is admissible in:
-                ``task_points`` is only written while a sprint is
-                ``planning``.
 
         Returns:
             The sprint as it stands after the append, or ``None`` when
@@ -245,6 +251,49 @@ class SprintRepository(
             "already completed" from "not in this backlog" apart make
             that distinction before calling, since this is the
             cross-process backstop rather than the error surface.
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+        """
+        ...
+
+    async def add_task_if_planning(
+        self,
+        /,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+        story_points: float,
+    ) -> Sprint | None:
+        """Append *task_id* to the backlog iff the sprint is still PLANNING.
+
+        Bespoke under ADR-0001 D7, and for the same reason as
+        :meth:`complete_task_if`: assembling a backlog through
+        :meth:`save` is a read-modify-write over the whole entity, so two
+        requests that each add a different task race, and the second
+        overwrites ``task_ids``, ``task_points`` and
+        ``story_points_committed`` with a pre-image that never saw the
+        first. One task then vanishes from the backlog silently.
+
+        A sprint being assembled is not less contended than one being
+        worked: it sits behind an HTTP endpoint any number of callers can
+        reach. The status guard additionally stops an assembly write
+        landing on a sprint that has since started, which would otherwise
+        revert its status and wipe its ``start_date`` without the
+        lifecycle machine ever seeing the hop.
+
+        Args:
+            sprint_id: The sprint whose backlog is being assembled.
+            task_id: The task to add.
+            story_points: What this task commits, added to
+                ``story_points_committed`` and recorded per task in
+                ``task_points`` so completion credits exactly what
+                assembly committed.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match: no such row, not PLANNING, or the task is already
+            in the backlog.
 
         Raises:
             ConstraintViolationError: On constraint violations.

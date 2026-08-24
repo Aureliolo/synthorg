@@ -3,11 +3,11 @@
 
 Extracted from :class:`SprintService` because it has two callers, not one.
 The service drives it off a completion event, and
-:class:`SprintTailReconciler` drives it off a cadence for the sprints an
-event never reached: a process that died between the backlog write and the
-spawned tail leaves a fully-delivered sprint with no completion left to
-re-fire. A copy in each caller would be two answers to "is this sprint
-finished", so there is one.
+:class:`~synthorg.engine.workflow.sprint_recovery.SprintRecoveryReconciler`
+drives it off a cadence for the sprints an event never reached: a process
+that died between the backlog write and the spawned tail leaves a
+fully-delivered sprint with no completion left to re-fire. A copy in each
+caller would be two answers to "is this sprint finished", so there is one.
 
 Every hop is a :meth:`SprintRepository.transition_if` compare-and-set, which
 is what makes the two callers safe to run at once: whichever gets there
@@ -19,6 +19,13 @@ module deliberately does not depend on.
 Nothing here writes ``completed_task_ids``. The tail reads delivery and
 moves the lifecycle; it can advance a sprint that was already delivered, but
 it can never invent a delivery.
+
+Every lost compare-and-set logs at DEBUG. Two callers driving one sprint is
+the DESIGNED arrangement here rather than an anomaly, so exactly one of them
+loses each hop by construction and a WARNING would fire on correct
+behaviour, in proportion to how well the recovery sweep is doing its job.
+What a lost hop leaves behind is not silent either way: the row is a state
+the next pass reads and re-asks about.
 """
 
 from synthorg.core.clock import Clock
@@ -71,7 +78,7 @@ async def open_review_if_delivered(
     if not await sprints.transition_if(
         NotBlankStr(sprint.id), sprint.status, SprintStatus.IN_REVIEW
     ):
-        logger.warning(
+        logger.debug(
             SPRINT_TRANSITION_LOST,
             sprint_id=sprint.id,
             from_status=sprint.status.value,
@@ -101,8 +108,11 @@ async def finalize_if_delivered(
         clock: Supplies the ``end_date`` stamped on completion.
 
     Returns:
-        The completed sprint, or *sprint* unchanged when it is not
-        IN_REVIEW, the backlog is not delivered, or either CAS was lost.
+        The completed sprint; *sprint* unchanged when it is not IN_REVIEW,
+        the backlog is not delivered, or the first CAS was lost; and the
+        RETROSPECTIVE sprint when only the second was lost, since by then
+        the row really is there and returning the IN_REVIEW pre-image would
+        report a state that no longer exists.
     """
     if sprint.status is not SprintStatus.IN_REVIEW:
         return sprint
@@ -121,24 +131,29 @@ async def finalize_if_delivered(
             note="finalize_review_to_retro",
         )
         return sprint
-    completed = sprint.model_copy(
-        update={"status": SprintStatus.RETROSPECTIVE}
-    ).with_transition(SprintStatus.COMPLETED, end_date=clock.now().isoformat())
+    # Logged per hop rather than once for the walk: RETROSPECTIVE is a state
+    # the row genuinely occupied, and a single line spanning both hops leaves
+    # no record that it was ever there.
+    retro = sprint.model_copy(update={"status": SprintStatus.RETROSPECTIVE})
+    log_sprint_transition(retro, SprintStatus.IN_REVIEW)
+    completed = retro.with_transition(
+        SprintStatus.COMPLETED, end_date=clock.now().isoformat()
+    )
     if not await sprints.transition_if(
         NotBlankStr(sprint.id),
         SprintStatus.RETROSPECTIVE,
         SprintStatus.COMPLETED,
         end_date=completed.end_date,
     ):
-        logger.warning(
+        logger.debug(
             SPRINT_TRANSITION_LOST,
             sprint_id=sprint.id,
             from_status=SprintStatus.RETROSPECTIVE.value,
             to_status=SprintStatus.COMPLETED.value,
             note="finalize_retro_to_completed",
         )
-        return sprint
-    log_sprint_transition(completed, SprintStatus.IN_REVIEW)
+        return retro
+    log_sprint_transition(completed, SprintStatus.RETROSPECTIVE)
     return completed
 
 

@@ -88,6 +88,38 @@ SPRINT_BACKLOG_SAVE_FAILED: str = "workflow.sprint.backlog_save_failed"
 set has diverged from actual task state and needs operator reconciliation
 (the task's own status is authoritative and unaffected)."""
 
+SPRINT_BACKLOG_SAVE_RETRYING: str = "workflow.sprint.backlog_save_retrying"
+"""A sprint backlog write failed transiently and is being retried. One line
+per attempt, so a store that is merely slow is distinguishable from one that
+is down before SPRINT_BACKLOG_SAVE_FAILED is reached."""
+
+SPRINT_COMPLETION_ALREADY_RECORDED: str = "workflow.sprint.completion_already_recorded"
+"""The guarded append matched nothing because another writer had already
+recorded this delivery. Not a failure: this process re-read the row and
+drives the tail from it, because if both writers deferred to the other,
+neither would."""
+
+SPRINT_COMPLETION_NOT_RECORDED: str = "workflow.sprint.completion_not_recorded"
+"""The guarded append matched nothing and the re-read does not show the task
+as delivered either, so this completion was dropped. The sprint's status left
+the window a completion is admissible in, or its row went, between the read
+that chose the sprint and the write."""
+
+SPRINT_TAIL_NOT_SPAWNED: str = "workflow.sprint.tail_not_spawned"
+"""A lifecycle tail walk was not started because the service is draining.
+Not a loss: the walk is derived from the row's own delivery state, so the
+recovery sweep re-asks for it on its next pass."""
+
+SPRINT_TAIL_DRAIN_TIMED_OUT: str = "workflow.sprint.tail_drain_timed_out"
+"""The shutdown drain hit its deadline with tail walks still in flight. Each
+hop is a compare-and-set, so nothing is corrupt; the sprint is left partway
+along its tail for the next process's boot recovery pass."""
+
+SPRINT_REFUSED: str = "workflow.sprint.refused"
+"""A sprint operation was refused and the caller told why. Carries the
+``reason`` the error names, so a refusal an operator reports is findable in
+the log without reproducing it."""
+
 SPRINT_CREATE_RACE_LOST: str = "workflow.sprint.create_race_lost"
 """Another writer opened this scope's sprint first, so the partial unique
 index refused this insert. Not a failure: the scope has the sprint it needs

@@ -82,6 +82,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2030 | `OUTPUT_STYLE_PACK_INVALID` | Output-style rule pack failed schema validation |
 | 2031 | `OUTPUT_STYLE_EXEMPTION_INVALID` | Sanctioned-exemption definition is malformed |
 | 2032 | `GATEWAY_MODEL_UNBOUND` | Gateway request names no explicit `(provider, model)` pair |
+| 2033 | `SPRINT_BACKLOG_INVALID` | Backlog append names a task already in it, or negative points |
 
 ## Not Found (3xxx)
 
@@ -165,6 +166,8 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4038 | `PUBLISH_TARGET_NOT_CONFIGURED` | Publish target is unlisted, absent, or not finished being set up |
 | 4039 | `PLAN_PARENT_TASK_IN_USE` | Task delete refused: a plan references it as its parent (delete the plan first) |
 | 4040 | `PLAN_NOT_DELETABLE` | Plan delete refused: the plan is dispatched or already decided |
+| 4041 | `HIRING_ALREADY_IN_FLIGHT` | A hire for this role is already open; settle it before opening another |
+| 4042 | `SPRINT_ALREADY_OPEN` | The scope already runs a sprint that has not completed |
 
 ## Rate Limit (5xxx)
 

@@ -18,76 +18,14 @@ from synthorg.engine.workflow.sprint_tail import (
     finalize_if_delivered,
     open_review_if_delivered,
 )
-from synthorg.persistence.sprint_protocol import SprintFilterSpec
-from tests._shared import FakeClock
+from tests._shared import FakeClock, FakeSprintRepository
 
 pytestmark = pytest.mark.unit
 
 _START = "2026-04-01T09:00:00+00:00"
 
 
-class _FakeSprintRepo:
-    """Minimal in-memory store: the tail only ever calls ``transition_if``."""
-
-    def __init__(self, *rows: Sprint) -> None:
-        self._rows: dict[str, Sprint] = {r.id: r for r in rows}
-
-    async def save(self, entity: Sprint) -> None:
-        self._rows[entity.id] = entity
-
-    async def get(self, entity_id: str) -> Sprint | None:
-        return self._rows.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self._rows.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 50, offset: int = 0
-    ) -> tuple[Sprint, ...]:
-        return tuple(list(self._rows.values())[offset : offset + limit])
-
-    async def query(
-        self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
-    ) -> tuple[Sprint, ...]:
-        rows = [
-            s
-            for s in self._rows.values()
-            if filter_spec.status is None or s.status is filter_spec.status
-        ]
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: SprintFilterSpec) -> int:
-        return len(await self.query(filter_spec, limit=1_000_000))
-
-    async def complete_task_if(
-        self, sprint_id: str, task_id: str, story_points: float
-    ) -> Sprint | None:
-        """Present for protocol conformance; the tail never records a delivery.
-
-        Returns:
-            Always ``None``. A call reaching here would mean the tail had
-            started writing deliveries, which is the one thing it must not
-            do, so answering "guard did not match" keeps that visible
-            rather than quietly succeeding.
-        """
-        return None
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: SprintStatus,
-        to_state: SprintStatus,
-        **updates: object,
-    ) -> bool:
-        row = self._rows.get(entity_id)
-        if row is None or row.status is not from_state:
-            return False
-        overrides = {k: v for k, v in updates.items() if v is not None}
-        self._rows[entity_id] = row.model_copy(update={"status": to_state, **overrides})
-        return True
-
-
-class _LosesHop(_FakeSprintRepo):
+class _LosesHop(FakeSprintRepository):
     """Refuses one named hop, as a concurrent writer that got there first does."""
 
     def __init__(self, *rows: Sprint, frm: SprintStatus, to: SprintStatus) -> None:
@@ -150,19 +88,19 @@ class TestBacklogFullyDelivered:
 class TestOpenReviewIfDelivered:
     async def test_delivered_active_sprint_opens_review(self) -> None:
         sprint = _sprint()
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         result = await open_review_if_delivered(sprint, sprints=repo)
         assert result.status is SprintStatus.IN_REVIEW
 
     async def test_undelivered_sprint_is_left_alone(self) -> None:
         sprint = _sprint(task_ids=("t-1", "t-2"), completed=("t-1",))
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         result = await open_review_if_delivered(sprint, sprints=repo)
         assert result.status is SprintStatus.ACTIVE
 
     async def test_non_active_sprint_is_left_alone(self) -> None:
         sprint = _sprint(status=SprintStatus.IN_REVIEW)
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         result = await open_review_if_delivered(sprint, sprints=repo)
         assert result.status is SprintStatus.IN_REVIEW
 
@@ -176,7 +114,7 @@ class TestOpenReviewIfDelivered:
 class TestFinalizeIfDelivered:
     async def test_walks_review_to_completed(self) -> None:
         sprint = _sprint(status=SprintStatus.IN_REVIEW)
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         result = await finalize_if_delivered(sprint, sprints=repo, clock=FakeClock())
         assert result.status is SprintStatus.COMPLETED
         assert result.end_date is not None
@@ -198,10 +136,11 @@ class TestFinalizeIfDelivered:
             sprint, frm=SprintStatus.RETROSPECTIVE, to=SprintStatus.COMPLETED
         )
         result = await finalize_if_delivered(sprint, sprints=repo, clock=FakeClock())
-        # The caller is told nothing moved, but the row really is at
-        # RETROSPECTIVE: this is exactly the state the recovery sweep exists
-        # to pick up, and reporting COMPLETED here would hide it.
-        assert result.status is SprintStatus.IN_REVIEW
+        # The first hop landed, so the caller is handed RETROSPECTIVE rather
+        # than the IN_REVIEW pre-image: that state no longer exists, and it is
+        # exactly what the recovery sweep exists to pick up. Reporting
+        # COMPLETED would hide it; reporting IN_REVIEW would misname it.
+        assert result.status is SprintStatus.RETROSPECTIVE
         stored = await repo.get("s-1")
         assert stored is not None
         assert stored.status is SprintStatus.RETROSPECTIVE
@@ -210,13 +149,13 @@ class TestFinalizeIfDelivered:
 class TestAdvanceTail:
     async def test_delivered_active_sprint_walks_all_the_way(self) -> None:
         sprint = _sprint()
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         result = await advance_tail(sprint, sprints=repo, clock=FakeClock())
         assert result.status is SprintStatus.COMPLETED
 
     async def test_is_idempotent(self) -> None:
         sprint = _sprint()
-        repo = _FakeSprintRepo(sprint)
+        repo = FakeSprintRepository(sprint)
         first = await advance_tail(sprint, sprints=repo, clock=FakeClock())
         # Re-running against the original read, as a second caller holding a
         # stale snapshot would.
