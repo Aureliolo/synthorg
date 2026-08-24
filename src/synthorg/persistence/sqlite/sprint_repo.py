@@ -12,6 +12,8 @@ marshalling is shared with the Postgres sibling via
 :mod:`synthorg.persistence._shared.sprint_marshalling`.
 """
 
+from typing import LiteralString
+
 import aiosqlite
 
 from synthorg.core.types import NotBlankStr
@@ -291,7 +293,7 @@ class SQLiteSprintRepository:
 
     async def _guarded_backlog_write(
         self,
-        sql: str,
+        sql: LiteralString,
         params: tuple[object, ...],
         *,
         operation: str,

@@ -13,6 +13,7 @@ from synthorg.core.pagination import MAX_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.sprint_recovery import SprintRecoveryReconciler
+from synthorg.persistence.sprint_protocol import SprintFilterSpec
 from tests._shared import FakeClock, FakeSprintRepository
 
 pytestmark = pytest.mark.unit
@@ -216,7 +217,44 @@ class TestStatusCoverage:
         assert report.examined == 0
 
 
+class _ReturnsOneSprintUnderTwoStatuses(FakeSprintRepository):
+    """Answers every status query with the same sprint.
+
+    The shape a live store produces when another writer advances a sprint
+    between two of the collection's per-status queries: it is returned by
+    the query for the status it left AND the one it arrived at.
+    """
+
+    @override
+    async def query(
+        self, filter_spec: SprintFilterSpec, *, limit: int = 50, offset: int = 0
+    ) -> tuple[Sprint, ...]:
+        if offset:
+            return ()
+        stored = self.rows.get("s-1")
+        return () if stored is None else (stored,)
+
+
 class TestPassBehaviour:
+    async def test_a_sprint_seen_under_two_statuses_is_reconciled_once(
+        self,
+    ) -> None:
+        """Collection is keyed by id, so a mid-pass move is not double-counted.
+
+        Reconciled twice, the second attempt loses its compare-and-set and
+        lands in ``raced``, which is the field a reader consults to tell a
+        contended sweep from a quiet one.
+        """
+        repo = _ReturnsOneSprintUnderTwoStatuses(
+            _sprint("s-1", status=SprintStatus.ACTIVE)
+        )
+
+        report = await _reconciler(repo).reconcile(trigger="periodic")
+
+        assert report.examined == 1
+        assert report.advanced == 1
+        assert report.raced == 0
+
     async def test_second_pass_changes_nothing(self) -> None:
         repo = FakeSprintRepository(_sprint("s-1", status=SprintStatus.ACTIVE))
         await _reconciler(repo).reconcile(trigger="boot")

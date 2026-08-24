@@ -12,6 +12,7 @@ existed, and the sweep declines on its own with its own reason.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
@@ -29,6 +30,12 @@ from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
+
+#: Hard ceiling on the boot pass, independent of the configured cadence.
+#: The pass is awaited inline in the lifespan, so its bound decides how long
+#: startup can hang; the cadence is an operator setting that legitimately
+#: reaches a full day, which would make "bounded" mean nothing here.
+_BOOT_PASS_CEILING_SECONDS: Final[float] = 30.0
 
 
 async def wire_sprint_recovery(app_state: AppState) -> None:
@@ -76,18 +83,21 @@ async def wire_sprint_recovery(app_state: AppState) -> None:
     # Bounded, because this one is awaited inline in the lifespan: the pass
     # reads every unfinished sprint, and a persistence backend that hangs
     # would hold startup open with no ceiling, so the readiness probe never
-    # succeeds and the orchestrator restarts into the same wait. The bound is
-    # the resync interval rather than a ceiling of its own, since what a
-    # timed-out pass did not reach is exactly what the next pass covers.
+    # succeeds and the orchestrator restarts into the same wait. What a
+    # timed-out pass did not reach is exactly what the next pass covers, so
+    # the interval is an upper bound worth taking when it is the smaller of
+    # the two; the startup ceiling is what stops the bound BEING the
+    # configured cadence, which an operator may legitimately set to a day.
+    bound = min(interval, _BOOT_PASS_CEILING_SECONDS)
     try:
-        async with asyncio.timeout(interval):
+        async with asyncio.timeout(bound):
             await reconciler.reconcile(trigger=BOOT_TRIGGER)
     except TimeoutError:
         logger.warning(
             API_APP_STARTUP,
             service="sprint_recovery",
             note="boot pass hit its bound; the cadence covers what it missed",
-            bound_seconds=interval,
+            bound_seconds=bound,
         )
     scheduler = SprintTailScheduler(
         reconciler,

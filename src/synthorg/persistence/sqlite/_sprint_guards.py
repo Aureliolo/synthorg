@@ -18,13 +18,14 @@ from contextlib import asynccontextmanager
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.persistence.sprint import PERSISTENCE_SPRINT_FAILED
+from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 
 logger = get_logger(__name__)
 
@@ -95,7 +96,7 @@ async def write_guard(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+        raise_constraint_violation(exc, msg)
     except (sqlite3.Error, aiosqlite.Error) as exc:
         await _safe_rollback(db, operation=operation, sprint_id=sprint_id)
         msg = (
@@ -110,12 +111,17 @@ async def write_guard(
             error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
-    except Exception:
+    except BaseException:
         # Not a driver failure, so it is not re-dressed as one and not
         # logged here (whoever raised it owns saying why). The rollback is
         # the point: SQLite's transaction is open on the shared
         # connection, so without it the write stands and the next writer
         # inherits it.
+        #
+        # BaseException rather than Exception because cancellation is the
+        # likeliest way to arrive here and does not derive from Exception:
+        # shutdown drains these writes, so an Exception-only arm leaves the
+        # open transaction behind in precisely the case this exists for.
         await _safe_rollback(db, operation=operation, sprint_id=sprint_id)
         raise
 

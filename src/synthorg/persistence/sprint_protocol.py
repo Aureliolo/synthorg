@@ -255,6 +255,12 @@ class SprintRepository(
         Raises:
             ConstraintViolationError: On constraint violations.
             QueryError: On other database errors.
+            MalformedRowError: When the derived row breaches a bound the
+                model holds and the schema does not, in which case
+                nothing is written. This statement derives
+                ``story_points_completed`` the same way its sibling
+                derives the committed total, so it can produce a row no
+                input row would have been.
         """
         ...
 

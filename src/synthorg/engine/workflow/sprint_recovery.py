@@ -304,7 +304,14 @@ class SprintRecoveryReconciler:
         Returns:
             The non-terminal sprints, in no significant order.
         """
-        collected: list[Sprint] = []
+        # Keyed by id rather than appended: the statuses are queried one at
+        # a time, so a sprint another writer advances between two of those
+        # queries is returned by both and would be reconciled twice. The
+        # second attempt loses its compare-and-set and lands in ``raced``,
+        # which is the field a reader consults to tell a contended sweep
+        # from a quiet one, so the duplicate does not merely inflate a
+        # count: it changes what the report says happened.
+        collected: dict[str, Sprint] = {}
         for status in SprintStatus:
             if status is SprintStatus.COMPLETED:
                 continue
@@ -320,11 +327,11 @@ class SprintRecoveryReconciler:
                     limit=MAX_PAGE_SIZE,
                     offset=offset,
                 )
-                collected.extend(page)
+                collected.update({sprint.id: sprint for sprint in page})
                 if len(page) < MAX_PAGE_SIZE:
                     break
                 offset += MAX_PAGE_SIZE
-        return tuple(collected)
+        return tuple(collected.values())
 
 
 __all__ = ["SprintRecoveryReconciler", "SprintRecoveryReport"]

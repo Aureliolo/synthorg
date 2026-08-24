@@ -19,9 +19,10 @@ from contextlib import asynccontextmanager
 
 import psycopg
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.sprint import PERSISTENCE_SPRINT_FAILED
+from synthorg.persistence.postgres._integrity import raise_constraint_violation
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,7 @@ async def write_guard(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+        raise_constraint_violation(exc, msg)
     except psycopg.Error as exc:
         msg = (
             f"Failed {doing} sprint {sprint_id!r}: "
