@@ -163,7 +163,7 @@ SynthOrg attributes all failure information to the executing agent's
   heuristic classification applied per-execution, not per-agent in a coordination run
 - `RecoveryResult` captures one `failure_category` per execution
 - `CoordinationResult` has `CoordinationPhaseResult` per phase but no per-agent attribution
-- The 5-pillar evaluation in `src/synthorg/hr/evaluation/evaluator.py` scores agents over
+- The performance tracker in `src/synthorg/hr/performance/tracker.py` scores agents over
   time windows, not for specific pipeline failures
 
 ### Proposed Design

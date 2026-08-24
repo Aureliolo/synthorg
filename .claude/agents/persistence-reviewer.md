@@ -1,6 +1,6 @@
 ---
 name: persistence-reviewer
-description: SynthOrg persistence-layer specialist for SQLite + Postgres parity, query optimization, schema design, security, and yoyo migrations. Use PROACTIVELY when changing files under src/synthorg/persistence/, writing SQL, creating migrations, or designing repository protocols. Output findings only; do not edit files.
+description: "SynthOrg persistence-layer specialist for SQLite + Postgres parity, query optimization, schema design, security, and yoyo migrations. Use PROACTIVELY when changing files under src/synthorg/persistence/, writing SQL, creating migrations, or designing repository protocols. Output findings only; do not edit files."
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 ---
@@ -78,7 +78,7 @@ Repositories: scan for `logger.info`, `logger.warning`, `logger.error` calls ins
 
 ### 7. Currency invariants (MEDIUM)
 
-- Every cost-bearing Pydantic model (`CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, `AgentRuntimeState`) MUST carry `currency: CurrencyCode`. Flag missing fields.
+- Every cost-bearing Pydantic model (`CostRecord`, `TaskMetricRecord`, `AgentRuntimeState`) MUST carry `currency: CurrencyCode`. Flag missing fields.
 - Aggregation sites (`CostTracker`, `ReportGenerator`, `CostOptimizer`, HR `WindowMetrics`) MUST enforce same-currency invariant; mixing raises `MixedCurrencyAggregationError` (HTTP 409). Flag aggregations that don't check.
 - Money fields drop `_usd` suffix; type carries semantics. Flag any `*_usd` field name in models, DTOs, TS types, or DB columns.
 

@@ -32,7 +32,6 @@ def _snapshot(*sizes: str) -> AgentPerformanceSnapshot:
         computed_at=_UNTIL,
         windows=tuple(_window(s) for s in sizes),
         overall_quality_score=8.0,
-        overall_collaboration_score=7.0,
     )
 
 

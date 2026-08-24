@@ -320,6 +320,13 @@ _TOKEN_SPLIT: Final[re.Pattern[str]] = re.compile(r"""[\s;|&()<>=,"'`]+""")
 # no registry repository.
 _LOCAL_TAG_CONSUMERS: Final[dict[str, frozenset[str]]] = {
     "docker/setup-buildx-action": frozenset({"driver-opts"}),
+    # ``BUILDKIT_SYNTAX`` redirects the ``# syntax=`` frontend, which the
+    # `docker` driver resolves through the daemon holding the ladder's tag.
+    # Each entry here is driver-conditional in the same way its sibling is,
+    # and in the opposite direction: this one is sound only where the build
+    # runs in the runner's own daemon, that one only where a BuildKit
+    # container falls back to an image already beside it.
+    "docker/build-push-action": frozenset({"build-args"}),
 }
 # Each attempt pays the per-pull bound twice: Docker Hub, then the mirror.
 _REGISTRIES_PER_ATTEMPT: Final[int] = 2

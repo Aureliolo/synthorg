@@ -139,7 +139,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 
 - Never hardcode ISO 4217 currency codes (`'USD'`, `'EUR'`) or symbols (`$`, `€`).
 - Never hardcode BCP 47 locale tags (`'en-US'`, `'de-DE'`).
-- Backend money fields drop the `_usd` suffix; type `currency: CurrencyCode` carries the semantics. All cost-bearing Pydantic models (`CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, `AgentRuntimeState`) carry currency.
+- Backend money fields drop the `_usd` suffix; type `currency: CurrencyCode` carries the semantics. All cost-bearing Pydantic models (`CostRecord`, `TaskMetricRecord`, `AgentRuntimeState`) carry currency.
 - Backend default: `DEFAULT_CURRENCY` from `synthorg.budget.currency`.
 - Per-line opt-out: `# lint-allow: regional-defaults`.
 

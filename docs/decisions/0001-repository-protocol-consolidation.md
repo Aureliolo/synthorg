@@ -152,8 +152,8 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 20 | CustomRuleRepository | persistence/ | IdKeyed + FilteredQuery | `get_by_name` | Indexed lookup on rule name |
 | 21 | McpInstallationRepository | persistence/ | IdKeyed + FilteredQuery | -- | Standard CRUD with filters |
 | 22 | SubworkflowRepository | persistence/ | IdKeyed + FilteredQuery | `find_parents`, `delete_if_unreferenced` | Domain: parent-child graph operations |
-| 23 | TrainingPlanRepository | persistence/ | IdKeyed + FilteredQuery | -- | Standard CRUD with filters |
-| 24 | TrainingResultRepository | persistence/ | IdKeyed + FilteredQuery | `latest_by_agent` | Domain: most recent result per agent |
+| 23 | TrainingPlanRepository | persistence/ | IdKeyed + FilteredQuery | -- | Standard CRUD with filters. Since removed with the training pipeline. |
+| 24 | TrainingResultRepository | persistence/ | IdKeyed + FilteredQuery | `latest_by_agent` | Domain: most recent result per agent. Since removed with the training pipeline. |
 | 25 | SessionRepository | persistence/ | IdKeyed + FilteredQuery | -- | Standard CRUD with filters |
 | 26 | OntologyEntityRepository | persistence/ | IdKeyed + FilteredQuery | `search` | Text search on indexed content |
 | 27 | OntologyDriftReportRepository | persistence/ | AppendOnly | -- | Append-only drift report log |

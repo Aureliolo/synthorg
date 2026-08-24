@@ -20,8 +20,6 @@ from synthorg.core.company import Company
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.evaluation.config import EvaluationConfig
-from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
@@ -45,7 +43,6 @@ from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.persistence.provider_failover_event_protocol import (
     ProviderFailoverEventFilterSpec,
 )
-from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from synthorg.providers.capability_sources.models import (
     CapabilityScore,
     CapabilityScoreKey,
@@ -67,7 +64,6 @@ from tests.unit.api.fakes import (
     FakeAuditRepository,
     FakeCheckpointRepository,
     FakeCodebaseStructureMapRepository,
-    FakeCollaborationMetricRepository,
     FakeCompletionOracleReportArchiveRepository,
     FakeCostRecordRepository,
     FakeDecisionRepository,
@@ -504,145 +500,6 @@ class FakeVersionRepository[T: BaseModel]:
         self._store.clear()
 
 
-class FakeTrainingPlanRepository:
-    """In-memory fake for ``TrainingPlanRepository``."""
-
-    def __init__(self) -> None:
-        self._plans: dict[str, TrainingPlan] = {}
-
-    async def save(self, entity: TrainingPlan) -> None:
-        self._plans[str(entity.id)] = entity
-
-    async def get(self, entity_id: NotBlankStr) -> TrainingPlan | None:
-        return self._plans.get(str(entity_id))
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        return self._plans.pop(str(entity_id), None) is not None
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[TrainingPlan, ...]:
-        ordered = sorted(self._plans.values(), key=lambda p: str(p.id))
-        return tuple(ordered[offset : offset + limit])
-
-    async def query(
-        self,
-        filter_spec: TrainingPlanFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[TrainingPlan, ...]:
-        plans = list(self._plans.values())
-        if filter_spec.agent_id is not None:
-            plans = [
-                p for p in plans if str(p.new_agent_id) == str(filter_spec.agent_id)
-            ]
-        if filter_spec.status is not None:
-            plans = [p for p in plans if p.status == filter_spec.status]
-        ordered = sorted(plans, key=lambda p: str(p.id))
-        return tuple(ordered[offset : offset + limit])
-
-    async def count(self, filter_spec: TrainingPlanFilterSpec) -> int:
-        plans = list(self._plans.values())
-        if filter_spec.agent_id is not None:
-            plans = [
-                p for p in plans if str(p.new_agent_id) == str(filter_spec.agent_id)
-            ]
-        if filter_spec.status is not None:
-            plans = [p for p in plans if p.status == filter_spec.status]
-        return len(plans)
-
-    async def latest_pending(
-        self,
-        agent_id: NotBlankStr,
-    ) -> TrainingPlan | None:
-        pending = [
-            p
-            for p in self._plans.values()
-            if str(p.new_agent_id) == str(agent_id)
-            and p.status == TrainingPlanStatus.PENDING
-        ]
-        if not pending:
-            return None
-        return max(pending, key=lambda p: p.created_at)
-
-    async def latest_by_agent(
-        self,
-        agent_id: NotBlankStr,
-    ) -> TrainingPlan | None:
-        plans = [
-            p for p in self._plans.values() if str(p.new_agent_id) == str(agent_id)
-        ]
-        if not plans:
-            return None
-        return max(plans, key=lambda p: p.created_at)
-
-    async def list_by_agent(
-        self,
-        agent_id: NotBlankStr,
-        *,
-        limit: int = 100,
-    ) -> tuple[TrainingPlan, ...]:
-        plans = [
-            p for p in self._plans.values() if str(p.new_agent_id) == str(agent_id)
-        ]
-        plans.sort(key=lambda p: p.created_at, reverse=True)
-        return tuple(plans[:limit])
-
-
-class FakeTrainingResultRepository:
-    """In-memory fake for ``TrainingResultRepository``."""
-
-    def __init__(self) -> None:
-        self._results: dict[str, TrainingResult] = {}
-
-    async def save(self, entity: TrainingResult) -> None:
-        plan_key = str(entity.plan_id)
-        for rid, r in self._results.items():
-            if str(r.plan_id) == plan_key and rid != str(entity.id):
-                msg = f"UNIQUE constraint: plan_id {plan_key!r} already exists"
-                raise ValueError(msg)
-        self._results[str(entity.id)] = entity
-
-    async def get(self, entity_id: NotBlankStr) -> TrainingResult | None:
-        return self._results.get(str(entity_id))
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        return self._results.pop(str(entity_id), None) is not None
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[TrainingResult, ...]:
-        ordered = sorted(self._results.values(), key=lambda r: str(r.id))
-        return tuple(ordered[offset : offset + limit])
-
-    async def get_by_plan(
-        self,
-        plan_id: NotBlankStr,
-    ) -> TrainingResult | None:
-        for r in self._results.values():
-            if str(r.plan_id) == str(plan_id):
-                return r
-        return None
-
-    async def get_latest(
-        self,
-        agent_id: NotBlankStr,
-    ) -> TrainingResult | None:
-        agent_results = [
-            r for r in self._results.values() if str(r.new_agent_id) == str(agent_id)
-        ]
-        if not agent_results:
-            return None
-        return max(agent_results, key=lambda r: r.completed_at)
-
-
 class _FakeProviderAuditRepo:
     """Minimal in-memory ``ProviderAuditRepo`` stub for tests.
 
@@ -924,9 +781,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._identity_versions: FakeVersionRepository[AgentIdentity] = (
             FakeVersionRepository()
         )
-        self._evaluation_config_versions: FakeVersionRepository[EvaluationConfig] = (
-            FakeVersionRepository()
-        )
         self._budget_config_versions: FakeVersionRepository[BudgetConfig] = (
             FakeVersionRepository()
         )
@@ -945,7 +799,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._lifecycle_transitions = FakeLifecycleTransitionRepository()
         self._deleted_entities = FakeDeletedEntityRepository()
         self._task_metrics = FakeTaskMetricRepository()
-        self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
         self._resume_intents = FakeResumeIntentRepository()
         self._audit_entries = FakeAuditRepository()
@@ -961,8 +814,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
         self._settings_repo = FakeSettingsRepository()
-        self._training_plans_repo = FakeTrainingPlanRepository()
-        self._training_results_repo = FakeTrainingResultRepository()
         self._custom_rules_repo = FakeCustomRuleRepository()
         self._connections_stub = InMemoryConnectionRepository()
         self._connection_secrets_stub = InMemoryConnectionSecretRepository()
@@ -1204,11 +1055,6 @@ class FakePersistenceBackend(PersistenceBackend):
 
     @property
     @override
-    def collaboration_metrics(self) -> FakeCollaborationMetricRepository:
-        return self._collaboration_metrics
-
-    @property
-    @override
     def parked_contexts(self) -> FakeParkedContextRepository:
         return self._parked_contexts
 
@@ -1316,11 +1162,6 @@ class FakePersistenceBackend(PersistenceBackend):
 
     @property
     @override
-    def evaluation_config_versions(self) -> FakeVersionRepository[EvaluationConfig]:
-        return self._evaluation_config_versions
-
-    @property
-    @override
     def budget_config_versions(self) -> FakeVersionRepository[BudgetConfig]:
         return self._budget_config_versions
 
@@ -1392,18 +1233,6 @@ class FakePersistenceBackend(PersistenceBackend):
     def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
         """In-memory webhook receipt repository."""
         return self._webhook_receipts_stub
-
-    @property
-    @override
-    def training_plans(self) -> FakeTrainingPlanRepository:
-        """Fake training plan repository."""
-        return self._training_plans_repo
-
-    @property
-    @override
-    def training_results(self) -> FakeTrainingResultRepository:
-        """Fake training result repository."""
-        return self._training_results_repo
 
     @property
     @override

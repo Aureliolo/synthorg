@@ -1,8 +1,8 @@
 """Performance signal aggregator.
 
 Wraps the PerformanceTracker to produce an OrgPerformanceSummary
-with org-wide quality, success rate, collaboration scores, and
-per-window metric summaries across all configured rolling windows.
+with org-wide quality, success rate and per-window metric summaries
+across all configured rolling windows.
 """
 
 from datetime import datetime
@@ -26,7 +26,6 @@ logger = get_logger(__name__)
 _EMPTY = OrgPerformanceSummary(
     avg_quality_score=0.0,
     avg_success_rate=0.0,
-    avg_collaboration_score=0.0,
     agent_count=0,
 )
 
@@ -75,8 +74,8 @@ class PerformanceSignalAggregator:
     """Aggregates per-agent performance into org-wide summaries.
 
     Iterates all configured rolling windows (7d, 30d, 90d, etc.)
-    and produces per-window MetricSummary entries for quality,
-    success rate, and collaboration.
+    and produces per-window MetricSummary entries for quality and
+    success rate.
 
     Args:
         tracker: The PerformanceTracker service instance.
@@ -121,7 +120,6 @@ class PerformanceSignalAggregator:
                 return _EMPTY
 
             quality_scores: list[float] = []
-            collab_scores: list[float] = []
             # Per-window accumulators: window_size -> list of values.
             window_success: dict[str, list[float]] = {}
             window_quality: dict[str, list[float]] = {}
@@ -133,9 +131,6 @@ class PerformanceSignalAggregator:
                 q = snapshot.overall_quality_score
                 if q is not None:
                     quality_scores.append(q)
-                c = snapshot.overall_collaboration_score
-                if c is not None:
-                    collab_scores.append(c)
                 for window in snapshot.windows:
                     ws = window.window_size
                     if window.success_rate is not None:
@@ -150,18 +145,11 @@ class PerformanceSignalAggregator:
                 if quality_scores
                 else 0.0
             )
-            avg_collab = (
-                round(sum(collab_scores) / len(collab_scores), 4)
-                if collab_scores
-                else 0.0
-            )
-
             metrics, avg_success = _build_window_metrics(window_success, window_quality)
 
             summary = OrgPerformanceSummary(
                 avg_quality_score=min(avg_quality, 10.0),
                 avg_success_rate=min(avg_success, 1.0),
-                avg_collaboration_score=min(avg_collab, 10.0),
                 metrics=tuple(metrics),
                 agent_count=len(agent_ids),
             )

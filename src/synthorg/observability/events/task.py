@@ -11,4 +11,7 @@ TASK_ACTIVITY_PUBLISH_FAILED: Final[str] = "task.activity.publish_failed"
 TASK_ACTIVITY_OUTCOME_RESOLVE_FAILED: Final[str] = (
     "task.activity.outcome_resolve_failed"
 )
+TASK_ACTIVITY_QUALITY_RESOLVE_FAILED: Final[str] = (
+    "task.activity.quality_resolve_failed"
+)
 TASK_ACTIVITY_METRIC_RECORD_FAILED: Final[str] = "task.activity.metric_record_failed"

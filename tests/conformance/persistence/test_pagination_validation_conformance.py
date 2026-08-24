@@ -39,8 +39,6 @@ _PAGINATED_ACCESSORS = (
     "tracked_containers",
     "connections",
     "principle_overrides",
-    "training_plans",
-    "training_results",
     "custom_rules",
     "sessions",
     "mcp_installations",

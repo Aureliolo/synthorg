@@ -53,7 +53,6 @@ def test_pin_for_rejects_unknown() -> None:
     [
         (PromptPurposeId.COS_CHAT, 0.7),
         (PromptPurposeId.COS_NARRATIVE, 0.4),
-        (PromptPurposeId.HR_CALIBRATION, 0.3),
         (PromptPurposeId.WORKSPACE, 0.1),
         (PromptPurposeId.MEMORY_RERANK, 0.0),
     ],

@@ -135,7 +135,6 @@ const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.nat({ max: 100 }).chain
     avg_completion_time_seconds: null,
     avg_tokens_per_task: null,
     success_rate: null,
-    collaboration_score: null,
     currency: null,
   })),
 )
@@ -160,7 +159,6 @@ const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 1000
     success_rate_percent: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
     cost_per_task: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
     quality_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-    collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
     trend_direction: fc.constantFrom('improving' as const, 'stable' as const, 'declining' as const, 'insufficient_data' as const),
     windows: fc.array(arbWindowMetrics, { minLength: 0, maxLength: 3 }),
     trends: fc.array(arbTrendResult, { minLength: 0, maxLength: 3 }),

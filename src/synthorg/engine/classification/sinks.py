@@ -1,12 +1,11 @@
 """Downstream classification sinks.
 
 Implements ``ClassificationSink`` for wiring classification
-results into the performance tracker and notification dispatcher.
+results into the notification dispatcher.
 """
 
 import copy
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 
@@ -14,8 +13,6 @@ from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import SlidingWindowEventLimiter
 from synthorg.engine.classification.models import ClassificationResult, ErrorSeverity
-from synthorg.hr.performance.models import CollaborationMetricRecord
-from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
@@ -66,59 +63,6 @@ _SEVERITY_ORDER: MappingProxyType[ErrorSeverity, int] = MappingProxyType(
         },
     ),
 )
-
-
-class PerformanceTrackerSink:
-    """Forwards classification findings to the performance tracker.
-
-    Records each finding as a collaboration event for the agent,
-    enabling trend detection and evolution triggers.
-
-    Args:
-        tracker: The performance tracker to record events to.
-    """
-
-    def __init__(self, tracker: PerformanceTracker) -> None:
-        self._tracker = tracker
-
-    async def on_classification(
-        self,
-        result: ClassificationResult,
-    ) -> None:
-        """Record classification findings as collaboration events.
-
-        Best-effort: logs errors internally, never raises
-        (except MemoryError/RecursionError).
-
-        Args:
-            result: The completed classification result.
-        """
-        if not result.has_findings:
-            return
-
-        for finding in result.findings:
-            try:
-                record = CollaborationMetricRecord(
-                    agent_id=result.agent_id,
-                    recorded_at=datetime.now(UTC),
-                    interaction_summary=(
-                        f"[{finding.category.value}] {finding.description}"
-                    ),
-                )
-                await self._tracker.record_collaboration_event(record)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                # lint-allow: swallow-ok -- fail-open detector
-                reraise_critical(exc)
-                # Never use logger.exception here -- the traceback
-                # can leak sensitive locals. Use the safe-warning
-                # shape that the dispatcher sink already follows.
-                logger.warning(
-                    CLASSIFICATION_SINK_ERROR,
-                    agent_id=result.agent_id,
-                    task_id=result.task_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
 
 
 class NotificationDispatcherSink:

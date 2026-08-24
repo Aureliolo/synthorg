@@ -2,10 +2,10 @@
 
 Runs the pin-validation benchmark's canonical probe for every prompt
 class through the deterministic provider and records one fingerprint per
-class into the packaged ``pin_golden.json``. Run this deliberately
-whenever a pin legitimately changes (a tier reassignment, a sampling
-default, or the probe pipeline): the benchmark fails until the golden is
-refreshed, which is the explicit "I changed the pin" acknowledgement that
+class into the packaged ``llm/pin_validation/golden.json``. Run this
+deliberately whenever a pin legitimately changes (a capability reassignment, a
+sampling default, or the probe pipeline): the CI canary fails until the golden
+is refreshed, which is the explicit "I changed the pin" acknowledgement that
 keeps the check a genuine regression gate rather than a tautology.
 
 Usage:
@@ -15,12 +15,12 @@ Usage:
 import asyncio
 import json
 
-from synthorg.hr.evaluation.pin_fingerprint import (
+from synthorg.llm.pin_validation import (
     GOLDEN_PATH,
+    compute_live_golden,
     golden_diff,
     load_pin_golden,
 )
-from synthorg.hr.evaluation.pin_golden_compute import compute_live_golden
 
 
 def main() -> None:

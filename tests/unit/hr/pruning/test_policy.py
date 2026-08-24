@@ -27,7 +27,6 @@ class TestThresholdPruningPolicyConfig:
     def test_defaults(self) -> None:
         config = ThresholdPruningPolicyConfig()
         assert config.quality_threshold == 3.5
-        assert config.collaboration_threshold == 3.5
         assert config.minimum_consecutive_windows == 2
         assert config.minimum_window_data_points == 5
 
@@ -68,12 +67,10 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=7.0,
-                collaboration_score=7.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=6.5,
-                collaboration_score=6.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -89,12 +86,10 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=7.0,
-                collaboration_score=7.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -109,12 +104,10 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=3.0,
-                collaboration_score=3.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -131,17 +124,14 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=1.0,
-                collaboration_score=1.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
             make_window_metrics(
                 window_size="90d",
                 avg_quality_score=3.0,
-                collaboration_score=3.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -153,7 +143,6 @@ class TestThresholdPruningPolicy:
         policy = ThresholdPruningPolicy(
             ThresholdPruningPolicyConfig(
                 quality_threshold=3.5,
-                collaboration_threshold=3.5,
                 minimum_consecutive_windows=2,
             ),
         )
@@ -161,12 +150,10 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=3.5,
-                collaboration_score=3.5,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=3.5,
-                collaboration_score=3.5,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -182,12 +169,10 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=None,
-                collaboration_score=None,
                 data_point_count=0,
                 tasks_completed=0,
                 tasks_failed=0,
@@ -195,7 +180,6 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="90d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -214,7 +198,6 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
                 data_point_count=3,
                 tasks_completed=2,
                 tasks_failed=1,
@@ -222,7 +205,6 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
@@ -235,34 +217,24 @@ class TestThresholdPruningPolicy:
             make_window_metrics(
                 window_size="7d",
                 avg_quality_score=2.0,
-                collaboration_score=2.0,
             ),
             make_window_metrics(
                 window_size="30d",
                 avg_quality_score=3.0,
-                collaboration_score=3.0,
             ),
         )
         snapshot = make_performance_snapshot(windows=windows)
         result = await policy.evaluate(NotBlankStr("agent-001"), snapshot)
         assert "quality" in result.scores or "overall_quality" in result.scores
 
-    async def test_only_quality_below_not_eligible(self) -> None:
-        """Both quality AND collaboration must be below threshold."""
+    async def test_unmeasured_windows_never_qualify(self) -> None:
+        """A window whose quality is unmeasured cannot be evidence of failure."""
         policy = ThresholdPruningPolicy(
             ThresholdPruningPolicyConfig(minimum_consecutive_windows=2),
         )
         windows = (
-            make_window_metrics(
-                window_size="7d",
-                avg_quality_score=2.0,
-                collaboration_score=7.0,
-            ),
-            make_window_metrics(
-                window_size="30d",
-                avg_quality_score=2.0,
-                collaboration_score=7.0,
-            ),
+            make_window_metrics(window_size="7d", avg_quality_score=None),
+            make_window_metrics(window_size="30d", avg_quality_score=None),
         )
         snapshot = make_performance_snapshot(windows=windows)
         result = await policy.evaluate(NotBlankStr("agent-001"), snapshot)

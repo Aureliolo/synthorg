@@ -34,9 +34,6 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
 )
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.plan_review.reply import PlanItemReplyService
-from synthorg.engine.quality.mcp_services import (
-    EvaluationVersionService,
-)
 from synthorg.engine.review_staffing.scheduler import ReviewStaffingScheduler
 from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.run_recovery.scheduler import RunRecoveryScheduler
@@ -69,7 +66,6 @@ class EngineStateSlice(BaseFeatureStateSlice):
     workflow_version_service: WorkflowVersionService | None = None
     workflow_execution_service: WorkflowExecutionService | None = None
     subworkflow_service: SubworkflowService | None = None
-    evaluation_version_service: EvaluationVersionService | None = None
     error_taxonomy_store: ErrorTaxonomyStore | None = None
     evolution_service: EvolutionService | None = None
     kanban_board_service: KanbanBoardService | None = None
@@ -204,20 +200,6 @@ def subworkflow_service_of(app_state: AppStateSliceMixin) -> SubworkflowService:
     """
     return require_service(
         app_state.slice(EngineStateSlice).subworkflow_service, "Subworkflow Service"
-    )
-
-
-def evaluation_version_service_of(
-    app_state: AppStateSliceMixin,
-) -> EvaluationVersionService:
-    """Resolve the evaluation version service from its slice, or raise 503.
-
-    Returns:
-        The wired evaluation version service.
-    """
-    return require_service(
-        app_state.slice(EngineStateSlice).evaluation_version_service,
-        "Evaluation Version Service",
     )
 
 

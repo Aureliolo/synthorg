@@ -46,9 +46,8 @@ capabilities, status, and lifecycle state).
   instantiation, creating agents with full `AgentIdentity` (role, personality, skills, model
   config, tool permissions, authority, autonomy level).
 - `src/synthorg/hr/performance/tracker.py` defines `PerformanceTracker`: per-agent rolling
-  windows (7d, 30d, 90d), Theil-Sen trend detection, and quality/collaboration scoring.
-- `src/synthorg/hr/evaluation/evaluator.py` defines `EvaluationService`: 5-pillar composite
-  scoring (intelligence, efficiency, resilience, governance, experience).
+  windows (7d, 30d, 90d) and Theil-Sen trend detection over a task-metric ledger whose
+  quality figure is the completion oracle's verdict.
 
 **API surface**:
 

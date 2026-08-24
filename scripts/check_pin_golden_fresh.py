@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""CI gate: ``pin_golden.json`` must match the live model pins.
+"""CI gate: the pin golden must match the live model pins.
 
-This is the prompt-drift regression gate and the tier-change canary in
+This is the prompt-drift regression gate and the capability-change canary in
 one exact check. It recomputes every prompt class's pin fingerprint from
 the current pins (``llm/model_pins.py`` + ``llm/model_capability_policy.py``)
 through the deterministic scripted probe and compares the result to the
-committed ``pin_golden.json``. Any divergence is drift:
+committed ``llm/pin_validation/golden.json``. Any divergence is drift:
 
-* a pin's tier / sampling parameters changed but the golden was not
+* a pin's capability / sampling parameters changed but the golden was not
   regenerated (the canary the locked design calls for), or
 * a class was added or removed from the registry without a golden refresh.
 
 Because it recomputes rather than diffing file paths, it catches drift no
-matter how the pin changed (a direct edit, a tier reassignment, or a
+matter how the pin changed (a direct edit, a capability reassignment, or a
 config default that feeds the pin), which a git-path heuristic would miss.
 
 Exit codes
@@ -27,8 +27,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-from synthorg.hr.evaluation.pin_fingerprint import golden_diff, load_pin_golden
-from synthorg.hr.evaluation.pin_golden_compute import compute_live_golden
+from synthorg.llm.pin_validation import (
+    compute_live_golden,
+    golden_diff,
+    load_pin_golden,
+)
 
 _REGEN_HINT = (
     "run `uv run python scripts/refresh_model_pin_golden.py` and commit the result"
@@ -57,7 +60,7 @@ def check(golden_path: Path | None = None) -> int:
     try:
         committed = load_pin_golden(golden_path)
     except ValueError as exc:
-        print(f"error: committed pin_golden.json is malformed: {exc}")
+        print(f"error: the committed pin golden is malformed: {exc}")
         print(f"  {_REGEN_HINT}")
         return 1
 
@@ -65,10 +68,10 @@ def check(golden_path: Path | None = None) -> int:
     stale = tuple(sorted(set(committed) - set(live)))
 
     if not drifted and not stale:
-        print(f"pin_golden.json is fresh ({len(live)} prompt classes).")
+        print(f"the pin golden is fresh ({len(live)} prompt classes).")
         return 0
 
-    print("error: pin_golden.json is stale relative to the live model pins.")
+    print("error: the pin golden is stale relative to the live model pins.")
     if drifted:
         print(f"  changed or missing from golden ({len(drifted)}):")
         for class_id in drifted:

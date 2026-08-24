@@ -1,1 +1,1 @@
-"""Performance tracking -- quality scoring, collaboration, trends."""
+"""Performance tracking: the task-metric ledger, rolling windows and trends."""

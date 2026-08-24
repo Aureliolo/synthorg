@@ -41,7 +41,6 @@ def _full_snapshot(  # noqa: PLR0913
     *,
     quality: float = 7.5,
     success: float = 0.85,
-    collab: float = 6.0,
     agents: int = 10,
     spend: float = 150.0,
     coord_ratio: float = 0.3,
@@ -62,7 +61,6 @@ def _full_snapshot(  # noqa: PLR0913
         performance=OrgPerformanceSummary(
             avg_quality_score=quality,
             avg_success_rate=success,
-            avg_collaboration_score=collab,
             agent_count=agents,
         ),
         budget=OrgBudgetSummary(
@@ -253,7 +251,7 @@ class TestMetricRegistry:
     """Tests for the METRIC_REGISTRY completeness."""
 
     def test_registry_has_expected_count(self) -> None:
-        assert len(METRIC_REGISTRY) == 23
+        assert len(METRIC_REGISTRY) == 22
 
     def test_all_paths_unique(self) -> None:
         paths = [m.path for m in METRIC_REGISTRY]

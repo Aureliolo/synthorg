@@ -14,7 +14,7 @@ On-demand reference. The rule in `CLAUDE.md` is: new cross-cutting subsystems fo
 
 Three registry classes replace the hand-rolled `if config.type == "...": ... elif ...` chains every factory used to carry. Each is immutable after construction (`MappingProxyType`-backed) and emits structured `registry.*` events for built / lookup / failure paths.
 
-- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, training source selectors, training curation, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, memory-consolidation strategies (selector + op composite, ADR-0005), risk-tier classifiers (timeout policy seam, REWORK #9), and autonomy change strategies (promotion/downgrade plugin, REWORK #9).
+- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, memory-consolidation strategies (selector + op composite, ADR-0005), risk-tier classifiers (timeout policy seam, REWORK #9), and autonomy change strategies (promotion/downgrade plugin, REWORK #9).
 - `synthorg.persistence.registry.PersistenceBackendRegistry`: domain-specific dispatch keyed by `PersistenceConfig.backend`; preserves the lazy import of the optional `postgres` extra.
 - `synthorg.memory.registry.MemoryBackendRegistry`: domain-specific dispatch keyed by `CompanyMemoryConfig.backend`; the composite-backend child loop reuses a separate "leaf" registry to keep the wiring acyclic.
 
@@ -88,13 +88,6 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/assignment/ranker_protocol.py`: `CandidateRanker` (post-scoring ordering: `ScoreDescendingRanker`, `WorkloadAscendingRanker`, `CostDescendingRanker`, `AuctionBidRanker`).
 - `engine/assignment/scoring_based.py::ScoringBasedAssignmentStrategy`: composes `(scorer, pool_filter, ranker)`. The five logical assignment strategies (`role_based`, `load_balanced`, `cost_optimized`, `auction`, `hierarchical`) are all `ScoringBasedAssignmentStrategy` instances with different filter/ranker pairs.
 - `engine/assignment/registry.py::build_strategy_map()`: the factory; preserves the public string discriminators.
-
-### HR pillar scoring
-
-- `hr/evaluation/pillar_protocol.py`: `PillarScoringStrategy` (the public per-pillar Protocol).
-- `hr/evaluation/metric_extractor_protocol.py`: `MetricExtractor` (per-pillar sub-metric extraction). Implementations live under `hr/evaluation/extractors/` (one file per pillar: intelligence, efficiency, resilience, governance, experience).
-- `hr/evaluation/configurable_scorer.py::ConfigurablePillarScorer`: composes `(pillar, extractor)` to satisfy `PillarScoringStrategy`. Owns the shared "redistribute weights -> weighted-average -> clamp -> confidence -> log -> `PillarScore`" pipeline so the per-pillar extractors stay focused on data extraction.
-- `hr/evaluation/evaluator.py::EvaluationService`: factory + orchestrator. Each pillar has a `_default_<pillar>()` method that returns `ConfigurablePillarScorer(pillar, <Pillar>MetricExtractor())`. Callers can substitute any compatible `PillarScoringStrategy` per pillar via the constructor's `<pillar>_strategy` keyword arguments.
 
 ### Memory injection strategy
 

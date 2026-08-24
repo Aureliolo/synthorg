@@ -482,7 +482,7 @@ reason, and the security-hardened ones also staff a Red Team.
 
 ## See Also
 
-- [HR & Agent Lifecycle](hr-lifecycle.md): role catalog, reporting-graph authority, hiring, firing, performance, evaluation, evolution, five-pillar framework, client agents
+- [HR & Agent Lifecycle](hr-lifecycle.md): role catalog, reporting-graph authority, hiring, firing, performance, evolution, client agents
 - [Organisation](organization.md): company types, departments, templates
 - [Tools & Capabilities](tools.md): tool access levels, sandboxing
 - [Design Overview](index.md): full index

@@ -174,6 +174,51 @@ runs:
         image: moby/buildkit:buildx-stable-1@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
         local-tag: synthorg-buildkit:buildx-stable-1
 
+    # The mirror below rides `buildkitd-config-inline`, which the `docker`
+    # driver ignores, and the ladder above is skipped because that driver
+    # boots no BuildKit container. So on the PR path BuildKit resolved the
+    # `# syntax=` frontend straight from Docker Hub with neither retry nor
+    # mirror, and a 500 from its token endpoint failed the job in under a
+    # second. Read the ref out of the Dockerfile rather than declaring it
+    # here: the Dockerfile is where renovate bumps it, and a second copy
+    # would pin the frontend the build no longer uses.
+    - name: Resolve Dockerfile frontend ref
+      id: frontend
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+      run: |
+        set -euo pipefail
+        directive="$(head -n 1 "${DOCKERFILE}")"
+        if [[ "${directive}" != "# syntax="* ]]; then
+          echo "::error::${DOCKERFILE} has no '# syntax=' directive on line 1;"\
+               "the frontend cannot be pre-pulled and the build would resolve"\
+               "it unprotected"
+          exit 1
+        fi
+        ref="${directive#\# syntax=}"
+        # A digest is what lets the ladder serve the frontend from the mirror
+        # without substituting the content, so its absence fails here rather
+        # than downgrading the pull to an unverified tag.
+        if [[ "${ref}" != *"@sha256:"* ]]; then
+          echo "::error::frontend ref '${ref}' in ${DOCKERFILE} is not"\
+               "digest-pinned"
+          exit 1
+        fi
+        echo "ref=${ref}" >> "${GITHUB_OUTPUT}"
+
+    # Tiny image (~10 MB), so one attempt needs nowhere near the action's
+    # 60s default; the shorter bound keeps the whole ladder inside the
+    # calling job's budget alongside the work it protects.
+    - name: Pull Dockerfile frontend
+      if: github.event_name == 'pull_request'
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        image: ${{ steps.frontend.outputs.ref }}
+        local-tag: synthorg-dockerfile-frontend:build
+        pull-timeout-seconds: "30"
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       with:
@@ -247,8 +292,15 @@ runs:
         load: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        # BUILDKIT_SYNTAX overrides the `# syntax=` line with the tag the
+        # ladder above produced, so the frontend comes out of the runner's
+        # daemon instead of the network. Sound only on this build: the
+        # `docker` driver runs BuildKit inside that daemon and resolves a
+        # local image, whereas the `docker-container` driver the non-PR
+        # build uses has no view of it and would fail on the name.
         build-args: |
           BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          BUILDKIT_SYNTAX=synthorg-dockerfile-frontend:build
           ${{ inputs.extra-build-args }}
         platforms: linux/${{ inputs.platform }}
 

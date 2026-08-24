@@ -30,7 +30,6 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.company import Company
 from synthorg.core.role import Role
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.persistence.sqlite._backend_accessors import (
     _BackendRepositoryAccessors,
 )
@@ -104,7 +103,6 @@ from synthorg.persistence.sqlite.hiring_request_repo import (
     SQLiteHiringRequestRepository,
 )
 from synthorg.persistence.sqlite.hr_repositories import (
-    SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
@@ -229,12 +227,6 @@ from synthorg.persistence.sqlite.task_repo import (
 from synthorg.persistence.sqlite.tracked_container_repo import (
     SQLiteTrackedContainerRepository,
 )
-from synthorg.persistence.sqlite.training_plan_repo import (
-    SQLiteTrainingPlanRepository,
-)
-from synthorg.persistence.sqlite.training_result_repo import (
-    SQLiteTrainingResultRepository,
-)
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -296,7 +288,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._lifecycle_transitions = None
         self._deleted_entities = None
         self._task_metrics = None
-        self._collaboration_metrics = None
         self._parked_contexts = None
         self._resume_intents = None
         self._audit_entries = None
@@ -321,7 +312,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._subworkflows = None
         self._workflow_versions = None
         self._identity_versions = None
-        self._evaluation_config_versions = None
         self._budget_config_versions = None
         self._company_versions = None
         self._role_versions = None
@@ -337,8 +327,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._project_cost_aggregates = None
         self._fine_tune_checkpoints = None
         self._fine_tune_runs = None
-        self._training_plans = None
-        self._training_results = None
         self._custom_rules = None
         self._sessions = None
         self._refresh_tokens = None
@@ -436,10 +424,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._task_metrics = SQLiteTaskMetricRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._collaboration_metrics = SQLiteCollaborationMetricRepository(
             self._db,
             write_context=self.write_context,
         )
@@ -557,10 +541,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             "agent_identity_versions",
             AgentIdentity,
         )
-        self._evaluation_config_versions = _ver_repo(
-            "evaluation_config_versions",
-            EvaluationConfig,
-        )
         self._budget_config_versions = _ver_repo(
             "budget_config_versions",
             BudgetConfig,
@@ -617,14 +597,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._fine_tune_runs = SQLiteFineTuneRunRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._training_plans = SQLiteTrainingPlanRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._training_results = SQLiteTrainingResultRepository(
             self._db,
             write_context=self.write_context,
         )

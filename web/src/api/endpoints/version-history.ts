@@ -1,9 +1,8 @@
 /**
  * Generic version-history client.
  *
- * The five domains that expose version snapshots (agent identity,
- * role, budget config, evaluation config, company) all follow the
- * same wire shape:
+ * The four domains that expose version snapshots (agent identity,
+ * role, budget config, company) all follow the same wire shape:
  *
  * * ``GET /<base>/versions`` -- cursor-paginated list
  * * ``GET /<base>/versions/{n}`` -- single version
@@ -16,8 +15,8 @@
  * ``metadata_changes``) at ``/<base>/diff``.  So -- like rollback --
  * the diff action is supplied per domain by the caller (it normalises
  * its own backend shape into :type:`VersionDiffResponse`); domains with
- * no diff endpoint (role, budget config, evaluation config, company)
- * omit it and gate the affordance off via ``diffSupported={false}``.
+ * no diff endpoint (role, budget config, company) omit it and gate the
+ * affordance off via ``diffSupported={false}``.
  *
  * This factory yields a typed client over the read paths.  The snapshot
  * shape is left generic so each domain can supply its own payload type.
@@ -139,8 +138,7 @@ export function createVersionHistoryClient<T>(
 /**
  * Build a read-only version-history client.  Use this for domains
  * whose backend exposes list / get / diff but no rollback (role
- * versions, budget-config versions, evaluation-config versions,
- * company versions today).
+ * versions, budget-config versions, company versions today).
  */
 function createReadOnlyVersionHistoryClient<T>(
   basePath: string,
@@ -185,13 +183,6 @@ function createReadOnlyVersionHistoryClient<T>(
 export const budgetConfigVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/budget/config')
-
-/**
- * Singleton evaluation-config versions client.  Read-only.
- */
-export const evaluationConfigVersionsClient = createReadOnlyVersionHistoryClient<
-  Record<string, unknown>
->('/evaluation/config')
 
 /**
  * Singleton company-structure versions client.  Read-only.

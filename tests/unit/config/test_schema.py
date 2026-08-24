@@ -688,28 +688,23 @@ class TestRootConfig:
 
     def test_performance_defaults(self) -> None:
         cfg = RootConfig(company_name="X")
-        assert cfg.performance.quality_ci_weight == 0.4
-        assert cfg.performance.quality_llm_weight == 0.6
-        assert cfg.performance.quality_judge_model is None
-        assert cfg.performance.quality_judge_provider is None
         assert cfg.performance.min_data_points == 5
+        assert cfg.performance.improving_threshold > (
+            cfg.performance.declining_threshold
+        )
 
     def test_performance_custom(self) -> None:
-
         cfg = RootConfig(
             company_name="X",
             performance=PerformanceConfig(
-                quality_judge_model="test-judge-001",
-                quality_judge_provider="test-provider",
-                quality_ci_weight=0.3,
                 min_data_points=10,
+                improving_threshold=0.1,
+                declining_threshold=-0.1,
             ),
         )
-        assert cfg.performance.quality_judge_model == "test-judge-001"
-        assert cfg.performance.quality_judge_provider == "test-provider"
-        assert cfg.performance.quality_ci_weight == 0.3
-        assert cfg.performance.quality_llm_weight == 0.7
         assert cfg.performance.min_data_points == 10
+        assert cfg.performance.improving_threshold == 0.1
+        assert cfg.performance.declining_threshold == -0.1
 
     def test_factory(self) -> None:
         # ``IntegrationHealthConfig`` carries a model-level validator

@@ -1,77 +1,78 @@
-"""Tests for PerformanceConfig quality weight validation."""
+"""Tests for PerformanceConfig validation."""
 
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
 
 
 @pytest.mark.unit
-class TestQualityWeightDerivation:
-    """quality_llm_weight is the derived complement of quality_ci_weight."""
+class TestTrendThresholdOrdering:
+    """The improving threshold must sit strictly above the declining one."""
+
+    def test_defaults_are_ordered(self) -> None:
+        cfg = PerformanceConfig()
+        assert cfg.improving_threshold > cfg.declining_threshold
 
     @pytest.mark.parametrize(
-        ("ci_w", "expected_llm_w"),
-        [
-            (0.4, 0.6),
-            (0.0, 1.0),
-            (1.0, 0.0),
-            (0.5, 0.5),
-            (0.3, 0.7),
-        ],
+        ("improving", "declining"),
+        [(0.05, 0.05), (-0.1, 0.1)],
+        ids=["equal", "inverted"],
     )
-    def test_llm_weight_is_complement(
+    def test_unordered_thresholds_rejected(
         self,
-        ci_w: float,
-        expected_llm_w: float,
+        improving: float,
+        declining: float,
     ) -> None:
-        """The LLM weight always completes the CI weight to 1.0."""
-        cfg = PerformanceConfig(quality_ci_weight=ci_w)
-        assert cfg.quality_ci_weight == ci_w
-        assert cfg.quality_llm_weight == pytest.approx(expected_llm_w)
-
-    @pytest.mark.parametrize("ci_w", [-0.1, 1.1])
-    def test_ci_weight_out_of_range_rejected(self, ci_w: float) -> None:
-        """A CI weight outside [0.0, 1.0] raises ValidationError."""
-        with pytest.raises(ValidationError):
-            PerformanceConfig(quality_ci_weight=ci_w)
-
-    def test_llm_weight_not_settable(self) -> None:
-        """quality_llm_weight is computed and rejected as a constructor arg."""
-        with pytest.raises(ValidationError, match="quality_llm_weight"):
-            PerformanceConfig(quality_llm_weight=0.7)  # type: ignore[call-arg]
-
-    def test_default_weights(self) -> None:
-        """Default config derives 0.6 from the 0.4 CI default."""
-        cfg = PerformanceConfig()
-        assert cfg.quality_ci_weight == 0.4
-        assert cfg.quality_llm_weight == pytest.approx(0.6)
+        # An inverted or equal pair leaves a slope that is neither improving
+        # nor declining, or both at once, so the trend label stops meaning
+        # anything.
+        with pytest.raises(ValidationError, match="improving_threshold"):
+            PerformanceConfig(
+                improving_threshold=improving,
+                declining_threshold=declining,
+            )
 
 
 @pytest.mark.unit
-class TestProviderRequiresModelValidation:
-    """quality_judge_provider requires quality_judge_model."""
+class TestWindowConfiguration:
+    """Rolling-window labels and the aggregation floor."""
 
-    def test_provider_without_model_raises(self) -> None:
-        """Setting provider without model raises ValidationError."""
-        with pytest.raises(ValidationError, match="quality_judge_provider requires"):
-            PerformanceConfig(
-                quality_judge_provider="test-provider",
-            )
+    def test_defaults(self) -> None:
+        cfg = PerformanceConfig()
+        assert cfg.windows
+        assert cfg.min_data_points >= 1
 
-    def test_provider_with_model_valid(self) -> None:
-        """Setting both provider and model is accepted."""
-        cfg = PerformanceConfig(
-            quality_judge_model="test-basic-001",
-            quality_judge_provider="test-provider",
-        )
-        assert cfg.quality_judge_model == "test-basic-001"
-        assert cfg.quality_judge_provider == "test-provider"
+    def test_empty_windows_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PerformanceConfig(windows=())
 
-    def test_model_without_provider_valid(self) -> None:
-        """Setting model without provider is accepted (auto-resolve)."""
-        cfg = PerformanceConfig(
-            quality_judge_model="test-basic-001",
-        )
-        assert cfg.quality_judge_model == "test-basic-001"
-        assert cfg.quality_judge_provider is None
+    def test_custom_windows_accepted(self) -> None:
+        cfg = PerformanceConfig(windows=(NotBlankStr("7d"), NotBlankStr("30d")))
+        assert cfg.windows == ("7d", "30d")
+
+    def test_zero_min_data_points_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PerformanceConfig(min_data_points=0)
+
+
+@pytest.mark.unit
+class TestScoringFieldsAreGone:
+    """The tracker reads the oracle's verdict; it configures no scorer."""
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "quality_judge_model",
+            "quality_judge_provider",
+            "quality_ci_weight",
+            "collaboration_weights",
+            "llm_sampling_rate",
+        ],
+    )
+    def test_scoring_field_is_refused(self, field: str) -> None:
+        # ``extra="forbid"`` turns a stale operator config into a loud
+        # startup failure rather than a silently ignored key.
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            PerformanceConfig(**{field: 0.5})  # type: ignore[arg-type]

@@ -111,8 +111,6 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "task_board_entry_adapter": (EngineStateSlice, "task_board_entry_adapter"),
         "agent_registry": (HrStateSlice, "agent_registry"),
         "performance_tracker": (HrStateSlice, "performance_tracker"),
-        "training_service": (HrStateSlice, "training_service"),
-        "training_plan_service": (HrStateSlice, "training_plan_service"),
         "personality_service": (HrStateSlice, "personality_service"),
         "agent_version_service": (HrStateSlice, "agent_version_service"),
         "activity_feed_service": (HrStateSlice, "activity_feed_service"),

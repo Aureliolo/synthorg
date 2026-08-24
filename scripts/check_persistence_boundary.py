@@ -154,7 +154,6 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # handles for cross-subsystem fixtures.
         "tests/integration/engine/identity/test_identity_versioning.py",
         "tests/integration/engine/workflow/test_subworkflows_e2e.py",
-        "tests/integration/hr/training/test_training_persistence.py",
         "tests/unit/hr/test_persistence.py",
         "tests/unit/memory/embedding/test_fine_tune_orchestrator.py",
         "tests/unit/meta/test_approval_repo.py",

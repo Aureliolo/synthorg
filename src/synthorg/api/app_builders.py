@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
     from synthorg.core.clock import Clock
     from synthorg.hr.performance.config import PerformanceConfig
-    from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -102,62 +101,6 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     )
     bootstrap_logging(patched)
     return patched
-
-
-def _resolve_llm_judge_strategy(
-    cfg: PerformanceConfig,
-    *,
-    provider_registry: ProviderRegistry,
-    cost_tracker: CostTrackerProtocol | None,
-) -> QualityScoringStrategy | None:
-    """Resolve the LLM judge strategy from config.
-
-    Returns ``None`` if the judge model is not configured, the named
-    provider is not registered, or no providers are available.
-
-    Returns:
-        The ``QualityScoringStrategy`` value when present, ``None`` otherwise.
-    """
-    from synthorg.providers.errors import DriverNotRegisteredError  # noqa: PLC0415
-
-    if cfg.quality_judge_model is None:
-        return None
-
-    judge_provider_name = cfg.quality_judge_provider
-    if judge_provider_name is not None:
-        try:
-            provider_driver = provider_registry.get(str(judge_provider_name))
-        except DriverNotRegisteredError:
-            logger.warning(
-                API_APP_STARTUP,
-                note="Quality judge provider not found, LLM judge disabled",
-                provider=str(judge_provider_name),
-            )
-            return None
-    else:
-        resolved = resolve_feature_provider(
-            provider_registry,
-            cfg.quality_judge_model,
-            feature="quality_llm_judge",
-        )
-        if resolved is None:
-            return None
-        provider_driver = resolved
-
-    from synthorg.hr.performance.llm_judge_quality_strategy import (  # noqa: PLC0415
-        LlmJudgeQualityStrategy,
-    )
-
-    logger.info(
-        API_APP_STARTUP,
-        note="Quality LLM judge configured",
-        model=str(cfg.quality_judge_model),
-    )
-    return LlmJudgeQualityStrategy(
-        provider=provider_driver,
-        model=cfg.quality_judge_model,
-        cost_tracker=cost_tracker,
-    )
 
 
 def build_chief_of_staff_chat(
@@ -472,59 +415,18 @@ def _build_telemetry_collector(
 
 def _build_performance_tracker(
     *,
-    cost_tracker: CostTrackerProtocol | None = None,
-    provider_registry: ProviderRegistry | None = None,
     perf_config: PerformanceConfig | None = None,
 ) -> PerformanceTracker:
-    """Build a PerformanceTracker with composite quality strategy.
+    """Build the task-metric ledger.
 
     Returns:
         ``PerformanceTracker`` instance.
     """
-    from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
-        CISignalQualityStrategy,
-    )
-    from synthorg.hr.performance.collaboration_override_store import (  # noqa: PLC0415
-        CollaborationOverrideStore,
-    )
-    from synthorg.hr.performance.composite_quality_strategy import (  # noqa: PLC0415
-        CompositeQualityStrategy,
-    )
     from synthorg.hr.performance.config import (  # noqa: PLC0415
         PerformanceConfig,
-    )
-    from synthorg.hr.performance.quality_override_store import (  # noqa: PLC0415
-        QualityOverrideStore,
     )
     from synthorg.hr.performance.tracker import (  # noqa: PLC0415
         PerformanceTracker,
     )
 
-    cfg = perf_config or PerformanceConfig()
-    quality_override_store = QualityOverrideStore()
-    collaboration_override_store = CollaborationOverrideStore()
-
-    llm_strategy = (
-        _resolve_llm_judge_strategy(
-            cfg,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
-        if provider_registry is not None
-        else None
-    )
-
-    composite = CompositeQualityStrategy(
-        ci_strategy=CISignalQualityStrategy(),
-        llm_strategy=llm_strategy,
-        override_store=quality_override_store,
-        ci_weight=cfg.quality_ci_weight,
-        llm_weight=cfg.quality_llm_weight,
-    )
-
-    return PerformanceTracker(
-        quality_strategy=composite,
-        config=cfg,
-        override_store=collaboration_override_store,
-        quality_override_store=quality_override_store,
-    )
+    return PerformanceTracker(config=perf_config or PerformanceConfig())

@@ -23,7 +23,6 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.persistence.postgres._backend_accessors import (
     _PostgresBackendRepositoryAccessors,
 )
@@ -93,7 +92,6 @@ from synthorg.persistence.postgres.hiring_request_repo import (
     PostgresHiringRequestRepository,
 )
 from synthorg.persistence.postgres.hr_repositories import (
-    PostgresCollaborationMetricRepository,
     PostgresLifecycleEventRepository,
     PostgresTaskMetricRepository,
 )
@@ -211,12 +209,6 @@ from synthorg.persistence.postgres.task_repo import (
 from synthorg.persistence.postgres.tracked_container_repo import (
     PostgresTrackedContainerRepository,
 )
-from synthorg.persistence.postgres.training_plan_repo import (
-    PostgresTrainingPlanRepository,
-)
-from synthorg.persistence.postgres.training_result_repo import (
-    PostgresTrainingResultRepository,
-)
 from synthorg.persistence.postgres.user_repo import (
     PostgresApiKeyRepository,
     PostgresUserRepository,
@@ -265,7 +257,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._lifecycle_transitions = None
         self._deleted_entities = None
         self._task_metrics = None
-        self._collaboration_metrics = None
         self._parked_contexts = None
         self._resume_intents = None
         self._audit_entries = None
@@ -290,7 +281,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._subworkflows = None
         self._workflow_versions = None
         self._identity_versions = None
-        self._evaluation_config_versions = None
         self._budget_config_versions = None
         self._company_versions = None
         self._role_versions = None
@@ -304,8 +294,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._provider_failover_events = None
         self._tracked_containers = None
         self._project_cost_aggregates = None
-        self._training_plans = None
-        self._training_results = None
         self._sessions = None
         self._refresh_tokens = None
         self._idempotency_keys = None
@@ -362,7 +350,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._lifecycle_transitions = PostgresLifecycleTransitionRepository(pool)
         self._deleted_entities = PostgresDeletedEntityRepository(pool)
         self._task_metrics = PostgresTaskMetricRepository(pool)
-        self._collaboration_metrics = PostgresCollaborationMetricRepository(pool)
 
         # Operational + security repositories.
         self._parked_contexts = PostgresParkedContextRepository(pool)
@@ -411,9 +398,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
             "workflow_definition_versions", WorkflowDefinition
         )
         self._identity_versions = _ver_repo("agent_identity_versions", AgentIdentity)
-        self._evaluation_config_versions = _ver_repo(
-            "evaluation_config_versions", EvaluationConfig
-        )
         self._budget_config_versions = _ver_repo("budget_config_versions", BudgetConfig)
         self._company_versions = _ver_repo("company_versions", Company)
         self._role_versions = _ver_repo("role_versions", Role)
@@ -434,8 +418,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._provider_failover_events = PostgresProviderFailoverEventRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
-        self._training_plans = PostgresTrainingPlanRepository(pool)
-        self._training_results = PostgresTrainingResultRepository(pool)
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._idempotency_keys = PostgresIdempotencyRepository(pool)

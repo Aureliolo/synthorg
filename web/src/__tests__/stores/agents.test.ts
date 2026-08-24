@@ -67,7 +67,6 @@ function makePerformance(): AgentPerformanceSummary {
     success_rate_percent: 90,
     cost_per_task: 0.25,
     quality_score: 7.5,
-    collaboration_score: 8.0,
     trend_direction: 'stable',
     windows: [],
     trends: [],

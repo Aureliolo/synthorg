@@ -43,7 +43,6 @@ from synthorg.api.controllers.charter import CharterController
 from synthorg.api.controllers.chat_questions import ChatQuestionsController
 from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.cockpit import CockpitController
-from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.company_versions import (
     CompanyVersionController,
@@ -60,9 +59,6 @@ from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.decomposition import DecompositionController
 from synthorg.api.controllers.departments.crud import DepartmentController
 from synthorg.api.controllers.departments.health import DepartmentHealthController
-from synthorg.api.controllers.evaluation_config_versions import (
-    EvaluationConfigVersionController,
-)
 from synthorg.api.controllers.events.interrupts import InterruptController
 from synthorg.api.controllers.events.stream import EventStreamController
 from synthorg.api.controllers.experiments import ExperimentsController
@@ -142,7 +138,6 @@ from synthorg.api.controllers.providers.presets import ProviderPresetsController
 from synthorg.api.controllers.providers.serviceability import (
     ProviderServiceabilityController,
 )
-from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.reviews import ReviewController
@@ -170,7 +165,6 @@ from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
-from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.tunnel import TunnelController
 from synthorg.api.controllers.turn import TurnController
 from synthorg.api.controllers.users.account import UserController
@@ -268,7 +262,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     AuthCredentialsController,
     AuthIdentityController,
     AuthSessionsController,
-    CollaborationController,
     CoordinationController,
     EventStreamController,
     InterruptController,
@@ -302,9 +295,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     WorkflowVersionController,
     BudgetConfigVersionController,
     CompanyVersionController,
-    EvaluationConfigVersionController,
     RoleVersionController,
-    QualityController,
     ReportsController,
     WorkflowExecutionController,
     OntologyController,
@@ -313,7 +304,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     OntologyAdminController,
     ClientController,
     ReviewController,
-    TrainingController,
     MetaController,
     MetaEvolutionController,
     MetaAlertsController,
@@ -401,7 +391,6 @@ __all__ = [
     "CharterController",
     "ChatQuestionsController",
     "ClientController",
-    "CollaborationController",
     "CompanyController",
     "CompanyVersionController",
     "ConnectionsController",
@@ -414,7 +403,6 @@ __all__ = [
     "DeliverableReceiptController",
     "DepartmentController",
     "DepartmentHealthController",
-    "EvaluationConfigVersionController",
     "EventStreamController",
     "ExperimentsController",
     "ForecastBudgetController",
@@ -461,7 +449,6 @@ __all__ = [
     "ProviderModelsController",
     "ProviderPresetsController",
     "ProviderServiceabilityController",
-    "QualityController",
     "ReadinessController",
     "ReportsController",
     "RequestController",
@@ -485,7 +472,6 @@ __all__ = [
     "TaskController",
     "TeamController",
     "TemplatePackController",
-    "TrainingController",
     "TunnelController",
     "TurnController",
     "UserController",

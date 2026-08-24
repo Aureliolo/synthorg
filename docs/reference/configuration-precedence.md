@@ -489,10 +489,6 @@ Everything else is live, through whichever seam its consumer allows:
   GitHub health checker);
 - a bridge-config snapshot + subscriber (e.g. the `tools.docker_sidecar_*`
   resource limits, read per container launch through the sidecar cache);
-- a rebuild-and-swap subscriber that re-resolves and replaces a live
-  strategy / pipeline (the `hr.eval_loop_llm_model` /
-  `pattern_identifier_mode` / `fix_proposer_mode` strategies swapped onto
-  the eval-loop coordinator);
 - a `reload_runtime_services` trigger for knobs `build_runtime_services`
   already re-reads (the engine classifier / matcher knobs,
   `external_api.enabled` / `provider_type`,

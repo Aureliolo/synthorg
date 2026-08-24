@@ -117,8 +117,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "cockpit.intervention_pause": (30, 60),
     "cockpit.steering_issue": (20, 60),
     "cockpit.steering_supersede": (20, 60),
-    # collaboration
-    "collaboration.override": (20, 60),
     # company
     "company.reorder_departments": (10, 60),
     "company.update": (20, 60),
@@ -297,9 +295,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.update_model_config": (50, 60),
     "providers.update_preset_override": (10, 60),
     "providers.update_rate_limits": (20, 60),
-    # quality
-    "quality.delete_override": (50, 60),
-    "quality.override": (50, 60),
     # reports
     "reports.generate": (5, 60),
     # requests
@@ -351,11 +346,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "teams.delete": (5, 60),
     "teams.reorder": (30, 60),
     "teams.update": (20, 60),
-    # training
-    "training.create_plan": (30, 3600),
-    "training.execute": (20, 3600),
-    "training.preview": (30, 3600),
-    "training.update_overrides": (60, 3600),
     # users
     "users.create": (5, 60),
     "users.delete": (3, 60),

@@ -48,7 +48,6 @@ def build_baseline_snapshot() -> OrgSignalSnapshot:
         performance=OrgPerformanceSummary(
             avg_quality_score=0.0,
             avg_success_rate=0.0,
-            avg_collaboration_score=0.0,
             agent_count=0,
         ),
         budget=OrgBudgetSummary(

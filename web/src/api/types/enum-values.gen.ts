@@ -319,13 +319,6 @@ export const CONNECTION_TYPE_VALUES = [
 ] as const
 export type ConnectionType = (typeof CONNECTION_TYPE_VALUES)[number]
 
-export const CONTENT_TYPE_VALUES = [
-    'procedural',
-    'semantic',
-    'tool_patterns',
-] as const
-export type ContentType = (typeof CONTENT_TYPE_VALUES)[number]
-
 export const CONVERSATION_PARTICIPANT_STATUS_VALUES = [
     'active',
     'removed',
@@ -1219,13 +1212,6 @@ export const TOOL_CATEGORY_VALUES = [
     'other',
 ] as const
 export type ToolCategory = (typeof TOOL_CATEGORY_VALUES)[number]
-
-export const TRAINING_PLAN_STATUS_VALUES = [
-    'pending',
-    'executed',
-    'failed',
-] as const
-export type TrainingPlanStatus = (typeof TRAINING_PLAN_STATUS_VALUES)[number]
 
 export const TREND_DIRECTION_VALUES = [
     'improving',

@@ -17,7 +17,7 @@ from synthorg.hr.performance.summary import (
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_window(  # noqa: PLR0913
+def _make_window(
     *,
     window_size: str = "7d",
     tasks_completed: int = 5,
@@ -26,7 +26,6 @@ def _make_window(  # noqa: PLR0913
     avg_cost_per_task: float | None = 0.05,
     avg_completion_time_seconds: float | None = 120.0,
     avg_quality_score: float | None = 7.5,
-    collaboration_score: float | None = 8.0,
     currency: str = "EUR",
 ) -> WindowMetrics:
     return WindowMetrics(
@@ -38,7 +37,6 @@ def _make_window(  # noqa: PLR0913
         avg_cost_per_task=avg_cost_per_task,
         avg_completion_time_seconds=avg_completion_time_seconds,
         avg_quality_score=avg_quality_score,
-        collaboration_score=collaboration_score,
         currency=currency,
     )
 
@@ -65,7 +63,6 @@ def _make_snapshot(
     windows: tuple[WindowMetrics, ...] = (),
     trends: tuple[TrendResult, ...] = (),
     quality_score: float | None = None,
-    collaboration_score: float | None = None,
 ) -> AgentPerformanceSnapshot:
     return AgentPerformanceSnapshot(
         agent_id="agent-001",
@@ -73,7 +70,6 @@ def _make_snapshot(
         windows=windows,
         trends=trends,
         overall_quality_score=quality_score,
-        overall_collaboration_score=collaboration_score,
     )
 
 
@@ -94,7 +90,6 @@ class TestExtractPerformanceSummary:
             windows=(w7, w30),
             trends=(trend,),
             quality_score=7.5,
-            collaboration_score=8.2,
         )
 
         summary = extract_performance_summary(snapshot, "alice")
@@ -108,7 +103,6 @@ class TestExtractPerformanceSummary:
         assert summary.success_rate_percent == pytest.approx(80.0)
         assert summary.cost_per_task == pytest.approx(0.04)
         assert summary.quality_score == pytest.approx(7.5)
-        assert summary.collaboration_score == pytest.approx(8.2)
         assert summary.trend_direction == TrendDirection.IMPROVING
         assert len(summary.windows) == 2
         assert len(summary.trends) == 1
@@ -126,7 +120,6 @@ class TestExtractPerformanceSummary:
         assert summary.success_rate_percent is None
         assert summary.cost_per_task is None
         assert summary.quality_score is None
-        assert summary.collaboration_score is None
         assert summary.trend_direction == TrendDirection.INSUFFICIENT_DATA
 
     def test_only_7d_window(self) -> None:

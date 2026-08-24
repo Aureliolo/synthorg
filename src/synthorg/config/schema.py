@@ -45,7 +45,6 @@ from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
 from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.memory.config import CompanyMemoryConfig
@@ -118,9 +117,8 @@ class RootConfig(BaseModel):
         sandboxing: Sandboxing backend configuration.
         mcp: MCP bridge configuration.
         security: Security subsystem configuration.
-        performance: Performance tracking configuration (quality judge,
-            CI/LLM weights, trend thresholds).
-        training: Training pipeline configuration.
+        performance: Performance tracking configuration (rolling windows
+            and trend thresholds).
         task_engine: Task engine configuration.
         recovery: Crash recovery strategy selection (fail-reassign by
             default; checkpoint requires a wired CheckpointRepository from
@@ -259,10 +257,6 @@ class RootConfig(BaseModel):
     performance: PerformanceConfig = Field(
         default_factory=PerformanceConfig,
         description="Performance tracking configuration",
-    )
-    training: TrainingConfig = Field(
-        default_factory=TrainingConfig,
-        description="Training pipeline configuration",
     )
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,

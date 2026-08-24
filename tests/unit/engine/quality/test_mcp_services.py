@@ -2,17 +2,14 @@
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
 import pytest
 
-from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.mcp_services import (
-    EvaluationVersionService,
     QualityFacadeService,
     ReviewFacadeService,
 )
@@ -72,21 +69,6 @@ class _FakeTracker:
 
 
 class TestQualityFacadeService:
-    async def test_get_summary_capability_gap_without_tracker_method(self) -> None:
-        service = QualityFacadeService(tracker=SimpleNamespace())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_summary()
-
-    async def test_get_agent_quality_capability_gap(self) -> None:
-        service = QualityFacadeService(tracker=SimpleNamespace())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_agent_quality(NotBlankStr("agent-1"))
-
-    async def test_list_scores_capability_gap(self) -> None:
-        service = QualityFacadeService(tracker=SimpleNamespace())  # type: ignore[arg-type]
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_scores()
-
     async def test_get_summary_aggregates_real_data(self) -> None:
         tracker = _FakeTracker(
             (
@@ -196,50 +178,3 @@ class TestReviewFacadeService:
     async def test_get_invalid_uuid_returns_none(self) -> None:
         service = ReviewFacadeService()
         assert await service.get_review(NotBlankStr("bad")) is None
-
-
-# ── EvaluationVersionService ──────────────────────────────────────
-
-
-class TestEvaluationVersionService:
-    async def test_list_versions_capability_gap_when_unwired(self) -> None:
-        service = EvaluationVersionService(persistence=None)
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
-
-    async def test_get_version_capability_gap_when_unwired(self) -> None:
-        service = EvaluationVersionService(persistence=None)
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
-
-    async def test_list_versions_capability_gap_without_accessor(self) -> None:
-        service = EvaluationVersionService(
-            persistence=SimpleNamespace(),
-        )
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.list_versions()
-
-    async def test_get_version_capability_gap_without_accessor(self) -> None:
-        service = EvaluationVersionService(
-            persistence=SimpleNamespace(),
-        )
-        with pytest.raises(CapabilityNotSupportedError):
-            await service.get_version(NotBlankStr("v1"))
-
-    async def test_list_versions_delegates_when_available(self) -> None:
-        class _Repo:
-            async def list_versions(self) -> tuple[object, ...]:
-                return ("v1", "v2")
-
-        persistence = SimpleNamespace(evaluation_config_versions=_Repo())
-        service = EvaluationVersionService(persistence=persistence)
-        assert await service.list_versions() == ("v1", "v2")
-
-    async def test_get_version_delegates_when_available(self) -> None:
-        class _Repo:
-            async def get_version(self, vid: str) -> object | None:
-                return {"id": vid}
-
-        persistence = SimpleNamespace(evaluation_config_versions=_Repo())
-        service = EvaluationVersionService(persistence=persistence)
-        assert await service.get_version(NotBlankStr("v1")) == {"id": "v1"}

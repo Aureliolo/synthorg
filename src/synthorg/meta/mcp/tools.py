@@ -72,7 +72,7 @@ SIGNAL_TOOLS: tuple[MCPToolDefinitionDict, ...] = (
         "name": f"{TOOL_PREFIX}_get_performance",
         "description": (
             "Get org-wide performance summary with quality scores, "
-            "success rates, collaboration scores, and per-window metrics."
+            "success rates and per-window metrics."
         ),
         "parameters": _window_params(),
     },

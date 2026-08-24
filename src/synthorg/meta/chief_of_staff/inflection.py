@@ -31,11 +31,6 @@ def _perf_success(s: OrgSignalSnapshot) -> float:
     return s.performance.avg_success_rate
 
 
-def _perf_collab(s: OrgSignalSnapshot) -> float:
-    """Return perf collab."""
-    return s.performance.avg_collaboration_score
-
-
 def _budget_spend(s: OrgSignalSnapshot) -> float:
     """Return budget spend."""
     return s.budget.total_spend
@@ -61,7 +56,6 @@ _TRACKED_METRICS: tuple[
 ] = (
     ("quality_score", "performance", _perf_quality),
     ("success_rate", "performance", _perf_success),
-    ("collaboration_score", "performance", _perf_collab),
     ("total_spend", "budget", _budget_spend),
     ("orchestration_overhead", "budget", _budget_orch),
     ("coordination_overhead_pct", "coordination", _coord_overhead),

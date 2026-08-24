@@ -242,25 +242,6 @@ ON task_metrics (agent_id, completed_at);
 -- row a full scan of this table.
 CREATE INDEX idx_tm_task_id ON task_metrics (task_id);
 
--- ── Collaboration metrics ─────────────────────────────────────
-CREATE TABLE collaboration_metrics (
-    id TEXT NOT NULL PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL,
-    delegation_success BOOLEAN,
-    delegation_response_seconds DOUBLE PRECISION,
-    conflict_constructiveness DOUBLE PRECISION,
-    discussion_contribution DOUBLE PRECISION,
-    loop_triggered BOOLEAN NOT NULL DEFAULT FALSE,
-    handoff_completeness DOUBLE PRECISION
-);
-
-CREATE INDEX idx_cm_agent_id ON collaboration_metrics (agent_id);
-CREATE INDEX idx_cm_recorded_at
-ON collaboration_metrics (recorded_at);
-CREATE INDEX idx_cm_agent_recorded
-ON collaboration_metrics (agent_id, recorded_at);
-
 -- ── Parked contexts ───────────────────────────────────────────
 CREATE TABLE parked_contexts (
     id TEXT NOT NULL PRIMARY KEY,
@@ -1239,23 +1220,6 @@ ON agent_identity_versions (entity_id, saved_at DESC);
 CREATE INDEX idx_aiv_content_hash
 ON agent_identity_versions (entity_id, content_hash);
 
--- ── Evaluation config versions ────────────────────────────────────
-
-CREATE TABLE evaluation_config_versions (
-    entity_id TEXT NOT NULL CHECK (LENGTH(entity_id) > 0),
-    version BIGINT NOT NULL CHECK (version >= 1),
-    content_hash TEXT NOT NULL CHECK (LENGTH(content_hash) > 0),
-    snapshot JSONB NOT NULL,
-    saved_by TEXT NOT NULL CHECK (LENGTH(saved_by) > 0),
-    saved_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (entity_id, version)
-);
-
-CREATE INDEX idx_ecv_entity_saved
-ON evaluation_config_versions (entity_id, saved_at DESC);
-CREATE INDEX idx_ecv_content_hash
-ON evaluation_config_versions (entity_id, content_hash);
-
 -- ── Budget config versions ───────────────────────────────────────
 
 CREATE TABLE budget_config_versions (
@@ -1591,60 +1555,6 @@ CREATE TABLE mcp_installations (
 CREATE INDEX idx_mcp_installations_connection
 ON mcp_installations (connection_name);
 
--- ── Training plans ──────────────────────────────────────────────
--- Stores training plan configuration for agent onboarding.
--- Plans transition from pending -> executed|failed after execution.
-CREATE TABLE training_plans (
-    id TEXT NOT NULL PRIMARY KEY,
-    new_agent_id TEXT NOT NULL,
-    new_agent_role TEXT NOT NULL,
-    new_agent_department TEXT,
-    source_selector_type TEXT NOT NULL DEFAULT 'role_top_performers',
-    enabled_content_types JSONB NOT NULL DEFAULT '[]'::JSONB,
-    curation_strategy_type TEXT NOT NULL DEFAULT 'relevance',
-    volume_caps JSONB NOT NULL DEFAULT '[]'::JSONB,
-    override_sources JSONB NOT NULL DEFAULT '[]'::JSONB,
-    skip_training BOOLEAN NOT NULL DEFAULT FALSE,
-    require_review BOOLEAN NOT NULL DEFAULT TRUE,
-    status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'executed', 'failed')),
-    created_at TIMESTAMPTZ NOT NULL,
-    executed_at TIMESTAMPTZ,
-    CHECK (
-        (status = 'pending' AND executed_at IS NULL)
-        OR (status != 'pending' AND executed_at IS NOT NULL)
-    )
-);
-
-CREATE INDEX idx_training_plans_agent_status
-ON training_plans (new_agent_id, status);
-CREATE INDEX idx_training_plans_created
-ON training_plans (created_at);
-
--- ── Training results ────────────────────────────────────────────
--- Stores training execution outcomes with per-stage pipeline counts.
-CREATE TABLE training_results (
-    id TEXT NOT NULL PRIMARY KEY,
-    plan_id TEXT NOT NULL REFERENCES training_plans (id),
-    new_agent_id TEXT NOT NULL,
-    source_agents_used JSONB NOT NULL DEFAULT '[]'::JSONB,
-    items_extracted JSONB NOT NULL DEFAULT '[]'::JSONB,
-    items_after_curation JSONB NOT NULL DEFAULT '[]'::JSONB,
-    items_after_guards JSONB NOT NULL DEFAULT '[]'::JSONB,
-    items_stored JSONB NOT NULL DEFAULT '[]'::JSONB,
-    approval_item_id TEXT,
-    pending_approvals JSONB NOT NULL DEFAULT '[]'::JSONB,
-    review_pending BOOLEAN NOT NULL DEFAULT FALSE,
-    errors JSONB NOT NULL DEFAULT '[]'::JSONB,
-    started_at TIMESTAMPTZ NOT NULL,
-    completed_at TIMESTAMPTZ NOT NULL,
-    CHECK (completed_at >= started_at)
-);
-
-CREATE UNIQUE INDEX idx_training_results_plan
-ON training_results (plan_id);
-CREATE INDEX idx_training_results_agent
-ON training_results (new_agent_id, completed_at DESC);
 
 -- ── Custom signal rules ─────────────────────────────────────────
 -- Mirror of the SQLite ``custom_rules`` table; existed on SQLite
@@ -2569,19 +2479,6 @@ CREATE INDEX idx_agent_contributions_agent
 ON agent_contributions (agent_id, id DESC);
 CREATE INDEX idx_agent_contributions_subtask
 ON agent_contributions (subtask_id, id DESC);
-
--- Prompt-class pin-validation results: one row per prompt_class_id,
--- written by the pin-validation benchmark on a clean drift grade so
--- validated_at records when the pin was last validated against its
--- capability.
-CREATE TABLE model_pin_validations (
-    prompt_class_id TEXT NOT NULL PRIMARY KEY
-    CHECK (CHAR_LENGTH(TRIM(prompt_class_id)) > 0),
-    validated_at TIMESTAMPTZ NOT NULL,
-    capability TEXT NOT NULL
-    CONSTRAINT model_pin_validations_capability_check
-    CHECK (capability IN ('basic', 'capable', 'expert'))
-);
 
 -- Agile sprint records: one row per time-boxed work cycle for an
 -- agile_kanban project. Backs the /sprints API and the SprintService that

@@ -169,9 +169,6 @@ class AnalyticsService:
         raw: dict[str, float] = {
             "performance.avg_quality_score": snapshot.performance.avg_quality_score,
             "performance.avg_success_rate": snapshot.performance.avg_success_rate,
-            "performance.avg_collaboration_score": (
-                snapshot.performance.avg_collaboration_score
-            ),
             "performance.agent_count": float(snapshot.performance.agent_count),
             "budget.total_spend": snapshot.budget.total_spend,
             "budget.productive_ratio": snapshot.budget.productive_ratio,

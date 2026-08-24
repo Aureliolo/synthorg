@@ -1,13 +1,11 @@
 """Quality domain MCP tools.
 
-Covers quality, reviews, and evaluation config versions.
+Covers quality and reviews.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.domains._simple_args import (
-    EvaluationVersionsGetArgs,
-    EvaluationVersionsListArgs,
     QualityGetAgentQualityArgs,
     QualityGetSummaryArgs,
     QualityListScoresArgs,
@@ -94,23 +92,5 @@ QUALITY_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("review_id",),
         args_model=ReviewsUpdateArgs,
-    ),
-    # --- Evaluation config versions ---
-    read_tool(
-        "evaluation_versions",
-        "list",
-        "List evaluation config versions.",
-        PAGINATION_PROPERTIES,
-        args_model=EvaluationVersionsListArgs,
-    ),
-    read_tool(
-        "evaluation_versions",
-        "get",
-        "Get a specific evaluation config version.",
-        {
-            "version_id": {"type": "string", "description": "Evaluation version ID"},
-        },
-        required=("version_id",),
-        args_model=EvaluationVersionsGetArgs,
     ),
 )

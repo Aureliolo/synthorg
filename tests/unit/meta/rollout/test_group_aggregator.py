@@ -64,7 +64,6 @@ def _snapshot(
         windows=(window,),
         trends=(),
         overall_quality_score=quality,
-        overall_collaboration_score=None,
     )
 
 

@@ -2555,9 +2555,8 @@ File: `_audit/latest/findings/126-currency-aggregation-invariant.md`
 
 ```text
 Every aggregation site over cost-bearing models (CostRecord,
-TaskMetricRecord, LlmCalibrationRecord, AgentRuntimeState) must enforce
-a same-currency invariant and raise MixedCurrencyAggregationError on
-mismatch.
+TaskMetricRecord, AgentRuntimeState) must enforce a same-currency
+invariant and raise MixedCurrencyAggregationError on mismatch.
 
 Find every aggregation method (sum, total, average, group-by, reduce) over
 these models in src/synthorg/. Verify each rejects mixed currencies with

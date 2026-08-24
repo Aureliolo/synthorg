@@ -297,7 +297,7 @@ jobs:
       - name: Pin-validation drift regression eval
         run: |
           uv run python -m pytest \
-            tests/unit/hr/evaluation/test_pin_validation_benchmark.py \
+            tests/unit/llm/pin_validation/test_benchmark.py \
             -m unit \
             --session-timeout 120 \
             --junitxml=junit-pin-drift.xml

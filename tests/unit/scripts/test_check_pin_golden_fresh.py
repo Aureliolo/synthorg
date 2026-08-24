@@ -15,7 +15,7 @@ from typing import Protocol, cast
 
 import pytest
 
-from synthorg.hr.evaluation.pin_fingerprint import GOLDEN_PATH
+from synthorg.llm.pin_validation import GOLDEN_PATH
 
 pytestmark = pytest.mark.unit
 

@@ -17,7 +17,6 @@ from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.organization.enums import DepartmentName
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
@@ -221,22 +220,6 @@ class TestVersionRepositoryTypedAccessors:
         fetched = await backend.identity_versions.get_version(sid("agent-1"), 1)
         assert fetched is not None
         assert fetched.snapshot.name == "Ada"
-
-    async def test_evaluation_config_versions_round_trip(
-        self, backend: PersistenceBackend
-    ) -> None:
-        config = EvaluationConfig()
-        assert (
-            await backend.evaluation_config_versions.save_version(
-                _versioned_snap("default", config)
-            )
-            is True
-        )
-        fetched = await backend.evaluation_config_versions.get_version(
-            sid("default"), 1
-        )
-        assert fetched is not None
-        assert fetched.snapshot == config
 
     async def test_budget_config_versions_round_trip(
         self, backend: PersistenceBackend

@@ -1,7 +1,6 @@
 """Typed argument models for the MCP ``agents`` domain.
 
-Covers agents CRUD + observability + personalities + training +
-autonomy + collaboration.
+Covers agents CRUD + observability + personalities + autonomy.
 """
 
 from typing import Literal
@@ -91,37 +90,6 @@ class PersonalitiesGetArgs(_ArgsBase):
     name: NotBlankStr = Field(description="Personality name")
 
 
-# ── Training ────────────────────────────────────────────────────────
-
-
-TrainingContentType = Literal["procedural", "semantic", "tool_patterns"]
-
-
-class TrainingListSessionsArgs(PaginationFields):
-    """Args for ``training.list_sessions``."""
-
-
-class TrainingGetSessionArgs(_ArgsBase):
-    """Args for ``training.get_session``."""
-
-    session_id: NotBlankStr = Field(description="Training session ID")
-
-
-class TrainingStartSessionArgs(_ArgsBase):
-    """Args for ``training.start_session``."""
-
-    new_agent_id: NotBlankStr = Field(description="ID of the agent being trained")
-    new_agent_role: NotBlankStr = Field(description="Role of the new hire")
-    new_agent_department: NotBlankStr | None = Field(
-        default=None,
-        description="Department of the new hire (optional)",
-    )
-    enabled_content_types: tuple[TrainingContentType, ...] = Field(
-        default=(),
-        description="Content extractors to run (defaults to all when empty)",
-    )
-
-
 # ── Autonomy ───────────────────────────────────────────────────────
 
 
@@ -151,21 +119,6 @@ class AutonomyUpdateArgs(_ArgsBase):
     )
 
 
-# ── Collaboration ──────────────────────────────────────────────────
-
-
-class CollaborationGetScoreArgs(_ArgsBase):
-    """Args for ``collaboration.get_score``."""
-
-    agent_id: NotBlankStr = Field(description="Agent ID")
-
-
-class CollaborationGetCalibrationArgs(_ArgsBase):
-    """Args for ``collaboration.get_calibration``."""
-
-    agent_id: NotBlankStr = Field(description="Agent ID")
-
-
 __all__ = [
     "AgentsCreateArgs",
     "AgentsDeleteArgs",
@@ -179,12 +132,6 @@ __all__ = [
     "AutonomyGetArgs",
     "AutonomyLevel",
     "AutonomyUpdateArgs",
-    "CollaborationGetCalibrationArgs",
-    "CollaborationGetScoreArgs",
     "PersonalitiesGetArgs",
     "PersonalitiesListArgs",
-    "TrainingContentType",
-    "TrainingGetSessionArgs",
-    "TrainingListSessionsArgs",
-    "TrainingStartSessionArgs",
 ]

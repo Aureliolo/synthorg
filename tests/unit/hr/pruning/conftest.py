@@ -33,7 +33,6 @@ def make_window_metrics(  # noqa: PLR0913
     avg_completion_time_seconds: float | None = 120.0,
     avg_tokens_per_task: float | None = 500.0,
     success_rate: float | None = 0.8,
-    collaboration_score: float | None = 5.0,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> WindowMetrics:
     """Build a WindowMetrics with sensible defaults."""
@@ -47,7 +46,6 @@ def make_window_metrics(  # noqa: PLR0913
         avg_completion_time_seconds=avg_completion_time_seconds,
         avg_tokens_per_task=avg_tokens_per_task,
         success_rate=success_rate,
-        collaboration_score=collaboration_score,
         currency=currency,
     )
 
@@ -77,7 +75,6 @@ def make_performance_snapshot(
     windows: tuple[WindowMetrics, ...] = (),
     trends: tuple[TrendResult, ...] = (),
     overall_quality_score: float | None = 5.0,
-    overall_collaboration_score: float | None = 5.0,
 ) -> AgentPerformanceSnapshot:
     """Build an AgentPerformanceSnapshot with sensible defaults."""
     return AgentPerformanceSnapshot(
@@ -86,7 +83,6 @@ def make_performance_snapshot(
         windows=windows,
         trends=trends,
         overall_quality_score=overall_quality_score,
-        overall_collaboration_score=overall_collaboration_score,
     )
 
 

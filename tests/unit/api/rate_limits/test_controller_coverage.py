@@ -167,16 +167,6 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "clients.create",
     ),
     (
-        _CONTROLLERS_DIR / "collaboration.py",
-        "set_override",
-        "collaboration.override",
-    ),
-    (
-        _CONTROLLERS_DIR / "collaboration.py",
-        "clear_override",
-        "collaboration.override",
-    ),
-    (
         _CONTROLLERS_DIR / "company.py",
         "reorder_departments",
         "company.reorder_departments",
@@ -225,21 +215,6 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         _CONTROLLERS_DIR / "messages.py",
         "delete_message",
         "messages.delete",
-    ),
-    (
-        _CONTROLLERS_DIR / "training.py",
-        "create_plan",
-        "training.create_plan",
-    ),
-    (
-        _CONTROLLERS_DIR / "training.py",
-        "execute_plan",
-        "training.execute",
-    ),
-    (
-        _CONTROLLERS_DIR / "training.py",
-        "update_overrides",
-        "training.update_overrides",
     ),
 )
 

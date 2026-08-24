@@ -152,8 +152,7 @@ function useResetFormOnEditRuleChange(
   // React's documented "reset state when a prop changes" idiom: detect the
   // identity change in render so the new editRule's fields render in the
   // same commit instead of a useEffect-driven double render. Avoids the
-  // set-state-in-effect lint rule and matches useResetOnAgentChange in
-  // pages/agents/useQualityScoreOverride.ts.
+  // set-state-in-effect lint rule.
   const prevEditRuleRef = useRef(editRule)
   if (prevEditRuleRef.current !== editRule) {
     prevEditRuleRef.current = editRule

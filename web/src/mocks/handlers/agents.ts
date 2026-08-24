@@ -182,7 +182,6 @@ function buildPerformance(agentName: string): AgentPerformanceSummary {
     success_rate_percent: null,
     cost_per_task: null,
     quality_score: null,
-    collaboration_score: null,
     trend_direction: 'insufficient_data',
     windows: [],
     trends: [],

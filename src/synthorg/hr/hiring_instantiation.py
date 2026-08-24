@@ -23,9 +23,9 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_HIRING_ALREADY_REGISTERED,
-    HR_HIRING_INSTANTIATED,
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_MODEL_UNSET,
+    HR_ONBOARDING_FAILED,
 )
 from synthorg.settings.model_ref import parse_model_ref
 
@@ -233,9 +233,8 @@ async def try_onboard(
         # controller then surfaces an error for an agent that already exists.
         # System errors still propagate.
         logger.warning(
-            HR_HIRING_INSTANTIATED,
+            HR_ONBOARDING_FAILED,
             agent_id=str(identity.id),
-            warning="onboarding_failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

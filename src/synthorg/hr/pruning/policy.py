@@ -58,7 +58,6 @@ class ThresholdPruningPolicyConfig(BaseModel):
 
     Attributes:
         quality_threshold: Quality score floor (0-10).
-        collaboration_threshold: Collaboration score floor (0-10).
         minimum_consecutive_windows: Windows that must be below threshold.
         minimum_window_data_points: Minimum records to evaluate a window.
     """
@@ -70,12 +69,6 @@ class ThresholdPruningPolicyConfig(BaseModel):
         ge=0.0,
         le=10.0,
         description="Quality score floor",
-    )
-    collaboration_threshold: float = Field(
-        default=3.5,
-        ge=0.0,
-        le=10.0,
-        description="Collaboration score floor",
     )
     minimum_consecutive_windows: int = Field(
         default=2,
@@ -91,13 +84,14 @@ class ThresholdPruningPolicyConfig(BaseModel):
 
 
 class ThresholdPruningPolicy:
-    """Prune agents with quality and collaboration below thresholds.
+    """Prune agents whose review quality sits below the threshold.
 
-    Agent is eligible if N+ consecutive windows (ordered by size)
-    have both ``avg_quality_score`` and ``collaboration_score`` strictly
-    below the configured thresholds, with sufficient data points.
+    Agent is eligible if N+ consecutive windows (ordered by size) have
+    ``avg_quality_score`` strictly below the configured threshold, with
+    sufficient data points. That average is the mean completion-oracle
+    verdict for the window's tasks.
 
-    Windows with ``None`` scores or insufficient data points break
+    Windows with a ``None`` score or insufficient data points break
     the consecutive streak.
     """
 
@@ -109,7 +103,7 @@ class ThresholdPruningPolicy:
         agent_id: NotBlankStr,
         snapshot: AgentPerformanceSnapshot,
     ) -> PruningEvaluation:
-        """Check quality/collaboration against thresholds.
+        """Check review quality against the threshold.
 
         Args:
             agent_id: The agent being evaluated.
@@ -144,10 +138,7 @@ class ThresholdPruningPolicy:
         if eligible:
             windows_str = ", ".join(best_failing)
             reasons = (
-                NotBlankStr(
-                    f"Quality and collaboration below thresholds "
-                    f"in {windows_str} windows"
-                ),
+                NotBlankStr(f"Review quality below threshold in {windows_str} windows"),
             )
 
         scores = self._build_scores(snapshot)
@@ -171,19 +162,16 @@ class ThresholdPruningPolicy:
         )
 
     def _window_qualifies(self, window: WindowMetrics) -> bool:
-        """Check if a single window fails both thresholds.
+        """Check if a single window falls below the quality threshold.
 
         Returns:
             ``True`` if the operation succeeds, ``False`` otherwise.
         """
         if window.data_point_count < self._config.minimum_window_data_points:
             return False
-        if window.avg_quality_score is None or window.collaboration_score is None:
+        if window.avg_quality_score is None:
             return False
-        return (
-            window.avg_quality_score < self._config.quality_threshold
-            and window.collaboration_score < self._config.collaboration_threshold
-        )
+        return window.avg_quality_score < self._config.quality_threshold
 
     def _build_scores(
         self,
@@ -197,14 +185,10 @@ class ThresholdPruningPolicy:
         scores: dict[str, float] = {}
         if snapshot.overall_quality_score is not None:
             scores["overall_quality"] = snapshot.overall_quality_score
-        if snapshot.overall_collaboration_score is not None:
-            scores["overall_collaboration"] = snapshot.overall_collaboration_score
         for window in snapshot.windows:
             size = str(window.window_size)
             if window.avg_quality_score is not None:
                 scores[f"quality_{size}"] = window.avg_quality_score
-            if window.collaboration_score is not None:
-                scores[f"collaboration_{size}"] = window.collaboration_score
         return scores
 
 

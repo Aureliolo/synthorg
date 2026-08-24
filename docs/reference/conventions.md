@@ -459,7 +459,7 @@ set of top-level and nested domain modules):
 `memory`, `persistence`, `mcp`, `metrics`, `tracing`, `telemetry`,
 `classification`, `verification`, `rollout`, `chief_of_staff`,
 `analytics`, `integrations`, `a2a`, `budget`, `quota`, `coordination`,
-`security`, `red_team`, `audit_chain`, `provider`, `eval_loop`,
+`security`, `red_team`, `audit_chain`, `provider`,
 `prompt_purpose`, `model_pins`.
 
 The `security` domain is special: every constant whose value starts
@@ -543,7 +543,7 @@ Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
 tool_name=...)`. Do NOT emit custom `logger.error()` /
 `logger.warning()` calls from handlers -- these three helpers are
 the single source of truth so an event-name change touches one
-file, not <!--RS:mcp_tools-->234<!--/RS--> handler methods.
+file, not <!--RS:mcp_tools-->227<!--/RS--> handler methods.
 
 ## 16. Repository file structure
 
@@ -692,8 +692,8 @@ args in the canonical place.
 Helpers needed by multiple siblings within a single subpackage and not
 intended for external import live in a leading-underscore
 `_shared.py` at the subpackage root. Current sites:
-`engine/assignment/_shared.py`, `hr/evaluation/extractors/_shared.py`,
-`memory/tools/_shared.py`, `persistence/sqlite/_shared.py`.
+`engine/assignment/_shared.py`, `memory/tools/_shared.py`,
+`persistence/sqlite/_shared.py`.
 
 The leading underscore signals "private to this subpackage"; callers
 outside the subpackage import from the subpackage's public surface
@@ -719,7 +719,7 @@ the parent package's `errors.py` instead.
 `XService` types hold orchestration / business logic: they depend on
 repositories, other services, and protocol-typed collaborators, and
 they live next to the domain they orchestrate (`backup/service.py`,
-`hr/training/service.py`).
+`hr/pruning/service.py`).
 
 `XRepository` types implement the per-backend persistence protocol
 and live under `persistence/<backend>/` (one module per repository per
@@ -837,8 +837,8 @@ API boundary. The naming suffix encodes its role:
   `AgentSnapshot`, `WorkflowSnapshot`). Suitable for caching and
   diffing; not used for mutation inputs.
 * `*Result`: outcome of a discrete operation that does not have a
-  natural "request" / "response" pair (e.g. `RestoreResult`,
-  `TrainingResult`). Carries a status discriminator plus the
+  natural "request" / "response" pair (e.g. `ArchivalResult`,
+  `BulkDeleteResult`). Carries a status discriminator plus the
   operation-specific payload.
 * `*Envelope`: typed error wrapper or generic transport container.
 * `*Status`: read-only state projection (e.g. `BackupStatus`).

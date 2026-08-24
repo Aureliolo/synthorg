@@ -71,7 +71,6 @@ function buildDepartmentHealth(name: string): DepartmentHealth {
     avg_performance_score: null,
     department_cost_7d: 0,
     cost_trend: [],
-    collaboration_score: null,
     total_runs: 0,
     task_success_rate: null,
     utilization_percent: 0,

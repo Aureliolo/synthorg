@@ -123,7 +123,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_otlp_span_redaction.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |
-| `check_pin_golden_fresh.py` | CI (`verify-backend.yml :: pin-drift-regression`) | live pins vs `pin_golden.json` | full | no | none | add |
+| `check_pin_golden_fresh.py` | CI (`verify-backend.yml :: pin-drift-regression`) | live pins vs `llm/pin_validation/golden.json` | full | no | none | add |
 | `check_prompt_class_metadata.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
 | `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |

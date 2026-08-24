@@ -305,8 +305,7 @@ budget-persistence audit.
 
 **Append-only time-series tables**: facts with a timestamp column, never
 updated in place. Examples: `cost_records`, `audit_entries`,
-`lifecycle_events`, `messages`, `task_metrics`, `collaboration_metrics`,
-`login_attempts`.  These tables grow linearly with system activity and are the
+`lifecycle_events`, `messages`, `task_metrics`, `login_attempts`.  These tables grow linearly with system activity and are the
 primary candidates for time-based partitioning.  `cost_records` and
 `audit_entries` both have the partitioning column (`timestamp`) composed into
 the primary key so they can be converted to TimescaleDB hypertables without

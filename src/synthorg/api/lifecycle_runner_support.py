@@ -250,9 +250,15 @@ def _wire_task_activity_observer(
     from synthorg.engine.completion_oracle.evaluator import (  # noqa: PLC0415
         BuildTestOracle,
     )
+    from synthorg.hr.performance.oracle_quality import (  # noqa: PLC0415
+        quality_score_for,
+    )
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.persistence.artifact_protocol import (  # noqa: PLC0415
         ArtifactFilterSpec,
+    )
+    from synthorg.persistence.completion_oracle_report_protocol import (  # noqa: PLC0415
+        CompletionOracleReportFilterSpec,
     )
 
     if task_engine is None or not isinstance(channels_plugin, ChannelsPlugin):
@@ -293,6 +299,18 @@ def _wire_task_activity_observer(
         )
         return evaluation.blocks_completion
 
+    async def _resolve_quality(task: Task) -> float | None:
+        # Newest-first, limit 1: a deliverable re-opened and re-reviewed
+        # archives a row per review, and the ledger records the verdict the
+        # run ended on. ``None`` when nothing reviewed it.
+        records = await persistence.completion_oracle_reports.query(
+            CompletionOracleReportFilterSpec(task_id=str(task.id)),
+            limit=1,
+        )
+        if not records:
+            return None
+        return quality_score_for(records[0].report)
+
     async def _resolve_agent(agent_id: str) -> ActivityAgentRef | None:
         # Resolve the assignee's display identity at event time so a live
         # config change (renamed agent, moved department) is reflected without
@@ -316,6 +334,7 @@ def _wire_task_activity_observer(
         record_metric=tracker.record_task_metric,
         resolve_agent=_resolve_agent,
         oracle_block_for=_oracle_block_for,
+        resolve_quality=_resolve_quality,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
     logger.info(API_SERVICE_AUTO_WIRED, service="task_activity_observer")

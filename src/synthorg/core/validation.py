@@ -120,7 +120,7 @@ def coerce_positive_int(
     early instead of producing nonsensical limits downstream.
 
     Intentionally logging-free; callers wrap to add domain-specific
-    log events (e.g. ``HR_TRAINING_CONFIG_INVALID``).
+    log events (e.g. ``CONFIG_VALIDATION_FAILED``).
 
     Args:
         value: Raw config value.  ``None`` triggers the default.

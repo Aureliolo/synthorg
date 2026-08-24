@@ -21,7 +21,6 @@ const mockDeptHealth: DepartmentHealth = {
   avg_performance_score: 7.5,
   department_cost_7d: 12.5,
   cost_trend: [],
-  collaboration_score: 6.0,
   total_runs: 10,
   task_success_rate: 0.85,
   utilization_percent: 85,

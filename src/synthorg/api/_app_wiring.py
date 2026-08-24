@@ -183,9 +183,9 @@ def _try_wire_performance_persistence(app_state: AppState) -> None:
     """Attach the durable metric repos to the performance tracker.
 
     Best-effort and idempotent: the tracker is built at the construction
-    phase before persistence is connected, so its task/collaboration
-    metric repos are attached here once a backend exists. A persistence-
-    less boot (tests/dev) leaves the tracker in-memory-only.
+    phase before persistence is connected, so its metric repos are
+    attached here once a backend exists. A persistence-less boot
+    (tests/dev) leaves the tracker in-memory-only.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import (  # noqa: PLC0415
@@ -200,7 +200,6 @@ def _try_wire_performance_persistence(app_state: AppState) -> None:
         persistence = persistence_of(app_state)
         tracker.attach_metric_repos(
             task_metric_repo=persistence.task_metrics,
-            collab_metric_repo=persistence.collaboration_metrics,
             contribution_repo=persistence.agent_contributions,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

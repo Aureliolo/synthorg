@@ -36,10 +36,6 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import (
-    CollaborationCalibration,
-    CollaborationScoreResult,
-)
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
@@ -127,18 +123,6 @@ def fake_app_state() -> AppState:
 
     performance_tracker = AsyncMock()
     performance_tracker.get_snapshot.return_value = None
-    performance_tracker.get_collaboration_score.return_value = CollaborationScoreResult(
-        score=0.0,
-        strategy_name="test-strategy",
-        confidence=0.5,
-    )
-    performance_tracker.get_collaboration_calibration.return_value = (
-        CollaborationCalibration(
-            agent_id=NotBlankStr("agent-1"),
-            strategy_name=NotBlankStr("test-strategy"),
-            sample_size=0,
-        )
-    )
 
     cost_tracker = AsyncMock()
     cost_tracker.get_records.return_value = ()
@@ -382,11 +366,11 @@ class TestNotSupportedEnvelopeSources:
 
 
 class TestToolSurfaceCount:
-    """Pin the tool count at 235 to catch accidental add/remove regressions."""
+    """Pin the tool count at 228 to catch accidental add/remove regressions."""
 
-    def test_total_tool_count_is_235(self) -> None:
+    def test_total_tool_count_is_228(self) -> None:
         registry = build_full_registry()
-        assert registry.tool_count == 235
+        assert registry.tool_count == 228
 
     def test_no_orphan_handlers(self) -> None:
         registry = build_full_registry()

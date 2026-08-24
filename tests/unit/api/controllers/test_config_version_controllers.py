@@ -1,7 +1,7 @@
 """Tests for config version history API endpoints.
 
-Covers BudgetConfigVersionController, CompanyVersionController,
-EvaluationConfigVersionController, and RoleVersionController.
+Covers BudgetConfigVersionController, CompanyVersionController and
+RoleVersionController.
 """
 
 from datetime import UTC, datetime
@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.company import Company
 from synthorg.core.role import Role
-from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.organization.enums import DepartmentName
 from synthorg.versioning import VersionSnapshot, compute_content_hash
 from tests._shared import LoopAsyncClient
@@ -212,95 +211,6 @@ class TestCompanyVersions:
     ) -> None:
         resp = await async_test_client.get(
             "/api/v1/company/versions/99",
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 404
-
-
-# ── EvaluationConfigVersionController ──────────────────────────
-
-
-class TestEvaluationConfigVersions:
-    """GET /evaluation/config/versions endpoints."""
-
-    @pytest.mark.unit
-    async def test_list_versions_empty(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        resp = await async_test_client.get(
-            "/api/v1/evaluation/config/versions",
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 200
-        assert resp.json()["data"] == []
-
-    @pytest.mark.unit
-    async def test_list_versions_with_data(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-    ) -> None:
-        repo = fake_persistence.evaluation_config_versions
-        c1 = EvaluationConfig()
-        c2 = EvaluationConfig(calibration_drift_threshold=0.5)
-        await repo.save_version(_snap("default", c1, version=1))
-        await repo.save_version(_snap("default", c2, version=2))
-
-        resp = await async_test_client.get(
-            "/api/v1/evaluation/config/versions",
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert len(data) == 2
-        assert data[0]["version"] == 2
-        assert data[1]["version"] == 1
-
-    @pytest.mark.unit
-    async def test_list_versions_paginated(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-    ) -> None:
-        repo = fake_persistence.evaluation_config_versions
-        for v in range(1, 4):
-            c = EvaluationConfig(calibration_drift_threshold=0.1 * v)
-            await repo.save_version(_snap("default", c, version=v))
-
-        resp = await async_test_client.get(
-            "/api/v1/evaluation/config/versions?limit=2&offset=0",
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body["data"]) == 2
-
-    @pytest.mark.unit
-    async def test_get_version(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-    ) -> None:
-        repo = fake_persistence.evaluation_config_versions
-        config = EvaluationConfig()
-        await repo.save_version(_snap("default", config))
-
-        resp = await async_test_client.get(
-            "/api/v1/evaluation/config/versions/1",
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 200
-        snap = resp.json()["data"]
-        assert snap["version"] == 1
-
-    @pytest.mark.unit
-    async def test_get_version_not_found(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        resp = await async_test_client.get(
-            "/api/v1/evaluation/config/versions/99",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

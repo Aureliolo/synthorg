@@ -59,8 +59,8 @@ SIGNAL_MCP_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "signals",
         "get_performance",
-        "Get org-wide performance summary with quality scores, success rates, "
-        "collaboration scores, and per-window metrics.",
+        "Get org-wide performance summary with quality scores, success rates "
+        "and per-window metrics.",
         _SINCE_UNTIL_PROPERTIES,
         required=("since",),
         args_model=SignalsGetPerformanceArgs,

@@ -119,7 +119,6 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3028 | `FINE_TUNE_RUN_NOT_FOUND` | Fine-tune run record |
 | 3029 | `AGENT_NOT_FOUND` | Registered agent |
 | 3030 | `PERSONALITY_NOT_FOUND` | Agent personality |
-| 3031 | `TRAINING_SESSION_NOT_FOUND` | Training session record |
 | 3032 | `SPRINT_NOT_FOUND` | Sprint record |
 | 3033 | `OUTPUT_STYLE_PACK_NOT_FOUND` | Output-style rule pack |
 | 3034 | `DELEGATION_TARGET_NOT_FOUND` | Blocking-delegation target agent |
@@ -142,7 +141,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4009 | `BACKUP_IN_PROGRESS` | A backup/restore operation is already running |
 | 4010 | `CHECKPOINT_OPERATION_CONFLICT` | Checkpoint deploy/delete rejected (e.g. active checkpoint) |
 | 4011 | `FINE_TUNE_RUN_ACTIVE` | A fine-tune run is already active (start/resume blocked) |
-| 4012 | `TRAINING_PLAN_NOT_MODIFIABLE` | Training plan cannot be modified after execution or failure |
 | 4013 | `BACKUP_UNRESTARTABLE` | Backup service stopped in an unrestartable state |
 | 4014 | `AGENT_RUNTIME_NOT_CONFIGURED` | No LLM provider configured; agent runtime cannot execute |
 | 4015 | `CONVERSATION_CLOSED` | Conversation is closed; no further messages or actions accepted |

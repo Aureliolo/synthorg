@@ -8,13 +8,16 @@ dashboard Live Activity feed reflects actual task execution; and, once per run
 (when a task first enters a terminal run state from a non-terminal one), it
 records a :class:`TaskMetricRecord` so org health, the completions sparkline,
 and the REST activity timeline derive from real outcomes rather than a signal
-no production code ever emitted.
+no production code ever emitted. The record's ``quality_score`` is stamped
+from the completion oracle's verdict at write time, so the performance ledger
+reads the review gate's judgement rather than reaching one of its own.
 
 Both side effects are independently guarded: a publish fault never blocks the
 metric record and vice versa, and neither ever propagates out of the observer
 (the ``TaskEngine`` dispatch loop treats observers as best-effort anyway).
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
@@ -41,6 +44,7 @@ from synthorg.observability.events.task import (
     TASK_ACTIVITY_METRIC_RECORD_FAILED,
     TASK_ACTIVITY_OUTCOME_RESOLVE_FAILED,
     TASK_ACTIVITY_PUBLISH_FAILED,
+    TASK_ACTIVITY_QUALITY_RESOLVE_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -49,6 +53,13 @@ logger = get_logger(__name__)
 # free-form and unbounded at the model; a status-changed event fans out to every
 # subscriber on every transition, so the broadcast copy is truncated.
 _MAX_DESCRIPTION_TITLE_LENGTH: Final[int] = 120
+
+# The task engine dispatches observers from ONE serial background loop, so a
+# stalled enrichment read blocks every other task's transition behind it and
+# eventually overflows the bounded observer queue, which drops events. Bound
+# the read instead: an unmeasured quality score is the honest outcome, a
+# stalled board is not.
+_ENRICHMENT_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 class ActivityAgentRef(BaseModel):
@@ -77,6 +88,10 @@ type AgentRefResolver = Callable[[str], Awaitable[ActivityAgentRef | None]]
 #: shows a truthful FAILED outcome for a code task whose tests failed / never
 #: ran. Injected + best-effort: a fault yields ``False`` (no block shown).
 type OracleBlockResolver = Callable[[Task], Awaitable[bool]]
+#: Return the task's quality score from the completion-oracle verdict filed at
+#: the review gate, or ``None`` when no review reached one. Injected +
+#: best-effort: a fault yields ``None`` (unmeasured), never an invented score.
+type MetricQualityResolver = Callable[[Task], Awaitable[float | None]]
 #: Publish a serialised ``WsEvent`` to the named channels. Matches the
 #: positional ``ChannelsPlugin.wait_published(data, channels)`` surface: the
 #: boot wiring passes that bound method (NOT ``publish``) so delivery goes
@@ -104,12 +119,14 @@ class TaskActivityObserver:
         record_metric: MetricRecorder,
         resolve_agent: AgentRefResolver | None = None,
         oracle_block_for: OracleBlockResolver | None = None,
+        resolve_quality: MetricQualityResolver | None = None,
     ) -> None:
         self._publish_fn = publish
         self._list_artifacts = list_artifacts
         self._record_metric = record_metric
         self._resolve_agent = resolve_agent
         self._oracle_block_for = oracle_block_for
+        self._resolve_quality_fn = resolve_quality
 
     async def __call__(self, event: TaskStateChanged) -> None:
         """Handle one task state change (WS publish + terminal metric record)."""
@@ -196,6 +213,37 @@ class TaskActivityObserver:
             )
             return False
 
+    async def _resolve_quality_score(self, task: Task) -> float | None:
+        """Best-effort read of the completion oracle's verdict for the task.
+
+        The oracle is the single authority on "how good was this work": its
+        gate runs at ``IN_REVIEW``, strictly before the terminal transition
+        this observer fires on, so a reviewed task's verdict is already
+        filed. A missing resolver, an absent report or a fault all yield
+        ``None`` (unmeasured), which is what a task that never went through
+        review honestly is.
+
+        Returns:
+            The quality score, or ``None`` when none was reached.
+        """
+        if self._resolve_quality_fn is None:
+            return None
+        try:
+            async with asyncio.timeout(_ENRICHMENT_TIMEOUT_SECONDS):
+                return await self._resolve_quality_fn(task)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort ledger enrichment; the
+            # authoritative gate already ran and acted on the verdict, so a
+            # read fault here must not suppress the outcome record.
+            reraise_critical(exc)
+            logger.warning(
+                TASK_ACTIVITY_QUALITY_RESOLVE_FAILED,
+                task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+
     async def _publish(
         self,
         event: TaskStateChanged,
@@ -277,8 +325,12 @@ class TaskActivityObserver:
         an artifact-count fault) records nothing rather than guessing a
         success. Execution telemetry (duration / cost / tokens) is left unset
         (``None``): a state transition carries a truthful reliability outcome
-        but no measured cost or latency, so the efficiency pillar reads it as
-        unmeasured rather than a fabricated zero.
+        but no measured cost or latency, so a consumer reads it as unmeasured
+        rather than a fabricated zero.
+
+        ``quality_score`` is the completion oracle's own verdict, resolved
+        here so the ledger reads the judgement the review gate already
+        reached instead of deriving a second one.
         """
         if task.assigned_to is None:
             # No assignee to attribute the outcome to; the WS event still fired.
@@ -288,6 +340,7 @@ class TaskActivityObserver:
             # nothing rather than credit an unknown run as a success.
             return
         is_success = outcome not in (RunOutcome.FAILED, RunOutcome.EMPTY)
+        quality_score = await self._resolve_quality_score(task)
         try:
             record = TaskMetricRecord(
                 agent_id=task.assigned_to,
@@ -299,6 +352,7 @@ class TaskActivityObserver:
                 # activity feed can distinguish an empty run from a hard
                 # failure -- ``is_success`` alone collapses both to non-success.
                 run_outcome=outcome,
+                quality_score=quality_score,
                 currency=DEFAULT_CURRENCY,
                 complexity=task.estimated_complexity,
             )

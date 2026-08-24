@@ -1,27 +1,25 @@
 # ruff: noqa: D102
 """Quality facades for the MCP handler layer.
 
-Three facades: QualityFacadeService wraps the performance tracker's
-scoring surface; ReviewFacadeService is an in-process review queue;
-EvaluationVersionService surfaces evaluation-config version history.
+Two facades: QualityFacadeService wraps the performance tracker's read
+surface; ReviewFacadeService is an in-process review queue.
 """
 
 import asyncio
 import copy
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, NoReturn, cast
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
-    QUALITY_CAPABILITY_UNAVAILABLE,
     REVIEW_CREATED_VIA_MCP,
+    REVIEW_ID_MALFORMED,
     REVIEW_UPDATED_VIA_MCP,
 )
 
@@ -32,25 +30,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _QUALITY_SCORE_ROUNDING: Final[int] = 4
-
-
-def _capability_unavailable(capability: str, reason: str) -> NoReturn:
-    """Log the missing tracker/repo capability before refusing the call.
-
-    The guard fires when an optional collaborator does not expose a method
-    the facade needs, so the controller honestly 503s instead of attribute-
-    erroring. Logged at WARNING so the gap is visible in the audit trail.
-
-    Raises:
-        CapabilityNotSupportedError: Always -- this is the refusal path.
-    """
-    logger.warning(
-        QUALITY_CAPABILITY_UNAVAILABLE,
-        capability=capability,
-        reason=reason,
-        error_type=CapabilityNotSupportedError.__name__,
-    )
-    raise CapabilityNotSupportedError(capability, reason)
 
 
 class QualityScoreEntry(BaseModel):
@@ -127,32 +106,14 @@ class QualityFacadeService:
         self._tracker = tracker
 
     async def get_summary(self) -> Mapping[str, object]:
-        fn = getattr(self._tracker, "get_task_metrics", None)
-        if not callable(fn):
-            _capability_unavailable(
-                "quality_summary",
-                "PerformanceTracker does not expose get_task_metrics",
-            )
-        records = cast("Sequence[TaskMetricRecord]", fn())
-        return _summarise_quality(records)
+        return _summarise_quality(self._tracker.get_task_metrics())
 
     async def get_agent_quality(
         self,
         agent_id: NotBlankStr,
     ) -> Mapping[str, object]:
-        fn = getattr(self._tracker, "get_snapshot", None)
-        if callable(fn):
-            snapshot = fn(agent_id)
-            if hasattr(snapshot, "__await__"):
-                snapshot = await snapshot
-            dump_fn = getattr(snapshot, "model_dump", None)
-            if callable(dump_fn):
-                return cast("Mapping[str, object]", dump_fn(mode="json"))
-            return dict(snapshot.__dict__) if snapshot else {}
-        _capability_unavailable(
-            "quality_agent",
-            "PerformanceTracker does not expose get_snapshot",
-        )
+        snapshot = await self._tracker.get_snapshot(agent_id)
+        return cast("Mapping[str, object]", snapshot.model_dump(mode="json"))
 
     async def list_scores(
         self,
@@ -172,8 +133,6 @@ class QualityFacadeService:
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
-            CapabilityNotSupportedError: If the underlying tracker
-                does not expose ``get_task_metrics``.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -181,15 +140,10 @@ class QualityFacadeService:
         if limit is not None and limit < 1:
             msg = f"limit must be >= 1 when provided, got {limit}"
             raise ValueError(msg)
-        fn = getattr(self._tracker, "get_task_metrics", None)
-        if not callable(fn):
-            _capability_unavailable(
-                "quality_scores",
-                "PerformanceTracker does not expose get_task_metrics",
-            )
-        records = cast(
-            "Sequence[TaskMetricRecord]",
-            fn(agent_id=agent_id) if agent_id else fn(),
+        records: Sequence[TaskMetricRecord] = (
+            self._tracker.get_task_metrics(agent_id=agent_id)
+            if agent_id
+            else self._tracker.get_task_metrics()
         )
         scored = sorted(
             (record for record in records if record.quality_score is not None),
@@ -296,6 +250,10 @@ class ReviewFacadeService:
         try:
             key = UUID(review_id)
         except ValueError:
+            # Indistinguishable from "no such review" to the caller, so say
+            # which it was here; a client sending malformed ids repeatedly is
+            # a bug on their side, not an empty archive.
+            logger.debug(REVIEW_ID_MALFORMED, review_id=review_id, operation="get")
             return None
         async with self._lock:
             record = self._reviews.get(key)
@@ -338,6 +296,7 @@ class ReviewFacadeService:
         try:
             key = UUID(review_id)
         except ValueError:
+            logger.debug(REVIEW_ID_MALFORMED, review_id=review_id, operation="update")
             return None
         async with self._lock:
             record = self._reviews.get(key)
@@ -357,57 +316,7 @@ class ReviewFacadeService:
         return returned
 
 
-# ── EvaluationVersionService ─────────────────────────────────────
-
-
-class EvaluationVersionService:
-    """Evaluation-config version history facade.
-
-    Wraps :class:`PersistenceBackend.evaluation_config_versions`. When the
-    backend does not expose that repository (or its methods), the accessors
-    raise :class:`CapabilityNotSupportedError` (HTTP 503) rather than
-    returning an empty result.
-    """
-
-    def __init__(self, *, persistence: object) -> None:
-        self._persistence = persistence
-
-    async def list_versions(self) -> Sequence[object]:
-        repo = getattr(self._persistence, "evaluation_config_versions", None)
-        if repo is None:
-            _capability_unavailable(
-                "evaluation_versions_list",
-                "persistence backend does not expose evaluation_config_versions",
-            )
-        fn = getattr(repo, "list_versions", None)
-        if not callable(fn):
-            _capability_unavailable(
-                "evaluation_versions_list",
-                "evaluation_config_versions repository does not expose list_versions",
-            )
-        return tuple(await fn())
-
-    async def get_version(
-        self,
-        version_id: NotBlankStr,
-    ) -> object | None:
-        repo = getattr(self._persistence, "evaluation_config_versions", None)
-        if repo is None:
-            _capability_unavailable(
-                "evaluation_versions_get",
-                "persistence backend does not expose evaluation_config_versions",
-            )
-        fn = getattr(repo, "get_version", None)
-        if not callable(fn):
-            _capability_unavailable(
-                "evaluation_versions_get",
-                "evaluation_config_versions repository does not expose get_version",
-            )
-        return cast("object | None", await fn(version_id))
-
-
 __all__ = [
-    "EvaluationVersionService",
     "QualityFacadeService",
     "ReviewFacadeService",
 ]

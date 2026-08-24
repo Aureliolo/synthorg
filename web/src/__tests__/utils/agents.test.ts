@@ -79,7 +79,6 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
     success_rate_percent: 94.0,
     cost_per_task: 0.35,
     quality_score: 8.2,
-    collaboration_score: 7.5,
     trend_direction: 'improving',
     windows: [
       {
@@ -92,7 +91,6 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
         avg_completion_time_seconds: 3500,
         avg_tokens_per_task: 2400,
         success_rate: 0.92,
-        collaboration_score: 7.2,
         currency: DEFAULT_CURRENCY,
       },
       {
@@ -105,8 +103,7 @@ function makePerformance(overrides: Partial<AgentPerformanceSummary> = {}): Agen
         avg_completion_time_seconds: 3600,
         avg_tokens_per_task: 2500,
         success_rate: 0.94,
-        collaboration_score: 7.5,
-        currency: DEFAULT_CURRENCY,
+            currency: DEFAULT_CURRENCY,
       },
     ],
     trends: [

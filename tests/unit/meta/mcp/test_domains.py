@@ -167,7 +167,7 @@ class TestWorkflowDomain:
     ("domain_tools", "expected_min"),
     [
         (SIGNAL_MCP_TOOLS, 8),  # 7 read + 1 write (submit_proposal)
-        (AGENT_TOOLS, 15),  # identity, personality, training, etc.
+        (AGENT_TOOLS, 13),  # identity, personality, autonomy, observability
         (TASK_TOOLS, 8),  # tasks + activities CRUD
         (WORKFLOW_TOOLS, 15),  # workflows, subworkflows, executions, versions
         (APPROVAL_TOOLS, 5),  # approval lifecycle
@@ -176,7 +176,7 @@ class TestWorkflowDomain:
         (COORDINATION_TOOLS, 2),  # metrics
         (ANALYTICS_TOOLS, 7),  # metrics, reports, dashboards
         (MEMORY_TOOLS, 10),  # fine-tune, checkpoints, search
-        (QUALITY_TOOLS, 8),  # reviews, evaluations, config
+        (QUALITY_TOOLS, 7),  # reviews, quality reads
         (META_TOOLS, 5),  # self-improvement, proposals
         (COMMUNICATION_TOOLS, 18),  # messaging, meetings, webhooks
         (INTEGRATION_TOOLS, 18),  # MCP catalog, OAuth, clients

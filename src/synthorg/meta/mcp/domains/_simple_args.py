@@ -7,7 +7,7 @@ shape is too small to justify its own module:
 * ``budget`` + ``budget_versions`` (5 tools)
 * ``analytics`` + ``metrics`` + ``reports`` (8 tools)
 * ``coordination`` + ``coordination_metrics`` (2 tools)
-* ``quality`` + ``reviews`` + ``evaluation_versions`` (9 tools)
+* ``quality`` + ``reviews`` (7 tools)
 * ``signals`` (8 tools)
 * ``approvals`` (5 tools)
 
@@ -275,7 +275,7 @@ class CoordinationMetricsListArgs(PaginationFields):
         return self
 
 
-# ── quality / reviews / evaluation_versions ─────────────────────────
+# ── quality / reviews ───────────────────────────────────────────────
 
 
 class QualityGetSummaryArgs(_ArgsBase):
@@ -321,16 +321,6 @@ class ReviewsUpdateArgs(_ArgsBase):
     review_id: NotBlankStr = Field(description="Review UUID")
     verdict: NotBlankStr | None = Field(default=None, description="Updated verdict")
     comments: str | None = Field(default=None, description="Updated comments")
-
-
-class EvaluationVersionsListArgs(PaginationFields):
-    """Args for ``evaluation_versions.list``."""
-
-
-class EvaluationVersionsGetArgs(_ArgsBase):
-    """Args for ``evaluation_versions.get``."""
-
-    version_id: NotBlankStr = Field(description="Evaluation version ID")
 
 
 # ── signals ─────────────────────────────────────────────────────────
@@ -466,8 +456,6 @@ __all__ = [
     "BudgetVersionsListArgs",
     "CoordinationGetTaskMetricsArgs",
     "CoordinationMetricsListArgs",
-    "EvaluationVersionsGetArgs",
-    "EvaluationVersionsListArgs",
     "MetaGetConfigArgs",
     "MetaGetMcpServerConfigArgs",
     "MetaListMcpToolsArgs",

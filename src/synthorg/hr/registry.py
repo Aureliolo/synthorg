@@ -44,6 +44,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
     HR_AGENT_STATUS_TRANSITIONED,
+    HR_AUTONOMY_AGENT_NOT_FOUND,
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
     HR_REGISTRY_CLEARED,
@@ -51,9 +52,6 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_LISTENER_FAILED,
     HR_REGISTRY_STATUS_UPDATED,
-)
-from synthorg.observability.events.security import (
-    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
 from synthorg.security.autonomy.models import (
@@ -839,7 +837,7 @@ class AgentRegistryService:
             if identity is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                 )
@@ -884,7 +882,7 @@ class AgentRegistryService:
             if live is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                     requested_level=level.value,
@@ -949,7 +947,7 @@ class AgentRegistryService:
             if live is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+                    HR_AUTONOMY_AGENT_NOT_FOUND,
                     agent_id=key,
                     error=msg,
                     requested_level=level.value,

@@ -154,8 +154,6 @@ future pruning).
 `SKILL_EVOLVER_CYCLE_FAILED`, `SKILL_EVOLVER_PROPOSAL_EMITTED`,
 `SKILL_EVOLVER_CONFLICT_DETECTED`, `ORG_SKILL_SUPERSEDED`, `SKILL_EVOLVER_DISABLED`.
 
-`EvolverReport` is consumed by R3 #1265 eval loop.
-
 ---
 
 ## Retrospective Capture on SHIP

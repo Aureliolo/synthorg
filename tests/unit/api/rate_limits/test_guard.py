@@ -145,19 +145,18 @@ class TestGuardThrottling:
             per_op_rate_limit("bad", max_requests=10, window_seconds=0)
 
 
-class TestTrainingEndpointBurstRejection:
-    """The two rate-limited training endpoints reject burst traffic.
+class TestPolicyResolvedBurstRejection:
+    """A policy-resolved guard rejects burst traffic on the real registry.
 
-    Builds the guard from the real policy registry for the exact
-    ``training.create_plan`` / ``training.update_overrides`` keys (the
-    same call the controllers make) and drives it past its policy
-    ``max_requests`` to assert burst traffic is rejected with 429 plus
-    a ``Retry-After`` header.
+    Builds the guard from the real policy registry for the exact key the
+    controller passes and drives it past its policy ``max_requests`` to
+    assert burst traffic is rejected with 429 plus a ``Retry-After``
+    header.
     """
 
     @pytest.mark.parametrize(
         "operation",
-        ["training.create_plan", "training.update_overrides"],
+        ["clients.create", "company.reorder_departments"],
     )
     async def test_burst_past_policy_limit_is_rejected(self, operation: str) -> None:
         max_requests, _window = RATE_LIMIT_POLICIES[operation]

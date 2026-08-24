@@ -18,5 +18,4 @@ QUALITY_WEAK_MODEL_WARNING: Final[str] = "execution.quality.weak_model_warning"
 
 REVIEW_CREATED_VIA_MCP: Final[str] = "quality.review.created_via_mcp"
 REVIEW_UPDATED_VIA_MCP: Final[str] = "quality.review.updated_via_mcp"
-
-QUALITY_CAPABILITY_UNAVAILABLE: Final[str] = "quality.capability_unavailable"
+REVIEW_ID_MALFORMED: Final[str] = "quality.review.id_malformed"

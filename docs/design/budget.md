@@ -59,7 +59,7 @@ Every API call is tracked with full context:
 }
 ```
 
-Every `CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, and `AgentRuntimeState` carries its own `currency`
+Every `CostRecord`, `TaskMetricRecord`, and `AgentRuntimeState` carries its own `currency`
 (ISO 4217 code validated against the allowlist in `synthorg.budget.currency`). The
 `budget.currency` setting determines the currency stamped on new rows; historical rows
 retain the code that was active when they were created, so changing `budget.currency`

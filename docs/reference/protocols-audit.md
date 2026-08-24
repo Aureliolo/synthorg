@@ -168,26 +168,13 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
 | hr/archival_protocol.py | 39 | `MemoryArchivalStrategy` | 1 | 0 | 0 | KEEP | #1864: `FullSnapshotStrategy` default + `OffboardingService` injection. |
-| hr/evaluation/pillar_protocol.py | 17 | `PillarScoringStrategy` | 1 | 0 | 0 | KEEP | #1864: `ConfigurablePillarScorer` impl injected into the evaluator. |
-| hr/performance/collaboration_protocol.py | 17 | `CollaborationScoringStrategy` | 1 | 0 | 0 | KEEP | #1864: `BehavioralTelemetryStrategy` impl injected into the tracker. |
 | hr/performance/trend_protocol.py | 17 | `TrendDetectionStrategy` | 1 | 0 | 0 | KEEP | #1864: `TheilSenTrendStrategy` impl injected into the tracker. |
 | hr/performance/window_protocol.py | 19 | `MetricsWindowStrategy` | 1 | 0 | 0 | KEEP | #1864: `MultiWindowStrategy` impl injected into the tracker. |
-| hr/promotion/approval_protocol.py | 18 | `PromotionApprovalStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityApprovalStrategy` impl injected into the promotion service. |
-| hr/promotion/criteria_protocol.py | 16 | `PromotionCriteriaStrategy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdEvaluator` impl injected into the promotion service. |
-| hr/promotion/model_mapping_protocol.py | 15 | `ModelMappingStrategy` | 1 | 0 | 0 | KEEP | #1864: `SeniorityModelMapping` impl injected into the promotion service. |
 | hr/pruning/policy.py | 32 | `PruningPolicy` | 1 | 0 | 0 | KEEP | #1864: `ThresholdPruningPolicy` + `TrendPruningPolicy` impls consumed by `PruningService`. |
 | hr/reassignment_protocol.py | 14 | `TaskReassignmentStrategy` | 1 | 0 | 0 | KEEP | #1864: `QueueReturnStrategy` default + `OffboardingService` injection. |
-| hr/evaluation/external_benchmark_protocol.py | 19 | `ExternalBenchmark` | 1 | 0 | 1 | KEEP | Plug-in `Benchmark`. |
-| hr/evaluation/metric_extractor_protocol.py | 156 | `MetricExtractor` | 1 | 0 | 9 | KEEP | Plug-in `Extractor`. |
 | hr/performance/inflection_protocol.py | 55 | `InflectionSink` | 1 | 0 | 8 | KEEP | Plug-in `Sink`. |
-| hr/performance/quality_protocol.py | 18 | `QualityScoringStrategy` | 1 | 0 | 1 | KEEP | Plug-in `Strategy`. |
 | hr/persistence_protocol.py | 22 | `LifecycleEventRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
 | hr/persistence_protocol.py | 62 | `TaskMetricRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
-| hr/persistence_protocol.py | 100 | `CollaborationMetricRepository` | 1 | 0 | 4 | KEEP | Plug-in `Repository`. |
-| hr/training/protocol.py | 22 | `ContentExtractor` | 1 | 0 | 3 | KEEP | Plug-in `Extractor`. |
-| hr/training/protocol.py | 55 | `SourceSelector` | 1 | 0 | 3 | KEEP | Plug-in `Selector`. |
-| hr/training/protocol.py | 85 | `CurationStrategy` | 1 | 0 | 3 | KEEP | Plug-in `Strategy`. |
-| hr/training/protocol.py | 120 | `TrainingGuard` | 1 | 0 | 5 | KEEP | Plug-in `Guard`. |
 
 ### `src/synthorg/integrations/`
 
@@ -239,7 +226,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | meta/appliers/architecture_applier.py | 79 | `ArchitectureApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/appliers/prompt_applier.py | 35 | `PromptApplierContext` | 1 | 0 | 3 | KEEP | Plug-in context. |
 | meta/evolution/outcome_store_protocol.py | 31 | `EvolutionOutcomeStore` | 1 | 0 | 3 | KEEP | Plug-in `Store`. |
-| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->234<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
+| meta/mcp/handler_protocol.py | 19 | `ToolHandler` | 0 | 0 | 2 | KEEP | Public MCP extension surface (<!--RS:mcp_tools-->227<!--/RS--> tool handlers); add `@runtime_checkable` candidate. |
 | meta/protocol.py | 38 | `SignalAggregator` | 1 | 0 | 4 | KEEP | Plug-in `Aggregator`. |
 | meta/protocol.py | 78 | `SignalRule` | 1 | 0 | 6 | KEEP | Plug-in `Rule`. |
 | meta/protocol.py | 108 | `ImprovementStrategy` | 1 | 0 | 4 | KEEP | Plug-in `Strategy`. |

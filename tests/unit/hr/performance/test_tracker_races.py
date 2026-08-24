@@ -4,15 +4,12 @@ Each test is written to fail reliably against the un-synchronized
 implementation and pass once ``_metrics_lock`` is applied to the
 relevant mutator / reader / setter.
 
-Three race sites are covered:
+Two race sites are covered:
 
 1. ``clear()`` / ``aclear()`` racing concurrent ``record_task_metric``
    calls -- without the lock the clear can observe a partially-updated
    ``_task_metrics`` dict and mutators can observe a mid-clear state.
-2. ``get_collaboration_score()`` racing ``record_collaboration_event``:
-   without the lock, ``list(self._collab_metrics[agent_id])`` can
-   read an appended-mid-iteration list.
-3. ``set_inflection_sink()`` as an atomic "set once" operation:
+2. ``set_inflection_sink()`` as an atomic "set once" operation:
    without the lock, two concurrent setters both observe ``None`` and
    both succeed, silently overwriting the first.
 
@@ -22,7 +19,7 @@ race is reproducible without probabilistic timing.
 """
 
 import asyncio
-from typing import Literal, override
+from typing import override
 
 import pytest
 
@@ -30,7 +27,7 @@ from synthorg.hr.performance.inflection_protocol import InflectionSink
 from synthorg.hr.performance.tracker import PerformanceTracker
 from tests._shared import mock_of
 
-from .conftest import make_collab_metric, make_task_metric
+from .conftest import make_task_metric
 
 _AGENT_ID = "agent-race-001"
 
@@ -137,54 +134,6 @@ class TestClearConcurrentWithRecord:
             assert isinstance(records, list)
             for record in records:
                 assert str(record.agent_id) == agent_key
-
-
-@pytest.mark.unit
-class TestGetCollaborationScoreLocking:
-    """``get_collaboration_score()`` must acquire ``_metrics_lock`` for the snapshot.
-
-    In today's single-threaded asyncio runtime, the un-synchronized
-    ``tuple(self._collab_metrics.get(str(agent_id), []))`` in
-    ``get_collaboration_score`` cannot tear because the scheduler
-    only interleaves at ``await`` points. The lock is still required
-    as a correctness contract so that future refactors cannot
-    introduce an ``await`` between the dict read and the tuple
-    snapshot without tripping the lock. (Line numbers intentionally
-    omitted -- they drift with every edit to ``tracker.py``.)
-
-    This test asserts the observable contract: at least one acquire
-    happens on the shared lock during ``get_collaboration_score``.
-    Concurrent-writer exclusion is enforced by the shared
-    ``_metrics_lock`` (a single ``asyncio.Lock``) and is covered by
-    the aclear / rng-swap race tests above, not duplicated here.
-    """
-
-    async def test_get_score_acquires_metrics_lock(self) -> None:
-        """The snapshot path must take ``_metrics_lock`` at least once."""
-        tracker = PerformanceTracker()
-        # Pre-seed one record so the strategy has something to score.
-        await tracker.record_collaboration_event(
-            make_collab_metric(agent_id=_AGENT_ID),
-        )
-
-        # Count acquires on the tracker's lock for the duration of the
-        # score call by subclassing ``asyncio.Lock`` so ``async with``
-        # semantics and typeshed annotations remain unchanged.
-        acquires = 0
-
-        class _CountingLock(asyncio.Lock):
-            @override
-            async def acquire(self) -> Literal[True]:
-                nonlocal acquires
-                acquires += 1
-                return await super().acquire()
-
-        tracker._metrics_lock = _CountingLock()
-        await tracker.get_collaboration_score(_AGENT_ID)
-
-        assert acquires >= 1, (
-            "get_collaboration_score must acquire _metrics_lock for the snapshot"
-        )
 
 
 @pytest.mark.unit

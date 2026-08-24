@@ -6,6 +6,7 @@ tunnel wiring path, and the once-only contract on `set_ontology_service`.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Never, cast, override
 from unittest.mock import AsyncMock
@@ -43,9 +44,16 @@ from synthorg.api.task_activity_observer import TaskActivityObserver
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleFinding,
+    CompletionOracleReport,
+    CompletionOracleReportRecord,
+    CompletionOracleVerdict,
+)
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.performance.oracle_quality import APPROVE_QUALITY_SCORE
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.state import HrStateSlice
 from synthorg.memory.backends.inmemory import InMemoryBackend
@@ -70,12 +78,59 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.redteam.builder import RedTeamRuntime
 from synthorg.security.redteam.gate import RedTeamGateService
+from synthorg.security.redteam.models import RedTeamSeverity
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state, mock_of
+from tests._shared import make_app_state, mock_of, sid
 from tests.unit.api.fakes_backend import FakePersistenceBackend
+from tests.unit.persistence.conftest import make_task
+
+_ORACLE_TASK_ID = "task-oracle-1"
+_ORACLE_RECORDED_AT = datetime(2026, 8, 23, 9, 0, tzinfo=UTC)
+
+
+def _oracle_report_record(
+    *,
+    verdict: CompletionOracleVerdict,
+    minute: int,
+) -> CompletionOracleReportRecord:
+    """Archive one completion-oracle review of ``_ORACLE_TASK_ID``."""
+    execution = sid("exec-1")
+    reviewer = sid("reviewer-1")
+    executor = sid("executor-1")
+    return CompletionOracleReportRecord(
+        execution_id=execution,
+        task_id=sid(_ORACLE_TASK_ID),
+        verdict=verdict,
+        report=CompletionOracleReport(
+            execution_id=execution,
+            task_id=sid(_ORACLE_TASK_ID),
+            reviewer_agent_id=reviewer,
+            executor_agent_id=executor,
+            verdict=verdict,
+            # A rejection must name what the assignee has to fix; the model
+            # refuses an empty finding tuple on that verdict.
+            findings=(
+                (
+                    CompletionOracleFinding(
+                        severity=RedTeamSeverity.MEDIUM,
+                        description="the acceptance criterion is unmet",
+                    ),
+                )
+                if verdict is CompletionOracleVerdict.REJECT
+                else ()
+            ),
+            summary="reviewed",
+        ),
+        recorded_at=_ORACLE_RECORDED_AT.replace(minute=minute),
+        reviewer_agent_id=reviewer,
+        executor_agent_id=executor,
+        reviewer_provider=sid("example-provider"),
+        reviewer_model_id=sid("example-capable-001"),
+        reviewer_capability="capable",
+    )
 
 
 def _make_state(**overrides: object) -> AppState:
@@ -924,6 +979,85 @@ class TestWireTaskActivityObserver:
             and e.get("service") == "task_activity_observer"
         ]
         assert len(wired) == 1
+
+    def test_registered_observer_carries_the_quality_resolver(self) -> None:
+        """The wirer threads a quality resolver onto the observer.
+
+        ``TaskActivityObserver`` defaults ``resolve_quality`` to ``None`` and
+        then silently records ``quality_score=None`` for every task, which is
+        exactly the permanently-unmeasured state the oracle-fed ledger exists
+        to end. Losing the argument is therefore invisible: the observer still
+        registers, the suite still passes, and the ledger quietly stops
+        carrying a quality signal. Pin the wiring itself.
+        """
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+
+        with suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                FakePersistenceBackend(),
+                state,
+                create_channels_plugin(),
+            )
+
+        observer = task_engine.registered[0]
+        assert isinstance(observer, TaskActivityObserver)
+        assert observer._resolve_quality_fn is not None
+
+    async def test_quality_resolver_reads_the_newest_verdict(self) -> None:
+        """A re-reviewed task resolves to the verdict its run ended on.
+
+        The archive keeps one row per review, so a deliverable rejected and
+        then approved carries both. The resolver takes ``limit=1`` off a
+        newest-first query, and reading the wrong end would stamp a stale
+        verdict onto the ledger for the rest of the task's life.
+        """
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+        persistence = FakePersistenceBackend()
+        await persistence.completion_oracle_reports.append(
+            _oracle_report_record(verdict=CompletionOracleVerdict.REJECT, minute=0),
+        )
+        await persistence.completion_oracle_reports.append(
+            _oracle_report_record(verdict=CompletionOracleVerdict.APPROVE, minute=5),
+        )
+
+        with suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                persistence,
+                state,
+                create_channels_plugin(),
+            )
+
+        observer = task_engine.registered[0]
+        assert isinstance(observer, TaskActivityObserver)
+        resolve = observer._resolve_quality_fn
+        assert resolve is not None
+        score = await resolve(make_task(task_id=_ORACLE_TASK_ID))
+
+        assert score == APPROVE_QUALITY_SCORE
+
+    async def test_quality_resolver_yields_none_for_an_unreviewed_task(self) -> None:
+        """No archived review means unmeasured, never a fabricated score."""
+        task_engine = _FakeTaskEngine()
+        state = self._state_with_tracker(tracker=PerformanceTracker())
+
+        with suppress_type_checks():
+            _wire_task_activity_observer(
+                task_engine,
+                FakePersistenceBackend(),
+                state,
+                create_channels_plugin(),
+            )
+
+        observer = task_engine.registered[0]
+        assert isinstance(observer, TaskActivityObserver)
+        resolve = observer._resolve_quality_fn
+        assert resolve is not None
+
+        assert await resolve(make_task(task_id=_ORACLE_TASK_ID)) is None
 
     def test_skips_and_logs_when_channels_plugin_absent(self) -> None:
         task_engine = _FakeTaskEngine()

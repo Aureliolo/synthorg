@@ -10,11 +10,7 @@ from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
 )
-from synthorg.engine.classification.sinks import (
-    NotificationDispatcherSink,
-    PerformanceTrackerSink,
-)
-from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.engine.classification.sinks import NotificationDispatcherSink
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     NotificationCategory,
@@ -47,59 +43,6 @@ def _classification_result(
         categories_checked=categories or (ErrorCategory.LOGICAL_CONTRADICTION,),
         findings=findings,
     )
-
-
-# ── PerformanceTrackerSink ─────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestPerformanceTrackerSink:
-    """PerformanceTrackerSink records collaboration events."""
-
-    async def test_records_event_per_finding(self) -> None:
-        tracker = AsyncMock(spec=PerformanceTracker)
-        tracker.record_collaboration_event = AsyncMock()
-        sink = PerformanceTrackerSink(tracker=tracker)
-
-        result = _classification_result(
-            _finding(description="Contradiction A"),
-            _finding(description="Contradiction B"),
-        )
-        await sink.on_classification(result)
-
-        assert tracker.record_collaboration_event.await_count == 2
-
-    async def test_no_findings_skips(self) -> None:
-        tracker = AsyncMock(spec=PerformanceTracker)
-        tracker.record_collaboration_event = AsyncMock()
-        sink = PerformanceTrackerSink(tracker=tracker)
-
-        result = _classification_result()
-        await sink.on_classification(result)
-
-        tracker.record_collaboration_event.assert_not_awaited()
-
-    async def test_tracker_error_swallowed(self) -> None:
-        tracker = AsyncMock(spec=PerformanceTracker)
-        tracker.record_collaboration_event = AsyncMock(
-            side_effect=RuntimeError("tracker down"),
-        )
-        sink = PerformanceTrackerSink(tracker=tracker)
-
-        result = _classification_result(_finding())
-        # Should not raise
-        await sink.on_classification(result)
-
-    async def test_memory_error_propagates(self) -> None:
-        tracker = AsyncMock(spec=PerformanceTracker)
-        tracker.record_collaboration_event = AsyncMock(
-            side_effect=MemoryError,
-        )
-        sink = PerformanceTrackerSink(tracker=tracker)
-
-        result = _classification_result(_finding())
-        with pytest.raises(MemoryError):
-            await sink.on_classification(result)
 
 
 # ── NotificationDispatcherSink ─────────────────────────────────

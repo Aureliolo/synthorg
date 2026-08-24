@@ -95,7 +95,6 @@ Each already has a construction site (so the discovery gate passes it) and
 | `SubworkflowService` | the subworkflow feature prerequisite is absent |
 | `WorkflowVersionService` | persistence lacks the workflow-version repo |
 | `AgentVersionService` | persistence lacks the agent-version repo |
-| `TrainingService` | the training feature prerequisite is absent |
 | `SelfImprovementService` (`meta.py::_WHY_SELF_IMPROVEMENT`, `synthorg_meta_*`) | the self-improvement meta loop is not enabled for the deployment |
 
 ## INTENTIONAL-BACKEND-DEPENDENT (documented)
@@ -115,7 +114,7 @@ report the real runtime condition.
 | `service_fallback` + `MCP_HANDLER_SERVICE_FALLBACK` | Removed: the helper and its event had zero `src/` call sites. Live handlers route through `not_supported` (backend cannot perform the op) or `capability_gap` (wired handler, primitive gap). |
 | `ToolInvocationTracker` construction | Constructed only in tests, not wired at boot; a separate dead-construction cleanup, outside the `capability_gap` surface this inventory covers. |
 | `api/controllers/meta.py::get_signals` | Reports real per-domain availability from the wired `SignalsService`. |
-| `agents_training.py` `_WHY_*` capability reasons | Read the "service not wired in this deployment" runtime condition for the training / personality services. |
+| `agents_personalities.py` `_WHY_*` capability reasons | Read the "service not wired in this deployment" runtime condition for the personality service. |
 | `agents_crud.py` `_WHY_ACTIVITY` / `_WHY_HISTORY` / `_WHY_HEALTH` reasons | Each reads the actual runtime condition ("`<service>` is not wired on `app_state` in this deployment") for the activity-feed / agent-version / agent-health services. |
 
 ## Idioms 3-7 sweep of `src/synthorg`

@@ -260,13 +260,9 @@ def build_construction_services(
         )
     )
 
-    # Auto-wire performance tracker with composite quality strategy when not
-    # explicitly injected (production path).
     performance_tracker = overrides.performance_tracker
     if performance_tracker is None:
         performance_tracker = _build_performance_tracker(
-            cost_tracker=phase1.cost_tracker,
-            provider_registry=provider_registry,
             perf_config=effective_config.performance,
         )
 
@@ -367,7 +363,6 @@ def build_construction_services(
         coordination_metrics_store=coordination_metrics_store,
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,
-        training_service=overrides.training_service,
         delegation_record_store=overrides.delegation_record_store
         or DelegationRecordStore(
             max_records=int(

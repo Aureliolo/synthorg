@@ -242,8 +242,6 @@ class TestEventConstants:
             "design",
             "docker",
             "docs",
-            "eval_loop",
-            "evaluation",
             "event_stream",
             "evolution",
             "execution",
@@ -323,7 +321,6 @@ class TestEventConstants:
             "subsystem",
             "telemetry",
             "terminal",
-            "training",
             "verification",
             "versioning",
             "web",
@@ -347,8 +344,8 @@ class TestEventConstants:
             # A/B experiment variant registry + deterministic assignment.
             "experiments",
             # Golden-benchmark eval spine (executable grader subprocess
-            # outcomes); distinct from "eval_loop"/"evaluation" which
-            # serve the legacy eval-loop subsystem.
+            # outcomes); distinct from "initiative", which carries the
+            # initiative-tail plan evaluation verdict.
             "evals",
             # Governed external API/data access tool lifecycle events.
             "external_api",
@@ -408,35 +405,16 @@ class TestEventConstants:
         )
         assert PROMPT_PURPOSE_NOT_FOUND == "prompt_purpose.not_found"
 
-    def test_eval_loop_benchmark_events_exist(self) -> None:
-        from synthorg.observability.events.eval_loop import (
-            EVAL_LOOP_BENCHMARK_CASE_FAILED,
-            EVAL_LOOP_BENCHMARK_STARTED,
-        )
-
-        assert EVAL_LOOP_BENCHMARK_STARTED == "eval.loop.benchmark_started"
-        assert EVAL_LOOP_BENCHMARK_CASE_FAILED == "eval.loop.benchmark_case_failed"
-
     def test_model_pins_events_exist(self) -> None:
         from synthorg.observability.events.model_pins import (
             MODEL_PIN_BENCHMARK_DRIFT,
             MODEL_PIN_CASE_MISMATCH,
             MODEL_PIN_GOLDEN_ABSENT,
             MODEL_PIN_GOLDEN_MALFORMED,
-            MODEL_PIN_VALIDATION_FAILED,
-            MODEL_PIN_VALIDATION_FETCHED,
-            MODEL_PIN_VALIDATION_LISTED,
-            MODEL_PIN_VALIDATION_STAMP_FAILED,
-            MODEL_PIN_VALIDATION_STAMPED,
         )
 
-        assert MODEL_PIN_VALIDATION_FETCHED == "model_pin.validation.fetched"
-        assert MODEL_PIN_VALIDATION_LISTED == "model_pin.validation.listed"
-        assert MODEL_PIN_VALIDATION_FAILED == "model_pin.validation.failed"
         assert MODEL_PIN_BENCHMARK_DRIFT == "model_pin.benchmark.drift"
         assert MODEL_PIN_CASE_MISMATCH == "model_pin.benchmark.case_mismatch"
-        assert MODEL_PIN_VALIDATION_STAMPED == "model_pin.validation.stamped"
-        assert MODEL_PIN_VALIDATION_STAMP_FAILED == "model_pin.validation.stamp_failed"
         assert MODEL_PIN_GOLDEN_ABSENT == "model_pin.golden.absent"
         assert MODEL_PIN_GOLDEN_MALFORMED == "model_pin.golden.malformed"
 

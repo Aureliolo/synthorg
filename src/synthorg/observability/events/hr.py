@@ -58,6 +58,7 @@ HR_FIRING_COMPLETE: Final[str] = "hr.firing.complete"
 HR_ONBOARDING_STARTED: Final[str] = "hr.onboarding.started"
 HR_ONBOARDING_STEP_COMPLETE: Final[str] = "hr.onboarding.step_complete"
 HR_ONBOARDING_COMPLETE: Final[str] = "hr.onboarding.complete"
+HR_ONBOARDING_FAILED: Final[str] = "hr.onboarding.failed"
 
 # ── Registry ─────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
 HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
+HR_FIRING_TERMINATION_FAILED: Final[str] = "hr.firing.termination_failed"
 HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
     "hr.offboarding.performance_eviction_failed"
 )
@@ -123,6 +125,7 @@ HR_HIRING_RISK_TIER_MISSING: Final[str] = "hr.hiring.risk_tier_missing"
 HR_HIRING_ALREADY_REGISTERED: Final[str] = "hr.hiring.already_registered"
 HR_HIRING_PERSIST_FAILED: Final[str] = "hr.hiring.persist_failed"
 HR_HIRING_REQUESTS_HYDRATED: Final[str] = "hr.hiring.requests_hydrated"
+HR_AUTONOMY_AGENT_NOT_FOUND: Final[str] = "hr.autonomy.agent_not_found"
 
 # ── Activity timeline ──────────────────────────────────────────
 
@@ -143,13 +146,6 @@ HR_AGENT_UNAVAILABLE_MODEL_UNSERVICEABLE: Final[str] = (
     "hr.agent.unavailable_model_unserviceable"
 )
 HR_AGENT_AVAILABLE_MODEL_RECOVERED: Final[str] = "hr.agent.available_model_recovered"
-
-# ── Training sessions ─────────────────────────────────────────
-
-HR_TRAINING_SESSION_RECORDED: Final[str] = "hr.training.session_recorded"
-HR_TRAINING_SESSION_LISTED: Final[str] = "hr.training.session_listed"
-HR_TRAINING_SESSION_RECORD_FAILED: Final[str] = "hr.training.session_record_failed"
-HR_TRAINING_SESSION_INVALID_REQUEST: Final[str] = "hr.training.session_invalid_request"
 
 # ── Pruning ────────────────────────────────────────────────────
 

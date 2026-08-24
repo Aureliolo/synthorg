@@ -157,7 +157,7 @@ When coordination metrics collection is enabled, the system classifies coordinat
 
 **Pipeline architecture**: detectors implement the `Detector` protocol and are discovered dynamically from `ErrorTaxonomyConfig.detectors` (a dict mapping `ErrorCategory` to per-category variant/scope config). When multiple variants target the same category, a `CompositeDetector` runs them concurrently and deduplicates findings by `(turn_range, description_hash, category)`.
 
-**Downstream sinks**: `ClassificationSink` protocol enables wiring findings into the performance tracker (`PerformanceTrackerSink`) and notification dispatcher (`NotificationDispatcherSink`, threshold-filtered).
+**Downstream sinks**: `ClassificationSink` protocol enables wiring findings into the taxonomy store and the notification dispatcher (`NotificationDispatcherSink`, threshold-filtered).
 
 **Cost control**: LLM semantic variants share the provider's rate limiter and track per-classification-run cost against `classification_budget_per_task`.
 

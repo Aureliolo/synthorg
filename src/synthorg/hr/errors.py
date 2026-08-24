@@ -179,19 +179,3 @@ class PersonalityNotFoundError(PersonalityError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     error_code: ClassVar[ErrorCode] = ErrorCode.PERSONALITY_NOT_FOUND
     status_code: ClassVar[int] = 404
-
-
-# ── Training ────────────────────────────────────────────────────
-
-
-class TrainingError(HRError):
-    """Error in the training pipeline."""
-
-
-class TrainingSessionNotFoundError(TrainingError):
-    """Training session not found in the session store."""
-
-    default_message: ClassVar[str] = "Training session not found"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.TRAINING_SESSION_NOT_FOUND
-    status_code: ClassVar[int] = 404

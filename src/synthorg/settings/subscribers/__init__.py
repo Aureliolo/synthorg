@@ -33,9 +33,6 @@ from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
 from synthorg.settings.subscribers.compression_subscriber import (
     CompressionSettingsSubscriber,
 )
-from synthorg.settings.subscribers.eval_loop_subscriber import (
-    EvalLoopSettingsSubscriber,
-)
 from synthorg.settings.subscribers.event_stream_history_subscriber import (
     EventStreamHistorySettingsSubscriber,
 )
@@ -128,7 +125,6 @@ __all__ = [
     "ChiefOfStaffAlertsSettingsSubscriber",
     "CompressionSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",
-    "EvalLoopSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",
     "FlightRecorderSettingsSubscriber",
     "GithubApiUrlSettingsSubscriber",

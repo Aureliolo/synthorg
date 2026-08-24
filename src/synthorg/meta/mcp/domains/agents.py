@@ -1,6 +1,6 @@
 """Agent domain MCP tools.
 
-Covers agents, personalities, and training controllers.
+Covers the agents and personalities controllers.
 """
 
 from typing import TYPE_CHECKING
@@ -19,13 +19,8 @@ from synthorg.meta.mcp.domains._agents_args import (
     AgentsUpdateArgs,
     AutonomyGetArgs,
     AutonomyUpdateArgs,
-    CollaborationGetCalibrationArgs,
-    CollaborationGetScoreArgs,
     PersonalitiesGetArgs,
     PersonalitiesListArgs,
-    TrainingGetSessionArgs,
-    TrainingListSessionsArgs,
-    TrainingStartSessionArgs,
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
@@ -155,56 +150,6 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         required=("name",),
         args_model=PersonalitiesGetArgs,
     ),
-    # --- Training ---
-    read_tool(
-        "training",
-        "list_sessions",
-        "List training sessions.",
-        PAGINATION_PROPERTIES,
-        args_model=TrainingListSessionsArgs,
-    ),
-    read_tool(
-        "training",
-        "get_session",
-        "Get a training session by ID.",
-        {
-            "session_id": {"type": "string", "description": "Training session ID"},
-        },
-        required=("session_id",),
-        args_model=TrainingGetSessionArgs,
-    ),
-    write_tool(
-        "training",
-        "start_session",
-        "Start a new training session for an agent.",
-        {
-            "new_agent_id": {
-                "type": "string",
-                "description": "ID of the agent being trained",
-            },
-            "new_agent_role": {
-                "type": "string",
-                "description": "Role of the new hire",
-            },
-            "new_agent_department": {
-                "type": "string",
-                "description": "Department of the new hire (optional)",
-            },
-            "enabled_content_types": {
-                "type": "array",
-                "description": (
-                    "Content extractors to run (optional; defaults to all). "
-                    "Valid values: procedural, semantic, tool_patterns."
-                ),
-                "items": {
-                    "type": "string",
-                    "enum": ["procedural", "semantic", "tool_patterns"],
-                },
-            },
-        },
-        required=("new_agent_id", "new_agent_role"),
-        args_model=TrainingStartSessionArgs,
-    ),
     # --- Autonomy ---
     read_tool(
         "autonomy",
@@ -246,26 +191,5 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("agent_id", "level", "reason"),
         args_model=AutonomyUpdateArgs,
-    ),
-    # --- Collaboration ---
-    read_tool(
-        "collaboration",
-        "get_score",
-        "Get collaboration score for an agent.",
-        {
-            "agent_id": {"type": "string", "description": "Agent ID"},
-        },
-        required=("agent_id",),
-        args_model=CollaborationGetScoreArgs,
-    ),
-    read_tool(
-        "collaboration",
-        "get_calibration",
-        "Get collaboration calibration data.",
-        {
-            "agent_id": {"type": "string", "description": "Agent ID"},
-        },
-        required=("agent_id",),
-        args_model=CollaborationGetCalibrationArgs,
     ),
 )

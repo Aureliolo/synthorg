@@ -81,7 +81,6 @@ Every cost-bearing Pydantic model carries `currency: CurrencyCode` (ISO 4217, va
 
 - `CostRecord`
 - `TaskMetricRecord`
-- `LlmCalibrationRecord`
 - `AgentRuntimeState`
 
 Every aggregation site enforces a same-currency invariant; mixing currencies raises `MixedCurrencyAggregationError` (HTTP 409, error code `4007`). The aggregation sites are `CostTracker`, `ReportGenerator`, `CostOptimizer`, and HR `WindowMetrics`.

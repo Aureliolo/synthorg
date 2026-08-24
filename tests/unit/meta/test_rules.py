@@ -36,7 +36,6 @@ def _snap(  # noqa: PLR0913
     *,
     quality: float = 7.5,
     success: float = 0.85,
-    collab: float = 6.0,
     agents: int = 10,
     spend: float = 150.0,
     coord_ratio: float = 0.3,
@@ -50,7 +49,6 @@ def _snap(  # noqa: PLR0913
         performance=OrgPerformanceSummary(
             avg_quality_score=quality,
             avg_success_rate=success,
-            avg_collaboration_score=collab,
             agent_count=agents,
         ),
         budget=OrgBudgetSummary(
