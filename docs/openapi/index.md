@@ -77,18 +77,14 @@ run the generator after `scripts/export_openapi.py` to refresh.
 |---|---|---|
 | Activities | `/activities` | Activities endpoint. |
 | Agent Autonomy | `/agents/{agent_id}/autonomy` | Agent Autonomy endpoint. |
-| Agent Collaboration | `/agents/{agent_id}/collaboration` | 3 routes under Agent Collaboration. |
-| Agent Quality | `/agents/{agent_id}/quality/override` | Agent Quality endpoint. |
 | Agents | `/agents` | 13 routes under Agents. |
 | Charter | `/meta/charters` | 4 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
 | Departments | `/departments` | 8 routes under Departments. |
-| Evaluation | `/evaluation/config/versions` | 2 routes under Evaluation. |
 | Ontology | `/ontology` | 10 routes under Ontology. |
 | Personalities | `/personalities` | 3 routes under Personalities. |
 | Roles | `/roles/{role_name}/versions` | 2 routes under Roles. |
-| Training | `/agents/{agent_id}/training` | 5 routes under Training. |
 
 ### Work and coordination
 

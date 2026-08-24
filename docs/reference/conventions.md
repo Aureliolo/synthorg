@@ -543,7 +543,7 @@ Success paths emit `logger.info(MCP_HANDLER_INVOKE_SUCCESS,
 tool_name=...)`. Do NOT emit custom `logger.error()` /
 `logger.warning()` calls from handlers -- these three helpers are
 the single source of truth so an event-name change touches one
-file, not <!--RS:mcp_tools-->234<!--/RS--> handler methods.
+file, not <!--RS:mcp_tools-->227<!--/RS--> handler methods.
 
 ## 16. Repository file structure
 

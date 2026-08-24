@@ -366,11 +366,11 @@ class TestNotSupportedEnvelopeSources:
 
 
 class TestToolSurfaceCount:
-    """Pin the tool count at 235 to catch accidental add/remove regressions."""
+    """Pin the tool count at 228 to catch accidental add/remove regressions."""
 
-    def test_total_tool_count_is_235(self) -> None:
+    def test_total_tool_count_is_228(self) -> None:
         registry = build_full_registry()
-        assert registry.tool_count == 235
+        assert registry.tool_count == 228
 
     def test_no_orphan_handlers(self) -> None:
         registry = build_full_registry()
