@@ -44,7 +44,7 @@ src/synthorg/deliverable_receipts/builder.py::ReceiptBuilder.__init__::9
 src/synthorg/engine/_agent_engine_callables.py::HandleFatalError.__call__::11
 src/synthorg/engine/_review_completion_gates.py::run_completion_gates::16
 src/synthorg/engine/_review_gate_record.py::ReviewGateRecordMixin._append_decision::9
-src/synthorg/engine/agent_engine.py::AgentEngine.__init__::68
+src/synthorg/engine/agent_engine.py::AgentEngine.__init__::67
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._build_error_execution::9
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._handle_fatal_error::11
 src/synthorg/engine/agent_engine_post_exec.py::AgentEnginePostExecMixin._run_loop_with_timeout::12
@@ -66,12 +66,12 @@ src/synthorg/engine/loop_selector.py::build_execution_loop::9
 src/synthorg/engine/openhands/loop.py::OpenHandsLoop.execute::9
 src/synthorg/engine/pipeline/factory.py::build_work_pipeline::14
 src/synthorg/engine/pipeline/service.py::DefaultWorkPipeline.__init__::11
-src/synthorg/engine/prompt.py::build_system_prompt::18
-src/synthorg/engine/prompt_render.py::build_template_context::15
-src/synthorg/engine/prompt_render.py::render_and_estimate::16
-src/synthorg/engine/prompt_render.py::render_with_trimming::16
-src/synthorg/engine/prompt_render.py::trim_sections::17
-src/synthorg/engine/prompt_result.py::build_prompt_result::13
+src/synthorg/engine/prompt.py::build_system_prompt::16
+src/synthorg/engine/prompt_render.py::build_template_context::13
+src/synthorg/engine/prompt_render.py::render_and_estimate::15
+src/synthorg/engine/prompt_render.py::render_with_trimming::15
+src/synthorg/engine/prompt_render.py::trim_sections::16
+src/synthorg/engine/prompt_result.py::build_prompt_result::12
 src/synthorg/engine/react_loop.py::ReactLoop.execute::9
 src/synthorg/engine/workflow/execution_activation_helpers.py::process_task_node::11
 src/synthorg/engine/workflow/execution_node_dispatch.py::_WorkflowNodeProcessor._process_subworkflow_node::11
