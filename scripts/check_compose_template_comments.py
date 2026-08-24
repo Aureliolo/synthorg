@@ -212,8 +212,12 @@ _TEMPLATE_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 # A single- or double-quoted YAML scalar. Blanked before looking for a
-# comment marker so a '#' inside a value is not read as one.
-_QUOTED_RE: Final[re.Pattern[str]] = re.compile(r"'[^']*'|\"[^\"]*\"")
+# comment marker so a '#' inside a value is not read as one. Only the
+# double-quoted form takes backslash escapes, so it has to span '\"'
+# rather than close on it, or the rest of the scalar reads as a shipping
+# comment; a single-quoted scalar escapes by doubling, which the plain
+# alternative already covers as two adjacent runs.
+_QUOTED_RE: Final[re.Pattern[str]] = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 
 # A YAML comment opens where '#' starts the line or follows whitespace.
 # Anchoring on '^\s*#' alone made a trailing comment invisible rather

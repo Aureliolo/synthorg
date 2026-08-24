@@ -81,14 +81,19 @@ def _wrapped_block(entry: AllowedBlock, *, line_count: int) -> str:
     return "\n".join(f"# {line}" for line in lines)
 
 
+def _write_go_source(root: Path, source: str = _EMBED_GO) -> None:
+    """Write the Go file whose embed names the template."""
+    go_path = root / _GENERATE_GO_REL
+    go_path.parent.mkdir(parents=True, exist_ok=True)
+    go_path.write_text(source, encoding="utf-8", newline="\n")
+
+
 def _write_template(root: Path, body: str, *, go_source: str = _EMBED_GO) -> None:
     """Write `body` as the compose template, plus the Go file naming it."""
     path = root / _TEMPLATE_REL
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body, encoding="utf-8", newline="\n")
-    go_path = root / _GENERATE_GO_REL
-    go_path.parent.mkdir(parents=True, exist_ok=True)
-    go_path.write_text(go_source, encoding="utf-8", newline="\n")
+    _write_go_source(root, go_source)
 
 
 def test_shipped_template_is_clean() -> None:
@@ -156,6 +161,28 @@ def test_hash_inside_a_quoted_value_is_not_a_comment(tmp_path: Path) -> None:
     _write_template(
         tmp_path,
         f"{_declared_blocks()}\nservices:\n  key: \"a # b\"\n  other: 'c # d'\n",
+    )
+
+    assert _check(tmp_path) == []
+
+
+def test_escaped_quote_keeps_a_hash_inside_the_scalar(tmp_path: Path) -> None:
+    """A '\\"' does not close a double-quoted scalar, so the '#' is data."""
+    _write_template(
+        tmp_path,
+        f'{_declared_blocks()}\nservices:\n  key: "a \\" # b"\n',
+    )
+
+    assert _check(tmp_path) == []
+
+
+def test_doubled_quote_keeps_a_hash_inside_a_single_quoted_scalar(
+    tmp_path: Path,
+) -> None:
+    """A single-quoted scalar escapes by doubling, and still spans the '#'."""
+    _write_template(
+        tmp_path,
+        f"{_declared_blocks()}\nservices:\n  key: 'a '' # b'\n",
     )
 
     assert _check(tmp_path) == []
@@ -383,6 +410,8 @@ def test_shipped_declarations_are_judgeable() -> None:
 
 def test_missing_template_exits_two(tmp_path: Path) -> None:
     """An unreadable source is a configuration error, not a pass."""
+    _write_go_source(tmp_path)
+
     assert main(["--repo-root", str(tmp_path)]) == 2
 
 

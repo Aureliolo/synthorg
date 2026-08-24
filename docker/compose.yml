@@ -266,10 +266,7 @@ services:
 
   # No fine-tune service here on purpose: the backend spawns an ephemeral
   # one-shot container per torch-bound stage over the Docker API and removes
-  # it on exit. Enable by setting SYNTHORG_FINE_TUNE_IMAGE on the backend to
-  # ghcr.io/aureliolo/synthorg-fine-tune-gpu:<tag> (or -cpu on hosts with no
-  # NVIDIA GPU); the CLI-generated compose.yml writes a sigstore-verified
-  # digest pin there itself when fine_tuning=true.
+  # it on exit.
 
 networks:
   default:
