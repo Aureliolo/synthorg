@@ -468,7 +468,6 @@
         "WorkflowVersionController",
         "WorkflowExecutionController",
         "SubworkflowController",
-        "EvaluationConfigVersionController",
         "DecompositionController",
         "PlanController",
         "PlanCommentController",
@@ -482,12 +481,10 @@
       "ghost_wired_symbols": [
         "PlanningToolProvider",
         "TaskAssignmentService",
-        "EvaluationVersionService",
         "SubworkflowService",
         "build_evolution_service",
         "build_recovery_strategy",
         "InMemoryErrorTaxonomyStore",
-        "PerformanceTrackerSink",
         "NotificationDispatcherSink",
         "AgentEngine",
         "IntakeEngine",
@@ -561,7 +558,6 @@
         "workflow_version_service",
         "workflow_execution_service",
         "subworkflow_service",
-        "evaluation_version_service",
         "error_taxonomy_store",
         "evolution_service",
         "kanban_board_service",
@@ -681,10 +677,7 @@
         "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
-        "PersonalityPresetController",
-        "TrainingController",
-        "QualityController",
-        "CollaborationController"
+        "PersonalityPresetController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/hr",
@@ -708,22 +701,15 @@
         "synthorg_agents_get_health",
         "synthorg_personalities_list",
         "synthorg_personalities_get",
-        "synthorg_training_list_sessions",
-        "synthorg_training_get_session",
-        "synthorg_training_start_session",
         "synthorg_autonomy_get",
         "synthorg_autonomy_update",
-        "synthorg_collaboration_get_score",
-        "synthorg_collaboration_get_calibration",
         "synthorg_quality_get_summary",
         "synthorg_quality_get_agent_quality",
         "synthorg_quality_list_scores",
         "synthorg_reviews_list",
         "synthorg_reviews_get",
         "synthorg_reviews_create",
-        "synthorg_reviews_update",
-        "synthorg_evaluation_versions_list",
-        "synthorg_evaluation_versions_get"
+        "synthorg_reviews_update"
       ],
       "name": "hr",
       "protocol_exports": [],
@@ -731,16 +717,12 @@
       "state_slice_fields": [
         "agent_registry",
         "performance_tracker",
-        "training_service",
-        "training_plan_service",
         "personality_service",
         "agent_version_service",
         "activity_feed_service",
         "agent_health_service",
         "hiring_service",
-        "pruning_service",
-        "eval_loop_coordinator",
-        "eval_loop_cycle_scheduler"
+        "pruning_service"
       ]
     },
     {
@@ -1505,6 +1487,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-23T21:58:28.394302Z",
+  "generated_at": "2026-08-24T09:53:12.948204Z",
   "schema_version": 1
 }
