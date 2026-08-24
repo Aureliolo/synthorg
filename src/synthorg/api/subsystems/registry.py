@@ -587,6 +587,24 @@ async def _activate_sprint_service(app_state: AppState) -> None:
     await wire_sprint_service(app_state)
 
 
+async def _activate_sprint_recovery(app_state: AppState) -> None:
+    """Run the sprint boot recovery pass and start its cadence."""
+    from synthorg.api.lifecycle_helpers.sprint_recovery_wiring import (  # noqa: PLC0415
+        wire_sprint_recovery,
+    )
+
+    await wire_sprint_recovery(app_state)
+
+
+async def _deactivate_sprint_recovery(app_state: AppState) -> None:
+    """Stop the sprint recovery cadence."""
+    from synthorg.api.lifecycle_helpers.sprint_recovery_wiring import (  # noqa: PLC0415
+        unwire_sprint_recovery,
+    )
+
+    await unwire_sprint_recovery(app_state)
+
+
 async def _activate_tool_call_feedback(app_state: AppState) -> None:
     """Wire the tool-call feedback tracker."""
     from synthorg.api.lifecycle_helpers.tool_call_feedback_wiring import (  # noqa: PLC0415
@@ -1305,6 +1323,21 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.SETTINGS_RESOLVER,
         ),
         activate=_activate_sprint_service,
+    ),
+    SubsystemSpec(
+        name="sprint_recovery",
+        provides=CapabilityId.SPRINT_RECOVERY,
+        # The service is required rather than merely read at activation
+        # because the sweep asks it, live per pass, whether sprints apply to
+        # this org at all; declaring it means a boot without one reports
+        # which capability it waits on instead of "declined".
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.SPRINT_SERVICE,
+        ),
+        activate=_activate_sprint_recovery,
+        deactivate=_deactivate_sprint_recovery,
     ),
     SubsystemSpec(
         name="tool_call_feedback",

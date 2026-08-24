@@ -63,6 +63,23 @@ VALID_SPRINT_TRANSITIONS: MappingProxyType[SprintStatus, frozenset[SprintStatus]
     )
 )
 
+# Statuses in which a sprint still accepts task completions. Declared
+# beside the enum rather than in the service, because the persistence layer
+# has to bind the same set into the guarded completion statement and a
+# second copy there is one edit away from admitting a completion the domain
+# refuses (or refusing one it allows).
+OPEN_SPRINT_STATUSES: Final[frozenset[SprintStatus]] = frozenset(
+    {SprintStatus.ACTIVE, SprintStatus.IN_REVIEW}
+)
+
+# The same set in a deterministic order, for SQL that binds one placeholder
+# per status. Ordered by the enum's own declaration so the generated
+# statement is stable across processes; a frozenset's iteration order is
+# not.
+OPEN_SPRINT_STATUS_VALUES: Final[tuple[str, ...]] = tuple(
+    status.value for status in SprintStatus if status in OPEN_SPRINT_STATUSES
+)
+
 _SPRINT_MACHINE: Final[StateMachine[SprintStatus]] = StateMachine(
     VALID_SPRINT_TRANSITIONS,
     name="sprint_lifecycle",

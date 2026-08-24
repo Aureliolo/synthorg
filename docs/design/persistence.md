@@ -87,7 +87,7 @@ one level up in `src/synthorg/persistence/`:
 | `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
 | `plan_protocol.py`                     | `PlanRepository`: durable plan-review entity, CRUD + status/project/objective filtering, version-guarded updates |
 | `project_environment_protocol.py`      | `ProjectEnvironmentRepository`: per-project reproducible-environment provisioning cache (1:1 per project; declaration hash + type + built image ref) |
-| `sprint_protocol.py`                    | `SprintRepository`: agile sprint records with atomic linear-lifecycle transitions and project / status filtered queries |
+| `sprint_protocol.py`                    | `SprintRepository`: agile sprint records with atomic linear-lifecycle transitions, project / status / org-wide filtered queries, and the two guarded backlog writes (`add_task_if_planning`, `complete_task_if`) whose story-point totals are re-derived in the statement rather than accumulated |
 | `tracked_container_protocol.py`        | `TrackedContainerRepository`: Docker sandbox container registry so a restart can reconcile orphans on both the daemon and DB sides |
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |

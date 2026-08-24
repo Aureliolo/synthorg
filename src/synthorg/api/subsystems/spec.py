@@ -101,6 +101,7 @@ class CapabilityId(StrEnum):
     HIRING_SERVICE = "hiring_service"
     REVIEW_STAFFING = "review_staffing"
     RUN_RECOVERY = "run_recovery"
+    SPRINT_RECOVERY = "sprint_recovery"
     QUOTA_POLLER = "quota_poller"
     STRATEGY_CONTEXT = "strategy_context"
     RUN_NARRATOR = "run_narrator"

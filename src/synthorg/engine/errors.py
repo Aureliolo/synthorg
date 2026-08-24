@@ -875,6 +875,76 @@ class SprintTransitionConflictError(SprintError, ConflictError):
     default_message: ClassVar[str] = "Sprint is not in the expected state"
 
 
+class SprintAlreadyOpenError(SprintError, ConflictError):
+    """Raised when a scope already has a sprint that is not completed.
+
+    Maps to 409 (conflict). A project runs one sprint at a time, and an
+    org-wide sprint (one with no project) is its own scope under the same
+    rule. The invariant is held by a partial unique index rather than by
+    the service's own check alone, because that check is a read followed
+    by a write and two processes can both pass it; this error is what the
+    caller sees whichever of the two refused, so the operator gets the
+    same answer with the same message either way.
+
+    Distinct from :class:`SprintTransitionConflictError`, which says a
+    sprint is in the wrong *state* for a hop. This one says the scope is
+    occupied, and names the occupier so the caller can go and finish it.
+
+    The occupier travels as attributes rather than only as words inside a
+    message, because the same refusal is built in two places (this
+    process's own check, and the index catching another process's insert)
+    and two hand-written sentences drift apart. The message is composed
+    from them here, so there is one sentence and it cannot disagree with
+    the fields beside it. The index-caught race leaves them ``None``: that
+    process never read the winning row, and inventing a name for it would
+    be worse than saying nothing.
+
+    Attributes:
+        sprint_name: What the occupying sprint is called, or ``None``.
+        sprint_id: Its key, for a surface that links to it.
+        sprint_status: The lifecycle status it is sitting in.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_ALREADY_OPEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "A sprint is already open for this scope"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        sprint_name: str | None = None,
+        sprint_id: str | None = None,
+        sprint_status: str | None = None,
+    ) -> None:
+        if message is None and sprint_name is not None:
+            message = (
+                f"Sprint {sprint_name!r} ({sprint_status}) is still open for "
+                f"this scope; finish it before starting another"
+            )
+        super().__init__(message)
+        self.sprint_name = sprint_name
+        self.sprint_id = sprint_id
+        self.sprint_status = sprint_status
+
+
+class SprintBacklogInvalidError(SprintError, ValidationError):
+    """Raised when a backlog append names a task the sprint cannot take.
+
+    Maps to 400: the task is already in the backlog, or the points it
+    would commit are negative. Distinct from
+    :class:`SprintBacklogFullError` (the backlog is at capacity, so the
+    task is valid but the sprint is not) and from
+    :class:`SprintTransitionConflictError` (the sprint has left PLANNING).
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_BACKLOG_INVALID
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Sprint backlog append is invalid"
+
+
 class SprintTaskNotInBacklogError(SprintError, ValidationError):
     """Raised when work is requested on a task outside the active sprint.
 

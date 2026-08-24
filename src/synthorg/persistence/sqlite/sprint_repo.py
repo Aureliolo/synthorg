@@ -12,17 +12,14 @@ marshalling is shared with the Postgres sibling via
 :mod:`synthorg.persistence._shared.sprint_marshalling`.
 """
 
-import sqlite3
+from typing import LiteralString
 
 import aiosqlite
 
-from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.observability import (
     get_logger,
-    log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.events.persistence.sprint import (
     PERSISTENCE_SPRINT_FAILED,
@@ -33,66 +30,31 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.sprint_marshalling import (
     SPRINT_COLUMNS,
+    add_task_params,
     build_sprint_where,
+    complete_task_params,
+    raise_existing_sprint,
     row_to_sprint,
     sprint_save_params,
     validate_sprint_update_keys,
 )
 from synthorg.persistence.sprint_protocol import SprintFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._sprint_guards import read_guard, write_guard
+from synthorg.persistence.sqlite._sprint_sql import (
+    ADD_TASK_SQL,
+    COMPLETE_TASK_SQL,
+    DELETE_SQL,
+    GET_SQL,
+    INSERT_SQL,
+    LIST_SQL,
+    ORDER_BY,
+    TRANSITION_SQL,
+)
 
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
-
-_UPSERT_SQL = f"""
-    INSERT INTO sprints ({SPRINT_COLUMNS})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-        project = excluded.project,
-        name = excluded.name,
-        goal = excluded.goal,
-        status = excluded.status,
-        sprint_number = excluded.sprint_number,
-        duration_days = excluded.duration_days,
-        start_date = excluded.start_date,
-        end_date = excluded.end_date,
-        task_ids = excluded.task_ids,
-        completed_task_ids = excluded.completed_task_ids,
-        task_points = excluded.task_points,
-        story_points_committed = excluded.story_points_committed,
-        story_points_completed = excluded.story_points_completed
-"""  # noqa: S608 -- column list is a compile-time constant
-
-_TRANSITION_SQL = (
-    "UPDATE sprints SET "
-    "status = ?, "
-    "start_date = COALESCE(?, start_date), "
-    "end_date = COALESCE(?, end_date) "
-    "WHERE id = ? AND status = ?"
-)
-
-_ORDER_BY = "ORDER BY sprint_number DESC, id DESC"
-
-
-async def _safe_rollback(
-    db: aiosqlite.Connection,
-    *,
-    operation: str,
-    **log_context: object,
-) -> None:
-    """Roll back the current transaction, logging any rollback failure."""
-    try:
-        await db.rollback()
-    except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
-        log_exception_redacted(
-            logger,
-            PERSISTENCE_SPRINT_FAILED,
-            rollback_exc,
-            phase="rollback",
-            operation=operation,
-            **log_context,
-        )
 
 
 class SQLiteSprintRepository:
@@ -114,45 +76,25 @@ class SQLiteSprintRepository:
         self._write_context = write_context
 
     async def save(self, entity: Sprint) -> None:
-        """Upsert a sprint row.
+        """Insert a new sprint row; refuse to overwrite a persisted one.
 
         Raises:
-            ConstraintViolationError: On constraint violations.
+            ConstraintViolationError: When a sprint already carries this
+                id, and on the scope / number constraint violations.
             QueryError: On other database errors.
         """
         params = sprint_save_params(entity)
-        async with self._write_context():
-            try:
-                await self._db.execute(_UPSERT_SQL, params)
-                await self._db.commit()
-            except sqlite3.IntegrityError as exc:
-                await _safe_rollback(self._db, operation="save", sprint_id=entity.id)
-                msg = (
-                    f"Constraint violation saving sprint {entity.id!r}: "
-                    f"{safe_error_description(exc)}"
-                )
-                logger.warning(
-                    PERSISTENCE_SPRINT_FAILED,
-                    operation="save",
-                    sprint_id=entity.id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, operation="save", sprint_id=entity.id)
-                msg = (
-                    f"Failed to save sprint {entity.id!r}: "
-                    f"{type(exc).__name__} ({safe_error_description(exc)})"
-                )
-                logger.warning(
-                    PERSISTENCE_SPRINT_FAILED,
-                    operation="save",
-                    sprint_id=entity.id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+        async with (
+            self._write_context(),
+            write_guard(
+                self._db, operation="save", doing="saving", sprint_id=entity.id
+            ),
+            self._db.execute(INSERT_SQL, params) as cursor,
+        ):
+            inserted = await cursor.fetchone()
+            await self._db.commit()
+        if inserted is None:
+            raise_existing_sprint(entity.id)
 
     async def get(self, entity_id: NotBlankStr) -> Sprint | None:
         """Get a sprint by id, or ``None`` if not found.
@@ -163,20 +105,15 @@ class SQLiteSprintRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        sql = f"SELECT {SPRINT_COLUMNS} FROM sprints WHERE id = ?"  # noqa: S608
-        try:
-            async with self._db.execute(sql, (entity_id,)) as cursor:
-                row = await cursor.fetchone()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to fetch sprint {entity_id!r}"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
+        async with (
+            read_guard(
                 operation="get",
+                failure=f"Failed to fetch sprint {entity_id!r}",
                 sprint_id=entity_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+            ),
+            self._db.execute(GET_SQL, (entity_id,)) as cursor,
+        ):
+            row = await cursor.fetchone()
         if row is None:
             return None
         sprint = row_to_sprint(row)
@@ -201,25 +138,10 @@ class SQLiteSprintRepository:
             limit, offset, event=PERSISTENCE_SPRINT_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        sql = (
-            f"SELECT {SPRINT_COLUMNS} FROM sprints "  # noqa: S608
-            f"{_ORDER_BY} LIMIT ? OFFSET ?"
-        )
-        try:
-            async with self._db.execute(sql, (effective_limit, offset)) as cursor:
+        async with read_guard(operation="list_items", failure="Failed to list sprints"):
+            async with self._db.execute(LIST_SQL, (effective_limit, offset)) as cursor:
                 rows = await cursor.fetchall()
             items = tuple(row_to_sprint(r) for r in rows)
-        except QueryError:
-            raise
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to list sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="list_items",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_SPRINT_LISTED, count=len(items))
         return items
 
@@ -247,24 +169,13 @@ class SQLiteSprintRepository:
         sql = f"""
             SELECT {SPRINT_COLUMNS} FROM sprints
             WHERE {where}
-            {_ORDER_BY}
+            {ORDER_BY}
             LIMIT ? OFFSET ?
         """  # noqa: S608 -- ``where`` is a closed set of column predicates
-        try:
+        async with read_guard(operation="query", failure="Failed to query sprints"):
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
             items = tuple(row_to_sprint(r) for r in rows)
-        except QueryError:
-            raise
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to query sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="query",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_SPRINT_LISTED, count=len(items))
         return items
 
@@ -279,20 +190,11 @@ class SQLiteSprintRepository:
         """
         where, params = build_sprint_where(filter_spec, placeholder="?")
         sql = f"SELECT COUNT(*) FROM sprints WHERE {where}"  # noqa: S608
-        try:
+        async with read_guard(operation="count", failure="Failed to count sprints"):
             async with self._db.execute(sql, params) as cursor:
                 row = await cursor.fetchone()
             assert row is not None  # noqa: S101 -- COUNT always returns a row
             return int(row[0])
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = "Failed to count sprints"
-            logger.warning(
-                PERSISTENCE_SPRINT_FAILED,
-                operation="count",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
 
     async def transition_if(
         self,
@@ -323,41 +225,118 @@ class SQLiteSprintRepository:
             entity_id,
             from_state.value,
         )
-        async with self._write_context():
-            try:
-                async with self._db.execute(_TRANSITION_SQL, params) as cursor:
-                    await self._db.commit()
-                    _db_rowcount = cursor.rowcount
-            except sqlite3.IntegrityError as exc:
-                await _safe_rollback(
-                    self._db, operation="transition_if", sprint_id=entity_id
-                )
-                msg = (
-                    f"Constraint violation transitioning sprint {entity_id!r}: "
-                    f"{safe_error_description(exc)}"
-                )
-                logger.warning(
-                    PERSISTENCE_SPRINT_FAILED,
-                    operation="transition_if",
-                    sprint_id=entity_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(
-                    self._db, operation="transition_if", sprint_id=entity_id
-                )
-                msg = f"Failed to transition sprint {entity_id!r}"
-                logger.warning(
-                    PERSISTENCE_SPRINT_FAILED,
-                    operation="transition_if",
-                    sprint_id=entity_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+        async with (
+            self._write_context(),
+            write_guard(
+                self._db,
+                operation="transition_if",
+                doing="transitioning",
+                sprint_id=entity_id,
+            ),
+            self._db.execute(TRANSITION_SQL, params) as cursor,
+        ):
+            await self._db.commit()
+            _db_rowcount = cursor.rowcount
         return _db_rowcount > 0
+
+    async def complete_task_if(
+        self,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+    ) -> Sprint | None:
+        """Append *task_id* to ``completed_task_ids`` iff it is absent.
+
+        One conditional statement, so no concurrent writer can slip
+        between the check and the append. See the protocol docstring for
+        why the points total is re-derived rather than accumulated.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match and nothing was written.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        return await self._guarded_backlog_write(
+            COMPLETE_TASK_SQL,
+            complete_task_params(sprint_id=sprint_id, task_id=task_id),
+            operation="complete_task_if",
+            doing="completing a task in",
+            sprint_id=sprint_id,
+        )
+
+    async def add_task_if_planning(
+        self,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+        story_points: float,
+        max_tasks: int,
+    ) -> Sprint | None:
+        """Append *task_id* to the backlog iff the sprint is still PLANNING.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match and nothing was written.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        return await self._guarded_backlog_write(
+            ADD_TASK_SQL,
+            add_task_params(
+                sprint_id=sprint_id,
+                task_id=task_id,
+                story_points=story_points,
+                max_tasks=max_tasks,
+            ),
+            operation="add_task_if_planning",
+            doing="adding a task to",
+            sprint_id=sprint_id,
+        )
+
+    async def _guarded_backlog_write(
+        self,
+        sql: LiteralString,
+        params: tuple[object, ...],
+        *,
+        operation: str,
+        doing: str,
+        sprint_id: str,
+    ) -> Sprint | None:
+        """Run a conditional backlog UPDATE and marshal its RETURNING row.
+
+        Args:
+            sql: The guarded statement.
+            params: Its positional params.
+            operation: The repository method, for the structured log.
+            doing: The present participle for the operator-facing message.
+            sprint_id: The row the write targeted.
+
+        Returns:
+            The post-image sprint, or ``None`` when the guard did not match.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        async with (
+            self._write_context(),
+            write_guard(
+                self._db, operation=operation, doing=doing, sprint_id=sprint_id
+            ),
+            self._db.execute(sql, params) as cursor,
+        ):
+            row = await cursor.fetchone()
+            # Parsed BEFORE the commit, and inside the guard. These
+            # statements DERIVE columns, so they can produce a row the
+            # domain model refuses that no input row would have been; the
+            # committed-then-parsed order made such a row durable and
+            # unreadable at once, failing every later read of it.
+            sprint = row_to_sprint(row) if row is not None else None
+            await self._db.commit()
+        return sprint
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a sprint by id.
@@ -368,23 +347,15 @@ class SQLiteSprintRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        sql = "DELETE FROM sprints WHERE id = ?"
-        async with self._write_context():
-            try:
-                async with self._db.execute(sql, (entity_id,)) as cursor:
-                    await self._db.commit()
-                    _db_rowcount = cursor.rowcount
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(self._db, operation="delete", sprint_id=entity_id)
-                msg = f"Failed to delete sprint {entity_id!r}"
-                logger.warning(
-                    PERSISTENCE_SPRINT_FAILED,
-                    operation="delete",
-                    sprint_id=entity_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+        async with (
+            self._write_context(),
+            write_guard(
+                self._db, operation="delete", doing="deleting", sprint_id=entity_id
+            ),
+            self._db.execute(DELETE_SQL, (entity_id,)) as cursor,
+        ):
+            await self._db.commit()
+            _db_rowcount = cursor.rowcount
         return _db_rowcount > 0
 
 

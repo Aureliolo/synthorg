@@ -26,6 +26,9 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.workflow.sprint_service import (
+    SPRINT_TAIL_DRAIN_DEADLINE_SECONDS,
+)
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.memory.embedding.fine_tune_orchestrator import (
@@ -74,11 +77,14 @@ _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECOND
 
 # SprintService's tail advancement walks a sprint through IN_REVIEW ->
 # RETROSPECTIVE -> COMPLETED off the completion path, one CAS hop at a time.
-# Its ``drain()`` awaits the in-flight tasks with no deadline of its own, so
-# the whole bound is this outer one: a hop interrupted between two CAS writes
-# leaves the sprint parked in the intermediate status with nothing that
-# re-triggers the walk.
-_SPRINT_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
+# Its ``drain()`` is internally bounded, so this exceeds that deadline by the
+# shared grace and stays the pure backstop; reference the source constant so
+# the two can never drift apart. A hop interrupted between two CAS writes
+# leaves the sprint parked in the intermediate status, which the next
+# process's boot recovery pass picks up.
+_SPRINT_DRAIN_OUTER_SECONDS: Final[float] = (
+    SPRINT_TAIL_DRAIN_DEADLINE_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
 
 # Outer backstop for the objective / brownfield entry-task drain. The drain
 # is internally bounded by ``_ENTRY_TASK_DRAIN_GRACE_SECONDS`` (from
@@ -253,8 +259,25 @@ async def _run_shutdown(  # noqa: PLR0913
     # spawned off the task-completion path and each walks the sprint one CAS
     # hop at a time, so a cancel between hops parks it in an intermediate
     # status that nothing re-enters once every task is already completed.
+    # Stop the recovery sweep BEFORE draining, so it cannot start advancing a
+    # sprint the drain is about to stop waiting for. Whatever either of them
+    # leaves half-walked is picked up by the next process's boot pass, which
+    # is the whole reason the sweep exists. Budgeted as an internally-draining
+    # service: the scheduler's own stop awaits its cycle on the shared
+    # scheduler deadline, so an outer bound below that would cancel a sweep
+    # that was going to finish and report the timeout as the failure.
+    from synthorg.api.lifecycle_helpers.sprint_recovery_wiring import (  # noqa: PLC0415
+        unwire_sprint_recovery,
+    )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
+    await _try_stop(
+        unwire_sprint_recovery(app_state),
+        API_APP_SHUTDOWN,
+        "Failed to stop the sprint recovery sweep",
+        timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+        service="sprint_tail_scheduler_stop",
+    )
     _sprint_service = app_state.slice(EngineStateSlice).sprint_service
     if _sprint_service is not None:
         await _try_stop(

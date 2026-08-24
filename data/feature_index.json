@@ -561,6 +561,7 @@
         "evolution_service",
         "kanban_board_service",
         "sprint_service",
+        "sprint_tail_scheduler",
         "project_rollup_service",
         "intake_entry_adapter",
         "objective_entry_adapter",
@@ -1481,6 +1482,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-24T18:44:31.650692Z",
+  "generated_at": "2026-08-24T19:37:30.282638Z",
   "schema_version": 1
 }

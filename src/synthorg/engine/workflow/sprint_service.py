@@ -4,11 +4,15 @@
 The service:
 
 * registers as a :class:`TaskEngine` observer. On a task entering
-  ``ASSIGNED`` for a project with no open sprint, it auto-creates a
-  sprint seeded with the project's open tasks and starts it (``ACTIVE``);
-  on a task entering ``COMPLETED``, it marks the task done in the open
-  sprint's backlog and advances ``ACTIVE -> IN_REVIEW`` once every task
-  in the backlog has been delivered;
+  ``ASSIGNED`` for a project with no open sprint, it assembles a sprint
+  from the project's open tasks and inserts it ALREADY ``ACTIVE``, in one
+  write: there is no PLANNING row in between, because that sprint is
+  never offered to an operator and a window in which it sits PLANNING is
+  a window in which a dead process leaves a row nothing activates, which
+  then holds the scope's one open slot for good. On a task entering
+  ``COMPLETED``, it marks the task done in the open sprint's backlog and
+  advances ``ACTIVE -> IN_REVIEW`` once every task in the backlog has
+  been delivered;
 * drives the tail of the lifecycle (``IN_REVIEW -> RETROSPECTIVE ->
   COMPLETED``) once the backlog is fully delivered;
 * exposes explicit control (``create_sprint`` builds an empty PLANNING
@@ -20,17 +24,32 @@ The DB writes (backlog + lifecycle CAS) run inline; the tail advancement
 runs in tracked background tasks so the single-consumer observer-dispatch
 loop never blocks on a sequence of CAS writes.
 
-Persistence is the sole source of truth: the sprint is read back from
-the repository on every operation, mutated via the immutable domain
-functions, and written straight back. The per-service ``asyncio.Lock``
-serialises the read-modify-write sections **within one process**; the
-repository's ``transition_if`` CAS is the only cross-process guard.
+Persistence is the sole source of truth: the sprint is read back from the
+repository on every operation and every mutation is a guarded write. Each
+of the four decisions a sprint takes is settled by the database rather
+than by this process, because each is a read followed by a write that two
+processes can enter at once:
+
+* **which task is delivered** -- ``complete_task_if``, one conditional
+  statement that appends to ``completed_task_ids`` only when the id is
+  absent, so a concurrent completion of a different task cannot be
+  overwritten by a caller holding a stale pre-image;
+* **what is in the backlog** -- ``add_task_if_planning``, the same shape
+  one state earlier, so two requests each adding a different task cannot
+  end with one of them silently absent;
+* **which lifecycle state the sprint is in** -- ``transition_if``;
+* **who opens a scope's sprint** -- a partial unique index admitting one
+  non-completed sprint per scope, so the loser of the create race is
+  refused rather than producing a second sprint holding the same tasks.
+
+The per-service ``asyncio.Lock`` remains, and is now only what its name
+says: an in-process serialiser that keeps this process from doing
+obviously redundant work. Correctness does not rest on it.
 """
 
 import asyncio
 from collections.abc import Coroutine
 from typing import Final
-from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -38,37 +57,53 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
-    SprintBacklogFullError,
+    SprintBacklogInvalidError,
     SprintNotFoundError,
     SprintTransitionConflictError,
 )
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow._sprint_ops import (
     NON_TERMINAL_TASK_STATUSES,
-    OPEN_SPRINT_STATUSES,
+    log_sprint_transition,
     next_status,
     open_backlog_tasks,
     story_points_for,
     transition_overrides,
 )
 from synthorg.engine.workflow.enums import WorkflowType
-from synthorg.engine.workflow.sprint_backlog import (
-    add_task_to_sprint,
-    complete_task_in_sprint,
-)
+from synthorg.engine.workflow.sprint_backlog import add_task_to_sprint
 from synthorg.engine.workflow.sprint_config import SprintConfig
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import (
+    OPEN_SPRINT_STATUSES,
+    STORY_POINTS_CEILING,
+    Sprint,
+    SprintStatus,
+)
+from synthorg.engine.workflow.sprint_scope import (
+    log_refusal,
+    open_sprint_in_scope,
+    require_scope_free,
+    scope_occupant,
+    scope_occupied_error,
+    scope_spec,
+)
+from synthorg.engine.workflow.sprint_tail import advance_tail
+from synthorg.engine.workflow.sprint_writes import (
+    record_completion,
+    rejected_add_error,
+)
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
 )
 from synthorg.observability.events.workflow import (
-    SPRINT_BACKLOG_SAVE_FAILED,
+    SPRINT_CREATE_RACE_LOST,
     SPRINT_CREATED,
     SPRINT_SERVICE_OBSERVER_FAILED,
-    SPRINT_STATUS_TRANSITIONED,
+    SPRINT_TAIL_DRAIN_TIMED_OUT,
+    SPRINT_TAIL_NOT_SPAWNED,
+    SPRINT_TASK_ADDED,
     SPRINT_TASK_COMPLETED,
-    SPRINT_TRANSITION_LOST,
 )
 from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
@@ -77,6 +112,14 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 logger = get_logger(__name__)
 
 _SETTINGS_NS: Final[str] = "engine"
+
+#: How long :meth:`SprintService.drain` waits for the in-flight tail walks.
+#: Each is a short chain of compare-and-sets, so this is generous for the
+#: work and tight enough to leave the shutdown window room: the runner adds
+#: its own grace on top of this value rather than repeating a number, so the
+#: outer backstop cannot drift below the inner deadline it is meant to
+#: exceed.
+SPRINT_TAIL_DRAIN_DEADLINE_SECONDS: Final[float] = 5.0
 
 
 class SprintService:
@@ -96,6 +139,7 @@ class SprintService:
         "_bg_tasks",
         "_clock",
         "_config_resolver",
+        "_draining",
         "_lock",
         "_sprint_config",
         "_sprints",
@@ -124,9 +168,22 @@ class SprintService:
         # chain of CAS writes never blocks the dispatch loop; drained on
         # shutdown.
         self._bg_tasks: set[asyncio.Task[None]] = set()
+        self._draining = False
 
     def _spawn(self, coro: Coroutine[object, object, None]) -> None:
-        """Run *coro* as a tracked background task (never blocks the caller)."""
+        """Run *coro* as a tracked background task (never blocks the caller).
+
+        Refused once a drain has begun. The observer stays registered until
+        late in shutdown, so without this a completion arriving mid-drain
+        adds a task the drain has already decided its budget for, and the
+        drain either waits past its deadline or abandons a walk it never
+        counted. Whatever this declines is a lifecycle hop, and the
+        recovery sweep is what picks those up.
+        """
+        if self._draining:
+            logger.info(SPRINT_TAIL_NOT_SPAWNED, reason="draining")
+            coro.close()
+            return
         task = asyncio.create_task(self._guard(coro))
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
@@ -149,10 +206,29 @@ class SprintService:
         """Await all in-flight background tail-advancement tasks.
 
         Used by graceful shutdown and by tests that assert on the state a
-        spawned advancement leaves behind.
+        spawned advancement leaves behind. Closes the service to new tail
+        work first, so the set this waits on can only shrink: without that
+        the loop is unbounded by construction, since each walk it awaits
+        can be joined by another the still-registered observer spawns.
+
+        Bounded on top of that, because a hop blocked on an unreachable
+        store would otherwise hold the shutdown window open with no
+        ceiling. What a timed-out drain leaves half-walked is exactly what
+        the next process's boot recovery pass picks up.
         """
-        while self._bg_tasks:
-            await asyncio.gather(*tuple(self._bg_tasks), return_exceptions=True)
+        self._draining = True
+        try:
+            async with asyncio.timeout(SPRINT_TAIL_DRAIN_DEADLINE_SECONDS):
+                while self._bg_tasks:
+                    await asyncio.gather(*tuple(self._bg_tasks), return_exceptions=True)
+        except TimeoutError:
+            logger.warning(
+                SPRINT_TAIL_DRAIN_TIMED_OUT,
+                pending_count=len(self._bg_tasks),
+                deadline_seconds=SPRINT_TAIL_DRAIN_DEADLINE_SECONDS,
+            )
+        finally:
+            self._draining = False
 
     # -- Read surface --------------------------------------------------
 
@@ -189,7 +265,7 @@ class SprintService:
             ``True`` when the task may be worked, ``False`` when the
             active sprint gates it out.
         """
-        if not await self._sprints_active():
+        if not await self.sprints_active():
             return True
         sprint = await self._open_sprint(project)
         if sprint is None:
@@ -201,12 +277,31 @@ class SprintService:
     async def create_sprint(self, project: str | None) -> Sprint:
         """Create and persist a new ``PLANNING`` sprint for *project*.
 
+        A scope runs one sprint at a time, so this refuses while the scope
+        still has one that is not completed. The check here is what names
+        the sprint in the way; the partial unique index is what makes the
+        answer true across processes, and a scope another writer claimed
+        first reaches the caller as the same error so both are told the
+        same thing.
+
         Returns:
             The persisted PLANNING sprint.
+
+        Raises:
+            SprintAlreadyOpenError: When the scope already has a sprint
+                that has not completed.
         """
         async with self._lock:
-            sprint = await self._build_planning_sprint(project)
-            await self._sprints.save(sprint)
+            await require_scope_free(project, sprints=self._sprints)
+            opened = await open_sprint_in_scope(
+                project, sprints=self._sprints, config=self._sprint_config
+            )
+            if opened is None:
+                # Bound before the raise so the statement names an error
+                # rather than the builder that returns one.
+                occupied = scope_occupied_error(project)
+                raise occupied
+            sprint = opened
         logger.info(
             SPRINT_CREATED,
             sprint_id=sprint.id,
@@ -220,6 +315,18 @@ class SprintService:
     ) -> Sprint:
         """Add a task to a ``PLANNING`` sprint backlog (capacity-checked).
 
+        The append itself is one guarded statement, so two requests each
+        adding a different task cannot both write a backlog assembled from
+        the same pre-image. The capacity cap travels INTO that statement
+        for the same reason: checked here against a row already read, two
+        requests both find room and both append.
+
+        What stays here is the points arithmetic, which the statement
+        cannot answer: the ceiling is a bound on a total it derives, so a
+        breach is a row the model refuses rather than a guard that
+        declines, and refusing it in front of the write is what turns it
+        into an answer the caller can act on.
+
         Returns:
             The sprint with the task added to its backlog.
 
@@ -229,21 +336,59 @@ class SprintService:
                 ``PLANNING`` (tasks may only be added while planning).
             SprintBacklogFullError: When the backlog is at
                 ``max_tasks_per_sprint``.
+            SprintBacklogInvalidError: When the points are negative, would
+                take the sprint past ``STORY_POINTS_CEILING``, or the task
+                is already in the backlog.
         """
+        cap = self._sprint_config.max_tasks_per_sprint
         async with self._lock:
             sprint = await self._require(sprint_id)
             if sprint.status is not SprintStatus.PLANNING:
                 msg = f"Sprint {sprint_id!r} is not in 'planning'; cannot add tasks"
-                raise SprintTransitionConflictError(msg)
-            if len(sprint.task_ids) >= self._sprint_config.max_tasks_per_sprint:
-                msg = (
-                    f"Sprint {sprint_id!r} backlog is full "
-                    f"({self._sprint_config.max_tasks_per_sprint} tasks)"
+                log_refusal(
+                    reason="not_planning",
+                    sprint_id=sprint_id,
+                    status=sprint.status.value,
                 )
-                raise SprintBacklogFullError(msg)
-            updated = add_task_to_sprint(sprint, NotBlankStr(task_id), story_points)
-            await self._sprints.save(updated)
-            return updated
+                raise SprintTransitionConflictError(msg)
+            if story_points < 0:
+                msg = f"story_points must be >= 0, got {story_points}"
+                log_refusal(
+                    reason="negative_points", sprint_id=sprint_id, task_id=task_id
+                )
+                raise SprintBacklogInvalidError(msg)
+            # Against the RESULTING total, not this task's points: the API
+            # bounds each task separately, so two admissible calls can pass it.
+            committed = sprint.story_points_committed + story_points
+            if committed > STORY_POINTS_CEILING:
+                msg = (
+                    f"Adding {story_points} points would take sprint {sprint_id!r} "
+                    f"to {committed}, past the {STORY_POINTS_CEILING} ceiling"
+                )
+                log_refusal(
+                    reason="points_ceiling",
+                    sprint_id=sprint_id,
+                    task_id=task_id,
+                    would_commit=committed,
+                )
+                raise SprintBacklogInvalidError(msg)
+            updated = await self._sprints.add_task_if_planning(
+                NotBlankStr(sprint_id), NotBlankStr(task_id), story_points, cap
+            )
+        if updated is None:
+            log_refusal(
+                reason="add_guard_declined", sprint_id=sprint_id, task_id=task_id
+            )
+            raise await rejected_add_error(
+                sprint_id, task_id, sprints=self._sprints, max_tasks=cap
+            )
+        logger.info(
+            SPRINT_TASK_ADDED,
+            sprint_id=sprint_id,
+            task_id=task_id,
+            story_points=story_points,
+        )
+        return updated
 
     async def start_sprint(self, sprint_id: str) -> Sprint:
         """Transition a ``PLANNING`` sprint to ``ACTIVE`` and start ceremonies.
@@ -256,10 +401,18 @@ class SprintService:
             SprintTransitionConflictError: When the sprint is not
                 ``PLANNING`` (the CAS found a different state).
         """
+        # One message for both refusals: they are the same fact reached two
+        # ways, before the write and by the write, and a caller cannot act
+        # on the difference.
+        msg = f"Sprint {sprint_id!r} is not in 'planning'"
         async with self._lock:
             sprint = await self._require(sprint_id)
             if sprint.status is not SprintStatus.PLANNING:
-                msg = f"Sprint {sprint_id!r} is not in 'planning'"
+                log_refusal(
+                    reason="not_planning",
+                    sprint_id=sprint_id,
+                    status=sprint.status.value,
+                )
                 raise SprintTransitionConflictError(msg)
             started = sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
@@ -271,9 +424,9 @@ class SprintService:
                 start_date=started.start_date,
             )
             if not ok:
-                msg = f"Sprint {sprint_id!r} is not in 'planning'"
+                log_refusal(reason="activation_cas_lost", sprint_id=sprint_id)
                 raise SprintTransitionConflictError(msg)
-        self._log_transition(started, SprintStatus.PLANNING)
+        log_sprint_transition(started, SprintStatus.PLANNING)
         return started
 
     async def advance_sprint(self, sprint_id: str) -> Sprint:
@@ -301,8 +454,14 @@ class SprintService:
             )
             if not ok:
                 msg = f"Sprint {sprint_id!r} is not in {sprint.status.value!r}"
+                log_refusal(
+                    reason="advance_cas_lost",
+                    sprint_id=sprint_id,
+                    status=sprint.status.value,
+                    target=target.value,
+                )
                 raise SprintTransitionConflictError(msg)
-        self._log_transition(advanced, sprint.status)
+        log_sprint_transition(advanced, sprint.status)
         return advanced
 
     # -- Task-engine observer ------------------------------------------
@@ -320,7 +479,7 @@ class SprintService:
         try:
             if event.task is None or event.new_status is None:
                 return
-            if not await self._sprints_active():
+            if not await self.sprints_active():
                 return
             if event.new_status is TaskStatus.ASSIGNED:
                 phase = "ensure_sprint_for_work"
@@ -344,175 +503,94 @@ class SprintService:
     # -- Auto lifecycle ------------------------------------------------
 
     async def _ensure_sprint_for_work(self, task: Task) -> None:
-        """Create + start a sprint for *task*'s project when none is open."""
-        started: Sprint | None = None
-        async with self._lock:
-            existing = await self._sprints.query(
-                SprintFilterSpec(project=self._project_of(task))
-            )
-            if any(s.status is not SprintStatus.COMPLETED for s in existing):
-                return
-            sprint = await self._build_planning_sprint(self._project_of(task))
+        """Create an already-ACTIVE sprint for *task*'s project when none is open.
+
+        Assembled whole in memory and inserted once, ACTIVE. There is
+        deliberately no PLANNING row in between: the auto-created sprint is
+        never offered to an operator to edit, so a window in which it sits
+        PLANNING is a window in which the process can die and leave a row
+        nothing activates, holding the scope's one open slot against every
+        later task while contributing no work. Building it whole also means
+        the insert is the entire decision, so the index refusing it is the
+        only outcome a lost race has.
+        """
+        scope = self._project_of(task)
+
+        async def _seed_and_start(sprint: Sprint) -> Sprint:
+            """Fill the backlog and start the sprint in the same write.
+
+            Returns:
+                The ACTIVE sprint to persist.
+            """
             for backlog_task in await self._collect_backlog(task):
                 sprint = add_task_to_sprint(
                     sprint,
                     NotBlankStr(str(backlog_task.id)),
                     story_points_for(backlog_task),
                 )
-            await self._sprints.save(sprint)
-            started = sprint.with_transition(
+            return sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
             )
-            if not await self._sprints.transition_if(
-                NotBlankStr(sprint.id),
-                SprintStatus.PLANNING,
-                SprintStatus.ACTIVE,
-                start_date=started.start_date,
-            ):
-                logger.warning(
-                    SPRINT_TRANSITION_LOST,
-                    sprint_id=sprint.id,
-                    from_status=SprintStatus.PLANNING.value,
-                    to_status=SprintStatus.ACTIVE.value,
-                    note="post_create_activation",
-                )
+
+        async with self._lock:
+            if await scope_occupant(scope, sprints=self._sprints) is not None:
+                return
+            started = await open_sprint_in_scope(
+                scope,
+                sprints=self._sprints,
+                config=self._sprint_config,
+                prepare=_seed_and_start,
+            )
+            if started is None:
+                # Losing this race is the correct outcome, not a failure:
+                # the check above and the index ask the same question, and
+                # another writer answered it first. The scope has the
+                # sprint it needs; this process joins it on the next event
+                # rather than opening a second one.
+                logger.info(SPRINT_CREATE_RACE_LOST, project=scope)
                 return
             logger.info(
                 SPRINT_CREATED,
-                sprint_id=sprint.id,
-                project=self._project_of(task),
-                sprint_number=sprint.sprint_number,
-                seeded_tasks=len(sprint.task_ids),
+                sprint_id=started.id,
+                project=scope,
+                sprint_number=started.sprint_number,
+                seeded_tasks=len(started.task_ids),
             )
-        self._log_transition(started, SprintStatus.PLANNING)
+        log_sprint_transition(started, SprintStatus.PLANNING)
 
     async def _handle_completion(self, task: Task) -> None:
         """Mark *task* done in the open sprint, then advance off-loop.
 
-        The backlog write commits inline (source of truth); the lifecycle
-        tail runs in a background task so the observer dispatch loop never
-        waits on a chain of CAS writes.
+        The backlog write commits inline (source of truth) through the
+        guarded append, so a concurrent completion of a different task in
+        the same sprint cannot be overwritten. The lifecycle tail runs in a
+        background task so the observer dispatch loop never waits on a
+        chain of CAS writes.
         """
         task_id = str(task.id)
         async with self._lock:
             sprint = await self._open_sprint(self._project_of(task))
             if sprint is None or task_id not in sprint.task_ids:
                 return
-            if task_id in sprint.completed_task_ids:
+            delivered = await record_completion(sprint, task_id, sprints=self._sprints)
+            if delivered is None:
                 return
-            updated = complete_task_in_sprint(sprint, NotBlankStr(task_id))
-            try:
-                await self._sprints.save(updated)
-            except Exception as exc:
-                # This is the sprint source-of-truth write, not an observer
-                # side channel: a swallow here silently diverges
-                # ``completed_task_ids`` from real task state with no
-                # reconciliation. Surface it distinctly (ERROR) before it
-                # rides the observer catch-all, so the divergence is
-                # actionable rather than buried in a generic observer warning.
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger,
-                    SPRINT_BACKLOG_SAVE_FAILED,
-                    exc,
-                    sprint_id=updated.id,
-                    task_id=task_id,
-                )
-                raise
-        logger.info(SPRINT_TASK_COMPLETED, sprint_id=updated.id, task_id=task_id)
-        self._spawn(self._advance_and_finalize(updated))
+        logger.info(SPRINT_TASK_COMPLETED, sprint_id=delivered.id, task_id=task_id)
+        self._spawn(self._advance_tail(delivered))
 
-    async def _advance_and_finalize(self, sprint: Sprint) -> None:
+    async def _advance_tail(self, sprint: Sprint) -> None:
         """Off-loop tail: open review when delivered, then walk to COMPLETED."""
-        reviewing = await self._open_review_if_delivered(sprint)
-        await self._finalize_if_delivered(reviewing)
-
-    @staticmethod
-    def _backlog_fully_delivered(sprint: Sprint) -> bool:
-        """Whether every task in *sprint*'s backlog has been completed.
-
-        A sprint whose backlog is empty is not delivered: it has nothing
-        to review, and treating "no tasks" as "all tasks done" would end
-        a sprint the moment it was created. The counts alone decide it
-        because ``Sprint``'s own validator holds ``completed_task_ids`` to
-        a duplicate-free subset of ``task_ids``.
-
-        Returns:
-            ``True`` when the backlog is non-empty and fully delivered.
-        """
-        if not sprint.task_ids:
-            return False
-        return len(sprint.completed_task_ids) >= len(sprint.task_ids)
-
-    async def _open_review_if_delivered(self, sprint: Sprint) -> Sprint:
-        """Advance ACTIVE to IN_REVIEW once the whole backlog is delivered.
-
-        Returns:
-            The sprint after the transition, or unchanged when the
-            backlog is not yet fully delivered or the CAS was lost.
-        """
-        if sprint.status is not SprintStatus.ACTIVE:
-            return sprint
-        if not self._backlog_fully_delivered(sprint):
-            return sprint
-        if not await self._sprints.transition_if(
-            NotBlankStr(sprint.id), sprint.status, SprintStatus.IN_REVIEW
-        ):
-            logger.warning(
-                SPRINT_TRANSITION_LOST,
-                sprint_id=sprint.id,
-                from_status=sprint.status.value,
-                to_status=SprintStatus.IN_REVIEW.value,
-                note="backlog_delivered",
-            )
-            return sprint
-        transitioned = sprint.with_transition(SprintStatus.IN_REVIEW)
-        self._log_transition(transitioned, sprint.status)
-        return transitioned
-
-    async def _finalize_if_delivered(self, sprint: Sprint) -> None:
-        """Walk IN_REVIEW -> RETROSPECTIVE -> COMPLETED when all tasks are done."""
-        if sprint.status is not SprintStatus.IN_REVIEW:
-            return
-        if not self._backlog_fully_delivered(sprint):
-            return
-        async with self._lock:
-            if not await self._sprints.transition_if(
-                NotBlankStr(sprint.id),
-                SprintStatus.IN_REVIEW,
-                SprintStatus.RETROSPECTIVE,
-            ):
-                logger.debug(
-                    SPRINT_TRANSITION_LOST,
-                    sprint_id=sprint.id,
-                    from_status=SprintStatus.IN_REVIEW.value,
-                    to_status=SprintStatus.RETROSPECTIVE.value,
-                    note="finalize_review_to_retro",
-                )
-                return
-            completed = sprint.model_copy(
-                update={"status": SprintStatus.RETROSPECTIVE}
-            ).with_transition(SprintStatus.COMPLETED, end_date=self._now_iso())
-            if not await self._sprints.transition_if(
-                NotBlankStr(sprint.id),
-                SprintStatus.RETROSPECTIVE,
-                SprintStatus.COMPLETED,
-                end_date=completed.end_date,
-            ):
-                logger.warning(
-                    SPRINT_TRANSITION_LOST,
-                    sprint_id=sprint.id,
-                    from_status=SprintStatus.RETROSPECTIVE.value,
-                    to_status=SprintStatus.COMPLETED.value,
-                    note="finalize_retro_to_completed",
-                )
-                return
-        self._log_transition(completed, SprintStatus.IN_REVIEW)
+        await advance_tail(sprint, sprints=self._sprints, clock=self._clock)
 
     # -- Helpers -------------------------------------------------------
 
-    async def _sprints_active(self) -> bool:
+    async def sprints_active(self) -> bool:
         """Whether sprint machinery applies to the current org (hot-read).
+
+        Public because the recovery sweep asks the same question, and it
+        has to be asked live in both places: an operator turning sprints
+        off should stop the observer AND the sweep from the next event or
+        tick, without a restart.
 
         Returns:
             ``True`` when ``sprint_enabled`` is on and the workflow type
@@ -526,8 +604,12 @@ class SprintService:
         return workflow is WorkflowType.AGILE_KANBAN
 
     async def _open_sprint(self, project: NotBlankStr | None) -> Sprint | None:
-        """Return the project's ACTIVE / IN_REVIEW sprint, newest-first."""
-        for sprint in await self._sprints.query(SprintFilterSpec(project=project)):
+        """Return the scope's ACTIVE / IN_REVIEW sprint, newest-first.
+
+        Returns:
+            The open sprint for *project*'s scope, or ``None``.
+        """
+        for sprint in await self._sprints.query(scope_spec(project)):
             if sprint.status in OPEN_SPRINT_STATUSES:
                 return sprint
         return None
@@ -546,26 +628,6 @@ class SprintService:
             msg = f"Sprint {sprint_id!r} not found"
             raise SprintNotFoundError(msg)
         return sprint
-
-    async def _build_planning_sprint(self, project: str | None) -> Sprint:
-        """Construct a fresh ``PLANNING`` sprint with the next number.
-
-        Returns:
-            An unsaved PLANNING sprint numbered after the project's latest.
-        """
-        existing = await self._sprints.query(
-            SprintFilterSpec(
-                project=NotBlankStr(project) if project is not None else None
-            )
-        )
-        number = 1 + max((s.sprint_number for s in existing), default=0)
-        return Sprint(
-            id=NotBlankStr(str(uuid4())),
-            project=NotBlankStr(project) if project is not None else None,
-            name=NotBlankStr(f"Sprint {number}"),
-            sprint_number=number,
-            duration_days=self._sprint_config.duration_days,
-        )
 
     async def _collect_backlog(self, trigger: Task) -> tuple[Task, ...]:
         """Return the project's open tasks to seed a new sprint (capped).
@@ -604,15 +666,6 @@ class SprintService:
     def _now_iso(self) -> str:
         """Return the current UTC time as an ISO-8601 string."""
         return self._clock.now().isoformat()
-
-    def _log_transition(self, sprint: Sprint, previous: SprintStatus) -> None:
-        """Emit the state-transition INFO log after a persisted hop."""
-        logger.info(
-            SPRINT_STATUS_TRANSITIONED,
-            sprint_id=sprint.id,
-            from_status=previous.value,
-            to_status=sprint.status.value,
-        )
 
 
 __all__ = ["SprintService"]

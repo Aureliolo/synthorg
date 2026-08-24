@@ -292,6 +292,113 @@ The `/sprints` REST surface exposes explicit create / add-task / start /
 advance control, and the Kanban board applies an advisory gate: a move into
 In-Progress is rejected for a task outside the active sprint backlog.
 
+**Every decision a running sprint takes is settled by the database**, because
+each is a read followed by a write that two processes can enter at once and
+multi-process is a supported topology. A per-process lock would hold only
+while one process is the only writer.
+
+- **Which task is delivered**: `SprintRepository.complete_task_if`, one
+  conditional statement appending to `completed_task_ids` only when the id is
+  absent. A whole-entity write cannot express it, and the consequence of
+  losing one is worse than a lost row: `len(completed_task_ids)` never reaches
+  `len(task_ids)`, so the sprint can never read as delivered and no completion
+  event remains to re-trigger the tail.
+- **What is in the backlog**: `SprintRepository.add_task_if_planning`, the
+  same shape one state earlier. Assembling a backlog through a whole-entity
+  write is the same lost update: two requests each adding a different task
+  read one pre-image, and the second writes a backlog that never saw the
+  first. Both writes re-derive their story-point total from the row's own
+  `task_points` in the same statement rather than accumulating it, so the two
+  totals cannot acquire independent addition orders and disagree by an ULP,
+  which is what made the table's `story_points_completed <=
+  story_points_committed` check refuse the last completion of a sprint.
+  The backlog cap travels into that statement as `max_tasks` and is held
+  against the row's own current length, because it is service configuration
+  that no column CHECK carries: checked by the caller against a row it had
+  already read, two requests both find room, both append, and the over-cap
+  backlog is durable. A decline for that reason is indistinguishable in the
+  return value from the others, so the caller re-reads to name it.
+- **Which lifecycle state it is in**: `transition_if`.
+- **Nothing else**: `SprintRepository.save` CREATES a sprint and refuses an
+  id that already exists, rather than writing over it as the generic
+  contract does. The three guarded statements above each hold their invariant
+  against the row's own current value, so an unconditional whole-row write
+  beside them is a fourth path that can undo all three at once, and the
+  suite had a case asserting exactly that: a sprint saved, then saved again
+  with a different backlog, which is the pre-image overwrite the guarded
+  appends exist to remove. Refusing costs nothing, because the one thing a
+  persisted sprint has no path to is being rewritten wholesale.
+- **Who opens a scope's sprint**: a partial unique index
+  (`idx_sprints_one_open_per_scope`) admitting one non-completed sprint per
+  scope. A project runs one sprint at a time, and an org-wide sprint (one with
+  no project) is its own scope under the same rule; `POST /sprints` refuses a
+  second with a 409. That refusal names the sprint in the way when this
+  process read it, and says only that another writer claimed the scope when
+  the index caught the race instead: naming a sprint this process never read
+  would be an invention rather than an answer. The index keys on
+  `COALESCE(project, '')` because both engines treat NULLs as distinct, which
+  would otherwise leave the org-wide scope unguarded. A refused insert is not
+  read as that answer on its own: `UNIQUE (project, sprint_number)` refuses
+  the same write when a competing writer took the number this process derived
+  and then completed that sprint, which leaves the scope free and only the
+  number stale. `open_sprint_in_scope` separates the two by re-reading the
+  scope rather than by inspecting which constraint fired, since the two
+  engines name theirs differently, and rebuilds the number instead of
+  refusing a sprint that should have been opened.
+
+Auto-creation off an `ASSIGNED` task assembles the sprint whole in memory and
+inserts it **already `ACTIVE`**, in one write. There is deliberately no
+`PLANNING` row in between: that sprint is never offered to an operator to
+edit, so a window in which it sits `PLANNING` is only a window in which a
+dead process or a lost compare-and-set leaves a row nothing activates, which
+then holds the scope's one open slot against every later task. `PLANNING` is
+therefore reached only through `POST /sprints`, and belongs to the operator
+who called it.
+
+The lifecycle tail is therefore **level-triggered as well as event-driven**.
+`SprintRecoveryReconciler` runs at boot and on a cadence
+(`engine.sprint_tail_resync_interval_seconds`, pausable via
+`engine.sprint_tail_sweep_paused`) and gives every non-terminal status an
+answer, because a status nothing watches is a sprint that can strand: a
+process dying between the durable backlog write and the spawned tail, a
+swallowed transient store error, or a shutdown drain timing out mid-walk. For
+`PLANNING` the answer is "nothing", and that is a verdict rather than a gap:
+the only `PLANNING` sprint the product produces is the shell an operator
+asked for and is still filling. The sweep writes lifecycle hops and nothing
+else, so it can advance a sprint that was already finished but can never
+invent a delivery.
+
+Each status is drained by **key**, not by offset. The set being paged is the
+one the live observer is editing, and a row that leaves the status between
+two page reads shifts everything below it up by one, so the next offset steps
+straight over whichever row moved into the vacated slot. That row is returned
+by no page at all, and here it is by definition the stranded sprint nothing
+else is looking at. `SprintFilterSpec.after` carries the whole sort key
+(`(sprint_number, id)`, the order both backends return) as a row-value
+predicate, so a page cannot skip: rows that left are simply absent, and every
+remaining row below the anchor is still below it.
+
+It is its own subsystem (`sprint_recovery`, requiring `sprint_service`)
+rather than a step inside the sprint service's wiring, so it starts and stops
+on its own path and reports its own unmet dependency through
+`GET /subsystems`. Its boot pass runs before the cadence starts: a restart is
+when sprints are stranded, and waiting out an interval first would leave the
+board showing work in flight with nothing behind it for that whole interval.
+The pause switch gates that pass too, not just the periodic ones: whether the
+sweep may run is one decision, and asked only inside the scheduler the answer
+at boot was an unconditional yes, so an operator who paused recovery got it
+back on the next deploy, which is the moment it has the most to move. Paused,
+the pass is skipped and the scheduler still starts, because pausing stops the
+sweep running rather than removing the thing the operator later switches back
+on. It is bounded by the smaller of the resync interval and a 30-second
+startup ceiling, because the pass is awaited inline in the lifespan and the
+interval is an operator setting that legitimately reaches a day, which would
+hold startup open past the readiness probe. Only that deadline is waived: a
+`TimeoutError` raised from inside the pass (a driver's socket timeout, say)
+is re-raised rather than logged as the boot bound, since carrying startup on
+past a store that never answered is a different decision from tolerating a
+pass the next one will repeat.
+
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration).
 The template renderer maps these into the root `WorkflowConfig` during

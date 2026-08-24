@@ -17,11 +17,19 @@ backends for a lossless round-trip.
 
 import json
 from collections.abc import Callable, Mapping
-from typing import LiteralString
+from typing import LiteralString, NoReturn
 
-from synthorg.core.persistence_errors import MalformedRowError, QueryError
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import (
+    OPEN_SPRINT_STATUS_VALUES,
+    Sprint,
+    SprintStatus,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.sprint import PERSISTENCE_SPRINT_FAILED
 from synthorg.persistence._shared.rows import RowLike
@@ -205,11 +213,131 @@ def build_sprint_where(
     if filter_spec.project is not None:
         clauses.append(f"project = {placeholder}")
         params.append(filter_spec.project)
+    if filter_spec.org_wide_only:
+        # The org-wide scope is a value the column carries, not the
+        # absence of a predicate: an unset ``project`` means "every
+        # scope", so without this clause there is no way to ask for the
+        # sprints that belong to no project.
+        clauses.append("project IS NULL")
     if filter_spec.status is not None:
         clauses.append(f"status = {placeholder}")
         params.append(filter_spec.status.value)
+    if filter_spec.after is not None:
+        # A row-value comparison rather than the expanded
+        # ``a < ? OR (a = ? AND b < ?)``: it is the same predicate, and
+        # both backends index it, but written out the two forms are one
+        # transcription error apart and the error is invisible (it drops
+        # or duplicates rows only at a page boundary). ``<`` because
+        # ``ORDER_BY`` is descending on both columns, so "after" in
+        # iteration order is "below" in value order.
+        clauses.append(f"(sprint_number, id) < ({placeholder}, {placeholder})")
+        params.extend([filter_spec.after.sprint_number, filter_spec.after.sprint_id])
     where = " AND ".join(clauses) if clauses else "1=1"
     return where, params
+
+
+def open_status_placeholders(placeholder: LiteralString) -> LiteralString:
+    """Render one bound-parameter slot per admissible completion status.
+
+    Derived from :data:`OPEN_SPRINT_STATUS_VALUES` rather than written
+    out, because the values are already derived from it: a hand-written
+    ``IN (?, ?)`` beside a starred parameter tuple silently binds the
+    wrong number of slots the moment a third status becomes admissible.
+
+    Args:
+        placeholder: The backend's bound-parameter token (``?`` / ``%s``).
+
+    Returns:
+        The comma-separated slot list for an ``IN`` predicate.
+    """
+    return ", ".join(placeholder for _ in OPEN_SPRINT_STATUS_VALUES)
+
+
+def complete_task_params(*, sprint_id: str, task_id: str) -> tuple[object, ...]:
+    """Positional params for the guarded completion statement.
+
+    Shared so both backends bind the open statuses from
+    :data:`OPEN_SPRINT_STATUS_VALUES` rather than inlining them: a status
+    literal written into the SQL is a second answer to "when may a task be
+    completed", and it drifts from the enum the service reads the first
+    time the lifecycle changes.
+
+    Args:
+        sprint_id: The sprint whose backlog is being marked.
+        task_id: The delivered task; bound four times (appended, named as
+            the point-bearing key the re-derived total must now include,
+            then checked present in the backlog and absent from the
+            completed set).
+
+    Returns:
+        The params, ordered to match both backends' statement.
+    """
+    return (
+        task_id,
+        task_id,
+        sprint_id,
+        *OPEN_SPRINT_STATUS_VALUES,
+        task_id,
+        task_id,
+    )
+
+
+def add_task_params(
+    *, sprint_id: str, task_id: str, story_points: float, max_tasks: int
+) -> tuple[object, ...]:
+    """Positional params for the guarded backlog-assembly statement.
+
+    Args:
+        sprint_id: The sprint whose backlog is being assembled.
+        task_id: The task to add; bound as the appended array element,
+            twice as the ``task_points`` key (once to write it, once
+            inside the subquery that re-totals the merged mapping), and
+            once more for the not-already-present guard.
+        story_points: What this task commits, bound alongside each of the
+            two ``task_points`` writes.
+        max_tasks: The backlog cap the statement holds against the row's
+            own current length.
+
+    Returns:
+        The params, ordered to match both backends' statement.
+    """
+    points = float(story_points)
+    return (
+        task_id,
+        task_id,
+        points,
+        task_id,
+        points,
+        sprint_id,
+        SprintStatus.PLANNING.value,
+        task_id,
+        max_tasks,
+    )
+
+
+def raise_existing_sprint(sprint_id: str) -> NoReturn:
+    """Refuse a ``save`` aimed at a sprint that is already persisted.
+
+    Shared so both backends refuse in the same words: the row count is
+    what each of them observes, but what the refusal MEANS is one fact
+    about the sprint contract, and two hand-written messages are two
+    chances to describe it differently.
+
+    Args:
+        sprint_id: The row the insert conflicted with.
+
+    Raises:
+        ConstraintViolationError: Always; the caller reached this only
+            because a row already carries *sprint_id*.
+    """
+    msg = (
+        f"sprint {sprint_id!r} already exists; save creates a sprint and "
+        "every later change goes through transition_if, add_task_if_planning "
+        "or complete_task_if, each of which holds its guard against the "
+        "row's current value"
+    )
+    logger.warning(PERSISTENCE_SPRINT_FAILED, operation="save", sprint_id=sprint_id)
+    raise ConstraintViolationError(msg, constraint="sprints.id")
 
 
 def validate_sprint_update_keys(updates: dict[str, object]) -> None:
@@ -227,9 +355,13 @@ def validate_sprint_update_keys(updates: dict[str, object]) -> None:
 
 __all__ = [
     "SPRINT_COLUMNS",
+    "add_task_params",
     "build_sprint_where",
+    "complete_task_params",
     "encode_float_map",
     "encode_str_tuple",
+    "open_status_placeholders",
+    "raise_existing_sprint",
     "row_to_sprint",
     "sprint_save_params",
     "validate_sprint_update_keys",

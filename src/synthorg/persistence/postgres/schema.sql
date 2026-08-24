@@ -2507,6 +2507,17 @@ CREATE INDEX idx_sprints_project_status ON sprints (project, status);
 CREATE INDEX idx_sprints_number_id ON sprints (sprint_number DESC, id DESC);
 CREATE UNIQUE INDEX idx_sprints_org_wide_number ON sprints (sprint_number)
 WHERE project IS NULL;
+-- One non-completed sprint per scope. The SprintService asks the same
+-- question before auto-creating a sprint ("is anything here not completed"),
+-- but a check-then-act guarded only by a per-process lock lets two replicas
+-- both pass it, and the answer they act on has to be the database's.
+-- COALESCE rather than a bare (project) because both engines treat NULLs as
+-- distinct in a unique index, which would leave the org-wide scope
+-- unguarded; '' cannot collide with a real project, which the column's own
+-- CHECK holds to non-blank.
+CREATE UNIQUE INDEX idx_sprints_one_open_per_scope
+ON sprints (COALESCE(project, ''))
+WHERE status != 'completed';
 
 CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),

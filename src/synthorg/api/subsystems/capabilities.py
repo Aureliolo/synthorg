@@ -433,6 +433,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(EngineStateSlice).run_recovery_scheduler is not None,
     ),
     Capability(
+        id=CapabilityId.SPRINT_RECOVERY,
+        present=lambda s: s.slice(EngineStateSlice).sprint_tail_scheduler is not None,
+    ),
+    Capability(
         id=CapabilityId.QUOTA_POLLER,
         present=lambda s: s.slice(BudgetStateSlice).quota_poller is not None,
     ),

@@ -12,9 +12,9 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -41,16 +41,79 @@ if TYPE_CHECKING:
         end_date: object
 
 
+class SprintPageCursor(BaseModel):
+    """The last row a page returned, naming where the next one starts.
+
+    Carries the whole sort key rather than the id alone, because the key
+    is ``(sprint_number DESC, id DESC)`` and half of it decides nothing:
+    two sprints in different scopes share a number, so an id-only cursor
+    would have to fall back to comparing ids across sprint numbers, which
+    is a different order from the one the rows come back in.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    sprint_number: int = Field(description="The last row's sprint number")
+    sprint_id: NotBlankStr = Field(description="The last row's id")
+
+
 class SprintFilterSpec(BaseModel):
     """Filter spec for ``SprintRepository.query``.
 
     All fields optional; an empty spec matches every sprint.
+
+    ``project`` and ``org_wide_only`` answer two different questions that
+    a bare ``project=None`` cannot tell apart. Unset, ``project`` is the
+    absence of a project predicate, so the spec matches every scope;
+    ``org_wide_only`` narrows to the rows a ``Sprint`` model marks
+    org-wide by carrying no project at all. Asking for both at once names
+    two contradictory scopes and is refused rather than silently
+    resolved.
+
+    ``after`` is the keyset half of pagination, and it is a predicate on
+    rows exactly like the others, which is why it lives here rather than
+    beside ``limit``: it narrows the set to what sorts below a key. A
+    caller draining a set that another writer is editing needs it,
+    because ``offset`` counts rows rather than naming one, so a row that
+    leaves the filtered set between two page reads shifts everything
+    below it up by one and the next ``offset`` steps straight over the
+    row that took its place. That row is silently never returned, and in
+    a recovery sweep it is precisely the stranded row nothing else is
+    watching. Anchored to the last row actually seen, a page cannot skip:
+    rows that left are simply absent, and every remaining row below the
+    anchor is still below it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     project: NotBlankStr | None = Field(default=None)
     status: SprintStatus | None = Field(default=None)
+    org_wide_only: bool = Field(
+        default=False,
+        description="Match only sprints with no owning project",
+    )
+    after: SprintPageCursor | None = Field(
+        default=None,
+        description="Match only rows sorting below this key",
+    )
+
+    @model_validator(mode="after")
+    def _validate_scope(self) -> Self:
+        """Reject a spec asking for one project and the org-wide scope.
+
+        Returns:
+            ``self`` unchanged when the requested scope is coherent.
+
+        Raises:
+            ValueError: When ``org_wide_only`` is paired with a project.
+        """
+        if self.org_wide_only and self.project is not None:
+            msg = (
+                "org_wide_only excludes every owned project, so it cannot "
+                f"be combined with project={self.project!r}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
@@ -62,10 +125,16 @@ class SprintRepository(
     """CRUD + state-transition + filtered query for agile sprints.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). Backlog mutations during ``PLANNING`` / ``ACTIVE`` (task
-    ids, story points) go through the generic :meth:`save` upsert; the
-    linear lifecycle hops go through :meth:`transition_if` so two
-    concurrent completions cannot both advance the same sprint.
+    (ADR-0001). EVERY change a persisted sprint takes is guarded, because
+    each of them is a read-modify-write that two processes can enter at
+    once: the linear lifecycle hops go through :meth:`transition_if`, the
+    backlog append through :meth:`add_task_if_planning`, and the
+    completion append through :meth:`complete_task_if`. :meth:`save`
+    therefore CREATES a sprint and nothing else, and refuses an id that
+    already exists rather than overwriting it: an unconditional whole-row
+    write is exactly the pre-image overwrite each guarded statement was
+    added to remove, so leaving one reachable would let a caller undo all
+    three by taking the path that skips them.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise
@@ -74,10 +143,18 @@ class SprintRepository(
 
     @override
     async def save(self, entity: Sprint, /) -> None:
-        """Upsert a sprint row keyed by ``id``.
+        """Insert a new sprint row keyed by ``id``.
+
+        Narrower than the generic upsert, and deliberately so: see the
+        class docstring for why a persisted sprint has no unconditional
+        write path. Which scope may hold an open sprint, and which
+        number it may carry, stay the database's own indexes to decide,
+        so a caller racing another creator is refused by the same error
+        as a caller re-saving a row.
 
         Raises:
-            ConstraintViolationError: On constraint violations.
+            ConstraintViolationError: When a sprint already carries this
+                ``id``, and on the scope / number constraint violations.
             QueryError: On other database errors.
         """
         ...
@@ -170,5 +247,124 @@ class SprintRepository(
 
         Raises:
             QueryError: If the database query fails.
+        """
+        ...
+
+    async def complete_task_if(
+        self,
+        /,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+    ) -> Sprint | None:
+        """Append *task_id* to ``completed_task_ids`` iff it is absent.
+
+        Bespoke under ADR-0001 D7 (a domain invariant callers must not
+        bypass). :meth:`save` cannot express it: that writes the whole
+        entity, so a caller holding a pre-image from before a concurrent
+        completion overwrites it and one task's delivery is lost for
+        good. This is one conditional statement, so the read and the
+        write cannot be interleaved.
+
+        The guard holds four things at once: the row exists, its status
+        is one a completion is admissible in (``active`` / ``in_review``),
+        *task_id* is in the backlog, and it is not already completed.
+
+        ``story_points_completed`` is RE-DERIVED in the same statement as
+        the sum of ``task_points`` over the resulting completed set,
+        never accumulated. Accumulating it took a second, independent
+        addition order: ``story_points_committed`` is summed in Python as
+        tasks are added, so for non-dyadic floats the two totals differ
+        by an ULP and the table's
+        ``CHECK (story_points_completed <= story_points_committed)``
+        refuses the LAST completion of a sprint. That refusal is
+        unrecoverable by construction, because nothing re-fires a task's
+        completion and the recovery sweep never re-derives delivery, so
+        the sprint could never read as delivered and its scope stayed
+        locked by the one-open-per-scope index. A derived value has no
+        fold order to disagree about, and it also means no caller can
+        supply points unrelated to what the task actually committed.
+
+        Args:
+            sprint_id: The sprint whose backlog is being marked.
+            task_id: The delivered task.
+
+        Returns:
+            The sprint as it stands after the append, or ``None`` when
+            the guard did not match and nothing was written. ``None``
+            covers every non-match identically; callers that need to tell
+            "already completed" from "not in this backlog" apart make
+            that distinction before calling, since this is the
+            cross-process backstop rather than the error surface.
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+            MalformedRowError: When the derived row breaches a bound the
+                model holds and the schema does not, in which case
+                nothing is written. This statement derives
+                ``story_points_completed`` the same way its sibling
+                derives the committed total, so it can produce a row no
+                input row would have been.
+        """
+        ...
+
+    async def add_task_if_planning(
+        self,
+        /,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+        story_points: float,
+        max_tasks: int,
+    ) -> Sprint | None:
+        """Append *task_id* to the backlog iff the sprint is still PLANNING.
+
+        Bespoke under ADR-0001 D7, and for the same reason as
+        :meth:`complete_task_if`: assembling a backlog through
+        :meth:`save` is a read-modify-write over the whole entity, so two
+        requests that each add a different task race, and the second
+        overwrites ``task_ids``, ``task_points`` and
+        ``story_points_committed`` with a pre-image that never saw the
+        first. One task then vanishes from the backlog silently.
+
+        A sprint being assembled is not less contended than one being
+        worked: it sits behind an HTTP endpoint any number of callers can
+        reach. The status guard additionally stops an assembly write
+        landing on a sprint that has since started, which would otherwise
+        revert its status and wipe its ``start_date`` without the
+        lifecycle machine ever seeing the hop.
+
+        Args:
+            sprint_id: The sprint whose backlog is being assembled.
+            task_id: The task to add.
+            story_points: What this task commits, recorded per task in
+                ``task_points`` so completion credits exactly what
+                assembly committed, and re-totalled into
+                ``story_points_committed``. Must be NON-NEGATIVE, and must
+                not take the sprint's total past
+                :data:`STORY_POINTS_CEILING`: both are the caller's to
+                hold, because the statement derives the total rather than
+                being handed one, and neither table carries a CHECK for
+                them. Violating either produces a row the ``Sprint`` model
+                refuses, which is raised rather than written.
+            max_tasks: The backlog cap, held IN the guard against the
+                row's own current length. It is service configuration
+                rather than a row invariant, so no CHECK holds it and a
+                caller checking it first would let two requests reading
+                one pre-image both find room and both append, leaving a
+                durable over-cap backlog. Declining for this reason is
+                indistinguishable in the return value from the other
+                declines, which the caller re-reads to tell apart.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match: no such row, not PLANNING, the task is already in
+            the backlog, or the backlog is at *max_tasks*.
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+            MalformedRowError: When the derived row breaches a bound the
+                model holds and the schema does not, in which case
+                nothing is written.
         """
         ...

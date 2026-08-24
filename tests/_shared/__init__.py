@@ -47,6 +47,7 @@ from tests._shared.response_shapes import (
     assert_no_card_shaped_run,
 )
 from tests._shared.settings_fake import FakeSettingsService
+from tests._shared.sprint_doubles import FakeSprintRepository
 from tests._shared.staffing import (
     role_holder,
     roster_capability_policy,
@@ -74,6 +75,7 @@ __all__ = [
     "FakeProcess",
     "FakeSandbox",
     "FakeSettingsService",
+    "FakeSprintRepository",
     "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",

@@ -44,6 +44,7 @@ from synthorg.engine.workflow.execution_service import (
 from synthorg.engine.workflow.kanban_service import KanbanBoardService
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.engine.workflow.sprint_service import SprintService
+from synthorg.engine.workflow.sprint_tail_scheduler import SprintTailScheduler
 from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowService,
 )
@@ -70,6 +71,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     evolution_service: EvolutionService | None = None
     kanban_board_service: KanbanBoardService | None = None
     sprint_service: SprintService | None = None
+    sprint_tail_scheduler: SprintTailScheduler | None = None
     project_rollup_service: ProjectRollupService | None = None
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None
