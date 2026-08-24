@@ -19,6 +19,10 @@ from synthorg.engine.workflow.sprint_lifecycle import (
     Sprint,
     SprintStatus,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import SPRINT_STATUS_TRANSITIONED
+
+logger = get_logger(__name__)
 
 # Story-point sizing per complexity (Fibonacci-ish). A fixed sizing
 # convention rather than a user knob; the sprint velocity maths only needs
@@ -47,10 +51,21 @@ TERMINAL_TASK_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
 NON_TERMINAL_TASK_STATUSES: Final[tuple[TaskStatus, ...]] = tuple(
     status for status in TaskStatus if status not in TERMINAL_TASK_STATUSES
 )
-# Statuses in which a sprint still accepts task completions.
-OPEN_SPRINT_STATUSES: Final[frozenset[SprintStatus]] = frozenset(
-    {SprintStatus.ACTIVE, SprintStatus.IN_REVIEW}
-)
+
+
+def log_sprint_transition(sprint: Sprint, previous: SprintStatus) -> None:
+    """Emit the state-transition INFO log after a persisted hop.
+
+    Lives here rather than on the service because the tail walk and the
+    recovery sweep both persist hops, and a per-caller copy is how the
+    same event comes to be logged with three different key sets.
+    """
+    logger.info(
+        SPRINT_STATUS_TRANSITIONED,
+        sprint_id=sprint.id,
+        from_status=previous.value,
+        to_status=sprint.status.value,
+    )
 
 
 def story_points_for(task: Task) -> float:
@@ -106,8 +121,8 @@ def open_backlog_tasks(candidates: Sequence[Task], *, cap: int) -> tuple[Task, .
 
 __all__ = [
     "NON_TERMINAL_TASK_STATUSES",
-    "OPEN_SPRINT_STATUSES",
     "TERMINAL_TASK_STATUSES",
+    "log_sprint_transition",
     "next_status",
     "open_backlog_tasks",
     "story_points_for",

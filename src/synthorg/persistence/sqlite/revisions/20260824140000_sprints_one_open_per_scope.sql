@@ -1,0 +1,38 @@
+-- One non-completed sprint per scope, enforced by the database.
+--
+-- The rule already existed in the service: before auto-creating a sprint,
+-- SprintService asks whether the project has anything that is not completed,
+-- and returns if it does. That check is guarded only by a per-process
+-- asyncio.Lock, so it holds exactly as long as one process is the only
+-- writer. Nothing at this level stopped a second replica.
+--
+-- The reachable route is subtler than "both compute the same number", which
+-- UNIQUE (project, sprint_number) already refuses. _ensure_sprint_for_work
+-- reads the project TWICE: once to ask whether anything is open, and again
+-- inside _build_planning_sprint to compute 1 + max(sprint_number). A replica
+-- that passes the first read, then sees the other replica's freshly-inserted
+-- sprint N on the second, computes N+1 and inserts it. Two open sprints,
+-- different numbers, both accepted, and the same task sits in both.
+--
+-- The predicate is exactly the service's own check. Anything narrower leaves
+-- a window in which the service passes and the database still accepts.
+--
+-- COALESCE(project, '') rather than a bare (project): both engines treat
+-- NULLs as distinct in a unique index, so a bare column would leave the
+-- org-wide scope (project IS NULL) unguarded and admit two open org-wide
+-- sprints. '' cannot collide with a real project, because the column carries
+-- CHECK (project IS NULL OR LENGTH(TRIM(project)) > 0).
+--
+-- No repair pass precedes this. A database already holding two open sprints
+-- for one scope would fail this CREATE, which is the honest outcome: nothing
+-- can merge two divergent backlogs without deciding which delivery record is
+-- real, and completing the surplus rows would write undelivered work into the
+-- velocity history as delivered.
+--
+-- ``IF NOT EXISTS`` keeps this re-runnable: yoyo keys applied revisions on the
+-- migration id rather than on content, so a database that already carries the
+-- index reads as not having run this one and gets the file again.
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sprints_one_open_per_scope
+ON sprints (COALESCE(project, ''))
+WHERE status != 'completed';

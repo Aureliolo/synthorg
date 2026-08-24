@@ -88,6 +88,38 @@ SPRINT_BACKLOG_SAVE_FAILED: str = "workflow.sprint.backlog_save_failed"
 set has diverged from actual task state and needs operator reconciliation
 (the task's own status is authoritative and unaffected)."""
 
+SPRINT_CREATE_RACE_LOST: str = "workflow.sprint.create_race_lost"
+"""Another writer opened this scope's sprint first, so the partial unique
+index refused this insert. Not a failure: the scope has the sprint it needs
+and this process joins it on the next event."""
+
+SPRINT_RESUMED: str = "workflow.sprint.resumed"
+"""The recovery sweep moved a sprint nothing else was left to move: a
+lifecycle hop whose triggering event was lost with the process that was
+handling it."""
+
+SPRINT_TAIL_SWEEP_STARTED: str = "workflow.sprint.tail_sweep_started"
+"""A sprint recovery pass began (boot or periodic)."""
+
+SPRINT_TAIL_SWEEP_COMPLETE: str = "workflow.sprint.tail_sweep_complete"
+"""A sprint recovery pass finished, with what it found and did."""
+
+SPRINT_TAIL_SWEEP_FAILED: str = "workflow.sprint.tail_sweep_failed"
+"""A sprint recovery pass could not read or advance a sprint. One unreadable
+sprint never stops the pass; the rest still need picking up."""
+
+SPRINT_TAIL_SWEEP_PAUSED: str = "workflow.sprint.tail_sweep_paused"
+"""An operator has paused the sprint recovery sweep; this tick did nothing."""
+
+SPRINT_TAIL_SCHEDULER_STARTED: str = "workflow.sprint.tail_scheduler_started"
+"""The sprint recovery scheduler's background loop started."""
+
+SPRINT_TAIL_SCHEDULER_STOPPED: str = "workflow.sprint.tail_scheduler_stopped"
+"""The sprint recovery scheduler's background loop stopped cleanly."""
+
+SPRINT_TAIL_SCHEDULER_FAILED: str = "workflow.sprint.tail_scheduler_failed"
+"""The sprint recovery scheduler's loop or lifecycle failed."""
+
 SPRINT_BACKLOG_INVALID: str = "workflow.sprint.backlog_invalid"
 """Invalid sprint backlog operation attempted."""
 

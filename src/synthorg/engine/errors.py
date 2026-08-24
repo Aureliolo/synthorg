@@ -875,6 +875,28 @@ class SprintTransitionConflictError(SprintError, ConflictError):
     default_message: ClassVar[str] = "Sprint is not in the expected state"
 
 
+class SprintAlreadyOpenError(SprintError, ConflictError):
+    """Raised when a scope already has a sprint that is not completed.
+
+    Maps to 409 (conflict). A project runs one sprint at a time, and an
+    org-wide sprint (one with no project) is its own scope under the same
+    rule. The invariant is held by a partial unique index rather than by
+    the service's own check alone, because that check is a read followed
+    by a write and two processes can both pass it; this error is what the
+    caller sees whichever of the two refused, so the operator gets the
+    same answer with the same message either way.
+
+    Distinct from :class:`SprintTransitionConflictError`, which says a
+    sprint is in the wrong *state* for a hop. This one says the scope is
+    occupied, and names the occupier so the caller can go and finish it.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.SPRINT_ALREADY_OPEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "A sprint is already open for this scope"
+
+
 class SprintTaskNotInBacklogError(SprintError, ValidationError):
     """Raised when work is requested on a task outside the active sprint.
 

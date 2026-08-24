@@ -292,6 +292,38 @@ The `/sprints` REST surface exposes explicit create / add-task / start /
 advance control, and the Kanban board applies an advisory gate: a move into
 In-Progress is rejected for a task outside the active sprint backlog.
 
+**Every decision a running sprint takes is settled by the database**, because
+each is a read followed by a write that two processes can enter at once and
+multi-process is a supported topology. A per-process lock would hold only
+while one process is the only writer.
+
+- **Which task is delivered**: `SprintRepository.complete_task_if`, one
+  conditional statement appending to `completed_task_ids` only when the id is
+  absent. A whole-entity write cannot express it, and the consequence of
+  losing one is worse than a lost row: `len(completed_task_ids)` never reaches
+  `len(task_ids)`, so the sprint can never read as delivered and no completion
+  event remains to re-trigger the tail.
+- **Which lifecycle state it is in**: `transition_if`.
+- **Who opens a scope's sprint**: a partial unique index
+  (`idx_sprints_one_open_per_scope`) admitting one non-completed sprint per
+  scope. A project runs one sprint at a time, and an org-wide sprint (one with
+  no project) is its own scope under the same rule; `POST /sprints` refuses a
+  second with a 409 naming the sprint in the way. The index keys on
+  `COALESCE(project, '')` because both engines treat NULLs as distinct, which
+  would otherwise leave the org-wide scope unguarded.
+
+The lifecycle tail is therefore **level-triggered as well as event-driven**.
+`SprintRecoveryReconciler` runs at boot and on a cadence
+(`engine.sprint_tail_resync_interval_seconds`, pausable via
+`engine.sprint_tail_sweep_paused`) and gives every non-terminal status an
+answer, because a status nothing watches is a sprint that can strand: a
+process dying between the durable backlog write and the spawned tail, a
+swallowed transient store error, a shutdown drain timing out mid-walk, or an
+activation compare-and-set lost after creation, which under the index would
+block its scope permanently. The sweep writes lifecycle hops and nothing
+else, so it can advance a sprint that was already finished but can never
+invent a delivery.
+
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration).
 The template renderer maps these into the root `WorkflowConfig` during

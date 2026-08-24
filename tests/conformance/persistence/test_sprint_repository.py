@@ -16,6 +16,13 @@ Covers:
   ``planning -> active -> in_review -> retrospective -> completed``;
   state mismatch returns ``False``.
 * Unknown update keys on ``transition_if`` raise :class:`QueryError`.
+* ``complete_task_if``: the guarded backlog append, including the
+  lost-update case a whole-entity ``save`` cannot survive.
+* One non-completed sprint per scope, enforced by the partial unique
+  index, for both the per-project and the org-wide scope.
+
+Every scenario that needs two sprints for one scope completes the first
+one, because an open pair is exactly what the database now refuses.
 """
 
 from typing import cast
@@ -85,6 +92,49 @@ def _make_sprint(  # noqa: PLR0913 -- test helper carries the sprint field set
         ),
         story_points_committed=story_points_committed,
         story_points_completed=story_points_completed,
+    )
+
+
+def _completed_sprint(*, sprint_id: str, project: str | None, number: int) -> Sprint:
+    """Build a COMPLETED sprint, the only kind that frees its scope.
+
+    Returns:
+        A terminal sprint for *project*, so a second sprint in the same
+        scope is admissible.
+    """
+    return _make_sprint(
+        sprint_id=sprint_id,
+        project=project,
+        sprint_number=number,
+        status=SprintStatus.COMPLETED,
+        start_date=_START,
+        end_date=_END,
+    )
+
+
+def _open_sprint(
+    *,
+    sprint_id: str,
+    project: str | None = "proj-x",
+    number: int = 1,
+    task_ids: tuple[str, ...] = ("task-a", "task-b"),
+    completed_task_ids: tuple[str, ...] = (),
+    story_points_completed: float = 0.0,
+) -> Sprint:
+    """Build an ACTIVE sprint, the state in which completions are accepted.
+
+    Returns:
+        An ACTIVE sprint carrying the supplied backlog.
+    """
+    return _make_sprint(
+        sprint_id=sprint_id,
+        project=project,
+        sprint_number=number,
+        status=SprintStatus.ACTIVE,
+        task_ids=task_ids,
+        completed_task_ids=completed_task_ids,
+        story_points_completed=story_points_completed,
+        start_date=_START,
     )
 
 
@@ -178,11 +228,13 @@ class TestSprintRepository:
 
     async def test_query_by_status(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
-        await repo.save(_make_sprint(sprint_id="q1", sprint_number=1))
+        # Different projects: one open sprint per scope is a database rule
+        # now, so two open rows have to belong to two scopes.
+        await repo.save(_make_sprint(sprint_id="q1", project="q-plan"))
         await repo.save(
             _make_sprint(
                 sprint_id="q2",
-                sprint_number=2,
+                project="q-active",
                 status=SprintStatus.ACTIVE,
                 start_date=_START,
             )
@@ -194,7 +246,9 @@ class TestSprintRepository:
 
     async def test_count_matches_query(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
-        await repo.save(_make_sprint(sprint_id="c1", project="gamma", sprint_number=1))
+        # A project accumulates sprints over time, so its history is one
+        # completed row plus the open one that succeeded it.
+        await repo.save(_completed_sprint(sprint_id="c1", project="gamma", number=1))
         await repo.save(_make_sprint(sprint_id="c2", project="gamma", sprint_number=2))
         await repo.save(_make_sprint(sprint_id="c3", project="delta", sprint_number=1))
 
@@ -204,7 +258,7 @@ class TestSprintRepository:
 
     async def test_list_items_newest_first(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
-        await repo.save(_make_sprint(sprint_id="l1", project="p", sprint_number=1))
+        await repo.save(_completed_sprint(sprint_id="l1", project="p", number=1))
         await repo.save(_make_sprint(sprint_id="l2", project="p", sprint_number=2))
 
         rows = await repo.list_items()
@@ -290,8 +344,11 @@ class TestSprintRepository:
     async def test_unique_project_sprint_number(
         self, backend: PersistenceBackend
     ) -> None:
+        # The first sprint is COMPLETED so the one-open-per-scope index is
+        # satisfied and the number collision is the only thing left to fail
+        # on; an open pair would raise for the other reason.
         repo = _repo(backend)
-        await repo.save(_make_sprint(sprint_id="u1", project="proj-u", sprint_number=1))
+        await repo.save(_completed_sprint(sprint_id="u1", project="proj-u", number=1))
         with pytest.raises(ConstraintViolationError):
             await repo.save(
                 _make_sprint(sprint_id="u2", project="proj-u", sprint_number=1)
@@ -301,7 +358,7 @@ class TestSprintRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        await repo.save(_make_sprint(sprint_id="ow1", project=None, sprint_number=1))
+        await repo.save(_completed_sprint(sprint_id="ow1", project=None, number=1))
         with pytest.raises(ConstraintViolationError):
             await repo.save(
                 _make_sprint(sprint_id="ow2", project=None, sprint_number=1)
@@ -318,3 +375,248 @@ class TestSprintRepository:
     ) -> None:
         repo = _repo(backend)
         assert await repo.delete(NotBlankStr("nope")) is False
+
+
+class TestCompleteTaskIf:
+    """The guarded backlog append.
+
+    ``save`` cannot express this: it writes the whole entity, so a caller
+    holding a stale pre-image overwrites whatever landed in between. Every
+    case here is about what the guard refuses.
+    """
+
+    async def test_appends_and_credits_points(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_open_sprint(sprint_id="ct-1"))
+
+        post = await repo.complete_task_if(
+            NotBlankStr("ct-1"), NotBlankStr("task-a"), 5.0
+        )
+
+        assert post is not None
+        assert post.completed_task_ids == ("task-a",)
+        assert post.story_points_completed == pytest.approx(5.0)
+        assert post.task_ids == ("task-a", "task-b")
+
+    async def test_second_call_for_one_task_is_a_no_op(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_open_sprint(sprint_id="ct-2"))
+        await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"), 5.0)
+
+        assert (
+            await repo.complete_task_if(NotBlankStr("ct-2"), NotBlankStr("task-a"), 5.0)
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("ct-2"))
+        assert fetched is not None
+        assert fetched.completed_task_ids == ("task-a",)
+        assert fetched.story_points_completed == pytest.approx(5.0)
+
+    async def test_concurrent_completions_of_different_tasks_both_land(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The lost-update regression this whole change exists for.
+
+        Both callers hold the same pre-image, as two processes handling
+        two completions in the same window do. Under the previous
+        read-modify-``save`` path the second write clobbered the first and
+        one task's completion was gone permanently.
+        """
+        repo = _repo(backend)
+        await repo.save(_open_sprint(sprint_id="ct-3"))
+        pre = await repo.get(NotBlankStr("ct-3"))
+        assert pre is not None
+        assert pre.completed_task_ids == ()
+
+        await repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-a"), 5.0)
+        await repo.complete_task_if(NotBlankStr("ct-3"), NotBlankStr("task-b"), 3.0)
+
+        fetched = await repo.get(NotBlankStr("ct-3"))
+        assert fetched is not None
+        assert set(fetched.completed_task_ids) == {"task-a", "task-b"}
+        assert fetched.story_points_completed == pytest.approx(8.0)
+
+    async def test_refuses_task_outside_the_backlog(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_open_sprint(sprint_id="ct-4"))
+
+        assert (
+            await repo.complete_task_if(
+                NotBlankStr("ct-4"), NotBlankStr("task-elsewhere"), 5.0
+            )
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("ct-4"))
+        assert fetched is not None
+        assert fetched.completed_task_ids == ()
+        assert fetched.story_points_completed == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        ("status", "start_date", "end_date"),
+        [
+            (SprintStatus.PLANNING, None, None),
+            (SprintStatus.RETROSPECTIVE, _START, None),
+            (SprintStatus.COMPLETED, _START, _END),
+        ],
+    )
+    async def test_refuses_a_sprint_that_is_not_open(
+        self,
+        backend: PersistenceBackend,
+        status: SprintStatus,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="ct-5",
+                status=status,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        )
+
+        assert (
+            await repo.complete_task_if(NotBlankStr("ct-5"), NotBlankStr("task-a"), 5.0)
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("ct-5"))
+        assert fetched is not None
+        assert fetched.completed_task_ids == ()
+
+    async def test_accepts_a_sprint_in_review(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="ct-6",
+                status=SprintStatus.IN_REVIEW,
+                start_date=_START,
+            )
+        )
+
+        post = await repo.complete_task_if(
+            NotBlankStr("ct-6"), NotBlankStr("task-a"), 5.0
+        )
+
+        assert post is not None
+        assert post.completed_task_ids == ("task-a",)
+
+    async def test_returns_none_for_a_missing_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        assert (
+            await repo.complete_task_if(
+                NotBlankStr("no-such-sprint"), NotBlankStr("task-a"), 5.0
+            )
+            is None
+        )
+
+
+class TestOneOpenSprintPerScope:
+    """The partial unique index that decides the create race.
+
+    The predicate matches ``SprintService``'s own "is anything open here"
+    check exactly, so the database refuses what a check-then-act between
+    two processes would otherwise wave through.
+    """
+
+    async def test_refuses_a_second_open_sprint_for_one_project(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(sprint_id="os-1", project="scoped", sprint_number=1)
+        )
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_sprint(sprint_id="os-2", project="scoped", sprint_number=2)
+            )
+
+    async def test_refuses_a_second_open_org_wide_sprint(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """NULL project is its own scope, not an absence of one.
+
+        Both engines treat NULLs as distinct in a unique index, so a bare
+        ``(project)`` index would leave this pair admissible.
+        """
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="ow-a", project=None, sprint_number=1))
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_sprint(sprint_id="ow-b", project=None, sprint_number=2)
+            )
+
+    async def test_allows_a_new_sprint_once_the_previous_completed(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_completed_sprint(sprint_id="seq-1", project="seq", number=1))
+        await repo.save(_make_sprint(sprint_id="seq-2", project="seq", sprint_number=2))
+
+        rows = await repo.query(SprintFilterSpec(project="seq"))
+        assert {s.id for s in rows} == {"seq-1", "seq-2"}
+
+    async def test_open_sprints_in_different_projects_coexist(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="mp-1", project="one"))
+        await repo.save(_make_sprint(sprint_id="mp-2", project="two"))
+
+        assert await repo.count(SprintFilterSpec()) == 2
+
+    async def test_lifecycle_advance_does_not_trip_the_index(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A hop between two non-completed statuses keeps the same key.
+
+        The index is on the scope, not the status, so advancing must not
+        collide with the row being advanced.
+        """
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="adv", project="advancing"))
+
+        assert await repo.transition_if(
+            NotBlankStr("adv"),
+            SprintStatus.PLANNING,
+            SprintStatus.ACTIVE,
+            start_date=_START,
+        )
+
+
+class TestOrgWideScopeFilter:
+    """``project=None`` is "every project"; ``org_wide_only`` is the scope."""
+
+    async def test_org_wide_only_returns_just_the_null_project_rows(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="sc-org", project=None))
+        await repo.save(_make_sprint(sprint_id="sc-proj", project="named"))
+
+        rows = await repo.query(SprintFilterSpec(org_wide_only=True))
+        assert [s.id for s in rows] == ["sc-org"]
+        assert await repo.count(SprintFilterSpec(org_wide_only=True)) == 1
+
+    async def test_unset_project_still_matches_every_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="sc-org2", project=None))
+        await repo.save(_make_sprint(sprint_id="sc-proj2", project="named"))
+
+        rows = await repo.query(SprintFilterSpec())
+        assert {s.id for s in rows} == {"sc-org2", "sc-proj2"}

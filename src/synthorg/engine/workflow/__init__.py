@@ -21,7 +21,6 @@ from synthorg.engine.workflow.kanban_columns import (
 )
 from synthorg.engine.workflow.sprint_backlog import (
     add_task_to_sprint,
-    complete_task_in_sprint,
     remove_task_from_sprint,
 )
 from synthorg.engine.workflow.sprint_config import SprintConfig
@@ -54,7 +53,6 @@ __all__ = [
     "add_task_to_sprint",
     "calculate_average_velocity",
     "check_wip_limit",
-    "complete_task_in_sprint",
     "record_velocity",
     "remove_task_from_sprint",
     "resolve_task_transitions",

@@ -21,7 +21,11 @@ from typing import LiteralString
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import (
+    OPEN_SPRINT_STATUS_VALUES,
+    Sprint,
+    SprintStatus,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.sprint import PERSISTENCE_SPRINT_FAILED
 from synthorg.persistence._shared.rows import RowLike
@@ -205,11 +209,48 @@ def build_sprint_where(
     if filter_spec.project is not None:
         clauses.append(f"project = {placeholder}")
         params.append(filter_spec.project)
+    if filter_spec.org_wide_only:
+        # The org-wide scope is a value the column carries, not the
+        # absence of a predicate: an unset ``project`` means "every
+        # scope", so without this clause there is no way to ask for the
+        # sprints that belong to no project.
+        clauses.append("project IS NULL")
     if filter_spec.status is not None:
         clauses.append(f"status = {placeholder}")
         params.append(filter_spec.status.value)
     where = " AND ".join(clauses) if clauses else "1=1"
     return where, params
+
+
+def complete_task_params(
+    *, sprint_id: str, task_id: str, story_points: float
+) -> tuple[object, ...]:
+    """Positional params for the guarded completion statement.
+
+    Shared so both backends bind the open statuses from
+    :data:`OPEN_SPRINT_STATUS_VALUES` rather than inlining them: a status
+    literal written into the SQL is a second answer to "when may a task be
+    completed", and it drifts from the enum the service reads the first
+    time the lifecycle changes.
+
+    Args:
+        sprint_id: The sprint whose backlog is being marked.
+        task_id: The delivered task; bound three times (appended, then
+            checked present in the backlog and absent from the completed
+            set).
+        story_points: Points to credit.
+
+    Returns:
+        The params, ordered to match both backends' statement.
+    """
+    return (
+        task_id,
+        float(story_points),
+        sprint_id,
+        *OPEN_SPRINT_STATUS_VALUES,
+        task_id,
+        task_id,
+    )
 
 
 def validate_sprint_update_keys(updates: dict[str, object]) -> None:
@@ -228,6 +269,7 @@ def validate_sprint_update_keys(updates: dict[str, object]) -> None:
 __all__ = [
     "SPRINT_COLUMNS",
     "build_sprint_where",
+    "complete_task_params",
     "encode_float_map",
     "encode_str_tuple",
     "row_to_sprint",

@@ -255,6 +255,19 @@ async def _run_shutdown(  # noqa: PLR0913
     # status that nothing re-enters once every task is already completed.
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
+    # Stop the recovery sweep BEFORE draining, so it cannot start advancing a
+    # sprint the drain is about to stop waiting for. Whatever either of them
+    # leaves half-walked is picked up by the next process's boot pass, which
+    # is the whole reason the sweep exists.
+    _sprint_sweep = app_state.slice(EngineStateSlice).sprint_tail_scheduler
+    if _sprint_sweep is not None:
+        await _try_stop(
+            _sprint_sweep.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop the sprint recovery sweep",
+            timeout=_SPRINT_DRAIN_OUTER_SECONDS,
+            service="sprint_tail_scheduler_stop",
+        )
     _sprint_service = app_state.slice(EngineStateSlice).sprint_service
     if _sprint_service is not None:
         await _try_stop(

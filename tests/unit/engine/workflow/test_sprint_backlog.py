@@ -1,10 +1,15 @@
-"""Tests for sprint backlog management functions."""
+"""Tests for sprint backlog assembly functions.
+
+Recording a delivery is not tested here: it is a guarded repository write
+(``complete_task_if``), covered by the dual-backend conformance suite,
+because the guard it depends on is the database's and an in-memory
+rehearsal of it would assert nothing about the thing that runs.
+"""
 
 import pytest
 
 from synthorg.engine.workflow.sprint_backlog import (
     add_task_to_sprint,
-    complete_task_in_sprint,
     remove_task_from_sprint,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -156,83 +161,3 @@ class TestRemoveTaskFromSprint:
         sprint = _active_sprint()
         remove_task_from_sprint(sprint, "t-1")
         assert "t-1" in sprint.task_ids
-
-
-# ── complete_task_in_sprint ────────────────────────────────────
-
-
-class TestCompleteTaskInSprint:
-    """complete_task_in_sprint marks tasks done during ACTIVE/IN_REVIEW.
-
-    Points credited come from the sprint's per-task ``task_points`` (what
-    the task committed when added), never a caller-supplied value.
-    """
-
-    @pytest.mark.unit
-    def test_complete_task_credits_committed_points(self) -> None:
-        sprint = _active_sprint()
-        result = complete_task_in_sprint(sprint, "t-1")
-        assert "t-1" in result.completed_task_ids
-        assert result.story_points_completed == 5.0
-
-    @pytest.mark.unit
-    def test_complete_multiple_tasks(self) -> None:
-        sprint = _active_sprint()
-        sprint = complete_task_in_sprint(sprint, "t-1")
-        sprint = complete_task_in_sprint(sprint, "t-2")
-        assert sprint.completed_task_ids == ("t-1", "t-2")
-        assert sprint.story_points_completed == 8.0
-
-    @pytest.mark.unit
-    def test_missing_points_entry_credits_zero(self) -> None:
-        sprint = _active_sprint(task_points={"t-1": 5.0, "t-3": 5.0})
-        result = complete_task_in_sprint(sprint, "t-2")
-        assert "t-2" in result.completed_task_ids
-        assert result.story_points_completed == 0.0
-
-    @pytest.mark.unit
-    def test_reject_when_planning(self) -> None:
-        sprint = _planning_sprint(
-            task_ids=("t-1",),
-            task_points={"t-1": 5.0},
-            story_points_committed=5.0,
-        )
-        with pytest.raises(ValueError, match="must be 'active' or 'in_review'"):
-            complete_task_in_sprint(sprint, "t-1")
-
-    @pytest.mark.unit
-    def test_reject_unknown_task(self) -> None:
-        sprint = _active_sprint()
-        with pytest.raises(ValueError, match="not in sprint"):
-            complete_task_in_sprint(sprint, "unknown")
-
-    @pytest.mark.unit
-    def test_reject_already_completed(self) -> None:
-        sprint = _active_sprint(
-            completed_task_ids=("t-1",),
-            story_points_completed=5.0,
-        )
-        with pytest.raises(ValueError, match="already completed"):
-            complete_task_in_sprint(sprint, "t-1")
-
-    @pytest.mark.unit
-    def test_in_review_status_allowed(self) -> None:
-        sprint = Sprint(
-            id="sprint-1",
-            name="Sprint 1",
-            sprint_number=1,
-            status=SprintStatus.IN_REVIEW,
-            start_date="2026-04-01",
-            task_ids=("t-1",),
-            task_points={"t-1": 5.0},
-            story_points_committed=5.0,
-        )
-        result = complete_task_in_sprint(sprint, "t-1")
-        assert "t-1" in result.completed_task_ids
-
-    @pytest.mark.unit
-    def test_original_unchanged(self) -> None:
-        sprint = _active_sprint()
-        complete_task_in_sprint(sprint, "t-1")
-        assert sprint.completed_task_ids == ()
-        assert sprint.story_points_completed == 0.0

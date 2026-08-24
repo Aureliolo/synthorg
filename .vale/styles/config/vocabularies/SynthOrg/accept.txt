@@ -689,6 +689,7 @@ params
 parens
 parent_task_id
 passthrough
+pausable
 passthroughs
 pdfplumber
 perf
@@ -955,6 +956,7 @@ unversioned
 unwired
 updated_since
 uppercased
+upsert
 upserts
 uis
 upstream_contamination

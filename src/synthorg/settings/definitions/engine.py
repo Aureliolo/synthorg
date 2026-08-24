@@ -1230,6 +1230,45 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="sprint_tail_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Cadence of the sprint recovery sweep, which advances sprints"
+            " whose lifecycle hop was lost with the process that was making"
+            " it: a sprint whose backlog was fully delivered but which never"
+            " reached review has no completion left to re-fire it. A restart"
+            " runs the sweep immediately, so this cadence covers the other"
+            " case: a hop lost without its process. Re-read per tick, so a"
+            " change applies with no restart."
+        ),
+        group="Agile Sprints",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="sprint_tail_sweep_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the sprint recovery sweep. When True the scheduler"
+            " stays resident but every tick short-circuits, so no stranded"
+            " sprint is advanced. It does not affect the pass a restart runs."
+            " Read per tick, so it applies with no restart."
+        ),
+        group="Agile Sprints",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Execution-loop auto-selection ────────────────────────────────
 # Gate + rules that pick a per-task inner loop (react / openhands) from
 # task complexity. Off by default: the engine uses its single static react

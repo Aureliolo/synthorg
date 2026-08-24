@@ -171,6 +171,7 @@ class ErrorCode(IntEnum):
     PLAN_PARENT_TASK_IN_USE = 4039
     PLAN_NOT_DELETABLE = 4040
     HIRING_ALREADY_IN_FLIGHT = 4041
+    SPRINT_ALREADY_OPEN = 4042
 
     # 5xxx -- rate_limit
     RATE_LIMITED = 5000

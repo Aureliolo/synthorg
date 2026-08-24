@@ -29,6 +29,7 @@ from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.sprint_marshalling import (
     SPRINT_COLUMNS,
     build_sprint_where,
+    complete_task_params,
     row_to_sprint,
     sprint_save_params,
     validate_sprint_update_keys,
@@ -86,6 +87,25 @@ _TRANSITION_SQL = (
     "end_date = COALESCE(%s, end_date) "
     "WHERE id = %s AND status = %s"
 )
+
+# The completion append, guarded in the statement rather than by a prior
+# read. Concatenating a JSONB scalar onto a JSONB array appends it, and
+# ``@>`` against a scalar asks whether the array contains it, so the
+# backlog-membership and not-already-completed invariants are held against
+# the row's own current value. Under READ COMMITTED an UPDATE that blocks on
+# a concurrent writer re-evaluates this WHERE against the newer row version,
+# which is what makes two simultaneous completions serialise instead of one
+# overwriting the other.
+_COMPLETE_TASK_SQL = f"""
+    UPDATE sprints
+    SET completed_task_ids = completed_task_ids || TO_JSONB(%s::TEXT),
+        story_points_completed = story_points_completed + %s
+    WHERE id = %s
+      AND status IN (%s, %s)
+      AND task_ids @> TO_JSONB(%s::TEXT)
+      AND NOT (completed_task_ids @> TO_JSONB(%s::TEXT))
+    RETURNING {SPRINT_COLUMNS}
+"""  # noqa: S608 -- column list is a compile-time constant
 
 
 class PostgresSprintRepository:
@@ -345,6 +365,62 @@ class PostgresSprintRepository:
             )
             raise QueryError(msg) from exc
         return rowcount > 0
+
+    async def complete_task_if(
+        self,
+        sprint_id: NotBlankStr,
+        task_id: NotBlankStr,
+        story_points: float,
+    ) -> Sprint | None:
+        """Append *task_id* to ``completed_task_ids`` iff it is absent.
+
+        One conditional statement, so no concurrent writer can slip
+        between the check and the append. See the protocol docstring for
+        why ``story_points`` is supplied rather than read from the row.
+
+        Returns:
+            The sprint after the append, or ``None`` when the guard did
+            not match and nothing was written.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        params = complete_task_params(
+            sprint_id=sprint_id, task_id=task_id, story_points=story_points
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(_COMPLETE_TASK_SQL, params)
+                row = await cur.fetchone()
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            msg = (
+                f"Constraint violation completing task in sprint "
+                f"{sprint_id!r}: {safe_error_description(exc)}"
+            )
+            logger.warning(
+                PERSISTENCE_SPRINT_FAILED,
+                operation="complete_task_if",
+                sprint_id=sprint_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to complete task in sprint {sprint_id!r}"
+            logger.warning(
+                PERSISTENCE_SPRINT_FAILED,
+                operation="complete_task_if",
+                sprint_id=sprint_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return row_to_sprint(row) if row is not None else None
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a sprint by id.

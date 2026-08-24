@@ -5,8 +5,10 @@ from typing import Any
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
+    SprintAlreadyOpenError,
     SprintBacklogFullError,
     SprintNotFoundError,
     SprintTransitionConflictError,
@@ -128,6 +130,33 @@ class TestSprintController:
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["id"] == "sprint-1"
+
+    async def test_create_sprint_conflicts_when_one_is_open(
+        self,
+        async_test_client: LoopAsyncClient,
+        wired_sprint_service: _Configured,
+    ) -> None:
+        """A scope runs one sprint at a time, and the refusal names the blocker.
+
+        409 rather than 500: this is a state the product deliberately
+        forbids, so the operator is told which sprint is in the way instead
+        of getting an internal error out of a database constraint.
+        """
+        wired_sprint_service.create_sprint.side_effect = SprintAlreadyOpenError(
+            "Sprint 'sprint-1' (active) is still open for this scope"
+        )
+        resp = await async_test_client.post(
+            _BASE,
+            json={"project": "proj-1"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error_detail"]["error_code"] == ErrorCode.SPRINT_ALREADY_OPEN
+        # The blocking sprint is named, so the operator knows what to finish
+        # rather than only that they were refused.
+        assert "sprint-1" in body["error"]
 
     async def test_add_task(
         self,

@@ -1,7 +1,14 @@
-"""Sprint backlog management -- pure functions returning new Sprint instances.
+"""Sprint backlog assembly -- pure functions returning new Sprint instances.
 
 All operations are immutable: they return a new ``Sprint`` rather than
 mutating the input.
+
+Assembly only. Recording a task as *delivered* is not here, because it
+happens while the sprint is running and two processes can reach it at
+once: it lives in ``SprintRepository.complete_task_if``, one conditional
+statement whose guard is the row's own current value. A pure function
+cannot express that, and a second in-memory way to perform the same
+mutation would be a way to bypass it.
 """
 
 from typing import NoReturn
@@ -12,7 +19,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_BACKLOG_INVALID,
     SPRINT_TASK_ADDED,
-    SPRINT_TASK_COMPLETED,
     SPRINT_TASK_REMOVED,
 )
 
@@ -163,84 +169,3 @@ def remove_task_from_sprint(
         task_id=task_id,
     )
     return result
-
-
-def complete_task_in_sprint(
-    sprint: Sprint,
-    task_id: NotBlankStr,
-) -> Sprint:
-    """Mark a task as completed within the sprint.
-
-    The task must be in the backlog and not already completed.  The
-    sprint must be ACTIVE or IN_REVIEW.  The points credited are the
-    per-task points committed when the task was added (``task_points``),
-    so what a task credits on completion always matches what it committed.
-
-    Args:
-        sprint: The current sprint.
-        task_id: ID of the task to mark completed.
-
-    Returns:
-        A new Sprint with the task marked completed.
-
-    Raises:
-        ValueError: If preconditions are not met.
-    """
-    _validate_completion_preconditions(sprint, task_id)
-    story_points = sprint.task_points.get(task_id, 0.0)
-    new_completed_points = sprint.story_points_completed + story_points
-    result = sprint.model_copy(
-        update={
-            "completed_task_ids": (
-                *sprint.completed_task_ids,
-                task_id,
-            ),
-            "story_points_completed": new_completed_points,
-        },
-    )
-    logger.info(
-        SPRINT_TASK_COMPLETED,
-        sprint_id=sprint.id,
-        task_id=task_id,
-        story_points=story_points,
-    )
-    return result
-
-
-def _validate_completion_preconditions(
-    sprint: Sprint,
-    task_id: NotBlankStr,
-) -> None:
-    """Validate preconditions for completing a task in a sprint."""
-    allowed = {SprintStatus.ACTIVE, SprintStatus.IN_REVIEW}
-    if sprint.status not in allowed:
-        msg = (
-            f"Cannot complete tasks in sprint {sprint.id!r} "
-            f"with status {sprint.status.value!r} -- "
-            f"must be 'active' or 'in_review'"
-        )
-        _log_and_raise(
-            SPRINT_BACKLOG_INVALID,
-            msg,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="wrong_status",
-        )
-    if task_id not in sprint.task_ids:
-        msg = f"Task {task_id!r} is not in sprint {sprint.id!r} backlog"
-        _log_and_raise(
-            SPRINT_BACKLOG_INVALID,
-            msg,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="not_found",
-        )
-    if task_id in sprint.completed_task_ids:
-        msg = f"Task {task_id!r} is already completed in sprint {sprint.id!r}"
-        _log_and_raise(
-            SPRINT_BACKLOG_INVALID,
-            msg,
-            sprint_id=sprint.id,
-            task_id=task_id,
-            reason="already_completed",
-        )

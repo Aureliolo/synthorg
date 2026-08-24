@@ -13,10 +13,51 @@ so a re-run cannot double-register it.
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.workflow.sprint_recovery import SprintRecoveryReconciler
+from synthorg.engine.workflow.sprint_service import SprintService
+from synthorg.engine.workflow.sprint_tail_scheduler import SprintTailScheduler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.sprint_protocol import SprintRepository
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+
+async def _start_tail_sweep(
+    *,
+    sprint_repository: SprintRepository,
+    service: SprintService,
+    config_resolver: ConfigResolverProtocol,
+) -> SprintTailScheduler:
+    """Build and start the sprint recovery sweep.
+
+    Started here rather than as its own subsystem because it belongs to the
+    sprint machinery and has no independent readiness: it is useless
+    without the store the service reads, and the service is useless without
+    something watching for the hops its background tail can lose.
+
+    The boot pass runs inside the scheduler's first cycle rather than being
+    awaited here, so a slow or unreachable store cannot hold up wiring; the
+    cadence re-asks regardless.
+
+    Returns:
+        The started scheduler, for shutdown to stop.
+    """
+    reconciler = SprintRecoveryReconciler(
+        sprints=sprint_repository,
+        sprints_active=service.sprints_active,
+    )
+    interval = await config_resolver.get_float(
+        "engine", "sprint_tail_resync_interval_seconds"
+    )
+    scheduler = SprintTailScheduler(
+        reconciler,
+        interval_seconds=interval,
+        config_resolver=config_resolver,
+    )
+    await scheduler.start()
+    return scheduler
 
 
 async def wire_sprint_service(app_state: AppState) -> None:
@@ -93,7 +134,16 @@ async def wire_sprint_service(app_state: AppState) -> None:
         # as logged) and a re-run retries cleanly, rather than committing a
         # service whose completions never reach the observer.
         task_engine.register_observer(service.on_task_state_changed)
-        app_state.wire(EngineStateSlice, sprint_service=service)
+        scheduler = await _start_tail_sweep(
+            sprint_repository=sprint_repository,
+            service=service,
+            config_resolver=config_resolver,
+        )
+        app_state.wire(
+            EngineStateSlice,
+            sprint_service=service,
+            sprint_tail_scheduler=scheduler,
+        )
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
         reraise_critical(exc)
         logger.warning(
