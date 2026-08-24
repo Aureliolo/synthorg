@@ -81,6 +81,11 @@ mandatory_rules:
     header: Signing-Identity Pins
     gate: scripts/check_signing_identity_pins.py
 
+  - id: claude-md::applied-apko-locks
+    file: CLAUDE.md
+    header: Applied apko Locks
+    gate: scripts/check_apko_lock_applied.py
+
   - id: claude-md::license-compatibility
     file: CLAUDE.md
     header: License Compatibility

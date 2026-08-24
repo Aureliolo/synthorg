@@ -31,6 +31,16 @@ src/synthorg/persistence/postgres/schema.sql text eol=lf
 .github/vex/* text eol=lf
 .github/.trivyignore.yaml text eol=lf
 
+# apko manifests and their lockfiles -- `apko lock` records a sha256 over the
+# manifest's raw bytes in the lock's `config.checksum`, so a CRLF checkout makes
+# a locally regenerated lock disagree with the byte-identical one CI produces.
+# The two then differ on the one field that says which manifest the lock belongs
+# to, which is the field a consumer would check before trusting the pin.
+# scripts/check_apko_lock_applied.py compares those bytes, so this is enforced
+# rather than assumed.
+docker/*/apko.yaml text eol=lf
+docker/*/apko.lock.json text eol=lf
+
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 

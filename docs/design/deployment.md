@@ -46,6 +46,41 @@ Reconciliation mechanisms:
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Weekly (Sat 00:00-06:00 UTC) |
 | `apko lock` cron (`.github/workflows/maint-apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune). `docker/web/apko.yaml` is intentionally skipped: it depends on the workflow-build-time `synthorg-web-assets@local` melange package, which has no stable upstream to lock against | Weekly (Mon 06:00 UTC); the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
 
+### How a lockfile binds a build
+
+A lockfile only constrains a build that is handed it. `apko build` takes
+`--lockfile`, whose default is the empty string, documented by apko as "no
+additional constraints", and it does not discover a sibling lock on its own, so
+an invocation that omits the flag re-resolves every package against whatever
+the mirror serves at that moment. `.github/actions/build-apko-base/action.yml`
+therefore derives the lock path from the config path it was given and passes
+both, which is what makes two builds of one commit install the same packages.
+The web image is the deliberate exception: it has no lock to apply, so its
+build in `build-images.yml` passes no flag.
+
+Two properties keep the lock honest, and each is enforced rather than assumed
+(`scripts/check_apko_lock_applied.py`):
+
+- **The lock belongs to its manifest.** `config.checksum` is a sha256 over the
+  manifest's raw bytes, so a lock regenerated on a CRLF checkout records a
+  digest a Linux runner can never reproduce. `docker/*/apko.yaml` and
+  `docker/*/apko.lock.json` are pinned `eol=lf` in `.gitattributes` for that
+  reason.
+- **A manifest names what installs.** Wolfi resolves an unversioned name
+  through `provides` to whichever series it serves that week, so a bare
+  `glibc`, `npm` or `postgresql-client` reads like a pin while tracking a
+  moving target. Manifests name the resolved package (`glibc-2.43`, `npm-12`,
+  `postgresql-18-client`), the same way `nodejs-24` and `python-3.14` already
+  did.
+- **Whatever else names an apko package agrees with the manifest.** Two
+  modules name packages by hand: `tools/mcp/runtime_provision.py`, which
+  decides whether the sandbox can launch a stdio MCP server at all, and
+  `api/lifecycle_helpers/binary_preflight.py`, whose boot refusal names the
+  package an operator should install. Both are held to their image's manifest,
+  the first by `check_mcp_catalog_launchable.py` and the second by
+  `check_apko_lock_applied.py`, so renaming a package cannot leave either
+  pointing at a name the image no longer carries.
+
 ## Image tags and what each one points at
 
 Every published image carries the same tag ladder. `desktop` is absent from

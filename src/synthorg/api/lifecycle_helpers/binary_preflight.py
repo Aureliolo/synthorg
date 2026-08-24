@@ -174,13 +174,13 @@ BINARY_MANIFEST: Final[tuple[BinaryRecord, ...]] = (
     ),
     BinaryRecord(
         name="pg_dump",
-        package="postgresql-client",
+        package="postgresql-18-client",
         consumers=("the Postgres backup handler",),
         backend=_POSTGRES_BACKEND,
     ),
     BinaryRecord(
         name="pg_restore",
-        package="postgresql-client",
+        package="postgresql-18-client",
         consumers=("the Postgres restore handler",),
         backend=_POSTGRES_BACKEND,
     ),

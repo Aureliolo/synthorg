@@ -99,6 +99,7 @@ _GATES: tuple[str, ...] = (
     "check_orphan_fixtures",
     "check_license_compat",
     "check_signing_identity_pins",
+    "check_apko_lock_applied",
     "check_vex_triage_sync",
     "check_no_stdlib_logging",
     "check_no_stubs",

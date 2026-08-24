@@ -39,21 +39,36 @@ runs:
       with:
         version: ${{ inputs.apko-version }}
 
-    - name: Compute image tag
+    # Both values are computed here, in the composite's bash default, because
+    # the retry action's `command:` runs under sh: `${GITHUB_SHA::7}` is a bash
+    # substring expansion, and keeping its sibling beside it means the two
+    # cannot drift into different shells.
+    - name: Compute image tag and lockfile path
       id: image-ref
       shell: bash
-      run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      env:
+        APKO_YAML: ${{ inputs.apko-yaml }}
+      run: |
+        echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        echo "lockfile=${APKO_YAML%.yaml}.lock.json" >> "$GITHUB_OUTPUT"
 
     # `apko build` pulls every package + signing key from the Wolfi mirror;
     # a single 5xx on packages.wolfi.dev fails the build. Retry the whole
     # invocation so a transient mirror blip doesn't kill base-image CI.
-    # Reuses the tag computed by the preceding `Compute image tag` step so
-    # the substring expansion happens in bash (composite-action default),
-    # not the retry action's sh-default `command:` runtime.
+    #
+    # `--lockfile` is what makes the weekly `apko lock` refresh mean anything:
+    # the flag defaults to empty, which apko documents as "no additional
+    # constraints", and it does NOT pick up a sibling lock on its own. Without
+    # it every build re-resolves against whatever the mirror serves that
+    # minute, so the committed digests pin nothing and two builds of one commit
+    # can differ. The cost is that a package the mirror has since dropped fails
+    # the build instead of being silently substituted, which is the direction
+    # this should fail; the weekly cron is what keeps the window short.
     - name: Build base image
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       env:
         APKO_YAML: ${{ inputs.apko-yaml }}
+        APKO_LOCKFILE: ${{ steps.image-ref.outputs.lockfile }}
         IMAGE_NAME: ${{ inputs.image-name }}
         TAG: ${{ steps.image-ref.outputs.tag }}
       with:
@@ -61,7 +76,9 @@ runs:
         max_attempts: 3
         retry_wait_seconds: 30
         command: |
-          apko build "${APKO_YAML}" \
+          apko build \
+            --lockfile "${APKO_LOCKFILE}" \
+            "${APKO_YAML}" \
             "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" \
             "${IMAGE_NAME}-base.tar"
 
