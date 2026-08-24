@@ -54,6 +54,11 @@ pytestmark = pytest.mark.integration
 _START = "2026-05-22T12:00:00+00:00"
 _END = "2026-06-05T12:00:00+00:00"
 
+#: Backlog cap for the appends that are not about the cap. Well clear of
+#: every fixture here, so a test asserting something else cannot start
+#: passing because the guard declined for a reason it never meant to raise.
+_ROOMY_CAP = 500
+
 
 def _repo(backend: PersistenceBackend) -> SprintRepository:
     """Return a concrete sprint repository bound to *backend*."""
@@ -484,35 +489,6 @@ class TestCompleteTaskIf:
         assert fetched.completed_task_ids == ("task-a",)
         assert fetched.story_points_completed == pytest.approx(5.0)
 
-    async def test_concurrent_adds_of_different_tasks_contend_and_both_land(
-        self, backend: PersistenceBackend
-    ) -> None:
-        """The same contention on the assembly write.
-
-        Two requests each adding a different task, dispatched together.
-        Under a whole-entity ``save`` the second wrote a backlog assembled
-        from a pre-image that never saw the first.
-        """
-        repo = _repo(backend)
-        await repo.save(
-            _make_sprint(
-                sprint_id="ct-8",
-                task_ids=(),
-                task_points={},
-                story_points_committed=0.0,
-            )
-        )
-
-        await asyncio.gather(
-            repo.add_task_if_planning(NotBlankStr("ct-8"), NotBlankStr("task-p"), 2.0),
-            repo.add_task_if_planning(NotBlankStr("ct-8"), NotBlankStr("task-q"), 3.0),
-        )
-
-        fetched = await repo.get(NotBlankStr("ct-8"))
-        assert fetched is not None
-        assert set(fetched.task_ids) == {"task-p", "task-q"}
-        assert fetched.story_points_committed == pytest.approx(5.0)
-
     async def test_no_completion_can_violate_the_points_invariant(
         self, backend: PersistenceBackend
     ) -> None:
@@ -655,9 +631,16 @@ class TestCompletionPointsAreDerived:
     }
 
     async def _seed(
-        self, backend: PersistenceBackend, *, sprint_id: str
+        self, backend: PersistenceBackend, *, sprint_id: str, project: str = "proj-x"
     ) -> SprintRepository:
         """Assemble a PLANNING sprint holding every fractional task.
+
+        Args:
+            backend: The backend under test.
+            sprint_id: The sprint to assemble.
+            project: Its scope. A caller seeding a second sprint alongside
+                a live one names a different scope, because the sprint
+                this leaves ACTIVE holds the one it is given.
 
         Returns:
             The repository, with the sprint ACTIVE and ready to deliver.
@@ -666,6 +649,7 @@ class TestCompletionPointsAreDerived:
         await repo.save(
             _make_sprint(
                 sprint_id=sprint_id,
+                project=project,
                 task_ids=(),
                 task_points={},
                 story_points_committed=0.0,
@@ -674,7 +658,7 @@ class TestCompletionPointsAreDerived:
         for task_id, points in self._POINTS.items():
             assert (
                 await repo.add_task_if_planning(
-                    NotBlankStr(sprint_id), NotBlankStr(task_id), points
+                    NotBlankStr(sprint_id), NotBlankStr(task_id), points, _ROOMY_CAP
                 )
                 is not None
             )
@@ -716,10 +700,15 @@ class TestCompletionPointsAreDerived:
     async def test_partial_credit_does_not_depend_on_order(
         self, backend: PersistenceBackend
     ) -> None:
-        first = await self._seed(backend, sprint_id="pts-p1")
+        """Two folds of the same points, credited in opposite orders.
+
+        Each sprint takes its own scope: the comparison needs two live
+        sprints at once, and a scope admits one.
+        """
+        first = await self._seed(backend, sprint_id="pts-p1", project="pts-one")
         await first.complete_task_if(NotBlankStr("pts-p1"), NotBlankStr("t0"))
         await first.complete_task_if(NotBlankStr("pts-p1"), NotBlankStr("t4"))
-        second = await self._seed(backend, sprint_id="pts-p2")
+        second = await self._seed(backend, sprint_id="pts-p2", project="pts-two")
         await second.complete_task_if(NotBlankStr("pts-p2"), NotBlankStr("t4"))
         await second.complete_task_if(NotBlankStr("pts-p2"), NotBlankStr("t0"))
 
@@ -752,7 +741,7 @@ class TestAddTaskIfPlanning:
         )
 
         post = await repo.add_task_if_planning(
-            NotBlankStr("at-1"), NotBlankStr("task-new"), 4.0
+            NotBlankStr("at-1"), NotBlankStr("task-new"), 4.0, _ROOMY_CAP
         )
 
         assert post is not None
@@ -760,9 +749,19 @@ class TestAddTaskIfPlanning:
         assert post.task_points == {"task-new": 4.0}
         assert post.story_points_committed == pytest.approx(4.0)
 
-    async def test_concurrent_adds_of_different_tasks_both_land(
+    async def test_concurrent_adds_of_different_tasks_contend_and_both_land(
         self, backend: PersistenceBackend
     ) -> None:
+        """The lost-update regression on the assembly write.
+
+        Dispatched TOGETHER through ``asyncio.gather`` for the reason
+        ``test_concurrent_completions_of_different_tasks_both_land``
+        states: awaited in series, one guarded UPDATE cannot lose an
+        update by construction, so a sequential pair proves the primitive
+        composes and nothing about a race. Under a whole-entity ``save``
+        the second wrote a backlog assembled from a pre-image that never
+        saw the first.
+        """
         repo = _repo(backend)
         await repo.save(
             _make_sprint(
@@ -776,13 +775,76 @@ class TestAddTaskIfPlanning:
         assert pre is not None
         assert pre.task_ids == ()
 
-        await repo.add_task_if_planning(NotBlankStr("at-2"), NotBlankStr("task-p"), 2.0)
-        await repo.add_task_if_planning(NotBlankStr("at-2"), NotBlankStr("task-q"), 3.0)
+        await asyncio.gather(
+            repo.add_task_if_planning(
+                NotBlankStr("at-2"), NotBlankStr("task-p"), 2.0, _ROOMY_CAP
+            ),
+            repo.add_task_if_planning(
+                NotBlankStr("at-2"), NotBlankStr("task-q"), 3.0, _ROOMY_CAP
+            ),
+        )
 
         fetched = await repo.get(NotBlankStr("at-2"))
         assert fetched is not None
         assert set(fetched.task_ids) == {"task-p", "task-q"}
         assert fetched.story_points_committed == pytest.approx(5.0)
+
+    async def test_a_full_backlog_declines_the_append(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The cap is the statement's, not the caller's.
+
+        ``_make_sprint`` seeds two tasks, so a cap of two is already
+        reached and the guard matches nothing.
+        """
+        repo = _repo(backend)
+        await repo.save(_make_sprint(sprint_id="at-cap"))
+
+        assert (
+            await repo.add_task_if_planning(
+                NotBlankStr("at-cap"), NotBlankStr("task-c"), 1.0, 2
+            )
+            is None
+        )
+
+        fetched = await repo.get(NotBlankStr("at-cap"))
+        assert fetched is not None
+        assert fetched.task_ids == ("task-a", "task-b")
+
+    async def test_concurrent_adds_cannot_both_take_the_last_slot(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The race the cap moved into the guard to close.
+
+        Two appends dispatched together onto a backlog with one slot
+        left. Checked against a row each had already read, both find room
+        and both land, and the cap is service configuration that no
+        column CHECK holds, so the over-cap backlog is durable. Held in
+        the statement, exactly one wins.
+        """
+        repo = _repo(backend)
+        await repo.save(
+            _make_sprint(
+                sprint_id="at-race",
+                task_ids=("task-a",),
+                task_points={"task-a": 1.0},
+                story_points_committed=1.0,
+            )
+        )
+
+        results = await asyncio.gather(
+            repo.add_task_if_planning(
+                NotBlankStr("at-race"), NotBlankStr("task-p"), 1.0, 2
+            ),
+            repo.add_task_if_planning(
+                NotBlankStr("at-race"), NotBlankStr("task-q"), 1.0, 2
+            ),
+        )
+
+        assert sum(1 for r in results if r is not None) == 1
+        fetched = await repo.get(NotBlankStr("at-race"))
+        assert fetched is not None
+        assert len(fetched.task_ids) == 2
 
     async def test_second_call_for_one_task_is_a_no_op(
         self, backend: PersistenceBackend
@@ -792,7 +854,7 @@ class TestAddTaskIfPlanning:
 
         assert (
             await repo.add_task_if_planning(
-                NotBlankStr("at-3"), NotBlankStr("task-a"), 99.0
+                NotBlankStr("at-3"), NotBlankStr("task-a"), 99.0, _ROOMY_CAP
             )
             is None
         )
@@ -829,7 +891,7 @@ class TestAddTaskIfPlanning:
 
         assert (
             await repo.add_task_if_planning(
-                NotBlankStr("at-4"), NotBlankStr("task-new"), 1.0
+                NotBlankStr("at-4"), NotBlankStr("task-new"), 1.0, _ROOMY_CAP
             )
             is None
         )
@@ -859,7 +921,7 @@ class TestAddTaskIfPlanning:
         for index, task_id in enumerate(hostile, start=1):
             assert (
                 await repo.add_task_if_planning(
-                    NotBlankStr("at-5"), NotBlankStr(task_id), float(index)
+                    NotBlankStr("at-5"), NotBlankStr(task_id), float(index), _ROOMY_CAP
                 )
                 is not None
             )
@@ -878,7 +940,7 @@ class TestAddTaskIfPlanning:
         repo = _repo(backend)
         assert (
             await repo.add_task_if_planning(
-                NotBlankStr("no-such-sprint"), NotBlankStr("task-a"), 1.0
+                NotBlankStr("no-such-sprint"), NotBlankStr("task-a"), 1.0, _ROOMY_CAP
             )
             is None
         )
@@ -907,7 +969,10 @@ class TestAddTaskIfPlanning:
 
         with pytest.raises(MalformedRowError):
             await repo.add_task_if_planning(
-                NotBlankStr("ceil-1"), NotBlankStr("task-over"), STORY_POINTS_CEILING
+                NotBlankStr("ceil-1"),
+                NotBlankStr("task-over"),
+                STORY_POINTS_CEILING,
+                _ROOMY_CAP,
             )
 
         # The row is still there, still readable, still what it was.

@@ -14,8 +14,11 @@ unique index decides it, and both refusals reach the caller as the same
 error, so the answer does not depend on which of the two got there first.
 """
 
+from collections.abc import Awaitable, Callable
+from typing import Final
 from uuid import uuid4
 
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import SprintAlreadyOpenError
 from synthorg.engine.workflow.sprint_config import SprintConfig
@@ -25,6 +28,13 @@ from synthorg.observability.events.workflow import SPRINT_REFUSED
 from synthorg.persistence.sprint_protocol import SprintFilterSpec, SprintRepository
 
 logger = get_logger(__name__)
+
+# A number collision on a free scope needs another writer to open AND
+# complete the number this process just derived, inside the window between
+# its read and its save. Retrying re-reads and takes the next number, so a
+# handful of attempts covers a contended scope; past that the collision is
+# not a race worth hiding and the store's own error is the honest answer.
+_NUMBER_COLLISION_ATTEMPTS: Final[int] = 3
 
 
 def log_refusal(*, reason: str, **context: object) -> None:
@@ -149,9 +159,69 @@ async def build_planning_sprint(
     )
 
 
+async def open_sprint_in_scope(
+    project: str | None,
+    *,
+    sprints: SprintRepository,
+    config: SprintConfig,
+    prepare: Callable[[Sprint], Awaitable[Sprint]] | None = None,
+) -> Sprint | None:
+    """Persist a new sprint for *project*, or report the scope taken.
+
+    Two unique constraints can refuse this save and they mean opposite
+    things. The partial index means another writer holds the scope, which
+    is this caller's answer. ``UNIQUE (project, sprint_number)`` means a
+    competing writer used the number this process derived and then
+    completed that sprint, so the scope is free and only the number is
+    stale. Reading both as "scope taken" refuses a sprint that should
+    have been opened.
+
+    Which one fired is re-read rather than asked of the backend: the two
+    engines name their constraints differently, and the scope's occupancy
+    is the question the answer actually turns on.
+
+    Args:
+        project: The scope to open in, or ``None`` for the org-wide one.
+        sprints: The durable store.
+        config: Supplies the sprint duration.
+        prepare: Turns the freshly-built PLANNING sprint into the row to
+            save, for a caller that seeds a backlog or starts it in the
+            same write. ``None`` saves it as built.
+
+    Returns:
+        The persisted sprint, or ``None`` when another writer holds the
+        scope.
+
+    Raises:
+        ConstraintViolationError: When the number keeps colliding on a
+            scope that stays free, which is the store refusing rather
+            than a race this can resolve.
+    """
+    for attempt in range(_NUMBER_COLLISION_ATTEMPTS):
+        built = await build_planning_sprint(project, sprints=sprints, config=config)
+        sprint = built if prepare is None else await prepare(built)
+        try:
+            await sprints.save(sprint)
+        except ConstraintViolationError:
+            if await scope_occupant(project, sprints=sprints) is not None:
+                return None
+            if attempt == _NUMBER_COLLISION_ATTEMPTS - 1:
+                raise
+            logger.info(
+                SPRINT_REFUSED,
+                reason="sprint_number_taken_retrying",
+                project=project,
+                sprint_number=sprint.sprint_number,
+            )
+            continue
+        return sprint
+    return None
+
+
 __all__ = [
     "build_planning_sprint",
     "log_refusal",
+    "open_sprint_in_scope",
     "require_scope_free",
     "scope_occupant",
     "scope_occupied_error",

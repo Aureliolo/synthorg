@@ -269,7 +269,7 @@ def complete_task_params(*, sprint_id: str, task_id: str) -> tuple[object, ...]:
 
 
 def add_task_params(
-    *, sprint_id: str, task_id: str, story_points: float
+    *, sprint_id: str, task_id: str, story_points: float, max_tasks: int
 ) -> tuple[object, ...]:
     """Positional params for the guarded backlog-assembly statement.
 
@@ -281,6 +281,8 @@ def add_task_params(
             once more for the not-already-present guard.
         story_points: What this task commits, bound alongside each of the
             two ``task_points`` writes.
+        max_tasks: The backlog cap the statement holds against the row's
+            own current length.
 
     Returns:
         The params, ordered to match both backends' statement.
@@ -295,6 +297,7 @@ def add_task_params(
         sprint_id,
         SprintStatus.PLANNING.value,
         task_id,
+        max_tasks,
     )
 
 

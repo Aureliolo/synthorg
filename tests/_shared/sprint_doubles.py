@@ -13,7 +13,12 @@ including the way each re-derives its story-point total from
 ``task_points`` instead of accumulating.
 """
 
-from synthorg.core.persistence_errors import ConstraintViolationError
+from pydantic import ValidationError
+
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import (
     OPEN_SPRINT_STATUSES,
@@ -24,6 +29,27 @@ from synthorg.persistence.sprint_protocol import SprintFilterSpec
 
 _DEFAULT_PAGE = 50
 _COUNT_PAGE = 1_000_000
+
+
+def _validated(candidate: Sprint, *, sprint_id: str) -> Sprint:
+    """Re-run field validation over a row derived by ``model_copy``.
+
+    Args:
+        candidate: The derived post-image.
+        sprint_id: The row it belongs to, for the message.
+
+    Returns:
+        The same row, once the model has accepted it.
+
+    Raises:
+        MalformedRowError: When the model refuses it, which is what both
+            backends answer for a row they derived and cannot parse.
+    """
+    try:
+        return Sprint.model_validate(candidate.model_dump())
+    except ValidationError as exc:
+        msg = f"derived sprint row for {sprint_id!r} is unreadable"
+        raise MalformedRowError(msg) from exc
 
 
 class FakeSprintRepository:
@@ -51,15 +77,23 @@ class FakeSprintRepository:
         return sprint.project or ""
 
     async def save(self, entity: Sprint) -> None:
-        """Upsert, refusing a second open sprint in one scope.
+        """Upsert, refusing what either unique constraint refuses.
+
+        The scope index and the per-scope sprint number are separate
+        constraints that refuse the same call, and they mean opposite
+        things to a caller: one says the scope is taken, the other that
+        only the number is stale. A fake modelling just the first lets a
+        suite agree with a service that conflates them.
 
         Raises:
             ConstraintViolationError: When the scope already holds a
                 different non-completed sprint, as the partial unique
-                index does.
+                index does, or when another sprint in the scope already
+                carries this number, as ``UNIQUE (project, sprint_number)``
+                and the org-wide number index do.
         """
+        key = self._scope_key(entity)
         if entity.status is not SprintStatus.COMPLETED:
-            key = self._scope_key(entity)
             for existing in self._rows.values():
                 if (
                     existing.id != entity.id
@@ -68,6 +102,17 @@ class FakeSprintRepository:
                 ):
                     msg = f"scope {key!r} already has open sprint {existing.id!r}"
                     raise ConstraintViolationError(msg, constraint=msg)
+        for existing in self._rows.values():
+            if (
+                existing.id != entity.id
+                and self._scope_key(existing) == key
+                and existing.sprint_number == entity.sprint_number
+            ):
+                msg = (
+                    f"scope {key!r} already has sprint number "
+                    f"{entity.sprint_number} on {existing.id!r}"
+                )
+                raise ConstraintViolationError(msg, constraint=msg)
         self._rows[entity.id] = entity
 
     async def get(self, entity_id: str) -> Sprint | None:
@@ -182,26 +227,38 @@ class FakeSprintRepository:
         return updated
 
     async def add_task_if_planning(
-        self, sprint_id: str, task_id: str, story_points: float
+        self, sprint_id: str, task_id: str, story_points: float, max_tasks: int
     ) -> Sprint | None:
         """Append *task_id* to the backlog iff the sprint is still PLANNING.
 
         Returns:
             The post-image, or ``None`` when the guard did not match.
+
+        Raises:
+            MalformedRowError: When the derived row breaches a bound the
+                model holds and the schema does not, matching what both
+                backends do: they parse the post-image before committing,
+                so such a row is raised rather than written.
         """
         row = self._rows.get(sprint_id)
         if row is None or row.status is not SprintStatus.PLANNING:
             return None
         if task_id in row.task_ids:
             return None
+        if len(row.task_ids) >= max_tasks:
+            return None
         points = {**row.task_points, task_id: story_points}
-        updated = row.model_copy(
+        candidate = row.model_copy(
             update={
                 "task_ids": (*row.task_ids, NotBlankStr(task_id)),
                 "task_points": points,
                 "story_points_committed": sum(points.values()),
             }
         )
+        # Re-validated rather than trusted: ``model_copy`` does not re-run
+        # field validation, so the derived total would otherwise be stored
+        # past a ceiling the model refuses and both backends reject.
+        updated = _validated(candidate, sprint_id=sprint_id)
         self._rows[sprint_id] = updated
         return updated
 

@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import override
+from typing import Final, override
 
 import aiosqlite
 
@@ -40,6 +40,33 @@ from synthorg.persistence.sqlite.lockout_repo import (
 from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
+
+#: Every compare-and-set this backend performs reads its post-image back
+#: through ``UPDATE ... RETURNING``, which SQLite added in 3.35.0. The
+#: version that matters is the library ``sqlite3`` is linked against, not
+#: the Python version, and a host can link an older one: the guarded writes
+#: then fail at the first sprint or approval, mid-request, rather than at
+#: boot where an operator can act on it.
+_MIN_SQLITE_VERSION: Final[tuple[int, int, int]] = (3, 35, 0)
+
+
+def _require_returning_support() -> None:
+    """Refuse a host SQLite too old for the guarded writes.
+
+    Raises:
+        PersistenceConnectionError: When the linked library predates
+            ``UPDATE ... RETURNING``.
+    """
+    if sqlite3.sqlite_version_info >= _MIN_SQLITE_VERSION:
+        return
+    wanted = ".".join(str(part) for part in _MIN_SQLITE_VERSION)
+    msg = (
+        f"SQLite {wanted} or newer is required for the compare-and-set "
+        f"writes (UPDATE ... RETURNING); this host links "
+        f"{sqlite3.sqlite_version}"
+    )
+    logger.error(PERSISTENCE_BACKEND_CONNECTION_FAILED, error=msg)
+    raise PersistenceConnectionError(msg)
 
 
 class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
@@ -110,6 +137,7 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
                 PERSISTENCE_BACKEND_CONNECTING,
                 path=self._config.path,
             )
+            _require_returning_support()
             try:
                 self._db = await aiosqlite.connect(self._config.path)
                 self._db.row_factory = aiosqlite.Row

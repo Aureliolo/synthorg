@@ -139,7 +139,7 @@ class TestStatusCoverage:
                 "s-1",
                 status=SprintStatus.PLANNING,
                 task_ids=("t-1", "t-2"),
-                completed=(),
+                completed=("t-1", "t-2"),
             )
         )
         report = await _reconciler(repo).reconcile(trigger="periodic")

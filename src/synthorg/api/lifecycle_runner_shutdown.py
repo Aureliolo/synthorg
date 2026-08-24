@@ -262,11 +262,10 @@ async def _run_shutdown(  # noqa: PLR0913
     # Stop the recovery sweep BEFORE draining, so it cannot start advancing a
     # sprint the drain is about to stop waiting for. Whatever either of them
     # leaves half-walked is picked up by the next process's boot pass, which
-    # is the whole reason the sweep exists. Budgeted as a scheduler stop
-    # rather than as part of the drain below: the scheduler's own stop awaits
-    # its cycle with the shared scheduler deadline, which is longer than the
-    # tail drain's, so charging it the drain's budget would time it out on a
-    # sweep that was going to finish.
+    # is the whole reason the sweep exists. Budgeted as an internally-draining
+    # service: the scheduler's own stop awaits its cycle on the shared
+    # scheduler deadline, so an outer bound below that would cancel a sweep
+    # that was going to finish and report the timeout as the failure.
     from synthorg.api.lifecycle_helpers.sprint_recovery_wiring import (  # noqa: PLC0415
         unwire_sprint_recovery,
     )
@@ -276,7 +275,7 @@ async def _run_shutdown(  # noqa: PLR0913
         unwire_sprint_recovery(app_state),
         API_APP_SHUTDOWN,
         "Failed to stop the sprint recovery sweep",
-        timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+        timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
         service="sprint_tail_scheduler_stop",
     )
     _sprint_service = app_state.slice(EngineStateSlice).sprint_service

@@ -89,6 +89,43 @@ class _RivalClaimsTheScope(FakeSprintRepository):
         return rows
 
 
+class _RivalTakesTheNumber(FakeSprintRepository):
+    """A rival opens and COMPLETES the number this process just derived.
+
+    The other half of the create race, and the half that reads identically
+    at the boundary: the same ``ConstraintViolationError`` comes back, but
+    from ``UNIQUE (project, sprint_number)`` rather than the scope index,
+    and it leaves the scope free. Refusing here would deny a sprint that
+    should have been opened.
+
+    Injected at the first ``save`` rather than at a read, because the
+    window that matters opens after this process has derived its number:
+    the rival takes exactly that number, so the retry derives the next one
+    and lands.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._seeded = False
+
+    @override
+    async def save(self, entity: Sprint) -> None:
+        if not self._seeded:
+            self._seeded = True
+            await super().save(
+                Sprint(
+                    id=NotBlankStr("rival-done"),
+                    project=NotBlankStr("proj-1"),
+                    name=NotBlankStr("Rival"),
+                    sprint_number=entity.sprint_number,
+                    status=SprintStatus.COMPLETED,
+                    start_date="2026-01-01T00:00:00+00:00",
+                    end_date="2026-01-15T00:00:00+00:00",
+                )
+            )
+        await super().save(entity)
+
+
 class _FlakyAppend(FakeSprintRepository):
     """Fails the completion append a set number of times, then succeeds.
 
@@ -224,10 +261,21 @@ class TestExplicitControl:
         assert first.status is SprintStatus.PLANNING
 
     async def test_create_sprint_refuses_while_one_is_open(self) -> None:
+        """The refusal names the occupier the caller has to go and finish.
+
+        Asserted on the attributes rather than the sentence: the occupier
+        travels as fields precisely so the two places that build this
+        refusal cannot drift into two different sentences.
+        """
         service = _service()
         opened = await service.create_sprint("proj-1")
-        with pytest.raises(SprintAlreadyOpenError, match=opened.id):
+
+        with pytest.raises(SprintAlreadyOpenError) as excinfo:
             await service.create_sprint("proj-1")
+
+        assert excinfo.value.sprint_id == opened.id
+        assert excinfo.value.sprint_name == opened.name
+        assert excinfo.value.sprint_status == SprintStatus.PLANNING.value
 
     async def test_create_sprint_refuses_when_another_writer_won(self) -> None:
         """The index refuses what this process's own check could not see.
@@ -239,6 +287,22 @@ class TestExplicitControl:
         service = _service(sprints=_RivalClaimsTheScope())
         with pytest.raises(SprintAlreadyOpenError):
             await service.create_sprint("proj-1")
+
+    async def test_create_sprint_retries_a_taken_number_on_a_free_scope(
+        self,
+    ) -> None:
+        """The other constraint refuses the same insert and means the opposite.
+
+        A rival that took this number and then completed its sprint leaves
+        the scope free, so refusing here would deny a sprint that should
+        have been opened. The number is rebuilt and the create lands.
+        """
+        service = _service(sprints=_RivalTakesTheNumber())
+
+        sprint = await service.create_sprint("proj-1")
+
+        assert sprint.status is SprintStatus.PLANNING
+        assert sprint.sprint_number == 2
 
     async def test_create_sprint_scopes_org_wide_separately(self) -> None:
         """An org-wide sprint is its own scope, not every project's.
@@ -312,19 +376,18 @@ class TestExplicitControl:
         updated = await service.add_task(sprint.id, "task-a", STORY_POINTS_CEILING)
         assert updated.story_points_committed == pytest.approx(STORY_POINTS_CEILING)
 
-    async def test_concurrent_adds_both_land(self) -> None:
-        """The lost-update regression on backlog assembly.
+    async def test_successive_adds_accumulate(self) -> None:
+        """Two adds of different tasks compose into one backlog.
 
-        Two callers each add a different task. Under the old read-modify-write
-        the second wrote a backlog assembled from a pre-image that never saw
-        the first, and one task vanished silently.
+        Sequential, and named for it: the service serialises its writes
+        behind one lock, so dispatching these together would still award
+        them in series and prove nothing about contention. The race this
+        guards lives one layer down and is exercised against the real
+        statements in the persistence conformance suite.
         """
         repo = FakeSprintRepository()
         service = _service(sprints=repo)
         sprint = await service.create_sprint("proj-1")
-        # The stale pre-image the second caller would have written back.
-        stale = await repo.get(sprint.id)
-        assert stale is not None
 
         await service.add_task(sprint.id, "task-a", 2.0)
         second = await service.add_task(sprint.id, "task-b", 3.0)

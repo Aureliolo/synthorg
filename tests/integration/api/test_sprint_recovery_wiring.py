@@ -31,6 +31,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sprint_factory import build_sprint_repository
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.integration
@@ -174,5 +175,18 @@ async def test_service_wiring_leaves_no_observer_when_the_sweep_declines(
     assert app_state.slice(EngineStateSlice).sprint_service is not None
     assert deps["task_engine"].register_observer.call_count == 1
 
-    await wire_sprint_service(app_state)
+    # Drop the resolver the sweep reads its cadence from, so its wiring
+    # declines with the service already published: the arrangement the
+    # folded-in version could not produce without stranding the observer.
+    settings_slice = app_state.slice(SettingsStateSlice)
+    app_state.swap_slice(settings_slice.model_copy(update={"config_resolver": None}))
+
+    with pytest.raises(SubsystemDeclinedError, match="settings resolver"):
+        await wire_sprint_recovery(app_state)
+
+    assert app_state.slice(EngineStateSlice).sprint_tail_scheduler is None
+    # The service kept its slice entry, so its observer is reachable
+    # rather than bound to something nothing can get to, and the decline
+    # added no second registration.
+    assert app_state.slice(EngineStateSlice).sprint_service is not None
     assert deps["task_engine"].register_observer.call_count == 1

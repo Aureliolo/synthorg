@@ -312,6 +312,12 @@ while one process is the only writer.
   totals cannot acquire independent addition orders and disagree by an ULP,
   which is what made the table's `story_points_completed <=
   story_points_committed` check refuse the last completion of a sprint.
+  The backlog cap travels into that statement as `max_tasks` and is held
+  against the row's own current length, because it is service configuration
+  that no column CHECK carries: checked by the caller against a row it had
+  already read, two requests both find room, both append, and the over-cap
+  backlog is durable. A decline for that reason is indistinguishable in the
+  return value from the others, so the caller re-reads to name it.
 - **Which lifecycle state it is in**: `transition_if`.
 - **Who opens a scope's sprint**: a partial unique index
   (`idx_sprints_one_open_per_scope`) admitting one non-completed sprint per
@@ -322,7 +328,14 @@ while one process is the only writer.
   the index caught the race instead: naming a sprint this process never read
   would be an invention rather than an answer. The index keys on
   `COALESCE(project, '')` because both engines treat NULLs as distinct, which
-  would otherwise leave the org-wide scope unguarded.
+  would otherwise leave the org-wide scope unguarded. A refused insert is not
+  read as that answer on its own: `UNIQUE (project, sprint_number)` refuses
+  the same write when a competing writer took the number this process derived
+  and then completed that sprint, which leaves the scope free and only the
+  number stale. `open_sprint_in_scope` tells them apart by re-reading the
+  scope rather than by asking which constraint fired, since the two engines
+  name theirs differently, and rebuilds the number instead of refusing a
+  sprint that should have been opened.
 
 Auto-creation off an `ASSIGNED` task assembles the sprint whole in memory and
 inserts it **already `ACTIVE`**, in one write. There is deliberately no

@@ -68,6 +68,12 @@ TRANSITION_SQL = (
 # exactly on both, so this buys nothing to chase; it is recorded because
 # the difference is invisible until somebody writes a test with a
 # pathological value and cannot see why it fails on one backend.
+# The backlog cap is a predicate here rather than a check the caller makes
+# first, for the reason the rest of the guard exists: two callers reading
+# one pre-image both find room and both append, and the cap is service
+# configuration that no column CHECK holds, so the over-cap row is durable.
+# Measured against the row's own current length, so the answer is the one
+# true at write time.
 ADD_TASK_SQL = f"""
     UPDATE sprints
     SET task_ids = JSON_INSERT(task_ids, '$[#]', ?),
@@ -81,6 +87,7 @@ ADD_TASK_SQL = f"""
     WHERE id = ?
       AND status = ?
       AND NOT EXISTS (SELECT 1 FROM JSON_EACH(sprints.task_ids) WHERE value = ?)
+      AND JSON_ARRAY_LENGTH(sprints.task_ids) < ?
     RETURNING {SPRINT_COLUMNS}
 """  # noqa: S608 -- column list is a compile-time constant
 

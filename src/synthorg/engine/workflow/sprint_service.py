@@ -53,12 +53,10 @@ from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
-    SprintBacklogFullError,
     SprintBacklogInvalidError,
     SprintNotFoundError,
     SprintTransitionConflictError,
@@ -82,8 +80,8 @@ from synthorg.engine.workflow.sprint_lifecycle import (
     SprintStatus,
 )
 from synthorg.engine.workflow.sprint_scope import (
-    build_planning_sprint,
     log_refusal,
+    open_sprint_in_scope,
     require_scope_free,
     scope_occupant,
     scope_occupied_error,
@@ -282,8 +280,9 @@ class SprintService:
         A scope runs one sprint at a time, so this refuses while the scope
         still has one that is not completed. The check here is what names
         the sprint in the way; the partial unique index is what makes the
-        answer true across processes, and its refusal is translated to the
-        same error so both callers are told the same thing.
+        answer true across processes, and a scope another writer claimed
+        first reaches the caller as the same error so both are told the
+        same thing.
 
         Returns:
             The persisted PLANNING sprint.
@@ -294,18 +293,15 @@ class SprintService:
         """
         async with self._lock:
             await require_scope_free(project, sprints=self._sprints)
-            sprint = await build_planning_sprint(
+            opened = await open_sprint_in_scope(
                 project, sprints=self._sprints, config=self._sprint_config
             )
-            try:
-                await self._sprints.save(sprint)
-            except ConstraintViolationError as exc:
+            if opened is None:
                 # Bound before the raise so the statement names an error
-                # rather than the builder that returns one; raised inline,
-                # the docstring gate reads `scope_occupied_error` itself as
-                # the exception type and asks for it by that name.
+                # rather than the builder that returns one.
                 occupied = scope_occupied_error(project)
-                raise occupied from exc
+                raise occupied
+            sprint = opened
         logger.info(
             SPRINT_CREATED,
             sprint_id=sprint.id,
@@ -321,9 +317,15 @@ class SprintService:
 
         The append itself is one guarded statement, so two requests each
         adding a different task cannot both write a backlog assembled from
-        the same pre-image. The capacity and points checks stay here
-        because they are this service's configuration rather than the
-        row's invariants, and a caller is owed the reason.
+        the same pre-image. The capacity cap travels INTO that statement
+        for the same reason: checked here against a row already read, two
+        requests both find room and both append.
+
+        What stays here is the points arithmetic, which the statement
+        cannot answer: the ceiling is a bound on a total it derives, so a
+        breach is a row the model refuses rather than a guard that
+        declines, and refusing it in front of the write is what turns it
+        into an answer the caller can act on.
 
         Returns:
             The sprint with the task added to its backlog.
@@ -334,9 +336,11 @@ class SprintService:
                 ``PLANNING`` (tasks may only be added while planning).
             SprintBacklogFullError: When the backlog is at
                 ``max_tasks_per_sprint``.
-            SprintBacklogInvalidError: When the points are negative, or
-                the task is already in the backlog.
+            SprintBacklogInvalidError: When the points are negative, would
+                take the sprint past ``STORY_POINTS_CEILING``, or the task
+                is already in the backlog.
         """
+        cap = self._sprint_config.max_tasks_per_sprint
         async with self._lock:
             sprint = await self._require(sprint_id)
             if sprint.status is not SprintStatus.PLANNING:
@@ -347,35 +351,19 @@ class SprintService:
                     status=sprint.status.value,
                 )
                 raise SprintTransitionConflictError(msg)
-            if len(sprint.task_ids) >= self._sprint_config.max_tasks_per_sprint:
-                msg = (
-                    f"Sprint {sprint_id!r} backlog is full "
-                    f"({self._sprint_config.max_tasks_per_sprint} tasks)"
-                )
-                log_refusal(
-                    reason="backlog_full",
-                    sprint_id=sprint_id,
-                    cap=self._sprint_config.max_tasks_per_sprint,
-                )
-                raise SprintBacklogFullError(msg)
             if story_points < 0:
                 msg = f"story_points must be >= 0, got {story_points}"
                 log_refusal(
-                    reason="negative_points",
-                    sprint_id=sprint_id,
-                    task_id=task_id,
+                    reason="negative_points", sprint_id=sprint_id, task_id=task_id
                 )
                 raise SprintBacklogInvalidError(msg)
-            # Checked against the RESULTING total, not this task's points.
-            # The API bounds each task by the ceiling separately, so two
-            # admissible calls can carry the sprint past it, and the
-            # statement derives the total rather than being handed one.
+            # Against the RESULTING total, not this task's points: the API
+            # bounds each task separately, so two admissible calls can pass it.
             committed = sprint.story_points_committed + story_points
             if committed > STORY_POINTS_CEILING:
                 msg = (
-                    f"Adding {story_points} points would take sprint "
-                    f"{sprint_id!r} to {committed}, past the "
-                    f"{STORY_POINTS_CEILING} ceiling"
+                    f"Adding {story_points} points would take sprint {sprint_id!r} "
+                    f"to {committed}, past the {STORY_POINTS_CEILING} ceiling"
                 )
                 log_refusal(
                     reason="points_ceiling",
@@ -385,13 +373,15 @@ class SprintService:
                 )
                 raise SprintBacklogInvalidError(msg)
             updated = await self._sprints.add_task_if_planning(
-                NotBlankStr(sprint_id), NotBlankStr(task_id), story_points
+                NotBlankStr(sprint_id), NotBlankStr(task_id), story_points, cap
             )
         if updated is None:
             log_refusal(
                 reason="add_guard_declined", sprint_id=sprint_id, task_id=task_id
             )
-            raise await rejected_add_error(sprint_id, task_id, sprints=self._sprints)
+            raise await rejected_add_error(
+                sprint_id, task_id, sprints=self._sprints, max_tasks=cap
+            )
         logger.info(
             SPRINT_TASK_ADDED,
             sprint_id=sprint_id,
@@ -525,34 +515,39 @@ class SprintService:
         only outcome a lost race has.
         """
         scope = self._project_of(task)
-        async with self._lock:
-            if await scope_occupant(scope, sprints=self._sprints) is not None:
-                return
-            sprint = await build_planning_sprint(
-                scope, sprints=self._sprints, config=self._sprint_config
-            )
+
+        async def _seed_and_start(sprint: Sprint) -> Sprint:
+            """Fill the backlog and start the sprint in the same write.
+
+            Returns:
+                The ACTIVE sprint to persist.
+            """
             for backlog_task in await self._collect_backlog(task):
                 sprint = add_task_to_sprint(
                     sprint,
                     NotBlankStr(str(backlog_task.id)),
                     story_points_for(backlog_task),
                 )
-            started = sprint.with_transition(
+            return sprint.with_transition(
                 SprintStatus.ACTIVE, start_date=self._now_iso()
             )
-            try:
-                await self._sprints.save(started)
-            except ConstraintViolationError:
-                # lint-allow: swallow-ok -- losing this race is the correct
-                # outcome, not a failure: the check above and the index below
-                # ask the same question, and another writer answered it first.
-                # The scope has the sprint it needs; this process joins it on
-                # the next event rather than opening a second one.
-                logger.info(
-                    SPRINT_CREATE_RACE_LOST,
-                    project=scope,
-                    sprint_number=started.sprint_number,
-                )
+
+        async with self._lock:
+            if await scope_occupant(scope, sprints=self._sprints) is not None:
+                return
+            started = await open_sprint_in_scope(
+                scope,
+                sprints=self._sprints,
+                config=self._sprint_config,
+                prepare=_seed_and_start,
+            )
+            if started is None:
+                # Losing this race is the correct outcome, not a failure:
+                # the check above and the index ask the same question, and
+                # another writer answered it first. The scope has the
+                # sprint it needs; this process joins it on the next event
+                # rather than opening a second one.
+                logger.info(SPRINT_CREATE_RACE_LOST, project=scope)
                 return
             logger.info(
                 SPRINT_CREATED,

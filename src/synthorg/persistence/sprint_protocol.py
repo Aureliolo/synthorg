@@ -264,6 +264,7 @@ class SprintRepository(
         sprint_id: NotBlankStr,
         task_id: NotBlankStr,
         story_points: float,
+        max_tasks: int,
     ) -> Sprint | None:
         """Append *task_id* to the backlog iff the sprint is still PLANNING.
 
@@ -295,11 +296,19 @@ class SprintRepository(
                 being handed one, and neither table carries a CHECK for
                 them. Violating either produces a row the ``Sprint`` model
                 refuses, which is raised rather than written.
+            max_tasks: The backlog cap, held IN the guard against the
+                row's own current length. It is service configuration
+                rather than a row invariant, so no CHECK holds it and a
+                caller checking it first would let two requests reading
+                one pre-image both find room and both append, leaving a
+                durable over-cap backlog. Declining for this reason is
+                indistinguishable in the return value from the other
+                declines, which the caller re-reads to tell apart.
 
         Returns:
             The sprint after the append, or ``None`` when the guard did
-            not match: no such row, not PLANNING, or the task is already
-            in the backlog.
+            not match: no such row, not PLANNING, the task is already in
+            the backlog, or the backlog is at *max_tasks*.
 
         Raises:
             ConstraintViolationError: On constraint violations.

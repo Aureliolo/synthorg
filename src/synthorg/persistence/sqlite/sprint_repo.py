@@ -264,6 +264,7 @@ class SQLiteSprintRepository:
         sprint_id: NotBlankStr,
         task_id: NotBlankStr,
         story_points: float,
+        max_tasks: int,
     ) -> Sprint | None:
         """Append *task_id* to the backlog iff the sprint is still PLANNING.
 
@@ -278,7 +279,10 @@ class SQLiteSprintRepository:
         return await self._guarded_backlog_write(
             ADD_TASK_SQL,
             add_task_params(
-                sprint_id=sprint_id, task_id=task_id, story_points=story_points
+                sprint_id=sprint_id,
+                task_id=task_id,
+                story_points=story_points,
+                max_tasks=max_tasks,
             ),
             operation="add_task_if_planning",
             doing="adding a task to",

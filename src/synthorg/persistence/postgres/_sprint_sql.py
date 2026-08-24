@@ -58,6 +58,13 @@ TRANSITION_SQL = (
 # ``story_points_committed`` is re-totalled from that same merged mapping,
 # so it is a pure function of ``task_points`` rather than a running sum that
 # can disagree with it.
+#
+# The backlog cap is a predicate here rather than a check the caller makes
+# first, for the reason the rest of the guard exists: two callers reading
+# one pre-image both find room and both append, and the cap is service
+# configuration that no column CHECK holds, so the over-cap row is durable.
+# Measured against the row's own current length, so the answer is the one
+# true at write time.
 ADD_TASK_SQL = f"""
     UPDATE sprints
     SET task_ids = task_ids || TO_JSONB(%s::TEXT),
@@ -73,6 +80,7 @@ ADD_TASK_SQL = f"""
     WHERE id = %s
       AND status = %s
       AND NOT (task_ids @> TO_JSONB(%s::TEXT))
+      AND JSONB_ARRAY_LENGTH(task_ids) < %s
     RETURNING {SPRINT_COLUMNS}
 """  # noqa: S608 -- column list is a compile-time constant
 

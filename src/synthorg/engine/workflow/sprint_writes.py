@@ -21,6 +21,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
+    SprintBacklogFullError,
     SprintBacklogInvalidError,
     SprintError,
     SprintNotFoundError,
@@ -126,7 +127,7 @@ async def record_completion(
 
 
 async def rejected_add_error(
-    sprint_id: str, task_id: str, *, sprints: SprintRepository
+    sprint_id: str, task_id: str, *, sprints: SprintRepository, max_tasks: int
 ) -> SprintError:
     """Name why a backlog-append guard matched nothing.
 
@@ -144,12 +145,15 @@ async def rejected_add_error(
         sprint_id: The sprint the append targeted.
         task_id: The task it tried to add.
         sprints: The durable store, re-read for the reason.
+        max_tasks: The cap the guard held, so a backlog that filled up
+            between the caller's read and the write is named as full
+            rather than reported as the leftover status conflict.
 
     Returns:
         The error the caller raises: not found when the row has gone,
-        invalid when the task is already in the backlog, and a transition
-        conflict when the sprint left PLANNING between the check and the
-        write.
+        invalid when the task is already in the backlog, full when the
+        backlog is at *max_tasks*, and a transition conflict when the
+        sprint left PLANNING between the check and the write.
     """
     current = await sprints.get(NotBlankStr(sprint_id))
     if current is None:
@@ -157,6 +161,10 @@ async def rejected_add_error(
     if task_id in current.task_ids:
         return SprintBacklogInvalidError(
             f"Task {task_id!r} is already in sprint {sprint_id!r} backlog"
+        )
+    if len(current.task_ids) >= max_tasks:
+        return SprintBacklogFullError(
+            f"Sprint {sprint_id!r} backlog is full ({max_tasks} tasks)"
         )
     return SprintTransitionConflictError(
         f"Sprint {sprint_id!r} is not in 'planning'; cannot add tasks"
