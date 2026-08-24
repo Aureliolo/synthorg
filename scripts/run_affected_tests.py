@@ -84,7 +84,7 @@ _TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 # Derived, not guessed, and RE-derived after the first value proved optimistic.
 # The budget is unchanged: the rest of the pre-push hook costs ~145s, which
 # leaves ~155s of the 300s budget for pytest. What changed is the measured cost
-# of a file. Two samples now exist, and they disagree with a linear model:
+# of a file. Three samples now exist, and they disagree with a linear model:
 #
 #   862 files (nine packages)                            218s -> 0.25s/file
 #   600 files (api + observability + settings + tools)   218s -> 0.36s/file

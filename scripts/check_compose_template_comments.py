@@ -39,9 +39,9 @@ check for the whole file) and an anchor that is a substring of another
 lets one block satisfy two rows.
 
 Normalisation strips the marker and collapses whitespace, so REFLOWING a
-declared warning is free while changing its WORDS is a decision. That is
-the split worth enforcing: rewrapping a paragraph is not a new claim on
-the operator's attention; different words are.
+declared warning is free while changing its WORDS is a decision:
+rewrapping a paragraph is not a new claim on the operator's attention,
+but different words are.
 
 A block with no declaration fails, and a declaration matching no block
 fails too, since an allowance that outlives its comment is the one the
@@ -284,7 +284,7 @@ def _reject_unjudgeable_declarations(blocks: tuple[AllowedBlock, ...]) -> None:
 _reject_unjudgeable_declarations(_ALLOWED_BLOCKS)
 
 
-def resolve_template_rel(repo_root: Path) -> str:
+def _resolve_template_rel(repo_root: Path) -> str:
     """Derive the template's path from the Go embed that renders it.
 
     Args:
@@ -330,22 +330,35 @@ def _blank_template_comments(source: str) -> str:
     return _TEMPLATE_COMMENT_RE.sub(_blank, source)
 
 
-def _split_comment(line: str) -> tuple[str, bool] | None:
-    """Return a line's comment body and whether the line is only comment.
+class SplitComment(NamedTuple):
+    """One line's comment text and whether the comment is the whole line.
+
+    Attributes:
+        body: The comment text, marker stripped and whitespace trimmed.
+        is_whole_line: Whether nothing but whitespace precedes the ``#``,
+            which is what lets consecutive lines merge into one block in
+            ``_comment_blocks``.
+    """
+
+    body: str
+    is_whole_line: bool
+
+
+def _split_comment(line: str) -> SplitComment | None:
+    """Split a line into its comment body and whole-line flag.
 
     Args:
         line: One source line, template comments already blanked.
 
     Returns:
-        The comment text and whether the comment starts the line, or
-        ``None`` when the line carries no comment.
+        The split comment, or ``None`` when the line carries no comment.
     """
     masked = _QUOTED_RE.sub(lambda m: " " * len(m.group(0)), line)
     match = _COMMENT_RE.search(masked)
     if match is None:
         return None
     start = masked.index("#", match.start())
-    return line[start + 1 :].strip(), not line[:start].strip()
+    return SplitComment(line[start + 1 :].strip(), not line[:start].strip())
 
 
 def _comment_blocks(source: str) -> list[CommentBlock]:
@@ -365,20 +378,24 @@ def _comment_blocks(source: str) -> list[CommentBlock]:
     blocks: list[CommentBlock] = []
     current: list[str] = []
     start = 0
-    for number, line in enumerate(source.splitlines(), start=1):
-        split = _split_comment(line)
-        if split is not None and split[1]:
-            if not current:
-                start = number
-            current.append(split[0])
-            continue
+
+    def _flush() -> None:
+        nonlocal current
         if current:
             blocks.append(CommentBlock(start, tuple(current)))
             current = []
+
+    for number, line in enumerate(source.splitlines(), start=1):
+        split = _split_comment(line)
+        if split is not None and split.is_whole_line:
+            if not current:
+                start = number
+            current.append(split.body)
+            continue
+        _flush()
         if split is not None:
-            blocks.append(CommentBlock(number, (split[0],)))
-    if current:
-        blocks.append(CommentBlock(start, tuple(current)))
+            blocks.append(CommentBlock(number, (split.body,)))
+    _flush()
     return blocks
 
 
@@ -396,7 +413,7 @@ def _check(repo_root: Path) -> list[str]:
             no shipping comment at all, which means the header vanished
             and the gate is reading the wrong file.
     """
-    template_rel = resolve_template_rel(repo_root)
+    template_rel = _resolve_template_rel(repo_root)
     source = read_source(repo_root / template_rel)
     blocks = _comment_blocks(_blank_template_comments(source))
     if not blocks:

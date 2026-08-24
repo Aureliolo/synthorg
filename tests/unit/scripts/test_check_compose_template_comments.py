@@ -14,8 +14,8 @@ from scripts.check_compose_template_comments import (
     DeclarationError,
     _check,
     _reject_unjudgeable_declarations,
+    _resolve_template_rel,
     main,
-    resolve_template_rel,
 )
 
 pytestmark = pytest.mark.unit
@@ -64,6 +64,23 @@ def _first_line_after(prefix: str) -> int:
     return prefix.count("\n") + 1
 
 
+def _wrapped_block(entry: AllowedBlock, *, line_count: int) -> str:
+    """Wrap `entry.text` across exactly `line_count` comment lines.
+
+    Args:
+        entry: The declaration whose text is being rewrapped.
+        line_count: How many lines the rendered block must span.
+
+    Returns:
+        The block as template text.
+    """
+    words = entry.text.split()
+    head = words[: len(words) - line_count + 1]
+    lines = [" ".join(head), *words[len(head) :]]
+    assert len(lines) == line_count
+    return "\n".join(f"# {line}" for line in lines)
+
+
 def _write_template(root: Path, body: str, *, go_source: str = _EMBED_GO) -> None:
     """Write `body` as the compose template, plus the Go file naming it."""
     path = root / _TEMPLATE_REL
@@ -81,7 +98,7 @@ def test_shipped_template_is_clean() -> None:
 
 def test_template_path_is_derived_from_the_go_embed() -> None:
     """The scanned path comes from the embed, not a repeated literal."""
-    assert resolve_template_rel(_REPO_ROOT) == _TEMPLATE_REL
+    assert _resolve_template_rel(_REPO_ROOT) == _TEMPLATE_REL
 
 
 def test_missing_go_embed_is_a_config_error(tmp_path: Path) -> None:
@@ -194,11 +211,7 @@ def test_reflowing_a_declared_block_is_free(tmp_path: Path) -> None:
 def test_block_at_the_cap_is_accepted(tmp_path: Path) -> None:
     """Exactly at the cap passes, which is what separates '>' from '>='."""
     capped = _ALLOWED_BLOCKS[1]
-    words = capped.text.split()
-    head = words[: len(words) - _MAX_BLOCK_LINES + 1]
-    lines = [" ".join(head), *words[len(head) :]]
-    body = "\n".join(f"# {line}" for line in lines)
-    assert len(lines) == _MAX_BLOCK_LINES
+    body = _wrapped_block(capped, line_count=_MAX_BLOCK_LINES)
     _write_template(tmp_path, f"{_declared_blocks(skip=capped.text)}\n{body}\n")
 
     assert _check(tmp_path) == []
@@ -207,10 +220,7 @@ def test_block_at_the_cap_is_accepted(tmp_path: Path) -> None:
 def test_oversized_declared_block_is_refused(tmp_path: Path) -> None:
     """A declared warning that grows into a paragraph stops being one."""
     oversized = _ALLOWED_BLOCKS[1]
-    words = oversized.text.split()
-    head = words[: len(words) - _MAX_BLOCK_LINES]
-    lines = [" ".join(head), *words[len(head) :]]
-    body = "\n".join(f"# {line}" for line in lines)
+    body = _wrapped_block(oversized, line_count=_MAX_BLOCK_LINES + 1)
     declared = f"{_declared_blocks(skip=oversized.text)}\n"
     _write_template(tmp_path, f"{declared}{body}\n")
 
