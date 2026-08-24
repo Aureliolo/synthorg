@@ -256,18 +256,16 @@ class _Archive(Protocol):
 
 
 def _parsed(raw: object) -> dict[str, object]:
-    """Parse a stored snapshot, however its driver handed it over.
+    """Narrow a snapshot each arm has already parsed down to a mapping.
 
-    SQLite stores the archive as TEXT and returns the text; Postgres stores it
-    as ``JSONB`` and psycopg returns it already parsed. Stringifying the second
-    yields a Python repr rather than JSON, so the shape is decided here.
+    Both ``raw_snapshot`` implementations answer a parsed value, each in the
+    way its own column type requires, so the only work left is the shape.
 
     Returns:
         The snapshot as a mapping.
     """
-    loaded: object = json.loads(raw) if isinstance(raw, str | bytes) else raw
-    assert isinstance(loaded, dict)
-    return cast("dict[str, object]", loaded)
+    assert isinstance(raw, dict)
+    return cast("dict[str, object]", raw)
 
 
 class _SqliteArchive:
@@ -297,13 +295,16 @@ class _SqliteArchive:
     async def raw_snapshot(self, entity_id: str) -> object:
         """Read one snapshot back without assuming it is an object.
 
+        The column is TEXT here, so the driver hands back the stored JSON
+        text and this side always parses.
+
         Returns:
             The stored snapshot, parsed.
         """
         with sqlite3.connect(self._db_path) as conn:
             row = conn.execute(_SELECT_VERSION.format(p="?"), (entity_id,)).fetchone()
         assert row is not None
-        return json.loads(row[0]) if isinstance(row[0], str | bytes) else row[0]
+        return json.loads(row[0])
 
     async def seed_contexts(self, rows: dict[str, str]) -> None:
         with sqlite3.connect(self._db_path) as conn:
@@ -375,6 +376,10 @@ class _PostgresArchive:
     async def raw_snapshot(self, entity_id: str) -> object:
         """Read one snapshot back without assuming it is an object.
 
+        The column is JSONB here, so psycopg has already deserialised it and
+        this side must NOT parse again: a stored JSON string arrives as a bare
+        Python ``str``, and ``json.loads`` on its contents raises.
+
         Returns:
             The stored snapshot, parsed.
         """
@@ -382,7 +387,7 @@ class _PostgresArchive:
             cursor = await conn.execute(_SELECT_VERSION.format(p="%s"), (entity_id,))
             row = await cursor.fetchone()
         assert row is not None
-        return json.loads(row[0]) if isinstance(row[0], str | bytes) else row[0]
+        return row[0]
 
     async def seed_contexts(self, rows: dict[str, str]) -> None:
         async with await psycopg.AsyncConnection.connect(
@@ -697,16 +702,6 @@ class TestTheRoster:
         agents = [AgentConfig.model_validate(e) for e in roster if isinstance(e, dict)]
         assert [str(agent.name) for agent in agents] == ["Ada Chen", "Grace Bell"]
 
-    async def test_a_hand_edited_element_survives_the_rewrite(
-        self, seed_and_migrate: SeedAndMigrate
-    ) -> None:
-        """The scalar element is the one that takes the revision down unguarded."""
-        arm = await seed_and_migrate()
-
-        roster = _roster_of(await arm.backend.settings.get((_COMPANY, _AGENTS)))
-
-        assert roster[-1] == "hand-edited"
-
     async def test_the_surviving_fields_are_untouched(
         self, seed_and_migrate: SeedAndMigrate
     ) -> None:
@@ -739,7 +734,12 @@ class TestTheRoster:
     async def test_every_non_object_element_survives_as_itself(
         self, seed_and_migrate: SeedAndMigrate
     ) -> None:
-        """A boolean is the one SQLite would silently rewrite as a number."""
+        """Each of these takes the revision down under a different guard.
+
+        On Postgres the scalar is the one `jsonb - text` refuses, rolling the
+        whole upgrade back. On SQLite each type takes its own CASE branch, and
+        a boolean is the one `JSON_QUOTE` would silently rewrite as a number.
+        """
         arm = await seed_and_migrate()
 
         roster = _roster_of(await arm.backend.settings.get((_COMPANY, _AGENTS)))
