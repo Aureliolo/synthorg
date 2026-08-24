@@ -257,6 +257,82 @@ jobs:
             cat "$pr_create_output"
           fi
 
+  # A series pin (`nodejs-24`, `postgresql-18-client`) is the shape the
+  # apko-lock gate demands, and it is also the shape nothing else can watch:
+  # `apko lock` above faithfully re-resolves the series that was asked for, and
+  # no Renovate manager reads `apko.yaml`. So the newer-series question is asked
+  # here, on the cadence that already exists rather than a second cron, and it
+  # runs independently of the lockfile job: a mirror outage on the index must
+  # not hold back a lockfile refresh, and a lockfile failure must not hide a
+  # superseded pin.
+  report-series-drift:
+    name: Report superseded package series
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / close
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      # Exit 1 is the report's "drift found" verdict, not a failure, so the
+      # step reads the status explicitly rather than letting `set -e` decide.
+      # Exit 2 means the scan could not be trusted (index unreachable, no pin
+      # found to watch) and DOES fail: a silent pass there would read as "no
+      # newer series", which is the one answer the job must never invent.
+      - name: Scan for superseded series
+        id: drift
+        run: |
+          set +e
+          report=$(uv run python scripts/report_apko_series_drift.py)
+          status=$?
+          set -e
+          case "$status" in
+            0)
+              echo "drift=false" >> "$GITHUB_OUTPUT"
+              ;;
+            1)
+              echo "drift=true" >> "$GITHUB_OUTPUT"
+              {
+                echo 'body<<APKO_DRIFT_EOF'
+                echo "$report"
+                echo 'APKO_DRIFT_EOF'
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::series-drift scan could not be trusted (exit $status)"
+              exit 1
+              ;;
+          esac
+
+      - name: Open / update the drift tracker
+        if: steps.drift.outputs.drift == 'true'
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'apko package pins have a newer upstream series'
+          labels: 'type:ci,scope:docker,prio:low'
+          body: ${{ steps.drift.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
+
+      # Every pin caught up, so close the tracker rather than leaving a stale
+      # one open: the report is a snapshot of the index, and the issue is only
+      # useful while it still names something.
+      - name: Close the drift tracker
+        if: steps.drift.outputs.drift == 'false'
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          mode: 'close'
+          title: 'apko package pins have a newer upstream series'
+          body: 'Every pinned package is on the newest series Wolfi publishes.'
+          gh-token: ${{ github.token }}
+
   report-failure:
     name: Open / update tracking issue on schedule failure
     needs: update-lockfiles

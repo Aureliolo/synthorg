@@ -13,7 +13,7 @@ SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend
 
 | Image | Purpose | Base |
 |-------|---------|------|
-| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14` resolved via apko lockfile) with `git` (workspace provisioning is on the critical path of every dispatch) and `postgresql-client` (the backup handlers); thin `docker/backend/Dockerfile` layers the uv-built venv on top. What the backend spawns and cannot supply itself is asserted at boot by the binary preflight (see [API startup lifecycle](../reference/api-startup-lifecycle.md)) |
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14` resolved via apko lockfile) with `git` (workspace provisioning is on the critical path of every dispatch) and `postgresql-18-client` (the backup handlers); thin `docker/backend/Dockerfile` layers the uv-built venv on top. What the backend spawns and cannot supply itself is asserted at boot by the binary preflight (see [API startup lifecycle](../reference/api-startup-lifecycle.md)) |
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
@@ -58,14 +58,15 @@ both, which is what makes two builds of one commit install the same packages.
 The web image is the deliberate exception: it has no lock to apply, so its
 build in `build-images.yml` passes no flag.
 
-Two properties keep the lock honest, and each is enforced rather than assumed
+Four properties keep the lock honest, and each is enforced rather than assumed
 (`scripts/check_apko_lock_applied.py`):
 
 - **The lock belongs to its manifest.** `config.checksum` is a sha256 over the
-  manifest's raw bytes, so a lock regenerated on a CRLF checkout records a
-  digest a Linux runner can never reproduce. `docker/*/apko.yaml` and
-  `docker/*/apko.lock.json` are pinned `eol=lf` in `.gitattributes` for that
-  reason.
+  manifest's raw bytes, and apko enforces it: `apko build --lockfile` against a
+  mismatch fails with `checksum in the lock file does not matches the original
+  config`. A lock generated on a CRLF checkout therefore stops every build on
+  an LF one, which is every CI runner, so `docker/*/apko.yaml` and
+  `docker/*/apko.lock.json` are pinned `eol=lf` in `.gitattributes`.
 - **A manifest names what installs.** Wolfi resolves an unversioned name
   through `provides` to whichever series it serves that week, so a bare
   `glibc`, `npm` or `postgresql-client` reads like a pin while tracking a
@@ -80,6 +81,44 @@ Two properties keep the lock honest, and each is enforced rather than assumed
   the first by `check_mcp_catalog_launchable.py` and the second by
   `check_apko_lock_applied.py`, so renaming a package cannot leave either
   pointing at a name the image no longer carries.
+- **One apko version across the pipeline.** The weekly cron mints the locks
+  and the build workflows consume them, and each pins `APKO_VERSION` as its
+  own literal. Only Renovate's grouping keeps the three together, and nothing
+  checked that it had, so the gate compares them directly.
+
+What the lock does **not** give you is integrity. apko records a sha256 per
+package but does not verify it on install: a lock whose package digest is
+corrupted still builds, so tamper-resistance comes from Wolfi's signed
+`APKINDEX`, which apk checks regardless, and the lock's contribution is
+deciding *which* versions install. Nor is the weekly reconcile cadence a
+staleness risk: Wolfi retains superseded versions, and every package named in a
+33-day-old lock is still served, so a lock does not rot between refreshes.
+
+### Watching for a superseded series
+
+Naming the resolved package turns an alias into a **series** pin, and a series
+pin is exactly the thing nothing in the pipeline can watch. `apko lock`
+faithfully re-resolves the series that was asked for, so the weekly refresh is
+silent the day `nodejs-26` lands; no Renovate manager reads `apko.yaml`, so the
+bump never appears as a PR; and the gate cannot object, because the pin is what
+it demands. The only place the fact exists is the upstream index.
+
+`scripts/report_apko_series_drift.py` reads it. For every Wolfi-backed
+manifest it takes each package name carrying a version token, reduces the name
+to a skeleton (`postgresql-18-client` to `postgresql-<n>-client`) and asks the
+`APKINDEX` whether a name with the same skeleton carries a higher token of the
+same shape. Shape matters at both levels: without it `py3-pip` would read
+`py3.11-pip` as a successor, which is a different interpreter line rather than
+a newer one.
+
+It is deliberately a report and not a gate. A newer series existing upstream is
+news, not a defect, and failing a push on somebody else's release cadence would
+turn the pins the gate demands into a liability. It runs as its own job in the
+weekly `maint-apko-lock.yml` (the cadence already exists; a second cron would
+be daily churn for a question that changes monthly), independent of the lock
+refresh so a mirror outage cannot hold back a lockfile PR and a lock failure
+cannot hide a superseded pin. Drift opens one tracking issue and no drift
+closes it, so the issue is open exactly while it still names something.
 
 ## Image tags and what each one points at
 
