@@ -526,6 +526,7 @@ async def _build_context(
         # The override is already folded into the manifest by `narrow`, so the
         # ceiling the run enforces is the one the plan printed.
         budget=SessionBudget(manifest.max_sessions),
+        leaf_concurrency=args.leaf_concurrency,
     )
 
 
@@ -716,6 +717,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "they are overridden per run rather than edited, and the manifest "
             "digest a resume pins is taken over the file, which this does not "
             "touch."
+        ),
+    )
+    parser.add_argument(
+        "--leaf-concurrency",
+        type=_positive_int,
+        default=1,
+        help=(
+            "How many sibling leaves may build at once. Siblings are "
+            "independent by construction, meeting only at the merge that "
+            "assembles them, so this changes wall clock and nothing that is "
+            "measured. It does NOT reduce quota: the same sessions run and "
+            "spend the same tokens, just sooner. Not part of the provenance, "
+            "so a run may be resumed at a different value."
         ),
     )
     parser.add_argument(

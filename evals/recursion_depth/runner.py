@@ -394,6 +394,16 @@ class SweepContext:
         roster: The org the work is dispatched to and judged by.
         planner: What writes the tree each run is executed from.
         budget: The sweep's session ceiling.
+        leaf_concurrency: How many sibling leaves may build at once. One is
+            the sequential behaviour. Siblings are independent by
+            construction, meeting only at the merge that assembles them, so
+            this changes wall clock and nothing that is measured: the same
+            sessions run, spending the same tokens, judged the same way.
+
+            NOT part of the provenance, deliberately. It is passed per
+            invocation rather than declared in the manifest, so a run can be
+            resumed at a different concurrency without the identity check
+            refusing its own journal.
     """
 
     manifest: RecursionDepthManifest
@@ -404,6 +414,7 @@ class SweepContext:
     roster: SweepRoster
     planner: TreePlanner
     budget: SessionBudget
+    leaf_concurrency: int = 1
 
     @property
     def limits(self) -> SessionLimits:
@@ -1077,17 +1088,18 @@ async def _leaf_pieces(
     Returns:
         One piece per child, in the order the level declares them.
     """
+    await _build_missing_leaves(
+        context,
+        cell,
+        node,
+        definitions=definitions,
+        produced=produced,
+        delivered=delivered,
+        units=units,
+    )
     pieces: list[MergePiece] = []
     for index, task in enumerate(node.created_tasks):
         key = str(task.id)
-        if key not in produced:
-            leaf = await _run_one_leaf(
-                context, cell, task=task, definition=definitions[key]
-            )
-            produced[key] = leaf.workspace
-            delivered[key] = leaf.delivered
-            units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
-            context.budget.spend(leaf.attempts)
         pieces.append(
             MergePiece(
                 title=str(task.title),
@@ -1097,6 +1109,76 @@ async def _leaf_pieces(
             )
         )
     return tuple(pieces)
+
+
+async def _build_missing_leaves(
+    context: SweepContext,
+    cell: SweepCell,
+    node: DecompositionResult,
+    *,
+    definitions: Mapping[str, SubtaskDefinition],
+    produced: dict[str, CellWorkspace],
+    delivered: dict[str, bool],
+    units: CellUnits,
+) -> None:
+    """Build every child of *node* that is not already on disk.
+
+    Siblings are independent by construction, meeting only at the merge that
+    assembles them, so up to ``leaf_concurrency`` build at once. Nothing that
+    is measured changes: the same sessions run, spending the same tokens, and
+    each is judged by the same oracle.
+
+    Two properties are load-bearing for a resume and neither survives the
+    obvious implementation.
+
+    Each leaf is recorded the moment it RETURNS rather than after the batch,
+    so a run killed with four in flight still keeps every leaf that had
+    finished. Recording after the gather would lose finished, paid-for work
+    for no reason but the shape of the code.
+
+    And a failing sibling neither cancels the others nor changes what the
+    caller sees. ``gather`` collects rather than cancels, so the leaves that
+    were going to finish still do and still journal; then the first failure is
+    re-raised UNCHANGED. That last word is the point: an ``ExceptionGroup``
+    from a task group would reach the classifier as an unrecognised type, and
+    a quota refusal, which is the failure this sweep is most likely to meet,
+    would be filed as an ordinary unavailable cell rather than stopping the
+    matrix with its own reason.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        node: The level whose children are being built.
+        definitions: Every task id mapped to its planner definition.
+        produced: Each built id mapped to its tree. Mutated.
+        delivered: Each built id mapped to whether it delivered. Mutated.
+        units: Sink the per-unit records are appended to. Mutated.
+
+    Raises:
+        BaseException: Whatever the first failing leaf raised, unchanged.
+    """
+    pending = [task for task in node.created_tasks if str(task.id) not in produced]
+    if not pending:
+        return
+    limiter = asyncio.Semaphore(max(1, context.leaf_concurrency))
+
+    async def build(task: Task) -> None:
+        async with limiter:
+            leaf = await _run_one_leaf(
+                context, cell, task=task, definition=definitions[str(task.id)]
+            )
+        key = str(task.id)
+        produced[key] = leaf.workspace
+        delivered[key] = leaf.delivered
+        units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
+        context.budget.spend(leaf.attempts)
+
+    outcomes = await asyncio.gather(
+        *(build(task) for task in pending), return_exceptions=True
+    )
+    for outcome in outcomes:
+        if isinstance(outcome, BaseException):
+            raise outcome
 
 
 async def _run_one_leaf(

@@ -93,6 +93,29 @@ _TREE_TIMEOUT_SETTING: Final[str] = "decomposition_tree_timeout_seconds"
 #: clamped to a shorter ceiling than the sweep was tuned for.
 _PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 
+#: Provider retry attempts, opened to what the setting allows.
+#:
+#: This is the ONLY thing standing between a momentary network blip and the
+#: loss of an entire session's work. A provider call that exhausts its retries
+#: does not fail that turn, it terminates the run: ``call_provider`` returns a
+#: terminal ERROR result and the loop returns it unchanged, so a leaf thirty
+#: turns into building a subsystem loses all thirty. Nothing re-enters that
+#: conversation, because nothing persisted it.
+#:
+#: The product default is three attempts, sized for a request handler where a
+#: failed call costs one response and the caller can simply ask again. A sweep
+#: unit is hours of work and real money, and the asymmetry is total: a longer
+#: ladder costs seconds of sleep on the rare occasion it fires, while a ladder
+#: one attempt too short costs the session. Opened to the ceiling for the same
+#: reason the two decomposition thresholds are, and read off the definition so
+#: a product release that moves it cannot leave this arming a stale number.
+#:
+#: What it does NOT cover, deliberately and reportedly: an outage that outlasts
+#: the ladder, or the recorder's process dying. Both need the session's own
+#: state on disk, which is what ``synthorg.engine.checkpoint`` is for and what
+#: this harness does not yet wire.
+_PROVIDER_RETRY_SETTING: Final[str] = "retry_max_attempts"
+
 #: Decomposition self-correction attempts, raised above the product default.
 #:
 #: A cell whose decomposition fails produces NO tree, and a sweep compares arms
@@ -186,8 +209,10 @@ def load_spec_brief(spec_dir: Path) -> SpecBrief:
     )
 
 
-def _declared_maximum(settings: SettingsService, key: str) -> float:
-    """The largest value the coordination setting *key* accepts.
+def _declared_maximum(
+    settings: SettingsService, key: str, *, namespace: str = "coordination"
+) -> float:
+    """The largest value the setting *key* accepts in *namespace*.
 
     Read off the definition rather than written down here, because a bound
     copied into this module is one release away from disagreeing with the one
@@ -204,7 +229,8 @@ def _declared_maximum(settings: SettingsService, key: str) -> float:
 
     Args:
         settings: The service the armed values are written through.
-        key: The coordination setting whose ceiling is wanted.
+        key: The setting whose ceiling is wanted.
+        namespace: Which namespace declares it.
 
     Returns:
         The declared maximum.
@@ -216,17 +242,17 @@ def _declared_maximum(settings: SettingsService, key: str) -> float:
             all, and reporting it as "declares no maximum" points the operator
             at a definition that is perfectly correct.
     """
-    definition = settings.registry.get("coordination", key)
+    definition = settings.registry.get(namespace, key)
     if definition is None:
         msg = (
-            f"coordination.{key} is not registered with the settings service "
+            f"{namespace}.{key} is not registered with the settings service "
             f"the sweep writes through, so there is no ceiling to read. When "
             f"every ceiling reads this way the definitions were never loaded."
         )
         raise RecursionDepthCeilingUndeclaredError(msg)
     if definition.max_value is None:
         msg = (
-            f"coordination.{key} declares no maximum, so the sweep cannot tell "
+            f"{namespace}.{key} declares no maximum, so the sweep cannot tell "
             f"what the settings service will accept"
         )
         raise RecursionDepthCeilingUndeclaredError(msg)
@@ -274,7 +300,7 @@ def _armed_coordination(settings: SettingsService, *, enabled: bool) -> dict[str
 
 
 async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
-    """Put the decomposition service into the shape this sweep measures.
+    """Put the decomposition service and its retry ladder into sweep shape.
 
     Written through the real settings service rather than handed to the
     decomposition service directly, so the sweep exercises the live read the
@@ -296,9 +322,20 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
         RecursionDepthCeilingUndeclaredError: A setting the sweep opens to its
             ceiling has none to read.
     """
-    armed = _armed_coordination(settings, enabled=enabled)
-    for key, value in armed.items():
+    coordination = _armed_coordination(settings, enabled=enabled)
+    for key, value in coordination.items():
         await settings.set("coordination", key, value)
+    retries = str(
+        int(_declared_maximum(settings, _PROVIDER_RETRY_SETTING, namespace="providers"))
+    )
+    await settings.set("providers", _PROVIDER_RETRY_SETTING, retries)
+    # Namespaced uniformly. The sweep now arms two namespaces, and a bare key
+    # says which setting moved without saying which of them it belongs to,
+    # which is the question an operator reading this at 3am actually has.
+    armed = {
+        **{f"coordination.{key}": value for key, value in coordination.items()},
+        f"providers.{_PROVIDER_RETRY_SETTING}": retries,
+    }
     # Logged because a cell killed by a ceiling reports only that it produced
     # no tree: which ceilings were in force is otherwise recoverable from the
     # source alone, and the source is not what an operator reads at 3am. Logged
