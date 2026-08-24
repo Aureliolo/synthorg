@@ -362,6 +362,21 @@ enforces: a ceiling applied downstream of the plan shows the manifest's own
 number beside the flag that was meant to lower it, at the one moment the number
 is being relied on.
 
+`--repetitions` is the third lever and the one that reaches the bill, because a
+cap costs its branching to the POWER of its depth: one repetition fewer at the
+deepest cap buys back more time than any other single change, and the shallow
+end is nearly free either way. It takes `CAP:COUNT` pairs and changes only the
+caps named. Per run rather than by editing the file, because the committed
+counts are the experimental DESIGN (samples concentrated where the transition is
+expected, which is why caps 3 to 5 carry three each), and an operator trading one
+of them for a schedule should not leave the next reader inheriting a quota
+window as if it were an intended design. All three levers are folded into the
+manifest OBJECT and none touches the manifest FILE, which is what the journal's
+identity pins, so none of them turns a resumable matrix into a foreign one. A
+COMMIT does, because the identity pins that too, and that is the constraint that
+actually governs a staged recording: fix everything before the first stage, and
+carry the tree unchanged until the last one.
+
 The figure is derived from the TREE each cap admits, and this is the second
 attempt at it. The first counted one session per cell plus its merge attempts
 and then said "and one per leaf and per node on top of that", leaving the entire

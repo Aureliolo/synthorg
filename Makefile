@@ -145,7 +145,9 @@ recursion-depth:
 # null).
 #
 # This is a large bill, so stage it. `--depths` narrows the sweep to a subset of
-# the manifest's caps and `--max-sessions` lowers the ceiling:
+# the manifest's caps, `--repetitions CAP:COUNT` trades samples at the deep end
+# (where a cap costs its branching to the power of its depth, so this is the
+# lever that reaches the bill), and `--max-sessions` lowers the ceiling:
 #
 #   make recursion-depth-record ARGS="--company-config my-providers.yaml --depths 1,2"
 #

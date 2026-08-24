@@ -419,6 +419,73 @@ class TestStaging:
             narrow(load_manifest(_MANIFEST), "1,4,9")
 
 
+class TestTradingRepetitionsForASchedule:
+    """The deep end is where the bill is, so it is where the lever belongs.
+
+    A cap costs its branching to the power of its depth, so one repetition
+    fewer at the deepest cap buys back more time than any other single change.
+    The committed counts are the experimental design (samples concentrated
+    where the aggregation transition is expected), so an operator trading one
+    of them for a schedule overrides it per run rather than editing that design
+    into something the next reader inherits as if it were intended.
+    """
+
+    def test_only_the_named_cap_changes(self) -> None:
+        shipped = load_manifest(_MANIFEST)
+
+        narrowed = narrow(shipped, None, None, "4:1")
+
+        assert narrowed.repetitions[4] == 1
+        for cap in (1, 2, 3, 5, 6):
+            assert narrowed.repetitions[cap] == shipped.repetitions[cap]
+
+    def test_it_reaches_the_plan_the_operator_reads(self) -> None:
+        # Same reason --max-sessions is folded into the manifest: a count
+        # applied downstream of the plan prints the manifest's own figure
+        # beside the flag meant to lower it.
+        narrowed = narrow(load_manifest(_MANIFEST), "3,4", None, "4:1")
+
+        plan = describe_plan(narrowed, _spec())
+
+        assert "cap 4: 1" in plan
+
+    def test_it_composes_with_the_other_two_levers(self) -> None:
+        narrowed = narrow(load_manifest(_MANIFEST), "1,2,3,4", 6000, "4:1")
+
+        assert narrowed.depths == (1, 2, 3, 4)
+        assert narrowed.max_sessions == 6000
+        assert narrowed.repetitions[4] == 1
+
+    def test_it_lowers_the_planned_cell_count(self) -> None:
+        shipped = load_manifest(_MANIFEST)
+
+        narrowed = narrow(shipped, "1,2,3,4", None, "4:1")
+
+        assert len(planned_cells(narrowed)) < len(
+            planned_cells(narrow(shipped, "1,2,3,4"))
+        )
+
+    def test_a_cap_the_matrix_does_not_sweep_is_refused(self) -> None:
+        # The manifest validator only checks that every SWEPT depth has a
+        # count, so an extra key validates cleanly and does nothing: '41:1' is
+        # a typo for '4:1' that plans the full three repetitions and reports
+        # nothing wrong, which is discovered a day into a paid run.
+        with pytest.raises(ValueError, match="does not sweep"):
+            narrow(load_manifest(_MANIFEST), None, None, "41:1")
+
+    def test_zero_repetitions_is_refused(self) -> None:
+        # Recording none of a cap is what --depths is for, and expressing it
+        # here would leave the cap in the swept list with nothing under it.
+        with pytest.raises(ValueError, match="leave the cap out of --depths"):
+            narrow(load_manifest(_MANIFEST), None, None, "4:0")
+
+    @pytest.mark.parametrize("raw", ["4", "four:1", "4:one", ""])
+    def test_malformed_input_is_refused_rather_than_ignored(self, raw: str) -> None:
+        # Ignored, every one of these would silently run the full matrix.
+        with pytest.raises(ValueError, match="--repetitions"):
+            narrow(load_manifest(_MANIFEST), None, None, raw)
+
+
 def _record_args(tmp_path: Path) -> argparse.Namespace:
     """Build the argument bundle ``_record`` reads.
 

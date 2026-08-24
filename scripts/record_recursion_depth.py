@@ -699,6 +699,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--repetitions",
+        default=None,
+        help=(
+            "Override how many times a cap is recorded, as CAP:COUNT pairs "
+            "(for example '4:1'). Only the caps named change. This is the "
+            "lever for the deep end, where the bill is: a cap costs its "
+            "branching to the power of its depth, so trading one repetition "
+            "at the deepest cap buys back more time than anything else here. "
+            "The committed counts are the experimental DESIGN (samples "
+            "concentrated where the aggregation transition is expected), so "
+            "they are overridden per run rather than edited, and the manifest "
+            "digest a resume pins is taken over the file, which this does not "
+            "touch."
+        ),
+    )
+    parser.add_argument(
         "--max-sessions",
         type=_positive_int,
         default=None,
@@ -771,10 +787,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "digest along with the commit, the spec and both pairs, and a "
             "resume against a changed manifest is refused rather than mixing "
             "two matrices into one curve, which forfeits the planning already "
-            "paid for. --max-sessions is the only lever a resume has, because "
-            "it is folded into the manifest before the plan is printed rather "
-            "than applied to the run. Editing manifest.yaml to run a cheaper "
-            "matrix means starting a new --out-dir."
+            "paid for. --depths, --repetitions and --max-sessions are the "
+            "levers a resume still has, because each is folded into the "
+            "manifest before the plan is printed rather than applied to the "
+            "run, and none of them touches the file the digest is taken over. "
+            "Editing manifest.yaml to run a cheaper matrix means starting a "
+            "new --out-dir, and so does committing, because the identity pins "
+            "the commit too."
         ),
     )
     parser.add_argument(
@@ -785,24 +804,96 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_repetitions(
+    raw: str | None, manifest: RecursionDepthManifest
+) -> dict[int, int] | None:
+    """Read a ``CAP:COUNT`` repetition override off the command line.
+
+    Only the caps named are changed; the rest keep the manifest's own count, so
+    an operator lowering the deep end does not silently reshape the shallow one.
+
+    A cap the manifest does not sweep is REFUSED rather than ignored. The
+    manifest validator only checks that every swept depth HAS a count, so an
+    extra key validates cleanly and does nothing: ``--repetitions 41:1`` would
+    be a typo for ``4:1`` that plans the full three repetitions and reports
+    nothing wrong, which is the shape of mistake that gets discovered a day into
+    a paid run.
+
+    Args:
+        raw: The command-line text, or ``None`` for no override.
+        manifest: The loaded matrix, for the caps it actually sweeps.
+
+    Returns:
+        The overridden counts per cap, or ``None`` when nothing was asked for.
+
+    Raises:
+        ValueError: The text is malformed, names a cap the manifest does not
+            sweep, or asks for a count below one.
+    """
+    if raw is None:
+        return None
+    wanted: dict[int, int] = {}
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        cap_text, separator, count_text = entry.partition(":")
+        if not separator:
+            msg = f"--repetitions wants CAP:COUNT pairs, got {entry!r}"
+            raise ValueError(msg)
+        try:
+            cap, count = int(cap_text), int(count_text)
+        except ValueError as exc:
+            msg = f"--repetitions wants whole numbers, got {entry!r}"
+            raise ValueError(msg) from exc
+        if cap not in manifest.depths:
+            msg = (
+                f"--repetitions names cap {cap}, which this matrix does not "
+                f"sweep: {list(manifest.depths)}"
+            )
+            raise ValueError(msg)
+        if count < 1:
+            msg = (
+                f"--repetitions asks for {count} repetitions of cap {cap}; to "
+                f"record none of it, leave the cap out of --depths"
+            )
+            raise ValueError(msg)
+        wanted[cap] = count
+    if not wanted:
+        msg = "--repetitions was given no CAP:COUNT pair"
+        raise ValueError(msg)
+    return wanted
+
+
 def narrow(
     manifest: RecursionDepthManifest,
     depths: str | None,
     max_sessions: int | None = None,
+    repetitions: str | None = None,
 ) -> RecursionDepthManifest:
-    """Narrow *manifest* to the depth caps *depths* names and *max_sessions*.
+    """Narrow *manifest* to what this run records, and what it may spend.
 
-    Both overrides are applied to the manifest itself rather than only to the
+    Every override is applied to the manifest itself rather than only to the
     run, because the plan is what an operator reads to decide whether to spend:
     a ceiling applied downstream of the plan prints the manifest's own figure
     beside the flags that were meant to lower it, which is the one moment the
     number is being relied on.
+
+    None of them touches the manifest FILE, and the journal's identity pins the
+    file's digest, so an override never turns a resumable matrix into a foreign
+    one. What DOES is a commit, because the identity pins that too.
 
     Args:
         manifest: The loaded matrix.
         depths: Comma-separated caps, or ``None`` to keep the manifest's own.
         max_sessions: Session ceiling override, or ``None`` to keep the
             manifest's own.
+        repetitions: ``CAP:COUNT`` pairs, or ``None`` to keep the manifest's
+            own. This is the lever for the deep end, where the bill is: the
+            committed counts are the experimental design (samples concentrated
+            where ARIES puts the transition), and an operator trading one of
+            them for a schedule should not have to edit that design into
+            something the next reader inherits.
 
     Returns:
         The narrowed matrix.
@@ -810,11 +901,14 @@ def narrow(
     Raises:
         ValueError: A named cap is not in the manifest.
     """
-    if depths is None and max_sessions is None:
+    counts = parse_repetitions(repetitions, manifest)
+    if depths is None and max_sessions is None and counts is None:
         return manifest
     override: dict[str, object] = {}
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
+    if counts is not None:
+        override["repetitions"] = manifest.repetitions | counts
     if depths is None:
         return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
@@ -840,7 +934,12 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
-    manifest = narrow(load_manifest(args.manifest), args.depths, args.max_sessions)
+    manifest = narrow(
+        load_manifest(args.manifest),
+        args.depths,
+        args.max_sessions,
+        args.repetitions,
+    )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)
     # Checked on the plan path too, not only before a record. The plan path is
