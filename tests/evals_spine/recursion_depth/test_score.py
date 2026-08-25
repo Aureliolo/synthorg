@@ -396,10 +396,10 @@ class TestArmsAndCost:
         assert total == pytest.approx(cell.total_cost)
 
     def test_a_run_is_one_population_for_score_and_for_spend(self) -> None:
-        # These used to be two counts, because a run contributed claims at every
-        # level its leaves sat at while booking spend at one. Scoring per cell
-        # collapses that, so a second count would now always equal the first and
-        # two equal numbers invite a reader to look for the difference.
+        # One count, because a run contributes to exactly one bucket for both
+        # its fraction and its spend. A second population column would always
+        # equal the first, and two equal numbers invite a reader to hunt for a
+        # difference that is not there.
         cell = _cell(
             cap=3,
             achieved=3,

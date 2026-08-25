@@ -9,20 +9,32 @@ into it rather than left in the prose beside it.
 
 import json
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 
+from evals.errors import RecursionDepthNoCellsMeasuredError
 from evals.recursion_depth.chart import render_chart
 from evals.recursion_depth.journal import cell_key
 from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
     MERGE,
+    UNRESOLVED_CLAIMS_CAVEAT,
     CellRecord,
     DepthPoint,
+    Provenance,
     RecursionDepthReport,
     UnitRecord,
 )
+from evals.recursion_depth.score import (
+    achieved_depth_histogram,
+    curve_by_achieved_depth,
+    curve_by_depth_cap,
+)
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_REPORT_EMITTED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_NO_CELLS,
+    EVALS_RECURSION_REPORT_EMITTED,
+)
 
 logger = get_logger(__name__)
 
@@ -32,6 +44,78 @@ logger = get_logger(__name__)
 REPORT_JSON_NAME: str = "depth_curve.json"
 REPORT_MARKDOWN_NAME: str = "depth_curve.md"
 REPORT_CHART_NAME: str = "chart.svg"
+
+
+def derived_caveats(cells: Sequence[CellRecord]) -> list[str]:
+    """The caveats a set of recorded cells implies on its own.
+
+    Separated from the assembler so the caller owns the final list. A re-score
+    carries the original report's caveats forward verbatim, which is the only
+    way the run-state ones survive (the ceiling and quota caveats are appended
+    while the loop runs and are recoverable from nowhere else), and an
+    assembler appending its own on top would emit this line twice.
+
+    Returns:
+        The caveats these cells imply, which may be none.
+    """
+    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
+    return [UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []
+
+
+def assemble_report(
+    *,
+    provenance: Provenance,
+    cells: Sequence[CellRecord],
+    caveats: Sequence[str],
+    planned_cells: int,
+) -> RecursionDepthReport:
+    """Build the report from cells that are already measured and journalled.
+
+    The single owner of how a report is shaped, so the recorder and the
+    re-score cannot drift apart while both keep producing a valid report.
+
+    Here rather than in the runner because it is a property of the ARTIFACT
+    rather than of the run: it takes cells that are already on disk and calls no
+    provider. ``check_recording_harness_journalled`` treats a call to this as
+    assembling a report, so a driver still cannot reach a report without
+    journalling the cells that paid for it.
+
+    Args:
+        provenance: What the sweep was measured against. Supplies the
+            requirement count both curves divide by.
+        cells: Every recorded cell, measured or unavailable.
+        caveats: The final list, already complete. Nothing is appended here.
+        planned_cells: How many cells the matrix asked for, for the log line
+            below. A re-score passes the recorded count, since everything on
+            disk was by construction planned.
+
+    Returns:
+        The assembled report.
+
+    Raises:
+        RecursionDepthNoCellsMeasuredError: Every run is unavailable.
+    """
+    measured = tuple(record for record in cells if record.achieved_depth is not None)
+    if not measured:
+        msg = (
+            "the recursion-depth sweep measured no cells; every run is "
+            "unavailable, and a report of those is not a curve"
+        )
+        logger.warning(
+            EVALS_RECURSION_NO_CELLS,
+            planned_cells=planned_cells,
+            recorded_cells=len(cells),
+        )
+        raise RecursionDepthNoCellsMeasuredError(msg)
+    required = provenance.requirement_count
+    return RecursionDepthReport(
+        provenance=provenance,
+        cells=tuple(cells),
+        by_achieved_depth=curve_by_achieved_depth(measured, requirement_count=required),
+        by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
+        achieved_depth_histogram=achieved_depth_histogram(measured),
+        caveats=tuple(caveats),
+    )
 
 
 def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...]:

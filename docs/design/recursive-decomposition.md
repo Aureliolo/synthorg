@@ -517,9 +517,9 @@ largest arm difference of 3) and on cap 1 having failed totally twice with the
 same logged mechanism. Call it strongly supported, not proven.
 
 **The arm difference does not survive it.** 36 against 35 at depth 3, with the
-arms on different trees (58 leaves against 43), is inside the noise. Gating's
-effect on quality cannot be distinguished from zero here, and equally cannot be
-ruled out as substantial.
+arms on different trees (58 leaves against 43), is inside the noise. The effect
+of the gate on quality cannot be distinguished from zero here, and equally
+cannot be ruled out as substantial.
 
 What the arms DO differ in is process, measured over 35 merges rather than 2
 cells: gated merges amend a child's interface 1.05 times each against 0.31, and
@@ -541,7 +541,7 @@ comparison entirely.
 The cost of the substitute is attribution: a tree scoring well because the merge
 rebuilt it and one scoring well because the leaves' work survived are the same
 number here. The per-unit records still carry the claim-level figures, so the
-narrower question stays askable once the claim mapping is sound.
+narrower question can still be asked once the claim mapping is sound.
 
 ### Reading the verdicts, which are easy to read wrongly
 

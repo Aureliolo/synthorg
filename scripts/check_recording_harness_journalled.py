@@ -93,8 +93,14 @@ _SHARED_WRITER_REL: Final[str] = "evals/harness/journal.py"
 
 #: Calling one of these is what makes a module a recording driver: it is what
 #: assembles the artifact that ends a matrix.
+#:
+#: A named assembler counts alongside the model constructors it wraps. Report
+#: assembly is a property of the artifact rather than of the run, so it belongs
+#: beside the writer, and a driver reaching a report THROUGH a helper is still a
+#: driver reaching a report: keying only on the constructor would let any harness
+#: leave this gate by moving one call one module sideways.
 _REPORT_BUILDERS: Final[frozenset[str]] = frozenset(
-    {"RecursionDepthReport", "Scoreboard"}
+    {"RecursionDepthReport", "Scoreboard", "assemble_report"}
 )
 
 #: The shared open, plus the per-harness bindings that call it. A driver

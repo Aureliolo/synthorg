@@ -77,6 +77,19 @@ ORACLE_CAVEAT: Final[str] = (
     "brief, so a delivery cannot be built to it."
 )
 
+#: Derived from the cells rather than standing for every sweep, but here with
+#: its siblings because a report's caveats are one vocabulary and splitting them
+#: across the modules that happen to raise each one is how two of them come to
+#: contradict each other.
+UNRESOLVED_CLAIMS_CAVEAT: Final[str] = (
+    "{dropped} planner claim(s) named no requirement this specification "
+    "defines and were dropped before scoring. A handful is one planner "
+    "inventing a requirement; a large share means the criterion template and "
+    "the id pattern have drifted apart. The curve divides by the specification "
+    "rather than by these claims, so it is unaffected, but the per-unit "
+    "attribution is."
+)
+
 
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.

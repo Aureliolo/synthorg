@@ -1040,11 +1040,17 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
     # recoverable from nowhere else: the journal records cells, not why the
     # sweep stopped. Seeded only when there is no previous report to read,
     # since the two standing caveats hold for every sweep this harness runs.
-    caveats = list(_previous_caveats(out_dir)) or [
-        SIZING_CAVEAT,
-        ORACLE_CAVEAT,
-        *derived_caveats(cells),
-    ]
+    #
+    # The repair caveat is the exception, and is dropped rather than carried.
+    # The journal holds the RAW figures and the repair is applied at scoring
+    # time, so a re-score without the flag emits unrepaired numbers; inheriting
+    # the sentence saying they were repaired would make the report state the
+    # opposite of what it holds.
+    caveats = [
+        caveat
+        for caveat in _previous_caveats(out_dir)
+        if caveat != SPEND_REPAIRED_CAVEAT
+    ] or [SIZING_CAVEAT, ORACLE_CAVEAT, *derived_caveats(cells)]
     if repair_from is not None:
         cells = repair_cell_spend(cells, tokens_by_unit(repair_from))
         caveats.append(SPEND_REPAIRED_CAVEAT)
