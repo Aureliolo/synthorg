@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { Plus, Trash2 } from 'lucide-react'
 
-import type { EditPlanRequest, Plan, PlanItem } from '@/api/types/plans'
+import type { Plan } from '@/api/types/plans'
 import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enums'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -10,6 +10,20 @@ import type { SelectOption } from '@/components/ui/select-field'
 import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
 import { isUnroutableOwner } from '@/utils/plans'
+
+import { childIndex, parentOptions } from './PlanEditor.containment'
+import {
+  acceptanceText,
+  artifactsText,
+  isComplete,
+  isComplexity,
+  isStakes,
+  newDraft,
+  nonBlankCriteria,
+  toDraft,
+  toPayload,
+} from './PlanEditor.drafts'
+import type { DraftItem, GradingProps, RowProps } from './PlanEditor.types'
 
 const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
 const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
@@ -20,138 +34,6 @@ const TITLE_MAX = 256
 const TEXT_MAX = 8192
 const MAX_ITEMS = 1000
 const MAX_CRITERIA = 50
-
-function isComplexity(value: string): value is PlanItem['estimated_complexity'] {
-  return (COMPLEXITY_VALUES as readonly string[]).includes(value)
-}
-
-function isStakes(value: string): value is PlanItem['stakes'] {
-  return (STAKES_VALUES as readonly string[]).includes(value)
-}
-
-function nonBlankCriteria(criteria: readonly string[]): readonly string[] {
-  return criteria.map((c) => c.trim()).filter((c) => c !== '')
-}
-
-interface DraftItem {
-  id: string
-  title: string
-  description: string
-  /** The item this one was split out of; `''` makes it a workstream. */
-  parentId: string
-  owner: string
-  dependencies: readonly string[]
-  acceptanceCriteria: readonly string[]
-  expectedArtifacts: readonly string[]
-  requiredSkills: readonly string[]
-  requiredTags: readonly string[]
-  complexity: PlanItem['estimated_complexity']
-  stakes: PlanItem['stakes']
-  // Preserved verbatim so editing a plan that holds a decision item does not
-  // strip its options and fail the decision validator on save, and so a rework
-  // keeps each item's objective-criteria coverage.
-  kind: PlanItem['kind']
-  options: PlanItem['options']
-  chosenOptionId: PlanItem['chosen_option_id']
-  satisfies: PlanItem['satisfies']
-}
-
-function toDraft(item: PlanItem): DraftItem {
-  return {
-    id: item.id,
-    title: item.title,
-    description: item.description,
-    parentId: item.parent_id ?? '',
-    owner: item.owner ?? '',
-    dependencies: item.dependencies,
-    acceptanceCriteria: item.acceptance_criteria,
-    expectedArtifacts: item.expected_artifacts,
-    requiredSkills: item.required_skills,
-    requiredTags: item.required_tags,
-    complexity: item.estimated_complexity,
-    stakes: item.stakes,
-    kind: item.kind,
-    options: item.options,
-    chosenOptionId: item.chosen_option_id,
-    satisfies: item.satisfies,
-  }
-}
-
-function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
-  const owner = draft.owner.trim()
-  return {
-    id: draft.id,
-    title: draft.title,
-    description: draft.description,
-    parent_id: draft.parentId === '' ? null : draft.parentId,
-    owner: owner === '' ? null : owner,
-    dependencies: draft.dependencies,
-    acceptance_criteria: nonBlankCriteria(draft.acceptanceCriteria),
-    expected_artifacts: draft.expectedArtifacts,
-    required_skills: draft.requiredSkills,
-    required_tags: draft.requiredTags,
-    estimated_complexity: draft.complexity,
-    stakes: draft.stakes,
-    kind: draft.kind,
-    options: draft.options,
-    chosen_option_id: draft.chosenOptionId,
-    satisfies: draft.satisfies,
-  }
-}
-
-function acceptanceText(draft: DraftItem): string {
-  return draft.acceptanceCriteria.join('\n')
-}
-
-function artifactsText(draft: DraftItem): string {
-  return draft.expectedArtifacts.join('\n')
-}
-
-/** Whether a draft carries everything the backend requires of its kind. */
-function isComplete(draft: DraftItem): boolean {
-  const nonBlank = (lines: readonly string[]) =>
-    lines.some((line) => line.trim().length > 0)
-  if (!draft.title.trim() || !nonBlank(draft.acceptanceCriteria)) return false
-  return draft.kind !== 'work' || nonBlank(draft.expectedArtifacts)
-}
-
-function newDraft(): DraftItem {
-  return {
-    id: crypto.randomUUID(),
-    title: '',
-    description: '',
-    parentId: '',
-    owner: '',
-    dependencies: [],
-    acceptanceCriteria: [],
-    expectedArtifacts: [],
-    requiredSkills: [],
-    requiredTags: [],
-    complexity: 'medium',
-    stakes: 'normal',
-    kind: 'work',
-    options: [],
-    chosenOptionId: null,
-    satisfies: [],
-  }
-}
-
-interface RowProps {
-  index: number
-  draft: DraftItem
-  canRemove: boolean
-  roster: ReadonlySet<string> | undefined
-  /** What this row may be moved under, computed against the whole draft set. */
-  parentChoices: readonly SelectOption[]
-  onChange: (index: number, patch: Partial<DraftItem>) => void
-  onRemove: (index: number) => void
-}
-
-interface GradingProps {
-  index: number
-  draft: DraftItem
-  onChange: (index: number, patch: Partial<DraftItem>) => void
-}
 
 /** The message for an owner the org cannot route to, or null when it can. */
 function ownerError(
@@ -164,69 +46,6 @@ function ownerError(
 }
 
 const UNASSIGNED_OWNER: SelectOption = { value: '', label: 'Unassigned' }
-
-const NO_PARENT: SelectOption = { value: '', label: 'No parent (a workstream)' }
-
-/**
- * Every draft's own id mapped to the ids of its children.
- *
- * Built once per draft list rather than re-derived per row: the closure below
- * is a walk over the whole list, and running one inside each of a thousand
- * rows on every keystroke is the shape that makes a plain edit unusable.
- */
-function childIndex(
-  drafts: readonly DraftItem[],
-): ReadonlyMap<string, readonly string[]> {
-  const children = new Map<string, string[]>()
-  for (const draft of drafts) {
-    if (draft.parentId === '') continue
-    const kids = children.get(draft.parentId)
-    if (kids === undefined) children.set(draft.parentId, [draft.id])
-    else kids.push(draft.id)
-  }
-  return children
-}
-
-/**
- * The items this one may be moved under.
- *
- * Everything the backend would refuse is left out rather than offered and
- * rejected after a round trip: itself, anything already below it (which would
- * close a containment cycle), and a decision, which is chosen rather than
- * decomposed so nothing can hang off one. The backend still enforces all
- * three; this only keeps the operator from being told no.
- */
-function parentOptions(
-  drafts: readonly DraftItem[],
-  children: ReadonlyMap<string, readonly string[]>,
-  index: number,
-): readonly SelectOption[] {
-  const subject = drafts[index]
-  if (subject === undefined) return [NO_PARENT]
-  // Walked down from the subject rather than swept repeatedly over the list,
-  // so list order cannot hide a grandchild whose parent comes later, and the
-  // cost is the subtree rather than the plan. The frontier is bounded by the
-  // draft count because each id is added once, which is also what stops a
-  // cycle an unsaved edit can hold from spinning here.
-  const below = new Set<string>([subject.id])
-  const frontier = [subject.id]
-  while (frontier.length > 0) {
-    for (const child of children.get(frontier.pop() as string) ?? []) {
-      if (below.has(child)) continue
-      below.add(child)
-      frontier.push(child)
-    }
-  }
-  return [
-    NO_PARENT,
-    ...drafts
-      .filter((draft) => !below.has(draft.id) && draft.kind !== 'decision')
-      .map((draft) => ({
-        value: draft.id,
-        label: draft.title.trim() === '' ? 'Untitled item' : draft.title,
-      })),
-  ]
-}
 
 /**
  * What this item belongs to.
