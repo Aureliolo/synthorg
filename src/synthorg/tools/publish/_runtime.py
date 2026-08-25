@@ -46,13 +46,11 @@ class PublishToolsRuntime:
 
     @property
     def connection_name(self) -> NotBlankStr | None:
-        """Satisfy the shared runtime protocol.
+        """Always ``None``: this family binds per call, not per runtime.
 
-        Returns:
-            ``None``. This family resolves its connection from the call's
-            target, so there is no single bound connection;
-            :attr:`PublishToolsRuntime.allowed_targets` is the real bound
-            surface.
+        Each call resolves its connection from the target it names, so there is
+        no single bound connection to report here;
+        :attr:`PublishToolsRuntime.allowed_targets` is the real bound surface.
         """
         return None
 

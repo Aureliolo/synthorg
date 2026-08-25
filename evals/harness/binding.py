@@ -74,11 +74,15 @@ _GATEWAY_DRIVER: Final[str] = "litellm"
 #: intend.
 _SANDBOX_NETWORK: Final[Literal["none", "bridge", "host"]] = "none"
 
-#: Lifetime of a per-run gateway bearer. It must outlive the longest cell the
-#: sweep records, since a run whose bearer expires mid-flight fails auth part
-#: way through rather than being ended by the ceiling that bounds it. Owned
-#: here rather than by a setting: the gateway serves this harness alone, and
-#: the run's length is known here and nowhere else.
+#: Lifetime of a per-run gateway bearer. The unit it has to outlive is a single
+#: SESSION, not a cell: every session and every planning call builds its own
+#: driver through :meth:`HarnessBinder.build_provider`, so a cell spanning tens
+#: of sessions over hours never rides one bearer. A session is bounded by its
+#: turn cap and by the ceiling the gateway kills on, and this sits far above
+#: what either allows, so a session ends on a bound it declared rather than
+#: failing auth part way through. Owned here rather than by a setting: the
+#: gateway serves this harness alone, and a session's length is known here and
+#: nowhere else.
 _BEARER_TTL_SECONDS: Final[int] = 172_800
 
 

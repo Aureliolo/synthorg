@@ -24,7 +24,7 @@ Recorded against commit `cdfb2e1a70f54c3fa51b92c785005cb7458ba96d` on 2026-08-12
 
 ## What it found
 
-**react scored higher in 12 of 15 cells**, including every expert cell, and in 11 of the 13
+**ReAct scored higher in 12 of 15 cells**, including every expert cell, and in 11 of the 13
 where either loop cleared the gate. Per complexity bucket: simple `react 99.3`,
 medium `react 97.0`.
 
@@ -34,11 +34,11 @@ on every brief. That finding is about the model rather than the loop, and lives 
 [model-capability policy](../reference/model-capability-policy.md).
 
 **The failure shapes differ more than the failure rates, and that is the decisive result.**
-Counted by pass rate, react failed 11 of 45 runs and OpenHands 8 of 45, which favours OpenHands.
-Counted by how they failed, 9 of react's 11 ended `NO_OP` or `ERROR`, which the zero-artifact
+Counted by pass rate, ReAct failed 11 of 45 runs and OpenHands 8 of 45, which favours OpenHands.
+Counted by how they failed, 9 of ReAct's 11 ended `NO_OP` or `ERROR`, which the zero-artifact
 guard terminates `FAILED` so the plan can replan; only 2 ended `completed`. Six of OpenHands'
 eight ended `completed`, artifacts written and a confident summary attached, which nothing
-downstream of the loop can distinguish from success. Per run that is 2 of react's 45 reaching
+downstream of the loop can distinguish from success. Per run that is 2 of ReAct's 45 reaching
 review as an apparent success against 6 of OpenHands' 45. For a supervised system the second is
 the expensive failure, and no rubric dimension measured it.
 

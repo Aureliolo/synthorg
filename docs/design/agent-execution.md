@@ -125,13 +125,13 @@ graph LR
     in-sandbox over its container's stdin/stdout and governed at the LLM
     gateway. It was there to be measured, and it was:
     [the recording](../research/inner-loop-ab-recording.md) put 90 runs through
-    both loops across five briefs and three model capabilities, and react
+    both loops across five briefs and three model capabilities, and ReAct
     scored higher in 12 of 15 cells.
 
     The result that decided it was not the score. Its builder took only
     `**_unused: object`, so it silently discarded the six in-flight controls
     the native builder receives by name, and 6 of its 45 runs terminated
-    `completed` while failing their own checks, against 2 of react's 45. An
+    `completed` while failing their own checks, against 2 of ReAct's 45. An
     ungoverned run that reads downstream as a success is the expensive
     failure for a supervised system, so the loop, the selection surface and
     the settings that named one were removed together.

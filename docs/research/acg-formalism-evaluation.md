@@ -91,9 +91,11 @@ evidence rather than judgement. *(Since removed: the A/B ran, one loop won, and 
 selector and the harness went with it. The measurement is preserved at
 [`inner-loop-ab-recording.md`](inner-loop-ab-recording.md).)*
 
-**Implication**: The loop selector is doing real structural work. Adding complexity to
-system prompts for tasks that should use a different loop is not a substitute. This
-validates investing in the auto-selector's classification accuracy over prompt length.
+**Implication**: While two loops shipped, the selector was doing real structural work,
+and adding complexity to system prompts for tasks that suited the other loop was not a
+substitute. The measurement settled which loop that was, so the structural lever is now
+the topology selector rather than the loop selector; the finding stands, its subject
+moved.
 
 ### Finding 2: Strong Verifiers Enable More Aggressive Graph Mutation
 

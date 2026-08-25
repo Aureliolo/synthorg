@@ -6,6 +6,8 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
+from typing import Self
+
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
@@ -176,7 +178,7 @@ class ReactLoop:
         """Return the step-quality classifier, or ``None``."""
         return self._step_classifier
 
-    def with_checkpoint_callback(self, callback: CheckpointCallback) -> ReactLoop:
+    def with_checkpoint_callback(self, callback: CheckpointCallback) -> Self:
         """Return a copy of this loop that also checkpoints.
 
         The single owner of what a rebuilt loop carries. Resume rebuilds the
@@ -184,11 +186,16 @@ class ReactLoop:
         and a rebuild that names its fields at the call site is a rebuild that
         drops whichever control the next one adds.
 
+        Rebuilt through ``type(self)`` rather than this class by name, because
+        the resume path reaches here for any loop passing ``isinstance``, and a
+        loop supplied from outside that specialises this one would otherwise
+        come back as the base and resume without whatever it specialised.
+
         Returns:
-            A new :class:`ReactLoop` carrying every control of this one plus
-            ``callback``.
+            A new loop of this one's own type carrying every control of this
+            one plus ``callback``.
         """
-        return ReactLoop(
+        return type(self)(
             callback,
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,

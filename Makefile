@@ -99,8 +99,8 @@ recursion-depth:
 	PYTHONPATH=. uv run python scripts/record_recursion_depth.py $(ARGS)
 
 # Measure the recursion-depth sweep for real (REAL PROVIDER SPEND) and rewrite
-# the committed chart under `evals/recursion_depth/results/`. Like the A/B
-# recorder it hosts its own gateway, so no running API is needed; it does need a
+# the committed chart under `evals/recursion_depth/results/`. It hosts its own
+# gateway, so no running API is needed; it does need a
 # Docker daemon and a `--company-config` whose `providers:` block aliases the
 # manifest's example-* ids to real models, one for the executor and a DIFFERENT
 # one for the reviewer (the harness refuses an identical pair, because the gate

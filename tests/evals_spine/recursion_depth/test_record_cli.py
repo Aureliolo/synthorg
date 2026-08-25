@@ -547,10 +547,9 @@ def _recorded(
     (root / "unit").mkdir(parents=True)
 
     host = mock_of[RecordingGatewayHost](
-        # The three addresses the start log states, which is everything the
+        # The addresses the start log states, which is everything the
         # lifecycle under test reads off a host.
         container_gateway_url="http://gateway.invalid/v1",
-        container_mcp_url="http://gateway.invalid/mcp",
         port=0,
     )
     host.__aenter__.return_value = host

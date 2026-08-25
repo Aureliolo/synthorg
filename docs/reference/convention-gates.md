@@ -126,6 +126,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |
+| `check_recording_harness_journalled.py` | push | `evals/` | full | no | none | add |
 | `check_run_recovery_covers_plan_statuses.py` | push | `core/plan_enums.py` + `engine/run_recovery/` | full | no | none | add |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |

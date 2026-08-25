@@ -135,6 +135,7 @@ function buildAgentIdentity(
       access_level: 'standard',
       allowed: [],
       denied: [],
+      denied_categories: [],
       mcp_capabilities: [],
       sub_constraints: null,
     },
