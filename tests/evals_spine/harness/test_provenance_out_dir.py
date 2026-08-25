@@ -1,14 +1,13 @@
 # module-kind: tests
 """A recorder's own output must not make the tree it measured read as edited.
 
-Both harnesses write their committed artifact into a TRACKED directory, and
+A recording harness writes its committed artifact into a TRACKED directory, and
 ``git_dirty`` is part of the resume identity, so without the exclusion a
 finished stage dirties the tree with its own report and the next ``--resume`` is
 refused on a mismatch, forfeiting every cell already paid for.
 
 These drive the real ``git`` binary via subprocess, so they sit in the
-integration capability alongside ``loop_ab/test_provenance_integration.py``
-rather than slowing the unit suite.
+integration capability rather than slowing the unit suite.
 """
 
 import subprocess
