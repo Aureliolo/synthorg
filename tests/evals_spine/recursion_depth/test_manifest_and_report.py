@@ -337,23 +337,21 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
             DepthPoint(
                 depth=2,
                 arm=Arm.GATED,
-                delivered_claims=4,
-                surviving_claims=3,
-                cells=1,
-                # Set, not defaulted: `_cost_series` skips a point booking no
+                required=4,
+                satisfied=3,
+                # Set, not defaulted: `_cost_series` skips a point holding no
                 # runs, so a fixture leaving this at 0 renders no cost panel
                 # and every assertion about that panel passes on an empty one.
-                runs=1,
+                cells=1,
                 cost=1.5,
                 attempts=6,
             ),
             DepthPoint(
                 depth=2,
                 arm=Arm.UNGATED,
-                delivered_claims=4,
-                surviving_claims=1,
+                required=4,
+                satisfied=1,
                 cells=1,
-                runs=1,
                 cost=1.0,
                 attempts=6,
             ),
@@ -414,13 +412,16 @@ class TestTheReportRefusesASilentGap:
                 unavailable_reason="and also this",
             )
 
-    def test_more_survivors_than_delivered_work_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="surviving claims"):
+    def test_satisfying_more_than_the_spec_asks_is_refused(self) -> None:
+        # Now a check that the oracle and the provenance agree about WHICH
+        # specification was run: both operands come from one requirement set,
+        # so exceeding it means they have come apart.
+        with pytest.raises(ValueError, match="satisfied against"):
             DepthPoint(
                 depth=1,
                 arm=Arm.GATED,
-                delivered_claims=1,
-                surviving_claims=2,
+                required=1,
+                satisfied=2,
                 cells=1,
             )
 

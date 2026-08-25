@@ -110,11 +110,11 @@ def _cost_series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, floa
     """
     series: dict[Arm, list[tuple[int, float]]] = {arm: [] for arm in Arm}
     for point in points:
-        # Keyed on the runs booked here, not on the runs that contributed
-        # claims. A run whose leaves all failed contributes no claims and still
-        # cost what it cost, and dropping it hid the spend of exactly the deep
-        # failed runs this panel exists to show.
-        if point.runs == 0:
+        # A bucket with no run in it has no spend to plot. It cannot arise from
+        # a run whose leaves all failed, which is the case that used to need a
+        # separate count: such a run still scores against the specification and
+        # still books what it cost.
+        if point.cells == 0:
             continue
         series[point.arm].append((point.depth, point.cost))
     for values in series.values():

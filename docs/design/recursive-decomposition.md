@@ -468,6 +468,107 @@ non-zero exit from a command the agent meant to fail, which is correct
 behaviour and useless as a signal: the count moves with how thoroughly an agent
 explored, not with how badly a run went.
 
+## What the sweep measured
+
+`evals/recursion_depth/results/` holds the recording: `chart.svg`,
+`depth_curve.json` and `depth_curve.md`, beside the `cells.jsonl` and
+`progress.jsonl` the run journalled as it went. Six cells, caps 1 to 3, one
+repetition each, both arms, 229 agent sessions, no cell unavailable.
+
+| achieved depth | gated | ungated |
+|---|---|---|
+| 1 | 0.000 (0/42) | 0.000 (0/42) |
+| 2 | 0.857 (36/42) | 0.786 (33/42) |
+| 3 | 0.857 (36/42) | 0.833 (35/42) |
+
+Every cap reached the depth it allowed, so achieved depth and cap agree
+throughout and the histogram holds no surprises.
+
+### The answer, and why it is not the answer the question expected
+
+**Neither arm collapsed.** The gated line is flat from depth 2 to depth 3 while
+its tree grew from 38 leaves to 58, and the ungated line ROSE, from 0.786 to
+0.833. The question this experiment was built around assumed the ungated arm
+decays, because that is what ARIES measured, and asked only whether gating
+rescues it. There was nothing to rescue.
+
+So the conclusion the question was gating still arrives, by a different route:
+the 11-to-25 coherent-unit ceiling is **per level** and depth buys scale. 58
+units at 86% is well past it. But verification is not what makes that true.
+
+**What moves the result is fan-in.** Depth 1 is seven units feeding one merge
+and it scored zero in both arms, with the journal saying why: both cap-1 merges
+wrote only `.synthorg/merge/report.md` and `.synthorg/merge/end-to-end.txt` and
+touched no code. The two-to-three-way fan-ins at depth 2 produced 36 of 42.
+Depth replaces one impossible integration with a sequence of small ones.
+
+Note that cap 1's seven units sit INSIDE the corroborated 11-to-25 band and
+produced nothing at all. The band counts units; what binds is unit size against
+the work.
+
+### What this run cannot support
+
+**One repetition per cell, and each cell plans its own tree**, so treatment and
+tree draw are confounded everywhere and there is not one controlled comparison
+in the run.
+
+The depth finding survives that on effect size (36 requirements, against a
+largest arm difference of 3) and on cap 1 having failed totally twice with the
+same logged mechanism. Call it strongly supported, not proven.
+
+**The arm difference does not survive it.** 36 against 35 at depth 3, with the
+arms on different trees (58 leaves against 43), is inside the noise. Gating's
+effect on quality cannot be distinguished from zero here, and equally cannot be
+ruled out as substantial.
+
+What the arms DO differ in is process, measured over 35 merges rather than 2
+cells: gated merges amend a child's interface 1.05 times each against 0.31, and
+spend 3.05 attempts against 6.00, because an ungated merge has no verdict to
+stop on and always burns its whole budget. Per unit of work the gated arm used
+1.73 sessions against 2.58, at 1.15M tokens per leaf against 1.13M. The gate
+changes how the work converges; whether it changes the result is unmeasured.
+
+### The metric measures the adjacent question
+
+`fraction` is the share of the SPECIFICATION the merged tree satisfies, not the
+share of leaf work surviving the merge, which is what this page set out to ask.
+The narrower denominator did not hold up: a leaf must pass its own suite to
+count, roughly a quarter did, and 143 planner claims named no requirement the
+spec defines. Whole cells came out with a zero denominator and no point at all,
+including the ungated arm at BOTH measured depths, which deletes the arm
+comparison entirely.
+
+The cost of the substitute is attribution: a tree scoring well because the merge
+rebuilt it and one scoring well because the leaves' work survived are the same
+number here. The per-unit records still carry the claim-level figures, so the
+narrower question stays askable once the claim mapping is sound.
+
+### Reading the verdicts, which are easy to read wrongly
+
+**A `reject` does not mean the merge was discarded.** The gate is a repair loop:
+findings feed the next attempt, the workspace is mutated in place, and the final
+tree is used whatever the last verdict said. Both arms get the same attempt
+budget; only the gated arm's repairs are informed.
+
+**Parking short-circuits repair, against the gated arm.** `run_merge` breaks on
+`approved is True or parked`, so a merge escalating with no human to decide gets
+fewer rounds than a rejected one. The gated arm parked 6 of 19 merges at depth 3
+(against 1 of 7 at depth 2) and the ungated arm parks never, so the arm credited
+with repair received less of it as depth rose.
+
+**The reviewer pays a compliance tax the executor does not.** 31 verdict
+submissions were refused for rejecting with an empty findings list, gated arms
+only. Every retry recovered and no rejection landed without findings, so the
+gate never degraded, but the cost falls entirely on the arm whose spend is being
+compared.
+
+### What was not recorded
+
+Caps 4 to 6. ARIES puts the transition at 3 to 4, so the depth where the
+literature expects a blow-up is exactly the one beyond this recording: the
+chart's right end is absent rather than flat. Replication and depth 4 are
+tracked in the issues that succeeded this work.
+
 ### What the run keeps
 
 Every request and response crossing the recorder's own gateway is written to a

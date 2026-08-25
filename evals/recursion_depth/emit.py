@@ -26,6 +26,13 @@ from synthorg.observability.events.evals import EVALS_RECURSION_REPORT_EMITTED
 
 logger = get_logger(__name__)
 
+#: The three artifacts a report is, named once. A re-score reads the JSON back
+#: for what only it holds, so a second literal spelling would be one rename
+#: from reading a file nothing writes.
+REPORT_JSON_NAME: str = "depth_curve.json"
+REPORT_MARKDOWN_NAME: str = "depth_curve.md"
+REPORT_CHART_NAME: str = "chart.svg"
+
 
 def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...]:
     """Write the JSON, the Markdown and the chart.
@@ -38,9 +45,9 @@ def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...
         The written paths, in the order JSON, Markdown, SVG.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / "depth_curve.json"
-    md_path = out_dir / "depth_curve.md"
-    svg_path = out_dir / "chart.svg"
+    json_path = out_dir / REPORT_JSON_NAME
+    md_path = out_dir / REPORT_MARKDOWN_NAME
+    svg_path = out_dir / REPORT_CHART_NAME
     json_path.write_text(
         report.model_dump_json(indent=2) + "\n", encoding="utf-8", newline=""
     )
@@ -167,25 +174,20 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
     Returns:
         The table lines.
     """
-    # Two population columns rather than one: "Contributing" is what the
-    # fraction is over, "Runs" is what the spend is over, and on the
-    # achieved-depth curve they differ. One column for both invited a
-    # spend-per-run read that divided across two populations.
     header = (
-        "| Depth | Arm | Surviving | Delivered | Fraction | Contributing "
-        "| Runs | Sessions | Tokens | Spend |"
+        "| Depth | Arm | Satisfied | Required | Fraction | Runs "
+        "| Sessions | Tokens | Spend |"
     )
-    rows = [header, "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    rows = [header, "|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
     for point in points:
         fraction = point.fraction
-        # An absence rather than a zero: nothing was delivered at this depth,
-        # so there is no rate to report and printing 0.000 would say the merge
-        # lost work that never existed.
+        # An absence rather than a zero: the bucket holds no run, so there is
+        # no rate to report and printing 0.000 would claim a measured failure.
         rendered = "n/a" if fraction is None else f"{fraction:.3f}"
         rows.append(
-            f"| {point.depth} | {point.arm.value} | {point.surviving_claims} "
-            f"| {point.delivered_claims} | {rendered} | {point.cells} "
-            f"| {point.runs} | {point.attempts} | {point.tokens} "
+            f"| {point.depth} | {point.arm.value} | {point.satisfied} "
+            f"| {point.required} | {rendered} | {point.cells} "
+            f"| {point.attempts} | {point.tokens} "
             f"| {point.cost:.4f} |"
         )
     return rows
@@ -342,4 +344,10 @@ def load_report(path: Path) -> RecursionDepthReport:
     )
 
 
-__all__ = ["load_report", "write_report"]
+__all__ = [
+    "REPORT_CHART_NAME",
+    "REPORT_JSON_NAME",
+    "REPORT_MARKDOWN_NAME",
+    "load_report",
+    "write_report",
+]

@@ -167,60 +167,39 @@ def _cell(
     )
 
 
-class TestWhatEntersTheDenominator:
-    """Leaf work DELIVERED, not leaf work that stood up on its own."""
+#: The specification's own requirement count, which every cell shares. Small
+#: here so a fraction reads at a glance; the real spec carries 42.
+_REQUIRED = 4
 
-    def test_a_delivered_leaf_claim_that_survives_counts_once(self) -> None:
+
+class TestWhatEntersTheDenominator:
+    """The specification, not the work the leaves happened to claim.
+
+    The sweep was built to ask whether leaf work survives the merge, and that
+    denominator did not hold up on a live run: a leaf must pass its own suite to
+    count, roughly a quarter did, and whole cells came out with nothing in the
+    denominator and therefore no point at all. Both arms lost their depth-2 and
+    depth-3 points that way, which deletes the comparison the sweep exists for.
+    """
+
+    def test_the_denominator_is_the_specification(self) -> None:
         cell = _cell(
             cap=2,
             achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01", "R02")),),
-            passing=("R01",),
+            passing=("R01", "R02"),
         )
 
-        point = curve_by_achieved_depth((cell,))[0]
+        point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
 
-        assert point.delivered_claims == 2
-        assert point.surviving_claims == 1
+        assert point.required == _REQUIRED
+        assert point.satisfied == 2
         assert point.fraction == pytest.approx(0.5)
 
-    def test_a_leaf_that_never_delivered_is_not_work_the_merge_lost(self) -> None:
-        # Its claims are absent from both halves of the ratio. Counting them in
-        # the denominator would report a merge failure for work nobody built.
-        cell = _cell(
-            cap=2,
-            achieved=2,
-            units=(
-                _leaf("a", depth=1, claimed=("R01",)),
-                _leaf("b", depth=1, claimed=("R02",), delivered=False),
-            ),
-            passing=("R01",),
-        )
-
-        point = curve_by_achieved_depth((cell,))[0]
-
-        assert point.delivered_claims == 1
-        assert point.fraction == pytest.approx(1.0)
-
-    def test_two_leaves_claiming_the_same_requirement_count_once(self) -> None:
-        # A planner producing overlapping units would otherwise weight its
-        # level by how repetitive the plan was.
-        cell = _cell(
-            cap=2,
-            achieved=2,
-            units=(
-                _leaf("a", depth=1, claimed=("R01",)),
-                _leaf("b", depth=1, claimed=("R01",)),
-            ),
-            passing=(),
-        )
-
-        point = curve_by_achieved_depth((cell,))[0]
-
-        assert point.delivered_claims == 1
-
-    def test_a_depth_where_nothing_delivered_reports_no_rate(self) -> None:
-        # An absence, not a zero: a zero says the merge lost everything.
+    def test_a_cell_whose_leaves_all_failed_still_scores(self) -> None:
+        # The case that produced NO POINT under the claim-based metric, in both
+        # arms at both measured depths. A tree that satisfies nothing is a
+        # measured zero, not an absence.
         cell = _cell(
             cap=2,
             achieved=2,
@@ -228,11 +207,40 @@ class TestWhatEntersTheDenominator:
             passing=(),
         )
 
-        points = curve_by_achieved_depth((cell,))
+        point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
 
-        assert all(point.fraction is None for point in points)
+        assert point.required == _REQUIRED
+        assert point.satisfied == 0
+        assert point.fraction == pytest.approx(0.0)
 
-    def test_a_merge_unit_contributes_no_claims(self) -> None:
+    def test_what_a_leaf_claimed_does_not_reach_the_curve(self) -> None:
+        # Deliberate, and the cost of the change: a tree scoring well because
+        # the merging agent rebuilt it and one scoring well because leaf work
+        # survived are the same number here. The per-unit records still carry
+        # the claims, so the narrower question stays askable later.
+        claiming = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01", "R02", "R03")),),
+            passing=("R01",),
+        )
+        silent = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=()),),
+            passing=("R01",),
+        )
+
+        assert (
+            curve_by_achieved_depth((claiming,), requirement_count=_REQUIRED)[
+                0
+            ].fraction
+            == curve_by_achieved_depth((silent,), requirement_count=_REQUIRED)[
+                0
+            ].fraction
+        )
+
+    def test_a_merge_unit_does_not_change_the_score(self) -> None:
         merge = UnitRecord(
             unit_id=NotBlankStr("root"),
             title=NotBlankStr("assemble"),
@@ -245,18 +253,18 @@ class TestWhatEntersTheDenominator:
             cap=2,
             achieved=2,
             units=(merge, _leaf("a", depth=1, claimed=("R01",))),
-            passing=("R01", "R09"),
+            passing=("R01",),
         )
 
-        point = curve_by_achieved_depth((cell,))[0]
+        point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
 
-        assert point.delivered_claims == 1
+        assert point.satisfied == 1
 
 
 class TestWhatTheAxisMeans:
     """The depth a tree reached, not the cap it was allowed."""
 
-    def test_leaves_are_binned_on_their_own_level(self) -> None:
+    def test_a_run_lands_at_the_depth_it_reached(self) -> None:
         cell = _cell(
             cap=4,
             achieved=3,
@@ -267,11 +275,14 @@ class TestWhatTheAxisMeans:
             passing=("R01", "R02"),
         )
 
-        points = {point.depth: point for point in curve_by_achieved_depth((cell,))}
+        points = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
 
-        assert points[1].delivered_claims == 1
-        assert points[3].delivered_claims == 2
-        assert points[3].surviving_claims == 1
+        # One point, at the depth the TREE reached. Binning each leaf on its own
+        # level made one run several points, so a run's spend and its score were
+        # over different populations.
+        assert [point.depth for point in points] == [3]
+        assert points[0].satisfied == 2
+        assert points[0].cells == 1
 
     def test_the_cap_curve_pools_a_run_at_its_cap(self) -> None:
         cell = _cell(
@@ -284,11 +295,11 @@ class TestWhatTheAxisMeans:
             passing=("R01",),
         )
 
-        points = curve_by_depth_cap((cell,))
+        points = curve_by_depth_cap((cell,), requirement_count=_REQUIRED)
 
         assert len(points) == 1
         assert points[0].depth == 4
-        assert points[0].delivered_claims == 2
+        assert points[0].required == _REQUIRED
 
     def test_the_histogram_says_how_far_each_cap_actually_went(self) -> None:
         # Without it, three caps that produced identical trees look like three
@@ -359,15 +370,13 @@ class TestArmsAndCost:
             passing=("R01",),
         )
 
-        curve = curve_by_achieved_depth((gated, ungated))
+        curve = curve_by_achieved_depth((gated, ungated), requirement_count=2)
         points = {point.arm: point for point in curve}
 
         assert points[Arm.GATED].fraction == pytest.approx(1.0)
         assert points[Arm.UNGATED].fraction == pytest.approx(0.5)
 
     def test_a_run_books_its_cost_once(self) -> None:
-        # Booking it in every bucket a leaf landed in would multiply the
-        # sweep's spend by the tree's height.
         cell = _cell(
             cap=3,
             achieved=3,
@@ -379,14 +388,18 @@ class TestArmsAndCost:
             passing=(),
         )
 
-        total = sum(point.cost for point in curve_by_achieved_depth((cell,)))
+        total = sum(
+            point.cost
+            for point in curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
+        )
 
         assert total == pytest.approx(cell.total_cost)
 
-    def test_spend_and_claims_are_counted_as_separate_populations(self) -> None:
-        # A run contributes claims to every level its leaves sat at and books
-        # its spend at one, so a single population column made spend-per-run a
-        # ratio across two different denominators.
+    def test_a_run_is_one_population_for_score_and_for_spend(self) -> None:
+        # These used to be two counts, because a run contributed claims at every
+        # level its leaves sat at while booking spend at one. Scoring per cell
+        # collapses that, so a second count would now always equal the first and
+        # two equal numbers invite a reader to look for the difference.
         cell = _cell(
             cap=3,
             achieved=3,
@@ -398,17 +411,17 @@ class TestArmsAndCost:
             passing=("R01", "R02", "R03"),
         )
 
-        points = {point.depth: point for point in curve_by_achieved_depth((cell,))}
+        points = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
 
-        assert [points[depth].cells for depth in (1, 2, 3)] == [1, 1, 1]
-        assert [points[depth].runs for depth in (1, 2, 3)] == [0, 0, 1]
-        assert points[3].cost == pytest.approx(cell.total_cost)
-        assert points[1].cost == pytest.approx(0.0)
+        assert [point.depth for point in points] == [3]
+        assert points[0].cells == 1
+        assert points[0].cost == pytest.approx(cell.total_cost)
 
     def test_a_run_whose_leaves_all_failed_still_books_its_spend(self) -> None:
-        # It contributes no claims, so it exists only in the cost population.
-        # Filtering the cost panel on the claims population dropped exactly
-        # these runs, which at the deep end are the most expensive in the sweep.
+        # It used to exist only in the cost population, so filtering the cost
+        # panel on the claims population dropped exactly these runs, which at
+        # the deep end are the most expensive in the sweep. Now it is an
+        # ordinary point scoring zero, and the panel keeps it either way.
         cell = _cell(
             cap=5,
             achieved=5,
@@ -419,13 +432,12 @@ class TestArmsAndCost:
             passing=(),
         )
 
-        points = curve_by_achieved_depth((cell,))
+        points = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
 
         assert [point.depth for point in points] == [5]
-        assert points[0].cells == 0
-        assert points[0].runs == 1
+        assert points[0].cells == 1
         assert points[0].cost == pytest.approx(cell.total_cost)
-        assert points[0].fraction is None
+        assert points[0].fraction == pytest.approx(0.0)
 
     def test_an_unavailable_cell_contributes_nothing(self) -> None:
         unavailable = CellRecord(
@@ -435,5 +447,7 @@ class TestArmsAndCost:
             unavailable_reason="the provider was gone",
         )
 
-        assert curve_by_achieved_depth((unavailable,)) == ()
+        assert (
+            curve_by_achieved_depth((unavailable,), requirement_count=_REQUIRED) == ()
+        )
         assert achieved_depth_histogram((unavailable,)) == {}

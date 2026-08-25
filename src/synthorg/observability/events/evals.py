@@ -146,6 +146,27 @@ these session rows are the sweep's spend ledger of record."""
 EVALS_RECURSION_SPEND_ALL_DROPPED: Final[str] = (
     "evals.recursion_depth.spend_all_dropped"
 )
+"""A session collected no records at all, so it journalled itself as free.
+
+The sibling above covers a ledger whose accounts were all DROPPED; this covers
+one that held nothing to drop, which reaches the same zero by a different route
+and went unreported for a whole run. A session that took turns and recorded
+nothing is spend that happened and was never written down, and these rows are
+the only ledger there is."""
+EVALS_RECURSION_SPEND_EMPTY: Final[str] = "evals.recursion_depth.spend_empty"
+"""A recording's spend column was rebuilt from its own per-call log.
+
+Re-scoring an old recording whose per-session ledger was scrambled by
+concurrency. Logged because a repaired figure is a provenance claim: a token
+column silently reconstructed is worse than the fault it corrects."""
+EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repaired"
+"""The repair found calls that no journalled unit claimed.
+
+Their spend is real and is now attributed to nothing, which is the same class of
+loss the repair exists to undo, so it is reported rather than dropped in
+silence. Expected in one case only: a log captured while the run was still
+appending to it."""
+EVALS_RECURSION_SPEND_UNCLAIMED: Final[str] = "evals.recursion_depth.spend_unclaimed"
 """No account of a session's calls carried the category the gateway stamps.
 
 Not the dedupe above: preferring one account of a call presumes another

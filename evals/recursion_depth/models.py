@@ -356,18 +356,13 @@ class DepthPoint(BaseModel):
         depth: The depth this point bins, in levels rather than zero-based, so
             it reads the way the question is asked.
         arm: Which line the point belongs to.
-        delivered_claims: Requirements claimed by leaves that delivered. The
-            denominator.
-        surviving_claims: Those still satisfied by the final merged tree. The
-            numerator.
-        cells: How many runs contributed CLAIMS here. On the achieved-depth
-            curve a run contributes to every level its leaves sat at, so this
-            is the population behind the fraction and nothing else.
-        runs: How many runs this bucket IS. A run's spend belongs to the run,
-            booked once at the bucket the curve puts the run itself in, so this
-            is the population behind ``cost`` and ``attempts``. It differs from
-            ``cells`` on the achieved-depth curve, and reporting one figure for
-            both made spend-per-run a ratio of two different populations.
+        required: The specification's own requirement count, summed over the
+            runs in this bucket. The denominator, and one that cannot empty.
+        satisfied: How many of those the merged tree satisfies, per the
+            held-out oracle. The numerator.
+        cells: How many runs this bucket holds. One run contributes one point's
+            worth of both the fraction and the spend, so this is the population
+            behind every figure on the point.
         cost: What the runs booked here spent in total.
         tokens: What they spent in tokens. The equal-budget check reads this
             rather than cost, because a price change moves cost and leaves the
@@ -379,17 +374,20 @@ class DepthPoint(BaseModel):
 
     depth: int = Field(ge=1)
     arm: Arm
-    delivered_claims: int = Field(ge=0)
-    surviving_claims: int = Field(ge=0)
+    required: int = Field(ge=0)
+    satisfied: int = Field(ge=0)
     cells: int = Field(ge=0)
-    runs: int = Field(default=0, ge=0)
     cost: float = Field(default=0.0, ge=0.0)
     tokens: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _survivors_are_a_subset(self) -> Self:
-        """Reject a point claiming more survivors than there was work.
+        """Reject a point satisfying more than the specification asks for.
+
+        Now checks that the oracle and the provenance agree about WHICH
+        specification was run: both operands are derived from the same
+        requirement set, so exceeding it means they have come apart.
 
         Returns:
             ``self`` when the fraction is in range.
@@ -397,10 +395,10 @@ class DepthPoint(BaseModel):
         Raises:
             ValueError: The numerator exceeds the denominator.
         """
-        if self.surviving_claims > self.delivered_claims:
+        if self.satisfied > self.required:
             msg = (
-                f"depth {self.depth} {self.arm.value}: {self.surviving_claims} "
-                f"surviving claims against {self.delivered_claims} delivered"
+                f"depth {self.depth} {self.arm.value}: {self.satisfied} "
+                f"satisfied against {self.required} required"
             )
             raise ValueError(msg)
         return self
@@ -411,15 +409,22 @@ class DepthPoint(BaseModel):
     @computed_field
     @property
     def fraction(self) -> float | None:
-        """The fraction of leaf work surviving to a correct merged result.
+        """The fraction of the specification the merged tree satisfies.
+
+        Deliberately NOT the fraction of leaf work that survived the merge,
+        which is the question the sweep was built around. Leaf-level
+        attribution proved too sparse to carry a rate: a leaf must pass its own
+        suite to count at all, most did not, and a delivered leaf at depth 2 or
+        below often claims nothing, so whole cells produced no point. This
+        denominator is the specification's own requirement count, which every
+        cell shares and which cannot empty.
 
         Returns:
-            The fraction, or ``None`` when no leaf at this depth delivered
-            anything, which is an absence rather than a zero.
+            The fraction, or ``None`` when the bucket holds no run at all.
         """
-        if self.delivered_claims == 0:
+        if self.required == 0:
             return None
-        return self.surviving_claims / self.delivered_claims
+        return self.satisfied / self.required
 
 
 class Provenance(BaseModel):

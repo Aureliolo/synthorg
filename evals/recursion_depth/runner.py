@@ -26,10 +26,11 @@ it.
 """
 
 import asyncio
+import contextlib
 import zlib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -234,6 +235,37 @@ def _report_quota_exhaustion(
     return True
 
 
+@contextlib.asynccontextmanager
+async def _cell_ledger(
+    context: SweepContext, cell: SweepCell
+) -> AsyncIterator[SweepContext]:
+    """Install ONE cost sink for the length of one cell.
+
+    The sink is a process-wide field, so installing it swaps something every
+    session reads. Doing that per session was safe only while sessions ran one
+    at a time: with sibling leaves in flight the swaps interleave, the last one
+    installed collects everyone's records and the rest collect none. Measured
+    at concurrency 4, 42 of 129 leaf sessions journalled zero after running up
+    to 56 turns, and the run's spend column understated by about a quarter.
+
+    A cell boundary is where nothing is concurrent, so the swap is safe there,
+    and a session separates its own records out by task id. Cells are recorded
+    strictly one at a time, and within a cell every unit id is distinct, so the
+    pair is unique. Across cells it is not: the root merge's task id is derived
+    from the specification, so every cell's root assembly shares one, which is
+    why the ledger is scoped per cell rather than per sweep.
+
+    Yields:
+        The context whose sessions all report into this cell's sink, or the
+        context unchanged when no gateway is hosted.
+    """
+    if context.deps.open_run_ledger is None:
+        yield context
+        return
+    async with context.deps.open_run_ledger(cell.key) as ledger:
+        yield replace(context, deps=replace(context.deps, cell_ledger=ledger))
+
+
 async def _run_and_record(
     context: SweepContext,
     cell: SweepCell,
@@ -271,7 +303,8 @@ async def _run_and_record(
     if _refused_on_budget(context, cell, records, caveats):
         return True
     try:
-        records.add(await _run_cell(context, cell, units, resumed))
+        async with _cell_ledger(context, cell) as scoped:
+            records.add(await _run_cell(scoped, cell, units, resumed))
     except MemoryError, RecursionError:
         raise
     except RecursionDepthSessionCeilingError as exc:
@@ -577,6 +610,58 @@ async def run_sweep(
             ):
                 break
         cells = records.cells
+    caveats.extend(derived_caveats(cells))
+    return assemble_report(
+        provenance=provenance,
+        cells=cells,
+        caveats=caveats,
+        planned_cells=len(planned),
+    )
+
+
+def derived_caveats(cells: Sequence[CellRecord]) -> list[str]:
+    """The caveats a set of recorded cells implies on its own.
+
+    Separated from the assembler so the caller owns the final list. A re-score
+    carries the original report's caveats forward verbatim, which is the only
+    way the run-state ones survive (the ceiling and quota caveats are appended
+    while the loop runs and are recoverable from nowhere else), and an
+    assembler that appended its own on top would emit this line twice.
+
+    Returns:
+        The caveats these cells imply, which may be none.
+    """
+    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
+    return [_UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []
+
+
+def assemble_report(
+    *,
+    provenance: Provenance,
+    cells: Sequence[CellRecord],
+    caveats: Sequence[str],
+    planned_cells: int,
+) -> RecursionDepthReport:
+    """Build the report from cells that are already measured and journalled.
+
+    The single owner of how a report is shaped, so the recorder and the
+    re-score cannot drift apart while both keep producing a valid report.
+
+    Args:
+        provenance: What the sweep was measured against. Supplies the
+            requirement count both curves divide by.
+        cells: Every recorded cell, measured or unavailable.
+        caveats: The final list, already complete. Nothing is appended here.
+        planned_cells: How many cells the matrix asked for, for the log line
+            below. A re-score passes the recorded count, since everything on
+            disk was by construction planned.
+
+    Returns:
+        The assembled report.
+
+    Raises:
+        RecursionDepthNoCellsMeasuredError: Every run is unavailable.
+    """
     measured = tuple(record for record in cells if record.achieved_depth is not None)
     if not measured:
         msg = (
@@ -585,18 +670,16 @@ async def run_sweep(
         )
         logger.warning(
             EVALS_RECURSION_NO_CELLS,
-            planned_cells=len(planned),
-            recorded_cells=len(records),
+            planned_cells=planned_cells,
+            recorded_cells=len(cells),
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
-    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
-    if dropped:
-        caveats.append(_UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped))
+    required = provenance.requirement_count
     return RecursionDepthReport(
         provenance=provenance,
-        cells=cells,
-        by_achieved_depth=curve_by_achieved_depth(measured),
-        by_depth_cap=curve_by_depth_cap(measured),
+        cells=tuple(cells),
+        by_achieved_depth=curve_by_achieved_depth(measured, requirement_count=required),
+        by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
         achieved_depth_histogram=achieved_depth_histogram(measured),
         caveats=tuple(caveats),
     )

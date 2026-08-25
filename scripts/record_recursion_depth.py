@@ -35,6 +35,7 @@ recordable at all, and it puts every unit on one authoritative cost ledger.
 import argparse
 import asyncio
 import hashlib
+import json
 import shutil
 from functools import partial
 from pathlib import Path
@@ -52,23 +53,32 @@ from evals.harness.host import (
     RecordingHostConfig,
 )
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
-from evals.recursion_depth.emit import write_report
+from evals.recursion_depth.emit import REPORT_JSON_NAME, write_report
 from evals.recursion_depth.grading import SandboxUnitGrader
+from evals.recursion_depth.journal import read_recorded_cells
 from evals.recursion_depth.manifest import (
     ModelPair,
     RecursionDepthManifest,
     load_manifest,
 )
+from evals.recursion_depth.models import ORACLE_CAVEAT, SIZING_CAVEAT
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import run_preflight
 from evals.recursion_depth.provenance import capture_provenance
 from evals.recursion_depth.runner import (
     SessionBudget,
     SweepContext,
+    assemble_report,
+    derived_caveats,
     planned_cells,
     run_sweep,
 )
 from evals.recursion_depth.session import SessionLimits, SweepDeps
+from evals.recursion_depth.spend_repair import (
+    SPEND_REPAIRED_CAVEAT,
+    repair_cell_spend,
+    tokens_by_unit,
+)
 from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
@@ -820,10 +830,37 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "the commit too."
         ),
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--record",
         action="store_true",
         help="Execute the sweep against real providers (real spend).",
+    )
+    mode.add_argument(
+        "--rescore",
+        action="store_true",
+        help=(
+            "Re-emit the report from a finished recording's journal in "
+            "--out-dir, spending nothing and running no provider call. Every "
+            "input a report takes is already on disk, so a scoring change does "
+            "not need the matrix run again. The RECORDING commit is carried "
+            "across from the journal header rather than replaced by whatever "
+            "HEAD is now, so the artefact cannot claim the sweep ran against "
+            "code that did not exist when it ran."
+        ),
+    )
+    parser.add_argument(
+        "--repair-spend-from",
+        type=Path,
+        default=None,
+        help=(
+            "Rebuild the token column from a recorder log while re-scoring. "
+            "For recordings made before the per-cell ledger landed, where "
+            "concurrent leaves swapped a process-wide sink and some sessions "
+            "journalled zero. The log holds one cost record per CALL, which no "
+            "swap can scramble. Adds a caveat naming the repair, because a "
+            "silently reconstructed spend column is worse than the fault."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -951,6 +988,77 @@ def narrow(
     )
 
 
+def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
+    """The caveats the last report written here carried.
+
+    The only way a run-state caveat survives a re-score. The ceiling and quota
+    ones are appended while the sweep runs and the journal does not hold them,
+    so re-deriving from the cells alone would silently drop the sentence saying
+    the matrix stopped early.
+
+    Absent or unreadable is not an error: a re-score of a recording whose
+    report never landed is exactly the case the mode is useful in, and the
+    caller seeds the standing caveats instead.
+
+    Returns:
+        The caveats, or empty when there is no readable previous report.
+    """
+    path = out_dir / REPORT_JSON_NAME
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except OSError, json.JSONDecodeError:
+        return ()
+    caveats = previous.get("caveats")
+    if not isinstance(caveats, list):
+        return ()
+    return tuple(str(entry) for entry in caveats)
+
+
+def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
+    """Re-emit a finished recording's report from its own journal.
+
+    Spends nothing and calls no provider: the cells, the provenance and both
+    curves are all recoverable from what the recording already wrote.
+
+    Shipped as a mode here rather than run as a scratch script because an
+    artefact produced by an uncommitted script is not reproducible by anyone,
+    which is most of what a provenance block is for, and because a second path
+    that builds a report is one refactor from disagreeing with the one the
+    recorder uses.
+
+    Args:
+        out_dir: Where the recording wrote its journal and its report.
+        repair_from: A recorder log to rebuild the token column from, or
+            ``None`` to keep the journalled figures.
+
+    Returns:
+        Process exit code.
+    """
+    provenance, cells = read_recorded_cells(out_dir)
+    # Carried across verbatim, because the run-state caveats (the session
+    # ceiling, a quota refusal) are appended while the loop runs and are
+    # recoverable from nowhere else: the journal records cells, not why the
+    # sweep stopped. Seeded only when there is no previous report to read,
+    # since the two standing caveats hold for every sweep this harness runs.
+    caveats = list(_previous_caveats(out_dir)) or [
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+        *derived_caveats(cells),
+    ]
+    if repair_from is not None:
+        cells = repair_cell_spend(cells, tokens_by_unit(repair_from))
+        caveats.append(SPEND_REPAIRED_CAVEAT)
+    report = assemble_report(
+        provenance=provenance,
+        cells=cells,
+        caveats=caveats,
+        planned_cells=len(cells),
+    )
+    written = write_report(report, out_dir)
+    print("report written: " + ", ".join(str(path) for path in written))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -958,6 +1066,12 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
+    if args.rescore:
+        # Before the manifest and the company config are touched. A re-score
+        # needs neither, and --company-config defaults to the operator's own
+        # gitignored pair file, so loading it here would fail on a clean
+        # checkout, which is precisely the reproduction this mode exists for.
+        return _rescore(args.out_dir, repair_from=args.repair_spend_from)
     manifest = narrow(
         load_manifest(args.manifest),
         args.depths,

@@ -50,6 +50,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
     EVALS_RECURSION_SPEND_DEDUPED,
+    EVALS_RECURSION_SPEND_EMPTY,
     EVALS_RECURSION_UNIT_EXECUTED,
     EVALS_RECURSION_UNIT_STARTED,
 )
@@ -126,9 +127,15 @@ class SweepDeps:
             reviewer actually said, which is unrecoverable afterwards.
         transcript_root: Directory the per-session transcripts are written
             under; ``None`` alongside a recorder writes none.
-        open_run_ledger: Installs the authoritative cost sink for one unit and
-            yields it. ``None`` means no gateway is hosted, so the engine's own
-            tracker is the ledger; that is the offline path the suite drives.
+        open_run_ledger: Installs the authoritative cost sink and yields it.
+            ``None`` means no gateway is hosted, so the engine's own tracker is
+            the ledger; that is the offline path the suite drives. Called once
+            per CELL rather than once per session: it swaps a process-wide
+            field, and sessions within a cell run concurrently.
+        cell_ledger: The sink this cell's sessions share, set by the runner for
+            the length of one cell. Present means the swap has already
+            happened at the cell boundary, where nothing is concurrent, and a
+            session filters its own records out of it by task id.
         project_repo: Where the engine looks the benchmark project up. Every
             unit declares an artifact, which makes it a work task, and the
             engine refuses a work task whose project it cannot validate.
@@ -160,6 +167,7 @@ class SweepDeps:
     transcripts: TranscriptRecorder | None = None
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
+    cell_ledger: ProgressTrackingLedger | None = None
     project_repo: ProjectRepository | None = None
     checkpoint_repo: CheckpointRepository | None = None
     heartbeat_repo: HeartbeatRepository | None = None
@@ -212,14 +220,18 @@ class OpenSession:
 
     Attributes:
         engine: The engine, scoped to this unit's workspace.
-        ledger: Where this unit's spend is recorded.
+        ledger: Where this unit's spend is recorded. Shared with the other
+            sessions of this cell, which is why ``task_id`` below is what
+            separates them.
         label: What the stall watch and the log lines call this session.
+        task_id: Whose records on that shared ledger are this session's.
     """
 
     engine: AgentEngine
     ledger: ProgressTrackingLedger
     label: str
     gateway_hosted: bool
+    task_id: str
 
     async def spend(self) -> SessionSpend:
         """Read what this session has cost so far, in money and in tokens.
@@ -232,11 +244,31 @@ class OpenSession:
         second could see records the first did not, so a unit's cost and its
         tokens would describe different sets of calls.
 
+        Filtered by task id rather than isolated by a per-session ledger. A
+        ledger is installed as a process-wide field, so a per-session one has
+        to be SWAPPED, and with several leaves in flight the swaps interleave:
+        the last one installed collects everyone's records and the rest collect
+        none. Measured at concurrency 4, that left 42 of 129 leaf sessions
+        journalling zero after running up to 56 turns. One ledger per cell and
+        a filter per session has no window to lose, at any concurrency.
+
         Returns:
             What this session's calls add up to, each counted once.
         """
         await self.ledger.drain_pending_records()
-        records = await collect_all_records(self.ledger)
+        records = [
+            record
+            for record in await collect_all_records(self.ledger)
+            if record.task_id == self.task_id
+        ]
+        if not records:
+            # The sibling guard in `session_spend` covers a ledger whose
+            # accounts were all DROPPED. Nothing covered a session that
+            # collected none, which reaches the same zero and went unreported
+            # for an entire run. These rows are the only spend ledger there is.
+            logger.error(
+                EVALS_RECURSION_SPEND_EMPTY, label=self.label, task_id=self.task_id
+            )
         return session_spend(
             records, gateway_hosted=self.gateway_hosted, label=self.label
         )
@@ -528,6 +560,7 @@ async def open_session(
             ledger=ledger,
             label=binding.execution_id,
             gateway_hosted=deps.open_run_ledger is not None,
+            task_id=binding.task_id,
         )
 
 
@@ -768,6 +801,12 @@ def ledger_scope(
     Returns:
         A context manager yielding the tracker to collect records from.
     """
+    if deps.cell_ledger is not None:
+        # Already installed, once, at the cell boundary. Opening another here
+        # would swap a process-wide field while this cell's sibling sessions
+        # are mid-flight, which is exactly the race the cell-scoped ledger
+        # exists to remove.
+        return contextlib.nullcontext(deps.cell_ledger)
     if deps.open_run_ledger is None:
         return contextlib.nullcontext(fallback)
     return deps.open_run_ledger(execution_id)
