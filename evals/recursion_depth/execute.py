@@ -260,7 +260,9 @@ async def run_leaf(
         )
         attempts = 2
         spent = spent.plus(outcome)
-    detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
+    detail = await _undelivered_reason(
+        deps, task, workspace, outcome, baseline, turns=spent.turns
+    )
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
@@ -347,6 +349,8 @@ async def _undelivered_reason(
     workspace: CellWorkspace,
     outcome: SessionOutcome,
     baseline: ArtifactPresence,
+    *,
+    turns: int,
 ) -> str:
     """Say why *task*'s tree is not a delivery, or nothing when it is.
 
@@ -358,12 +362,26 @@ async def _undelivered_reason(
     leaves at zero turns and zero tokens, all of them saying the agent had
     written no files.
 
+    Args:
+        deps: The sweep's injected collaborators.
+        task: The leaf whose tree is being judged.
+        workspace: Its own recreated tree.
+        outcome: The session that ran last, for the ending it reports.
+        baseline: What the tree held before the unit ran.
+        turns: Turns the UNIT took, summed over its attempts. Separate from
+            ``outcome.turns`` because the guard below asks whether anything
+            ran at all, which is a fact about the unit: a resumed attempt
+            that errors immediately takes no turn of its own, and reading its
+            count alone would file a leaf that built for thirty turns as
+            never having started, skipping the artifact and own-test checks
+            that decide whether it delivered.
+
     Returns:
         The reason, empty when the leaf delivered.
     """
-    if outcome.turns == 0:
+    if turns == 0:
         return (
-            f"the session ran no turns, so nothing was built and this is not a "
+            f"the unit ran no turns, so nothing was built and this is not a "
             f"delivery failure: it terminated {outcome.termination}"
         )
     if await asyncio.to_thread(produced_nothing, task, workspace, baseline):

@@ -923,6 +923,46 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         assert calls == [False]
         assert outcome.attempts == 1
 
+    async def test_a_zero_turn_resume_does_not_erase_what_the_first_attempt_built(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Delivery is judged on the UNIT's turns, not the last attempt's.
+
+        The zero-turn branch exists for a session refused before it began, so
+        that an operator is not sent to read work that was never done. A
+        resumed attempt whose first call fails every retry reaches zero turns
+        the same way while the tree from thirty turns of building sits on
+        disk, and reading the resume's count alone reports it as never
+        started, skipping the artifact and own-test checks entirely.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "productive-then-dead")
+
+        async def _builds_then_dies(_deps: SweepDeps, **rest: object) -> SessionOutcome:
+            if not rest.get("resume"):
+                written = workspace.project_dir / "src/inference.py"
+                written.parent.mkdir(parents=True, exist_ok=True)
+                written.write_text("real work", encoding="utf-8")
+                return SessionOutcome(
+                    cost=0.5, tokens=900, turns=30, termination="error"
+                )
+            return SessionOutcome(cost=0.0, tokens=0, turns=0, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _builds_then_dies)
+
+        outcome = await run_leaf(
+            _deps(),
+            task=task,
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert outcome.turns == 30
+        assert "ran no turns" not in outcome.detail
+        assert outcome.delivered, outcome.detail
+
     def test_a_session_that_wrote_nothing_still_does_not_deliver(
         self, tmp_path: Path
     ) -> None:

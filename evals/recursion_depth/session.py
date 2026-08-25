@@ -697,11 +697,10 @@ async def run_session(
                 )
             turns = result.total_turns
         except BaseException:
-            # LOGGED here, because the read below is the only place this
-            # figure exists and a raising session builds no `SessionOutcome`
-            # to carry it out. Reading it and letting the exception propagate
-            # dropped the spend of every failed session, which is exactly the
-            # loss the `finally` was added to prevent.
+            # A raising session builds no `SessionOutcome`, so this log line is
+            # the only place its spend is written down: no cell record, no
+            # journal row and no report ever sees it. The calls were billed
+            # whether or not the session reached an ending.
             failed = await session.spend(turns=turns)
             logger.warning(
                 EVALS_RECURSION_UNIT_FAILED_SPEND,
