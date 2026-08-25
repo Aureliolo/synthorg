@@ -1,6 +1,15 @@
 import { useState } from 'react'
 
-import { CircleCheck, GitBranch, Package, Scale, Sparkles, UserRound } from 'lucide-react'
+import {
+  CircleCheck,
+  GitBranch,
+  Layers,
+  Package,
+  Scale,
+  Scissors,
+  Sparkles,
+  UserRound,
+} from 'lucide-react'
 
 import type { PlanItem } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
@@ -14,15 +23,23 @@ export const ACCENT_HIGHLIGHT = 'border-accent/40 bg-accent/[0.04]'
 export function ItemPills({
   item,
   onCriticalPath,
+  childCount,
 }: {
   item: PlanItem
   onCriticalPath: boolean
+  /** Items this one was split into; above zero it assembles rather than works. */
+  childCount: number
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {item.kind === 'decision' && (
         <StatusPill tone="accent" icon={Scale}>
           Decision
+        </StatusPill>
+      )}
+      {childCount > 0 && (
+        <StatusPill tone="accent" icon={Layers}>
+          Assembles {childCount}
         </StatusPill>
       )}
       <StatusPill tone={COMPLEXITY_TONE[item.estimated_complexity]}>
@@ -42,6 +59,23 @@ export function ItemPills({
         </StatusPill>
       )}
     </div>
+  )
+}
+
+/**
+ * Why an item reached the plan still bigger than one agent's work.
+ *
+ * Shown at the review gate because the two remedies are the reviewer's:
+ * raise the bound the note names, or narrow the objective. Left in a log it
+ * reaches nobody who can act on it.
+ */
+export function UnsplitNote({ reason }: { reason: string | null }) {
+  if (reason === null) return null
+  return (
+    <p className="flex items-start gap-1.5 text-xs text-warning">
+      <Scissors className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      <span>{reason}</span>
+    </p>
   )
 }
 

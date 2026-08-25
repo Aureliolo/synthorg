@@ -122,4 +122,88 @@ describe('PlanEditor', () => {
 
     expect(screen.getByLabelText('Owner (role)')).toHaveRole('textbox')
   })
+
+  describe('containment', () => {
+    const tree = makePlan('plan-1', {
+      items: [
+        makePlanItem('engine', { title: 'Engine' }),
+        makePlanItem('board', { title: 'Board', parent_id: 'engine' }),
+        makePlanItem('grid', { title: 'Grid', parent_id: 'board' }),
+        makePlanItem('pick', { title: 'Pick a store', kind: 'decision' }),
+      ],
+    })
+
+    function parentChoicesFor(index: number): readonly string[] {
+      const fields = screen.getAllByLabelText('Belongs to')
+      const field = fields[index]
+      if (field === undefined) throw new Error(`no row ${String(index)}`)
+      return [...(field as HTMLSelectElement).options].map((option) => option.value)
+    }
+
+    it('shows what each item currently belongs to', () => {
+      resetStore()
+      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+
+      expect(screen.getAllByLabelText('Belongs to')[1]).toHaveValue('engine')
+    })
+
+    it('refuses to offer an item its own subtree as a parent', () => {
+      // Choosing one would close a containment cycle, which the backend
+      // rejects: better never offered than refused after a round trip.
+      resetStore()
+      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+
+      expect(parentChoicesFor(0)).not.toContain('engine')
+      expect(parentChoicesFor(0)).not.toContain('board')
+      expect(parentChoicesFor(0)).not.toContain('grid')
+    })
+
+    it('refuses to offer a decision as a parent', () => {
+      // A decision is chosen rather than decomposed, so nothing can hang off
+      // one: dispatch strips it and its children would be orphaned.
+      resetStore()
+      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+
+      expect(parentChoicesFor(1)).not.toContain('pick')
+    })
+
+    it('promotes an orphaned child when its container is removed', async () => {
+      // Left naming a parent the plan no longer holds, the save would 422.
+      resetStore()
+      const user = userEvent.setup()
+      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: /Remove item 2/ }))
+
+      // Board is gone; Grid now sits where Board did, under Engine.
+      expect(screen.getAllByLabelText('Belongs to')[1]).toHaveValue('engine')
+    })
+
+    it('sends the parent link back on save', async () => {
+      resetStore()
+      let sent: unknown = null
+      server.use(
+        http.patch('/api/v1/plans/:id', async ({ request }) => {
+          sent = await request.json()
+          return HttpResponse.json(apiSuccess(makePlan('plan-1', { version: 2 })))
+        }),
+      )
+      const user = userEvent.setup()
+      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: /Save revision/ }))
+
+      await waitFor(() => {
+        expect(sent).not.toBeNull()
+      })
+      const items = (sent as { items: readonly { id: string; parent_id: string | null }[] })
+        .items
+      expect(items.map((item) => [item.id, item.parent_id])).toEqual([
+        ['engine', null],
+        ['board', 'engine'],
+        ['grid', 'board'],
+        ['pick', null],
+      ])
+    })
+  })
 })

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { makePlanItem } from '@/__tests__/helpers/factories'
+import { answeredQuestions, derivePlanCoverage } from '@/utils/planCoverage'
 import {
-  answeredQuestions,
   computeCriticalPath,
   computeWaves,
   criticalPathFor,
@@ -11,7 +11,6 @@ import {
   isHighComplexity,
   isHighStakes,
   itemFlags,
-  derivePlanCoverage,
   derivePlanStaffing,
   itemNeedsAttention,
   planDetailPath,

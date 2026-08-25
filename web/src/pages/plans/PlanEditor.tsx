@@ -18,7 +18,7 @@ const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
 // over-count edit is caught in the browser rather than after a 422 round trip.
 const TITLE_MAX = 256
 const TEXT_MAX = 8192
-const MAX_ITEMS = 50
+const MAX_ITEMS = 1000
 const MAX_CRITERIA = 50
 
 function isComplexity(value: string): value is PlanItem['estimated_complexity'] {
@@ -37,6 +37,8 @@ interface DraftItem {
   id: string
   title: string
   description: string
+  /** The item this one was split out of; `''` makes it a workstream. */
+  parentId: string
   owner: string
   dependencies: readonly string[]
   acceptanceCriteria: readonly string[]
@@ -59,6 +61,7 @@ function toDraft(item: PlanItem): DraftItem {
     id: item.id,
     title: item.title,
     description: item.description,
+    parentId: item.parent_id ?? '',
     owner: item.owner ?? '',
     dependencies: item.dependencies,
     acceptanceCriteria: item.acceptance_criteria,
@@ -80,6 +83,7 @@ function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     id: draft.id,
     title: draft.title,
     description: draft.description,
+    parent_id: draft.parentId === '' ? null : draft.parentId,
     owner: owner === '' ? null : owner,
     dependencies: draft.dependencies,
     acceptance_criteria: nonBlankCriteria(draft.acceptanceCriteria),
@@ -116,6 +120,7 @@ function newDraft(): DraftItem {
     id: crypto.randomUUID(),
     title: '',
     description: '',
+    parentId: '',
     owner: '',
     dependencies: [],
     acceptanceCriteria: [],
@@ -136,6 +141,8 @@ interface RowProps {
   draft: DraftItem
   canRemove: boolean
   roster: ReadonlySet<string> | undefined
+  /** What this row may be moved under, computed against the whole draft set. */
+  parentChoices: readonly SelectOption[]
   onChange: (index: number, patch: Partial<DraftItem>) => void
   onRemove: (index: number) => void
 }
@@ -157,6 +164,69 @@ function ownerError(
 }
 
 const UNASSIGNED_OWNER: SelectOption = { value: '', label: 'Unassigned' }
+
+const NO_PARENT: SelectOption = { value: '', label: 'No parent (a workstream)' }
+
+/**
+ * The items this one may be moved under.
+ *
+ * Everything the backend would refuse is left out rather than offered and
+ * rejected after a round trip: itself, anything already below it (which would
+ * close a containment cycle), and a decision, which is chosen rather than
+ * decomposed so nothing can hang off one. The backend still enforces all
+ * three; this only keeps the operator from being told no.
+ */
+function parentOptions(
+  drafts: readonly DraftItem[],
+  index: number,
+): readonly SelectOption[] {
+  const subject = drafts[index]
+  if (subject === undefined) return [NO_PARENT]
+  const below = new Set<string>([subject.id])
+  // Repeated until it stops growing: a child can sit before its parent in the
+  // list, so one pass would miss a grandchild whose parent comes later.
+  for (let pass = 0; pass < drafts.length; pass += 1) {
+    const before = below.size
+    for (const draft of drafts) {
+      if (below.has(draft.parentId)) below.add(draft.id)
+    }
+    if (below.size === before) break
+  }
+  return [
+    NO_PARENT,
+    ...drafts
+      .filter((draft) => !below.has(draft.id) && draft.kind !== 'decision')
+      .map((draft) => ({
+        value: draft.id,
+        label: draft.title.trim() === '' ? 'Untitled item' : draft.title,
+      })),
+  ]
+}
+
+/**
+ * What this item belongs to.
+ *
+ * Containment says what an item is part of and never when it runs, which
+ * dependencies alone decide. Moving an item under another makes that other one
+ * an assembly of it: it stops being dispatched as work and starts assembling
+ * what sits below it instead.
+ */
+function ParentField({
+  index,
+  draft,
+  options,
+  onChange,
+}: GradingProps & { options: readonly SelectOption[] }) {
+  return (
+    <SelectField
+      label="Belongs to"
+      options={options}
+      value={draft.parentId}
+      hint="An item with children is assembled from them rather than done directly."
+      onChange={(value) => onChange(index, { parentId: value })}
+    />
+  )
+}
 
 /**
  * The owning role for an item.
@@ -226,6 +296,7 @@ function PlanEditorRow({
   draft,
   canRemove,
   roster,
+  parentChoices,
   onChange,
   onRemove,
 }: RowProps) {
@@ -287,6 +358,12 @@ function PlanEditorRow({
         }
       />
       <OwnerField index={index} draft={draft} roster={roster} onChange={onChange} />
+      <ParentField
+        index={index}
+        draft={draft}
+        options={parentChoices}
+        onChange={onChange}
+      />
       <ItemGradingFields index={index} draft={draft} onChange={onChange} />
     </div>
   )
@@ -313,7 +390,19 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
   }, [])
 
   const handleRemove = useCallback((index: number) => {
-    setDrafts((prev) => prev.filter((_, i) => i !== index))
+    setDrafts((prev) => {
+      const removed = prev[index]
+      if (removed === undefined) return prev
+      // Whatever hung off it moves to where it sat, rather than being left
+      // naming a parent the plan no longer holds, which the backend refuses.
+      return prev
+        .filter((_, i) => i !== index)
+        .map((draft) =>
+          draft.parentId === removed.id
+            ? { ...draft, parentId: removed.parentId }
+            : draft,
+        )
+    })
   }, [])
 
   const handleAdd = useCallback(() => {
@@ -352,6 +441,7 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           draft={draft}
           canRemove={drafts.length > 1}
           roster={roster}
+          parentChoices={parentOptions(drafts, index)}
           onChange={handleChange}
           onRemove={handleRemove}
         />

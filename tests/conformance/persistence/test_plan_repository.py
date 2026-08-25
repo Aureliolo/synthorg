@@ -92,6 +92,53 @@ def _plan(
     )
 
 
+def _tree_item(
+    label: str, *, parent: str | None = None, unsplit: str | None = None
+) -> PlanItem:
+    """Build one item of the three-level plan below.
+
+    Returns:
+        The item.
+    """
+    return PlanItem(
+        id=NotBlankStr(sid(label)),
+        title=NotBlankStr(f"Item {label}"),
+        description=NotBlankStr(f"Build {label}"),
+        parent_id=None if parent is None else NotBlankStr(sid(parent)),
+        acceptance_criteria=(NotBlankStr(f"{label} works"),),
+        expected_artifacts=(NotBlankStr(f"src/{label}.py"),),
+        unsplit_reason=None if unsplit is None else NotBlankStr(unsplit),
+    )
+
+
+def _tree_plan() -> Plan:
+    """A plan whose items reproduce a three-level containment tree.
+
+    Returns:
+        The plan.
+    """
+    return Plan(
+        id=as_uuid("plan-tree"),
+        project=NotBlankStr("beachhead"),
+        project_name=NotBlankStr("Games"),
+        objective_id=NotBlankStr("obj-tree"),
+        objective_title=NotBlankStr("Ship the game"),
+        parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),
+        items=(
+            _tree_item("engine"),
+            _tree_item("board", parent="engine"),
+            _tree_item(
+                "grid", parent="board", unsplit="the depth backstop was reached"
+            ),
+        ),
+        task_structure=TaskStructure.SEQUENTIAL,
+        coordination_topology=CoordinationTopology.AUTO,
+        status=PlanStatus.PENDING_REVIEW,
+        created_at=_CREATED_AT,
+        updated_at=_CREATED_AT,
+    )
+
+
 class TestPlanRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
         await backend.plans.save(_plan())
@@ -113,6 +160,43 @@ class TestPlanRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.get(NotBlankStr("ghost")) is None
+
+    async def test_the_whole_tree_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The claim the no-DDL route rests on, asserted against real stores.
+
+        ``plans.items`` is a JSON column, so a new field on ``PlanItem`` flows
+        through both backends without a migration. That is a reasonable thing
+        to believe and a bad thing to assume: SQLite stores the column as TEXT
+        under a ``JSON_VALID`` check and Postgres as ``JSONB``, and only a real
+        write and read back says the shape survives both.
+        """
+        await backend.plans.save(_tree_plan())
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-tree")))
+        assert fetched is not None
+        assert {item.id: item.parent_id for item in fetched.items} == {
+            sid("engine"): None,
+            sid("board"): sid("engine"),
+            sid("grid"): sid("board"),
+        }
+
+    async def test_the_unsplit_note_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """It is the only record of which bound stopped a split.
+
+        The log does not survive the restart the question outlives, and the
+        operator reading the plan is the one who can move the bound.
+        """
+        await backend.plans.save(_tree_plan())
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-tree")))
+        assert fetched is not None
+        notes = {item.id: item.unsplit_reason for item in fetched.items}
+        assert notes[sid("grid")] == "the depth backstop was reached"
+        assert notes[sid("engine")] is None
 
     @pytest.mark.parametrize(
         "status",

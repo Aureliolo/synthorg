@@ -8,7 +8,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusPill } from '@/components/ui/status-pill'
 import { DECISION_TEXT_MAX } from '@/utils/approvals'
-import { answeredQuestions, type QuestionAnswer } from '@/utils/plans'
+import { answeredQuestions, type QuestionAnswer } from '@/utils/planCoverage'
 import { usePlanQuestions, type PlanQuestionsController } from './usePlanQuestions'
 
 // Mirrors ApproveRequest.comment's server bound, so an over-long answer is
