@@ -258,6 +258,7 @@ it measured is only interpretable against what it armed
 | `subtask_max_criteria` | 10 | its declared maximum | The same manipulation, on the other threshold |
 | `decomposition_timeout_seconds` | 600s | 2400s | Sized for a model that answers directly; every model worth sweeping reasons first, and losing an arm to a timing margin destroys the comparison rather than slowing it |
 | `decomposition_tree_timeout_seconds` | 14400s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
+| `decomposition_tree_max_sessions` | 40 | its declared maximum | Unlike every other bound here, this one does not kill a cell: it stops the split and returns a PARTIAL tree, which the sweep would then record as the depth it asked for rather than the depth it got. A depth-4 cell is above a hundred planning nodes on this page's own branching model, so leaving it at the default silently flattens the independent variable at exactly the depths worth paying for |
 | `decomposition_max_retries` | 5 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
 | `providers.retry_max_attempts` | 3 | its declared maximum | Widens the ladder between the hosted gateway and the real upstream provider, where a momentary blip otherwise terminates a session thirty turns in and nothing re-enters that conversation. It does NOT widen the harness driver's own ladder, which takes its budget from the company config so a recorded artefact stays reproducible from the config it names |
 
@@ -265,7 +266,7 @@ The sweep declares its own `max_depth` per cell, which is the variable it
 sweeps, so `decomposition_max_depth` is never armed: the caller's declaration
 wins over the setting by construction.
 
-The four armed at a declared maximum read it off the definition rather than
+The five armed at a declared maximum read it off the definition rather than
 copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
