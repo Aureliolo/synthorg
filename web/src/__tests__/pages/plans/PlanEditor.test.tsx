@@ -103,10 +103,10 @@ describe('PlanEditor', () => {
     })
     render(<PlanEditor plan={withArtifact} roster={undefined} onDone={vi.fn()} />)
 
-    await user.type(
-      screen.getByLabelText('Expected deliverables (one per line)'),
-      '\n',
-    )
+    // Found by its value rather than its label: a required field renders a
+    // marker after the label text, so the accessible name is not the string
+    // the component was given.
+    await user.type(screen.getByDisplayValue('src/board.ts'), '\n')
     await user.click(screen.getByRole('button', { name: /Save revision/ }))
 
     await waitFor(() => {

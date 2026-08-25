@@ -32,6 +32,7 @@ from synthorg.engine.errors import (
     DecompositionError,
     DecompositionUnsplittableError,
 )
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, mock_of, sid
 
@@ -74,8 +75,9 @@ def _resolver(
     Args:
         recursion_enabled: What the recursion switch answers.
         tree_sessions: The whole-tree planning-session budget.
-        bool_error: Raised instead of answering the switch, for the cases
-            about a settings store that cannot be read.
+        bool_error: Raised instead of answering the switch. The two faults
+            the SETTING can carry leave recursion off; anything else is the
+            store rather than the setting and surfaces.
 
     Returns:
         The scripted resolver.
@@ -448,7 +450,14 @@ class TestAStrategyThatPlansOneTaskIsNotRecursedInto:
 
 
 class TestRecursionStops:
-    """Two ways, and neither may be silent."""
+    """What leaves a decomposition flat, and what refuses to be one.
+
+    The operator's own answers stop it silently on purpose: the switch off,
+    or a depth budget with no room. A switch whose definition cannot answer
+    stops it too, because unreadable stays unreadable. A settings store that
+    is momentarily down is none of those and surfaces, since recursion ships
+    on and swallowing that reading plans the whole objective at one level.
+    """
 
     async def test_the_switch_off_leaves_the_result_flat(self) -> None:
         # The default configuration. Every reader that predates recursion has
@@ -475,27 +484,55 @@ class TestRecursionStops:
         assert result.children == ()
         assert strategy.seen_depths == [0]
 
-    async def test_an_unreadable_switch_leaves_the_result_flat(self) -> None:
-        # An unreadable switch means behaving as the product did before
-        # recursion existed, which is the only safe reading of it.
+    async def test_a_switch_that_cannot_answer_for_itself_leaves_it_flat(
+        self,
+    ) -> None:
+        # A switch whose own definition cannot answer is unreadable for as
+        # long as it stays that way, so off is the only reading that cannot
+        # spend a planning session per node on an instruction nobody gave.
         resolver = _resolver(
-            bool_error=RuntimeError("settings backend is gone"),
+            bool_error=SettingNotFoundError(
+                "coordination/recursive_decomposition_enabled"
+            ),
         )
-        root = _plan(
-            str(as_uuid("root")),
-            (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
-        )
-        service = DecompositionService(
-            _ScriptedStrategy({str(as_uuid("root")): root}),
-            TaskStructureClassifier(),
-            config_resolver=resolver,
-        )
+        service = self._service_over(resolver)
 
         result = await service.decompose_task(
             _task("root"), DecompositionContext(max_depth=4)
         )
 
         assert result.children == ()
+
+    async def test_a_settings_store_that_is_down_is_not_a_silent_downgrade(
+        self,
+    ) -> None:
+        # Recursion ships ON, so swallowing this plans every objective at one
+        # level for as long as the store stays down, with one WARNING per
+        # decomposition and no other sign. A store that is momentarily
+        # unreachable is a fact about the moment, not about the setting.
+        resolver = _resolver(bool_error=RuntimeError("settings backend is gone"))
+        service = self._service_over(resolver)
+
+        with pytest.raises(RuntimeError, match="settings backend is gone"):
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=4)
+            )
+
+    def _service_over(self, resolver: MagicMock) -> DecompositionService:
+        """Build the service over a root level holding one oversized unit.
+
+        Returns:
+            The service, which recurses whenever the switch says it may.
+        """
+        root = _plan(
+            str(as_uuid("root")),
+            (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
+        )
+        return DecompositionService(
+            _ScriptedStrategy({str(as_uuid("root")): root}),
+            TaskStructureClassifier(),
+            config_resolver=resolver,
+        )
 
     async def test_no_resolver_at_all_leaves_the_result_flat(self) -> None:
         # A harness runs with no settings backend, and the answer has to stand
