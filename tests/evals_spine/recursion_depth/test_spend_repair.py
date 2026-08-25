@@ -8,6 +8,8 @@ attribution problem is the interesting half, because the root merge's task id is
 derived from the specification and therefore repeats across every cell.
 """
 
+from pathlib import Path
+
 import pytest
 
 from evals.recursion_depth.manifest import Arm
@@ -50,7 +52,7 @@ def _journalled(cell: str, unit: str) -> str:
 class TestAttribution:
     """A task id is not enough, and the interval is what fixes it."""
 
-    def test_a_shared_root_id_is_split_between_its_cells(self, tmp_path) -> None:
+    def test_a_shared_root_id_is_split_between_its_cells(self, tmp_path: Path) -> None:
         # The defect this exists for: joining on the task id alone gave every
         # cell the sum of all of them, and reported the ledger understating by
         # 78.9% when the true figure was 24.9%.
@@ -72,7 +74,7 @@ class TestAttribution:
         assert attributed[("d1-gated-r0", _SHARED_ROOT)] == 100
         assert attributed[("d2-gated-r0", _SHARED_ROOT)] == 700
 
-    def test_a_non_productive_call_is_not_counted(self, tmp_path) -> None:
+    def test_a_non_productive_call_is_not_counted(self, tmp_path: Path) -> None:
         log = tmp_path / "run.log"
         log.write_text(
             "\n".join(
@@ -87,7 +89,9 @@ class TestAttribution:
 
         assert tokens_by_unit(log)[("d1-gated-r0", "leaf-a")] == 50
 
-    def test_calls_no_unit_claimed_are_reported(self, tmp_path, caplog) -> None:
+    def test_calls_no_unit_claimed_are_reported(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
         # A log captured while the run was still appending. Silence here would
         # be the same class of loss the repair undoes.
         log = tmp_path / "run.log"
