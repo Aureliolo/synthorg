@@ -56,7 +56,7 @@ Reverse lookup for readers starting from SynthOrg terminology.
 | `TurnRecord` tuple | Execution Trace | Per-turn cost/token data exceeds ACG baseline |
 | LLM calls, tool invocations, validation gates | Nodes | Implicit typing via function names, not a `Node` type |
 | `SubtaskDefinition.dependencies` | Edges | Explicit in multi-agent DAG, implicit in single-agent |
-| `AutoLoopConfig` + `select_loop_type()` | Scheduling Policies | Per-complexity loop + topology selection |
+| `AutoTopologyConfig` | Scheduling Policies | Topology selection |
 | Stagnation correction injection | Conditional branching + Graph mutation | Embedded in loop logic |
 | `ParallelExecutor`, `CoordinationWave` | Parallel composition | First-class with `fail_fast` |
 | `TerminationReason` (9 values) | Termination conditions | Richer taxonomy |

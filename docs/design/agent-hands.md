@@ -96,6 +96,31 @@ that path, so a class merely named `_BaseForgeTool` in another forge module
 cannot stand in for the real enforcement site; elsewhere the name carries no
 privilege and such a class is checked as an ordinary tool.
 
+## What a family grant actually grants
+
+A family's setting is org-wide, not per role or per agent: turning
+`tools.deploy_tools_enabled` on registers `deploy_run` and `deploy_release`
+for every roster agent whose access level admits the tool's category. There
+is no per-role narrowing, and the containment is elsewhere and deliberate:
+
+- **The allowlist is the scope.** Deploy and publish bind an operator list of
+  target connection names (`tools.deploy_tools_targets`,
+  `tools.publish_tools_targets`) rather than one connection, and an agent may
+  pick from that list but never extend it. An empty list leaves the family
+  unregistered, so the feature is off until the operator names a target.
+  This is the deploy/publish analogue of forge's `allowed_repos`.
+- **Destructive verbs are separately gated.** `deploy_release` and
+  `publish_push` set `_DESTRUCTIVE` and take `require_admin_guardrails`
+  (confirm + reason + an attributable actor) *before* the approval gate, and
+  each binds its own action type, so an autonomy grant written for chat
+  cannot auto-approve a production deploy.
+- **The publish workspace root is shared.** `workspace_push` reads a built
+  OCI layout from under the shared agent workspace root, so an agent can push
+  an image another agent built. The traversal guard confines reads to that
+  root; it does not partition it per agent. Push is destructive and
+  admin-guardrailed, so the exposure is what a human approved, but the unit
+  of trust is the org rather than the individual agent.
+
 ## Governance summary
 
 - Reads on a `sensitive` connection and every write route through the

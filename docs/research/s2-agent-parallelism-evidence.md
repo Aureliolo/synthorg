@@ -330,7 +330,8 @@ whether an agent that has read the code splits better than a planner who has not
 
 ## The experiment
 
-Build in `evals/recursion_depth/`, on the pattern of `evals/loop_ab/`, calling the
+Build in `evals/recursion_depth/`, on the pattern of `evals/loop_ab/` (since removed once
+its A/B concluded; see [`inner-loop-ab-recording.md`](inner-loop-ab-recording.md)), calling the
 existing completion-oracle gate directly and bypassing charter intake, plan approval and
 wave dispatch (nine live rounds have died upstream of the interesting part).
 

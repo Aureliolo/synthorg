@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.security.timeout.protocol import RiskTierClassifier
 
@@ -22,7 +23,7 @@ class ForgeToolsRuntime:
     """Boot-scoped dependencies the forge tools need per run."""
 
     connection_catalog: ConnectionCatalog
-    connection_name: str
+    connection_name: NotBlankStr
     timeout_seconds: float
     max_read_chars: int
 

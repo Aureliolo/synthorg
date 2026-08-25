@@ -142,9 +142,8 @@ _OUTPUT_SCAN_POLICY_KEY: Final[str] = "output_scan_policy_type"
 _PERMISSIVE_OUTPUT_SCAN_POLICY: Final[str] = "log_only"
 # The agent -> SynthOrg-MCP bridge. Opening it gives every running agent the
 # product's own tool surface, which is the widest reach a prompt-injected
-# agent can be handed, so the enabling direction guards like the credentialed
-# -MCP capability does. It ships closed, so the first move off ``disabled``
-# is what opens it.
+# agent can be handed, so the enabling direction is the guarded one. It ships
+# closed, so the first move off ``disabled`` is what opens it.
 _MCP_SELF_CONSUMER_MODE_KEY: Final[str] = "mcp_self_consumer_mode"
 _MCP_SELF_CONSUMER_DISABLED: Final[str] = "disabled"
 # Non-boolean security keys whose value, not merely its truthiness, decides

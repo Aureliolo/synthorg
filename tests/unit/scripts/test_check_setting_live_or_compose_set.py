@@ -1419,9 +1419,9 @@ def test_the_real_repo_resolves_every_registration() -> None:
     pairs = {record.pair for record in definitions}
     # Named settings rather than a non-emptiness check, which would pass with
     # three of five hundred resolved if an AST shape quietly stopped matching.
-    assert ("engine", "loop_auto_select_enabled") in pairs
-    assert ("engine", "default_loop_type") in pairs
-    assert ("engine", "loop_complexity_overrides") in pairs
+    assert ("engine", "auto_review_on_completion") in pairs
+    assert ("engine", "clarification_enabled") in pairs
+    assert ("engine", "scoping_enabled") in pairs
     # Registered through a `_flag(key, ...)` helper, so this is the shape a
     # parameter-blind scan drops.
     assert ("self_improvement", "enabled") in pairs

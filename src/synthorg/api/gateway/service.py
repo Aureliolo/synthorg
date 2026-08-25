@@ -533,8 +533,12 @@ class GatewayService:
         """Advisory injection-heuristic scan of inbound message content.
 
         Logs a scrubbed sample when a message matches an injection
-        heuristic. Advisory only: it never blocks the request (the
-        load-bearing fence is applied at the credentialed-MCP source).
+        heuristic. Advisory only: it never blocks the request. The
+        load-bearing fence is ``wrap_untrusted`` at each point content
+        enters a prompt (see ``docs/reference/sec-prompt-safety.md``); a
+        caller that assembled its own messages has already passed those,
+        and refusing here on a heuristic would fail a paid run on a false
+        positive rather than fence anything.
         """
         for message in parsed.messages:
             if message.content is None:

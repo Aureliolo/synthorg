@@ -206,6 +206,34 @@ func TestGenerateWithFineTuning(t *testing.T) {
 	}
 }
 
+// TestGenerateRejectsUnknownFineTuningVariant pins that a variant nobody
+// declared is refused as an error the caller can report. The alternative
+// shipped for a while: the template function panicked mid-render, which a
+// caller cannot recover from and which reads as a CLI crash rather than a
+// misconfiguration.
+func TestGenerateRejectsUnknownFineTuningVariant(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "internal",
+		FineTuning:         true,
+		FineTuningVariant:  "tpu",
+	}
+	_, err := Generate(p)
+	if err == nil {
+		t.Fatal("Generate must reject an unknown fine-tuning variant")
+	}
+	if !strings.Contains(err.Error(), "invalid fine-tuning variant") {
+		t.Errorf("error must name the offending field, got %q", err)
+	}
+}
+
 func TestGenerateWithoutFineTuningOmitsImageEnv(t *testing.T) {
 	t.Parallel()
 	p := Params{

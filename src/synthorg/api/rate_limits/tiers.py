@@ -67,12 +67,11 @@ def bears_own_credential(
 ) -> bool:
     """Report whether the request presents a per-run bearer on its own path.
 
-    The LLM gateway and the credentialed-tool MCP server verify their own
-    bearer inside the handler, which is why both are auth-excluded, so
-    ``scope["user"]`` is never populated for them. They are not anonymous
-    traffic though, and the anonymous tier's cap is sized for a stranger with
-    an IP: an agent doing ordinary work spends it in seconds and the run dies
-    on a 429 from its own control plane.
+    The LLM gateway verifies its own bearer inside the handler, which is why
+    it is auth-excluded, so ``scope["user"]`` is never populated for it. It is
+    not anonymous traffic though, and the anonymous tier's cap is sized for a
+    stranger with an IP: an agent doing ordinary work spends it in seconds and
+    the run dies on a 429 from its own control plane.
 
     Both halves are required. The path alone says only where a request was
     aimed, so reaching the URL with no credential at all would buy the

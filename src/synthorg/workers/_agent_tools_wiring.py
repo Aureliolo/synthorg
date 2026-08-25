@@ -17,9 +17,11 @@ families' own (`allowed_targets` versus `connection_name`), not a wiring
 choice: an agent picks from the operator's list and can never extend it.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
     get_logger,
@@ -74,6 +76,18 @@ async def _resolve_tools_flag_or_none(
         return None
 
 
+def _log_left_unregistered(*, service: str, context: str, note: str) -> None:
+    """Record a family left off because its bound surface is empty.
+
+    These are not failures, so they log at INFO rather than WARNING: an
+    operator who enabled a family and left its connection or target list
+    blank has reached a legitimate configuration state. It is still worth a
+    line, because the alternative is an agent that silently never receives
+    the tools and an operator with nothing in the log to read.
+    """
+    logger.info(API_APP_STARTUP, service=service, context=context, note=note)
+
+
 async def build_forge_tools_runtime_or_none(
     app_state: AppState,
 ) -> ForgeToolsRuntime | None:
@@ -114,13 +128,23 @@ async def build_forge_tools_runtime_or_none(
         )
         return None
     if not connection_name:
+        _log_left_unregistered(
+            service="forge_tools",
+            context="connection_unbound",
+            note="forge_tools_enabled is on but forge_tools_connection is blank",
+        )
         return None
     connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
     if connection_catalog is None:
+        _log_left_unregistered(
+            service="forge_tools",
+            context="connection_catalog_unwired",
+            note="no connection catalog yet; forge tools left unregistered",
+        )
         return None
     return ForgeToolsRuntime(
         connection_catalog=connection_catalog,
-        connection_name=connection_name,
+        connection_name=NotBlankStr(connection_name),
         timeout_seconds=timeout_seconds,
         max_read_chars=max_read_chars,
     )
@@ -165,13 +189,23 @@ async def build_chat_tools_runtime_or_none(
         )
         return None
     if not connection_name:
+        _log_left_unregistered(
+            service="chat_tools",
+            context="connection_unbound",
+            note="chat_tools_enabled is on but chat_tools_connection is blank",
+        )
         return None
     connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
     if connection_catalog is None:
+        _log_left_unregistered(
+            service="chat_tools",
+            context="connection_catalog_unwired",
+            note="no connection catalog yet; chat tools left unregistered",
+        )
         return None
     return ChatToolsRuntime(
         connection_catalog=connection_catalog,
-        connection_name=connection_name,
+        connection_name=NotBlankStr(connection_name),
         timeout_seconds=timeout_seconds,
     )
 
@@ -229,9 +263,19 @@ async def build_deploy_tools_runtime_or_none(
         )
         return None
     if not targets:
+        _log_left_unregistered(
+            service="deploy_tools",
+            context="targets_empty",
+            note="deploy_tools_enabled is on but deploy_tools_targets names none",
+        )
         return None
     connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
     if connection_catalog is None:
+        _log_left_unregistered(
+            service="deploy_tools",
+            context="connection_catalog_unwired",
+            note="no connection catalog yet; deploy tools left unregistered",
+        )
         return None
     return DeployToolsRuntime(
         connection_catalog=connection_catalog,
@@ -297,9 +341,19 @@ async def build_publish_tools_runtime_or_none(
         )
         return None
     if not targets:
+        _log_left_unregistered(
+            service="publish_tools",
+            context="targets_empty",
+            note="publish_tools_enabled is on but publish_tools_targets names none",
+        )
         return None
     connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
     if connection_catalog is None:
+        _log_left_unregistered(
+            service="publish_tools",
+            context="connection_catalog_unwired",
+            note="no connection catalog yet; publish tools left unregistered",
+        )
         return None
     return PublishToolsRuntime(
         connection_catalog=connection_catalog,
@@ -320,14 +374,24 @@ async def build_connection_tool_runtimes(
     to the bundle without a resolve here is a family permanently off, and a
     resolve without a bundle field is one the engine never sees.
 
+    The four resolve concurrently because none reads the other's result and
+    each costs its own settings round trip. This runs at boot and again under
+    the runtime-reload lock on every settings write that rebuilds, so four
+    serial round trips hold that lock four times longer than one window does.
+
     Returns:
         The bundle, with a ``None`` for each family that is off or unbound.
     """
+    async with asyncio.TaskGroup() as tg:
+        forge = tg.create_task(build_forge_tools_runtime_or_none(app_state))
+        chat = tg.create_task(build_chat_tools_runtime_or_none(app_state))
+        deploy = tg.create_task(build_deploy_tools_runtime_or_none(app_state))
+        publish = tg.create_task(build_publish_tools_runtime_or_none(app_state))
     return ConnectionToolRuntimes(
-        forge=await build_forge_tools_runtime_or_none(app_state),
-        chat=await build_chat_tools_runtime_or_none(app_state),
-        deploy=await build_deploy_tools_runtime_or_none(app_state),
-        publish=await build_publish_tools_runtime_or_none(app_state),
+        forge=forge.result(),
+        chat=chat.result(),
+        deploy=deploy.result(),
+        publish=publish.result(),
     )
 
 

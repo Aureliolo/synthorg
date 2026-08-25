@@ -440,19 +440,10 @@ func sidecarImageRef(pins map[string]string) func(tag string) string {
 // reference. Wired into the backend's SYNTHORG_FINE_TUNE_IMAGE env var so
 // the backend spawns version-locked fine-tuning pipeline containers.
 //
-// variant must be "gpu", "cpu", or empty (forward-compat shim that
-// resolves to "gpu"); any other value produces a template function that
-// fails rendering with a clear error instead of silently defaulting.
+// variant must be "gpu", "cpu", or empty (forward-compat shim that resolves
+// to "gpu"). validateBackendChoices rejects anything else before the template
+// is built, so this function is only ever reached with a variant it can name.
 func fineTuneImageRef(pins map[string]string, variant string) func(tag string) string {
-	if variant != "" && variant != config.FineTuneVariantGPU && variant != config.FineTuneVariantCPU {
-		// Surface the misconfiguration at template render time. Going
-		// through panic keeps the template signature simple (no error
-		// return) while ensuring a typo in a hand-built Params fails
-		// loudly instead of silently pulling the GPU image.
-		return func(string) string {
-			panic(fmt.Sprintf("fineTuneImageRef: invalid fine-tuning variant %q: must be %q or %q", variant, config.FineTuneVariantGPU, config.FineTuneVariantCPU))
-		}
-	}
 	service := verify.FineTuneServiceName(variant)
 	return func(tag string) string {
 		return verify.FormatImageRef(service, tag, pins[service])

@@ -80,9 +80,18 @@ class AutonomyPreset(BaseModel):
 
 BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType(
     {
+        # ``all`` is literal: it includes ``deploy:production`` and
+        # ``publish:production``, so a FULL agent reaches a production target
+        # and a public registry with nothing asked. That is what the level
+        # means, which is why it is the one grant exempt from the
+        # worktree-confinement declaration; the operator's containment is
+        # the connection allowlist, not the autonomy level.
         AutonomyLevel.FULL: AutonomyPreset(
             level=AutonomyLevel.FULL,
-            description="Fully autonomous -- all actions auto-approved",
+            description=(
+                "Fully autonomous -- all actions auto-approved, including "
+                "production deploys and registry publishes"
+            ),
             auto_approve=("all",),
             human_approval=(),
             security_agent=False,

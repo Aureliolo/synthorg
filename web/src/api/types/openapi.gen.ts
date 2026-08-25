@@ -17802,6 +17802,11 @@ export type components = {
              */
             readonly denied: readonly string[];
             /**
+             * @description Tool categories withheld regardless of the access level
+             * @default []
+             */
+            readonly denied_categories: readonly components["schemas"]["ToolCategory"][];
+            /**
              * @description MCP capability patterns (e.g. 'tasks:read', 'agents:*')
              * @default []
              */

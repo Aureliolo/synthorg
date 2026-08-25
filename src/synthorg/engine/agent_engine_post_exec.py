@@ -651,6 +651,16 @@ class AgentEnginePostExecMixin:
             # Loop did not honour cancellation within the grace window; detach
             # and let a done-callback retrieve the eventual result so a later
             # failure is not logged as an unretrieved task exception.
+            #
+            # A detached task keeps running, so a resume of the same execution
+            # can overlap it: both loops then share the collaborators the
+            # engine holds once (the steering inbox, the stagnation detector,
+            # the turn observer, the step classifier) and both write turns for
+            # one execution id. Detaching is still the right trade, because
+            # the alternative is blocking the caller on a loop that has
+            # already ignored cancellation. What bounds the damage is that the
+            # wedged loop's writes are terminal-status-guarded downstream, not
+            # anything here.
             loop_task.add_done_callback(lambda t: t.cancelled() or t.exception())
         elif not loop_task.cancelled():
             # Settled with a non-cancellation failure: retrieve it so it is not

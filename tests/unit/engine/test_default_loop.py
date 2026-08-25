@@ -12,12 +12,14 @@ rebuild naming its fields at the call site drops whichever control is added
 next.
 """
 
+import inspect
 from typing import cast, override
 
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
@@ -91,14 +93,35 @@ class TestEngineDefaultLoop:
         assert loop.stagnation_detector is controls["stagnation_detector"]
         assert loop.steering_inbox is controls["steering_inbox"]
         assert loop.compaction_callback is controls["compaction_callback"]
-        assert loop._step_classifier is controls["step_classifier"]
+        assert loop.step_classifier is controls["step_classifier"]
 
     def test_approval_gate_reaches_the_loop(self) -> None:
         # Built by the engine from its approval store rather than injected,
-        # so it is the one control whose identity the caller cannot supply.
-        loop = _engine(_controls())._loop
+        # so the caller cannot supply a sentinel. Asserting identity against
+        # the engine's own gate still catches a builder that constructs a
+        # SECOND gate instead of forwarding the one the engine holds.
+        engine = _engine(_controls())
+        loop = engine._loop
         assert isinstance(loop, ReactLoop)
+        assert loop.approval_gate is engine._approval_gate
         assert loop.approval_gate is not None
+
+    def test_no_gate_when_no_approval_store(self) -> None:
+        """Without a store there is nothing to park against, so no gate."""
+        controls = _controls()
+        engine = AgentEngine(
+            provider=ScriptedProvider([]),
+            tool_registry=ToolRegistry(
+                [_StubTool(name="stub", category=ToolCategory.OTHER)]
+            ),
+            approval_store=None,
+            stagnation_detector=cast(
+                "StagnationDetector", controls["stagnation_detector"]
+            ),
+        )
+        loop = engine._loop
+        assert isinstance(loop, ReactLoop)
+        assert loop.approval_gate is None
 
 
 class TestCheckpointRebuild:
@@ -106,8 +129,9 @@ class TestCheckpointRebuild:
         controls = _controls()
         observer = _observe
         clock = FakeClock()
+        gate = mock_of[ApprovalGate]()
         original = ReactLoop(
-            approval_gate=None,
+            approval_gate=cast("ApprovalGate", gate),
             stagnation_detector=cast(
                 "StagnationDetector", controls["stagnation_detector"]
             ),
@@ -129,9 +153,53 @@ class TestCheckpointRebuild:
 
         assert rebuilt is not original
         assert rebuilt._checkpoint_callback is _callback
+        # The approval gate is the one whose loss is security-relevant: a
+        # resumed run that stopped parking on escalations would execute what
+        # it should have held. It has to be a real sentinel here, because a
+        # ``None`` original reads identically whether it survived or not.
+        assert rebuilt.approval_gate is gate
         assert rebuilt.stagnation_detector is controls["stagnation_detector"]
         assert rebuilt.compaction_callback is controls["compaction_callback"]
         assert rebuilt.steering_inbox is controls["steering_inbox"]
-        assert rebuilt._step_classifier is controls["step_classifier"]
+        assert rebuilt.step_classifier is controls["step_classifier"]
         assert rebuilt._turn_observer is observer
         assert rebuilt._clock is clock
+
+    def test_every_constructor_field_survives_a_rebuild(self) -> None:
+        """Derived from the signature, so a field added later is covered.
+
+        The defect this method replaced dropped three fields by naming its
+        copy at the call site. A hand-written assertion list has the same
+        failure mode one field later, so the field set comes from
+        ``__init__`` rather than from this test.
+        """
+        original = ReactLoop(
+            approval_gate=cast("ApprovalGate", mock_of[ApprovalGate]()),
+            stagnation_detector=cast(
+                "StagnationDetector", mock_of[StagnationDetector]()
+            ),
+            compaction_callback=_compaction,
+            steering_inbox=cast("SteeringInbox", mock_of[SteeringInbox]()),
+            step_classifier=cast(
+                "StepQualityClassifier", mock_of[StepQualityClassifier]()
+            ),
+            turn_observer=_observe,
+            clock=FakeClock(),
+        )
+
+        async def _callback(ctx: AgentContext) -> None:
+            del ctx
+
+        rebuilt = original.with_checkpoint_callback(
+            cast("CheckpointCallback", _callback)
+        )
+
+        carried = [
+            name
+            for name in inspect.signature(ReactLoop.__init__).parameters
+            if name not in {"self", "checkpoint_callback"}
+        ]
+        assert carried, "signature introspection found no controls to check"
+        for name in carried:
+            attribute = f"_{name}"
+            assert getattr(rebuilt, attribute) is getattr(original, attribute), name

@@ -156,7 +156,7 @@ task:
   id: "3f6c1e2a-4b5c-6d7e-8f9a-0b1c2d3e4f50"   # UUID, auto-generated
   title: "Implement user authentication API"
   description: "Create REST endpoints for login, register, logout with JWT tokens"
-  type: "development"           # development, design, research, review, meeting, admin
+  type: "development"           # development, design, research, review, admin, analysis
   priority: "high"              # critical, high, medium, low
   project: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"   # references Project.id (UUID)
   created_by: "product_manager_1"

@@ -19,7 +19,7 @@ from synthorg.tools.chat._runtime import ChatToolsRuntime
 from synthorg.tools.forge._runtime import ForgeToolsRuntime
 
 if TYPE_CHECKING:
-    # Cycle breakers: both packages' ``__init__`` reaches the MCP admin
+    # Cycle breakers: both packages' ``__init__`` reach the MCP admin
     # guardrail, which imports ``api.state``, and this module is pulled in
     # while the engine is still constructing itself.
     from synthorg.tools.deploy._runtime import DeployToolsRuntime

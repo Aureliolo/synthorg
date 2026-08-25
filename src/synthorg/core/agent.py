@@ -23,6 +23,7 @@ from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.ontology.decorator import ontology_entity
+from synthorg.security.autonomy.enums import ToolCategory
 
 logger = get_logger(__name__)
 
@@ -292,6 +293,12 @@ class ToolPermissions(BaseModel):
             are available.
         allowed: Explicitly allowed tool names.
         denied: Explicitly denied tool names.
+        denied_categories: Categories withheld regardless of what the
+            access level grants. A name list goes stale the moment a tool
+            joins the category, so an identity that must not reach a whole
+            class of tool says so by category and stays correct as the
+            category grows. ``allowed`` still wins, so one named tool can
+            be readmitted from an otherwise withheld category.
         mcp_capabilities: MCP capability patterns controlling which
             internal MCP tools the agent can see.  Supports wildcards
             (e.g. ``"tasks:*"``, ``"*:read"``, ``"*"``).
@@ -313,6 +320,10 @@ class ToolPermissions(BaseModel):
     denied: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly denied tools",
+    )
+    denied_categories: tuple[ToolCategory, ...] = Field(
+        default=(),
+        description="Tool categories withheld regardless of the access level",
     )
     mcp_capabilities: tuple[NotBlankStr, ...] = Field(
         default=(),

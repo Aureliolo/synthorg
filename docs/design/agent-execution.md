@@ -785,7 +785,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Execution Trace | `TurnRecord` tuple + observability events (100+ constants) | Strong | SynthOrg's trace is richer than ACG baseline |
 | Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Strong | Typed via `NodeType` enum on `TurnRecord.node_types` |
 | Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
-| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
+| Scheduling Policies | `CoordinationConfig` + `AutoTopologyConfig` | Strong | Topology selection |
 | Conditional Branching | Loop termination checks, stagnation intervention | Partial | Not expressed as graph-level conditionals |
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: pre-flight and in-flight enforcement |

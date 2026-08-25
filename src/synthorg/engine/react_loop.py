@@ -171,6 +171,11 @@ class ReactLoop:
         """Return the steering inbox, or ``None``."""
         return self._steering_inbox
 
+    @property
+    def step_classifier(self) -> StepQualityClassifier | None:
+        """Return the step-quality classifier, or ``None``."""
+        return self._step_classifier
+
     def with_checkpoint_callback(self, callback: CheckpointCallback) -> ReactLoop:
         """Return a copy of this loop that also checkpoints.
 

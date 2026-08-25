@@ -5,11 +5,8 @@ from typing import TYPE_CHECKING, Literal
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.engine._agent_tool_registry import (
-    registry_with_chat_tools,
+    registry_with_connection_tools,
     registry_with_delegate_tool,
-    registry_with_deploy_tools,
-    registry_with_forge_tools,
-    registry_with_publish_tools,
 )
 from synthorg.engine._security_factory import (
     SecurityLlmInfra,
@@ -305,33 +302,9 @@ class AgentEngineFactoriesMixin:
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
-        registry = registry_with_forge_tools(
+        registry = registry_with_connection_tools(
             registry,
-            self._connection_tool_runtimes.forge,
-            approval_store=self._approval_store,
-            identity=identity,
-            task_id=task_id,
-            effective_autonomy=effective_autonomy,
-        )
-        registry = registry_with_chat_tools(
-            registry,
-            self._connection_tool_runtimes.chat,
-            approval_store=self._approval_store,
-            identity=identity,
-            task_id=task_id,
-            effective_autonomy=effective_autonomy,
-        )
-        registry = registry_with_deploy_tools(
-            registry,
-            self._connection_tool_runtimes.deploy,
-            approval_store=self._approval_store,
-            identity=identity,
-            task_id=task_id,
-            effective_autonomy=effective_autonomy,
-        )
-        registry = registry_with_publish_tools(
-            registry,
-            self._connection_tool_runtimes.publish,
+            self._connection_tool_runtimes,
             approval_store=self._approval_store,
             identity=identity,
             task_id=task_id,

@@ -2,6 +2,13 @@
  * Per-node-type configuration field definitions for the property drawer.
  */
 
+import {
+  COMPLEXITY_VALUES,
+  PRIORITY_VALUES,
+  TASK_TYPE_VALUES,
+} from '@/api/types/enums'
+import { formatLabel } from '@/utils/format'
+import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { WorkflowNodeType } from '@/api/types/workflows'
 
 export interface ConfigField {
@@ -13,28 +20,24 @@ export interface ConfigField {
   required?: boolean
 }
 
-const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'critical', label: 'Critical' },
-] as const
+// Derived from the generated enum tuples rather than listed, so a member added
+// to the backend enum becomes configurable here without an edit. A hand-written
+// list is how ``analysis`` came to be unofferable in this drawer while the
+// backend accepted it.
+const PRIORITY_OPTIONS = PRIORITY_VALUES.map((value) => ({
+  value,
+  label: getPriorityLabel(value),
+}))
 
-const COMPLEXITY_OPTIONS = [
-  { value: 'simple', label: 'Simple' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'complex', label: 'Complex' },
-  { value: 'epic', label: 'Epic' },
-] as const
+const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((value) => ({
+  value,
+  label: formatLabel(value),
+}))
 
-const TASK_TYPE_OPTIONS = [
-  { value: 'development', label: 'Development' },
-  { value: 'design', label: 'Design' },
-  { value: 'research', label: 'Research' },
-  { value: 'review', label: 'Review' },
-  { value: 'admin', label: 'Admin' },
-  { value: 'analysis', label: 'Analysis' },
-] as const
+const TASK_TYPE_OPTIONS = TASK_TYPE_VALUES.map((value) => ({
+  value,
+  label: getTaskTypeLabel(value),
+}))
 
 const ROUTING_STRATEGY_OPTIONS = [
   { value: 'manual', label: 'Manual' },

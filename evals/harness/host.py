@@ -10,12 +10,10 @@ scratch database, serves it on a local port, and reads the signer off the state
 the boot wiring populated. Borrowing a running backend is not a shortcut here;
 it is the one configuration that cannot work.
 
-Owning the process rather than dialling one has two further consequences every
-artifact recorded through it depends on. The gateway's cost ledger belongs to
+Owning the process rather than dialling one has a further consequence every
+artifact recorded through it depends on: the gateway's cost ledger belongs to
 the recorder, so spend from calls made inside a container (rather than by the
-engine) is visible at all. And the credentialed-MCP surface an embedded harness
-insists on is the real one, served under the shipped empty capability grant, so
-the handshake completes while reaching no credentialed tool.
+engine) is visible at all.
 
 Serving the real application means serving *all* of it, which two things here
 exist to contain. ``/auth/setup`` is deliberately excluded from authentication
@@ -91,6 +89,7 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.state import config_resolver_of, settings_service_of
+from synthorg.settings.write_governance import SettingsWriteGovernance
 from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
     set_resolved_sidecar_image,
@@ -109,6 +108,17 @@ DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
 #: Turn extensions granted during a recording. Zero, so a brief's declared
 #: ceiling is the budget every cell was actually scored against.
 _NO_TURN_EXTENSIONS: Final[int] = 0
+
+#: ``providers.gateway_enabled`` ships off, so the first stored ``true`` is the
+#: write that opens the egress and takes the confirm+reason+actor guardrail.
+#: Starting a recording IS that deliberate act: the operator running the sweep
+#: is asking for billed completions to leave the process, so the harness names
+#: itself rather than relaxing the guard or the default.
+_RECORDING_GATEWAY_GOVERNANCE: Final[SettingsWriteGovernance] = SettingsWriteGovernance(
+    confirm=True,
+    reason="recording harness routes every measured completion through the gateway",
+    actor="evals-recording-harness",
+)
 
 #: How long the serving task gets to unwind before teardown stops waiting on it.
 #: Bounded because an in-flight request the container will never collect (its
@@ -853,7 +863,12 @@ class RecordingGatewayHost:
         others is comparing runs on different budgets.
         """
         settings = settings_service_of(self.app_state)
-        await settings.set("providers", "gateway_enabled", "true")
+        await settings.set(
+            "providers",
+            "gateway_enabled",
+            "true",
+            governance=_RECORDING_GATEWAY_GOVERNANCE,
+        )
         await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
 
 

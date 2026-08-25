@@ -66,8 +66,8 @@ ls docs/design/
 ```
 
 Map the diff to pages by subsystem. `src/synthorg/api/gateway/` maps to
-`llm-gateway.md`; `api/mcp_gateway/` to `credentialed-mcp.md`; forge tools to
-`agent-hands.md`; `integrations/chat_api/inbound/` to `chat-inbound.md`;
+`llm-gateway.md`; `tools/deploy/` and `tools/publish/` to `tools.md`; forge
+tools to `agent-hands.md`; `integrations/chat_api/inbound/` to `chat-inbound.md`;
 `engine/initiative/` to `initiative-tail.md`; `web/src/` to `brand-and-ux.md`,
 `page-structure.md` and `ux-guidelines.md`. Consult `docs/design/index.md` and
 `docs/DESIGN_SPEC.md` for the authoritative index.

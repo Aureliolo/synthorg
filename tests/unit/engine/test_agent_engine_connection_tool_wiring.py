@@ -16,6 +16,10 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._agent_tool_registry import (
+    registry_with_deploy_tools,
+    registry_with_publish_tools,
+)
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.persistence.integration_inmemory import InMemoryConnectionRepository
@@ -24,8 +28,10 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.chat._runtime import ChatToolsRuntime
 from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 from synthorg.tools.deploy._runtime import DeployToolsRuntime
+from synthorg.tools.deploy.deploy_tools import DeployReleaseTool
 from synthorg.tools.forge._runtime import ForgeToolsRuntime
 from synthorg.tools.publish._runtime import PublishToolsRuntime
+from synthorg.tools.publish.publish_tools import PublishPushTool
 from synthorg.tools.registry import ToolRegistry
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
@@ -194,3 +200,37 @@ class TestAgentEnginePublishWiring:
     def test_no_publish_tools_when_runtime_absent(self) -> None:
         names = _permitted_names(_engine(publish_root=None))
         assert names.isdisjoint(_PUBLISH_TOOL_NAMES)
+
+
+class TestDestructiveToolsCarryTheRunIdentity:
+    """The audit actor on a destructive tool is the run's own identity.
+
+    ``require_admin_guardrails`` refuses a call it cannot attribute, and it
+    runs before the approval gate, so an actor that silently became ``None``
+    would refuse every deploy and every publish while every registration
+    test above still passed on tool names alone.
+    """
+
+    def test_deploy_release_is_bound_to_the_caller(self) -> None:
+        identity = make_e2e_identity()
+        registry = registry_with_deploy_tools(
+            ToolRegistry([]),
+            _deploy_runtime(),
+            approval_store=ApprovalStore(),
+            identity=identity,
+        )
+        release = next(
+            t for t in registry.all_tools() if isinstance(t, DeployReleaseTool)
+        )
+        assert release._actor is identity
+
+    def test_publish_push_is_bound_to_the_caller(self, tmp_path: Path) -> None:
+        identity = make_e2e_identity()
+        registry = registry_with_publish_tools(
+            ToolRegistry([]),
+            _publish_runtime(tmp_path),
+            approval_store=ApprovalStore(),
+            identity=identity,
+        )
+        push = next(t for t in registry.all_tools() if isinstance(t, PublishPushTool))
+        assert push._actor is identity

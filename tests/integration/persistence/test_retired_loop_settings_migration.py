@@ -267,9 +267,10 @@ class TestRetiredLoopSettingsMigration:
     ) -> None:
         """This revision rewrites its two names and touches nothing else.
 
-        ``openhands`` was a shipping loop when the revision was written and is
-        retired now, but by a later change; this revision must still pass it
-        through, or the test stops covering the narrowness that is its point.
+        A revision is pinned to the vocabulary it declares, so a name it does
+        not list passes through untouched however that name fares elsewhere.
+        ``openhands`` is the control precisely because it is outside the two
+        this revision retires.
         """
         backend = await seed_and_migrate(
             (

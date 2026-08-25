@@ -37,9 +37,9 @@ def build_output_scan_policy(
     Args:
         policy_type: Declarative policy selection from config.
         effective_autonomy: Resolved autonomy for the current run, or
-            ``None`` for a screen that belongs to no run (the
-            credentialed-MCP request path). Read only by
-            ``AUTONOMY_TIERED``.
+            ``None`` when a run's autonomy could not be resolved. Read only
+            by ``AUTONOMY_TIERED``, which answers at its STRICTEST tier on
+            ``None`` rather than a middle one.
 
     Returns:
         A configured output scan response policy instance.

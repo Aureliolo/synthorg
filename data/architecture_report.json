@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/gateway/service.py": {
       "cap": 600,
-      "loc": 485,
-      "ratio": 0.808,
+      "loc": 489,
+      "ratio": 0.815,
       "tier": "service"
     },
     "src/synthorg/api/gateway/translation.py": {
@@ -330,6 +330,12 @@
       "ratio": 0.884,
       "tier": "code"
     },
+    "src/synthorg/core/agent.py": {
+      "cap": 500,
+      "loc": 403,
+      "ratio": 0.806,
+      "tier": "code"
+    },
     "src/synthorg/core/plan.py": {
       "cap": 500,
       "loc": 460,
@@ -350,8 +356,8 @@
     },
     "src/synthorg/engine/agent_engine_factories.py": {
       "cap": 500,
-      "loc": 475,
-      "ratio": 0.95,
+      "loc": 448,
+      "ratio": 0.896,
       "tier": "code"
     },
     "src/synthorg/engine/agent_engine_post_exec.py": {
@@ -518,8 +524,8 @@
     },
     "src/synthorg/engine/react_loop.py": {
       "cap": 500,
-      "loc": 484,
-      "ratio": 0.968,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/engine/review_gate.py": {
@@ -1520,7 +1526,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 148,
     "synthorg.core.task_enums": 151,
-    "synthorg.core.types": 1339,
+    "synthorg.core.types": 1345,
     "synthorg.engine.context": 54,
     "synthorg.engine.coordination.models": 23,
     "synthorg.engine.decomposition.models": 43,
@@ -1622,7 +1628,7 @@
     "synthorg.providers.registry": 43,
     "synthorg.providers.state": 52,
     "synthorg.research.models": 23,
-    "synthorg.security.autonomy.enums": 91,
+    "synthorg.security.autonomy.enums": 93,
     "synthorg.security.config": 21,
     "synthorg.security.models": 30,
     "synthorg.security.redteam.models": 20,
@@ -1655,7 +1661,7 @@
     },
     "synthorg.api.gateway.service:GatewayService": {
       "lcom4": 1,
-      "loc": 409
+      "loc": 413
     },
     "synthorg.api.services.plan_service:PlanService": {
       "lcom4": 1,

@@ -303,6 +303,18 @@ class TestGuardrails:
         assert "actor" in result.content
 
 
+class TestRuntimeBinding:
+    def test_no_single_bound_connection(self) -> None:
+        """The allowlist is this family's bound surface, not one connection.
+
+        ``None`` rather than a blank string: a reader is forced to handle the
+        absence, where a blank would read as a name and resolve to nothing.
+        """
+        runtime = _deps(conn=_connection()).runtime
+        assert runtime.connection_name is None
+        assert runtime.allowed_targets == frozenset({_TARGET})
+
+
 class TestAllowlistAndSetup:
     async def test_unlisted_target_refused_before_credentials(self) -> None:
         deps = _deps(conn=_connection(), targets=frozenset({"other"}))

@@ -87,7 +87,9 @@ greater gains.
 loop type. Which loop suits which complexity is deliberately left to measurement: the
 inner-loop A/B harness ranks the shipped loops on the same coding work and its
 scoreboard is applied as `engine.loop_complexity_overrides`, so the routing is set from
-evidence rather than judgement.
+evidence rather than judgement. *(Since removed: the A/B ran, one loop won, and both the
+selector and the harness went with it. The measurement is preserved at
+[`inner-loop-ab-recording.md`](inner-loop-ab-recording.md).)*
 
 **Implication**: The loop selector is doing real structural work. Adding complexity to
 system prompts for tasks that should use a different loop is not a substitute. This
@@ -117,7 +119,9 @@ outperforms generating arbitrary workflows from scratch.
 `src/synthorg/core/role_catalog.py` are a super-graph of organisational patterns. Template
 packs in `api/controllers/template_packs.py` apply curated patterns. The meeting protocols
 (3 variants) and loop types (React and OpenHands) are a bounded selection space rather
-than open-ended generation.
+than open-ended generation. *(Since removed: the meeting stack was deleted whole, and one
+loop ships, so neither is a selection space any more. The super-graph argument stands on
+the roles and template packs alone.)*
 
 **Implication**: Adding more template packs and expanding the super-graph is a higher-value
 investment than adding more free-form configuration options.

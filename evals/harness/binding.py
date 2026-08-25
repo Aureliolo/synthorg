@@ -145,6 +145,10 @@ class HarnessBinder:
         one later. The ceiling arms the gateway's hard kill server-side, which
         is what bounds a real-spend run from the outside.
 
+        Signing is CPU-bound and awaits nothing; the coroutine is the seam's
+        shape, so a signer that later reaches a KMS is a body change rather
+        than a change at every call site.
+
         Returns:
             The signed bearer.
 

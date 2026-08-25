@@ -205,7 +205,7 @@ TAG_BASE_PATH_FALLBACK: Final[dict[str, str]] = {
     "health": "/healthz, /readyz",
     "coordination": "/coordination/metrics, /tasks/{task_id}/coordinate",
     "Integrations": "/integrations, /connections, /oauth, /webhooks",
-    "Gateway": "/gateway/v1/chat/completions, /mcp-gateway/mcp",
+    "Gateway": "/gateway/v1/chat/completions",
 }
 
 API_PREFIX: Final[str] = "/api/v1"

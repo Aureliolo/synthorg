@@ -8,7 +8,6 @@ settings-resolution failure (never crashing boot).
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -23,13 +22,14 @@ from synthorg.tools.deploy._runtime import DeployToolsRuntime
 from synthorg.tools.forge._runtime import ForgeToolsRuntime
 from synthorg.tools.publish._runtime import PublishToolsRuntime
 from synthorg.workers._agent_tools_wiring import (
+    _parse_targets,
     build_chat_tools_runtime_or_none,
     build_connection_tool_runtimes,
     build_deploy_tools_runtime_or_none,
     build_forge_tools_runtime_or_none,
     build_publish_tools_runtime_or_none,
 )
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -72,19 +72,15 @@ class _StubCatalog:
 
 
 def _app_state(*, catalog: object, workspace_root: Path | None = None) -> AppState:
-    # One namespace answers every slice: the wiring reads the connection
-    # catalog and the workspace root, and no builder distinguishes which
-    # slice class carried which field.
-    slice_fields = SimpleNamespace(
+    # The real slices, not one namespace answering every class: the catalog
+    # lives on IntegrationsStateSlice and the workspace root on
+    # WorkspaceStateSlice, so a builder reading either off the wrong slice
+    # has to fail here rather than pass against a double that cannot tell
+    # the two apart.
+    return make_app_state(
         connection_catalog=catalog,
         agent_workspace_root=workspace_root,
-    )
-    return cast(
-        "AppState",
-        SimpleNamespace(
-            slice=lambda _cls: slice_fields,
-            clock=FakeClock(),
-        ),
+        clock=FakeClock(),
     )
 
 
@@ -368,6 +364,57 @@ class TestPublishToolsWiring:
             _app_state(catalog=_StubCatalog(), workspace_root=tmp_path)
         )
         assert result is None
+
+
+class TestParseTargets:
+    """The allowlist parser gating two destructive families."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("staging", {"staging"}),
+            ("staging, production", {"staging", "production"}),
+            ("staging,", {"staging"}),
+            ("staging,staging", {"staging"}),
+            ("staging,,production", {"staging", "production"}),
+            ("  staging  ,  production  ", {"staging", "production"}),
+            ("", set()),
+            ("  ,  ", set()),
+        ],
+    )
+    def test_parses(self, raw: str, expected: set[str]) -> None:
+        assert _parse_targets(raw) == frozenset(expected)
+
+
+class TestCriticalErrorsAreNotSwallowed:
+    """A degrade-to-None handler must still let a critical through.
+
+    Every builder wraps its settings resolution in a broad ``except`` that
+    returns ``None``. ``reraise_critical`` runs first so an interpreter-level
+    failure is not converted into "the feature is off"; without a test the
+    ordering could be reversed and nothing would notice.
+    """
+
+    @pytest.mark.parametrize("critical", [MemoryError, RecursionError])
+    async def test_flag_resolution_lets_a_critical_through(
+        self, monkeypatch: pytest.MonkeyPatch, critical: type[BaseException]
+    ) -> None:
+        resolver = mock_of[ConfigResolver]()
+        resolver.get_bool.side_effect = critical("interpreter is in trouble")
+        _patch(monkeypatch, cast("ConfigResolver", resolver))
+        with pytest.raises(critical):
+            await build_forge_tools_runtime_or_none(_app_state(catalog=_StubCatalog()))
+
+    @pytest.mark.parametrize("critical", [MemoryError, RecursionError])
+    async def test_settings_resolution_lets_a_critical_through(
+        self, monkeypatch: pytest.MonkeyPatch, critical: type[BaseException]
+    ) -> None:
+        resolver = mock_of[ConfigResolver]()
+        resolver.get_bool.return_value = True
+        resolver.get_str.side_effect = critical("interpreter is in trouble")
+        _patch(monkeypatch, cast("ConfigResolver", resolver))
+        with pytest.raises(critical):
+            await build_deploy_tools_runtime_or_none(_app_state(catalog=_StubCatalog()))
 
 
 class TestConnectionToolRuntimesBundle:

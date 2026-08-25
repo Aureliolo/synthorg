@@ -20,6 +20,7 @@ from pathlib import Path
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.security.timeout.protocol import RiskTierClassifier
 
@@ -44,16 +45,16 @@ class PublishToolsRuntime:
     workspace_root: Path
 
     @property
-    def connection_name(self) -> str:
+    def connection_name(self) -> NotBlankStr | None:
         """Satisfy the shared runtime protocol.
 
         Returns:
-            The empty string. This family resolves its connection from the
-            call's target, so there is no single bound connection;
-            :meth:`PublishToolsRuntime.allowed_targets` is the real bound
+            ``None``. This family resolves its connection from the call's
+            target, so there is no single bound connection;
+            :attr:`PublishToolsRuntime.allowed_targets` is the real bound
             surface.
         """
-        return ""
+        return None
 
 
 @dataclass(frozen=True)

@@ -680,6 +680,25 @@ class TestBulkOperations:
         # Should NOT call individual get()
         mock_repo.get.assert_not_called()
 
+    async def test_a_row_no_definition_claims_is_ignored(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """A retired key's stored row must not break the read.
+
+        Reads iterate the DEFINITION registry and look each key up in the
+        rows, so a row whose definition has since been deleted is never
+        reached. That is what lets a key be removed without a migration:
+        the operator's old value goes inert rather than failing their boot.
+        """
+        mock_repo.list_items.return_value = (
+            _row("300.0", "2026-03-16T10:00:00Z"),
+            _row("react", "2026-03-16T10:00:00Z", namespace="engine", key="retired"),
+        )
+        entries = await service.get_all()
+        assert len(entries) == 1
+        assert entries[0].definition.key == "total_monthly"
+        assert entries[0].value == "300.0"
+
 
 # ── Sensitive Read Without Encryptor ─────────────────────────────
 

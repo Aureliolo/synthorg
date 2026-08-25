@@ -59,11 +59,18 @@ _GIT_PUSH_ACTIONS: frozenset[str] = frozenset(
 # action type would allow action-type-based checking.
 _GIT_CLONE_TOOL_NAMES: frozenset[str] = frozenset({"git_clone"})
 
-# Action types that require outbound network access.
+# Action types that require outbound network access. Deploy and publish both
+# reach a remote over HTTPS (a deploy connection, a registry), so a level whose
+# network mode forbids outbound traffic must refuse them for the same reason it
+# refuses a chat send.
 _NETWORK_ACTION_TYPES: frozenset[str] = frozenset(
     {
         ActionType.COMMS_EXTERNAL,
         ActionType.EXTERNAL_DATA_REQUEST,
+        ActionType.DEPLOY_STAGING,
+        ActionType.DEPLOY_PRODUCTION,
+        ActionType.PUBLISH_STAGING,
+        ActionType.PUBLISH_PRODUCTION,
     }
 )
 

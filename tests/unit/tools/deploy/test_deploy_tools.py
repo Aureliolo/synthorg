@@ -32,10 +32,12 @@ from synthorg.integrations.connections.models import (
 from synthorg.integrations.deploy_api import DeployApiClient
 from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.security.autonomy.enums import ActionType
+from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools.deploy._args import DeployRunArgs
 from synthorg.tools.deploy._runtime import DeployToolDeps, DeployToolsRuntime
 from synthorg.tools.deploy.deploy_tools import DeployReleaseTool, DeployRunTool
 from synthorg.tools.deploy.errors import (
+    DeployConnectionNotFoundError,
     DeployToolArgumentError,
     DeployUnsupportedError,
 )
@@ -362,10 +364,28 @@ class TestArgumentShapeInvariants:
 
 class TestRuntimeBinding:
     def test_no_single_bound_connection(self) -> None:
-        """The allowlist is this family's bound surface, not one connection."""
+        """The allowlist is this family's bound surface, not one connection.
+
+        ``None`` rather than a blank string: a reader is forced to handle the
+        absence, where a blank would read as a name and resolve to nothing.
+        """
         runtime = _deps(conn=_connection()).runtime
-        assert runtime.connection_name == ""
+        assert runtime.connection_name is None
         assert runtime.allowed_targets == frozenset({_TARGET})
+
+    async def test_the_shared_base_refuses_rather_than_guessing(self) -> None:
+        """Only reachable if this family stops overriding the resolver.
+
+        The base would then have no bound name to look up, and guessing one
+        would dispatch at a target the operator never named. Exercised
+        directly because the override is what makes it unreachable in a
+        shipped call, and that override is exactly what could be lost.
+        """
+        tool = DeployRunTool(deps=_deps(conn=_connection()))
+        with pytest.raises(DeployConnectionNotFoundError):
+            await GovernedConnectionTool._resolve_connection(
+                tool, DeployRunArgs(action="list", target=_TARGET)
+            )
 
 
 class TestPlatformBinding:

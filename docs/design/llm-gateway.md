@@ -30,7 +30,7 @@ That exclusion leaves `scope["user"]` unset, which the rate limiter would
 otherwise read as anonymous: the tier sized for a stranger with an IP, which an
 agent doing ordinary work spends in seconds before dying on a 429 from its own
 control plane. `api/rate_limits/tiers.py::bears_own_credential` therefore puts
-this route (and the credentialed-tool MCP server) on the authenticated tier,
+this route on the authenticated tier,
 but **only** when the request actually presents a well-formed
 `Authorization: Bearer` header. The path alone says where a request was aimed,
 not who sent it, and the authenticated tier is far larger. Syntax is all the
