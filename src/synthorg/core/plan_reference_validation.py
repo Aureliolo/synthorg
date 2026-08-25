@@ -197,13 +197,19 @@ def describe_unstated_reference(
 
     Args:
         unit: The unit being checked.
-        others: Every other unit in the plan.
+        others: Every other unit in the plan, which callers are allowed to
+            hand in carrying *unit* as well.
 
     Returns:
         A message naming both items, or ``None`` when no unstated reference
         is found.
     """
-    scanned = (unit, *others)
+    # Deduplicated before the index rather than only while scanning: the index
+    # counts how many titles carry each token against a ceiling derived from
+    # how many units there are, so a unit present twice inflates both and can
+    # push a token below the distinctive ceiling. The plural entry point, which
+    # never repeats a unit, would then report a reference this one misses.
+    scanned = (unit, *(other for other in others if other.id != unit.id))
     return _unstated_reference(
         units=scanned, index=_reference_index(scanned), position=0
     )

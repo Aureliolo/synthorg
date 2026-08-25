@@ -11,7 +11,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
 import { isUnroutableOwner } from '@/utils/plans'
 
-import { childIndex, parentOptions } from './PlanEditor.containment'
+import { childIndex, parentChoices } from './PlanEditor.containment'
 import {
   acceptanceText,
   artifactsText,
@@ -271,6 +271,10 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
   // a work item, at least one expected deliverable. Gate the save on all of
   // them rather than surfacing the 422 after a round trip.
   const children = useMemo(() => childIndex(drafts), [drafts])
+  const choices = useMemo(
+    () => parentChoices(drafts, children),
+    [drafts, children],
+  )
 
   const canSave =
     drafts.length > 0 &&
@@ -291,7 +295,7 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           draft={draft}
           canRemove={drafts.length > 1}
           roster={roster}
-          parentChoices={parentOptions(drafts, children, index)}
+          parentChoices={choices[index] ?? []}
           onChange={handleChange}
           onRemove={handleRemove}
         />

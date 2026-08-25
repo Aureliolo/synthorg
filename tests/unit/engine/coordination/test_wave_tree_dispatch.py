@@ -78,9 +78,12 @@ def _task(label: str, *, status: TaskStatus = TaskStatus.CREATED) -> Task:
 
 
 def _level(
-    parent: str, labels: tuple[str, ...], *, depth: int
+    parent: str, labels: tuple[str, ...]
 ) -> tuple[DecompositionPlan, tuple[Task, ...]]:
     """Build one level's plan and the tasks minted from it.
+
+    Takes no depth: a level does not carry one. Depth is a fact about where a
+    :class:`DecompositionResult` sits in the tree, and ``_tree`` sets it there.
 
     Returns:
         The plan and its created tasks.
@@ -92,7 +95,6 @@ def _level(
         task_structure=TaskStructure.PARALLEL,
         coordination_topology=CoordinationTopology.CENTRALIZED,
     )
-    del depth
     return plan, tuple(_task(label) for label in labels)
 
 
@@ -102,9 +104,9 @@ def _tree() -> DecompositionResult:
     Returns:
         The tree.
     """
-    below_plan, below_tasks = _level(sid(_CONTAINER), _CHILDREN, depth=1)
+    below_plan, below_tasks = _level(sid(_CONTAINER), _CHILDREN)
     root_plan, root_tasks = _level(
-        str(as_uuid("objective")), (_CONTAINER, _INDEPENDENT), depth=0
+        str(as_uuid("objective")), (_CONTAINER, _INDEPENDENT)
     )
     return DecompositionResult(
         plan=root_plan,

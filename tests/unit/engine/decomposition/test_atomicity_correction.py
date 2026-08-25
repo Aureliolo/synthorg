@@ -51,6 +51,13 @@ _POLICY = SubtaskAtomicityPolicy(max_expected_artifacts=1, max_acceptance_criter
 #: exhaustion, and few enough that the exhaustion case is quick.
 _ATTEMPTS = 2
 
+#: The objective's only success criterion, claimed VERBATIM by every unit the
+#: scripted plans submit. Coverage is checked against the objective's own text,
+#: so a level tagged with nothing is refused before it ever reaches the size
+#: correction these cases are about, and every one of them would then be
+#: measuring the coverage rule instead.
+_CRITERION = "it runs"
+
 
 def _task() -> Task:
     """Build the objective these levels are planned for.
@@ -66,7 +73,7 @@ def _task() -> Task:
         priority=Priority.MEDIUM,
         project=NotBlankStr("proj-1"),
         created_by=NotBlankStr("operator"),
-        acceptance_criteria=(AcceptanceCriterion(description="it runs"),),
+        acceptance_criteria=(AcceptanceCriterion(description=_CRITERION),),
     )
 
 
@@ -96,6 +103,7 @@ def _plan_args(*, artifacts_per_unit: int, units: int = 2) -> dict[str, object]:
                 "dependencies": [],
                 "estimated_complexity": "medium",
                 "acceptance_criteria": [f"unit {index} works"],
+                "satisfies": [_CRITERION],
                 "expected_artifacts": [
                     f"src/unit_{index}_{at}.py" for at in range(artifacts_per_unit)
                 ],

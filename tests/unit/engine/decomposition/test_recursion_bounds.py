@@ -1,9 +1,14 @@
-"""Where the depth and width backstops come from, and how they stop.
+"""Where the recursion switch and its backstops come from, and how they stop.
 
-Both are runaway guards rather than targets, so what matters is that the
-operator's setting is what binds when a caller declared nothing, that a caller
-that declared one still wins, and that spending the tree's session budget
-stops gracefully rather than discarding what it paid for.
+Depth and width are runaway guards rather than targets, so what matters is
+that the operator's setting is what binds when a caller declared nothing, that
+a caller that declared one still wins, and that spending the tree's session
+budget stops gracefully rather than discarding what it paid for.
+
+The switch beside them is read the same way and fails apart the same way: a
+setting that cannot answer for itself leaves recursion off, and a settings
+store that is momentarily down surfaces rather than quietly planning every
+objective at one level.
 """
 
 from unittest.mock import MagicMock
@@ -11,8 +16,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.engine.decomposition._recursion import (
+    DEFAULT_SUBTASK_MAX_ARTIFACTS,
+    DEFAULT_SUBTASK_MAX_CRITERIA,
     TreeSessionLedger,
     resolve_decomposition_bounds,
+    resolve_recursion_budget,
 )
 from synthorg.engine.decomposition.context import (
     DEFAULT_MAX_DEPTH,
@@ -104,6 +112,86 @@ class TestResolveBounds:
             DecompositionContext(max_depth=2, max_subtasks=3), resolver
         )
         assert resolver.get_int.await_count == 0
+
+
+class TestResolveRecursionBudget:
+    """Where the switch and its thresholds come from, and what stops a read."""
+
+    async def test_the_operator_switch_and_thresholds_are_what_bind(self) -> None:
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_bool.return_value = True
+        resolver.get_int.side_effect = lambda _namespace, key: {
+            "subtask_max_artifacts": 3,
+            "subtask_max_criteria": 4,
+        }[key]
+
+        budget = await resolve_recursion_budget(resolver)
+
+        assert budget.enabled
+        assert budget.policy.max_expected_artifacts == 3
+        assert budget.policy.max_acceptance_criteria == 4
+
+    async def test_a_switch_that_is_off_asks_for_no_thresholds(self) -> None:
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_bool.return_value = False
+
+        budget = await resolve_recursion_budget(resolver)
+
+        assert not budget.enabled
+        assert resolver.get_int.await_count == 0
+
+    async def test_no_resolver_at_all_stays_flat(self) -> None:
+        budget = await resolve_recursion_budget(None)
+
+        assert not budget.enabled
+        assert budget.policy.max_expected_artifacts == DEFAULT_SUBTASK_MAX_ARTIFACTS
+        assert budget.policy.max_acceptance_criteria == DEFAULT_SUBTASK_MAX_CRITERIA
+
+    @pytest.mark.parametrize(
+        "unanswerable",
+        [
+            SettingNotFoundError("coordination/recursive_decomposition_enabled"),
+            ValueError("not a boolean"),
+        ],
+    )
+    async def test_a_setting_that_cannot_answer_for_itself_stays_flat(
+        self, unanswerable: Exception
+    ) -> None:
+        # Unreadable for as long as it stays that way, so there is nothing a
+        # later decomposition would learn by asking again.
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_bool.side_effect = unanswerable
+
+        budget = await resolve_recursion_budget(resolver)
+
+        assert not budget.enabled
+
+    async def test_a_settings_store_that_is_down_is_not_a_silent_downgrade(
+        self,
+    ) -> None:
+        # Recursion ships ON, so swallowing this plans every objective at one
+        # level for as long as the store stays down: the shape the sweep
+        # measured delivering nothing, with one WARNING per decomposition and
+        # no other sign. A store that is momentarily unreachable is a fact
+        # about the moment, not about the setting.
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_bool.side_effect = RuntimeError("settings store unreachable")
+
+        with pytest.raises(RuntimeError, match="settings store unreachable"):
+            await resolve_recursion_budget(resolver)
+
+    async def test_a_store_that_drops_between_the_two_threshold_reads_surfaces(
+        self,
+    ) -> None:
+        # The switch answered, so this decomposition is going to recurse; a
+        # threshold read that then fails would otherwise flip it back to flat
+        # after the operator's own answer was already in hand.
+        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver.get_bool.return_value = True
+        resolver.get_int.side_effect = RuntimeError("settings store unreachable")
+
+        with pytest.raises(RuntimeError, match="settings store unreachable"):
+            await resolve_recursion_budget(resolver)
 
 
 class TestTreeSessionLedger:

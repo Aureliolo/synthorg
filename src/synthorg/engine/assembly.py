@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from synthorg.core.plan_tree import SubtreeStep
-from synthorg.core.task_enums import Stakes
+from synthorg.core.task_enums import STAKES_ORDER, Stakes
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
 #: Where an assembly records what it did, relative to the project workspace.
@@ -191,25 +191,24 @@ def build_assembly_brief(
     )
 
 
-#: Stakes, weakest first. An assembly runs one rung above the highest of what
-#: it assembles: it is the first point the pieces run together and the last
-#: point before what they produced is judged, so a mistake here is the most
-#: expensive one available. True per subtree exactly as it is at the root.
-_STAKES_LADDER: Final[tuple[Stakes, ...]] = (
-    Stakes.LOW,
-    Stakes.NORMAL,
-    Stakes.HIGH,
-    Stakes.CRITICAL,
-)
-
-
 def escalated_stakes(assembled: Sequence[Stakes]) -> Stakes:
     """Return the stakes an assembly of work at *assembled* runs at.
+
+    An assembly runs one rung above the highest of what it assembles: it is
+    the first point the pieces run together and the last point before what
+    they produced is judged, so a mistake here is the most expensive one
+    available. True per subtree exactly as it is at the root.
+
+    Read off ``STAKES_ORDER`` rather than a ladder of its own, because that
+    tuple is already the single owner of the ordering and already fails at
+    import when a new member is not placed in it. A second copy here would
+    agree until somebody added a member, and then raise ``ValueError`` from
+    inside an assembly rather than at import.
 
     Takes the stakes themselves rather than whatever carries them, because the
     same answer is needed for a durable plan's items and for the transient
     definitions a decomposition is still building, and a signature naming
-    either one forces the other path to grow a second copy of the ladder.
+    either one forces the other path to grow a second reader of the ordering.
 
     Args:
         assembled: The stakes of what is being assembled: a plan's whole item
@@ -221,10 +220,10 @@ def escalated_stakes(assembled: Sequence[Stakes]) -> Stakes:
         calibrated it).
     """
     highest = max(
-        (_STAKES_LADDER.index(stakes) for stakes in assembled),
-        default=_STAKES_LADDER.index(Stakes.NORMAL),
+        (STAKES_ORDER.index(stakes) for stakes in assembled),
+        default=STAKES_ORDER.index(Stakes.NORMAL),
     )
-    return _STAKES_LADDER[min(highest + 1, len(_STAKES_LADDER) - 1)]
+    return STAKES_ORDER[min(highest + 1, len(STAKES_ORDER) - 1)]
 
 
 @dataclass(frozen=True, slots=True)

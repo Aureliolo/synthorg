@@ -50,7 +50,9 @@ export function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     owner: owner === '' ? null : owner,
     dependencies: draft.dependencies,
     acceptance_criteria: nonBlankCriteria(draft.acceptanceCriteria),
-    expected_artifacts: draft.expectedArtifacts,
+    // Both come from a textarea split on newlines, so a trailing one leaves a
+    // blank entry the backend refuses as a 422 after the round trip.
+    expected_artifacts: nonBlankCriteria(draft.expectedArtifacts),
     required_skills: draft.requiredSkills,
     required_tags: draft.requiredTags,
     estimated_complexity: draft.complexity,

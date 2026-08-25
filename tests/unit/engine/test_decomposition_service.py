@@ -31,6 +31,40 @@ _A_SHORT_CEILING = 0.01
 #: Long enough that an ordinary decomposition finishes well inside it.
 _A_GENEROUS_CEILING = 60.0
 
+#: Every integer key one decomposition reads, so a resolver stubbed for the
+#: wall-clock ceiling still answers the rest rather than handing back a mock a
+#: bound is then compared against. Keyed rather than a single return value: the
+#: keys mean different things, and an unlisted one raises here instead of
+#: silently taking a number chosen for something else.
+_INTEGER_SETTINGS = {
+    "decomposition_max_depth": 3,
+    "decomposition_max_subtasks": 10,
+    "decomposition_tree_max_sessions": 40,
+    "subtask_max_artifacts": 10,
+    "subtask_max_criteria": 10,
+}
+
+
+def _resolver(
+    *,
+    ceiling: float = _A_GENEROUS_CEILING,
+    recursion: bool = False,
+) -> MagicMock:
+    """Build a resolver answering every setting one decomposition reads.
+
+    Args:
+        ceiling: What both wall-clock ceilings answer.
+        recursion: Whether the recursion switch is on.
+
+    Returns:
+        The scripted resolver.
+    """
+    resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+    resolver.get_float.return_value = ceiling
+    resolver.get_bool.return_value = recursion
+    resolver.get_int.side_effect = lambda _namespace, key: _INTEGER_SETTINGS[key]
+    return resolver
+
 
 class _NeverAnsweringStrategy:
     """A planner whose provider never returns, which is the case being bound.
@@ -517,13 +551,10 @@ class TestOneDecompositionCannotRunForever:
 
     async def test_a_planner_that_never_answers_is_abandoned(self) -> None:
         never = _NeverAnsweringStrategy()
-        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-        resolver.get_float.return_value = _A_SHORT_CEILING
-        resolver.get_bool.return_value = False
         service = DecompositionService(
             never,
             TaskStructureClassifier(),
-            config_resolver=resolver,
+            config_resolver=_resolver(ceiling=_A_SHORT_CEILING),
         )
 
         with pytest.raises(DecompositionError):
@@ -533,9 +564,7 @@ class TestOneDecompositionCannotRunForever:
         # Captured at construction it would take a restart to apply, which
         # for a ceiling an operator raises because their provider is slow is
         # the moment it is least available to them.
-        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-        resolver.get_float.return_value = _A_GENEROUS_CEILING
-        resolver.get_bool.return_value = False
+        resolver = _resolver()
         service = DecompositionService(
             ManualDecompositionStrategy(_make_plan()),
             TaskStructureClassifier(),
@@ -576,7 +605,7 @@ class TestOneDecompositionCannotRunForever:
             "DEFAULT_SESSION_CEILING_SECONDS",
             _A_SHORT_CEILING,
         )
-        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver = _resolver()
         resolver.get_float.side_effect = unanswerable
         service = DecompositionService(
             _NeverAnsweringStrategy(),
@@ -617,7 +646,7 @@ class TestOneDecompositionCannotRunForever:
         A deployment that raised its ceiling would get the default back with
         one WARNING per node and no other sign.
         """
-        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
+        resolver = _resolver()
         resolver.get_float.side_effect = RuntimeError("settings store unreachable")
         service = DecompositionService(
             ManualDecompositionStrategy(_make_plan()),

@@ -14,7 +14,6 @@ explains.
 from dataclasses import dataclass
 from typing import Final
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan_tree import SubtreeStep
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.context import (
@@ -159,14 +158,20 @@ async def resolve_recursion_budget(
     enabling recursion or moving a threshold applies to the next decomposition
     rather than the next restart.
 
+    Only the two failures the SETTING can be wrong about fall back, on the same
+    seam as :func:`ceiling_seconds` and :func:`_bound`: the key is not
+    registered, or its stored value is not of the declared type. Anything else,
+    a dead settings store above all, propagates. Recursion ships on, so
+    swallowing a transient read plans every objective at one level for as long
+    as the store stays down, which is the shape the sweep measured delivering
+    nothing, and the only sign of it is one WARNING per decomposition.
+
     Args:
         resolver: The live settings resolver, or ``None`` in a harness.
 
     Returns:
         The budget, off on the definitions' own defaults when there is no
-        resolver or it cannot answer. Failing closed means behaving exactly as
-        the product did before recursion existed, which is the only safe
-        reading of a switch that could not be read.
+        resolver or the setting cannot answer.
     """
     if resolver is None:
         return flat_budget()
@@ -176,9 +181,9 @@ async def resolve_recursion_budget(
         )
         if not enabled:
             # Short-circuited rather than read-then-discard: the thresholds
-            # only shape a tree that is going to be built, and the default
-            # configuration would otherwise pay two settings reads per
-            # decomposition to answer a question already settled.
+            # only shape a tree that is going to be built, and an operator who
+            # has switched recursion off would otherwise pay two settings reads
+            # per decomposition to answer a question already settled.
             return flat_budget()
         policy = SubtaskAtomicityPolicy(
             max_expected_artifacts=await resolver.get_int(
@@ -188,11 +193,11 @@ async def resolve_recursion_budget(
                 "coordination", "subtask_max_criteria"
             ),
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort settings read; an unreadable
-        # switch leaves recursion off, which is what every caller had before it
-        # existed, so no behaviour is degraded by the failure
-        reraise_critical(exc)
+    except (SettingNotFoundError, ValueError) as exc:
+        # lint-allow: swallow-ok -- a switch whose own definition cannot answer
+        # is unreadable for as long as it stays that way, so retrying it per
+        # decomposition buys nothing, and off is the only reading that cannot
+        # spend a planning session per node on an instruction nobody gave
         logger.warning(
             DECOMPOSITION_FAILED,
             note="recursion settings unreadable; decomposition stays flat",

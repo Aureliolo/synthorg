@@ -31,6 +31,10 @@ from synthorg.core.plan_validation import (
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.hr.state import HrStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 __all__ = [
     "reject_malformed_tree",
@@ -57,6 +61,7 @@ def reject_malformed_tree(items: Sequence[PlanItem]) -> None:
     """
     detail = combine_graph_violations(describe_malformed_tree(items))
     if detail is not None:
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
         raise ValidationError(detail)
 
 
@@ -101,6 +106,7 @@ def reject_undecidable_graph(
             )
         )
     if detail is not None:
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
         raise ValidationError(detail)
 
 
@@ -134,6 +140,7 @@ async def reject_unroutable_owners(
     registry = app_state.slice(HrStateSlice).agent_registry
     if registry is None:
         msg = "Owner validation is unavailable: the agent registry is not wired."
+        logger.error(API_VALIDATION_FAILED, error=msg, items=len(items))
         raise ServiceUnavailableError(msg)
     roster = roster_from_agents(await registry.list_active())
     details = [
@@ -149,4 +156,6 @@ async def reject_unroutable_owners(
         is not None
     ]
     if details:
-        raise ValidationError("; ".join(details))
+        detail = "; ".join(details)
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
+        raise ValidationError(detail)

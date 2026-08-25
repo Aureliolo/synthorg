@@ -24,7 +24,10 @@ def _still_the_same_size(payload: PlanItemPayload, previous: PlanItem) -> bool:
     """Whether the operator left everything the size signal reads alone.
 
     Returns:
-        ``True`` when the three counts atomicity is judged on are unchanged.
+        ``True`` when all three fields atomicity is judged on are unchanged.
+        Compared by value rather than by count, because a same-length rewrite
+        is a different unit doing different work, and the note the previous
+        version carried was written about the old wording.
     """
     return (
         payload.expected_artifacts == previous.expected_artifacts

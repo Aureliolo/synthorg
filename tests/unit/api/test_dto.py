@@ -402,9 +402,11 @@ class TestCoordinateTaskRequest:
     """Validation tests for CoordinateTaskRequest."""
 
     def test_valid_minimal(self) -> None:
+        # Unset rather than a number: a request that named one would override
+        # the operator's own width backstop without asking for it.
         req = CoordinateTaskRequest()
         assert req.agent_names is None
-        assert req.max_subtasks == 10
+        assert req.max_subtasks is None
 
     def test_agent_names_non_empty(self) -> None:
         with pytest.raises(ValidationError):

@@ -28,29 +28,18 @@ export function childIndex(
   return children
 }
 
-/**
- * The items this one may be moved under.
- *
- * Everything the backend would refuse is left out rather than offered and
- * rejected after a round trip: itself, anything already below it (which would
- * close a containment cycle), and a decision, which is chosen rather than
- * decomposed so nothing can hang off one. The backend still enforces all
- * three; this only keeps the operator from being told no.
- */
-export function parentOptions(
-  drafts: readonly DraftItem[],
+/** Everything below *subjectId*, itself included, walked down the tree. */
+function subtreeOf(
+  subjectId: string,
   children: ReadonlyMap<string, readonly string[]>,
-  index: number,
-): readonly SelectOption[] {
-  const subject = drafts[index]
-  if (subject === undefined) return [NO_PARENT]
+): ReadonlySet<string> {
   // Walked down from the subject rather than swept repeatedly over the list,
   // so list order cannot hide a grandchild whose parent comes later, and the
   // cost is the subtree rather than the plan. The frontier is bounded by the
   // draft count because each id is added once, which is also what stops a
   // cycle an unsaved edit can hold from spinning here.
-  const below = new Set<string>([subject.id])
-  const frontier = [subject.id]
+  const below = new Set<string>([subjectId])
+  const frontier = [subjectId]
   while (frontier.length > 0) {
     for (const child of children.get(frontier.pop() as string) ?? []) {
       if (below.has(child)) continue
@@ -58,13 +47,36 @@ export function parentOptions(
       frontier.push(child)
     }
   }
-  return [
-    NO_PARENT,
-    ...drafts
-      .filter((draft) => !below.has(draft.id) && draft.kind !== 'decision')
-      .map((draft) => ({
-        value: draft.id,
-        label: draft.title.trim() === '' ? 'Untitled item' : draft.title,
-      })),
-  ]
+  return below
+}
+
+/**
+ * What each row may be moved under, one option list per draft in order.
+ *
+ * Everything the backend would refuse is left out rather than offered and
+ * rejected after a round trip: itself, anything already below it (which would
+ * close a containment cycle), and a decision, which is chosen rather than
+ * decomposed so nothing can hang off one. The backend still enforces all
+ * three; this only keeps the operator from being told no.
+ *
+ * Every row at once, and the option objects built once for the whole list
+ * rather than once per row. Only which of them a row may offer differs, so
+ * mapping the draft list inside each row allocated a fresh object per pair:
+ * at the thousand items the editor accepts that is a million objects on every
+ * keystroke, which is the same shape `childIndex` exists to avoid.
+ */
+export function parentChoices(
+  drafts: readonly DraftItem[],
+  children: ReadonlyMap<string, readonly string[]>,
+): readonly (readonly SelectOption[])[] {
+  const offerable = drafts
+    .filter((draft) => draft.kind !== 'decision')
+    .map((draft) => ({
+      value: draft.id,
+      label: draft.title.trim() === '' ? 'Untitled item' : draft.title,
+    }))
+  return drafts.map((subject) => {
+    const below = subtreeOf(subject.id, children)
+    return [NO_PARENT, ...offerable.filter((option) => !below.has(option.value))]
+  })
 }

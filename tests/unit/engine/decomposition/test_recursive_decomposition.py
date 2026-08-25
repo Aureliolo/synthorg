@@ -674,11 +674,7 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
             _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
         )
 
-        reason = next(
-            unit.unsplit_reason
-            for unit in result.plan.subtasks
-            if unit.id == sid("big")
-        )
+        reason = _definition(sid("big"), result).unsplit_reason
         assert reason is not None
         assert PLANNER_DECLINED in reason
 
@@ -693,12 +689,7 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
             _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
         )
 
-        assert (
-            next(
-                unit for unit in result.plan.subtasks if unit.id == sid("small")
-            ).unsplit_reason
-            is None
-        )
+        assert _definition(sid("small"), result).unsplit_reason is None
 
     async def test_every_other_child_failure_still_surfaces(self) -> None:
         # The type is what keeps the catch above from being a swallow: a

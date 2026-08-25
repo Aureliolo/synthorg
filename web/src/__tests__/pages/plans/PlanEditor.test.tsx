@@ -79,6 +79,41 @@ describe('PlanEditor', () => {
     })
   })
 
+  it('drops blank deliverable lines from the saved revision', async () => {
+    // Both list fields are a textarea split on newlines, so a trailing one
+    // leaves an empty entry the backend refuses as a 422 after the round trip.
+    resetStore()
+    const revised = makePlan('plan-1', { version: 2 })
+    let sent: { items: { expected_artifacts: string[] }[] } | undefined
+    server.use(
+      http.patch('/api/v1/plans/:id', async ({ request }) => {
+        sent = (await request.json()) as typeof sent
+        return HttpResponse.json(apiSuccess(revised))
+      }),
+    )
+    const user = userEvent.setup()
+    const withArtifact = makePlan('plan-1', {
+      items: [
+        makePlanItem('i1', {
+          title: 'Scaffold',
+          acceptance_criteria: ['board renders'],
+          expected_artifacts: ['src/board.ts'],
+        }),
+      ],
+    })
+    render(<PlanEditor plan={withArtifact} roster={undefined} onDone={vi.fn()} />)
+
+    await user.type(
+      screen.getByLabelText('Expected deliverables (one per line)'),
+      '\n',
+    )
+    await user.click(screen.getByRole('button', { name: /Save revision/ }))
+
+    await waitFor(() => {
+      expect(sent?.items[0]?.expected_artifacts).toEqual(['src/board.ts'])
+    })
+  })
+
   it('offers the staffed roles as owner choices', () => {
     resetStore()
     render(
