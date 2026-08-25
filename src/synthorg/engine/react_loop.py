@@ -6,7 +6,7 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
-from typing import Self
+from typing import Self, TypedDict
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
@@ -84,6 +84,23 @@ from .loop_unusable_turn import (
 )
 
 logger = get_logger(__name__)
+
+
+class LoopControls(TypedDict):
+    """Every control a rebuilt loop carries over from the one it copies.
+
+    Named as a type so a specialised loop can hand the base half straight
+    back to :class:`ReactLoop` without restating it, which is the drift
+    :meth:`ReactLoop.with_checkpoint_callback` exists to prevent.
+    """
+
+    approval_gate: ApprovalGate | None
+    stagnation_detector: StagnationDetector | None
+    compaction_callback: CompactionCallback | None
+    steering_inbox: SteeringInbox | None
+    step_classifier: StepQualityClassifier | None
+    turn_observer: TurnObserver | None
+    clock: Clock
 
 
 class ReactLoop:
@@ -178,25 +195,17 @@ class ReactLoop:
         """Return the step-quality classifier, or ``None``."""
         return self._step_classifier
 
-    def with_checkpoint_callback(self, callback: CheckpointCallback) -> Self:
-        """Return a copy of this loop that also checkpoints.
+    def rebuild_controls(self) -> LoopControls:
+        """Return every control a copy of this loop must carry over.
 
-        The single owner of what a rebuilt loop carries. Resume rebuilds the
-        loop to attach a callback the engine could not supply at construction,
-        and a rebuild that names its fields at the call site is a rebuild that
-        drops whichever control the next one adds.
-
-        Rebuilt through ``type(self)`` rather than this class by name, because
-        the resume path reaches here for any loop passing ``isinstance``, and a
-        loop supplied from outside that specialises this one would otherwise
-        come back as the base and resume without whatever it specialised.
+        The single owner of that list. Naming these at a call site is what
+        makes a rebuild drop whichever control the next one adds, so both the
+        rebuild below and any specialised loop's own read them from here.
 
         Returns:
-            A new loop of this one's own type carrying every control of this
-            one plus ``callback``.
+            This loop's controls, keyed as :class:`ReactLoop` accepts them.
         """
-        return type(self)(
-            callback,
+        return LoopControls(
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
             compaction_callback=self._compaction_callback,
@@ -205,6 +214,37 @@ class ReactLoop:
             turn_observer=self._turn_observer,
             clock=self._clock,
         )
+
+    def rebuild_with_checkpoint_callback(self, callback: CheckpointCallback) -> Self:
+        """Construct the copy :meth:`with_checkpoint_callback` returns.
+
+        The seam a specialised loop overrides, and the reason it exists rather
+        than leaving the construction inline: ``type(self)`` reaches a subclass
+        constructor that this one knows nothing about, so a loop taking more
+        than these controls would meet a ``TypeError`` at resume with nowhere
+        to intervene. Overriding here rather than the caller keeps that method
+        the single owner of WHEN a rebuild happens, and leaves the subclass
+        owning only how its own construction differs.
+
+        Returns:
+            A new loop of this one's own type carrying every control of this
+            one plus ``callback``.
+        """
+        return type(self)(callback, **self.rebuild_controls())
+
+    def with_checkpoint_callback(self, callback: CheckpointCallback) -> Self:
+        """Return a copy of this loop that also checkpoints.
+
+        Resume rebuilds the loop to attach a callback the engine could not
+        supply at construction. The rebuild itself is
+        :meth:`rebuild_with_checkpoint_callback`, which a specialised loop may
+        override; this method owns only the decision to rebuild at all.
+
+        Returns:
+            A new loop of this one's own type carrying every control of this
+            one plus ``callback``.
+        """
+        return self.rebuild_with_checkpoint_callback(callback)
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""

@@ -26,7 +26,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
 from synthorg.engine.quality.classifier import StepQualityClassifier
-from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.react_loop import LoopControls, ReactLoop
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -203,3 +203,64 @@ class TestCheckpointRebuild:
         for name in carried:
             attribute = f"_{name}"
             assert getattr(rebuilt, attribute) is getattr(original, attribute), name
+
+    def test_a_specialised_loop_rebuilds_as_itself(self) -> None:
+        """A loop the engine did not build survives the resume rebuild.
+
+        Two ways it would not. Naming ``ReactLoop`` in the rebuild returns the
+        base, so a resumed run silently loses whatever the subclass added; and
+        reaching ``type(self)`` with only the base controls meets a
+        ``TypeError`` for a subclass whose constructor takes more. The seam is
+        what lets such a loop answer for its own construction, and it reads
+        the base half back rather than restating it.
+        """
+
+        class _SpecialisedLoop(ReactLoop):
+            def __init__(
+                self,
+                checkpoint_callback: CheckpointCallback | None = None,
+                *,
+                marker: str,
+                **controls: object,
+            ) -> None:
+                super().__init__(
+                    checkpoint_callback,
+                    **cast("LoopControls", controls),
+                )
+                self.marker = marker
+
+            @override
+            def rebuild_with_checkpoint_callback(
+                self, callback: CheckpointCallback
+            ) -> _SpecialisedLoop:
+                return _SpecialisedLoop(
+                    callback,
+                    marker=self.marker,
+                    **self.rebuild_controls(),
+                )
+
+        clock = FakeClock()
+        gate = mock_of[ApprovalGate]()
+        original = _SpecialisedLoop(
+            marker="kept",
+            approval_gate=cast("ApprovalGate", gate),
+            stagnation_detector=None,
+            compaction_callback=None,
+            steering_inbox=None,
+            step_classifier=None,
+            turn_observer=None,
+            clock=clock,
+        )
+
+        async def _callback(ctx: AgentContext) -> None:
+            del ctx
+
+        rebuilt = original.with_checkpoint_callback(
+            cast("CheckpointCallback", _callback)
+        )
+
+        assert type(rebuilt) is _SpecialisedLoop
+        assert rebuilt.marker == "kept"
+        assert rebuilt.approval_gate is gate
+        assert rebuilt._clock is clock
+        assert rebuilt._checkpoint_callback is _callback

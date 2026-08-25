@@ -231,8 +231,10 @@ class ToolPermissionChecker:
         name_lower = normalize_identifier(tool_name)
         if name_lower in self._denied:
             return f"Tool {tool_name!r} is explicitly denied"
-        # Mirrors ``is_permitted``: a withheld category outranks the access
-        # level, so naming the level here would report a bar the tool clears.
+        # A withheld category outranks the access level, so naming the level
+        # here would report a bar the tool clears. ``is_permitted`` readmits an
+        # explicitly allowed name ahead of this, which is why no branch for one
+        # belongs here: such a tool is permitted and never reaches this method.
         if category in self._denied_categories:
             return f"Category {category.value!r} is explicitly denied"
         if self._access_level == ToolAccessLevel.CUSTOM:
