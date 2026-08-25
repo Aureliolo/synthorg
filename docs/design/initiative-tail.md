@@ -58,6 +58,20 @@ whole project undeletable. See
 `engine/initiative/integrate.py` mints **one ordinary task** and dispatches it
 through the normal work pipeline.
 
+This stage is the **root** assembly, and on a plan that recursed it is no
+longer the only one. An item with children is the assembly of the work below
+it, dispatched as an ordinary plan item with an assembly brief over its own
+children and its own namespaced evidence paths
+(`.synthorg/integration/<slug>/`), so a wide fan-in at the top becomes the
+narrow ones the recursion-depth sweep measured. Those carry their container's
+`plan_item_id` like any other item, so `item_is_done` reads them normally and
+`derive_plan_status` opens `INTEGRATING` only once every subtree has assembled.
+The root's brief then names the plan's **workstreams** rather than every leaf in
+the tree: listing a hundred titles is what a flat render becomes the moment a
+plan is a tree. `engine/assembly.py` owns the brief, the paths, and the stakes
+ladder that both callers share. See
+[recursive-decomposition.md](recursive-decomposition.md).
+
 Making it an ordinary task is the whole design. It inherits the entire existing
 verification chain with no second oracle written for it: the review gate runs
 `run_completion_gates`, so the build/test oracle reads its `CodeExecutionRecord`
@@ -71,7 +85,7 @@ Three shape decisions carry weight:
 | decision | why |
 | --- | --- |
 | forced `LEAF` (`WorkItem.leaf_required`) | splitting an assembly job hands the pieces back to separate agents, which is the state the stage exists to end |
-| `plan_id` set, `plan_item_id` unset | it belongs to the initiative without implementing any plan item, so every derivation over items ignores it and it cannot distort the rollup that opened the stage |
+| `plan_id` set, `plan_item_id` unset | it belongs to the initiative without implementing any plan item, so every derivation over items ignores it and it cannot distort the rollup that opened the stage. That provenance rule still identifies exactly the ROOT assembly: a subtree assembly carries its container's `plan_item_id` and is that item's progress |
 | id derived from the plan id (`uuid5`) | idempotency with no "already started" flag to drift from reality: a re-fired stage finds the existing row and stops |
 
 It declares two expected artifacts, `.synthorg/integration/report.md` (what was

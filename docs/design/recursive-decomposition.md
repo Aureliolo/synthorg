@@ -6,8 +6,23 @@ whether a given subtask was one agent's worth of work.
 `DecompositionContext.current_depth` was declared, read in six places, and
 written nowhere.
 
-This page covers the two things that changed: decomposition became a tree, and
-a harness exists to answer the question the tree raises.
+This page covers three things: decomposition became a tree, the tree became
+durable and dispatchable, and a harness exists to answer the question the tree
+raises.
+
+Recursion ships ON. The evidence is the sweep below: 0 of 42 requirements
+survived at depth 1 in BOTH arms, and 36 of 42 at depth 2. Both cap-1 merges
+wrote a report and touched no code, because one seven-way fan-in at the top
+integrated nothing; the two-to-three-way fan-ins a level down produced 36. What
+the result credits is narrow, per-subtree assembly. Recursion is how the
+harness got there, and it did no replanning at all.
+
+That is also the thing to keep in view. A static hundred-item tree planned in
+one pass, at the moment of maximum ignorance, is waterfall applied recursively.
+The numbers below are therefore demoted to runaway backstops and the size
+signal is the only controller, with a feedback loop that closes without an
+operator. Just-in-time replanning is the execution-side half and is tracked
+separately.
 
 ## The question
 
@@ -73,15 +88,39 @@ rate-limits.
 with no extra LLM call, whether a unit is one agent's worth of work. Three
 conditions, any of which makes it oversized:
 
-| Condition | Setting | Ships at |
-|---|---|---|
-| `len(expected_artifacts)` | `coordination.leaf_subtask_threshold` | 1 |
-| `len(acceptance_criteria)` | `coordination.subtask_max_criteria` | 5 |
-| `len(satisfies)` | fixed at 1 | 1 |
+| Condition | Setting | Ships at | Role |
+|---|---|---|---|
+| `len(expected_artifacts)` | `coordination.subtask_max_artifacts` | 10 | Loose guard |
+| `len(acceptance_criteria)` | `coordination.subtask_max_criteria` | 10 | Loose guard |
+| `len(satisfies)` | fixed at 1 | 1 | The controller |
 
-The third is the interesting one and it is not configurable: a unit advancing
+The third is the operative one and it is not configurable: a unit advancing
 several of the objective's own success criteria is several units, whatever its
-artifact count says.
+artifact count says. It is also self-terminating, which is what makes depth
+emergent rather than a number somebody picked: a unit claiming one criterion
+becomes a task with one acceptance criterion, so its own children can claim at
+most that one, and the tree stops once every unit advances exactly one thing.
+Depth therefore tracks the objective's own criterion count: less if it needs
+less, more if it needs more.
+
+The first two are loose "obviously too large" guards rather than the
+discriminator. At one artifact, an item that writes a module plus its test read
+as oversized, which made artifact count (a proxy for how verbosely a particular
+planner writes) the thing deciding the shape of every tree.
+
+`subtask_max_artifacts` exists because `coordination.leaf_subtask_threshold`
+was read by two consumers that want opposite values. It keeps the
+objective-level `LeafThresholdRoutingPolicy`, where an objective declaring two
+deliverables is a team's work; atomicity got its own key, where a subtask
+declaring two is still one agent's.
+
+The failure mode this creates is stated rather than hidden: an objective with
+no acceptance criteria leaves `satisfies` empty everywhere and nothing splits.
+That is why the two guards stay real rather than being opened to their maxima
+the way the sweep arms them. In the product's own path an objective always
+carries criteria (the charter interview produces them, and `evaluate.py` parks
+a plan whose `objective_criteria` is empty), so this guards a hand-filed
+objective rather than the normal case.
 
 The signal is only asked about WORK items. A `DECISION` item is a choice among
 its declared options rather than work to divide, and the policy reads only the
@@ -89,31 +128,104 @@ artifact, criterion and claim counts, so one declaring several acceptance
 criteria would read as oversized and open a child planning session that plans
 work nobody asked for.
 
-## Two ceilings, not one
+## When a split is refused rather than made
 
-A decomposition is bounded twice, by separate settings, because the two things
-being bounded are different:
+While a level below is still available, an oversized unit is simply decomposed
+again. That is the measured behaviour and it is untouched.
+
+At the LAST permitted level there is nowhere to delegate to, and what used to
+happen there was a log line and the oversized unit dispatched whole: a live run
+left twenty-one units carrying five to twelve objective criteria each against a
+limit of one, and nothing told the plan it had guessed wrong.
+
+The level is now handed back instead. `DecompositionService` is the single
+owner of "is there anywhere left to split into" and stamps the size signal onto
+the context it plans the last level under (`_held_to_size`);
+`_atomicity_gate.describe_unsplittable` then refuses the submitted plan at
+parse time, on the same correction channel a graph violation already takes.
+Both strategies answer it the way they already answer a malformed plan: the
+single-shot loop re-prompts through `with_retry_context`, and the agent-session
+submit tool hands the reason back as its tool result. The correction asks for
+BREADTH: split these further at this level, since there is no level below.
+Breadth spent where depth ran out, without an operator being asked.
+
+`manual.py` is exempt by construction: `_split_oversized` early-outs on
+`strategy.plans_any_task()`, and an operator-supplied plan has no session to
+correct.
+
+Only when the retries are spent does the condition reach the plan, as
+`PlanItem.unsplit_reason`.
+
+## The backstops, and what a bind reports
+
+Three bounds, none of them a target. Depth and width are runaway guards: what
+decides a split is the size signal above, so a small objective stops on its own
+well short of either.
 
 | Setting | Bounds | Ships at |
 |---|---|---|
+| `coordination.decomposition_max_depth` | levels of planning | 5 |
+| `coordination.decomposition_max_subtasks` | units one level may produce | 10 |
+| `coordination.decomposition_tree_max_sessions` | planning sessions per tree | 40 |
 | `coordination.decomposition_timeout_seconds` | one planning session | 600s |
-| `coordination.decomposition_tree_timeout_seconds` | one whole `decompose_task` call | 3600s |
+| `coordination.decomposition_tree_timeout_seconds` | one whole `decompose_task` call | 14400s |
 
-The second is not a multiple of the first and cannot be derived from the depth
-cap: sessions scale with the NODE COUNT, which is the branching factor to the
-power of the depth, so any multiple of the per-session number is a guess that
-kills a legitimate deep tree and discards every level it had already paid for.
-Two of the four callers are request handlers, and the outer ceiling is what
-keeps a deep recursion from occupying one for as long as the tree keeps
-branching.
+`DecompositionContext.max_depth` and `max_subtasks` are `int | None`, where
+`None` means "not declared, read the operator's setting". They are resolved
+ONCE at the root by `decompose_task` and stamped into the context it recurses
+with, so one tree is never planned under two budgets. That is an ordered
+precedence ladder with one resolver (caller declaration, then the operator's
+setting, then the definition default), not two authorities: the recursion-depth
+sweep keeps passing explicit values and keeps control, while a production
+caller that passes nothing gets the operator's setting rather than a hardcoded
+number.
 
-Both are read live, per decomposition, so an operator raising one applies to the
-next call rather than the next restart. A read that fails falls back to the
-default only for the two things the setting itself can be wrong about: the key
-is unregistered, or its stored value is not a float. Anything else, a settings
-store that is down above all, propagates, because the ceiling is re-read once
-per node and swallowing a transient failure would run an arbitrary share of a
-tree under a bound nobody chose.
+The session budget is the one that stops GRACEFULLY, which is why it exists
+beside the wall-clock ceilings rather than instead of one. Past it no further
+child session is opened, the tree returns what it has, and the units it could
+not split say so. The wall-clock ceiling raises and discards every level
+already paid for.
+
+The tree ceiling is not a multiple of the per-session one and cannot be derived
+from the depth cap: sessions scale with the NODE COUNT, which is the branching
+factor to the power of the depth, so any multiple of the per-session number is
+a guess that kills a legitimate deep tree. It is now a catastrophic backstop
+rather than an operating bound, because the session budget is what actually
+bounds a tree's cost. Two of the four callers are request handlers.
+
+### The reported condition
+
+A unit that reached the plan still oversized carries `PlanItem.unsplit_reason`,
+naming the rule that fired, both numbers, and which of the three bounds stopped
+the split. It is written by the projection from what the service recorded, and
+it is deliberately ABSENT from `PlanItemPayload`: an operator editing the item
+has just revised it, and a note about the version they replaced describes
+nothing.
+
+It is read where the two remedies (raise the bound, narrow the objective) are
+the reader's: as a flag in the plan's attention panel and on the item's own
+card, and in the stakeholder panel's brief beside the item, where a reviewer
+raising `OVERSIZED_SCOPE` has the machine's own evidence in front of it.
+
+Those units still dispatch. Refusing the plan would throw away every level
+already paid for and block work whose leaves may well execute; the honest
+answer is to run it and say so.
+
+### How they are read
+
+All five are read live, per decomposition, so an operator raising one applies
+to the next call rather than the next restart. A read that fails falls back to
+the definition's own default only for the two things the setting itself can be
+wrong about: the key is unregistered, or its stored value is not the right
+type. Anything else, a settings store that is down above all, propagates for
+the wall-clock ceilings, because those are re-read once per node and swallowing
+a transient failure would run an arbitrary share of a tree under a bound nobody
+chose.
+
+A bound nobody can read is never a licence to spend: every fallback lands on a
+real number, and the depth, width, and session backstops mirror their
+definitions in code (`context.py`, `_recursion.py`, `_ceilings.py`) so a
+harness running with no settings backend at all is still bounded.
 
 ### What the sweep arms, and why the product default is wrong for it
 
@@ -124,13 +236,17 @@ it measured is only interpretable against what it armed
 
 | Setting | Product default | The sweep arms | Why |
 |---|---|---|---|
-| `recursive_decomposition_enabled` | off | on, or off for the control arm | The variable under test |
-| `leaf_subtask_threshold` | 1 | its declared maximum | Opened all the way so the requirement floor is the one rule that decides a split |
-| `subtask_max_criteria` | 5 | its declared maximum | The same manipulation, on the other threshold |
+| `recursive_decomposition_enabled` | on | on, or off for the control arm | The variable under test |
+| `subtask_max_artifacts` | 10 | its declared maximum | Opened all the way so the requirement floor is the one rule that decides a split |
+| `subtask_max_criteria` | 10 | its declared maximum | The same manipulation, on the other threshold |
 | `decomposition_timeout_seconds` | 600s | 2400s | Sized for a model that answers directly; every model worth sweeping reasons first, and losing an arm to a timing margin destroys the comparison rather than slowing it |
-| `decomposition_tree_timeout_seconds` | 3600s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
+| `decomposition_tree_timeout_seconds` | 14400s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
 | `decomposition_max_retries` | 5 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
 | `providers.retry_max_attempts` | 3 | its declared maximum | Widens the ladder between the hosted gateway and the real upstream provider, where a momentary blip otherwise terminates a session thirty turns in and nothing re-enters that conversation. It does NOT widen the harness driver's own ladder, which takes its budget from the company config so a recorded artefact stays reproducible from the config it names |
+
+The sweep declares its own `max_depth` per cell, which is the variable it
+sweeps, so `decomposition_max_depth` is never armed: the caller's declaration
+wins over the setting by construction.
 
 The four armed at a declared maximum read it off the definition rather than
 copying the number, so a product bound that changes carries the sweep with it
@@ -170,12 +286,68 @@ Its limitation is stated rather than hidden: the assessment is made from the
 nothing splits. That is why the experiment's results carry a caveat saying so
 on their face.
 
-## Why it ships off
+## The tree, made durable
 
-`coordination.recursive_decomposition_enabled` defaults to `false`, and the
-reason is structural rather than cautious: `core/plan.py::PlanItem` has no
-parent link, so a recursive plan cannot yet be persisted or dispatched by the
-production tail. Turning it on is the rest of the workstream layer.
+`PlanItem.parent_id` is the whole of it: the item this one was split out of, or
+`None` when nothing contains it. `plans.items` is a JSON column, so the field
+needed no DDL and no migration; the claim is asserted against both real
+backends in `tests/conformance/persistence/test_plan_repository.py` rather than
+reasoned about.
+
+**Containment is not order.** `parent_id` says what an item belongs to and
+never when it runs, which `PlanItem.dependencies` alone decides. The one place
+the two meet is a rule about what a dependency may SAY: it must name a unit at
+the same level, which `DecompositionPlan` already required before the tree
+existed. A cross-subtree need is stated between the containers, which the tree
+already expresses.
+
+`core/plan_tree.py::PlanTree` is the single owner of every derived question
+(which items are workstreams, what hangs off an item, how deep it sits, what
+order assembles bottom-up), so "this item was split" cannot drift from "this
+item has children" the way a declared flag would.
+`core/plan_tree_validation.py` owns the invariants only the whole set can
+answer: a parent resolves, the parent graph reaches a workstream, and a
+`DECISION` is never a parent (it is chosen rather than decomposed, and dispatch
+strips it, so its children would be orphaned).
+
+### Both directions of the projection
+
+`items_from_decomposition` walks `children`, so every level reaches the plan. A
+child node's `plan.parent_task_id` IS the id of the subtask it was split out
+of, so the parent link is read off the tree rather than derived a second way.
+`decomposition_from_plan` rebuilds the nested `DecompositionResult` from the
+persisted links, which is what makes an operator-edited tree the one that
+actually builds, and gives a nested item's task its CONTAINER's task as
+`parent_task_id` rather than the objective's.
+
+### How containment reaches the wave gate
+
+`DecompositionResult.dispatch_subtasks` is a derived view in which a container's
+`dependencies` are augmented with its children's ids. The wave builder
+reconstructs its `DependencyGraph` from that view, so a container lands in a
+strictly later topological level than the subtree it assembles while
+independent subtrees stay in the same wave. `gate_wave` then already asks
+exactly the right question, and a container parked `dependency_failed` names
+the child that died, which reads honestly.
+
+The augmentation exists ONLY inside that view. The persisted
+`PlanItem.dependencies`, the persisted `Task.dependencies` and the planner's own
+`SubtaskDefinition` are untouched, asserted by test, so `dependencies` keeps
+sole ownership of declared order.
+
+### A container is its own assembly task
+
+An item with children is not dispatched as work; that would do the work twice.
+`_item_tasks.task_from_item` gives it an assembly brief over its own children,
+its declared artifacts plus that subtree's own namespaced evidence paths
+(`.synthorg/integration/<slug>/`), and stakes one rung above the highest of
+what it assembles. Its `plan_item_id` is set, so `tasks_by_item`,
+`collect_item_progress`, `item_is_done` and the rollup work unchanged, and it
+runs through routing, waves and the review gate like any other item.
+
+That is what turns one wide fan-in at the top into the narrow ones the sweep
+measured. The root keeps today's `INTEGRATING` tail stage, and its brief now
+names the plan's WORKSTREAMS rather than every leaf in the tree.
 
 ## The experiment
 

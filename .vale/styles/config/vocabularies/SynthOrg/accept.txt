@@ -726,6 +726,8 @@ recommenders
 recorded_at
 recovery_result
 recurse
+recursed
+recurses
 redeclaration
 redeclare
 redelegates
@@ -852,6 +854,7 @@ substrings
 subtask
 subtasks
 subtree
+subtrees
 subworkflow
 subworkflows
 superset

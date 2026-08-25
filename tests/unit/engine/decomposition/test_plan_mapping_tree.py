@@ -22,6 +22,7 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -321,3 +322,49 @@ class TestDispatchSubtasks:
     def test_a_flat_result_is_unchanged_by_the_view(self) -> None:
         result = _node(parent=_objective(), labels=("engine", "ui"), depth=0)
         assert result.dispatch_subtasks == result.plan.subtasks
+
+
+class TestWhatTheWaveBuilderReads:
+    """The consequence of the augmented view, at the seam that consumes it.
+
+    ``build_execution_waves`` reconstructs a ``DependencyGraph`` from
+    ``dispatch_subtasks`` and calls ``parallel_groups()``, so the wave order a
+    dispatcher runs is exactly this. Asserted here rather than through the
+    builder because routing and config decide who runs each unit, and neither
+    changes when.
+    """
+
+    def _levels(self) -> list[set[str]]:
+        """The dispatch DAG's waves, each as a set of subtask ids.
+
+        Returns:
+            One entry per topological level, in execution order.
+        """
+        plan = _plan_of(items_from_decomposition(_three_level_tree()))
+        rebuilt = decomposition_from_plan(plan, parent_task=_objective())
+        graph = DependencyGraph(rebuilt.dispatch_subtasks)
+        return [set(group) for group in graph.parallel_groups()]
+
+    def test_a_container_runs_strictly_after_what_it_assembles(self) -> None:
+        levels = self._levels()
+        position = {
+            subtask_id: index
+            for index, level in enumerate(levels)
+            for subtask_id in level
+        }
+        assert position[sid("grid")] < position[sid("board")]
+        assert position[sid("board")] < position[sid("engine")]
+
+    def test_independent_subtrees_still_run_together(self) -> None:
+        # A per-subtree loop walked deepest-first would serialise these. The
+        # one global computation is what keeps cross-subtree parallelism.
+        levels = self._levels()
+        assert {sid("grid"), sid("ui")} <= levels[0]
+
+    def test_every_unit_of_the_tree_is_scheduled(self) -> None:
+        # A unit in no wave is one no dispatcher runs, no gate parks and no
+        # rollup can conclude on.
+        scheduled = {subtask_id for level in self._levels() for subtask_id in level}
+        assert scheduled == {
+            sid(label) for label in ("engine", "ui", "board", "rotation", "grid")
+        }
