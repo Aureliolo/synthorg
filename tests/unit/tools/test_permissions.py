@@ -216,6 +216,19 @@ class TestDenialReason:
         assert "web" in reason.lower()
         assert "sandboxed" in reason.lower()
 
+    def test_denied_category_reason_names_the_withholding(self) -> None:
+        # The level admits WEB, so a reason naming the level would report a
+        # bar this tool clears; what refused it is the explicit withholding.
+        checker = ToolPermissionChecker(
+            access_level=ToolAccessLevel.ELEVATED,
+            denied_categories=frozenset({ToolCategory.WEB}),
+        )
+        assert checker.is_permitted("web_tool", ToolCategory.WEB) is False
+        reason = checker.denial_reason("web_tool", ToolCategory.WEB)
+        assert "web" in reason.lower()
+        assert "explicitly denied" in reason.lower()
+        assert "elevated" not in reason.lower()
+
     def test_custom_not_in_allowed_reason(self) -> None:
         checker = ToolPermissionChecker(
             access_level=ToolAccessLevel.CUSTOM,
