@@ -53,7 +53,12 @@ from evals.harness.host import (
     RecordingHostConfig,
 )
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
-from evals.recursion_depth.emit import REPORT_JSON_NAME, write_report
+from evals.recursion_depth.emit import (
+    REPORT_JSON_NAME,
+    assemble_report,
+    derived_caveats,
+    write_report,
+)
 from evals.recursion_depth.grading import SandboxUnitGrader
 from evals.recursion_depth.journal import read_recorded_cells
 from evals.recursion_depth.manifest import (
@@ -68,8 +73,6 @@ from evals.recursion_depth.provenance import capture_provenance
 from evals.recursion_depth.runner import (
     SessionBudget,
     SweepContext,
-    assemble_report,
-    derived_caveats,
     planned_cells,
     run_sweep,
 )
