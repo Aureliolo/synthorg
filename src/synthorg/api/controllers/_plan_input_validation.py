@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
+from synthorg.core.plan_reference_validation import describe_unstated_references
 from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.plan_validation import (
@@ -26,7 +27,6 @@ from synthorg.core.plan_validation import (
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
-    describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.context import roster_from_agents

@@ -36,6 +36,11 @@ from synthorg.core.types import NotBlankStr
 #: can actually produce (a whole-tree planning budget of 40 nodes, each
 #: planning at most its width bound of 25), so a legitimate plan is never
 #: unsubmittable while a hand-rolled payload still meets a ceiling.
+#:
+#: The graph validators this list is checked against run synchronously inside
+#: the request, so the ceiling is also a bound on how long one edit holds the
+#: worker: ~0.5s at this value, measured, and only because each validator
+#: indexes the plan once rather than per pair. Re-measure before raising it.
 _MAX_ITEMS: Final[int] = 1000
 _MAX_DEPS: Final[int] = 50
 _MAX_CRITERIA: Final[int] = 50

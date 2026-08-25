@@ -15,6 +15,7 @@ against while the operator edit path makes it a validation failure.
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Final, Protocol
 
 from synthorg.core.normalization import normalize_identifier
@@ -119,43 +120,6 @@ class PlanUnit(Protocol):
         ...
 
 
-#: Words too common to constitute a reference to another item. A title token
-#: only implicates another item when it names that item's subject, and every
-#: plan is full of these.
-_GENERIC_TITLE_TOKENS: Final[frozenset[str]] = frozenset(
-    {
-        "a",
-        "add",
-        "an",
-        "and",
-        "build",
-        "create",
-        "for",
-        "implement",
-        "in",
-        "of",
-        "on",
-        "set",
-        "setup",
-        "the",
-        "to",
-        "up",
-        "with",
-        "write",
-    }
-)
-
-#: Shortest token that can identify another item's subject. Anything shorter
-#: is a preposition or an abbreviation shared across unrelated items.
-_MIN_REFERENCE_TOKEN: Final[int] = 4
-
-#: Largest share of a plan's titles a token may appear in and still name one
-#: item; the bound is inclusive, so a token in exactly half the titles is kept.
-#: A word carried by MORE than half the plan is that plan's house vocabulary
-#: ("Subtask 1" / "Subtask 2", "Service layer" / "Service tests"), and treating
-#: it as a reference would make every item depend on every other.
-_MAX_DISTINCTIVE_SHARE: Final[float] = 0.5
-
 #: A plan of one item has no graph to contradict.
 _MIN_ORDERED_UNITS: Final[int] = 2
 
@@ -207,131 +171,6 @@ def describe_structureless_graph(
         "declares no dependencies at all, so every item would start at once. "
         "Either declare the dependencies that order them, or declare the "
         "structure as parallel"
-    )
-
-
-def _words(text: str) -> list[str]:
-    """Split *text* into lowercased alphanumeric words.
-
-    Returns:
-        The words, in order, with punctuation dropped.
-    """
-    return "".join(c if c.isalnum() else " " for c in text.lower()).split()
-
-
-def _title_tokens(unit: PlanUnit) -> frozenset[str]:
-    """Reduce a unit's title to the tokens that could name its subject.
-
-    Returns:
-        Lowercased alphanumeric title tokens, minus the generic verbs and
-        articles every plan title carries.
-    """
-    return frozenset(
-        word
-        for word in _words(unit.title)
-        if len(word) >= _MIN_REFERENCE_TOKEN and word not in _GENERIC_TITLE_TOKENS
-    )
-
-
-def _distinctive_tokens(
-    other: PlanUnit,
-    *,
-    plan_titles: Sequence[frozenset[str]],
-) -> frozenset[str]:
-    """Return the tokens of *other* that name it rather than the whole plan.
-
-    A token carried by more than half the plan's titles is that plan's house
-    vocabulary, not a reference: matching on it made "Subtask 2" a reference
-    to "Subtask 1", and would make every item in a plan named after one
-    subject depend on every other.
-
-    Returns:
-        The subset of *other*'s title tokens rare enough to identify it, empty
-        when none are.
-    """
-    ceiling = len(plan_titles) * _MAX_DISTINCTIVE_SHARE
-    return frozenset(
-        token
-        for token in _title_tokens(other)
-        if sum(token in title for title in plan_titles) <= ceiling
-    )
-
-
-def _ordered(unit: PlanUnit, other: PlanUnit) -> bool:
-    """Whether the plan already orders *unit* against *other*, either way.
-
-    The hazard this module reports is a reference that leaves the referring
-    item free to be dispatched FIRST. An edge in either direction removes it:
-    ``unit`` depending on ``other`` is the obvious case, and ``other``
-    depending on ``unit`` puts ``unit`` first by construction, which is what a
-    forward reference ("emits the tokens the parser consumes") describes.
-
-    Reading only the first direction turned a lexer that mentioned its parser
-    into a demand for a lexer-depends-on-parser edge, closing a cycle the
-    validator rejects on the next submission: a plan that could be corrected
-    only by rewording, told to add a dependency instead, until the retries ran
-    out.
-
-    Returns:
-        True when either item declares a dependency on the other.
-    """
-    return other.id in unit.dependencies or unit.id in other.dependencies
-
-
-def describe_unstated_reference(
-    *,
-    unit: PlanUnit,
-    others: Sequence[PlanUnit],
-) -> str | None:
-    """Describe an item naming another the plan does not order it against.
-
-    "Integrate game loop: tie engine, renderer, and input together" cannot
-    precede the three items it names, but with no declared dependency the
-    dispatcher is free to run it first, and did. An edge in either direction
-    settles the order and clears the reference; see :func:`_ordered`.
-
-    Matching is on whole words, and only on the other item's DISTINCTIVE title
-    tokens, so it fires on a genuine reference rather than on the vocabulary a
-    plan happens to repeat.
-
-    Args:
-        unit: The unit being checked.
-        others: Every other unit in the plan.
-
-    Returns:
-        A message naming both items, or ``None`` when no unstated reference
-        is found.
-    """
-    plan_titles = [_title_tokens(one) for one in (unit, *others)]
-    text = frozenset(_words(f"{unit.title} {unit.description}"))
-    for other in others:
-        if other.id == unit.id or _ordered(unit, other):
-            continue
-        tokens = _distinctive_tokens(other, plan_titles=plan_titles)
-        if tokens and tokens <= text:
-            return (
-                f"{unit.id!r} names {other.id!r} ({other.title!r}) in its own "
-                "title or description but declares no dependency on it, so it "
-                "may be dispatched first. Declare the dependency, or reword it "
-                "if the items are genuinely independent"
-            )
-    return None
-
-
-def describe_unstated_references(units: Sequence[PlanUnit]) -> tuple[str, ...]:
-    """Describe every item naming another it does not depend on.
-
-    One message per offending unit, because the plural caller's job is to hand
-    the planner a complete list rather than the first thing that went wrong.
-
-    Returns:
-        A message per offending unit, in plan order; empty when the graph is
-        clean.
-    """
-    return tuple(
-        message
-        for unit in units
-        if (message := describe_unstated_reference(unit=unit, others=units)) is not None
     )
 
 
@@ -428,20 +267,103 @@ def _dependency_closure(
     return frozenset(seen)
 
 
-def _filenames_of(unit: GatedPlanUnit) -> set[str]:
+def _filenames_of(unit: GatedPlanUnit) -> tuple[str, ...]:
     """Return the artifact filenames *unit* declares it produces.
+
+    Declaration order is kept, and duplicates dropped, so a unit declaring two
+    filenames a criterion names is always reported against the same one.
 
     Args:
         unit: The unit whose declared artifacts are read.
 
     Returns:
-        Every declared artifact that reads as a filename.
+        Every declared artifact that reads as a filename, in declaration order.
     """
-    return {
-        filename
-        for artifact in unit.expected_artifacts
-        if (filename := _artifact_filename(artifact)) is not None
-    }
+    return tuple(
+        dict.fromkeys(
+            filename
+            for artifact in unit.expected_artifacts
+            if (filename := _artifact_filename(artifact)) is not None
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _GateIndex:
+    """The per-plan facts every gate comparison reads.
+
+    The id map and each unit's declared filenames are the same for every
+    comparison, and rebuilding them inside the per-unit loop is what made this
+    scan the slowest thing on the plan-edit path once the item cap admitted a
+    whole tree rather than one level.
+    """
+
+    by_id: dict[str, GatedPlanUnit]
+    filenames: dict[str, tuple[str, ...]]
+
+
+def _gate_index(units: Sequence[GatedPlanUnit]) -> _GateIndex:
+    """Derive the gate-scan facts for *units*.
+
+    Returns:
+        The units keyed by id, and the declared filenames of each.
+    """
+    return _GateIndex(
+        by_id={unit.id: unit for unit in units},
+        filenames={unit.id: _filenames_of(unit) for unit in units},
+    )
+
+
+def _undecidable_criterion(
+    *,
+    unit: GatedPlanUnit,
+    others: Sequence[GatedPlanUnit],
+    index: _GateIndex,
+) -> str | None:
+    """Describe *unit*'s first criterion that its plan cannot yet judge.
+
+    Returns:
+        A message naming the item, the artifact and its producer, or ``None``
+        when every criterion is decidable where it stands.
+    """
+    if not unit.acceptance_criteria:
+        return None
+    named = _criterion_tokens(unit)
+    if not named:
+        return None
+    by_id = index.by_id
+    reachable = _dependency_closure(unit, by_id)
+    # What arrives in time, gathered BEFORE anything is refused. The question
+    # is whether the plan delivers the file by the moment this gate runs, so
+    # one unreachable sibling declaring the same filename settles nothing:
+    # judging on the first match instead makes the answer depend on the order
+    # the units happen to arrive in, and refuses plans whose own dependency
+    # produces exactly what the criterion names.
+    delivered = set(index.filenames[unit.id])
+    for one in others:
+        if one.id in reachable and one.id != unit.id:
+            delivered.update(index.filenames[one.id])
+    for other in others:
+        if other.id == unit.id or other.id in reachable:
+            continue
+        for filename in index.filenames[other.id]:
+            if filename in delivered or filename not in named:
+                continue
+            remedy = (
+                "Judge this item on what it produces itself; it cannot wait "
+                f"for {other.id!r}, which already waits for it"
+                if unit.id in _dependency_closure(other, by_id)
+                else "Declare the dependency, or judge this item on what it "
+                "produces itself"
+            )
+            return (
+                f"{unit.id!r} has an acceptance criterion naming {filename!r}, "
+                f"which {other.id!r} ({other.title!r}) produces and {unit.id!r} "
+                "does not wait for, so the criterion is unjudgeable when this "
+                f"item is reviewed and stays unjudgeable through every rework. "
+                f"{remedy}"
+            )
+    return None
 
 
 def describe_undecidable_criterion(
@@ -469,59 +391,27 @@ def describe_undecidable_criterion(
         A message naming the item, the artifact and its producer, or ``None``
         when every criterion is decidable where it stands.
     """
-    if not unit.acceptance_criteria:
-        return None
-    named = _criterion_tokens(unit)
-    if not named:
-        return None
-    by_id = {one.id: one for one in others}
-    by_id[unit.id] = unit
-    reachable = _dependency_closure(unit, by_id)
-    # What arrives in time, gathered BEFORE anything is refused. The question
-    # is whether the plan delivers the file by the moment this gate runs, so
-    # one unreachable sibling declaring the same filename settles nothing:
-    # judging on the first match instead makes the answer depend on the order
-    # the units happen to arrive in, and refuses plans whose own dependency
-    # produces exactly what the criterion names.
-    delivered = _filenames_of(unit)
-    for one in others:
-        if one.id in reachable and one.id != unit.id:
-            delivered |= _filenames_of(one)
-    for other in others:
-        if other.id == unit.id or other.id in reachable:
-            continue
-        for artifact in other.expected_artifacts:
-            filename = _artifact_filename(artifact)
-            if filename is None or filename in delivered or filename not in named:
-                continue
-            remedy = (
-                "Judge this item on what it produces itself; it cannot wait "
-                f"for {other.id!r}, which already waits for it"
-                if unit.id in _dependency_closure(other, by_id)
-                else "Declare the dependency, or judge this item on what it "
-                "produces itself"
-            )
-            return (
-                f"{unit.id!r} has an acceptance criterion naming {filename!r}, "
-                f"which {other.id!r} ({other.title!r}) produces and {unit.id!r} "
-                "does not wait for, so the criterion is unjudgeable when this "
-                f"item is reviewed and stays unjudgeable through every rework. "
-                f"{remedy}"
-            )
-    return None
+    # *unit* last, so it wins the id map exactly as the caller's own entry did.
+    return _undecidable_criterion(
+        unit=unit, others=others, index=_gate_index((*others, unit))
+    )
 
 
 def describe_undecidable_criteria(units: Sequence[GatedPlanUnit]) -> tuple[str, ...]:
     """Describe every gate demanding evidence its plan produces later.
 
+    The index is built once for the whole plan and read by every comparison;
+    see :class:`_GateIndex` for why that is not an optimisation detail.
+
     Returns:
         A message per offending unit, in plan order; empty when every gate is
         judgeable where it stands.
     """
+    index = _gate_index(units)
     return tuple(
         message
         for unit in units
-        if (message := describe_undecidable_criterion(unit=unit, others=units))
+        if (message := _undecidable_criterion(unit=unit, others=units, index=index))
         is not None
     )
 
