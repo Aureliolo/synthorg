@@ -1185,12 +1185,14 @@ jobs:
       needs.build-fine-tune-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
     runs-on: ubuntu-24.04
-    # A healthy build of either variant runs 15-20 minutes. This ceiling is
-    # the ONLY bound on a stalled BuildKit cache export: `ignore-error=true`
-    # on `cache-to` covers an export that ERRORS, and a stall never errors,
-    # while the backend's own `timeout` attribute is consulted between retry
-    # attempts rather than attached to the in-flight request, so a single
-    # hung upload outlives any value set there.
+    # A build of either variant runs 15-20 minutes with `layer-cache: "false"`
+    # above, which is what makes this ceiling safe: the same build spent 45
+    # minutes, and once hung indefinitely, exporting its 3.16 GB venv layer to
+    # a repo cache sitting at its 10 GB ceiling. Raising the ceiling instead
+    # would have bought a slow build more room to stay slow; removing the
+    # export removes the variance the ceiling was absorbing. Keep the two
+    # together: restoring the layer cache here without restoring 60 minutes
+    # reinstates a timeout this job legitimately exceeded.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1227,6 +1229,11 @@ jobs:
           # torch / CUDA wheels publish no arm64 build.
           platform: amd64
           cache-scope: fine-tune-${{ matrix.variant }}
+          # The one image excluded from the repo-global layer cache. Its
+          # torch/CUDA venv is a single 3.16 GB blob, so exporting it both
+          # evicts every other image's entries and takes minutes to upload
+          # against a cache already at its ceiling.
+          layer-cache: "false"
           free-disk-space: "true"
           trivy-version: ${{ env.TRIVY_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

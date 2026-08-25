@@ -87,6 +87,24 @@ inputs:
       image never share a scope.
     required: false
     default: ""
+  layer-cache:
+    description: >-
+      Whether to read and write the BuildKit layer cache for this image.
+      Pass the literal string "false" to disable both directions.
+
+      The Actions cache is one repo-global budget of 10 GB, so an image
+      whose layers do not fit in a fraction of it does not merely fail to
+      benefit: it evicts every other image's entries on the way in, and is
+      itself uploaded in 32 MB chunks against a service concurrently
+      evicting to make room. Measured on the fine-tune GPU variant, whose
+      torch/CUDA venv is a single 3.16 GB blob: two copies of that one
+      layer held 6.3 GB of the 9.81 GB in use, and the export took the
+      build from its usual 15-20 minutes to 45, having previously hung
+      outright until the job ceiling killed it. `mode=min` is not the
+      answer for that shape, because the venv is COPYed into the final
+      stage and so is exported either way.
+    required: false
+    default: "true"
   free-disk-space:
     description: >-
       Run aggressive disk cleanup before buildx setup. Required for
@@ -324,11 +342,23 @@ runs:
         # and three `mode=max` exports evict each other's index, leaving the
         # hit rate at whichever image finished last while still burning the
         # repo cache quota three times over.
-        cache-from: type=gha,scope=${{ inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name }}-${{ inputs.platform }}
+        #
+        # Both directions render empty when the caller sets `layer-cache` to
+        # "false"; the non-empty value sits on the TRUTHY branch of each
+        # expression because GHA falls through `A && '' || B` to B, so
+        # putting the empty string there would enable the cache in exactly
+        # the case meant to disable it.
+        cache-from: ${{ inputs.layer-cache == 'true' && format('type=gha,scope={0}-{1}', inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name, inputs.platform) || '' }}
         # `ignore-error` because the export is an optimisation, not a build
         # output: a cache-service hiccup or the repo hitting its cache quota
-        # would otherwise fail an image that built perfectly well.
-        cache-to: type=gha,mode=max,ignore-error=true,scope=${{ inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name }}-${{ inputs.platform }}
+        # would otherwise fail an image that built perfectly well. It covers
+        # an export that ERRORS and nothing else: a stalled export never
+        # errors, and the backend's own `timeout` attribute is consulted
+        # between retry attempts rather than attached to the in-flight
+        # request, so a single hung upload outlives any value set there. An
+        # image too large to export is therefore excluded via `layer-cache`
+        # rather than bounded here.
+        cache-to: ${{ inputs.layer-cache == 'true' && format('type=gha,mode=max,ignore-error=true,scope={0}-{1}', inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name, inputs.platform) || '' }}
         platforms: linux/${{ inputs.platform }}
 
     # `!cancelled()` not the success chain: every scan gate below keys off
