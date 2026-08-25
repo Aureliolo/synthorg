@@ -7,6 +7,7 @@ a model to answer.
 """
 
 import shutil
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Protocol
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from evals.errors import (
     EvalToolMissingError,
@@ -67,6 +69,7 @@ from evals.recursion_depth.merge import (
 )
 from evals.recursion_depth.models import (
     LEAF,
+    METRIC_CAVEAT,
     ORACLE_CAVEAT,
     PLAN,
     SIZING_CAVEAT,
@@ -81,6 +84,7 @@ from evals.recursion_depth.runner import (
     SweepCell,
     SweepContext,
     planned_cells,
+    report_masked_failures,
     run_sweep,
 )
 from evals.recursion_depth.session import (
@@ -869,6 +873,14 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         assert resumes == [False, True]
         assert outcome.attempts == 2
         assert outcome.delivered, outcome.detail
+        # BOTH sessions. The ledger read is a delta past what stood when each
+        # session opened and the loop's turn list is its own, so the resumed
+        # outcome carries only its own 4 turns and 400 tokens: reporting it
+        # alone would file a 34-turn unit as a 4-turn one and lose the money
+        # the first attempt had already spent.
+        assert outcome.turns == 34
+        assert outcome.tokens == 1300
+        assert outcome.cost == pytest.approx(0.7)
 
     @pytest.mark.parametrize(
         "termination",
@@ -950,6 +962,57 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         seeded.write_text("rewritten by the agent", encoding="utf-8")
 
         assert produced_nothing(task, workspace, baseline) is False
+
+
+def _masked(logs: Sequence[Mapping[str, object]]) -> list[str]:
+    """What the masked-failure lines of a captured log reported.
+
+    Returns:
+        Each masked failure's description, in the order it was emitted.
+    """
+    return [
+        str(entry["error"])
+        for entry in logs
+        if entry["event"] == "evals.recursion_depth.leaf_failure_masked"
+    ]
+
+
+class TestAWaveOfFailingLeavesReportsAllOfThem:
+    """Only one failure propagates, so the rest exist only in the log.
+
+    Each masked failure is a session the sweep has already paid for, and the
+    log line is the only record of it there is.
+    """
+
+    def test_the_fatal_error_is_the_one_that_propagates(self) -> None:
+        # Whatever its position: a sibling's MemoryError decides how the whole
+        # process must end, and losing it to an ordinary failure submitted
+        # earlier has the classifier reading a survivable run.
+        ordinary = RuntimeError("a leaf failed")
+        fatal = MemoryError()
+
+        assert report_masked_failures([ordinary, fatal]) is fatal
+
+    def test_the_siblings_a_fatal_error_masks_are_still_logged(self) -> None:
+        # The defect: raising inside the search returned before the logging
+        # loop ran, so a fatal error at index 1 or later dropped every earlier
+        # failure with no record at all.
+        ordinary = RuntimeError("a leaf failed")
+
+        with structlog.testing.capture_logs() as logs:
+            report_masked_failures([ordinary, MemoryError()])
+
+        assert _masked(logs) == ["RuntimeError: a leaf failed"]
+
+    def test_without_a_fatal_error_the_first_propagates(self) -> None:
+        first = RuntimeError("first")
+        second = RuntimeError("second")
+
+        with structlog.testing.capture_logs() as logs:
+            propagating = report_masked_failures([first, second])
+
+        assert propagating is first
+        assert _masked(logs) == ["RuntimeError: second"]
 
 
 class TestEveryUnitRecordsTheFamilyThatJudgedIt:
@@ -1714,7 +1777,7 @@ class TestTheMatrix:
     async def test_cross_family_independence_states_no_caveat_for_it(
         self, tmp_path: Path, assembled_trees: None
     ) -> None:
-        # The two standing caveats always hold; the independence one is a
+        # The three standing caveats always hold; the independence one is a
         # statement about a weakness this manifest does not have.
         del assembled_trees
         planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
@@ -1729,7 +1792,7 @@ class TestTheMatrix:
 
         report = await _swept(context, tmp_path)
 
-        assert set(report.caveats) == {SIZING_CAVEAT, ORACLE_CAVEAT}
+        assert set(report.caveats) == {METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT}
 
     async def test_a_depleted_account_stops_the_sweep_instead_of_shredding_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

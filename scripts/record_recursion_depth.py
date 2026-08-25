@@ -219,8 +219,9 @@ def _reachable_caps(manifest: RecursionDepthManifest) -> str:
     """
     arms = len(manifest.arms)
     spent = 0
+    ordered = sorted(manifest.depths)
     afforded: list[int] = []
-    for depth in sorted(manifest.depths):
+    for depth in ordered:
         spent += manifest.repetitions[depth] * arms * manifest.projected_sessions(depth)
         if spent > manifest.max_sessions:
             break
@@ -228,9 +229,13 @@ def _reachable_caps(manifest: RecursionDepthManifest) -> str:
     if not afforded:
         return "not even the shallowest cap fits"
     caps = ", ".join(str(depth) for depth in afforded)
-    return (
-        f"caps {caps} fit; the sweep is expected to stop inside cap {afforded[-1] + 1}"
-    )
+    # The next SWEPT cap, not the next integer. `--depths 1,2,3,5` affording
+    # three would otherwise name cap 4, which this sweep never runs, so the
+    # operator is told the run stops somewhere it was never going.
+    remaining = ordered[len(afforded) :]
+    if not remaining:
+        return f"caps {caps} fit; the whole matrix is affordable"
+    return f"caps {caps} fit; the sweep is expected to stop inside cap {remaining[0]}"
 
 
 def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]:
@@ -876,7 +881,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "changed nothing."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.repair_spend_from is not None and not args.rescore:
+        # Only the rescore branch reads it, so without this the flag parses,
+        # does nothing, and reports nothing: the operator is left believing the
+        # token column was rebuilt on a run that never touched it.
+        parser.error("--repair-spend-from is only meaningful with --rescore")
+    return args
 
 
 def parse_repetitions(
@@ -1025,7 +1036,10 @@ def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ()
-    except OSError as exc:
+    # `UnicodeDecodeError` derives from `ValueError`, not `OSError`, so a
+    # truncated or half-written report escaped both handlers and aborted the
+    # re-score that this function is documented to return empty for.
+    except (OSError, UnicodeDecodeError) as exc:
         logger.error(
             EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
             path=str(path),

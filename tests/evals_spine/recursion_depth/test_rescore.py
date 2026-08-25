@@ -31,10 +31,11 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from synthorg.core.types import NotBlankStr
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
-_LEAF_TASK = "a1b2c3d4-0000-4000-8000-000000000001"
+_LEAF_TASK = sid("leaf")
 
 _EXECUTOR = ModelPair(
     provider=NotBlankStr("example-provider"),

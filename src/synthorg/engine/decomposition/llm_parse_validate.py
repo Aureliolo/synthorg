@@ -91,6 +91,12 @@ def validate_coverage(
     be true is that every item is pure support: then nothing builds the
     objective.
 
+    What counts is an OVERLAP with the objective's own criteria, not a
+    non-empty field. ``satisfies`` carries criterion TEXT, so a plan tagging
+    every item with a sentence the objective never states advances exactly as
+    much as one tagging nothing, while reading as covered: a non-empty test
+    turns the rule into a formality any invented string passes.
+
     FULL coverage is documented and deliberately NOT enforced. Partial coverage
     is still a plan worth having, while zero coverage has no reading at all,
     and putting a rule the planner keeps re-breaking in front of the retry
@@ -106,17 +112,42 @@ def validate_coverage(
         DecompositionError: The objective declares criteria and no subtask
             claims any of them.
     """
-    if not objective_criteria or any(sub.satisfies for sub in subtasks):
+    if not objective_criteria:
         return
+    stated = set(objective_criteria)
+    if any(stated.intersection(sub.satisfies) for sub in subtasks):
+        return
+    claimed = sorted({claim for sub in subtasks for claim in sub.satisfies})
     detail = (
-        f"No subtask declares 'satisfies', so this plan advances none of the "
-        f"objective's {len(objective_criteria)} acceptance criteria and "
-        f"coverage cannot be checked. Tag each item with the objective "
-        f"criteria it advances, copied verbatim; a genuine pure-support item "
-        f"may claim none, but they cannot all be pure support."
+        f"No subtask's 'satisfies' names any of the objective's "
+        f"{len(objective_criteria)} acceptance criteria, so this plan "
+        f"advances none of the objective and coverage cannot be checked"
+        f"{_names(claimed)}. Tag each item with the objective criteria it "
+        f"advances, copied verbatim; a genuine pure-support item may claim "
+        f"none, but they cannot all be pure support."
     )
     logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
     raise DecompositionError(detail)
+
+
+def _names(claimed: list[str]) -> str:
+    """Say what the plan claimed instead, when it claimed anything.
+
+    A plan tagged with nothing and one tagged with invented criteria are
+    different mistakes with different fixes, and the second is the one a
+    planner cannot see: its items look tagged. Quoting what it wrote is what
+    lets the next turn compare the two lists rather than guess.
+
+    Args:
+        claimed: Every criterion the plan claimed, deduplicated and ordered.
+
+    Returns:
+        A clause naming the claims, or the empty string when there are none.
+    """
+    if not claimed:
+        return ""
+    quoted = ", ".join(repr(claim) for claim in claimed)
+    return f"; the plan claims {quoted}, which the objective does not state"
 
 
 def validate_graph(

@@ -1171,21 +1171,44 @@ async def _build_missing_leaves(
         *(build(task) for task in pending), return_exceptions=True
     )
     raised = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    if raised:
+        raise report_masked_failures(raised)
+
+
+def report_masked_failures(raised: Sequence[BaseException]) -> BaseException:
+    """Log every sibling failure and answer the one that may propagate.
+
+    Only ONE can propagate, so the choice is not the first in submission
+    order: a sibling's ``MemoryError`` decides how the whole process must end,
+    and losing it to an ordinary failure that happened to be submitted earlier
+    is the classifier reading a survivable run.
+
+    SELECTED before anything is logged, and the logging then skips the
+    selection rather than the first entry. Raising inside the search dropped
+    every sibling whenever the fatal error sat past index 0, and each of those
+    is a session the sweep has already paid for.
+
+    Args:
+        raised: Every failure the wave produced, in submission order. Never
+            empty; the caller has nothing to report otherwise.
+
+    Returns:
+        The failure to raise.
+    """
+    fatal = next(
+        (item for item in raised if isinstance(item, MemoryError | RecursionError)),
+        None,
+    )
+    propagating = fatal if fatal is not None else raised[0]
     for outcome in raised:
-        # Only ONE of these can propagate, so the choice is not the first in
-        # submission order: a sibling's MemoryError decides how the whole
-        # process must end, and losing it to an ordinary failure that happened
-        # to be submitted earlier is the classifier reading a survivable run.
-        if isinstance(outcome, MemoryError | RecursionError):
-            raise outcome
-    for outcome in raised[1:]:
+        if outcome is propagating:
+            continue
         logger.warning(
             EVALS_RECURSION_LEAF_FAILURE_MASKED,
             error_type=type(outcome).__name__,
             error=safe_error_description(outcome),
         )
-    if raised:
-        raise raised[0]
+    return propagating
 
 
 async def _run_one_leaf(

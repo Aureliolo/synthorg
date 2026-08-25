@@ -95,6 +95,44 @@ class TestAPlanMustAdvanceItsObjective:
 
         assert len(plan.subtasks) == 2
 
+    def test_a_plan_claiming_only_invented_criteria_is_refused(self) -> None:
+        # A non-empty field is not coverage. `satisfies` carries criterion
+        # TEXT, so a plan tagging every item with a sentence the objective
+        # never states advances exactly as much as one tagging nothing, while
+        # reading as covered on every surface that shows the field.
+        args = _args(
+            _subtask("alpha", satisfies=["invented criterion"]),
+            _subtask("beta", satisfies=["another invention"]),
+        )
+
+        with pytest.raises(DecompositionError, match="advances none of the objective"):
+            args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+    def test_the_refusal_quotes_what_the_plan_claimed_instead(self) -> None:
+        # Tagged-with-nothing and tagged-with-inventions are different faults
+        # with different fixes, and only the second is invisible to the
+        # planner: its items look tagged. The two lists side by side are what
+        # let the next turn compare them rather than guess.
+        args = _args(_subtask("alpha", satisfies=["invented criterion"]))
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        assert "invented criterion" in str(caught.value)
+
+    def test_partial_overlap_is_still_a_plan_worth_having(self) -> None:
+        # FULL coverage is documented and deliberately not enforced: an item
+        # may claim one real criterion alongside its own wording, and a rule
+        # the planner keeps re-breaking in front of the retry ladder is how
+        # the em-dash style rule once took 18 of 25 planning calls.
+        args = _args(
+            _subtask("alpha", satisfies=["R01 is satisfied", "some support work"]),
+        )
+
+        plan = args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        assert len(plan.subtasks) == 1
+
     def test_an_objective_with_no_criteria_has_no_coverage_to_claim(self) -> None:
         # Empty skips the check, matching how `available_roles` behaves in the
         # same parser: an objective declaring nothing cannot be under-covered.

@@ -8,16 +8,33 @@ session opened, which tells apart the sessions of one merge node, since its
 assembly and its review run under the same task several times over.
 """
 
-from datetime import UTC, datetime
+import contextlib
+from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime
+from typing import cast
 
 import pytest
 import structlog
 
 from evals.harness.stall_watch import ProgressTrackingLedger
-from evals.recursion_depth.session import OpenSession
+from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth import session as session_module
+from evals.recursion_depth.session import (
+    OpenSession,
+    SessionLimits,
+    SweepDeps,
+    run_session,
+)
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import CurrencyCode
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.task import Task
+from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.providers.errors import ProviderError
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -44,19 +61,84 @@ def _record(task_id: str, *, tokens: int) -> CostRecord:
     )
 
 
+def _identity() -> AgentIdentity:
+    """An agent carrying an explicit pair, which the binding reads.
+
+    Returns:
+        The identity.
+    """
+    return AgentIdentity(
+        id=as_uuid("builder"),
+        name=NotBlankStr("Builder"),
+        role=NotBlankStr("developer"),
+        department=NotBlankStr("engineering"),
+        model=ModelConfig(
+            provider=NotBlankStr("example-provider"),
+            model_id=NotBlankStr("example-capable-001"),
+        ),
+        hiring_date=date(2026, 1, 1),
+    )
+
+
+def _task() -> Task:
+    """The leaf a failing session was running.
+
+    Returns:
+        The task.
+    """
+    return Task(
+        id=as_uuid("leaf"),
+        title=NotBlankStr("Build the parser"),
+        description=NotBlankStr("Implement the parser and its tests."),
+        type=TaskType.DEVELOPMENT,
+        status=TaskStatus.IN_PROGRESS,
+        assigned_to=sid("builder"),
+        priority=Priority.MEDIUM,
+        project=sid("sweep"),
+        created_by=NotBlankStr("harness"),
+    )
+
+
+#: What the stand-in engine fails with, and what the test matches on.
+_UPSTREAM_REFUSAL = "upstream refused"
+
+
+class _RaisingEngine:
+    """An engine whose run fails the way a spent retry ladder does."""
+
+    async def run(self, **_kwargs: object) -> object:
+        """Fail as an exhausted provider ladder does.
+
+        Raises:
+            ProviderError: Always.
+        """
+        raise ProviderError(_UPSTREAM_REFUSAL)
+
+
+@contextlib.asynccontextmanager
+async def _not_watching(*_args: object, **_kwargs: object) -> AsyncIterator[None]:
+    """Stand in for the stall watch, which needs a live engine."""
+    yield
+
+
 def _session(
-    ledger: ProgressTrackingLedger, *, task_id: str, already: int
+    ledger: ProgressTrackingLedger,
+    *,
+    task_id: str,
+    already: int,
+    engine: object = None,
 ) -> OpenSession:
     """A session over *ledger*, opened once *already* records stood.
 
     The engine is never touched by ``spend``, which is the whole point of the
-    read being separable from the run.
+    read being separable from the run, so it defaults to nothing; only the
+    test that drives ``run_session`` supplies one.
 
     Returns:
         The session.
     """
     return OpenSession(
-        engine=None,  # type: ignore[arg-type]
+        engine=cast("AgentEngine", engine),
         ledger=ledger,
         label=f"{task_id}-attempt1",
         gateway_hosted=True,
@@ -117,3 +199,52 @@ class TestOneCellsLedgerServesManySessions:
             for entry in logs
             if entry["event"] == "evals.recursion_depth.spend_empty"
         ]
+
+
+class TestAFailedSessionsSpendIsWrittenDown:
+    """A raising session builds no outcome, so the log is the only record.
+
+    The read exists so a failed session's spend is not lost, and reading it
+    while letting the exception propagate lost exactly that: no cell record,
+    no journal row and no report ever sees the figure.
+    """
+
+    async def test_the_spend_of_a_raising_session_reaches_the_log(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ledger = ProgressTrackingLedger()
+        await ledger.record(_record(_LEAF_TASK, tokens=1200))
+        session = _session(
+            ledger, task_id=_LEAF_TASK, already=0, engine=_RaisingEngine()
+        )
+
+        @contextlib.asynccontextmanager
+        async def _open(
+            *_args: object, **_kwargs: object
+        ) -> AsyncIterator[OpenSession]:
+            yield session
+
+        monkeypatch.setattr(session_module, "open_session", _open, raising=True)
+        monkeypatch.setattr(session_module, "watching", _not_watching, raising=True)
+
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ProviderError, match=_UPSTREAM_REFUSAL),
+        ):
+            await run_session(
+                cast("SweepDeps", None),
+                identity=_identity(),
+                task=_task(),
+                workspace=cast("CellWorkspace", None),
+                execution_id="d1-gated-r0-leaf",
+                limits=SessionLimits(
+                    max_turns=8, cost_ceiling=5.0, token_ceiling=100_000
+                ),
+            )
+
+        failed = [
+            entry
+            for entry in logs
+            if entry["event"] == "evals.recursion_depth.unit_failed_spend"
+        ]
+        assert [entry["tokens"] for entry in failed] == [1200]

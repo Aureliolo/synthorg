@@ -89,6 +89,13 @@ _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _RESEARCH_SKILL = "research"
 _ANALYSIS_SKILL = "analysis"
 
+# The work item's definition of done, held here because the scripted plan has
+# to claim these criteria VERBATIM: the parser matches a subtask's `satisfies`
+# against the objective's own text, so two copies of the sentence would refuse
+# the plan the moment one of them was reworded.
+_RESEARCH_CRITERION = "Research findings are documented and cited"
+_ANALYSIS_CRITERION = "Analysis synthesises the research into a report"
+
 
 class _DecompositionAwareStrategy:
     """Branches decomposition tool calls vs plain sub-agent turns.
@@ -132,6 +139,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Data sources are catalogued.",
                                     ],
+                                    "satisfies": [_RESEARCH_CRITERION],
                                     # Prose, not a path: this harness runs no
                                     # real editor, and the artifact probe asks
                                     # the workspace only about path-shaped
@@ -151,6 +159,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Findings are summarised.",
                                     ],
+                                    "satisfies": [_ANALYSIS_CRITERION],
                                     "expected_artifacts": [
                                         "a written summary of the findings"
                                     ],
@@ -374,10 +383,7 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
         # A definition of done so the coordinator's clarification gate (on
         # by default) passes and the team path runs; this test exercises
         # the team spine, not the under-specified-work refinement handoff.
-        acceptance_criteria=(
-            "Research findings are documented and cited",
-            "Analysis synthesises the research into a report",
-        ),
+        acceptance_criteria=(_RESEARCH_CRITERION, _ANALYSIS_CRITERION),
     )
     result = await pipeline.run(work_item)
 

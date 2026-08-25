@@ -89,6 +89,20 @@ def test_an_out_dir_outside_the_repository_excludes_nothing(
     assert capture_git_state(repo, ignoring=elsewhere).dirty is True
 
 
+def test_an_out_dir_at_the_repository_root_excludes_nothing(repo: Path) -> None:
+    """``--out-dir .`` must not silence the dirty check for the whole worktree.
+
+    The exclusion is a pathspec, and ``:(exclude).`` matches every tracked
+    path, so a recording writing to the root would read clean however much
+    source it had edited and a resume would mix two source states under one
+    provenance record. The root is therefore the same case as an outside path,
+    for the opposite reason.
+    """
+    (repo / "source.py").write_text("value = 4\n", encoding="utf-8")
+
+    assert capture_git_state(repo, ignoring=repo).dirty is True
+
+
 def test_no_out_dir_reads_the_whole_tree(repo: Path) -> None:
     """The pre-existing behaviour, for a caller that writes nothing tracked."""
     (repo / "results").mkdir()

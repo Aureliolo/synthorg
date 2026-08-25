@@ -80,6 +80,13 @@ _PROJECT_ID = str(_project_uuid(_PROJECT))
 _RESEARCH_SKILL = "research"
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 
+# The objective's definition of done, held here because the scripted plan has
+# to claim these criteria VERBATIM: the parser matches a subtask's `satisfies`
+# against the objective's own text, so two copies of the sentence would refuse
+# the plan the moment one of them was reworded.
+_RELEASE_CRITERION = "The v0.8 release is cut from a green main"
+_NOTES_CRITERION = "Release notes summarise the user-facing changes"
+
 
 class _StopStrategy:
     """Branches decomposition tool calls vs plain sub-agent turns.
@@ -128,6 +135,14 @@ class _StopStrategy:
                                     "required_skills": [_RESEARCH_SKILL],
                                     "acceptance_criteria": [
                                         "The release scope is documented.",
+                                    ],
+                                    # The single item carries BOTH, because a
+                                    # one-subtask plan is the whole objective:
+                                    # tagging one criterion would say the
+                                    # other reaches no item at all.
+                                    "satisfies": [
+                                        _RELEASE_CRITERION,
+                                        _NOTES_CRITERION,
                                     ],
                                     # Prose, not a path: this harness runs no
                                     # real editor, and the artifact probe asks
@@ -335,10 +350,7 @@ async def test_objective_decomposes_under_always_team_policy(
         title="Ship the v0.8 release",
         description="Cut a stable v0.8 release with release notes.",
         requested_by="human-operator",
-        acceptance_criteria=(
-            "The v0.8 release is cut from a green main",
-            "Release notes summarise the user-facing changes",
-        ),
+        acceptance_criteria=(_RELEASE_CRITERION, _NOTES_CRITERION),
     )
 
     result = await adapter.submit(submission)

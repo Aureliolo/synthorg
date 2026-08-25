@@ -137,7 +137,11 @@ def _claimed(
         # The whole-cell row, which follows the cell's units and carries no
         # unit of its own. Nothing to attribute and nothing wrong.
         return True
-    cell_key, unit_id = found.group(1), found.group(2)
+    # Not `cell_key`: that name is the imported function this module calls in
+    # `repair_cell_spend`, and binding the string over it here leaves any later
+    # call inside this function raising `TypeError` on a str.
+    cell = found.group(1)
+    unit_id = found.group(2)
     if unit_id.endswith(PLAN_UNIT_SUFFIX):
         # Planning dispatches under the tree's ROOT task id, which the root
         # merge later reuses, while its journalled id is minted and matches no
@@ -146,7 +150,7 @@ def _claimed(
         # recorded cells, what stands when a plan row lands is one id holding
         # exactly what the plan journalled, planning being the first thing a
         # cell runs.
-        attributed[cell_key, unit_id] = sum(pending.values())
+        attributed[cell, unit_id] = sum(pending.values())
         pending.clear()
         return True
     if unit_id not in pending:
@@ -156,7 +160,7 @@ def _claimed(
     # Popping is what separates a repeated id: the balance standing against it
     # belongs to the unit being journalled NOW, and the next cell's root merge
     # starts from nothing.
-    attributed[cell_key, unit_id] = pending.pop(unit_id)
+    attributed[cell, unit_id] = pending.pop(unit_id)
     return True
 
 

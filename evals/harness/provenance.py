@@ -108,7 +108,11 @@ def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
 
     Excluded by pathspec rather than by filtering the output, so git does the
     matching: a directory outside the repository, or none at all, excludes
-    nothing and the query is the plain one.
+    nothing and the query is the plain one. The REPOSITORY ROOT is the same
+    case for the opposite reason: ``:(exclude).`` matches every tracked path,
+    so a recording writing to ``--out-dir .`` would read clean however much
+    source it had edited, and a resume would then mix two source states under
+    one provenance record.
 
     Rendered with forward slashes because a pathspec is git's syntax rather than
     the platform's, and a Windows separator inside ``:(exclude)`` matches
@@ -128,6 +132,8 @@ def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
         relative = ignoring.resolve().relative_to(repo_root.resolve())
     except ValueError:
         # Outside the repository, so nothing it holds was ever going to appear.
+        return ("status", "--porcelain")
+    if relative == Path():
         return ("status", "--porcelain")
     return ("status", "--porcelain", "--", ".", f":(exclude){relative.as_posix()}")
 

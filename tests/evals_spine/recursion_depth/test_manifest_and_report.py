@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.emit import write_report
+from evals.recursion_depth.emit import load_report, write_report
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -22,6 +22,7 @@ from evals.recursion_depth.models import (
     LEAF,
     MERGE,
     ORACLE_CAVEAT,
+    RECURSION_DEPTH_SCHEMA_VERSION,
     SIZING_CAVEAT,
     CellRecord,
     DepthPoint,
@@ -36,9 +37,9 @@ from synthorg.engine.decomposition.agent_session import (
 
 pytestmark = pytest.mark.unit
 
-_COMMITTED_MANIFEST = (
-    Path(__file__).resolve().parents[3] / "evals" / "recursion_depth" / "manifest.yaml"
-)
+_RECURSION_DEPTH = Path(__file__).resolve().parents[3] / "evals" / "recursion_depth"
+_COMMITTED_MANIFEST = _RECURSION_DEPTH / "manifest.yaml"
+_COMMITTED_CURVE = _RECURSION_DEPTH / "results" / "depth_curve.json"
 
 
 def _manifest_payload(**overrides: object) -> dict[str, object]:
@@ -412,6 +413,31 @@ class TestTheReportRefusesASilentGap:
                 unavailable_reason="and also this",
             )
 
+    def test_a_version_one_artifact_is_refused_by_name(self) -> None:
+        """A v1 report has no reading under v2, so it is refused as a VERSION.
+
+        ``DepthPoint`` changed from a fraction of the leaves' own claims to a
+        fraction of the specification, and ``extra="forbid"`` means the old
+        field names cannot be read at all. Left at version 1, the file would
+        pass the version field and fail on the shape, reporting an unknown
+        field for what is a whole-artifact mismatch.
+        """
+        payload = _report(cells=(_measured_cell(Arm.GATED),)).model_dump(mode="json")
+        payload["schema_version"] = 1
+
+        with pytest.raises(ValidationError, match="schema version mismatch"):
+            RecursionDepthReport.model_validate(payload)
+
+    def test_the_committed_curve_carries_the_current_version(self) -> None:
+        """The shipped artifact is loadable by the code that ships with it.
+
+        The one file a version bump can leave behind is the recording already
+        committed, which nothing else re-validates.
+        """
+        report = load_report(_COMMITTED_CURVE)
+
+        assert report.schema_version == RECURSION_DEPTH_SCHEMA_VERSION
+
     def test_satisfying_more_than_the_spec_asks_is_refused(self) -> None:
         # Now a check that the oracle and the provenance agree about WHICH
         # specification was run: both operands come from one requirement set,
@@ -596,6 +622,35 @@ class TestTheReportNamesBothPartiesPerMerge:
         assert rendered.count("| Assemble: the whole thing |") == 2
         assert "d2-gated-r0" in rendered
         assert "d2-ungated-r0" in rendered
+
+    def test_a_title_carrying_table_syntax_stays_in_one_row(
+        self, tmp_path: Path
+    ) -> None:
+        """One row per merge, whatever the agent called its unit.
+
+        A unit title is agent-authored, so a ``|`` splits one merge across
+        extra cells and a newline splits it across extra ROWS, which is
+        exactly the claim this table makes. Neither shows up as an error: the
+        file simply renders a table that says something else.
+        """
+        awkward = _cell_with_a_merge(Arm.GATED, reviewer=_REVIEWER_PAIR)
+        merge = awkward.units[1].model_copy(
+            update={"title": NotBlankStr("Assemble: a|b\nand c")}
+        )
+        report = _report(
+            cells=(awkward.model_copy(update={"units": (awkward.units[0], merge)}),)
+        )
+
+        _, md_path, _ = write_report(report, tmp_path)
+        rendered = md_path.read_text(encoding="utf-8")
+
+        assert "| Assemble: a\\|b and c |" in rendered
+        merge_rows = [
+            line
+            for line in rendered.splitlines()
+            if line.startswith("| d2-gated-r0 |") and "Assemble:" in line
+        ]
+        assert len(merge_rows) == 1
 
     def test_each_arm_reports_what_merging_cost_it(self, tmp_path: Path) -> None:
         # Repair in the gated arm alone would let it win by spending more

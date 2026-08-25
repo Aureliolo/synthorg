@@ -41,7 +41,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 1
+#:
+#: Version 2 reshaped :class:`DepthPoint`: a fraction of the SPECIFICATION
+#: (``required``/``satisfied``) replaced a fraction of the leaves' own claims
+#: (``delivered_claims``/``surviving_claims``/``runs``). A version-1 artifact
+#: therefore has no reading under this model at all, and the version check is
+#: what says so: left at 1, such a file would pass the version field and then
+#: fail on the shape, reporting a field error for what is a whole-artifact
+#: mismatch.
+RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 2
 
 
 #: What a recorded unit may be. Declared as a closed set rather than free text

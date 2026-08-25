@@ -124,7 +124,11 @@ def _curve(
         # would always equal the first and could never disagree with it.
         slot = (bucket(cell), cell.arm)
         required[slot] += requirement_count
-        satisfied[slot] += len(cell.merged_passing)
+        # DISTINCT ids, because the denominator counts each requirement once
+        # and `merged_passing` is a sequence that permits repeats: a cell
+        # listing R01 twice would satisfy two of the one requirement, which
+        # either inflates the fraction or trips the point's own subset check.
+        satisfied[slot] += len(set(cell.merged_passing))
         counted[slot] += 1
         cost[slot] += cell.total_cost
         tokens[slot] += cell.total_tokens

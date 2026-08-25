@@ -195,6 +195,22 @@ class TestWhatEntersTheDenominator:
         assert point.satisfied == 2
         assert point.fraction == pytest.approx(0.5)
 
+    def test_a_requirement_listed_twice_is_satisfied_once(self) -> None:
+        # `merged_passing` is a sequence, so it permits repeats, while the
+        # denominator counts each requirement once. Counted naively a cell
+        # listing R01 twice satisfies two of the one requirement, which either
+        # inflates the fraction or trips the point's own subset check.
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01",)),),
+            passing=("R01", "R01"),
+        )
+
+        point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
+
+        assert point.satisfied == 1
+
     def test_a_cell_whose_leaves_all_failed_still_scores(self) -> None:
         # The case that produced NO POINT under the claim-based metric, in both
         # arms at both measured depths. A tree that satisfies nothing is a

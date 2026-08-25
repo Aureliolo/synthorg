@@ -137,8 +137,9 @@ copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
 
-The retry row is the one where the sweep's arming turned out to be measuring
-the product default rather than compensating for it. A subtree in a live run was
+The `decomposition_max_retries` row is the one where the sweep's arming turned
+out to be measuring the product default rather than compensating for it. A
+subtree in a live run was
 refused four times and converged on the fifth, surviving only because the sweep
 arms six. The setting counts RETRIES and the first ask is not one, so a value of
 N allows N+1 attempts: the shipped default of two allowed three, and that

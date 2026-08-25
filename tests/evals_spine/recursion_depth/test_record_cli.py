@@ -303,6 +303,22 @@ class TestPlanMode:
         assert "caps 1, 2, 3 fit" in plan
         assert "stop inside cap 4" in plan
 
+    def test_the_stopping_cap_is_one_the_sweep_actually_runs(self) -> None:
+        """`--depths` may be non-contiguous, and the note names a SWEPT cap.
+
+        Adding one to the deepest affordable cap reads correctly only while
+        the caps happen to be consecutive. Told to stop inside a cap the run
+        never planned, an operator narrows against a number that means
+        nothing.
+        """
+        gapped = narrow(load_manifest(_MANIFEST), "1,2,3,5")
+
+        plan = describe_plan(gapped, _spec())
+
+        assert "caps 1, 2, 3 fit" in plan
+        assert "stop inside cap 5" in plan
+        assert "cap 4" not in plan
+
     def test_a_ceiling_that_covers_the_matrix_stays_quiet(self) -> None:
         # The note is a warning, not a running commentary: printed always, it
         # would be the line an operator stops reading.

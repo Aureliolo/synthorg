@@ -121,6 +121,11 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Data sources are catalogued.",
                                     ],
+                                    # Read off the objective rather than
+                                    # retyped: the parser matches this against
+                                    # the criterion text verbatim, so a copy
+                                    # that drifts by a word refuses the plan.
+                                    "satisfies": [_SEAM_CRITERIA[0].description],
                                     "expected_artifacts": ["docs/data-sources.md"],
                                 },
                                 {
@@ -133,6 +138,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Findings are summarised.",
                                     ],
+                                    "satisfies": [_SEAM_CRITERIA[1].description],
                                     "expected_artifacts": ["docs/findings.md"],
                                 },
                             ],

@@ -95,6 +95,13 @@ _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _AMOUNT = 5000.0
 _CURRENCY = "USD"
 
+# The charter's one success criterion, which `dispatch` carries onto the task
+# unchanged as its acceptance criterion. Held here because the scripted plan
+# has to claim it VERBATIM: the parser matches a subtask's `satisfies` against
+# the objective's own text, so the interview's answer and the plan's claim
+# cannot be two copies of the sentence.
+_CHARTER_CRITERION = "recall beats baseline by 10%"
+
 _Q1 = '{"needs_more": true, "next_question": "What is the budget?", "draft": null}'
 _Q2 = (
     '{"needs_more": true, '
@@ -105,7 +112,7 @@ _DRAFT = (
     '"title": "Better memory layer", '
     '"brief": "Build a self-hostable alternative to the incumbent memory tool.", '
     '"goals": ["beat baseline recall"], "constraints": ["self-hostable"], '
-    '"success_criteria": ["recall beats baseline by 10%"], '
+    f'"success_criteria": ["{_CHARTER_CRITERION}"], '
     '"scope": {"in_scope": ["retrieval"], "out_of_scope": ["billing"]}, '
     '"envelope": {"amount": 5000, "currency": "USD", '
     '"deadline": null, "time_horizon": "1 month"}, '
@@ -158,6 +165,11 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "The recall baseline is documented.",
                                     ],
+                                    # The charter states ONE criterion, so the
+                                    # other item is genuine pure support and
+                                    # claims nothing, which is the shape the
+                                    # plan-level check exists to allow.
+                                    "satisfies": [_CHARTER_CRITERION],
                                     "expected_artifacts": ["docs/recall-baseline.md"],
                                 },
                                 {

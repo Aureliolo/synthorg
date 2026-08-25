@@ -118,9 +118,11 @@ _PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 #: a product release that moves it cannot leave this arming a stale number.
 #:
 #: What it does NOT cover, deliberately and reportedly: an outage that outlasts
-#: the ladder, or the recorder's process dying. Both need the session's own
-#: state on disk, which is what ``synthorg.engine.checkpoint`` is for and what
-#: this harness does not yet wire.
+#: the ladder WITHIN one session. Past the ladder the session raises, and only
+#: an attempt whose ``ERROR`` the driver resumes gets its conversation back;
+#: the turns are on disk either way, because ``session.py`` hands the engine
+#: both a ``checkpoint_repo`` and a ``heartbeat_repo`` and
+#: ``record_recursion_depth.py::_build_deps`` supplies them from the host.
 _PROVIDER_RETRY_SETTING: Final[str] = "retry_max_attempts"
 
 #: Decomposition self-correction attempts, raised above the product default.

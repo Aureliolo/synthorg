@@ -52,6 +52,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_DEDUPED,
     EVALS_RECURSION_SPEND_EMPTY,
     EVALS_RECURSION_UNIT_EXECUTED,
+    EVALS_RECURSION_UNIT_FAILED_SPEND,
     EVALS_RECURSION_UNIT_STARTED,
 )
 from synthorg.persistence.checkpoint_protocol import (
@@ -695,11 +696,27 @@ async def run_session(
                     resume_execution_id=execution_id if resume else None,
                 )
             turns = result.total_turns
-        finally:
-            # Read however the session ended. A provider call that recorded
-            # cost and then raised has still been paid for, and a unit that
-            # reports the failure without the spend under-reports the sweep.
-            spend = await session.spend(turns=turns)
+        except BaseException:
+            # LOGGED here, because the read below is the only place this
+            # figure exists and a raising session builds no `SessionOutcome`
+            # to carry it out. Reading it and letting the exception propagate
+            # dropped the spend of every failed session, which is exactly the
+            # loss the `finally` was added to prevent.
+            failed = await session.spend(turns=turns)
+            logger.warning(
+                EVALS_RECURSION_UNIT_FAILED_SPEND,
+                execution_id=execution_id,
+                task_id=str(task.id),
+                agent_id=str(identity.id),
+                turns=turns,
+                cost=failed.cost,
+                tokens=failed.tokens,
+            )
+            raise
+        # Read however the session ended. A provider call that recorded cost
+        # and then raised has still been paid for, and a unit that reports the
+        # failure without the spend under-reports the sweep.
+        spend = await session.spend(turns=turns)
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,

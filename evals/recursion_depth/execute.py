@@ -230,6 +230,12 @@ async def run_leaf(
         limits=limits,
     )
     attempts = 1
+    # The attempt that died is still spend: its calls were billed and its turns
+    # were taken. Each figure below is what ONE session added, because the
+    # ledger read is a delta past the count standing when that session opened
+    # and the loop's turn list is its own, so reporting the resume's alone
+    # would file a 30-turn failure followed by a 4-turn resume as a 4-turn unit.
+    spent = _Spend.of(outcome)
     if _died_in_flight(outcome):
         # RESUMED, not re-run. The engine replays the conversation this
         # execution_id checkpointed and continues from the last turn, so an
@@ -253,19 +259,62 @@ async def run_leaf(
             resume=True,
         )
         attempts = 2
+        spent = spent.plus(outcome)
     detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
         attempts=attempts,
-        turns=outcome.turns,
-        cost=outcome.cost,
-        tokens=outcome.tokens,
+        turns=spent.turns,
+        cost=spent.cost,
+        tokens=spent.tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         undeclared_paths=final.missing,
         detail=detail,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Spend:
+    """What a leaf has cost across every session it took.
+
+    Attributes:
+        turns: Turns taken, summed over the attempts.
+        cost: Money booked, summed over the attempts.
+        tokens: Tokens booked, summed over the attempts.
+    """
+
+    turns: int
+    cost: float
+    tokens: int
+
+    @classmethod
+    def of(cls, outcome: SessionOutcome) -> _Spend:
+        """Open the running total on one session's figures.
+
+        Args:
+            outcome: The session that has run.
+
+        Returns:
+            The total so far.
+        """
+        return cls(turns=outcome.turns, cost=outcome.cost, tokens=outcome.tokens)
+
+    def plus(self, outcome: SessionOutcome) -> _Spend:
+        """Add a further session's figures.
+
+        Args:
+            outcome: The session that has just run.
+
+        Returns:
+            The total including it.
+        """
+        return _Spend(
+            turns=self.turns + outcome.turns,
+            cost=self.cost + outcome.cost,
+            tokens=self.tokens + outcome.tokens,
+        )
 
 
 def _died_in_flight(outcome: SessionOutcome) -> bool:

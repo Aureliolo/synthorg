@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "provenance": {
     "generated_at": "2026-08-25T17:44:52.751944Z",
     "git_commit": "d67bdae46526e7826c61b08561da5bd9ff89c35f",

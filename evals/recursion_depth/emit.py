@@ -11,6 +11,9 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
+from typing import get_args
+
+from pydantic import BaseModel, JsonValue
 
 from evals.errors import RecursionDepthNoCellsMeasuredError
 from evals.recursion_depth.chart import render_chart
@@ -365,6 +368,25 @@ def _pair_label(pair: ModelPair | None) -> str:
     return f"{pair.label} ({pair.family or 'family undeclared'})"
 
 
+def _cell(value: str) -> str:
+    """Render *value* so it stays inside the one table cell it belongs to.
+
+    Every dynamic value on these rows is agent-authored (a unit title, a
+    verdict) or operator-authored (a model id), so a ``|`` splits one merge
+    into several cells and a newline splits it into several ROWS. The table's
+    whole claim is one row per merge, and either character silently breaks it
+    in a file whose only reader is a person.
+
+    Args:
+        value: The text to place in a cell.
+
+    Returns:
+        The text, safe to interpolate between two delimiters.
+    """
+    flattened = " ".join(value.splitlines())
+    return flattened.replace("|", "\\|")
+
+
 def _pairing_table(report: RecursionDepthReport) -> list[str]:
     """Render every ``(executor, reviewer)`` combination that actually ran.
 
@@ -378,8 +400,8 @@ def _pairing_table(report: RecursionDepthReport) -> list[str]:
     for cell, unit in _merges_of(report):
         pairing = (
             cell.arm.value,
-            _pair_label(unit.executor),
-            _pair_label(unit.reviewer),
+            _cell(_pair_label(unit.executor)),
+            _cell(_pair_label(unit.reviewer)),
         )
         counts[pairing] += 1
     rows = ["| Arm | Assembled by | Judged by | Merges |", "|---|---|---|---:|"]
@@ -405,13 +427,72 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
     ]
     rows.extend(
         f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
-        f"| {unit.title} | {_pair_label(unit.executor)} "
-        f"| {_pair_label(unit.reviewer)} | {unit.verdict or 'none'} "
+        f"| {_cell(unit.title)} | {_cell(_pair_label(unit.executor))} "
+        f"| {_cell(_pair_label(unit.reviewer))} | {_cell(unit.verdict or 'none')} "
         f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
         f"| {'yes' if unit.delivered else 'no'} |"
         for cell, unit in _merges_of(report)
     )
     return rows
+
+
+def _without_derived(value: JsonValue, model: type[BaseModel]) -> JsonValue:
+    """Drop from *value* the keys *model* derives rather than stores.
+
+    The report is written with ``model_dump_json``, which serialises every
+    ``computed_field``, and read back into models that are ``extra="forbid"``,
+    which refuses them: the writer and the reader disagreed about the same
+    file, so nothing this harness emitted could be loaded at all. Stripping is
+    the honest direction, because a derived value read from a file is a second
+    answer to something the model already decides.
+
+    Derived from ``model_computed_fields`` rather than a list of names, since a
+    list is one ``@computed_field`` away from disagreeing with the model.
+
+    Args:
+        value: The decoded JSON at this level.
+        model: The model it will be validated against.
+
+    Returns:
+        The value, with this level's derived keys and its children's removed.
+    """
+    if not isinstance(value, dict):
+        return value
+    nested = {
+        name: field.annotation
+        for name, field in model.model_fields.items()
+        if field.annotation is not None
+    }
+    stripped: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        if key in model.model_computed_fields:
+            continue
+        child = _nested_model(nested.get(key))
+        stripped[key] = (
+            [_without_derived(entry, child) for entry in item]
+            if child is not None and isinstance(item, list)
+            else _without_derived(item, child)
+            if child is not None
+            else item
+        )
+    return stripped
+
+
+def _nested_model(annotation: object) -> type[BaseModel] | None:
+    """The model a field holds, directly or inside a sequence.
+
+    Args:
+        annotation: The field's declared type.
+
+    Returns:
+        The model, or ``None`` when the field holds no model.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        if isinstance(arg, type) and issubclass(arg, BaseModel):
+            return arg
+    return None
 
 
 def load_report(path: Path) -> RecursionDepthReport:
@@ -423,8 +504,9 @@ def load_report(path: Path) -> RecursionDepthReport:
     Returns:
         The parsed report.
     """
+    decoded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     return RecursionDepthReport.model_validate(
-        json.loads(path.read_text(encoding="utf-8"))
+        _without_derived(decoded, RecursionDepthReport)
     )
 
 

@@ -92,6 +92,15 @@ learns that a session did not run in one piece. The spend is real either way
 and the unit reports one turn count, so without this line a resumed unit is
 indistinguishable from a unit that simply took longer, and a provider having a
 bad hour looks like a model that reasons at length."""
+EVALS_RECURSION_UNIT_FAILED_SPEND: Final[str] = (
+    "evals.recursion_depth.unit_failed_spend"
+)
+"""What a session had already spent when it raised rather than returned.
+
+A raising session builds no outcome, so this figure reaches no cell record, no
+journal row and no report: the log line IS the only place it is written down. A
+provider call that recorded cost and then failed has still been paid for, and
+without this the sweep's own ledger reads that money as never spent."""
 EVALS_RECURSION_MERGE_ATTEMPTED: Final[str] = "evals.recursion_depth.merge_attempted"
 EVALS_RECURSION_MERGE_GATED: Final[str] = "evals.recursion_depth.merge_gated"
 EVALS_RECURSION_MERGE_PARKED: Final[str] = "evals.recursion_depth.merge_parked"
