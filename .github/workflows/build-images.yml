@@ -1185,7 +1185,15 @@ jobs:
       needs.build-fine-tune-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # A build of either variant runs 15-20 minutes with `layer-cache: "false"`
+    # above, which is what makes this ceiling safe: the same build spent 45
+    # minutes, and once hung indefinitely, exporting its 3.16 GB venv layer to
+    # a repo cache sitting at its 10 GB ceiling. Raising the ceiling instead
+    # would have bought a slow build more room to stay slow; removing the
+    # export removes the variance the ceiling was absorbing. Keep the two
+    # together: restoring the layer cache here without restoring 60 minutes
+    # reinstates a timeout this job legitimately exceeded.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -1221,6 +1229,11 @@ jobs:
           # torch / CUDA wheels publish no arm64 build.
           platform: amd64
           cache-scope: fine-tune-${{ matrix.variant }}
+          # The one image excluded from the repo-global layer cache. Its
+          # torch/CUDA venv is a single 3.16 GB blob, so exporting it both
+          # evicts every other image's entries and takes minutes to upload
+          # against a cache already at its ceiling.
+          layer-cache: "false"
           free-disk-space: "true"
           trivy-version: ${{ env.TRIVY_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -1228,19 +1241,23 @@ jobs:
   build-fine-tune-publish:
     name: Publish Fine-Tune
     needs: [version, build-fine-tune]
-    # `failure` is admitted deliberately. `build-fine-tune` is a
-    # `fail-fast: false` matrix, so its aggregate result is `failure` when ANY
-    # variant failed. Gating on `success` alone would let one variant's
-    # transient failure withhold the healthy variant's publish as well, and
-    # then fail both retag legs on the next tag push, since the images the tag
-    # needs were never pushed. Each publish leg downloads its own variant's
-    # tarball, so the healthy variant publishes while the failed variant's leg
-    # fails loudly on the artifact it never produced. `skipped` stays excluded:
-    # no build ran, so there is nothing to push.
+    # `failure` and `cancelled` are both admitted deliberately.
+    # `build-fine-tune` is a `fail-fast: false` matrix, so its aggregate
+    # result is `failure` when ANY variant failed and `cancelled` when any
+    # variant hit the job `timeout-minutes` ceiling. Gating on `success` alone
+    # would let one variant's transient failure withhold the healthy variant's
+    # publish as well, and then fail both retag legs on the next tag push,
+    # since the images the tag needs were never pushed. Each publish leg
+    # downloads its own variant's tarball, so the healthy variant publishes
+    # while the stopped variant's leg fails loudly on the artifact it never
+    # produced. `skipped` stays excluded: no build ran, so there is nothing to
+    # push. `!cancelled()` is unrelated and stays: it keys on the WORKFLOW RUN
+    # being cancelled, which a single job timing out does not do.
     if: >-
       !cancelled() &&
       (needs.build-fine-tune.result == 'success' ||
-        needs.build-fine-tune.result == 'failure') &&
+        needs.build-fine-tune.result == 'failure' ||
+        needs.build-fine-tune.result == 'cancelled') &&
       github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
