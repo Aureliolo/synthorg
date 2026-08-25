@@ -45,6 +45,7 @@ from evals.errors import (
     RecursionDepthCapabilityUnresolvedError,
     RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
+    RecursionDepthSpendRepairEmptyError,
 )
 from evals.harness.binding import HarnessBinder
 from evals.harness.host import (
@@ -66,7 +67,12 @@ from evals.recursion_depth.manifest import (
     RecursionDepthManifest,
     load_manifest,
 )
-from evals.recursion_depth.models import ORACLE_CAVEAT, SIZING_CAVEAT
+from evals.recursion_depth.models import (
+    METRIC_CAVEAT,
+    ORACLE_CAVEAT,
+    RUN_STATE_CAVEATS,
+    SIZING_CAVEAT,
+)
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import run_preflight
 from evals.recursion_depth.provenance import capture_provenance
@@ -88,8 +94,11 @@ from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+    EVALS_RECURSION_RECORD_START,
+)
 from synthorg.providers.family import model_named
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
@@ -858,11 +867,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Rebuild the token column from a recorder log while re-scoring. "
-            "For recordings made before the per-cell ledger landed, where "
-            "concurrent leaves swapped a process-wide sink and some sessions "
-            "journalled zero. The log holds one cost record per CALL, which no "
-            "swap can scramble. Adds a caveat naming the repair, because a "
-            "silently reconstructed spend column is worse than the fault."
+            "For a recording whose sessions shared one process-wide cost sink "
+            "swapped per session, where concurrent leaves could journal zero. "
+            "The log holds one cost record per CALL, which no swap can "
+            "scramble. Adds a caveat naming the repair, because a silently "
+            "reconstructed spend column is worse than the fault. Refuses when "
+            "the log places no call at all, rather than claim a repair that "
+            "changed nothing."
         ),
     )
     return parser.parse_args(argv)
@@ -999,20 +1010,47 @@ def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
     so re-deriving from the cells alone would silently drop the sentence saying
     the matrix stopped early.
 
-    Absent or unreadable is not an error: a re-score of a recording whose
-    report never landed is exactly the case the mode is useful in, and the
-    caller seeds the standing caveats instead.
+    An absent report is not an error: a re-score of a recording whose report
+    never landed is exactly the case the mode is useful in, and the caller
+    seeds the standing caveats instead. A report that is THERE and unreadable
+    is a different fact and is logged, because it is the only copy of those
+    sentences and returning the same empty tuple for both would quietly emit a
+    report reading as though the sweep finished.
 
     Returns:
         The caveats, or empty when there is no readable previous report.
     """
     path = out_dir / REPORT_JSON_NAME
     try:
-        previous = json.loads(path.read_text(encoding="utf-8"))
-    except OSError, json.JSONDecodeError:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return ()
-    caveats = previous.get("caveats")
+    except OSError as exc:
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    try:
+        previous = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    caveats = previous.get("caveats") if isinstance(previous, dict) else None
     if not isinstance(caveats, list):
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type="SchemaMismatch",
+            error="no caveats list",
+        )
         return ()
     return tuple(str(entry) for entry in caveats)
 
@@ -1038,24 +1076,46 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
         Process exit code.
     """
     provenance, cells = read_recorded_cells(out_dir)
-    # Carried across verbatim, because the run-state caveats (the session
-    # ceiling, a quota refusal) are appended while the loop runs and are
-    # recoverable from nowhere else: the journal records cells, not why the
-    # sweep stopped. Seeded only when there is no previous report to read,
-    # since the two standing caveats hold for every sweep this harness runs.
+    # Rebuilt by default, carried only by declaration. The STANDING caveats
+    # hold for every sweep this harness runs and the DERIVED ones are a pure
+    # function of the cells, so re-deriving both is what gives an old report
+    # this release's wording; carrying them instead froze a report at the
+    # vocabulary it was written with, and re-scoring one twice left it holding
+    # two wordings of the same caveat side by side.
     #
-    # The repair caveat is the exception, and is dropped rather than carried.
-    # The journal holds the RAW figures and the repair is applied at scoring
-    # time, so a re-score without the flag emits unrepaired numbers; inheriting
-    # the sentence saying they were repaired would make the report state the
-    # opposite of what it holds.
+    # `RUN_STATE_CAVEATS` is the whole set that cannot be re-derived: they are
+    # facts about how one run went (the session ceiling, a quota refusal, a
+    # same-family judge) and the journal records cells, not why the sweep
+    # stopped. Matching on the declared set rather than on "anything I do not
+    # recognise" is what stops a retired sentence living for ever.
+    #
+    # The repair caveat is deliberately in neither group. The journal holds the
+    # RAW figures and the repair is applied at scoring time, so a re-score
+    # without the flag emits unrepaired numbers and inheriting the sentence
+    # saying they were repaired would make the report state the opposite of
+    # what it holds.
     caveats = [
-        caveat
-        for caveat in _previous_caveats(out_dir)
-        if caveat != SPEND_REPAIRED_CAVEAT
-    ] or [SIZING_CAVEAT, ORACLE_CAVEAT, *derived_caveats(cells)]
+        METRIC_CAVEAT,
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+        *derived_caveats(cells),
+        *(
+            caveat
+            for caveat in dict.fromkeys(_previous_caveats(out_dir))
+            if caveat in RUN_STATE_CAVEATS
+        ),
+    ]
     if repair_from is not None:
-        cells = repair_cell_spend(cells, tokens_by_unit(repair_from))
+        attributed = tokens_by_unit(repair_from)
+        if not attributed:
+            # The caveat is a provenance claim, so appending it beside figures
+            # nothing touched is the worse outcome of the two.
+            msg = (
+                f"{repair_from} attributed no calls to any unit; the log is "
+                f"not this recording's, or its rendering no longer parses"
+            )
+            raise RecursionDepthSpendRepairEmptyError(msg)
+        cells = repair_cell_spend(cells, attributed)
         caveats.append(SPEND_REPAIRED_CAVEAT)
     report = assemble_report(
         provenance=provenance,

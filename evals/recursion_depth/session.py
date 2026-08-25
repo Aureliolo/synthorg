@@ -232,8 +232,9 @@ class OpenSession:
     label: str
     gateway_hosted: bool
     task_id: str
+    already: int
 
-    async def spend(self) -> SessionSpend:
+    async def spend(self, *, turns: int | None = None) -> SessionSpend:
         """Read what this session has cost so far, in money and in tokens.
 
         Drains first: the cost chokepoint submits each record on a background
@@ -248,9 +249,25 @@ class OpenSession:
         ledger is installed as a process-wide field, so a per-session one has
         to be SWAPPED, and with several leaves in flight the swaps interleave:
         the last one installed collects everyone's records and the rest collect
-        none. Measured at concurrency 4, that left 42 of 129 leaf sessions
-        journalling zero after running up to 56 turns. One ledger per cell and
-        a filter per session has no window to lose, at any concurrency.
+        none. Measured at concurrency 4, that left 59 of 183 leaf sessions
+        journalling zero, the worst of them after 56 turns. One ledger per cell
+        and a filter per session has no window to lose, at any concurrency.
+
+        The id alone is not the filter, because a task id does not name one
+        session. A merge node runs its assembly and its review under the SAME
+        task, several times over, so an id-only read returns everything that
+        node has spent so far while ``run_merge`` adds each read as a delta:
+        the second read already holds the first, and the third holds both.
+        What each session added is what stands past the count taken when it
+        opened, and the sessions sharing an id are sequential, so nothing else
+        can append between the two reads.
+
+        Args:
+            turns: How many turns the session took, or ``None`` when it ended
+                in a way that never reported. A session that took NO turn
+                spent nothing and is not the loss this guard watches for: the
+                resume path opens one whose first call failed every retry, and
+                escalating there teaches a reader to discount the line.
 
         Returns:
             What this session's calls add up to, each counted once.
@@ -260,14 +277,17 @@ class OpenSession:
             record
             for record in await collect_all_records(self.ledger)
             if record.task_id == self.task_id
-        ]
-        if not records:
+        ][self.already :]
+        if not records and turns != 0:
             # The sibling guard in `session_spend` covers a ledger whose
             # accounts were all DROPPED. Nothing covered a session that
             # collected none, which reaches the same zero and went unreported
             # for an entire run. These rows are the only spend ledger there is.
             logger.error(
-                EVALS_RECURSION_SPEND_EMPTY, label=self.label, task_id=self.task_id
+                EVALS_RECURSION_SPEND_EMPTY,
+                label=self.label,
+                task_id=self.task_id,
+                turns=turns,
             )
         return session_spend(
             records, gateway_hosted=self.gateway_hosted, label=self.label
@@ -561,7 +581,24 @@ async def open_session(
             label=binding.execution_id,
             gateway_hosted=deps.open_run_ledger is not None,
             task_id=binding.task_id,
+            already=await _standing(ledger, binding.task_id),
         )
+
+
+async def _standing(ledger: ProgressTrackingLedger, task_id: str) -> int:
+    """How many records the ledger already holds against *task_id*.
+
+    Args:
+        ledger: The ledger this session will write into.
+        task_id: The id its calls will carry.
+
+    Returns:
+        The count standing before the session takes a turn.
+    """
+    await ledger.drain_pending_records()
+    return sum(
+        1 for record in await collect_all_records(ledger) if record.task_id == task_id
+    )
 
 
 def watching(
@@ -647,6 +684,7 @@ async def run_session(
     binding = run_binding(
         identity=identity, task=task, execution_id=execution_id, limits=limits
     )
+    turns: int | None = None
     async with open_session(deps, binding=binding, workspace=workspace) as session:
         try:
             async with watching(deps, session):
@@ -656,11 +694,12 @@ async def run_session(
                     max_turns=limits.max_turns,
                     resume_execution_id=execution_id if resume else None,
                 )
+            turns = result.total_turns
         finally:
             # Read however the session ended. A provider call that recorded
             # cost and then raised has still been paid for, and a unit that
             # reports the failure without the spend under-reports the sweep.
-            spend = await session.spend()
+            spend = await session.spend(turns=turns)
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,

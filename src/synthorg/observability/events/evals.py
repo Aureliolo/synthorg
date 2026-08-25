@@ -146,27 +146,6 @@ these session rows are the sweep's spend ledger of record."""
 EVALS_RECURSION_SPEND_ALL_DROPPED: Final[str] = (
     "evals.recursion_depth.spend_all_dropped"
 )
-"""A session collected no records at all, so it journalled itself as free.
-
-The sibling above covers a ledger whose accounts were all DROPPED; this covers
-one that held nothing to drop, which reaches the same zero by a different route
-and went unreported for a whole run. A session that took turns and recorded
-nothing is spend that happened and was never written down, and these rows are
-the only ledger there is."""
-EVALS_RECURSION_SPEND_EMPTY: Final[str] = "evals.recursion_depth.spend_empty"
-"""A recording's spend column was rebuilt from its own per-call log.
-
-Re-scoring an old recording whose per-session ledger was scrambled by
-concurrency. Logged because a repaired figure is a provenance claim: a token
-column silently reconstructed is worse than the fault it corrects."""
-EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repaired"
-"""The repair found calls that no journalled unit claimed.
-
-Their spend is real and is now attributed to nothing, which is the same class of
-loss the repair exists to undo, so it is reported rather than dropped in
-silence. Expected in one case only: a log captured while the run was still
-appending to it."""
-EVALS_RECURSION_SPEND_UNCLAIMED: Final[str] = "evals.recursion_depth.spend_unclaimed"
 """No account of a session's calls carried the category the gateway stamps.
 
 Not the dedupe above: preferring one account of a call presumes another
@@ -174,6 +153,58 @@ survives, and here none did, so the whole ledger is counted instead and the
 spend is right either way. Loud regardless, because the premise that every call
 crosses the hosted gateway did not hold for this session, and that is a fact
 about the run's wiring which nothing else would report."""
+EVALS_RECURSION_SPEND_EMPTY: Final[str] = "evals.recursion_depth.spend_empty"
+"""A session collected no records at all, so it journalled itself as free.
+
+The sibling above covers a ledger whose accounts were all DROPPED; this covers
+one that held nothing to drop, which reaches the same zero by a different route
+and went unreported for a whole run. A session that took turns and recorded
+nothing is spend that happened and was never written down, and these rows are
+the only ledger there is."""
+EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repaired"
+"""A recording's spend column was rebuilt from its own per-call log.
+
+Re-scoring an old recording whose per-session ledger was scrambled by
+concurrency. Logged because a repaired figure is a provenance claim: a token
+column silently reconstructed is worse than the fault it corrects."""
+EVALS_RECURSION_SPEND_UNCLAIMED: Final[str] = "evals.recursion_depth.spend_unclaimed"
+"""The repair found calls that no journalled unit claimed.
+
+Their spend is real and is attributed to nothing, which is the same class of
+loss the repair exists to undo, so it is reported rather than dropped in
+silence. Expected in one case only: a log captured while the run was still
+appending to it."""
+EVALS_RECURSION_LEAF_FAILURE_MASKED: Final[str] = (
+    "evals.recursion_depth.leaf_failure_masked"
+)
+"""Sibling leaves failed together and only one of them could propagate.
+
+Siblings are built concurrently and are deliberately not cancelled when one
+fails, so a round can end holding several failures while a caller can only be
+told about one. The rest are real and would otherwise vanish at the point the
+first is raised, taking with them the evidence that a round failed broadly
+rather than once."""
+EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE: Final[str] = (
+    "evals.recursion_depth.previous_report_unreadable"
+)
+"""A report was sitting where a re-score reads its predecessor, and would not
+parse.
+
+Absent is ordinary and silent: the mode exists for a recording whose report
+never landed. Present and unreadable is not, because a run-state caveat (the
+session ceiling, a quota refusal) is appended while the loop runs and the
+journal does not hold it, so that file is the only copy. Silence here re-emits
+a report reading as though the sweep finished."""
+EVALS_RECURSION_SPEND_LOG_MALFORMED: Final[str] = (
+    "evals.recursion_depth.spend_log_malformed"
+)
+"""The repair read lines it could not parse, and placed none of them.
+
+Separate from the unclaimed sibling, which knows what it lost and how much: a
+line whose fields do not match carries a call the repair cannot even size, so
+it is missing from both the attributed total and the unclaimed one. Nothing
+else would show it, and a repair that quietly read half a log would still emit
+a report claiming the column was rebuilt."""
 EVALS_RECURSION_CELL_JOURNALLED: Final[str] = "evals.recursion_depth.cell_journalled"
 EVALS_RECURSION_RESUMED: Final[str] = "evals.recursion_depth.resumed"
 EVALS_RECURSION_CELL_REPLAYED: Final[str] = "evals.recursion_depth.cell_replayed"

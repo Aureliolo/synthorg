@@ -29,12 +29,14 @@ not, the ceiling is global and this is a twenty-agent product.
 node plans at `current_depth` 0 through `max_depth - 1`: a cap of three means
 three levels of planning, the root plus two below it.
 
-The harness reports the same unit. It used to report `max_depth_reached`, which
-is the deepest node's zero-based INDEX, so a run that used its whole cap of
-three logged `achieved_depth=2` beside `depth_cap=3` and read as a tree that
-stopped a level short. `evals/recursion_depth/tree.py::achieved_levels` owns the
-conversion and is the only place it happens; a leaf's own `depth` is still an
-index, and `score.py::_DEPTH_OFFSET` is where that one is converted.
+The harness reports the same unit, and the conversion is worth naming because
+the raw signal disagrees with it: `max_depth_reached` is the deepest node's
+zero-based INDEX, so a run that used its whole cap of three carries a 2, which
+beside `depth_cap=3` reads as a tree that stopped a level short.
+`evals/recursion_depth/tree.py::achieved_levels` owns the conversion and is the
+only place it happens. A leaf's own `depth` stays an index and is never
+converted: nothing bins on it, since the curve buckets each run on the depth its
+TREE reached.
 
 For an experiment whose independent variable is depth this decides how the
 x-axis is labelled, so it is stated once here: **a cap of N fully used reports
@@ -128,8 +130,9 @@ it measured is only interpretable against what it armed
 | `decomposition_timeout_seconds` | 600s | 2400s | Sized for a model that answers directly; every model worth sweeping reasons first, and losing an arm to a timing margin destroys the comparison rather than slowing it |
 | `decomposition_tree_timeout_seconds` | 3600s | its declared maximum | A sweep is not a request handler, and the default is sized for the ones that are |
 | `decomposition_max_retries` | 5 | 6 | A cell that never plans destroys its pairing rather than costing a data point |
+| `providers.retry_max_attempts` | 3 | its declared maximum | Widens the ladder between the hosted gateway and the real upstream provider, where a momentary blip otherwise terminates a session thirty turns in and nothing re-enters that conversation. It does NOT widen the harness driver's own ladder, which takes its budget from the company config so a recorded artefact stays reproducible from the config it names |
 
-The three armed at a declared maximum read it off the definition rather than
+The four armed at a declared maximum read it off the definition rather than
 copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
@@ -176,9 +179,10 @@ production tail. Turning it on is the rest of the workstream layer.
 ## The experiment
 
 `evals/recursion_depth/` sweeps the depth cap with the merge gate on and with
-it off, and emits one chart: the fraction of leaf work surviving to a correct
-merged result, against the depth a tree actually reached, one line per arm,
-with a cost panel beside it.
+it off, and emits one chart: the fraction of the specification a merged tree
+satisfies, against the depth that tree actually reached, one line per arm, with
+a cost panel beside it. That axis is not the one the question asks for, and
+[The metric](#the-metric) below says why it stands in.
 
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.
@@ -202,25 +206,43 @@ anything, and `make recursion-depth-record` to measure for real.
 
 ### The metric
 
-For each leaf that delivered, the specification requirements it claimed through
-`SubtaskDefinition.satisfies` are leaf work delivered. That field carries the
-root objective's acceptance-criterion TEXT rather than requirement ids, because
-that is what the planner is given and echoes back, so the harness resolves each
-claim to the id it names before anything counts it (`recursion_depth/claims.py`
-owns both directions, and an unresolvable claim is dropped with a warning rather
-than passed on). After the root merge the oracle runs over the whole
-specification, and:
+The question wants leaf work in the denominator: of what the leaves delivered,
+how much survived the merge. The harness plots something else, and the
+substitution is the single most important thing to know about the chart.
+
+**What is plotted.** After the root merge the held-out oracle runs over the
+whole specification, and:
 
 ```text
-        | claimed by delivered leaves AND passing in the merged tree |
-    y = ------------------------------------------------------------
-        | claimed by delivered leaves |
+        | requirements the merged tree satisfies |
+    y = ----------------------------------------
+        | requirements the specification defines |
 ```
 
-Delivery rather than standalone correctness is the denominator on purpose. A
-leaf's own tree usually cannot run the specification oracle at all: at depth 5
-a unit is one function and nothing above it exists yet. Requiring a standalone
-pass would empty the denominator exactly where the curve is most interesting.
+The denominator is fixed at 42 for every cell, so every run produces a point
+and the two arms are comparable at every depth. `DepthPoint.fraction` sums both
+operands per `(depth, arm)` bucket; `evals/recursion_depth/score.py` owns it.
+
+**Why the intended denominator was not usable.** Leaf work is claimed through
+`SubtaskDefinition.satisfies`, which carries the root objective's
+acceptance-criterion TEXT rather than requirement ids, because that is what the
+planner is given and echoes back, so the harness resolves each claim to the id
+it names before anything counts it (`recursion_depth/claims.py` owns both
+directions). Measured on a live run that population is too sparse to divide by:
+a leaf must pass its own suite to be counted at all and 62 of 183 did, a
+delivered leaf at depth 2 or deeper often claims nothing, and 143 claims named
+no requirement the specification defines. Whole cells came out with an empty
+denominator and therefore no point at all, the ungated arm among them at depths
+2 and 3, which deletes the arm comparison the sweep exists for.
+
+**What the substitution costs.** Attribution. A tree scoring well because the
+merging agent rebuilt the work itself and one scoring well because its leaves'
+work survived are the same number here, so the curve answers whether depth
+survives, not whether leaf work does. The per-unit records still carry the
+claim-level figures, so the narrower question stays askable once the claim
+mapping is trustworthy; that is issue #2843. Every emitted artefact carries
+`METRIC_CAVEAT` saying so, because the chart and the JSON travel without this
+page.
 
 ### What delivery is decided by, and what it is not
 
@@ -377,6 +399,40 @@ COMMIT does, because the identity pins that too, and that is the constraint that
 actually governs a staged recording: fix everything before the first stage, and
 carry the tree unchanged until the last one.
 
+`--leaf-concurrency` is the only lever that changes wall clock rather than the
+bill: sibling leaves at one level have no dependency on each other, so they
+build together. Merges never overlap, and the cell loop stays sequential, which
+is what keeps one cost ledger per cell readable.
+
+### Re-emitting a report without paying again
+
+`--rescore` rebuilds the whole report from the journal alone. It reads no
+manifest, contacts no provider and spends nothing: the cells, the provenance and
+both curves are all recoverable from what the recording already wrote. It exists
+because a scoring or rendering defect found after a multi-hour run is otherwise
+only fixable by paying for the run again, and because a report produced by a
+scratch script is reproducible by nobody, which is most of what the provenance
+block is for.
+
+A re-score REBUILDS every caveat it can derive and CARRIES only the declared
+`RUN_STATE_CAVEATS`, the three that record how one run went (a session ceiling,
+a quota refusal, a same-family judge) and that the journal does not hold.
+Deriving the rest is what gives an old recording the current release's wording;
+carrying them instead left a re-scored report holding two wordings of the same
+caveat side by side.
+
+`--repair-spend-from` takes the recorder's own log and rebuilds the token
+column from it, for a recording whose sessions shared one process-wide cost
+sink. That sink is swapped per session, so concurrent leaves could journal zero
+while a neighbour absorbed their records; the log is written one line per CALL,
+which no swap can scramble. Attribution is by interval rather than by task id,
+because the root task id is derived from the specification and repeats across
+every cell: a unit's spend is what banked against its id since that id was last
+journalled. The plan row is cut off explicitly, since planning dispatches under
+the root id that the root merge later reuses. A repair that places no call at
+all is refused rather than reported, because the caveat it would add is a
+provenance claim.
+
 The figure is derived from the TREE each cap admits, and this is the second
 attempt at it. The first counted one session per cell plus its merge attempts
 and then said "and one per leaf and per node on top of that", leaving the entire
@@ -473,7 +529,8 @@ explored, not with how badly a run went.
 `evals/recursion_depth/results/` holds the recording: `chart.svg`,
 `depth_curve.json` and `depth_curve.md`, beside the `cells.jsonl` and
 `progress.jsonl` the run journalled as it went. Six cells, caps 1 to 3, one
-repetition each, both arms, 229 agent sessions, no cell unavailable.
+repetition each, both arms, 240 units across 482 agent sessions, no cell
+unavailable.
 
 | achieved depth | gated | ungated |
 |---|---|---|
@@ -502,9 +559,9 @@ wrote only `.synthorg/merge/report.md` and `.synthorg/merge/end-to-end.txt` and
 touched no code. The two-to-three-way fan-ins at depth 2 produced 36 of 42.
 Depth replaces one impossible integration with a sequence of small ones.
 
-Note that cap 1's seven units sit INSIDE the corroborated 11-to-25 band and
-produced nothing at all. The band counts units; what binds is unit size against
-the work.
+Note that cap 1's seven units sit BELOW the corroborated 11-to-25 band and
+still produced nothing at all, while 58 units at depth 3 sat well above it and
+produced 86%. The band counts units; what binds is unit size against the work.
 
 ### What this run cannot support
 
@@ -524,24 +581,18 @@ cannot be ruled out as substantial.
 What the arms DO differ in is process, measured over 35 merges rather than 2
 cells: gated merges amend a child's interface 1.05 times each against 0.31, and
 spend 3.05 attempts against 6.00, because an ungated merge has no verdict to
-stop on and always burns its whole budget. Per unit of work the gated arm used
-1.73 sessions against 2.58, at 1.15M tokens per leaf against 1.13M. The gate
-changes how the work converges; whether it changes the result is unmeasured.
+stop on and always burns its whole budget. Per recorded unit, plan row
+included, the gated arm used 1.73 sessions against 2.58, and its cell cost 1.15M
+tokens per leaf against 1.13M. The gate changes how the work converges; whether
+it changes the result is unmeasured.
 
 ### The metric measures the adjacent question
 
-`fraction` is the share of the SPECIFICATION the merged tree satisfies, not the
-share of leaf work surviving the merge, which is what this page set out to ask.
-The narrower denominator did not hold up: a leaf must pass its own suite to
-count, roughly a quarter did, and 143 planner claims named no requirement the
-spec defines. Whole cells came out with a zero denominator and no point at all,
-including the ungated arm at BOTH measured depths, which deletes the arm
-comparison entirely.
-
-The cost of the substitute is attribution: a tree scoring well because the merge
-rebuilt it and one scoring well because the leaves' work survived are the same
-number here. The per-unit records still carry the claim-level figures, so the
-narrower question can still be asked once the claim mapping is sound.
+The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the
+share of leaf work surviving the merge, so this run answers whether depth
+survives rather than whether leaf work does. [The metric](#the-metric) above
+states the substitution and what forced it; the figures below are read under it
+throughout.
 
 ### Reading the verdicts, which are easy to read wrongly
 

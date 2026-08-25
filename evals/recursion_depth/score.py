@@ -6,15 +6,15 @@ which of the specification's requirements it satisfies. That count over the
 specification's own requirement count is the point this module plots, per
 achieved depth and per cap, for each arm.
 
-**This is not the question the sweep was built around, and the difference
-matters.** That question is whether LEAF WORK survives the merge, and it wants a
+**This is not the question this experiment asks, and the difference matters.**
+That question is whether LEAF WORK survives the merge, and it wants a
 denominator of work the leaves delivered. Measured on a live run, that
-denominator does not hold up: a leaf must pass its own suite to count at all and
-roughly a quarter did, a delivered leaf below the root often claims nothing, and
-143 planner claims named no requirement the specification defines. Whole cells
-came out with a zero denominator and therefore no point at all, including the
-ungated arm at BOTH depths it was measured at, which deletes the arm comparison
-that is the entire acceptance criterion.
+denominator does not hold up: a leaf must pass its own suite to count at all
+and 62 of 183 did, a delivered leaf at depth 2 or deeper often claims nothing,
+and 143 planner claims named no requirement the specification defines. Whole
+cells came out with a zero denominator and therefore no point at all, the
+ungated arm among them at depths 2 and 3, which deletes the arm comparison that
+is the entire acceptance criterion.
 
 So the denominator is the specification, which every cell shares, which cannot
 empty, and which the same oracle grades. What that buys is a point for every
@@ -105,7 +105,7 @@ def _curve(
 
     Summed across repetitions rather than averaged over them, which keeps one
     rule with the spend beside it. With a denominator identical for every cell
-    the two agree anyway, so the choice is no longer load-bearing.
+    the two agree anyway, so the choice does not move the result.
 
     Returns:
         The points, ordered by depth then arm.
@@ -119,11 +119,9 @@ def _curve(
     for cell in cells:
         if cell.achieved_depth is None:
             continue
-        # One run, one bucket, for the fraction AND the spend. The two used to
-        # be separate populations because a run contributed claims to every
-        # level its leaves sat at while booking spend at one; scoring per cell
-        # collapses that, so a single count is now the honest figure and two
-        # would always be equal.
+        # One run, one bucket, for the fraction AND the spend: a run's claims
+        # and its spend are counted at the same granularity, so a second count
+        # would always equal the first and could never disagree with it.
         slot = (bucket(cell), cell.arm)
         required[slot] += requirement_count
         satisfied[slot] += len(cell.merged_passing)

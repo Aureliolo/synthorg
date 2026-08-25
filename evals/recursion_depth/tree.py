@@ -95,12 +95,19 @@ _PLANNING_TIMEOUT_SECONDS: Final[str] = "2400.0"
 
 #: Provider retry attempts, opened to what the setting allows.
 #:
-#: This is the ONLY thing standing between a momentary network blip and the
-#: loss of an entire session's work. A provider call that exhausts its retries
-#: does not fail that turn, it terminates the run: ``call_provider`` returns a
-#: terminal ERROR result and the loop returns it unchanged, so a leaf thirty
-#: turns into building a subsystem loses all thirty. Nothing re-enters that
-#: conversation, because nothing persisted it.
+#: A provider call that exhausts its retries does not fail that turn, it
+#: terminates the run: ``call_provider`` returns a terminal ERROR result and
+#: the loop returns it unchanged, so a leaf thirty turns into building a
+#: subsystem loses all thirty. Nothing re-enters that conversation, because
+#: nothing persisted it.
+#:
+#: WHICH ladder this widens is worth being exact about, since there are two.
+#: The harness's own driver dispatches at the hosted gateway and takes its
+#: retry budget from the company config (``HarnessBinder.build_provider``
+#: deliberately does not thread this setting in, so a recorded artefact stays
+#: reproducible from the config it names). This setting reaches the registry
+#: the gateway itself reads per request, which is the ladder between the sweep
+#: and the real upstream provider, and the one a momentary network blip is on.
 #:
 #: The product default is three attempts, sized for a request handler where a
 #: failed call costs one response and the caller can simply ask again. A sweep

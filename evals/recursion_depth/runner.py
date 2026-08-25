@@ -72,10 +72,14 @@ from evals.recursion_depth.merge import (
     run_merge,
 )
 from evals.recursion_depth.models import (
+    CEILING_CAVEAT,
     LEAF,
     MERGE,
+    METRIC_CAVEAT,
     ORACLE_CAVEAT,
     PLAN,
+    PLAN_UNIT_SUFFIX,
+    QUOTA_CAVEAT,
     SIZING_CAVEAT,
     CellRecord,
     PlannedTreeRecord,
@@ -114,6 +118,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_RECORDED,
     EVALS_RECURSION_CELL_RESTARTED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
+    EVALS_RECURSION_LEAF_FAILURE_MASKED,
     EVALS_RECURSION_PLAN_RETRIED,
     EVALS_RECURSION_QUOTA_EXHAUSTED,
     EVALS_RECURSION_SESSION_CEILING,
@@ -159,20 +164,6 @@ _PLAN_RETRY_BASE_SECONDS: Final[float] = 5.0
 #: Ceiling on that wait. With one retry it is never reached; it exists because
 #: the retry handler refuses a cap below its base.
 _PLAN_RETRY_CAP_SECONDS: Final[float] = 30.0
-
-_CEILING_CAVEAT: str = (
-    "The sweep stopped early on its session ceiling, so the depths and "
-    "repetitions the manifest asked for are not all present. Read the cell "
-    "list, not the manifest, for what was actually measured."
-)
-
-_QUOTA_CAVEAT: str = (
-    "The sweep stopped early because the provider account ran out of quota, "
-    "so the depths and repetitions the manifest asked for are not all "
-    "present, and the cell it stopped on was cut off part-way rather than "
-    "measured. Read the cell list, not the manifest, for what was actually "
-    "measured, and re-run the remainder once the account's window resets."
-)
 
 
 def _quota_exhaustion(exc: BaseException) -> ProviderQuotaExceededError | None:
@@ -303,7 +294,7 @@ async def _run_and_record(
             error=safe_error_description(exc),
         )
         records.add(_unavailable(cell, exc, units.records))
-        caveats.append(_CEILING_CAVEAT)
+        caveats.append(CEILING_CAVEAT)
         return True
     except _SYSTEMIC_FAILURES as exc:
         # Logged before it propagates: this ends the whole sweep and writes no
@@ -322,7 +313,7 @@ async def _run_and_record(
             exc, measured=len(records) - 1, remaining=remaining
         ):
             return False
-        caveats.append(_QUOTA_CAVEAT)
+        caveats.append(QUOTA_CAVEAT)
         return True
     return False
 
@@ -549,10 +540,10 @@ async def run_sweep(
         RecursionDepthGateUnbuildableError: The gated arm has nowhere to read a
             verdict from.
     """
-    # Seeded, not accumulated: these two hold for every sweep this harness can
-    # run, and a report that states them only when something went wrong states
-    # them in exactly the runs nobody reads closely.
-    caveats: list[str] = [SIZING_CAVEAT, ORACLE_CAVEAT]
+    # Seeded, not accumulated: these three hold for every sweep this harness
+    # can run, and a report that states them only when something went wrong
+    # states them in exactly the runs nobody reads closely.
+    caveats: list[str] = [METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT]
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
@@ -650,7 +641,7 @@ def _refused_on_budget(
         error=safe_error_description(exc),
     )
     records.add(_unavailable(cell, exc, ()))
-    caveats.append(_CEILING_CAVEAT)
+    caveats.append(CEILING_CAVEAT)
     return True
 
 
@@ -735,7 +726,7 @@ async def _plan_with_retry(
         lambda: context.planner.plan(
             task=root,
             depth_cap=cell.depth_cap,
-            execution_id=f"{cell.key}-plan",
+            execution_id=f"{cell.key}{PLAN_UNIT_SUFFIX}",
             spend=spend,
         ),
         cell=cell.key,
@@ -836,7 +827,7 @@ def _plan_unit(
         The planning session's record.
     """
     return UnitRecord(
-        unit_id=NotBlankStr(f"{cell.key}-plan"),
+        unit_id=NotBlankStr(f"{cell.key}{PLAN_UNIT_SUFFIX}"),
         title=NotBlankStr(f"Plan: {context.spec.title}"),
         kind=PLAN,
         depth=0,
@@ -1179,9 +1170,22 @@ async def _build_missing_leaves(
     outcomes = await asyncio.gather(
         *(build(task) for task in pending), return_exceptions=True
     )
-    for outcome in outcomes:
-        if isinstance(outcome, BaseException):
+    raised = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    for outcome in raised:
+        # Only ONE of these can propagate, so the choice is not the first in
+        # submission order: a sibling's MemoryError decides how the whole
+        # process must end, and losing it to an ordinary failure that happened
+        # to be submitted earlier is the classifier reading a survivable run.
+        if isinstance(outcome, MemoryError | RecursionError):
             raise outcome
+    for outcome in raised[1:]:
+        logger.warning(
+            EVALS_RECURSION_LEAF_FAILURE_MASKED,
+            error_type=type(outcome).__name__,
+            error=safe_error_description(outcome),
+        )
+    if raised:
+        raise raised[0]
 
 
 async def _run_one_leaf(

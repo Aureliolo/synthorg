@@ -61,8 +61,10 @@ back with `satisfies=[]` on all seven subtasks, on the same specification where
 an earlier run of the same planner tagged all seven. Variance rather than
 inability, which is worse: it poisons an unpredictable subset of plans instead
 of failing consistently, and any consumer computing coverage over it reports a
-confident zero. The recursion-depth sweep is one such consumer, and a plan
-claiming nothing empties its survival ratio's denominator at every depth.
+confident zero. The recursion-depth sweep is one such consumer, and this is why
+its survival ratio could not be measured against leaf work at all: too many
+plans claimed nothing, whole cells divided by zero, and the metric had to fall
+back to the specification's own requirement count.
 
 `llm_parse.py::_validate_coverage` refuses a plan that advances NONE of the
 objective's criteria, beside the roster and graph checks and for the same

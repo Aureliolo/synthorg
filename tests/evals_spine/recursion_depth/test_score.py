@@ -97,8 +97,7 @@ class TestTheLevelCount:
 
     Asserted directly rather than through a run, because the conversion is one
     ``+ 1`` and the whole depth axis rests on it: a run using its entire cap of
-    three reported two, which reads as a tree that stopped a level short, and
-    that is the reading an external reviewer took.
+    three reported two, which reads as a tree that stopped a level short.
     """
 
     @pytest.mark.parametrize(("levels", "expected"), [(1, 1), (2, 2), (3, 3)])
@@ -175,11 +174,11 @@ _REQUIRED = 4
 class TestWhatEntersTheDenominator:
     """The specification, not the work the leaves happened to claim.
 
-    The sweep was built to ask whether leaf work survives the merge, and that
-    denominator did not hold up on a live run: a leaf must pass its own suite to
-    count, roughly a quarter did, and whole cells came out with nothing in the
-    denominator and therefore no point at all. Both arms lost their depth-2 and
-    depth-3 points that way, which deletes the comparison the sweep exists for.
+    A leaf-survival denominator is too sparse to carry a rate: a leaf must pass
+    its own suite to count, 62 of 183 did on a live run, and whole cells come
+    out with nothing in the denominator and therefore no point at all. Both
+    arms lost their depth-2 and depth-3 points that way, which deletes the
+    comparison the sweep exists for.
     """
 
     def test_the_denominator_is_the_specification(self) -> None:
@@ -214,31 +213,46 @@ class TestWhatEntersTheDenominator:
         assert point.fraction == pytest.approx(0.0)
 
     def test_what_a_leaf_claimed_does_not_reach_the_curve(self) -> None:
-        # Deliberate, and the cost of the change: a tree scoring well because
-        # the merging agent rebuilt it and one scoring well because leaf work
-        # survived are the same number here. The per-unit records still carry
-        # the claims, so the narrower question stays askable later.
-        claiming = _cell(
+        # Deliberate: a tree scoring well because the merging agent rebuilt it
+        # and one scoring well because leaf work survived are the same number
+        # here. The per-unit records still carry the claims, so the narrower
+        # question stays askable later.
+        cell = _cell(
             cap=2,
             achieved=2,
             units=(_leaf("a", depth=1, claimed=("R01", "R02", "R03")),),
             passing=("R01",),
         )
-        silent = _cell(
+
+        point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
+
+        # Three claimed and one passing, and neither three nor a third of it
+        # appears: the point reads one satisfied against the whole spec.
+        assert point.satisfied == 1
+        assert point.required == _REQUIRED
+
+    def test_two_cells_in_one_bucket_add_up(self) -> None:
+        # Every other case here puts one cell in a bucket, so nothing would
+        # notice a fold that overwrote instead of accumulating.
+        first = _cell(
             cap=2,
             achieved=2,
-            units=(_leaf("a", depth=1, claimed=()),),
+            units=(_leaf("a", depth=1, claimed=("R01",)),),
             passing=("R01",),
         )
-
-        assert (
-            curve_by_achieved_depth((claiming,), requirement_count=_REQUIRED)[
-                0
-            ].fraction
-            == curve_by_achieved_depth((silent,), requirement_count=_REQUIRED)[
-                0
-            ].fraction
+        second = _cell(
+            cap=2,
+            achieved=2,
+            repetition=1,
+            units=(_leaf("b", depth=1, claimed=("R02",)),),
+            passing=("R02", "R03"),
         )
+
+        point = curve_by_achieved_depth((first, second), requirement_count=_REQUIRED)[0]
+
+        assert point.cells == 2
+        assert point.required == 2 * _REQUIRED
+        assert point.satisfied == 3
 
     def test_a_merge_unit_does_not_change_the_score(self) -> None:
         merge = UnitRecord(
@@ -418,10 +432,10 @@ class TestArmsAndCost:
         assert points[0].cost == pytest.approx(cell.total_cost)
 
     def test_a_run_whose_leaves_all_failed_still_books_its_spend(self) -> None:
-        # It used to exist only in the cost population, so filtering the cost
-        # panel on the claims population dropped exactly these runs, which at
-        # the deep end are the most expensive in the sweep. Now it is an
-        # ordinary point scoring zero, and the panel keeps it either way.
+        # An ordinary point scoring zero, which is what keeps it in the cost
+        # panel: a panel filtered on a claims population would drop exactly
+        # these runs, and at the deep end they are the most expensive in the
+        # sweep.
         cell = _cell(
             cap=5,
             achieved=5,

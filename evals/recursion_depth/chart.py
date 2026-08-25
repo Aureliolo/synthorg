@@ -110,10 +110,9 @@ def _cost_series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, floa
     """
     series: dict[Arm, list[tuple[int, float]]] = {arm: [] for arm in Arm}
     for point in points:
-        # A bucket with no run in it has no spend to plot. It cannot arise from
-        # a run whose leaves all failed, which is the case that used to need a
-        # separate count: such a run still scores against the specification and
-        # still books what it cost.
+        # A bucket with no run in it has no spend to plot, and only an empty
+        # bucket reaches this: a run whose leaves all failed still scores
+        # against the specification and still books what it cost.
         if point.cells == 0:
             continue
         series[point.arm].append((point.depth, point.cost))
@@ -174,8 +173,14 @@ def _survival_panel(
     top = float(_MARGIN_TOP)
     parts: list[str] = [
         (
+            # Names what is PLOTTED, which is the adjacent question: the share
+            # of the specification a merged tree satisfies. The chart travels
+            # without the prose that qualifies it, so a title naming the leaf
+            # survival this sweep set out to measure would be the one artefact
+            # asserting the substitution never happened.
             f'<text class="title" x="{_MARGIN_LEFT}" y="26">'
-            "Fraction of leaf work surviving to a correct merged result</text>"
+            "Fraction of the specification satisfied after the root merge"
+            "</text>"
         )
     ]
     for fraction in _GRID_FRACTIONS:
@@ -355,7 +360,7 @@ def _document(*, height: int, body: list[str]) -> str:
     drawn = "\n  ".join(body)
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_WIDTH} {height}" \
 width="{_WIDTH}" height="{height}" role="img" \
-aria-label="Fraction of leaf work surviving to a correct merged result, by depth, \
+aria-label="Fraction of the specification satisfied after the root merge, by depth, \
 gated and ungated">
   <style>
     :root {{

@@ -407,6 +407,19 @@ class RecursionDepthCapabilityUnresolvedError(EvalError):
     default_message: ClassVar[str] = "No capability policy could be built for the sweep"
 
 
+class RecursionDepthSpendRepairEmptyError(EvalError):
+    """Raised when a spend repair placed none of the log's calls.
+
+    The caveat the repaired report carries is a provenance claim, so a repair
+    that attributed nothing would ship a byte-identical report saying its token
+    column was rebuilt. Refusing names the log instead, which is the one thing
+    that can be wrong here: a path pointing at the wrong run, or a rendering
+    the parser no longer matches.
+    """
+
+    default_message: ClassVar[str] = "Spend repair attributed no calls to any unit"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -454,6 +467,7 @@ __all__ = [
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
+    "RecursionDepthSpendRepairEmptyError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",
     "WorkspaceSeedNotFoundError",

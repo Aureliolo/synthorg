@@ -46,6 +46,19 @@ MIN_DEPTH: Final[int] = 1
 #: The deepest cap the sweep records.
 MAX_DEPTH: Final[int] = 6
 
+#: What a same-family judge costs the result. A module constant rather than a
+#: literal inside the accessor because a re-score has to RECOGNISE it: the
+#: report is rebuilt from the journal, which does not hold the manifest, so
+#: this sentence is one of the few a re-score carries forward rather than
+#: derives, and matching it means naming it.
+SHARED_FAMILY_CAVEAT: Final[str] = (
+    "The reviewer and the executor share a model family, so judge "
+    "independence here is by model rather than by family. Self-preference "
+    "runs 75-84% toward a model's own family, which biases the gated arm "
+    "toward the null: a gap in its favour survives this, a null result is "
+    "not interpretable under it."
+)
+
 #: An assembly costs a merge session and the review that follows it. Two in
 #: BOTH arms by construction, since the ungated arm spends the identical budget
 #: blindly so repair cannot win by spending more.
@@ -396,13 +409,7 @@ class RecursionDepthManifest(BaseModel):
         """
         if self.independence is Independence.CROSS_FAMILY:
             return None
-        return (
-            "The reviewer and the executor share a model family, so judge "
-            "independence here is by model rather than by family. Self-preference "
-            "runs 75-84% toward a model's own family, which biases the gated arm "
-            "toward the null: a gap in its favour survives this, a null result is "
-            "not interpretable under it."
-        )
+        return SHARED_FAMILY_CAVEAT
 
 
 def load_manifest(path: Path) -> RecursionDepthManifest:

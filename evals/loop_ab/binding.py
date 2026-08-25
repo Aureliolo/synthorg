@@ -157,6 +157,15 @@ class CellBinder:
     ) -> AsyncIterator[ProgressTrackingLedger]:
         """Install this repetition's cost sink on the host and yield it.
 
+        A ledger is installed as a process-wide field, so installing one per
+        repetition means SWAPPING, and two repetitions in flight together
+        would interleave their swaps: the last installed collects everyone's
+        records and the rest collect none. This matrix has no concurrency knob
+        at any level, so no two repetitions ever overlap. Adding one requires
+        scoping the read the way ``recursion_depth`` does, by task id and by
+        what stood when the session opened, because this harness reads the
+        whole ledger unfiltered and would have nothing to fall back on.
+
         Yields:
             The tracker holding this run's authoritative spend.
         """

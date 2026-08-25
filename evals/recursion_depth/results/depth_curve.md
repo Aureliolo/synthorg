@@ -4,7 +4,7 @@ Does verification at every merge hold off aggregation collapse as
 recursive decomposition deepens?
 
 - Measured against commit `d67bdae46526e7826c61b08561da5bd9ff89c35f`
-- Generated 2026-08-25T14:46:06.171051+00:00
+- Generated 2026-08-25T17:44:52.751944+00:00
 - Manifest `sha256:f721d6c1725dc7c290bb0e246595455c6922c48c824170bcdb7b4b804d6c9694`
 - Spec `sqlcsv`, 42 requirements
 - Executor `example-provider/example-capable-001`, reviewer `example-provider/example-expert-001` (cross_family)
@@ -52,8 +52,8 @@ The manipulated variable, for comparison with the histogram below.
 
 | Arm | Merges | Sessions | Tokens | Spend | Parked escalations | Contract amendments |
 |---|---:|---:|---:|---:|---:|---:|
-| gated | 27 | 104 | 58582975 | 0.0000 | 7 | 25 |
-| ungated | 24 | 144 | 46635257 | 0.0000 | 0 | 8 |
+| gated | 27 | 104 | 57606379 | 0.0000 | 7 | 25 |
+| ungated | 24 | 144 | 46217398 | 0.0000 | 0 | 8 |
 
 ## Who judged whom
 
@@ -129,7 +129,8 @@ made at. The same rows are in `depth_curve.json` under each cell's
 
 ## Caveats
 
+- The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the share of leaf work surviving the merge, which is the question this sweep set out to ask. Leaf-level attribution proved too sparse to carry a rate and produced no point at all for whole cells. The two coincide only where the merge adds nothing of its own, so a tree scoring well because the merging agent rebuilt it reads here exactly like one whose leaves survived.
 - Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'. Separating them needs an agent that has read the code deciding its own split, which no published system has.
 - The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it.
-- 143 planner claim(s) named no requirement this specification defines and were dropped before scoring. A handful is one planner inventing a requirement; a large share means the criterion template and the id pattern have drifted apart, which deflates both halves of the survival ratio and reads on the chart like a gate that does not help.
-- The token column was rebuilt from the recorder's per-call log. This recording predates the per-cell cost ledger, so concurrent leaf sessions swapped a process-wide sink and some journalled zero while others absorbed their records. The repair attributes each call from the log, which is written per call and cannot be scrambled by that swap; plan units keep their journalled figures, being the one kind of session that never ran concurrently. Session and attempt counts were never affected.
+- 143 planner claim(s) named no requirement this specification defines and were dropped before scoring. A handful is one planner inventing a requirement; a large share means the criterion template and the id pattern have drifted apart. The curve divides by the specification rather than by these claims, so it is unaffected, but the per-unit attribution is.
+- The token column was rebuilt from the recorder's per-call log. This recording's sessions shared one process-wide cost sink swapped per session, so concurrent leaves could journal zero while a neighbour absorbed their records. The repair attributes each call from the log, which is written per call and cannot be scrambled by that swap, cutting a repeated task id into intervals at the point each unit was journalled. The money column is untouched: every connection here is flat-rate, so it reads zero throughout. Session and attempt counts were never affected.
