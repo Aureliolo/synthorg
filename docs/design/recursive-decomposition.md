@@ -239,7 +239,7 @@ denominator and therefore no point at all, the ungated arm among them at depths
 merging agent rebuilt the work itself and one scoring well because its leaves'
 work survived are the same number here, so the curve answers whether depth
 survives, not whether leaf work does. The per-unit records still carry the
-claim-level figures, so the narrower question stays askable once the claim
+claim-level figures, so the narrower question can still be asked once the claim
 mapping is trustworthy; that is issue #2843. Every emitted artefact carries
 `METRIC_CAVEAT` saying so, because the chart and the JSON travel without this
 page.
