@@ -181,19 +181,6 @@ class HarnessGatewayUnavailableError(EvalError):
     )
 
 
-class LoopAbOpenHandsUnwiredError(EvalError):
-    """Raised when the OpenHands loop's runtime is not wired for a cell.
-
-    The boundary reports the missing piece at WARNING as it declines to wire, so
-    this carries the cell into the runner's unavailable row rather than letting
-    a ``None`` reach the loop factory and fail with a less specific message.
-    """
-
-    default_message: ClassVar[str] = (
-        "OpenHands loop runtime is unwired; see the logged missing pieces"
-    )
-
-
 class HarnessBindHostUnresolvedError(EvalError):
     """Raised when the interface the recording host should listen on is unknown.
 
@@ -457,7 +444,6 @@ __all__ = [
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
     "LoopAbNoCellsMeasuredError",
-    "LoopAbOpenHandsUnwiredError",
     "OracleUnusableError",
     "ProvenanceUnavailableError",
     "RecursionDepthCapabilityUnresolvedError",

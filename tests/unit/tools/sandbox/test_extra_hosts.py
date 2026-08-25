@@ -5,8 +5,8 @@ A sandbox that joins a sidecar's network namespace reads the SIDECAR's
 outright. So the aliases have to land on the sidecar whenever egress
 enforcement is on, and on the container itself only when it is not: getting
 that split wrong either fails container creation or silently leaves the alias
-unresolvable, which is what makes the shipped OpenHands endpoint defaults
-reachable or dead.
+unresolvable, which is the difference between a host endpoint a sandboxed
+process can reach and one that is dead.
 """
 
 from pathlib import Path
@@ -17,7 +17,6 @@ import pytest
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from synthorg.workers._openhands_wiring import _HOST_GATEWAY_ALIAS
 from tests._shared import FakeDockerClient, JsonDict
 
 pytestmark = pytest.mark.unit
@@ -135,7 +134,7 @@ class TestSidecarPathNarrowing:
             allowed_hosts=("gateway.internal:3001",),
             allowed_paths=(
                 "gateway.internal:3001=/api/v1/gateway/v1",
-                "gateway.internal:3001=/api/v1/mcp-gateway",
+                "gateway.internal:3001=/api/v1/health",
             ),
         )
 
@@ -144,7 +143,7 @@ class TestSidecarPathNarrowing:
         env = cast("list[str]", docker.created[-1]["Env"])
         assert (
             "SIDECAR_ALLOWED_PATHS=gateway.internal:3001=/api/v1/gateway/v1,"
-            "gateway.internal:3001=/api/v1/mcp-gateway" in env
+            "gateway.internal:3001=/api/v1/health" in env
         )
 
     async def test_absent_when_no_narrowing_is_configured(self, tmp_path: Path) -> None:
@@ -182,9 +181,9 @@ class TestAllowedPathsValidation:
         assert config.allowed_paths == ("host:3001=/api/v1/gateway/v1",)
 
 
-class TestLoopAlias:
-    def test_openhands_alias_satisfies_the_validator(self) -> None:
-        # The wiring hands this constant straight to DockerSandboxConfig, so a
-        # typo there would fail at container-build time, on a live run.
-        config = DockerSandboxConfig(extra_hosts=_HOST_GATEWAY_ALIAS)
+class TestHostGatewayAlias:
+    def test_the_host_gateway_alias_satisfies_the_validator(self) -> None:
+        # A caller hands this form straight to DockerSandboxConfig, so a
+        # rejection here would surface at container-build time on a live run.
+        config = DockerSandboxConfig(extra_hosts=(_ALIAS,))
         assert config.extra_hosts == (_ALIAS,)

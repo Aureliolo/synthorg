@@ -19,12 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from evals.runner.execution import seed_eval_project
-from synthorg.persistence.config import SQLiteConfig
-from synthorg.persistence.project_protocol import ProjectRepository
-from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests.evals_spine._recording import (
-    RECORDING_OPENHANDS_IMAGE,
     RECORDING_SANDBOX_IMAGE,
     RECORDING_SIDECAR_IMAGE,
     RecordingGatewayHost,
@@ -35,8 +30,8 @@ from tests.evals_spine._recording import (
 BriefYamlWriter = Callable[..., Path]  # type: ignore[explicit-any]  # arbitrary-arg brief-writer test factory
 
 
-# This tier binds real sockets and serves a real application (the loop A/B
-# recording host), which the Windows ``SelectorEventLoop`` cannot drive. It sits
+# This tier binds real sockets and serves a real application (the recording
+# host), which the Windows ``SelectorEventLoop`` cannot drive. It sits
 # outside ``tests/unit``, so it does not inherit that tier's override and would
 # otherwise take whatever the interpreter defaults to: correct today, but by
 # coincidence rather than by choice, and a coincidence that breaks as a hang.
@@ -108,31 +103,6 @@ def write_brief_yaml(tmp_path: Path) -> BriefYamlWriter:
 
 
 @pytest.fixture
-async def project_repo(tmp_path: Path) -> AsyncIterator[ProjectRepository]:
-    """A connected backend carrying the benchmark project.
-
-    Every brief expects artifacts, which makes every cell a work task, and the
-    engine refuses to run one against a project it cannot look up. Real
-    persistence rather than a double, because the lookup the engine performs is
-    the thing under test: a stand-in that answered would prove nothing about
-    whether the seeded row is reachable.
-
-    Yields:
-        The seeded project repository.
-    """
-    backend = SQLitePersistenceBackend(
-        SQLiteConfig(path=str(tmp_path / "eval-projects.db"))
-    )
-    await backend.connect()
-    try:
-        await backend.migrate()
-        await seed_eval_project(backend.projects)
-        yield backend.projects
-    finally:
-        await backend.disconnect()
-
-
-@pytest.fixture
 async def host(tmp_path: Path) -> AsyncIterator[RecordingGatewayHost]:
     """Boot and serve the recording host on an ephemeral loopback port.
 
@@ -147,7 +117,6 @@ async def host(tmp_path: Path) -> AsyncIterator[RecordingGatewayHost]:
         bind_host="127.0.0.1",
         sandbox_image=RECORDING_SANDBOX_IMAGE,
         sidecar_image=RECORDING_SIDECAR_IMAGE,
-        openhands_image=RECORDING_OPENHANDS_IMAGE,
     )
     async with RecordingGatewayHost(config) as started:
         yield started

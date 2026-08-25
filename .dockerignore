@@ -28,11 +28,6 @@
 docker/
 !docker/sidecar/
 !docker/sandbox/healthz.py
-# OpenHands image copies its entrypoint, the metrics reader that entrypoint
-# imports, and its hash-pinned lock from the context.
-!docker/openhands/run_task.py
-!docker/openhands/metrics_shape.py
-!docker/openhands/requirements.lock
 
 # Tests
 tests/

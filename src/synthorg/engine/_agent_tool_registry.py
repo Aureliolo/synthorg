@@ -1,13 +1,20 @@
-"""Per-run registry augmentation for the governed forge / chat tools.
+"""Per-run registry augmentation for the governed connection tools.
 
 Companion to ``_security_factory``'s ``registry_with_*`` family, kept
-separate so that module stays within its size budget. Both builders are
-run-scoped: they bind the run's identity, task, and effective autonomy
-onto the boot-scoped runtime bundle and append the resulting tools to the
+separate so that module stays within its size budget. Every builder is
+run-scoped: it binds the run's identity, task, and effective autonomy
+onto the boot-scoped runtime bundle and appends the resulting tools to the
 agent's registry, gating every write through the identity-bound approval
 flow. Each returns the registry unchanged when its runtime bundle or the
 approval store is absent (the feature is off, or writes could not be
 gated).
+
+The destructive tools (``deploy_release``, ``publish_push``) additionally
+take the calling ``AgentIdentity`` as their audit actor. It is the identity
+this augmentation was already handed, which is the strongest binding
+available: the tool refuses an unattributable call before the approval gate,
+so passing the run's own identity is what makes the guardrail satisfiable at
+all.
 """
 
 from typing import TYPE_CHECKING
@@ -20,7 +27,9 @@ from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 from synthorg.observability.events.tool import (
     CHAT_TOOL_GRANTED,
     DELEGATE_TOOL_GRANTED,
+    DEPLOY_TOOL_GRANTED,
     FORGE_TOOL_GRANTED,
+    PUBLISH_TOOL_GRANTED,
 )
 from synthorg.security.risk_map import default_risk_classifier
 from synthorg.settings.resolver import ConfigResolver
@@ -31,6 +40,12 @@ from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
+
+    # Cycle breakers: both packages' ``__init__`` reach the MCP admin
+    # guardrail, which imports ``api.state``, and this module is pulled in
+    # while the engine is still constructing itself.
+    from synthorg.tools.deploy._runtime import DeployToolsRuntime
+    from synthorg.tools.publish._runtime import PublishToolsRuntime
 
 logger = get_logger(__name__)
 
@@ -138,6 +153,102 @@ def registry_with_chat_tools(
     return ToolRegistry([*existing, *chat_tools])
 
 
+def registry_with_deploy_tools(
+    tool_registry: ToolRegistry,
+    runtime: DeployToolsRuntime | None,
+    *,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    effective_autonomy: EffectiveAutonomy | None = None,
+) -> ToolRegistry:
+    """Add the governed deploy agent tools when their runtime is wired.
+
+    Returns:
+        A :class:`ToolRegistry` with ``deploy_run`` / ``deploy_release``
+        appended when both ``runtime`` and ``approval_store`` are wired;
+        otherwise the original registry unchanged.
+    """
+    if runtime is None or approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.deploy._runtime import DeployToolDeps  # noqa: PLC0415
+    from synthorg.tools.deploy.deploy_tools import (  # noqa: PLC0415
+        DeployReleaseTool,
+        DeployRunTool,
+    )
+
+    deps = DeployToolDeps(
+        runtime=runtime,
+        approval_store=approval_store,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        effective_autonomy=effective_autonomy,
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
+    )
+    deploy_tools: list[BaseTool] = [
+        DeployRunTool(deps=deps),
+        DeployReleaseTool(deps=deps, actor=identity),
+    ]
+    logger.debug(
+        DEPLOY_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        targets=sorted(runtime.allowed_targets),
+        tools=[tool.name for tool in deploy_tools],
+    )
+    existing = list(tool_registry.all_tools())
+    return ToolRegistry([*existing, *deploy_tools])
+
+
+def registry_with_publish_tools(
+    tool_registry: ToolRegistry,
+    runtime: PublishToolsRuntime | None,
+    *,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    effective_autonomy: EffectiveAutonomy | None = None,
+) -> ToolRegistry:
+    """Add the governed publish agent tools when their runtime is wired.
+
+    Returns:
+        A :class:`ToolRegistry` with ``publish_inspect`` / ``publish_push``
+        appended when both ``runtime`` and ``approval_store`` are wired;
+        otherwise the original registry unchanged.
+    """
+    if runtime is None or approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.publish._runtime import PublishToolDeps  # noqa: PLC0415
+    from synthorg.tools.publish.publish_tools import (  # noqa: PLC0415
+        PublishInspectTool,
+        PublishPushTool,
+    )
+
+    deps = PublishToolDeps(
+        runtime=runtime,
+        approval_store=approval_store,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        effective_autonomy=effective_autonomy,
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
+    )
+    publish_tools: list[BaseTool] = [
+        PublishInspectTool(deps=deps),
+        PublishPushTool(deps=deps, actor=identity),
+    ]
+    logger.debug(
+        PUBLISH_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        targets=sorted(runtime.allowed_targets),
+        tools=[tool.name for tool in publish_tools],
+    )
+    existing = list(tool_registry.all_tools())
+    return ToolRegistry([*existing, *publish_tools])
+
+
 def registry_with_delegate_tool(
     tool_registry: ToolRegistry,
     runner: SubAgentRunner | None,
@@ -196,5 +307,7 @@ def registry_with_delegate_tool(
 __all__ = [
     "registry_with_chat_tools",
     "registry_with_delegate_tool",
+    "registry_with_deploy_tools",
     "registry_with_forge_tools",
+    "registry_with_publish_tools",
 ]

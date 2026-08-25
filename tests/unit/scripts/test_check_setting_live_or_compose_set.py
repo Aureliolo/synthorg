@@ -593,7 +593,7 @@ class TestConstructionPath:
 
     @pytest.mark.parametrize(
         "module",
-        ["_openhands_wiring", "_engine_assembly", "_mcp_bridge_wiring"],
+        ["_agent_tools_wiring", "_engine_assembly", "_mcp_bridge_wiring"],
     )
     def test_a_runtime_build_read_is_construction_only(
         self, tmp_path: Path, module: str
@@ -612,14 +612,14 @@ class TestConstructionPath:
     def test_a_module_the_builder_reaches_indirectly_is_construction_only(
         self, tmp_path: Path
     ) -> None:
-        # The closure is transitive: _openhands_wiring is reached through
+        # The closure is transitive: _agent_tools_wiring is reached through
         # _engine_assembly, never imported by the builder directly.
         root = _repo(
             tmp_path,
             sources={
-                "workers/_openhands_wiring.py": _BUILD,
+                "workers/_agent_tools_wiring.py": _BUILD,
                 "workers/_engine_assembly.py": (
-                    "from synthorg.workers._openhands_wiring import wire_it\n"
+                    "from synthorg.workers._agent_tools_wiring import wire_it\n"
                 ),
                 _RUNTIME_BUILDER: runtime_builder_module(
                     "synthorg.workers._engine_assembly"
@@ -633,17 +633,17 @@ class TestConstructionPath:
         [
             (
                 "workers/_engine_assembly.py",
-                "from . import _openhands_wiring\n",
+                "from . import _agent_tools_wiring\n",
                 "synthorg.workers._engine_assembly",
             ),
             (
                 "workers/_engine_assembly.py",
-                "from ._openhands_wiring import wire_it\n",
+                "from ._agent_tools_wiring import wire_it\n",
                 "synthorg.workers._engine_assembly",
             ),
             (
                 "workers/assembly/__init__.py",
-                "from .._openhands_wiring import wire_it\n",
+                "from .._agent_tools_wiring import wire_it\n",
                 "synthorg.workers.assembly",
             ),
         ],
@@ -657,7 +657,7 @@ class TestConstructionPath:
         root = _repo(
             tmp_path,
             sources={
-                "workers/_openhands_wiring.py": _BUILD,
+                "workers/_agent_tools_wiring.py": _BUILD,
                 containing: statement,
                 _RUNTIME_BUILDER: runtime_builder_module(imported),
             },

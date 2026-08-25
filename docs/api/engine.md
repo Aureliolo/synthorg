@@ -19,10 +19,6 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 
 ::: synthorg.engine.react_loop
 
-## OpenHands Loop
-
-::: synthorg.engine.openhands.loop
-
 ## Execution Context
 
 ::: synthorg.engine.context

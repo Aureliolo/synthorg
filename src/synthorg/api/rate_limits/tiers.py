@@ -38,7 +38,7 @@ def self_authenticated_paths(prefix: str) -> re.Pattern[str]:
     Returns:
         The compiled route pattern.
     """
-    return re.compile(rf"^{re.escape(prefix)}/(gateway|mcp-gateway)(/|$)")
+    return re.compile(rf"^{re.escape(prefix)}/gateway(/|$)")
 
 
 def auth_identifier_for_request(

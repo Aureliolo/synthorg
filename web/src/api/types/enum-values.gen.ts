@@ -1092,7 +1092,6 @@ export const TASK_TYPE_VALUES = [
     'design',
     'research',
     'review',
-    'meeting',
     'admin',
     'analysis',
 ] as const

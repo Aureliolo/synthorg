@@ -214,12 +214,12 @@ carries a blocking finding. It returns nothing and is handed no transition, so
 it cannot reroute, cannot un-approve and cannot fail a task: the promise is
 structural rather than a docstring.
 
-It exists because one arm produces no in-session signal at all. The bundled
-OpenHands harness writes files with the SDK's own editor tools inside the
-sandbox and commits through a shell, out of reach of every boundary in this
-process, so the post-session read is the only observation available there. Deleting the
-gate would leave that arm silent; making it block would reintroduce the failure
-above. Shadow is the honest answer, and it is stated here rather than implying
+It exists because a whole class of writes produces no in-session signal at all.
+An agent given the shell tool writes files inside the sandbox and commits
+through it, out of reach of every boundary in this process, so the
+post-session read is the only observation available for anything that did not
+pass a file tool. Deleting the gate would leave those writes unobserved; making
+it block would reintroduce the failure above. Shadow is the honest answer, and it is stated here rather than implying
 the hard ban is enforced everywhere.
 
 `scripts/check_output_boundaries_guarded.py` holds both halves: every boundary

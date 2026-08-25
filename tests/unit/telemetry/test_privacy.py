@@ -64,7 +64,7 @@ class TestPrivacyScrubber:
             template_name="startup",
             persistence_backend="sqlite",
             memory_backend="mem0",
-            features_enabled="meeting,delegation",
+            features_enabled="memory,delegation",
             uptime_hours=12.5,
         )
         result = self.scrubber.validate(event)

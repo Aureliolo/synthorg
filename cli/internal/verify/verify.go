@@ -85,9 +85,9 @@ func NewImageRef(name, tag string) ImageRef {
 }
 
 // BuildImageRefs creates ImageRef values for the standard SynthOrg images.
-// If sandbox is false, the sandbox, sidecar and openhands images are excluded:
-// all three are spawned by the backend through the Docker socket, which is
-// mounted only when the sandbox is enabled.
+// If sandbox is false, the sandbox and sidecar images are excluded: both are
+// spawned by the backend through the Docker socket, which is mounted only when
+// the sandbox is enabled.
 // If fineTuning is true, the fine-tune image for the requested variant
 // ("gpu" or "cpu") is included; empty variant defaults to "gpu".
 //
@@ -103,7 +103,7 @@ func BuildImageRefs(tag string, sandbox bool, fineTuning bool, fineTuneVariant s
 		NewImageRef("web", tag),
 	}
 	if sandbox {
-		refs = append(refs, NewImageRef("sandbox", tag), NewImageRef("sidecar", tag), NewImageRef("openhands", tag))
+		refs = append(refs, NewImageRef("sandbox", tag), NewImageRef("sidecar", tag))
 		if fineTuning {
 			refs = append(refs, NewImageRef(FineTuneServiceName(fineTuneVariant), tag))
 		}

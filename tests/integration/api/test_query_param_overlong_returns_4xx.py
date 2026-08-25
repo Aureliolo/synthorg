@@ -1,12 +1,10 @@
 """Verifies QueryParameter(max_length=...) returns 4xx, not a 500 worker crash.
 
-Three controllers (`approvals.py`, `budget.py`, `meetings.py`) carry a
-"Manual check retained" block from the pre-2.22 era. The block manually
-re-validated a query param's length because Litestar 2.21's
-``Parameter(max_length=...)`` on query params crashed the worker instead
-of returning an RFC 9457 envelope. Litestar 2.22's
-``QueryParameter(max_length=...)`` should produce a clean 4xx; this test
-verifies that, gating removal of the manual checks.
+Litestar 2.21's ``Parameter(max_length=...)`` on a query param crashed the
+worker instead of returning an RFC 9457 envelope, so every controller that
+bounded one re-validated its length by hand. Those manual blocks are gone and
+``QueryParameter(max_length=...)`` is now the only check; this test is what
+holds the framework to the behaviour that let them go.
 
 If this test fails, the upstream regression is unfixed -- keep the
 manual checks and update the comments to reference ``QueryParameter``
@@ -48,10 +46,9 @@ class TestQueryParamOverlongReturns4xx:
 
         Drives the binding through Litestar 2.22's ``QueryParameter``
         path. A 4xx response (typically 400 or 422) means the
-        framework's typed validation now produces an RFC 9457 envelope
-        instead of crashing the worker -- the manual length checks in
-        ``approvals.py``, ``budget.py``, and ``meetings.py`` become
-        redundant and can be removed.
+        framework's typed validation produces an RFC 9457 envelope
+        instead of crashing the worker, which is what makes it safe for
+        the controllers to carry no length check of their own.
         """
         app = Litestar(route_handlers=[_probe_handler])
         async with LoopAsyncClient(app) as client:
@@ -60,10 +57,9 @@ class TestQueryParamOverlongReturns4xx:
             assert 400 <= response.status_code < 500, (
                 f"Litestar 2.22 QueryParameter(max_length={QUERY_MAX_LENGTH}) "
                 f"should return 4xx for an over-long value "
-                f"(got {response.status_code}). If this fails, keep the "
-                "'Manual check retained' blocks in approvals.py / budget.py / "
-                "meetings.py and update their comments to reference "
-                "QueryParameter."
+                f"(got {response.status_code}). If this fails, every "
+                "controller bounding a query param needs its own length "
+                "check back, because nothing else is checking."
             )
 
     async def test_within_bounds_query_param_returns_2xx(self) -> None:
@@ -88,8 +84,8 @@ class TestQueryParamOverlongReturns4xx:
     async def test_omitted_optional_query_param_uses_default(self) -> None:
         """An omitted optional QueryParameter must bind to the default.
 
-        The three production handlers (`approvals.py`, `budget.py`,
-        `meetings.py`) all declare ``action_type: Annotated[str | None,
+        The production handlers that filter on one (`approvals/query.py`,
+        `audit.py`) declare ``action_type: Annotated[str | None,
         QueryParameter(...)] = None``. If a future Litestar bump
         starts rejecting the missing-key case as a validation error,
         every callsite that omits the filter would break with no
@@ -107,8 +103,8 @@ class TestQueryParamOverlongReturns4xx:
     async def test_multibyte_query_param_uses_character_count(self) -> None:
         """``max_length`` is character-count, not byte-count, on Litestar 2.22.
 
-        The pre-2.22 manual checks in `approvals.py` / `budget.py` /
-        `meetings.py` did ``len(str)`` (character count). Litestar's
+        The pre-2.22 manual checks did ``len(str)`` (character count),
+        and every bound the controllers still declare assumes it. Litestar's
         typed ``QueryParameter(max_length=N)`` must match: a multibyte
         string at the character bound is accepted, one character over
         is rejected. Pinning this here means a future Litestar bump

@@ -55,7 +55,7 @@ sequenceDiagram
     participant Op as Operator / Chief of Staff
     participant Svc as SteeringService
     participant Brain as Project Brain
-    participant Loop as Agent loop (ReAct / OpenHands)
+    participant Loop as Agent loop (ReAct)
     Op->>Svc: issue(project, REDIRECT, text, supersede)
     Svc->>Brain: append_entry(PLAN_REVISION, tag=steering)
     Svc->>Svc: EXPLICIT -> TaskEngine.cancel_task(each)

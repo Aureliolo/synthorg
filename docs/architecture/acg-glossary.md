@@ -24,7 +24,7 @@ design, and agent pruning recommendations, see
 | Execution Trace | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `engine/loop_protocol.py`, `observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. numerous event constant domains (see `observability/events/`). |
 | Nodes (atomic actions) | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | Edges (control/data flow) | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `engine/decomposition/models.py` | Strong (multi-agent) | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
-| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `engine/loop_selector.py`, `engine/routing/models.py` | Strong | Per-complexity loop selection (react/openhands) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. |
+| Scheduling Policies | `CoordinationConfig` + `AutoTopologyConfig` | `engine/routing/models.py` | Strong | Topology selection (SAS/centralised/decentralised/context-dependent) is a scheduling policy. |
 
 ### Dynamic Behaviour Concepts
 

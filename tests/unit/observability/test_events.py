@@ -375,9 +375,9 @@ class TestEventConstants:
             # Ask policy: the standing "ask rather than guess" directive's
             # config / rebind / prompt-injection events.
             "ask_policy",
-            # LLM gateway + credentialed-MCP boundaries for the embedded
-            # OpenHands loop: request / budget-kill / injection-suspected /
-            # provider-unavailable / dispatch-failed events.
+            # The LLM gateway boundary: request / budget-kill /
+            # injection-suspected / provider-unavailable / dispatch-failed
+            # events.
             "gateway",
             # SHIP-time retrospective capture: distil / write / dedup events
             # for the objective retro that feeds org + agent memory.

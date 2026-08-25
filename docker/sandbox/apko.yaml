@@ -3,10 +3,11 @@
 # Consumed by: docker/sandbox/Dockerfile (thin FROM wrapper).
 #
 # Non-distroless on purpose: keeps busybox + git for agent code execution.
-# bash + tmux back a real interactive terminal: the OpenHands inner-loop
-# terminal tool (docker/openhands) drives a persistent tmux-managed bash
-# session and hard-fails without bash on PATH, and a real bash is a strict
-# upgrade over busybox sh for the native loops too.
+# A real bash is a strict upgrade over busybox sh for the shell tool, whose
+# commands an agent writes and which busybox silently reads differently.
+# tmux backs a terminal that survives between commands rather than one process
+# per exec; no shipped tool drives it today, and it is kept because that is the
+# shape any interactive terminal tool needs and the package costs a megabyte.
 #
 # Both halves of the node/npm pair are named: npm 12 accepts
 # ^22.22.2 || ^24.15.0 || >=26.0.0, and nodejs-24 sits inside that range.

@@ -39,11 +39,11 @@ _WEBHOOK_RETENTION_KEY: Final[str] = "webhook_receipt_retention_days"
 # the opposite of what it does.
 _RETENTION_NEVER_SWEEP: Final[str] = "0"
 
-# Enabling the LLM gateway opens an OpenAI-compatible egress path that lets an
-# embedded harness make provider calls, so the ``false -> true`` transition is
-# the weakening direction; disabling it (closing the egress) tightens and is
-# unguarded. It ships ON, so an unset value is already the running posture:
-# see _is_default_on_capability_reenable for what that makes a decision.
+# Enabling the LLM gateway opens an OpenAI-compatible egress path that lets a
+# process outside the runtime make provider calls, so the ``false -> true``
+# transition is the weakening direction; disabling it (closing the egress)
+# tightens and is unguarded. It ships OFF, so an unset value is already the
+# closed posture and the FIRST stored ``true`` is the one that opens it.
 _GATEWAY_ENABLED_KEY: Final[str] = "gateway_enabled"
 
 # Operator-declared failover widens what may answer a bound request: the same
@@ -59,11 +59,6 @@ _FAILOVER_ROUTES_KEY: Final[str] = "failover_routes"
 _PROVIDERS_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {_GATEWAY_ENABLED_KEY, _FAILOVER_ENABLED_KEY, _FAILOVER_ROUTES_KEY}
 )
-
-# Shipping the OpenHands loop means an egress-pinned container reaching the
-# gateway and the credentialed-MCP surface, so re-enabling it after an explicit
-# disable is guarded on the same terms as the gateway itself.
-_OPENHANDS_ENABLED_KEY: Final[str] = "openhands_enabled"
 
 # Output-style keys whose change relaxes the running guardrail: disabling the
 # whole policy, switching every rule to shadow (surface but never block), adding
@@ -166,17 +161,6 @@ _SECURITY_VALUE_KEYS: Final[frozenset[str]] = frozenset(
 _ENGINE_ORACLE_DISABLE_KEY: Final[str] = "completion_oracle_enabled"
 _ENGINE_ORACLE_SHADOW_KEY: Final[str] = "completion_oracle_shadow_mode"
 _ENGINE_ORACLE_MIN_STAKES_KEY: Final[str] = "completion_oracle_min_stakes"
-# Loop-routing keys in the ``engine`` namespace. Shipping a sandboxed coding
-# loop and routing real tasks through one are different decisions with very
-# different blast radius: these three are what actually spawn a container that
-# executes attacker-influenceable prompts against the agent's workspace, so
-# they take the same deliberate guardrail as the capability toggles rather
-# than a lighter one than them.
-_ENGINE_AUTO_SELECT_KEY: Final[str] = "loop_auto_select_enabled"
-_ENGINE_DEFAULT_LOOP_KEY: Final[str] = "default_loop_type"
-_ENGINE_COMPLEXITY_OVERRIDES_KEY: Final[str] = "loop_complexity_overrides"
-_SANDBOXED_LOOP_TYPE: Final[str] = "openhands"
-
 # The standing ask directive and the two tools that carry a question are the
 # only in-run path by which an agent defers a material, hard-to-reverse choice
 # to a human. Turning any of them off removes that deferral, which relaxes the
@@ -232,9 +216,6 @@ _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _ENGINE_ORACLE_DISABLE_KEY,
         _ENGINE_ORACLE_SHADOW_KEY,
         _ENGINE_MIDDLEWARE_KEY,
-        _ENGINE_AUTO_SELECT_KEY,
-        _ENGINE_DEFAULT_LOOP_KEY,
-        _ENGINE_COMPLEXITY_OVERRIDES_KEY,
         _ENGINE_ASK_EXTRA_DIRECTIVES_KEY,
         *_ENGINE_ASK_KEYS,
         *_ENGINE_MIN_STAKES_KEYS,
@@ -252,8 +233,6 @@ _ENGINE_ORACLE_ENABLED_DEFAULT: Final[str] = "true"
 _MCP_SANDBOX_ENABLED_KEY: Final[str] = "mcp_sandbox_enabled"
 _MCP_SANDBOX_NETWORK_KEY: Final[str] = "mcp_sandbox_network"
 _MCP_SANDBOX_CPUS_KEY: Final[str] = "mcp_sandbox_cpus"
-_CREDENTIALED_MCP_ENABLED_KEY: Final[str] = "credentialed_mcp_enabled"
-_CREDENTIALED_MCP_CAPABILITIES_KEY: Final[str] = "credentialed_mcp_capabilities"
 # Deploy reaches an external system that runs a live product, so enabling the
 # capability or adding a target widens real blast radius, not just permission.
 _DEPLOY_TOOLS_ENABLED_KEY: Final[str] = "deploy_tools_enabled"
@@ -277,13 +256,10 @@ _TOOLS_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _MCP_SANDBOX_ENABLED_KEY,
         _MCP_SANDBOX_NETWORK_KEY,
         _MCP_SANDBOX_CPUS_KEY,
-        _CREDENTIALED_MCP_ENABLED_KEY,
-        _CREDENTIALED_MCP_CAPABILITIES_KEY,
         _DEPLOY_TOOLS_ENABLED_KEY,
         _DEPLOY_TOOLS_TARGETS_KEY,
         _PUBLISH_TOOLS_ENABLED_KEY,
         _PUBLISH_TOOLS_TARGETS_KEY,
-        _OPENHANDS_ENABLED_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -341,28 +317,8 @@ def _is_capability_widening(current: str | None, new: str) -> bool:
     return bool(_capability_patterns(new) - _capability_patterns(current))
 
 
-def _is_default_on_capability_reenable(current: str | None, new: str) -> bool:
-    """Return whether an explicitly-disabled default-on capability is re-enabled.
-
-    An unset current resolves to the registered default (on), so the first
-    write of ``true`` restates what is already running rather than opening
-    anything. Only a stored ``false`` returning to ``true`` reopens the path.
-
-    Returns:
-        ``True`` when the transition reopens the capability.
-    """
-    currently_off = current is not None and not compare_ci(current, "true")
-    return currently_off and compare_ci(new, "true")
-
-
 def _is_tools_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``tools.*`` change relaxes isolation or blast radius."""
-    if key == _OPENHANDS_ENABLED_KEY:
-        return _is_default_on_capability_reenable(current, new)
-    if key == _CREDENTIALED_MCP_ENABLED_KEY:
-        return _is_default_on_capability_reenable(current, new)
-    if key == _CREDENTIALED_MCP_CAPABILITIES_KEY:
-        return _is_capability_widening(current, new)
     if key in _TOOL_FAMILY_ENABLED_KEYS:
         # Default is "false" (off); enabling exposes a destructive,
         # externally-reaching capability (a deploy release, a registry push).
@@ -500,30 +456,6 @@ def _is_self_improvement_weakening(key: str, *, current: str | None, new: str) -
     return currently_off and compare_ci(new, "true")
 
 
-def _sandboxed_loop_routes(value: str | None) -> frozenset[str]:
-    """Return which routes in a loop-routing value name the sandboxed loop.
-
-    Compares routes rather than mere presence: a value that already routes one
-    complexity to the sandboxed loop and now routes a second is widening what
-    reaches it, which a "does the string mention it" test would wave through
-    because the answer was already yes.
-
-    Covers both shapes the routing keys use: a bare loop type (which yields the
-    single empty-named route) and the ``complexity:loop`` override list.
-
-    Returns:
-        The complexity names routed to the sandboxed loop.
-    """
-    if not value:
-        return frozenset()
-    routes = set()
-    for entry in value.lower().split(","):
-        complexity, _, loop = entry.strip().rpartition(":")
-        if loop.strip() == _SANDBOXED_LOOP_TYPE:
-            routes.add(complexity.strip())
-    return frozenset(routes)
-
-
 def _has_new_directive(current: str | None, new: str) -> bool:
     """Return whether *new* carries an entry absent from *current*.
 
@@ -579,15 +511,6 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     if key == _ENGINE_ORACLE_SHADOW_KEY:
         currently_off = current is None or not compare_ci(current, "true")
         return currently_off and compare_ci(new, "true")
-    if key == _ENGINE_AUTO_SELECT_KEY:
-        currently_off = current is None or not compare_ci(current, "true")
-        return currently_off and compare_ci(new, "true")
-    if key in (_ENGINE_DEFAULT_LOOP_KEY, _ENGINE_COMPLEXITY_OVERRIDES_KEY):
-        # Naming the sandboxed loop where it was not named before is the
-        # weakening: it starts routing real tasks into a container that runs
-        # generated code. Removing it tightens and stays unguarded.
-        added = _sandboxed_loop_routes(new) - _sandboxed_loop_routes(current)
-        return bool(added)
     if key in _ENGINE_MIN_STAKES_KEYS:
         # A stored or env-overridden value can be malformed too, and raising
         # here would fail the write with a parse error instead of judging the
@@ -701,7 +624,9 @@ def _declared_route_keys(raw: str | None) -> frozenset[str]:
 def _is_providers_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``providers.*`` change relaxes posture."""
     if key == _GATEWAY_ENABLED_KEY:
-        return _is_default_on_capability_reenable(current, new)
+        # Ships off, so the first stored ``true`` is what opens the egress.
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
     if key == _FAILOVER_ENABLED_KEY:
         # Ships off, so the first stored ``true`` is what opens the mechanism.
         currently_off = current is None or not compare_ci(current, "true")

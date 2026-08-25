@@ -4,10 +4,10 @@
 # common workflows are one command. The Makefile is a convenience layer, not a
 # source of truth: every target maps to a command you can run directly.
 
-.PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
+.PHONY: benchmark record-benchmark-scores \
 	recursion-depth recursion-depth-record \
 	typecheck typecheck-warm typecheck-status typecheck-stop \
-	test-durations build-openhands-image \
+	test-durations \
 	dev-up dev-restart dev-status dev-logs dev-down
 
 # Type-check the tree through the mypy daemon (seconds once warm, and the same
@@ -88,43 +88,6 @@ benchmark:
 # `scripts/` puts that directory on the path, not the repository root.
 record-benchmark-scores:
 	PYTHONPATH=. uv run python scripts/record_benchmark_scores.py $(ARGS)
-
-# Print the inner-loop A/B matrix and the number of runs it would execute,
-# without spending anything: this path boots no gateway, opens no port and
-# starts no container. Run it before `loop-ab-record` to see the size of the
-# bill. See `evals/loop_ab/manifest.yaml`.
-loop-ab:
-	PYTHONPATH=. uv run python scripts/record_loop_ab.py $(ARGS)
-
-# Measure the inner-loop A/B for real (REAL PROVIDER SPEND) and rewrite the
-# committed scoreboard under `evals/loop_ab/scoreboard/`. The recorder hosts its
-# own gateway, so no running API is needed; what it does need is a Docker daemon
-# and the OpenHands image (for that leg), and a `--company-config` whose
-# `providers:` block aliases the manifest's example-* ids to real models. The
-# default config carries no providers at all, so a record run must supply one:
-#
-#   make loop-ab-record ARGS="--company-config my-providers.yaml"
-#
-# `--openhands-image` records against a locally built image. It is REQUIRED
-# after any change under `docker/openhands/`: the entrypoint is baked into the
-# image, and the default setting names a published tag, so a run without it
-# silently measures the previously published entrypoint against real spend.
-# Build one with `make build-openhands-image` and pass the tag it prints.
-#
-# Other flags: `--bind-host` overrides the resolved listener address (unset
-# resolves the narrowest one the sandbox can reach), `--bind-port` pins the port
-# instead of taking an ephemeral one, `--container-host` overrides the alias the
-# sandbox addresses the recorder by, and `--keep-workspaces` leaves each cell's
-# tree on disk to inspect instead of reclaiming it.
-#
-# ARGS is word-split by the shell, which is what lets it carry several flags;
-# quote any value containing a space within it, e.g.
-# ARGS="--company-config 'my config.yaml'".
-#
-# Re-run this whenever loop behaviour changes; the scoreboard stamps the commit
-# it was measured against, so a stale one is self-evident.
-loop-ab-record:
-	PYTHONPATH=. uv run python scripts/record_loop_ab.py --record $(ARGS)
 
 # Print the recursion-depth matrix and the sessions it would run, without
 # spending anything: this path boots no gateway, opens no port and starts no
@@ -234,22 +197,6 @@ build-sandbox-image:
 	rm -rf $(APKO_OUT)
 	@echo "built synthorg-sandbox:local; record against it with:"
 	@echo "  make recursion-depth-record ARGS=\"--company-config <yours> --sandbox-image synthorg-sandbox:local\""
-
-# Build the OpenHands loop image from the working tree, for a record run that
-# has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to
-# the published sandbox base, so the layers below the entrypoint match what CI
-# builds on; override it to test against a locally built base.
-#
-# Pinned to this tree's release tag rather than `latest`, which moves: the
-# scoreboard stamps only the commit, so two recordings a week apart could
-# otherwise differ because of the base image and read as a loop difference.
-# Read from pyproject rather than written out, so a release bump carries it.
-# `?=` defers the shell to first use, keeping it off every other target.
-BASE_IMAGE ?= ghcr.io/aureliolo/synthorg-sandbox:v$(shell sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml)
-build-openhands-image:
-	docker build -f docker/openhands/Dockerfile --build-arg BASE_IMAGE=$(BASE_IMAGE) -t synthorg-openhands:local .
-	@echo "built synthorg-openhands:local; record against it with:"
-	@echo "  make loop-ab-record ARGS=\"--company-config <yours> --openhands-image synthorg-openhands:local\""
 
 # ── The local dev arm ────────────────────────────────────────────────────────
 #

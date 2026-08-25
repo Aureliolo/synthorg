@@ -116,7 +116,7 @@ class TestRulesBasedClassifier:
             == LLMCallCategory.COORDINATION
         )
 
-    def test_meeting_maps_to_coordination(self) -> None:
+    def test_group_discussion_maps_to_coordination(self) -> None:
         assert (
             self.classifier.classify(_ctx(is_group_discussion=True))
             == LLMCallCategory.COORDINATION

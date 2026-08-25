@@ -7,10 +7,7 @@ unconditionally), and the OpenAI-compatible controller. The controller
 mounts whenever the pipeline is wired; the ``providers.gateway_enabled``
 setting gates behaviour per request, so a disabled gateway 503s rather
 than 404s. The gateway settings live in the existing ``providers``
-namespace, so the manifest declares no namespace of its own. The
-credentialed-tool MCP controller (the gateway's second surface) ships as
-its own ``mcp_gateway`` feature, which depends on this one for the shared
-signer slice.
+namespace, so the manifest declares no namespace of its own.
 """
 
 from synthorg._core.features import (

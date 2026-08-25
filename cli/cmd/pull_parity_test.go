@@ -76,9 +76,8 @@ func TestBuildPullItemsPinsSandboxImagesByDigest(t *testing.T) {
 		ImageTag: "v1.2.3",
 		Sandbox:  true,
 		VerifiedDigests: map[string]string{
-			"sandbox":   digest,
-			"sidecar":   digest,
-			"openhands": digest,
+			"sandbox": digest,
+			"sidecar": digest,
 		},
 	}
 
@@ -87,7 +86,7 @@ func TestBuildPullItemsPinsSandboxImagesByDigest(t *testing.T) {
 		refByName[item.name] = item.ref
 	}
 
-	for _, svc := range []string{"sandbox", "sidecar", "openhands"} {
+	for _, svc := range []string{"sandbox", "sidecar"} {
 		ref, ok := refByName[svc]
 		if !ok {
 			t.Fatalf("no pull item for %q", svc)

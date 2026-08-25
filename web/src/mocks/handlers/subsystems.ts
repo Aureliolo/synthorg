@@ -10,7 +10,7 @@ export const subsystemHandlers = [
       successFor<typeof getSubsystems>({
         subsystems: [
           { name: 'memory_backend', phase: 'active', waiting_on: [], detail: null },
-          { name: 'mcp_gateway', phase: 'active', waiting_on: [], detail: null },
+          { name: 'docs_engine', phase: 'active', waiting_on: [], detail: null },
         ],
         active: 2,
         degraded: 0,

@@ -6,8 +6,6 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
-import asyncio
-
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
@@ -27,7 +25,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
-    EXECUTION_TURN_OBSERVER_FAILED,
 )
 from synthorg.providers.models import (
     CompletionConfig,
@@ -62,7 +59,6 @@ from .loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
-    TurnProgress,
 )
 from .loop_quality_signals import attach_whole_run_signals
 from .loop_silent_turn import continue_silent_turn
@@ -77,6 +73,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .loop_turn_budget import ceiling_result, grant_extension
+from .loop_turn_observer import notify_turn_observer
 from .loop_unresolved_tools import unresolved_tools_result
 from .loop_unusable_turn import (
     continue_unusable_turn,
@@ -154,39 +151,6 @@ class ReactLoop:
         """
         return await attach_whole_run_signals(result, turns, self._step_classifier)
 
-    async def _notify_turn_observer(
-        self,
-        turn_number: int,
-        response: CompletionResponse,
-        observer: TurnObserver | None,
-        ctx: AgentContext,
-    ) -> None:
-        """Fire the optional turn observer with this turn's progress.
-
-        Purely observational: an observer failure is logged and swallowed
-        so it can never corrupt the run, but cancellation still propagates
-        so a client disconnect tears a streamed action down at once.
-
-        Raises:
-            CancelledError: Propagated so a client disconnect halts the run.
-        """
-        if observer is None:
-            return
-        tool_names = tuple(call.name for call in response.tool_calls)
-        try:
-            await observer(TurnProgress(turn_number, tool_names, ctx))
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort observer
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_TURN_OBSERVER_FAILED,
-                turn_number=turn_number,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
     @property
     def approval_gate(self) -> ApprovalGate | None:
         """Return the approval gate, or ``None``."""
@@ -206,6 +170,29 @@ class ReactLoop:
     def steering_inbox(self) -> SteeringInbox | None:
         """Return the steering inbox, or ``None``."""
         return self._steering_inbox
+
+    def with_checkpoint_callback(self, callback: CheckpointCallback) -> ReactLoop:
+        """Return a copy of this loop that also checkpoints.
+
+        The single owner of what a rebuilt loop carries. Resume rebuilds the
+        loop to attach a callback the engine could not supply at construction,
+        and a rebuild that names its fields at the call site is a rebuild that
+        drops whichever control the next one adds.
+
+        Returns:
+            A new :class:`ReactLoop` carrying every control of this one plus
+            ``callback``.
+        """
+        return ReactLoop(
+            callback,
+            approval_gate=self._approval_gate,
+            stagnation_detector=self._stagnation_detector,
+            compaction_callback=self._compaction_callback,
+            steering_inbox=self._steering_inbox,
+            step_classifier=self._step_classifier,
+            turn_observer=self._turn_observer,
+            clock=self._clock,
+        )
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -340,9 +327,7 @@ class ReactLoop:
                 return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
-            await self._notify_turn_observer(
-                turn_number, response, effective_observer, ctx
-            )
+            await notify_turn_observer(turn_number, response, effective_observer, ctx)
 
             # Before the fingerprint detector, because this signal survives
             # drifting arguments: a turn whose every tool call resolved to

@@ -51,7 +51,6 @@ if TYPE_CHECKING:
     from synthorg.engine._agent_engine_callables import (
         MakeLoopWithCallback,
         MakeToolInvoker,
-        ResolveLoop,
         ResolveMemoryStrategy,
         ValidateProject,
     )
@@ -100,7 +99,6 @@ class AgentEngineCheckpointResumeMixin:
     _validate_project: ValidateProject
     _budget_enforcer: BudgetEnforcer | None
     _loop: ExecutionLoop
-    _resolve_loop: ResolveLoop
     _make_loop_with_callback: MakeLoopWithCallback
     _provider: CompletionProvider
     _make_tool_invoker: MakeToolInvoker
@@ -216,14 +214,7 @@ class AgentEngineCheckpointResumeMixin:
                 checkpoint_ctx.task_execution.task,
             )
 
-        base_loop = self._loop
-        if checkpoint_ctx.task_execution is not None:
-            base_loop = await self._resolve_loop(
-                checkpoint_ctx.task_execution.task,
-                agent_id,
-                task_id,
-            )
-        loop = self._make_loop_with_callback(base_loop, agent_id, task_id)
+        loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
         result: ExecutionResult = await loop.execute(
             context=checkpoint_ctx,
             provider=provider or self._provider,

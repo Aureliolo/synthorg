@@ -43,7 +43,6 @@ from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
-from synthorg.settings.state import config_resolver_of
 from synthorg.tools.file_system.delete_file import DeleteFileTool
 from synthorg.tools.file_system.edit_file import EditFileTool
 from synthorg.tools.file_system.read_file import ReadFileTool
@@ -74,6 +73,13 @@ _GATEWAY_DRIVER: Final[str] = "litellm"
 #: attached a run cannot fetch its way to an answer the measurement did not
 #: intend.
 _SANDBOX_NETWORK: Final[Literal["none", "bridge", "host"]] = "none"
+
+#: Lifetime of a per-run gateway bearer. It must outlive the longest cell the
+#: sweep records, since a run whose bearer expires mid-flight fails auth part
+#: way through rather than being ended by the ceiling that bounds it. Owned
+#: here rather than by a setting: the gateway serves this harness alone, and
+#: the run's length is known here and nowhere else.
+_BEARER_TTL_SECONDS: Final[int] = 172_800
 
 
 @dataclass(frozen=True)
@@ -145,8 +151,6 @@ class HarnessBinder:
         Raises:
             GatewayModelUnboundError: The pair is not fully bound.
         """
-        resolver = config_resolver_of(self.host.app_state)
-        ttl_seconds = await resolver.get_int("providers", "gateway_token_ttl_seconds")
         bearer = mint_run_token(
             self.host.signer,
             execution_id=NotBlankStr(binding.execution_id),
@@ -154,7 +158,7 @@ class HarnessBinder:
             task_id=NotBlankStr(binding.task_id),
             ref=binding.ref,
             cost_ceiling=binding.cost_ceiling,
-            ttl_seconds=ttl_seconds,
+            ttl_seconds=_BEARER_TTL_SECONDS,
         )
         # What the run is authorised to spend, and against which pair. Never
         # the bearer: it is the credential, and this is the one place holding it.
@@ -165,7 +169,7 @@ class HarnessBinder:
             provider=binding.ref.provider,
             model_id=binding.ref.model_id,
             cost_ceiling=binding.cost_ceiling,
-            ttl_seconds=ttl_seconds,
+            ttl_seconds=_BEARER_TTL_SECONDS,
         )
         return bearer
 

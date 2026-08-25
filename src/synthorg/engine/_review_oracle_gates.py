@@ -80,11 +80,11 @@ def observe_output_policy(
     It returns nothing and takes no transition, so that promise is structural
     rather than a docstring: there is no outcome for it to rewrite.
 
-    It still exists because one arm produces no in-session signal at all. The
-    bundled OpenHands harness writes files with the SDK's own editor tools
-    inside the sandbox and commits through a shell, so no boundary in this
-    process sees them; the post-session read over the produced files is the
-    only observation available there.
+    It still exists because a whole class of writes produces no in-session
+    signal at all. An agent given the shell tool writes files inside the
+    sandbox and commits through it, so no boundary in this process sees the
+    bytes; the post-session read over the produced files is the only
+    observation available for anything that did not pass a file tool.
 
     It reads the produced files, one per declared path, never the agent's
     closing message. Narration and reasoning are working state, not output:

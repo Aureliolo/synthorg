@@ -1625,12 +1625,6 @@ jobs:
           dockerfile: docker/sandbox/Dockerfile
           config: .hadolint.yaml
 
-      - name: Lint openhands Dockerfile
-        uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
-        with:
-          dockerfile: docker/openhands/Dockerfile
-          config: .hadolint.yaml
-
       # Every Dockerfile under docker/ is linted. A shipped image left out
       # of this list is one whose build the gate does not actually cover.
       - name: Lint fine-tune Dockerfile

@@ -49,8 +49,8 @@ else
 fi
 
 # --- 3. failure blocks and names the job ---------------------------------
-run_case '{"retag-openhands":{"result":"failure"},"retag-web":{"result":"success"}}'
-if [ "$RUN_RC" -eq 1 ] && grep -q 'retag-openhands=failure' <<<"$RUN_OUT"; then
+run_case '{"retag-sidecar":{"result":"failure"},"retag-web":{"result":"success"}}'
+if [ "$RUN_RC" -eq 1 ] && grep -q 'retag-sidecar=failure' <<<"$RUN_OUT"; then
   pass "failure blocks and names the job"
 else
   fail "failure should block naming the job (rc=${RUN_RC}): ${RUN_OUT}"

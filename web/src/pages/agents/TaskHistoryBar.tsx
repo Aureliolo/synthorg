@@ -14,7 +14,6 @@ const TYPE_COLORS: Record<TaskType, string> = {
   design: 'bg-success',
   research: 'bg-warning',
   review: 'bg-accent-dim',
-  meeting: 'bg-muted-foreground',
   admin: 'bg-muted-foreground',
   analysis: 'bg-info',
 }

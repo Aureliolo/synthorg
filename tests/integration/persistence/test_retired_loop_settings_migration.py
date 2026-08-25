@@ -261,11 +261,16 @@ class TestRetiredLoopSettingsMigration:
         assert stored is not None
         assert stored.value == "medium:react,complex:react"
 
-    async def test_a_live_loop_name_is_left_alone(
+    async def test_a_name_this_revision_does_not_retire_is_left_alone(
         self,
         seed_and_migrate: SeedAndMigrate,
     ) -> None:
-        """Only the retired names move, so a measured route survives."""
+        """This revision rewrites its two names and touches nothing else.
+
+        ``openhands`` was a shipping loop when the revision was written and is
+        retired now, but by a later change; this revision must still pass it
+        through, or the test stops covering the narrowness that is its point.
+        """
         backend = await seed_and_migrate(
             (
                 _row(_DEFAULT_LOOP, "openhands"),

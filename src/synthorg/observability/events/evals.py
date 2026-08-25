@@ -23,9 +23,6 @@ EVALS_WORKSPACE_SEEDED: Final[str] = "evals.workspace.seeded"
 EVALS_BRIEF_WALL_CLOCK_EXCEEDED: Final[str] = "evals.brief.wall_clock_exceeded"
 EVALS_BRIEF_SUITE_PATH_REJECTED: Final[str] = "evals.brief_suite.path_rejected"
 EVALS_HARNESS_DIRTY_TREE: Final[str] = "evals.harness.dirty_tree"
-EVALS_LOOP_AB_RECORD_START: Final[str] = "evals.loop_ab.record_start"
-EVALS_LOOP_AB_RUN_RECORDED: Final[str] = "evals.loop_ab.run_recorded"
-EVALS_LOOP_AB_LOOP_UNAVAILABLE: Final[str] = "evals.loop_ab.loop_unavailable"
 EVALS_HARNESS_PROVIDER_MISSING: Final[str] = "evals.harness.provider_missing"
 EVALS_HARNESS_PROBE_CLEANUP_FAILED: Final[str] = "evals.harness.probe_cleanup_failed"
 """The preflight probe's single-use provider registry could not be released.
@@ -34,7 +31,6 @@ because the two cases differ in what the operator is told: a probe that already
 has a verdict keeps it (the bad credential or unknown model is the actionable
 fact, and a cleanup failure raised over it would erase that), while a cleanup
 failure on its own is the only thing that went wrong and is raised."""
-EVALS_LOOP_AB_SCOREBOARD_EMITTED: Final[str] = "evals.loop_ab.scoreboard_emitted"
 EVALS_HARNESS_HOST_STARTED: Final[str] = "evals.harness.host_started"
 EVALS_HARNESS_HOST_STOPPED: Final[str] = "evals.harness.host_stopped"
 EVALS_HARNESS_HOST_START_FAILED: Final[str] = "evals.harness.host_start_failed"
@@ -49,14 +45,10 @@ EVALS_HARNESS_HOST_ADMIN_PRESENT: Final[str] = "evals.harness.host_admin_present
 EVALS_HARNESS_BIND_HOST_RESOLVED: Final[str] = "evals.harness.bind_host_resolved"
 EVALS_HARNESS_BEARER_MINTED: Final[str] = "evals.harness.bearer_minted"
 EVALS_HARNESS_LEDGER_INSTALLED: Final[str] = "evals.harness.ledger_installed"
-EVALS_LOOP_AB_CELL_PARTIAL: Final[str] = "evals.loop_ab.cell_partial"
 EVALS_HARNESS_CELL_STALLED: Final[str] = "evals.harness.cell_stalled"
-EVALS_LOOP_AB_PREFLIGHT_PASSED: Final[str] = "evals.loop_ab.preflight_passed"
-EVALS_LOOP_AB_PREFLIGHT_LATENCY: Final[str] = "evals.loop_ab.preflight_latency"
 EVALS_HARNESS_TRANSCRIPT_WRITE_FAILED: Final[str] = (
     "evals.harness.transcript_write_failed"
 )
-EVALS_LOOP_AB_EVIDENCE_KEEP_FAILED: Final[str] = "evals.loop_ab.evidence_keep_failed"
 EVALS_HARNESS_WORKSPACES_RECLAIMED: Final[str] = "evals.harness.workspaces_reclaimed"
 EVALS_HARNESS_WORKSPACE_PATH_ESCAPED: Final[str] = (
     "evals.harness.workspace_path_escaped"

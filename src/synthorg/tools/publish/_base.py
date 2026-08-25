@@ -106,8 +106,8 @@ class _BasePublishTool(
             gate_deps=deps,
         )
         # Captured on resolve so the write tool can read the target's default
-        # publish method from the record. The instance is single-use (built
-        # per credentialed-MCP call), so this holds no cross-call state.
+        # publish method from the record. The instance is built per run, at
+        # registry augmentation, so this holds no cross-run state.
         self._resolved_connection: Connection | None = None
 
     @override

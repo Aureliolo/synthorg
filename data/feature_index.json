@@ -373,21 +373,6 @@
     },
     {
       "controllers": [
-        "CredentialedMcpController"
-      ],
-      "depends_on": [
-        "llm_gateway"
-      ],
-      "directory": "src/synthorg/api/mcp_gateway",
-      "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
-      "name": "credentialed_mcp",
-      "protocol_exports": [],
-      "settings_namespace": null,
-      "state_slice_fields": []
-    },
-    {
-      "controllers": [
         "DeliverableReceiptController"
       ],
       "depends_on": [],
@@ -1482,6 +1467,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-24T19:37:30.282638Z",
+  "generated_at": "2026-08-25T18:22:39.859673Z",
   "schema_version": 1
 }

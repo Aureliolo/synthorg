@@ -9,15 +9,14 @@ import (
 
 // fullSandboxedPins returns a pin map populated with valid sha256 digests
 // for every SynthOrg image of a sandbox-enabled config (backend / web /
-// sandbox / sidecar / openhands, optionally fine-tune). Used to construct
+// sandbox / sidecar, optionally fine-tune). Used to construct
 // fixtures where hasSynthOrgDigests would otherwise reject for missing keys.
 func fullSandboxedPins(fineTuning bool, variant string) map[string]string {
 	pins := map[string]string{
-		"backend":   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-		"web":       "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-		"sandbox":   "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-		"sidecar":   "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-		"openhands": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+		"backend": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"web":     "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		"sandbox": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+		"sidecar": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
 	}
 	if fineTuning {
 		svc := "fine-tune-gpu"

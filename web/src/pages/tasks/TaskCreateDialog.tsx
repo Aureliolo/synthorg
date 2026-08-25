@@ -32,8 +32,8 @@ const TASK_TYPES: { value: TaskType; label: string }[] = [
   { value: 'design', label: 'Design' },
   { value: 'research', label: 'Research' },
   { value: 'review', label: 'Review' },
-  { value: 'meeting', label: 'Meeting' },
   { value: 'admin', label: 'Admin' },
+  { value: 'analysis', label: 'Analysis' },
 ]
 
 const PRIORITIES: { value: Priority; label: string }[] = [

@@ -2301,26 +2301,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/mcp-gateway/mcp": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Credentialed-tool MCP endpoint
-         * @description Serves the governed forge / chat tools over MCP JSON-RPC to an embedded harness. Authenticated by the per-run gateway bearer.
-         */
-        readonly post: operations["ApiV1McpGatewayHandle"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/messages": {
         readonly parameters: {
             readonly query?: never;
@@ -17035,7 +17015,7 @@ export type components = {
              * @description Optional task-type override.
              * @enum {string|null}
              */
-            readonly task_type?: "development" | "design" | "research" | "review" | "meeting" | "admin" | "analysis" | null;
+            readonly task_type?: "development" | "design" | "research" | "review" | "admin" | "analysis" | null;
             /** @description Short human-readable objective title. */
             readonly title: string;
         };
@@ -17569,7 +17549,7 @@ export type components = {
          * @default development
          * @enum {string}
          */
-        readonly TaskType: "development" | "design" | "research" | "review" | "meeting" | "admin" | "analysis";
+        readonly TaskType: "development" | "design" | "research" | "review" | "admin" | "analysis";
         /** Team */
         readonly Team: {
             /** @description Team lead agent name */
@@ -23926,33 +23906,6 @@ export interface operations {
             };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1McpGatewayHandle: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": unknown;
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

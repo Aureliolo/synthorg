@@ -294,11 +294,10 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-Do not confuse it with the same hostname in the OpenHands loop's two endpoint
-settings. Those point the other way, from a spawned loop container back at the
-API's published port, and that container gets the alias explicitly (the loop
-wiring adds `host.docker.internal:host-gateway`), so it resolves on Engine too
-without any host configuration.
+Do not confuse it with the same hostname in an address handed to a spawned
+container. Those point the other way, back at the API's published port, and
+such a container is given the alias explicitly by whatever spawns it, so it
+resolves on Engine too without any host configuration.
 
 ---
 

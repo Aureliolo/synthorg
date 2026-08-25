@@ -40,7 +40,6 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
-| `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
 | `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |

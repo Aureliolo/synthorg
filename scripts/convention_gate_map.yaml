@@ -190,11 +190,6 @@ mandatory_rules:
     header: LLM Gateway Binding
     gate: scripts/check_gateway_explicit_binding.py
 
-  - id: claude-md::credentialed-mcp-governance
-    file: CLAUDE.md
-    header: Credentialed-MCP Governance
-    gate: scripts/check_credentialed_mcp_governed.py
-
   - id: claude-md::governed-destructive-tools
     file: CLAUDE.md
     header: Governed Destructive Tools

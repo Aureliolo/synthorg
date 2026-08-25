@@ -8,7 +8,7 @@ rules, and drops to its serving account, which is why the grant covers three
 capabilities rather than one: ``NET_ADMIN`` writes the rules, and
 ``SETUID``/``SETGID`` are what ``setgroups(2)`` and ``setuid(2)`` themselves
 require. Without the latter two the drop fails, the sidecar exits before
-becoming healthy, and every egress-pinned sandbox -- the whole OpenHands loop
+becoming healthy, and every egress-pinned sandbox -- every run inside one
 included -- fails to start.
 """
 

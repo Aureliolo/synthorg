@@ -59,17 +59,6 @@ class ValidateProject(Protocol):
     ) -> float: ...
 
 
-class ResolveLoop(Protocol):
-    """Signature of ``AgentEngineFactoriesMixin._resolve_loop``."""
-
-    async def __call__(
-        self,
-        task: Task,
-        agent_id: str = ...,
-        task_id: str = ...,
-    ) -> ExecutionLoop: ...
-
-
 class MakeLoopWithCallback(Protocol):
     """Signature of ``AgentEnginePostExecMixin._make_loop_with_callback``."""
 

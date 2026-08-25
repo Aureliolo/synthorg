@@ -134,7 +134,6 @@ _BASE_ARGS: JsonDict = {
     "execution_id": "exec-1",
     "channel": "main",
     "message_id": "msg-1",
-    "meeting_id": "meet-1",
     "webhook_id": "webhook-1",
     "decision_id": "decision-1",
     "approval_id": "approval-1",

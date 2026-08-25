@@ -138,13 +138,17 @@ class TestEnumStringValues:
         assert TaskStatus.AWAITING_INPUT.value == "awaiting_input"
 
     def test_task_type_values(self) -> None:
-        assert TaskType.DEVELOPMENT.value == "development"
-        assert TaskType.DESIGN.value == "design"
-        assert TaskType.RESEARCH.value == "research"
-        assert TaskType.REVIEW.value == "review"
-        assert TaskType.MEETING.value == "meeting"
-        assert TaskType.ADMIN.value == "admin"
-        assert TaskType.ANALYSIS.value == "analysis"
+        # The member set, not just each value: a task type is offered in the
+        # dashboard and persisted unconstrained in ``tasks.type``, so adding
+        # one back is a decision that should cost a line here.
+        assert [t.value for t in TaskType] == [
+            "development",
+            "design",
+            "research",
+            "review",
+            "admin",
+            "analysis",
+        ]
 
     def test_priority_values(self) -> None:
         assert Priority.CRITICAL.value == "critical"

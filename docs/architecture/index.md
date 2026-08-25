@@ -44,7 +44,7 @@ Templates -> Config
 |--------|---------|
 | **core** | Shared domain models: Agent, Task, Role, Company, Project, Approval, Artifact |
 | **client** | Client simulation: profiles, requirements, feedback, AI/human/hybrid clients, requirement generators, feedback strategies, pool strategies |
-| **engine** | Agent orchestration: execution loops (ReAct, OpenHands), task decomposition, routing, assignment, parallel execution, recovery, shutdown |
+| **engine** | Agent orchestration: the ReAct execution loop, task decomposition, routing, assignment, parallel execution, recovery, shutdown |
 | **engine.intake** | Intake processing: `IntakeStrategy` protocol, validation, and lifecycle orchestration for `ClientRequest` objects (the `ClientRequest` type is defined in `client`) |
 | **engine.review** | Review pipeline: ReviewStage protocol, multi-stage review orchestration, verdict tracking |
 | **providers** | LLM provider abstraction: LiteLLM adapter, capability matching, routing strategies (5), retry + rate limiting |

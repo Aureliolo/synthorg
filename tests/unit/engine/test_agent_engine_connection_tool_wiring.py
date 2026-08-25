@@ -1,15 +1,15 @@
-"""The governed forge / chat tools reach the agent's per-run registry.
+"""The governed connection tools reach the agent's per-run registry.
 
-The forge and chat agent tools are wired per run inside
-``AgentEngine._make_tool_invoker`` via ``registry_with_forge_tools`` /
-``registry_with_chat_tools``. These tests pin that engine-level wiring:
-when the boot-scoped runtime bundle and an approval store are present, an
-agent gets the ``forge_*`` / ``chat_*`` tools in its permitted set; when
-the runtime is absent the tools are not registered (the feature is off).
-Governance behaviour of the tools themselves is covered in the
-``tests/unit/tools/forge`` and ``tests/unit/tools/chat`` suites.
+The forge, chat, deploy and publish agent tools are wired per run inside
+``AgentEngine._make_tool_invoker`` via the ``registry_with_*_tools``
+family. These tests pin that engine-level wiring: when the boot-scoped
+runtime bundle and an approval store are present, an agent gets that
+family's tools in its permitted set; when the runtime is absent the tools
+are not registered (the feature is off). Governance behaviour of the tools
+themselves is covered in the per-family ``tests/unit/tools/`` suites.
 """
 
+from pathlib import Path
 from typing import override
 
 import pytest
@@ -22,7 +22,10 @@ from synthorg.persistence.integration_inmemory import InMemoryConnectionReposito
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.chat._runtime import ChatToolsRuntime
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
+from synthorg.tools.deploy._runtime import DeployToolsRuntime
 from synthorg.tools.forge._runtime import ForgeToolsRuntime
+from synthorg.tools.publish._runtime import PublishToolsRuntime
 from synthorg.tools.registry import ToolRegistry
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
@@ -30,10 +33,16 @@ pytestmark = pytest.mark.unit
 
 _TIMEOUT_SECONDS = 30.0
 _MAX_READ_CHARS = 100_000
+_MAX_LOG_CHARS = 50_000
+_MAX_MANIFEST_BYTES = 1_048_576
+_MAX_IMAGE_BYTES = 2_147_483_648
+_TARGETS = frozenset({"staging"})
 _FORGE_TOOL_NAMES = frozenset(
     {"forge_repo", "forge_issue", "forge_pull_request", "forge_ci"}
 )
 _CHAT_TOOL_NAMES = frozenset({"chat_messages", "chat_directory"})
+_DEPLOY_TOOL_NAMES = frozenset({"deploy_run", "deploy_release"})
+_PUBLISH_TOOL_NAMES = frozenset({"publish_inspect", "publish_push"})
 
 
 class _FakeSecretBackend:
@@ -90,14 +99,46 @@ def _chat_runtime() -> ChatToolsRuntime:
     )
 
 
-def _engine(*, forge: bool = False, chat: bool = False) -> AgentEngine:
+def _deploy_runtime() -> DeployToolsRuntime:
+    return DeployToolsRuntime(
+        connection_catalog=_catalog(),
+        allowed_targets=_TARGETS,
+        timeout_seconds=_TIMEOUT_SECONDS,
+        max_log_chars=_MAX_LOG_CHARS,
+    )
+
+
+def _publish_runtime(workspace_root: Path) -> PublishToolsRuntime:
+    return PublishToolsRuntime(
+        connection_catalog=_catalog(),
+        allowed_targets=_TARGETS,
+        timeout_seconds=_TIMEOUT_SECONDS,
+        max_manifest_bytes=_MAX_MANIFEST_BYTES,
+        max_image_bytes=_MAX_IMAGE_BYTES,
+        workspace_root=workspace_root,
+    )
+
+
+def _engine(
+    *,
+    forge: bool = False,
+    chat: bool = False,
+    deploy: bool = False,
+    publish_root: Path | None = None,
+) -> AgentEngine:
     registry = ToolRegistry([_StubTool(name="stub", category=ToolCategory.OTHER)])
     return AgentEngine(
         provider=ScriptedProvider([]),
         tool_registry=registry,
         approval_store=ApprovalStore(),
-        forge_tools_runtime=_forge_runtime() if forge else None,
-        chat_tools_runtime=_chat_runtime() if chat else None,
+        connection_tool_runtimes=ConnectionToolRuntimes(
+            forge=_forge_runtime() if forge else None,
+            chat=_chat_runtime() if chat else None,
+            deploy=_deploy_runtime() if deploy else None,
+            publish=(
+                _publish_runtime(publish_root) if publish_root is not None else None
+            ),
+        ),
     )
 
 
@@ -129,3 +170,27 @@ class TestAgentEngineChatWiring:
     def test_no_chat_tools_when_runtime_absent(self) -> None:
         names = _permitted_names(_engine(chat=False))
         assert names.isdisjoint(_CHAT_TOOL_NAMES)
+
+
+class TestAgentEngineDeployWiring:
+    """``deploy_*`` tools are registered per run only when wired."""
+
+    def test_deploy_tools_registered_when_runtime_wired(self) -> None:
+        names = _permitted_names(_engine(deploy=True))
+        assert names >= _DEPLOY_TOOL_NAMES
+
+    def test_no_deploy_tools_when_runtime_absent(self) -> None:
+        names = _permitted_names(_engine(deploy=False))
+        assert names.isdisjoint(_DEPLOY_TOOL_NAMES)
+
+
+class TestAgentEnginePublishWiring:
+    """``publish_*`` tools are registered per run only when wired."""
+
+    def test_publish_tools_registered_when_runtime_wired(self, tmp_path: Path) -> None:
+        names = _permitted_names(_engine(publish_root=tmp_path))
+        assert names >= _PUBLISH_TOOL_NAMES
+
+    def test_no_publish_tools_when_runtime_absent(self) -> None:
+        names = _permitted_names(_engine(publish_root=None))
+        assert names.isdisjoint(_PUBLISH_TOOL_NAMES)

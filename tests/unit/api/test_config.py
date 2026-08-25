@@ -218,8 +218,8 @@ class TestPerOpOverridesMirror:
             "SYNTHORG_API_PER_OP_RATE_LIMIT_OVERRIDES",
             '{"memory.fine_tune":[2,3600]}',
         )
-        cfg = PerOpRateLimitConfig(overrides={"meetings.invite": (5, 60)})
-        assert cfg.overrides == {"meetings.invite": (5, 60)}
+        cfg = PerOpRateLimitConfig(overrides={"tasks.create": (5, 60)})
+        assert cfg.overrides == {"tasks.create": (5, 60)}
 
     def test_rate_limit_overrides_env_with_negative_value_rejected(
         self,

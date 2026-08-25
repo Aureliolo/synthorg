@@ -169,10 +169,7 @@ nav:
       - Communication Event Stream: design/communication-events.md
       - Engine: design/engine.md
       - Agent Execution: design/agent-execution.md
-      - OpenHands Execution Loop: design/openhands-loop.md
-      - Inner-Loop A/B Harness: design/loop-ab-harness.md
       - LLM Gateway: design/llm-gateway.md
-      - Credentialed-tool MCP: design/credentialed-mcp.md
       - Agent Hands (Forge Tools): design/agent-hands.md
       - Chat Inbound (Socket-Mode): design/chat-inbound.md
       - Agent MCP Governance: design/agent-mcp-governance.md
@@ -252,6 +249,7 @@ nav:
       - Control-Plane Audit: research/control-plane-audit.md
       - Execution-Safety Threat Model: research/execution-safety-threat-model.md
       - GitButler Concurrency Evaluation: research/gitbutler-concurrency-eval.md
+      - Inner-Loop A/B Recording: research/inner-loop-ab-recording.md
       - LGPL Postgres Driver Decision: research/lgpl-postgres-driver-decision.md
       - LLM Provider Auth Survey: research/llm-provider-auth-survey.md
       - Multi-Agent Failure Audit: research/multi-agent-failure-audit.md

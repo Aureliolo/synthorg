@@ -90,6 +90,31 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # by three separate readers. An operator raising it for a slow docs
         # host would otherwise wait for an unrelated rebuild to take effect.
         ("tools", "web_request_timeout_seconds"),
+        # Each governed connection-tool family is composed once per rebuild,
+        # into a boot-scoped bundle the per-run augmentation then binds an
+        # identity onto. An operator repointing a family at a different
+        # connection therefore reaches a running agent only here.
+        ("tools", "forge_tools_enabled"),
+        ("tools", "forge_tools_connection"),
+        ("tools", "forge_tools_timeout_seconds"),
+        ("tools", "forge_tools_max_read_chars"),
+        ("tools", "chat_tools_enabled"),
+        ("tools", "chat_tools_connection"),
+        ("tools", "chat_tools_timeout_seconds"),
+        # The deploy and publish tool bundles are composed once per rebuild:
+        # which connection catalog backs them, which targets they may reach,
+        # and the budgets each tool bakes in. Both families destroy or replace
+        # upstream state, so an operator narrowing the allowed targets has to
+        # reach a running agent without waiting for an unrelated rebuild.
+        ("tools", "deploy_tools_enabled"),
+        ("tools", "deploy_tools_targets"),
+        ("tools", "deploy_tools_timeout_seconds"),
+        ("tools", "deploy_tools_max_log_chars"),
+        ("tools", "publish_tools_enabled"),
+        ("tools", "publish_tools_targets"),
+        ("tools", "publish_tools_timeout_seconds"),
+        ("tools", "publish_tools_max_manifest_bytes"),
+        ("tools", "publish_tools_max_image_bytes"),
         # The tool registry resolves the desktop session's driver and screen
         # geometry into the DesktopTool it builds, so an edit reaches a
         # session only through a rebuild.
@@ -101,21 +126,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # The browser tool resolves its settings once into a frozen model, so
         # the content-mode budget reaches a session only through a rebuild.
         ("tools", "browser_content_max_characters"),
-        # The auto-loop's container image and its two lifetime budgets are
-        # resolved once, when the loop dependencies are built, and then held
-        # on the engine for its lifetime. Without a rebuild the operator's
-        # edit reaches no run at all.
-        ("tools", "openhands_image"),
-        ("tools", "openhands_idle_timeout_seconds"),
-        ("tools", "openhands_max_runtime_seconds"),
-        # The capability master and the two endpoints decide whether
-        # ``build_openhands_loop_deps_or_none`` returns deps at all, and the
-        # endpoints are additionally baked into the sandbox egress allowlist.
-        # All three are read inside the rebuild, so without them here an
-        # operator wiring the loop sees no change until an unrelated rebuild.
-        ("tools", "openhands_enabled"),
-        ("tools", "credentialed_mcp_base_url"),
-        ("providers", "gateway_base_url"),
         # The effective capability map is composed once, while the stakes
         # router's ``ModelResolver`` is assembled, and the resolver then answers
         # every routing question from that snapshot. An operator correcting a
@@ -133,13 +143,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # switched off keeps its rows, so the only thing that stops them
         # grading is a rebuild reading the narrowed set.
         ("providers", "capability_sources"),
-        # Per-task loop selection is resolved into the frozen AutoLoopConfig
-        # the engine holds for its lifetime, and the per-task resolution reads
-        # that snapshot rather than the resolver, so an edit reaches no task
-        # until the engine is rebuilt.
-        ("engine", "loop_auto_select_enabled"),
-        ("engine", "default_loop_type"),
-        ("engine", "loop_complexity_overrides"),
         # The boot engine captures the memory backend by value, so replacing
         # the backend (which the memory_backend subsystem does on any of
         # these) leaves the engine reading and writing through the instance

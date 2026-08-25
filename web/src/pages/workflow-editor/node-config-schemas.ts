@@ -32,8 +32,8 @@ const TASK_TYPE_OPTIONS = [
   { value: 'design', label: 'Design' },
   { value: 'research', label: 'Research' },
   { value: 'review', label: 'Review' },
-  { value: 'meeting', label: 'Meeting' },
   { value: 'admin', label: 'Admin' },
+  { value: 'analysis', label: 'Analysis' },
 ] as const
 
 const ROUTING_STRATEGY_OPTIONS = [
