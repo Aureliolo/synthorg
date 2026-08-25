@@ -18,12 +18,11 @@ import {
   isComplete,
   isComplexity,
   isStakes,
-  newDraft,
   nonBlankCriteria,
-  toDraft,
   toPayload,
+  useDraftItems,
 } from './PlanEditor.drafts'
-import type { DraftItem, GradingProps, RowProps } from './PlanEditor.types'
+import type { GradingProps, RowProps } from './PlanEditor.types'
 
 const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
 const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
@@ -222,40 +221,8 @@ export interface PlanEditorProps {
 
 /** Editable form for reworking a plan's items, producing a new revision. */
 export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
-  const [drafts, setDrafts] = useState<readonly DraftItem[]>(() =>
-    plan.items.map(toDraft),
-  )
+  const { drafts, change, remove, add } = useDraftItems(plan)
   const [saving, setSaving] = useState(false)
-
-  const handleChange = useCallback((index: number, patch: Partial<DraftItem>) => {
-    setDrafts((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, ...patch } : d)),
-    )
-  }, [])
-
-  const handleRemove = useCallback((index: number) => {
-    setDrafts((prev) => {
-      const removed = prev[index]
-      if (removed === undefined) return prev
-      // Both references to it go, not just the containment one. Whatever hung
-      // off it moves to where it sat, and whatever waited on it stops waiting,
-      // rather than being left naming an item the plan no longer holds. The
-      // backend refuses either, and there is no dependency field here, so an
-      // orphaned edge is a 422 the operator has no way to clear.
-      return prev
-        .filter((_, i) => i !== index)
-        .map((draft) => ({
-          ...draft,
-          parentId:
-            draft.parentId === removed.id ? removed.parentId : draft.parentId,
-          dependencies: draft.dependencies.filter((id) => id !== removed.id),
-        }))
-    })
-  }, [])
-
-  const handleAdd = useCallback(() => {
-    setDrafts((prev) => [...prev, newDraft()])
-  }, [])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -296,15 +263,15 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           canRemove={drafts.length > 1}
           roster={roster}
           parentChoices={choices[index] ?? []}
-          onChange={handleChange}
-          onRemove={handleRemove}
+          onChange={change}
+          onRemove={remove}
         />
       ))}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={handleAdd}
+          onClick={add}
           disabled={drafts.length >= MAX_ITEMS}
         >
           <Plus aria-hidden="true" />
