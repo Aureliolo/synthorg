@@ -17,8 +17,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.plan_validation import (
-    describe_malformed_tree,
     validate_decision_options,
     validate_expected_artifacts,
 )
@@ -84,6 +84,9 @@ class PlanItem(BaseModel):
         required_tags: Tags for multi-faceted routing match.
         estimated_complexity: Complexity estimate for routing.
         stakes: Stakes level for capability-based agent selection.
+        unsplit_reason: Why this item is still larger than one agent's work,
+            when a decomposition backstop stopped the split. ``None`` is the
+            ordinary state and means the size signal was satisfied.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -145,6 +148,13 @@ class PlanItem(BaseModel):
         description="Advisory tags naming the objective criteria this item "
         "advances; matched leniently for the coverage map, not enforced to "
         "name an entry of the plan's objective_criteria",
+    )
+    unsplit_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why this item reached the plan still larger than one "
+        "agent's work, when a decomposition backstop stopped the split. "
+        "Written by the projection and never by an operator edit: a revised "
+        "item is not the one the note was about",
     )
 
     @model_validator(mode="after")

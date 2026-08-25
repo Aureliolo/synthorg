@@ -573,7 +573,7 @@ class TestOneDecompositionCannotRunForever:
         # altogether, which is no test of the fallback at all.
         monkeypatch.setattr(
             service_module,
-            "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
+            "DEFAULT_SESSION_CEILING_SECONDS",
             _A_SHORT_CEILING,
         )
         resolver: MagicMock = mock_of[ConfigResolverProtocol]()
@@ -635,7 +635,7 @@ class TestOneDecompositionCannotRunForever:
         # settings, and the bound has to stand there too.
         monkeypatch.setattr(
             service_module,
-            "_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS",
+            "DEFAULT_SESSION_CEILING_SECONDS",
             _A_SHORT_CEILING,
         )
         service = DecompositionService(

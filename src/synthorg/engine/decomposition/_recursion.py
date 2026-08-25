@@ -16,19 +16,62 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_SUBTASKS,
+    DecompositionContext,
+    depth_budget,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import DECOMPOSITION_FAILED
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
-#: Mirror of ``coordination.leaf_subtask_threshold``. Held here because a
+#: Mirror of ``coordination.subtask_max_artifacts``. Held here because a
 #: harness runs with no settings at all, and the answer has to stand there too.
-DEFAULT_LEAF_SUBTASK_THRESHOLD: Final[int] = 1
+DEFAULT_SUBTASK_MAX_ARTIFACTS: Final[int] = 10
 
 #: Mirror of ``coordination.subtask_max_criteria``, for the same reason.
-DEFAULT_SUBTASK_MAX_CRITERIA: Final[int] = 5
+DEFAULT_SUBTASK_MAX_CRITERIA: Final[int] = 10
+
+
+@dataclass(slots=True)
+class TreeSessionLedger:
+    """How many planning sessions one decomposition may still open.
+
+    A session per node is what recursion costs, so this is the bound in the
+    unit that spends money, and it is the only one that stops GRACEFULLY: the
+    wall-clock ceiling raises and discards every level already paid for, while
+    running out here returns the tree as far as it got and leaves the units it
+    could not split saying so.
+
+    Mutable by design, and the one mutable thing a decomposition carries: a
+    budget spent across a recursive walk is a running total, and threading an
+    immutable count back up through every level would put the same answer in
+    two places.
+
+    Attributes:
+        remaining: Sessions still available to the whole tree.
+        exhausted: Whether the ceiling has been reached, so the reason a unit
+            went unsplit can name which backstop bound.
+    """
+
+    remaining: int
+    exhausted: bool = False
+
+    def take(self) -> bool:
+        """Claim one planning session.
+
+        Returns:
+            ``True`` when a session was available, ``False`` once the whole
+            tree's budget is spent.
+        """
+        if self.remaining <= 0:
+            self.exhausted = True
+            return False
+        self.remaining -= 1
+        return True
 
 
 @dataclass(frozen=True)
@@ -57,7 +100,7 @@ class RecursionBudget:
         Returns:
             ``True`` when a child level would stay within ``max_depth``.
         """
-        return self.enabled and context.current_depth + 1 < context.max_depth
+        return self.enabled and context.current_depth + 1 < depth_budget(context)
 
 
 def flat_budget() -> RecursionBudget:
@@ -69,7 +112,7 @@ def flat_budget() -> RecursionBudget:
     return RecursionBudget(
         enabled=False,
         policy=SubtaskAtomicityPolicy(
-            max_expected_artifacts=DEFAULT_LEAF_SUBTASK_THRESHOLD,
+            max_expected_artifacts=DEFAULT_SUBTASK_MAX_ARTIFACTS,
             max_acceptance_criteria=DEFAULT_SUBTASK_MAX_CRITERIA,
         ),
     )
@@ -123,7 +166,7 @@ async def resolve_recursion_budget(
             return flat_budget()
         policy = SubtaskAtomicityPolicy(
             max_expected_artifacts=await resolver.get_int(
-                "coordination", "leaf_subtask_threshold"
+                "coordination", "subtask_max_artifacts"
             ),
             max_acceptance_criteria=await resolver.get_int(
                 "coordination", "subtask_max_criteria"
@@ -144,11 +187,67 @@ async def resolve_recursion_budget(
     return RecursionBudget(enabled=enabled, policy=policy)
 
 
+async def resolve_decomposition_bounds(
+    context: DecompositionContext,
+    resolver: ConfigResolverProtocol | None,
+) -> DecompositionContext:
+    """Fill *context*'s undeclared depth and width backstops from settings.
+
+    An ordered precedence ladder with one resolver, called once at the root of
+    a decomposition: a caller that declared a bound keeps it (the manual
+    decomposition endpoints ask for a specific shape per request), an
+    undeclared one takes the operator's setting, and a setting that cannot be
+    read falls back to the definition's own default. Every level below plans
+    under the stamped values, so one tree is never planned under two budgets.
+
+    Args:
+        context: The root context, as the caller built it.
+        resolver: The live settings resolver, or ``None`` in a harness.
+
+    Returns:
+        The context with both bounds resolved.
+    """
+    if context.max_depth is not None and context.max_subtasks is not None:
+        return context
+    depth = context.max_depth
+    width = context.max_subtasks
+    if resolver is not None:
+        try:
+            if depth is None:
+                depth = await resolver.get_int(
+                    "coordination", "decomposition_max_depth"
+                )
+            if width is None:
+                width = await resolver.get_int(
+                    "coordination", "decomposition_max_subtasks"
+                )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a backstop the setting cannot answer
+            # for is the definition's default by construction, and a bound
+            # still stands, so the runaway this exists to catch is caught
+            # either way
+            reraise_critical(exc)
+            logger.warning(
+                DECOMPOSITION_FAILED,
+                note="decomposition bounds unreadable; using the definitions'",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+    return context.model_copy(
+        update={
+            "max_depth": DEFAULT_MAX_DEPTH if depth is None else depth,
+            "max_subtasks": DEFAULT_MAX_SUBTASKS if width is None else width,
+        }
+    )
+
+
 __all__ = [
-    "DEFAULT_LEAF_SUBTASK_THRESHOLD",
+    "DEFAULT_SUBTASK_MAX_ARTIFACTS",
     "DEFAULT_SUBTASK_MAX_CRITERIA",
     "RecursionBudget",
+    "TreeSessionLedger",
     "child_context",
     "flat_budget",
+    "resolve_decomposition_bounds",
     "resolve_recursion_budget",
 ]

@@ -5,20 +5,31 @@ to decompose a parent task into executable subtasks.
 """
 
 import asyncio
-from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
-from synthorg.engine.decomposition._ceilings import ceiling_seconds, timeout_failure
+from synthorg.engine.decomposition._ceilings import (
+    DEFAULT_SESSION_CEILING_SECONDS,
+    DEFAULT_TREE_CEILING_SECONDS,
+    ceiling_seconds,
+    timeout_failure,
+    tree_session_budget,
+)
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
 from synthorg.engine.decomposition._recursion import (
     RecursionBudget,
+    TreeSessionLedger,
     child_context,
+    resolve_decomposition_bounds,
     resolve_recursion_budget,
+)
+from synthorg.engine.decomposition._split_decision import (
+    SplitOutcome,
+    SplitVerdict,
+    decide_split,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
@@ -41,24 +52,37 @@ from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
-    DECOMPOSITION_DEPTH_EXHAUSTED,
     DECOMPOSITION_FAILED,
     DECOMPOSITION_RECURSED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
-    DECOMPOSITION_SUBTASK_OVERSIZED,
 )
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
-#: Mirrors ``coordination.decomposition_timeout_seconds``. Held here because a
-#: harness runs with no settings at all, and the bound has to stand there too.
-_DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS: Final[float] = 600.0
 
-#: Mirrors ``coordination.decomposition_tree_timeout_seconds``, for the same
-#: reason.
-_DEFAULT_TREE_TIMEOUT_SECONDS: Final[float] = 3600.0
+def _held_to_size(
+    context: DecompositionContext, budget: RecursionBudget
+) -> DecompositionContext:
+    """Stamp the size signal onto *context* when this is the last level.
+
+    The single owner of "is there anywhere left to split into". While there
+    is, an oversized unit is simply decomposed again, which is the measured
+    behaviour; at the last level there is nowhere to delegate to, so the
+    planner is asked at parse time to spend BREADTH instead, on the same
+    correction channel a graph violation takes.
+
+    Args:
+        context: The level about to be planned.
+        budget: What may be done about an oversized subtask.
+
+    Returns:
+        The context, carrying the policy only where it binds.
+    """
+    if not budget.enabled or budget.has_room(context):
+        return context
+    return context.model_copy(update={"atomicity": budget.policy})
 
 
 def _task_from_subtask(
@@ -197,17 +221,27 @@ class DecompositionService:
         )
 
         budget = await resolve_recursion_budget(self._config_resolver)
+        # Resolved once, at the root, and stamped onto the context every level
+        # below plans under: one tree is never planned under two budgets, and
+        # a caller that declared its own shape (the manual endpoints) keeps it.
+        context = await resolve_decomposition_bounds(context, self._config_resolver)
         # The outer of the two ceilings, and the only one that bounds a
         # CALLER. The inner one below bounds a planning session, and a
         # recursion runs one per node, so the number of sessions is the
         # branching factor to the power of the depth and no per-session
         # budget bounds the call at all. Two of the four callers are
         # request handlers.
+        # The root's own planning session is claimed here, so the budget an
+        # operator sets is a count of sessions rather than of recursions.
+        ledger = TreeSessionLedger(
+            remaining=await tree_session_budget(self._config_resolver)
+        )
+        ledger.take()
         scope = asyncio.timeout(await self._tree_timeout_seconds())
         try:
             async with scope:
                 return await self._do_decompose(
-                    task, await self._grounded(task, context), budget
+                    task, await self._grounded(task, context), budget, ledger=ledger
                 )
         except TimeoutError as exc:
             # Asked of the scope, not inferred from the type: this handler also
@@ -279,7 +313,7 @@ class DecompositionService:
         return await ceiling_seconds(
             self._config_resolver,
             "decomposition_timeout_seconds",
-            _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
+            DEFAULT_SESSION_CEILING_SECONDS,
         )
 
     async def _tree_timeout_seconds(self) -> float:
@@ -291,7 +325,7 @@ class DecompositionService:
         return await ceiling_seconds(
             self._config_resolver,
             "decomposition_tree_timeout_seconds",
-            _DEFAULT_TREE_TIMEOUT_SECONDS,
+            DEFAULT_TREE_CEILING_SECONDS,
         )
 
     async def _do_decompose(
@@ -299,6 +333,8 @@ class DecompositionService:
         task: Task,
         context: DecompositionContext,
         budget: RecursionBudget,
+        *,
+        ledger: TreeSessionLedger,
     ) -> DecompositionResult:
         """Internal decomposition logic, and the recursion point.
 
@@ -306,6 +342,8 @@ class DecompositionService:
             task: The parent task to decompose.
             context: Decomposition constraints.
             budget: What may be done about an oversized subtask.
+            ledger: The whole tree's remaining planning-session budget,
+                spent by this level and by every level it opens.
 
         Returns:
             Decomposition result with created tasks, dependency edges, and the
@@ -333,7 +371,9 @@ class DecompositionService:
         scope = asyncio.timeout(await self._timeout_seconds())
         try:
             async with scope:
-                plan = await self._strategy.decompose(task, context)
+                plan = await self._strategy.decompose(
+                    task, _held_to_size(context, budget)
+                )
         except TimeoutError as exc:
             # Classified here rather than left to the caller's handler, which
             # can only ask its OWN scope: this ceiling firing is as unretryable
@@ -394,16 +434,31 @@ class DecompositionService:
         # the tasks exist because a child level decomposes the TASK, not the
         # definition: it inherits the project, the type and the delegation
         # chain the same way any other dispatch would.
-        children = await self._split_oversized(
-            plan.subtasks, created_tasks, context, budget
+        split = await self._split_oversized(
+            plan.subtasks, created_tasks, context, budget, ledger=ledger
         )
+        if split.unsplit:
+            # Stamped after the tasks exist, because the note belongs to the
+            # PLAN an operator reviews rather than to the work: a unit that
+            # reached the plan still oversized is one the planner was asked to
+            # widen and could not, and nothing else on this path says so.
+            plan = plan.model_copy(
+                update={
+                    "subtasks": tuple(
+                        st.model_copy(update={"unsplit_reason": reason})
+                        if (reason := split.unsplit.get(st.id))
+                        else st
+                        for st in plan.subtasks
+                    )
+                }
+            )
 
         result = DecompositionResult(
             plan=plan,
             created_tasks=tuple(created_tasks),
             dependency_edges=tuple(edges),
             depth=context.current_depth,
-            children=children,
+            children=split.children,
         )
 
         logger.info(
@@ -413,7 +468,8 @@ class DecompositionService:
             structure=structure.value,
             edge_count=len(edges),
             depth=context.current_depth,
-            split_count=len(children),
+            split_count=len(split.children),
+            unsplit_count=len(split.unsplit),
             leaf_count=len(result.leaf_tasks),
         )
 
@@ -425,7 +481,9 @@ class DecompositionService:
         created_tasks: list[Task],
         context: DecompositionContext,
         budget: RecursionBudget,
-    ) -> tuple[DecompositionResult, ...]:
+        *,
+        ledger: TreeSessionLedger,
+    ) -> SplitOutcome:
         """Decompose again every subtask that is more than one agent's worth.
 
         Sequential rather than fanned out: each child level is itself a
@@ -438,9 +496,11 @@ class DecompositionService:
             created_tasks: The tasks built from them.
             context: This level's constraints.
             budget: What may be done about an oversized subtask.
+            ledger: The whole tree's remaining planning-session budget.
 
         Returns:
-            One result per subtask that split, empty when none did.
+            The child results, and the reason each unit that stayed oversized
+            went unsplit.
         """
         if not budget.enabled:
             # Nothing here can act on an oversized subtask, so assessing them
@@ -449,7 +509,7 @@ class DecompositionService:
             # at one artifact, so every subtask declaring two would take the
             # depth-exhausted branch below, at warning level, on every
             # decomposition the product runs.
-            return ()
+            return SplitOutcome(children=(), unsplit={})
 
         if not self._strategy.plans_any_task():
             # A strategy holding one operator-supplied plan for one parent
@@ -459,43 +519,26 @@ class DecompositionService:
             # plan whose subtask declares two artifacts the moment an operator
             # enabled recursion, which is a setting about depth breaking a
             # feature about neither.
-            return ()
+            return SplitOutcome(children=(), unsplit={})
 
         children: list[DecompositionResult] = []
+        unsplit: dict[str, str] = {}
         for subtask_def, child_task in zip(subtasks, created_tasks, strict=True):
-            if subtask_def.kind is not PlanItemKind.WORK:
-                # A DECISION item is a choice among its declared options, not
-                # work to divide, and the policy reads only the artifact,
-                # criterion and claim counts. One declaring several acceptance
-                # criteria would otherwise read as oversized and open a child
-                # planning session that plans work nobody asked for, which the
-                # harness then tries to build as a leaf.
-                continue
-            assessment = budget.policy.assess(subtask_def)
-            if not assessment.is_oversized:
-                continue
-            if not budget.has_room(context):
-                logger.warning(
-                    DECOMPOSITION_DEPTH_EXHAUSTED,
-                    task_id=str(child_task.id),
-                    subtask_id=subtask_def.id,
-                    condition=assessment.condition,
-                    observed=assessment.observed,
-                    limit=assessment.limit,
-                    current_depth=context.current_depth,
-                    max_depth=context.max_depth,
-                )
-                continue
-            logger.info(
-                DECOMPOSITION_SUBTASK_OVERSIZED,
+            decision = decide_split(
+                subtask_def,
                 task_id=str(child_task.id),
-                subtask_id=subtask_def.id,
-                condition=assessment.condition,
-                observed=assessment.observed,
-                limit=assessment.limit,
-                current_depth=context.current_depth,
+                context=context,
+                budget=budget,
+                ledger=ledger,
             )
-            child = await self._do_decompose(child_task, child_context(context), budget)
+            if decision.verdict is SplitVerdict.LEAVE:
+                continue
+            if decision.reason is not None:
+                unsplit[subtask_def.id] = decision.reason
+                continue
+            child = await self._do_decompose(
+                child_task, child_context(context), budget, ledger=ledger
+            )
             children.append(child)
             logger.info(
                 DECOMPOSITION_RECURSED,
@@ -503,8 +546,9 @@ class DecompositionService:
                 depth=child.depth,
                 subtask_count=len(child.created_tasks),
                 leaf_count=len(child.leaf_tasks),
+                sessions_remaining=ledger.remaining,
             )
-        return tuple(children)
+        return SplitOutcome(children=tuple(children), unsplit=unsplit)
 
     def rollup_status(
         self,

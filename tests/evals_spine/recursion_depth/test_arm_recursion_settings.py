@@ -8,11 +8,11 @@ import structlog
 
 from evals.errors import RecursionDepthCeilingUndeclaredError
 from evals.recursion_depth.tree import _declared_maximum, arm_recursion
-from synthorg.engine.decomposition.llm import LlmDecompositionConfig
-from synthorg.engine.decomposition.service import (
-    _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS,
-    _DEFAULT_TREE_TIMEOUT_SECONDS,
+from synthorg.engine.decomposition._ceilings import (
+    DEFAULT_SESSION_CEILING_SECONDS,
+    DEFAULT_TREE_CEILING_SECONDS,
 )
+from synthorg.engine.decomposition.llm import LlmDecompositionConfig
 from synthorg.observability.events.evals import EVALS_RECURSION_SETTINGS_ARMED
 from synthorg.settings.registry import SettingsRegistry, get_registry
 from synthorg.settings.service import SettingsService
@@ -28,7 +28,7 @@ _PRODUCT_DEFAULT_RETRIES = LlmDecompositionConfig().max_retries
 #: down, so a product bound that moves is caught here rather than by a write
 #: the settings service refuses partway through a paid sweep.
 _OPENED_TO_CEILING: tuple[str, ...] = (
-    "leaf_subtask_threshold",
+    "subtask_max_artifacts",
     "subtask_max_criteria",
     "decomposition_tree_timeout_seconds",
 )
@@ -147,7 +147,7 @@ async def test_planning_timeout_exceeds_the_product_default() -> None:
     written = await _armed()
 
     assert float(written["decomposition_timeout_seconds"]) > (
-        _DEFAULT_DECOMPOSITION_TIMEOUT_SECONDS
+        DEFAULT_SESSION_CEILING_SECONDS
     )
 
 
@@ -195,7 +195,7 @@ async def test_tree_ceiling_exceeds_the_product_default() -> None:
     written = await _armed()
 
     assert float(written["decomposition_tree_timeout_seconds"]) > (
-        _DEFAULT_TREE_TIMEOUT_SECONDS
+        DEFAULT_TREE_CEILING_SECONDS
     )
 
 

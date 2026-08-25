@@ -788,7 +788,8 @@ class CoordinateTaskRequest(BaseModel):
     Attributes:
         agent_names: Agent names to coordinate with (``None`` = all active).
             When provided, must be non-empty and unique.
-        max_subtasks: Maximum subtasks for decomposition.
+        max_subtasks: Maximum subtasks per level, or ``None`` to take the
+            operator's ``coordination.decomposition_max_subtasks``.
         max_concurrency_per_wave: Override for max concurrency per wave.
         fail_fast: Override for fail-fast behaviour (``None`` = use
             section config default).
@@ -802,11 +803,11 @@ class CoordinateTaskRequest(BaseModel):
         max_length=50,
         description="Agent names to coordinate with (None = all active)",
     )
-    max_subtasks: int = Field(
-        default=10,
+    max_subtasks: int | None = Field(
+        default=None,
         ge=1,
         le=50,
-        description="Maximum number of subtasks the decomposition may produce.",
+        description="Subtasks one level may produce; unset takes the setting.",
     )
     max_concurrency_per_wave: int | None = Field(
         default=None,

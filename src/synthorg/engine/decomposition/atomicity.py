@@ -13,10 +13,19 @@ plan always splits the same way. An agent that has read the code would judge its
 own unit better, and no published system has that either; this is the half that
 can be built without one.
 
-The sibling question at the objective level is already answered by
+The sibling question at the objective level is answered by
 :class:`~synthorg.engine.pipeline.policy.threshold.LeafThresholdRoutingPolicy`,
-which reads the same artifact count. This asks it per subtask, at the seam that
-can act on the answer by decomposing again.
+off its own ``coordination.leaf_subtask_threshold``. The two read the same KIND
+of count and want opposite values, which is why they stopped sharing a setting:
+an objective declaring two deliverables is a team's work, while a subtask
+declaring two is one agent's.
+
+Of the three rules below, the artifact and criterion counts are loose guards
+against a unit that is obviously too large; what actually decides the shape of
+a tree is ``satisfies``, because it counts the OBJECTIVE's own success criteria
+rather than how verbosely a particular planner writes. It is also
+self-terminating: a unit claiming one criterion becomes a task with one
+acceptance criterion, so its own children can claim at most that one.
 """
 
 from dataclasses import dataclass
@@ -110,7 +119,7 @@ class SubtaskAtomicityPolicy:
 
     Attributes:
         max_expected_artifacts: Deliverables one agent may own, from
-            ``coordination.leaf_subtask_threshold``.
+            ``coordination.subtask_max_artifacts``.
         max_acceptance_criteria: Ways of being done one agent may own, from
             ``coordination.subtask_max_criteria``.
     """
@@ -155,9 +164,51 @@ class SubtaskAtomicityPolicy:
         return AtomicityAssessment(verdict=AtomicityVerdict.ATOMIC)
 
 
+#: What stopped a split, named so the reason on the plan says which bound the
+#: operator can move. Two backstops and one refusal, because they are answered
+#: differently: raise the depth, raise the tree's session budget, or accept a
+#: unit the planner could not express any smaller.
+DEPTH_BACKSTOP: Final[str] = "the depth backstop was reached"
+SESSIONS_BACKSTOP: Final[str] = "the tree's planning budget was spent"
+PLANNER_DECLINED: Final[str] = "the planner could not split it further"
+
+
+def unsplit_reason(assessment: AtomicityAssessment, *, backstop: str) -> str:
+    """Phrase why a unit reached the plan still oversized.
+
+    Written for the operator reading the plan rather than for a log: it names
+    the rule that fired, both numbers, and which bound stopped the split, so
+    the two remedies (raise the bound, or narrow the objective) are both
+    visible without opening a container log.
+
+    Args:
+        assessment: The verdict that judged the unit oversized.
+        backstop: What stopped the split, one of the constants above.
+
+    Returns:
+        The reason recorded on the plan item.
+
+    Raises:
+        ValueError: The assessment names no condition, so it judged the unit
+            atomic and there is nothing to explain.
+    """
+    if not assessment.is_oversized:
+        msg = "an atomic assessment has no unsplit reason to give"
+        raise ValueError(msg)
+    return (
+        f"Still more than one agent's work: {assessment.condition} is "
+        f"{assessment.observed} against a limit of {assessment.limit}, and "
+        f"{backstop}."
+    )
+
+
 __all__ = [
+    "DEPTH_BACKSTOP",
     "MAX_SATISFIED_CRITERIA",
+    "PLANNER_DECLINED",
+    "SESSIONS_BACKSTOP",
     "AtomicityAssessment",
     "AtomicityVerdict",
     "SubtaskAtomicityPolicy",
+    "unsplit_reason",
 ]

@@ -109,6 +109,27 @@ The one outcome recursion exists to prevent, recorded where it happens: the
 task still runs, so nothing else downstream reports that it was known to be
 too big for the agent that got it."""
 
+DECOMPOSITION_TREE_SESSIONS_EXHAUSTED: Final[str] = (
+    "decomposition.tree_sessions_exhausted"
+)
+"""The whole tree's planning-session budget ran out with work still oversized.
+
+Distinct from ``DECOMPOSITION_DEPTH_EXHAUSTED`` because the two are answered by
+moving different bounds: one is about how deep a tree may go, the other about
+how much it may spend getting there. Both leave the unit dispatched whole and
+both say so on the plan; this one is the graceful end of a tree that was
+otherwise still splitting."""
+
+DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED: Final[str] = (
+    "decomposition.atomicity_correction_requested"
+)
+"""A plan at the last permitted level was refused for units that are oversized.
+
+The planner is asked to spend BREADTH where depth has run out, on the same
+correction channel a graph violation takes, so the loop closes without an
+operator. Only a plan that still cannot comply once its retries are spent
+reaches the operator, as a reported condition on the items."""
+
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""
 

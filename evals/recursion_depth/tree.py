@@ -56,7 +56,7 @@ logger = get_logger(__name__)
 #: :func:`_declared_maximum` instead of copied. A copy would be one product
 #: release from arming a different manipulation than the module docstring
 #: describes, silently, since both currently sit exactly ON their maxima.
-_OPEN_ARTIFACT_SETTING: Final[str] = "leaf_subtask_threshold"
+_OPEN_ARTIFACT_SETTING: Final[str] = "subtask_max_artifacts"
 _OPEN_CRITERIA_SETTING: Final[str] = "subtask_max_criteria"
 
 #: The whole-tree ceiling, armed at what the setting itself allows.

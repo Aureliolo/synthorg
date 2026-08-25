@@ -103,6 +103,11 @@ class SubtaskDefinition(BaseModel):
         default=(),
         description="For a DECISION subtask, the options to choose among",
     )
+    unsplit_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why this unit reached the plan still oversized, when a "
+        "backstop stopped the split; None when it is one agent's work",
+    )
 
     @model_validator(mode="after")
     def _validate_subtask(self) -> Self:

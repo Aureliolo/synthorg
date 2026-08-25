@@ -17,15 +17,18 @@ from typing import Final, cast, override
 from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._atomicity_gate import describe_unsplittable
 from synthorg.engine.decomposition._mangled_arguments import (
     mangled_serialisation_hint,
 )
+from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
     DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
     DECOMPOSITION_SESSION_DIGEST_FALLBACK,
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
@@ -150,6 +153,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         capture: PlanCapture,
         available_roles: tuple[NotBlankStr, ...] = (),
         objective_criteria: tuple[NotBlankStr, ...] = (),
+        atomicity: SubtaskAtomicityPolicy | None = None,
     ) -> None:
         super().__init__(
             name="submit_decomposition_plan",
@@ -169,6 +173,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         self._capture = capture
         self._available_roles = available_roles
         self._objective_criteria = objective_criteria
+        self._atomicity = atomicity
 
     @override
     async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
@@ -215,6 +220,16 @@ class SubmitDecompositionPlanTool(BaseTool):
             )
         except DecompositionError as exc:
             return await self._refuse(arguments, exc)
+        # Asked here rather than after the session, because this IS the
+        # session's correction channel: at the last level there is nowhere to
+        # split into, so the plan is handed back for a wider one instead.
+        oversized = describe_unsplittable(plan.subtasks, policy=self._atomicity)
+        if oversized is not None:
+            logger.info(
+                DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
+                parent_task_id=self._parent_task_id,
+            )
+            return await self._refuse(arguments, DecompositionError(oversized))
         await self._capture.set(plan)
         return ToolExecutionResult(
             content=(

@@ -20,10 +20,10 @@ from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
 from synthorg.core.plan_role_validation import describe_unroutable_role
+from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
-    describe_malformed_tree,
     describe_structureless_graph,
     describe_undecidable_criteria,
     describe_unstated_references,

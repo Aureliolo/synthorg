@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.plan_tree import PlanTree
-from synthorg.core.plan_validation import describe_malformed_tree
+from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, sid
 

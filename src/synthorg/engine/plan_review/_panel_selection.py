@@ -101,6 +101,10 @@ def _not_picked_predicate(exclude_ids: set[str]) -> Callable[[AgentIdentity], bo
 def _touched_departments(plan: DecompositionResult) -> tuple[str, ...]:
     """Departments the plan's item owners belong to, in first-seen order.
 
+    Every level, not the top one: a workstream carries the role that ASSEMBLES
+    its subtree, and the roles doing the work it assembles are a level below,
+    so seating off the top alone panels a tree for a fraction of what it does.
+
     Each item's owning role is mapped to its built-in department; unknown
     (custom) roles contribute no department. Order-preserving and de-duplicated
     so the panel seats one lead per distinct domain the plan actually touches.
@@ -109,7 +113,7 @@ def _touched_departments(plan: DecompositionResult) -> tuple[str, ...]:
         The distinct department names (normalised) the plan touches.
     """
     seen: list[str] = []
-    for subtask in plan.plan.subtasks:
+    for subtask in plan.all_subtasks:
         role_name = subtask.required_role
         if role_name is None:
             continue

@@ -11,7 +11,7 @@ from typing import Final
 
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import DecompositionContext, width_budget
 from synthorg.engine.decomposition.llm_prompt import (
     DECOMPOSITION_FENCES,
     foundation_lines,
@@ -134,6 +134,6 @@ def planning_brief(
             wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),
             "",
             "Constraints:",
-            f"  max_subtasks: {context.max_subtasks}",
+            f"  max_subtasks: {width_budget(context)}",
         ]
     )

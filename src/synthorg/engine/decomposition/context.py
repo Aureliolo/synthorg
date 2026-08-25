@@ -11,12 +11,14 @@ only thing it exists to fill is this context's ``available_roles``.
 """
 
 from collections.abc import Sequence
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr, PersonaLabelStr
+from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 
 
 def roster_from_agents(agents: Sequence[AgentIdentity]) -> tuple[NotBlankStr, ...]:
@@ -51,9 +53,23 @@ class DecompositionContext(BaseModel):
     """Configuration context for a decomposition operation.
 
     Attributes:
-        max_subtasks: Maximum number of subtasks allowed.
-        max_depth: Maximum nesting depth for recursive decomposition.
+        max_subtasks: How many units one level may produce, or ``None`` to
+            take the operator's ``coordination.decomposition_max_subtasks``.
+        max_depth: How many levels of planning are allowed, or ``None`` to
+            take the operator's ``coordination.decomposition_max_depth``.
+            Both are runaway backstops rather than targets: what decides a
+            split is whether a unit is one agent's worth of work, so a small
+            objective stops on its own well short of either. ``None`` is the
+            normal value, and ``DecompositionService`` resolves both once at
+            the root and stamps them, so every level of one tree is planned
+            under one budget and a caller that declares one still wins.
         current_depth: Current nesting depth.
+        atomicity: The size signal this level is held to at PARSE time, set
+            only where no further level is available so an oversized unit
+            cannot be delegated downward. ``None`` everywhere else, which is
+            what keeps a level with depth left splitting rather than
+            correcting. ``DecompositionService`` is the single owner of that
+            judgement and stamps this per level.
         workspace_summary: What the project workspace actually holds, for the
             planner to plan against. ``None`` when the caller cannot resolve
             it, which leaves the brief's unconditional rule to carry the
@@ -75,15 +91,15 @@ class DecompositionContext(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    max_subtasks: int = Field(
-        default=10,
+    max_subtasks: int | None = Field(
+        default=None,
         ge=1,
-        description="Maximum number of subtasks allowed",
+        description="Units one level may produce; None takes the setting",
     )
-    max_depth: int = Field(
-        default=3,
+    max_depth: int | None = Field(
+        default=None,
         ge=1,
-        description="Maximum nesting depth",
+        description="Levels of planning allowed; None takes the setting",
     )
     current_depth: int = Field(
         default=0,
@@ -103,6 +119,57 @@ class DecompositionContext(BaseModel):
         default=(),
         description="Roles the org staffs, which an owner must be drawn from",
     )
+    atomicity: SubtaskAtomicityPolicy | None = Field(
+        default=None,
+        description="Size signal enforced at parse time on the last level",
+    )
 
 
-__all__ = ["DecompositionContext", "roster_from_agents"]
+#: Mirror of ``coordination.decomposition_max_depth``. Held here because a
+#: harness runs with no settings at all, and the answer has to stand there too.
+DEFAULT_MAX_DEPTH: Final[int] = 5
+
+#: Mirror of ``coordination.decomposition_max_subtasks``, for the same reason.
+DEFAULT_MAX_SUBTASKS: Final[int] = 10
+
+
+def depth_budget(context: DecompositionContext) -> int:
+    """How many levels of planning *context* is allowed.
+
+    The one place an undeclared, unresolved backstop falls back, so the answer
+    cannot differ between the several readers that ask it. Every context below
+    ``DecompositionService.decompose_task`` is resolved and carries the
+    operator's own value, so the fallback is reached only by a harness that
+    built a context and never handed it to the service.
+
+    Args:
+        context: The level being planned.
+
+    Returns:
+        The declared or resolved backstop, else the definition's own default.
+    """
+    return DEFAULT_MAX_DEPTH if context.max_depth is None else context.max_depth
+
+
+def width_budget(context: DecompositionContext) -> int:
+    """How many units one level of *context* may produce.
+
+    Args:
+        context: The level being planned.
+
+    Returns:
+        The declared or resolved backstop, else the definition's own default.
+    """
+    return (
+        DEFAULT_MAX_SUBTASKS if context.max_subtasks is None else context.max_subtasks
+    )
+
+
+__all__ = [
+    "DEFAULT_MAX_DEPTH",
+    "DEFAULT_MAX_SUBTASKS",
+    "DecompositionContext",
+    "depth_budget",
+    "roster_from_agents",
+    "width_budget",
+]

@@ -37,7 +37,11 @@ from synthorg.engine.decomposition.agent_session_submit import (
     PlanCapture,
     SubmitDecompositionPlanTool,
 )
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    depth_budget,
+    width_budget,
+)
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
@@ -402,14 +406,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
             return await self._fallback_plan(task, context)
 
-        if len(plan.subtasks) > context.max_subtasks:
+        if len(plan.subtasks) > width_budget(context):
             # The owner researched this plan across turns with read-only
             # tools; the single-shot fallback would produce a thinner one the
             # operator never sees. Refusing surfaces the real plan's size on
             # the durable Plan as a failure reason instead, the same as every
             # other strategy does.
             over_limit = DecompositionSubtaskLimitError(
-                produced=len(plan.subtasks), limit=context.max_subtasks
+                produced=len(plan.subtasks), limit=width_budget(context)
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,
@@ -656,6 +660,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 NotBlankStr(criterion.description)
                 for criterion in task.acceptance_criteria
             ),
+            atomicity=context.atomicity,
         )
         planning_tools = self._planning_tools(task, owner)
         tools: list[BaseTool] = [submit_tool, *planning_tools]
@@ -806,10 +811,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             DecompositionDepthError: If current depth meets or exceeds max
                 depth.
         """
-        if context.current_depth >= context.max_depth:
+        if context.current_depth >= depth_budget(context):
             msg = (
                 f"Decomposition depth {context.current_depth} "
-                f"meets or exceeds max depth {context.max_depth}"
+                f"meets or exceeds max depth {depth_budget(context)}"
             )
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionDepthError(msg)

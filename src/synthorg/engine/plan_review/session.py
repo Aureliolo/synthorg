@@ -553,7 +553,12 @@ def _review_brief(
 
 
 def _render_plan(plan: DecompositionResult) -> str:
-    """Render the plan's items as review-legible text.
+    """Render the whole plan tree as review-legible text.
+
+    Every level, indented under the item it was split out of. A reviewer
+    cannot review a plan it can only see one level of, and a recursive plan
+    keeps almost all of its work below the top: rendering the top alone shows
+    a handful of assemblies and none of what they assemble.
 
     Returns:
         A plain-text rendering of every item (id, title, owner, stakes, kind,
@@ -564,33 +569,83 @@ def _render_plan(plan: DecompositionResult) -> str:
         f"Plan structure: {plan.plan.task_structure.value}",
         "Items:",
     ]
-    for index, subtask in enumerate(plan.plan.subtasks, start=1):
-        lines.extend(_render_item(index, subtask))
+    lines.extend(_render_level(plan, prefix="", depth=0))
     return "\n".join(lines)
 
 
-def _render_item(index: int, subtask: SubtaskDefinition) -> list[str]:
+def _render_level(node: DecompositionResult, *, prefix: str, depth: int) -> list[str]:
+    """Render one level of the tree, then each subtree hanging off it.
+
+    Args:
+        node: The level to render.
+        prefix: What each item's number is written under, so an item reads
+            ``2.3`` rather than ``3`` and a reviewer can say which subtree a
+            finding is about without quoting an id.
+        depth: How far to indent, which is what makes containment visible.
+
+    Returns:
+        The text lines describing this level and everything below it.
+    """
+    below = {child.plan.parent_task_id: child for child in node.children}
+    lines: list[str] = []
+    for index, subtask in enumerate(node.plan.subtasks, start=1):
+        label = f"{prefix}{index}"
+        child = below.get(subtask.id)
+        lines.extend(
+            _render_item(
+                label,
+                subtask,
+                pad="  " * depth,
+                assembles=None if child is None else len(child.plan.subtasks),
+            )
+        )
+        if child is not None:
+            lines.extend(_render_level(child, prefix=f"{label}.", depth=depth + 1))
+    return lines
+
+
+def _render_item(
+    label: str,
+    subtask: SubtaskDefinition,
+    *,
+    pad: str,
+    assembles: int | None,
+) -> list[str]:
     """Render a single plan item to review-legible lines.
+
+    Args:
+        label: The item's position in the tree, such as ``2.3``.
+        subtask: The definition to render.
+        pad: The indent for this level.
+        assembles: How many items this one was split into, or ``None`` when
+            it is work rather than an assembly of work.
 
     Returns:
         The text lines describing *subtask*.
     """
     owner = subtask.required_role or "UNASSIGNED"
+    role = subtask.kind.value if assembles is None else f"assembles {assembles} below"
     lines = [
-        f"{index}. [{subtask.id}] {subtask.title} ({subtask.kind.value})",
+        f"{pad}{label}. [{subtask.id}] {subtask.title} ({role})",
         (
-            f"   owner: {owner} | stakes: {subtask.stakes.value}"
+            f"{pad}   owner: {owner} | stakes: {subtask.stakes.value}"
             f" | complexity: {subtask.estimated_complexity.value}"
         ),
-        f"   {subtask.description}",
+        f"{pad}   {subtask.description}",
     ]
     if subtask.dependencies:
-        lines.append(f"   depends on: {', '.join(subtask.dependencies)}")
+        lines.append(f"{pad}   depends on: {', '.join(subtask.dependencies)}")
     if subtask.acceptance_criteria:
-        lines.append(f"   done when: {'; '.join(subtask.acceptance_criteria)}")
+        lines.append(f"{pad}   done when: {'; '.join(subtask.acceptance_criteria)}")
     else:
-        lines.append("   done when: (none defined)")
+        lines.append(f"{pad}   done when: (none defined)")
+    if subtask.unsplit_reason is not None:
+        # The machine's own evidence for an OVERSIZED_SCOPE finding, put in
+        # front of the reviewer rather than left in a container log.
+        lines.append(f"{pad}   still oversized: {subtask.unsplit_reason}")
     for option in subtask.options:
         mark = " (recommended)" if option.recommended else ""
-        lines.append(f"   option [{option.id}] {option.title}{mark}: {option.summary}")
+        lines.append(
+            f"{pad}   option [{option.id}] {option.title}{mark}: {option.summary}"
+        )
     return lines
