@@ -39,6 +39,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers._plan_input_validation import (
+    reject_malformed_tree,
     reject_undecidable_graph,
     reject_unroutable_owners,
 )
@@ -152,6 +153,7 @@ async def replan_initiative(
     require_replannable(existing)
     await reject_unroutable_owners(app_state, revision.items)
     reject_undecidable_graph(revision.items, task_structure=revision.task_structure)
+    reject_malformed_tree(revision.items)
     service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
     # Persist the successor before retiring anything. A failed insert here
     # leaves *existing* EXECUTING and its work running, so the operator retries

@@ -309,6 +309,62 @@ class DecompositionResult(BaseModel):
         )
 
     @property
+    def all_subtasks(self) -> tuple[SubtaskDefinition, ...]:
+        """Every unit in the tree, split containers included.
+
+        The definition-side counterpart of :attr:`all_tasks`, for the readers
+        that ask what the plan CONTAINS (routing, the rollup, the park that
+        needs a unit's declared role) rather than what waits on what.
+
+        Returns:
+            This level's subtasks, then each child's, recursively.
+        """
+        return self.plan.subtasks + tuple(
+            subtask for child in self.children for subtask in child.all_subtasks
+        )
+
+    @property
+    def dispatch_subtasks(self) -> tuple[SubtaskDefinition, ...]:
+        """Every node of the tree, as one flat DAG a dispatcher can run.
+
+        A container is the assembly of the work below it, so it is ready only
+        once that work has delivered. The wave builder and the dependency gate
+        already ask exactly that question of ``dependencies``, so the answer
+        is supplied by adding a container's children to its edges HERE, in the
+        one derived view, rather than by threading a second containment map
+        through four call sites and a parallel branch inside the gate.
+
+        The augmentation never leaves this view. The planner's own
+        ``SubtaskDefinition``, the durable ``PlanItem.dependencies`` and the
+        persisted ``Task.dependencies`` are untouched, so no declared edge is
+        overwritten and ``dependencies`` keeps sole ownership of what the plan
+        SAYS about order; containment is a fact it never states. A container
+        cannot carry the edge itself either: ``DecompositionPlan`` requires a
+        dependency to resolve within its own level, and its children are a
+        level below.
+
+        Returns:
+            Every unit of :attr:`all_subtasks`, with each split one carrying
+            its children as extra edges. Identical to ``plan.subtasks`` for a
+            tree that never split.
+        """
+        contained_by = {
+            child.plan.parent_task_id: tuple(s.id for s in child.plan.subtasks)
+            for child in self.children
+        }
+        own = tuple(
+            subtask.model_copy(
+                update={"dependencies": (*subtask.dependencies, *contained)}
+            )
+            if (contained := contained_by.get(subtask.id))
+            else subtask
+            for subtask in self.plan.subtasks
+        )
+        return own + tuple(
+            subtask for child in self.children for subtask in child.dispatch_subtasks
+        )
+
+    @property
     def max_depth_reached(self) -> int:
         """The deepest level this tree actually reached.
 

@@ -23,6 +23,7 @@ from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
+    describe_malformed_tree,
     describe_structureless_graph,
     describe_undecidable_criteria,
     describe_unstated_references,
@@ -31,7 +32,32 @@ from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.hr.state import HrStateSlice
 
-__all__ = ["reject_undecidable_graph", "reject_unroutable_owners"]
+__all__ = [
+    "reject_malformed_tree",
+    "reject_undecidable_graph",
+    "reject_unroutable_owners",
+]
+
+
+def reject_malformed_tree(items: Sequence[PlanItem]) -> None:
+    """Refuse hand-authored items whose containment links are not a tree.
+
+    Kept apart from :func:`reject_undecidable_graph` because the two read
+    different graphs over the same items and answer in different vocabularies:
+    that one is about what an item WAITS FOR, this one about what an item
+    BELONGS TO. ``Plan`` refuses both at construction, so this exists to
+    answer the operator with a 422 naming the offending items rather than a
+    500 from a model validator they cannot see.
+
+    Args:
+        items: The revised items, as the operator wrote them.
+
+    Raises:
+        ValidationError: The parent links do not form a tree.
+    """
+    detail = combine_graph_violations(describe_malformed_tree(items))
+    if detail is not None:
+        raise ValidationError(detail)
 
 
 def reject_undecidable_graph(

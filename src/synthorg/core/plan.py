@@ -18,6 +18,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.plan_validation import (
+    describe_malformed_tree,
     validate_decision_options,
     validate_expected_artifacts,
 )
@@ -69,6 +70,10 @@ class PlanItem(BaseModel):
         id: Unique item identifier within the plan.
         title: Short item title.
         description: Detailed item description.
+        parent_id: The item this one was split out of, or ``None`` when
+            nothing contains it (a workstream, the plan's coarse independent
+            track). Structure only: it says what an item belongs to and never
+            when it runs, which ``dependencies`` alone decides.
         dependencies: IDs of items this one depends on (the plan DAG).
         owner: Role or agent that owns this item, or ``None`` when unassigned.
         acceptance_criteria: Per-item criteria that define "done" for it.
@@ -86,6 +91,10 @@ class PlanItem(BaseModel):
     id: NotBlankStr = Field(description="Unique item identifier within the plan")
     title: NotBlankStr = Field(description="Short item title")
     description: NotBlankStr = Field(description="Detailed item description")
+    parent_id: NotBlankStr | None = Field(
+        default=None,
+        description="The item this one was split out of; None for a workstream",
+    )
     dependencies: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of items this one depends on",
@@ -165,6 +174,9 @@ class PlanItem(BaseModel):
             raise ValueError(msg) from exc
         if self.id != canonical:
             msg = f"Plan item id {self.id!r} is not in canonical UUID form"
+            raise ValueError(msg)
+        if self.id == self.parent_id:
+            msg = f"Plan item {self.id!r} cannot be its own parent"
             raise ValueError(msg)
         if self.id in self.dependencies:
             msg = f"Plan item {self.id!r} cannot depend on itself"
@@ -434,7 +446,26 @@ class Plan(BaseModel):
                 msg = f"plan item {item.id!r} references unknown items: {missing}"
                 raise ValueError(msg)
         self._reject_dependency_cycle()
+        self._reject_malformed_tree()
         return self
+
+    def _reject_malformed_tree(self) -> None:
+        """Reject a containment structure that is not a tree.
+
+        The parent link is a second graph over the same items, and it is
+        wrong in ways the dependency checks above cannot see: a parent naming
+        nothing, a chain that never reaches a workstream, a subtree hanging
+        off a decision item that dispatch strips. All three are entity
+        invariants for the same reason a dependency cycle is, so they are
+        refused here rather than surfacing as a dispatch failure.
+
+        Raises:
+            ValueError: When the items do not form a containment tree, naming
+                every violation rather than the first.
+        """
+        problems = describe_malformed_tree(self.items)
+        if problems:
+            raise ValueError("; ".join(problems))
 
     def fail(self, reason: NotBlankStr, *, now: datetime) -> Self:
         """Return this plan failed, carrying the reason Plan Review shows.

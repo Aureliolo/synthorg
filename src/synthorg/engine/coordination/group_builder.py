@@ -92,7 +92,7 @@ def build_execution_waves(
 ) -> tuple[ParallelExecutionGroup, ...]:
     """Convert DAG parallel groups + routing decisions into execution groups.
 
-    1. Reconstruct ``DependencyGraph`` from plan subtasks.
+    1. Reconstruct ``DependencyGraph`` from every level's subtasks.
     2. Call ``dag.parallel_groups()`` to get wave-level grouping.
     3. For each wave, look up ``RoutingDecision`` to build
        ``AgentAssignment``.
@@ -104,7 +104,7 @@ def build_execution_waves(
     (they were already reported as unroutable by the routing phase).
 
     Args:
-        decomposition_result: Decomposition with plan and created tasks.
+        decomposition_result: Decomposition tree with its plans and tasks.
         routing_result: Routing decisions mapping subtasks to agents.
         config: Coordination configuration.
         workspaces: Optional workspaces for resource claim mapping.
@@ -117,14 +117,18 @@ def build_execution_waves(
             inconsistent (e.g. cycle in the DAG or unbuildable
             assignments).
     """
-    plan = decomposition_result.plan
-    dag = DependencyGraph(plan.subtasks)
+    # The whole tree, not this level: a decomposition that recursed carries
+    # its levels in `children`, and a container is ready only once the work
+    # below it has delivered, which `dispatch_subtasks` states as edges the
+    # DAG already knows how to order.
+    subtasks = decomposition_result.dispatch_subtasks
+    dag = DependencyGraph(subtasks)
 
     parallel_groups = dag.parallel_groups()
     routing_lookup = _build_routing_lookup(routing_result)
     workspace_lookup = _build_workspace_lookup(workspaces)
-    task_lookup = {str(t.id): t for t in decomposition_result.created_tasks}
-    dep_map = dependency_map(plan.subtasks)
+    task_lookup = {str(t.id): t for t in decomposition_result.all_tasks}
+    dep_map = dependency_map(subtasks)
 
     groups: list[ParallelExecutionGroup] = []
     blocked_ids: set[str] = set()

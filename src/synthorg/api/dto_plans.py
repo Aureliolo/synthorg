@@ -29,7 +29,14 @@ from synthorg.core.task_enums import (
 )
 from synthorg.core.types import NotBlankStr
 
-_MAX_ITEMS: Final[int] = 50
+#: Ceiling on a submitted item list, and a request-boundary bound rather than
+#: a model of the tree. A plan is a TREE, so this covers every level together:
+#: the old 50 was one level's worth and would have refused an operator's own
+#: edit of any plan that recursed. Sized above what the decomposition bounds
+#: can actually produce (a whole-tree planning budget of 40 nodes, each
+#: planning at most its width bound of 25), so a legitimate plan is never
+#: unsubmittable while a hand-rolled payload still meets a ceiling.
+_MAX_ITEMS: Final[int] = 1000
 _MAX_DEPS: Final[int] = 50
 _MAX_CRITERIA: Final[int] = 50
 
@@ -45,6 +52,9 @@ class PlanItemPayload(BaseModel):
         id: Stable item identifier within the plan.
         title: Short item title.
         description: Detailed item description.
+        parent_id: The item this one was split out of, or ``None`` when
+            nothing contains it. Structure only: it never decides when an
+            item runs.
         dependencies: IDs of items this one depends on.
         owner: Role or agent that owns this item, or ``None``.
         acceptance_criteria: Per-item done criteria.
@@ -59,6 +69,10 @@ class PlanItemPayload(BaseModel):
     title: NotBlankStr = Field(max_length=256, description="Short item title")
     description: NotBlankStr = Field(
         max_length=8192, description="Detailed item description"
+    )
+    parent_id: NotBlankStr | None = Field(
+        default=None,
+        description="The item this one was split out of; None for a workstream",
     )
     dependencies: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -138,6 +152,9 @@ class PlanItemPayload(BaseModel):
             raise ValueError(msg) from exc
         if self.id != canonical:
             msg = f"Plan item id {self.id!r} is not in canonical UUID form"
+            raise ValueError(msg)
+        if self.id == self.parent_id:
+            msg = f"Plan item {self.id!r} cannot be its own parent"
             raise ValueError(msg)
         if self.id in self.dependencies:
             msg = f"Plan item {self.id!r} cannot depend on itself"

@@ -110,6 +110,9 @@ class TaskRoutingService:
                 the parent task's override and plan structure.
         """
         plan = decomposition_result.plan
+        # Every level: a recursive decomposition holds most of its work below
+        # the root, and a container needs an owner exactly as a leaf does.
+        units = decomposition_result.all_subtasks
 
         if str(parent_task.id) != plan.parent_task_id:
             msg = (
@@ -128,7 +131,7 @@ class TaskRoutingService:
         logger.info(
             TASK_ROUTING_STARTED,
             parent_task_id=plan.parent_task_id,
-            subtask_count=len(plan.subtasks),
+            subtask_count=len(units),
             agent_count=len(available_agents),
         )
 
@@ -136,11 +139,11 @@ class TaskRoutingService:
             logger.warning(
                 TASK_ROUTING_NO_AGENTS,
                 parent_task_id=plan.parent_task_id,
-                subtask_count=len(plan.subtasks),
+                subtask_count=len(units),
             )
             return RoutingResult(
                 parent_task_id=plan.parent_task_id,
-                unroutable=tuple(s.id for s in plan.subtasks),
+                unroutable=tuple(s.id for s in units),
             )
 
         try:
@@ -173,7 +176,7 @@ class TaskRoutingService:
         decisions: list[RoutingDecision] = []
         unroutable: list[str] = []
 
-        for subtask_def in plan.subtasks:
+        for subtask_def in decomposition_result.all_subtasks:
             viable = self._viable_candidates(subtask_def, available_agents)
 
             if not viable:

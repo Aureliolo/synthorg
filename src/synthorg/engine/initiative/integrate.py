@@ -34,8 +34,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Complexity, Stakes, TaskStatus
+from synthorg.core.task_enums import Complexity, TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assembly import escalated_stakes
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.initiative.integrate_brief import (
     INTEGRATION_ARTIFACTS,
@@ -76,29 +77,6 @@ _ORIGIN: Final[str] = "initiative-tail"
 #: or the read fails. The pipeline runs the assembly inline, so this bounds the
 #: whole attempt, not just the hand-off.
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 1800.0
-
-#: One level up from the plan's own highest-stakes item. Assembling is where a
-#: mistake is most expensive: it is the first point the whole thing runs, and
-#: the last point before the objective is judged.
-_STAKES_LADDER: Final[tuple[Stakes, ...]] = (
-    Stakes.LOW,
-    Stakes.NORMAL,
-    Stakes.HIGH,
-    Stakes.CRITICAL,
-)
-
-
-def escalated_stakes(plan: Plan) -> Stakes:
-    """Return the stakes the integration task runs at.
-
-    Returns:
-        One level above the plan's highest-stakes item, capped at CRITICAL.
-    """
-    highest = max(
-        (_STAKES_LADDER.index(item.stakes) for item in plan.items),
-        default=_STAKES_LADDER.index(Stakes.NORMAL),
-    )
-    return _STAKES_LADDER[min(highest + 1, len(_STAKES_LADDER) - 1)]
 
 
 class IntegrationStageService:
@@ -272,7 +250,7 @@ class IntegrationStageService:
             ),
             status=TaskStatus.CREATED,
             estimated_complexity=Complexity.COMPLEX,
-            stakes=escalated_stakes(plan),
+            stakes=escalated_stakes(plan.items),
         )
         await self._persistence.tasks.save(task)
         await self._hand_to_pipeline(plan, objective, task)

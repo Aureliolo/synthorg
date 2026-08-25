@@ -25,6 +25,7 @@ that the human is overriding.
 from typing import NamedTuple
 
 from synthorg.api.controllers._plan_input_validation import (
+    reject_malformed_tree,
     reject_undecidable_graph,
     reject_unroutable_owners,
 )
@@ -134,6 +135,7 @@ async def replan_for_change_request(
     items = items_from_decomposition(result)
     await reject_unroutable_owners(app_state, items)
     reject_undecidable_graph(items, task_structure=result.plan.task_structure)
+    reject_malformed_tree(items)
     logger.info(
         API_PLAN_CHANGES_REPLANNED,
         plan_id=str(existing.id),

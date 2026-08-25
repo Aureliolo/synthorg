@@ -76,7 +76,7 @@ class SasDispatcher:
             fail_fast=config.fail_fast,
             assignment_writer=self._assignment_writer,
             waves=waves,
-            dependencies=dependency_map(decomposition_result.plan.subtasks),
+            dependencies=dependency_map(decomposition_result.dispatch_subtasks),
         )
 
         return DispatchResult(

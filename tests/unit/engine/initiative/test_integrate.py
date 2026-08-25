@@ -12,10 +12,10 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.expected_artifact_check import is_probeable_path
+from synthorg.engine.assembly import escalated_stakes
 from synthorg.engine.initiative.integrate import (
     ACTOR,
     IntegrationStageService,
-    escalated_stakes,
 )
 from synthorg.engine.initiative.integrate_brief import (
     INTEGRATION_REPORT_PATH,
@@ -251,7 +251,7 @@ class TestMinting:
 
     def test_stakes_escalation_is_capped(self) -> None:
         plan = _plan(_item(_ITEM_A, stakes=Stakes.CRITICAL))
-        assert escalated_stakes(plan) is Stakes.CRITICAL
+        assert escalated_stakes(plan.items) is Stakes.CRITICAL
 
 
 class TestGuards:

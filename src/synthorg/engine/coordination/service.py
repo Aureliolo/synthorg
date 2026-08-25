@@ -532,7 +532,7 @@ class MultiAgentCoordinator:
             return 0
         missing = [
             child
-            for child in result.created_tasks
+            for child in result.all_tasks
             if await engine.get_task(str(child.id)) is None
         ]
         await engine.file_tasks(missing)
@@ -582,7 +582,7 @@ class MultiAgentCoordinator:
             # files nothing and a line reporting the plan's size would read
             # as having written the tree over again.
             filed_count=filed,
-            subtask_count=len(result.created_tasks),
+            subtask_count=len(result.all_tasks),
             duration_seconds=elapsed,
         )
 
@@ -625,7 +625,8 @@ class MultiAgentCoordinator:
         logger.info(
             COORDINATION_PHASE_COMPLETED,
             phase=phase_name,
-            subtask_count=len(result.plan.subtasks),
+            subtask_count=len(result.all_subtasks),
+            levels=result.max_depth_reached + 1,
             duration_seconds=elapsed,
         )
         return result
@@ -793,10 +794,10 @@ class MultiAgentCoordinator:
         # the plan to learn what it is asking for.
         role_by_task = {
             subtask.id: subtask.required_role
-            for subtask in decomp_result.plan.subtasks
+            for subtask in decomp_result.all_subtasks
             if subtask.required_role is not None
         }
-        for child in decomp_result.created_tasks:
+        for child in decomp_result.all_tasks:
             if str(child.id) not in unroutable:
                 continue
             # Only a row still awaiting dispatch, decided by the coordination

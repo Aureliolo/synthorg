@@ -30,6 +30,7 @@ from synthorg.api.controllers._plan_filters import (
     PlanStatusFilter,
 )
 from synthorg.api.controllers._plan_input_validation import (
+    reject_malformed_tree,
     reject_undecidable_graph,
     reject_unroutable_owners,
 )
@@ -316,6 +317,7 @@ class PlanController(Controller):
         items = tuple(item_from_payload(item) for item in data.items)
         await reject_unroutable_owners(state.app_state, items)
         reject_undecidable_graph(items, task_structure=data.task_structure)
+        reject_malformed_tree(items)
         revised = await service.edit(
             existing,
             items=items,

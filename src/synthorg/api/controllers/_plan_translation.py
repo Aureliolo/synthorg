@@ -28,6 +28,7 @@ def item_from_payload(payload: PlanItemPayload) -> PlanItem:
         id=payload.id,
         title=payload.title,
         description=payload.description,
+        parent_id=payload.parent_id,
         dependencies=payload.dependencies,
         owner=payload.owner,
         acceptance_criteria=payload.acceptance_criteria,

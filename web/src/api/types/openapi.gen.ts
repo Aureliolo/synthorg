@@ -14026,6 +14026,8 @@ export type components = {
             readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []
@@ -14119,6 +14121,8 @@ export type components = {
             readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner?: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id?: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []
@@ -14169,6 +14173,8 @@ export type components = {
             readonly owner: string | null;
             /** @description Display name of the item's owner, when the owner has one */
             readonly owner_name: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []

@@ -9,6 +9,8 @@ time so an operator-edited plan is the one that actually builds. This module
 owns both directions so the gate, the API, and the resume path stay in step.
 """
 
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -16,9 +18,16 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import TaskStatus, TaskStructure
+from synthorg.core.task_enums import Stakes, TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assembly import (
+    AssemblyPaths,
+    build_assembly_brief,
+    escalated_stakes,
+    subtree_assembly_paths,
+)
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.decomposition.models import (
@@ -93,8 +102,15 @@ class PlanProvenance(BaseModel):
     )
 
 
-def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
+def _item_from_subtask(
+    subtask: SubtaskDefinition, *, parent_id: NotBlankStr | None
+) -> PlanItem:
     """Project one decomposition subtask onto a durable plan item.
+
+    Args:
+        subtask: The definition the planner produced.
+        parent_id: The item this one was split out of, or ``None`` at the
+            root, where an item is one of the plan's workstreams.
 
     Returns:
         A :class:`PlanItem` carrying the subtask's identity, dependency
@@ -106,6 +122,7 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         id=subtask.id,
         title=subtask.title,
         description=subtask.description,
+        parent_id=parent_id,
         dependencies=subtask.dependencies,
         owner=subtask.required_role,
         acceptance_criteria=subtask.acceptance_criteria,
@@ -127,10 +144,30 @@ def items_from_decomposition(result: DecompositionResult) -> tuple[PlanItem, ...
     items alone: its successor keeps the retired plan's provenance and is built
     by the plan service, not assembled here.
 
+    Every level reaches the plan. A child node's ``plan.parent_task_id`` IS the
+    id of the subtask it was split out of (``_validate_children`` refuses a
+    child naming anything else, and a level's task ids are its subtask ids), so
+    the parent link is read off the tree rather than derived a second way.
+
     Returns:
-        One :class:`PlanItem` per subtask, in plan order.
+        One :class:`PlanItem` per subtask at every level, workstreams first
+        and then each subtree, so the tuple reads top-down.
     """
-    return tuple(_item_from_subtask(subtask) for subtask in result.plan.subtasks)
+    return tuple(_walk_levels(result, parent_id=None))
+
+
+def _walk_levels(
+    node: DecompositionResult, *, parent_id: NotBlankStr | None
+) -> Iterator[PlanItem]:
+    """Yield *node*'s own items, then each split subtask's subtree.
+
+    Yields:
+        Each item of the tree rooted at *node*.
+    """
+    for subtask in node.plan.subtasks:
+        yield _item_from_subtask(subtask, parent_id=parent_id)
+    for child in node.children:
+        yield from _walk_levels(child, parent_id=child.plan.parent_task_id)
 
 
 def plan_from_decomposition(
@@ -246,8 +283,63 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     )
 
 
-def _task_from_item(item: PlanItem, *, plan: Plan, parent_task: Task) -> Task:
-    """Rebuild the child task for a plan item under *parent_task*.
+@dataclass(frozen=True, slots=True)
+class _Assembly:
+    """What a container item dispatches instead of the work below it.
+
+    Attributes:
+        brief: The assembly brief, naming its own children as the pieces.
+        paths: Where this subtree's evidence goes, namespaced so siblings do
+            not overwrite each other.
+        stakes: One rung above the highest of what it assembles.
+    """
+
+    brief: str
+    paths: AssemblyPaths
+    stakes: Stakes
+
+
+def _assembly_of(item: PlanItem, *, tree: PlanTree) -> _Assembly | None:
+    """Describe *item* as an assembly, or answer ``None`` for a leaf.
+
+    A container is not work: it is the assembly of the work below it, and
+    dispatching it as work would do that work twice. What makes it one is
+    having children, derived from the tree rather than declared, so the
+    answer cannot drift from what the plan holds.
+
+    Returns:
+        The assembly, or ``None`` when nothing hangs off *item*.
+    """
+    children = tree.children(item.id)
+    if not children:
+        return None
+    siblings = (
+        tree.workstreams if item.parent_id is None else tree.children(item.parent_id)
+    )
+    paths = subtree_assembly_paths(
+        str(item.title), index=[s.id for s in siblings].index(item.id)
+    )
+    return _Assembly(
+        brief=build_assembly_brief(
+            objective_title=str(item.title),
+            pieces=[str(child.title) for child in children],
+            criteria=[str(criterion) for criterion in item.acceptance_criteria],
+            paths=paths,
+        ),
+        paths=paths,
+        stakes=escalated_stakes(children),
+    )
+
+
+def _task_from_item(
+    item: PlanItem,
+    *,
+    plan: Plan,
+    objective: Task,
+    parent_task_id: str,
+    tree: PlanTree,
+) -> Task:
+    """Rebuild the child task for a plan item under *parent_task_id*.
 
     Uses the same deterministic id mapping as the decomposition service, so a
     re-dispatch of the same (possibly edited) plan targets stable task ids.
@@ -261,40 +353,66 @@ def _task_from_item(item: PlanItem, *, plan: Plan, parent_task: Task) -> Task:
     approval writes it onto ``plan.assumptions``, and nothing else on this
     path carries a plan-level fact down to the work.
 
+    The routing context comes from the OBJECTIVE and the tree position comes
+    from *parent_task_id*, which are the same task only for a workstream. A
+    nested item hangs off its container's task, which is what makes
+    ``tasks.parent_task_id`` a durable record of the tree rather than a flat
+    fan of every item off the objective.
+
+    Args:
+        item: The durable item to rebuild.
+        plan: The plan it belongs to, supplying the id and the settled context.
+        objective: The task the whole plan decomposes, supplying the routing
+            context every level inherits.
+        parent_task_id: The task this one hangs off: its container's, or the
+            objective's for a workstream.
+        tree: The plan's containment view, which decides whether this item is
+            work to do or the assembly of the work below it.
+
     Returns:
-        A ``CREATED`` child :class:`Task` inheriting the parent's routing
+        A ``CREATED`` child :class:`Task` inheriting the objective's routing
         context (type, priority, project, delegation chain) and carrying the
         item's acceptance criteria and expected artifacts, so the task's
         fail-loud zero-artifact guard engages on the plan-review dispatch path.
     """
+    assembly = _assembly_of(item, tree=tree)
+    body = item.description if assembly is None else NotBlankStr(assembly.brief)
+    # Its own declarations PLUS the assembly's evidence: the first is what the
+    # planner said this unit produces, the second is what shows the pieces run
+    # together, and a probe can only credit a path it was given.
+    artifacts = (
+        item.expected_artifacts
+        if assembly is None
+        else (*item.expected_artifacts, *assembly.paths.declared)
+    )
     return Task(
         id=subtask_uuid(item.id),
         title=item.title,
         description=NotBlankStr(
             with_plan_context(
-                item.description,
+                body,
                 assumptions=plan.assumptions,
                 open_questions=plan.open_questions,
             )
         ),
-        type=parent_task.type,
-        priority=parent_task.priority,
-        project=parent_task.project,
+        type=objective.type,
+        priority=objective.priority,
+        project=objective.project,
         plan_id=plan.id,
         plan_item_id=subtask_uuid(item.id),
-        created_by=parent_task.created_by,
-        parent_task_id=str(parent_task.id),
-        delegation_chain=parent_task.delegation_chain,
+        created_by=objective.created_by,
+        parent_task_id=parent_task_id,
+        delegation_chain=objective.delegation_chain,
         dependencies=item.dependencies,
         acceptance_criteria=tuple(
             AcceptanceCriterion(description=c) for c in item.acceptance_criteria
         ),
         artifacts_expected=tuple(
-            expected_artifact_from_spec(a) for a in item.expected_artifacts
+            expected_artifact_from_spec(NotBlankStr(a)) for a in artifacts
         ),
         status=TaskStatus.CREATED,
         estimated_complexity=item.estimated_complexity,
-        stakes=item.stakes,
+        stakes=item.stakes if assembly is None else assembly.stakes,
     )
 
 
@@ -310,10 +428,15 @@ def decomposition_from_plan(
     one that actually builds on approval (no reliance on the frozen snapshot
     captured at gate time).
 
+    The tree is rebuilt from the persisted parent links rather than flattened,
+    so ``leaf_tasks``, ``all_tasks`` and ``max_depth_reached`` say what they
+    mean on the result the coordinator is handed, and each child task hangs
+    off its own container rather than off the objective.
+
     Args:
         plan: The durable plan to dispatch (its items become the subtasks).
         parent_task: The objective task the plan decomposes; supplies the
-            routing context inherited by each child task.
+            routing context inherited by every level.
 
     Returns:
         A validated :class:`DecompositionResult` ready for
@@ -336,12 +459,15 @@ def decomposition_from_plan(
         for item in plan.items
         if item.kind is PlanItemKind.WORK
     )
-    subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
-    created_tasks = tuple(
-        _task_from_item(item, plan=plan, parent_task=parent_task)
-        for item in dispatchable
+    tree = PlanTree.of(dispatchable)
+    result = _level_from_items(
+        tree.workstreams,
+        plan=plan,
+        objective=parent_task,
+        tree=tree,
+        parent_task_id=str(parent_task.id),
+        depth=0,
     )
-    edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)
     # What an operator approved and what the org dispatches differ by the
     # decision items stripped here, and nothing else on this path says so.
     logger.info(
@@ -350,16 +476,66 @@ def decomposition_from_plan(
         parent_task_id=str(parent_task.id),
         dispatched_items=len(dispatchable),
         decision_items=len(decision_ids),
-        dependency_edges=len(edges),
+        levels=result.max_depth_reached + 1,
+        dependency_edges=sum(len(item.dependencies) for item in dispatchable),
     )
-    decomposition_plan = DecompositionPlan(
-        parent_task_id=str(parent_task.id),
-        subtasks=subtasks,
-        task_structure=plan.task_structure,
-        coordination_topology=plan.coordination_topology,
-    )
+    return result
+
+
+def _level_from_items(
+    items: Sequence[PlanItem],
+    *,
+    plan: Plan,
+    objective: Task,
+    tree: PlanTree,
+    parent_task_id: str,
+    depth: int,
+) -> DecompositionResult:
+    """Rebuild one level of the tree, and every level beneath it.
+
+    Args:
+        items: The items at this level, in plan order.
+        plan: The plan being dispatched.
+        objective: The task the whole plan decomposes.
+        tree: The plan's containment view.
+        parent_task_id: What this level hangs off: the objective at the root,
+            a container's task below it.
+        depth: This level's nesting depth, zero at the root.
+
+    Returns:
+        The level, carrying a child result per item that was split.
+    """
     return DecompositionResult(
-        plan=decomposition_plan,
-        created_tasks=created_tasks,
-        dependency_edges=edges,
+        plan=DecompositionPlan(
+            parent_task_id=NotBlankStr(parent_task_id),
+            subtasks=tuple(_subtask_from_item(item) for item in items),
+            task_structure=plan.task_structure,
+            coordination_topology=plan.coordination_topology,
+        ),
+        created_tasks=tuple(
+            _task_from_item(
+                item,
+                plan=plan,
+                objective=objective,
+                parent_task_id=parent_task_id,
+                tree=tree,
+            )
+            for item in items
+        ),
+        dependency_edges=tuple(
+            (dep, item.id) for item in items for dep in item.dependencies
+        ),
+        depth=depth,
+        children=tuple(
+            _level_from_items(
+                tree.children(item.id),
+                plan=plan,
+                objective=objective,
+                tree=tree,
+                parent_task_id=item.id,
+                depth=depth + 1,
+            )
+            for item in items
+            if tree.is_container(item.id)
+        ),
     )
