@@ -50,8 +50,14 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
     EVALS_RECURSION_SPEND_DEDUPED,
+    EVALS_RECURSION_SPEND_EMPTY,
     EVALS_RECURSION_UNIT_EXECUTED,
+    EVALS_RECURSION_UNIT_FAILED_SPEND,
     EVALS_RECURSION_UNIT_STARTED,
+)
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.protocol import CompletionProvider
@@ -122,12 +128,27 @@ class SweepDeps:
             reviewer actually said, which is unrecoverable afterwards.
         transcript_root: Directory the per-session transcripts are written
             under; ``None`` alongside a recorder writes none.
-        open_run_ledger: Installs the authoritative cost sink for one unit and
-            yields it. ``None`` means no gateway is hosted, so the engine's own
-            tracker is the ledger; that is the offline path the suite drives.
+        open_run_ledger: Installs the authoritative cost sink and yields it.
+            ``None`` means no gateway is hosted, so the engine's own tracker is
+            the ledger; that is the offline path the suite drives. Called once
+            per CELL rather than once per session: it swaps a process-wide
+            field, and sessions within a cell run concurrently.
+        cell_ledger: The sink this cell's sessions share, set by the runner for
+            the length of one cell. Present means the swap has already
+            happened at the cell boundary, where nothing is concurrent, and a
+            session filters its own records out of it by task id.
         project_repo: Where the engine looks the benchmark project up. Every
             unit declares an artifact, which makes it a work task, and the
             engine refuses a work task whose project it cannot validate.
+        checkpoint_repo: Where a session's conversation is persisted, every
+            turn. Without it a provider failure that outlasts the retry ladder
+            discards the whole session: the loop returns a terminal ERROR and
+            nothing can re-enter a conversation nobody wrote down. A sweep unit
+            is hours of work, so the state goes on disk and a retry RESUMES.
+        heartbeat_repo: The liveness half of the same mechanism. Required
+            together with ``checkpoint_repo``: the engine refuses one without
+            the other, because a checkpoint nothing declares stale is a
+            resume point that can be handed to two runners at once.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.
@@ -147,7 +168,10 @@ class SweepDeps:
     transcripts: TranscriptRecorder | None = None
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
+    cell_ledger: ProgressTrackingLedger | None = None
     project_repo: ProjectRepository | None = None
+    checkpoint_repo: CheckpointRepository | None = None
+    heartbeat_repo: HeartbeatRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
@@ -197,16 +221,21 @@ class OpenSession:
 
     Attributes:
         engine: The engine, scoped to this unit's workspace.
-        ledger: Where this unit's spend is recorded.
+        ledger: Where this unit's spend is recorded. Shared with the other
+            sessions of this cell, which is why ``task_id`` below is what
+            separates them.
         label: What the stall watch and the log lines call this session.
+        task_id: Whose records on that shared ledger are this session's.
     """
 
     engine: AgentEngine
     ledger: ProgressTrackingLedger
     label: str
     gateway_hosted: bool
+    task_id: str
+    already: int
 
-    async def spend(self) -> SessionSpend:
+    async def spend(self, *, turns: int | None = None) -> SessionSpend:
         """Read what this session has cost so far, in money and in tokens.
 
         Drains first: the cost chokepoint submits each record on a background
@@ -217,11 +246,50 @@ class OpenSession:
         second could see records the first did not, so a unit's cost and its
         tokens would describe different sets of calls.
 
+        Filtered by task id rather than isolated by a per-session ledger. A
+        ledger is installed as a process-wide field, so a per-session one has
+        to be SWAPPED, and with several leaves in flight the swaps interleave:
+        the last one installed collects everyone's records and the rest collect
+        none. Measured at concurrency 4, that left 59 of 183 leaf sessions
+        journalling zero, the worst of them after 56 turns. One ledger per cell
+        and a filter per session has no window to lose, at any concurrency.
+
+        The id alone is not the filter, because a task id does not name one
+        session. A merge node runs its assembly and its review under the SAME
+        task, several times over, so an id-only read returns everything that
+        node has spent so far while ``run_merge`` adds each read as a delta:
+        the second read already holds the first, and the third holds both.
+        What each session added is what stands past the count taken when it
+        opened, and the sessions sharing an id are sequential, so nothing else
+        can append between the two reads.
+
+        Args:
+            turns: How many turns the session took, or ``None`` when it ended
+                in a way that never reported. A session that took NO turn
+                spent nothing and is not the loss this guard watches for: the
+                resume path opens one whose first call failed every retry, and
+                escalating there teaches a reader to discount the line.
+
         Returns:
             What this session's calls add up to, each counted once.
         """
         await self.ledger.drain_pending_records()
-        records = await collect_all_records(self.ledger)
+        records = [
+            record
+            for record in await collect_all_records(self.ledger)
+            if record.task_id == self.task_id
+        ][self.already :]
+        if not records and turns != 0:
+            # The sibling guard in `session_spend` covers a ledger whose
+            # accounts were all DROPPED. Nothing covered a session that
+            # collected none, which reaches the same zero and went unreported
+            # for an entire run. These rows are the only spend ledger there is.
+            logger.error(
+                EVALS_RECURSION_SPEND_EMPTY,
+                label=self.label,
+                task_id=self.task_id,
+                turns=turns,
+            )
         return session_spend(
             records, gateway_hosted=self.gateway_hosted, label=self.label
         )
@@ -513,7 +581,25 @@ async def open_session(
             ledger=ledger,
             label=binding.execution_id,
             gateway_hosted=deps.open_run_ledger is not None,
+            task_id=binding.task_id,
+            already=await _standing(ledger, binding.task_id),
         )
+
+
+async def _standing(ledger: ProgressTrackingLedger, task_id: str) -> int:
+    """How many records the ledger already holds against *task_id*.
+
+    Args:
+        ledger: The ledger this session will write into.
+        task_id: The id its calls will carry.
+
+    Returns:
+        The count standing before the session takes a turn.
+    """
+    await ledger.drain_pending_records()
+    return sum(
+        1 for record in await collect_all_records(ledger) if record.task_id == task_id
+    )
 
 
 def watching(
@@ -566,6 +652,7 @@ async def run_session(
     workspace: CellWorkspace,
     execution_id: str,
     limits: SessionLimits,
+    resume: bool = False,
 ) -> SessionOutcome:
     """Run *task* as *identity* against *workspace* and report what it cost.
 
@@ -576,6 +663,13 @@ async def run_session(
         workspace: The tree it works in.
         execution_id: What the gateway ledger keys this session's spend on.
         limits: The turn and spend bounds this session gets.
+        resume: Continue the conversation this ``execution_id`` already
+            checkpointed rather than starting a fresh one. The id is derived
+            from the cell and the task, so it is the same string on every
+            attempt, which is what makes a resume addressable at all. Ignored
+            with no checkpoint on disk: the engine replays what it finds, and
+            an attempt that failed before its first checkpoint has nothing to
+            continue from and simply starts over.
 
     Returns:
         The session's outcome.
@@ -591,17 +685,37 @@ async def run_session(
     binding = run_binding(
         identity=identity, task=task, execution_id=execution_id, limits=limits
     )
+    turns: int | None = None
     async with open_session(deps, binding=binding, workspace=workspace) as session:
         try:
             async with watching(deps, session):
                 result = await session.engine.run(
-                    identity=identity, task=bounded, max_turns=limits.max_turns
+                    identity=identity,
+                    task=bounded,
+                    max_turns=limits.max_turns,
+                    resume_execution_id=execution_id if resume else None,
                 )
-        finally:
-            # Read however the session ended. A provider call that recorded
-            # cost and then raised has still been paid for, and a unit that
-            # reports the failure without the spend under-reports the sweep.
-            spend = await session.spend()
+            turns = result.total_turns
+        except BaseException:
+            # A raising session builds no `SessionOutcome`, so this log line is
+            # the only place its spend is written down: no cell record, no
+            # journal row and no report ever sees it. The calls were billed
+            # whether or not the session reached an ending.
+            failed = await session.spend(turns=turns)
+            logger.warning(
+                EVALS_RECURSION_UNIT_FAILED_SPEND,
+                execution_id=execution_id,
+                task_id=str(task.id),
+                agent_id=str(identity.id),
+                turns=turns,
+                cost=failed.cost,
+                tokens=failed.tokens,
+            )
+            raise
+        # Read however the session ended. A provider call that recorded cost
+        # and then raised has still been paid for, and a unit that reports the
+        # failure without the spend under-reports the sweep.
+        spend = await session.spend(turns=turns)
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,
@@ -651,6 +765,11 @@ async def _build_engine(
         # denominator.
         artifact_probe=workspace_artifact_probe(workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
+        # Both or neither, which the engine enforces. With them a session's
+        # conversation is on disk turn by turn, so a failure that outlasts the
+        # retry ladder costs the turns still in flight rather than all of them.
+        checkpoint_repo=deps.checkpoint_repo,
+        heartbeat_repo=deps.heartbeat_repo,
     )
 
 
@@ -737,6 +856,12 @@ def ledger_scope(
     Returns:
         A context manager yielding the tracker to collect records from.
     """
+    if deps.cell_ledger is not None:
+        # Already installed, once, at the cell boundary. Opening another here
+        # would swap a process-wide field while this cell's sibling sessions
+        # are mid-flight, which is exactly the race the cell-scoped ledger
+        # exists to remove.
+        return contextlib.nullcontext(deps.cell_ledger)
     if deps.open_run_ledger is None:
         return contextlib.nullcontext(fallback)
     return deps.open_run_ledger(execution_id)

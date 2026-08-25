@@ -648,6 +648,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             parent_task_id=NotBlankStr(str(task.id)),
             capture=capture,
             available_roles=context.available_roles,
+            # The objective's own criteria, so a plan advancing none of them is
+            # refused where the agent can still fix it. Read off the task rather
+            # than the context: the context describes the decomposition, and
+            # this is a property of the thing being decomposed.
+            objective_criteria=tuple(
+                NotBlankStr(criterion.description)
+                for criterion in task.acceptance_criteria
+            ),
         )
         planning_tools = self._planning_tools(task, owner)
         tools: list[BaseTool] = [submit_tool, *planning_tools]

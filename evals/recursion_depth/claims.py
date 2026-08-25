@@ -13,8 +13,13 @@ that mints the criterion and the modules that read it back, they drifted, and
 nothing failed: the brief rendered "R01 is satisfied: no such requirement" for
 every requirement a leaf was answerable for, so every executor worked from its
 unit title alone; and the survival intersection compared criterion text against
-bare ids, so ``surviving_claims`` was zero in every cell of every run, which is
-the one number the sweep exists to produce.
+bare ids, so the surviving count was zero in every cell of every run.
+
+That mapping is still not sound, and the curve no longer rests on it: a live
+sweep dropped 143 claims naming no requirement the specification defines, which
+is why :mod:`evals.recursion_depth.score` divides by the specification rather
+than by what the leaves claimed. The claims here still decide what a leaf is
+told it is answerable for, so the brief half remains load-bearing.
 """
 
 import re

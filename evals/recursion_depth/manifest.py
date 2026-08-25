@@ -46,10 +46,35 @@ MIN_DEPTH: Final[int] = 1
 #: The deepest cap the sweep records.
 MAX_DEPTH: Final[int] = 6
 
+#: What a same-family judge costs the result. A module constant rather than a
+#: literal inside the accessor because a re-score has to RECOGNISE it: the
+#: report is rebuilt from the journal, which does not hold the manifest, so
+#: this sentence is one of the few a re-score carries forward rather than
+#: derives, and matching it means naming it.
+SHARED_FAMILY_CAVEAT: Final[str] = (
+    "The reviewer and the executor share a model family, so judge "
+    "independence here is by model rather than by family. Self-preference "
+    "runs 75-84% toward a model's own family, which biases the gated arm "
+    "toward the null: a gap in its favour survives this, a null result is "
+    "not interpretable under it."
+)
+
 #: An assembly costs a merge session and the review that follows it. Two in
 #: BOTH arms by construction, since the ungated arm spends the identical budget
 #: blindly so repair cannot win by spending more.
 _SESSIONS_PER_ASSEMBLY: Final[int] = 2
+
+#: What the shipped planning session accepts as its turn cap
+#: (``AgentSessionDecompositionConfig.max_turns``). Mirrored here so a value the
+#: product would refuse is refused at manifest load, rather than after a host
+#: has booted and against a matrix nobody can record until it is corrected.
+_PLANNER_TURN_CAP: Final[int] = 50
+
+#: A sanity bound on a unit's turns. The unit loop takes its cap as a plain
+#: argument with no ceiling of its own, so nothing but this refuses a typo, and
+#: a unit is bounded in practice by ``unit_token_ceiling`` instead: turns are a
+#: BASE budget that re-earns itself, which is why they cannot hold a runaway.
+_UNIT_TURN_CAP: Final[int] = 200
 
 
 class Arm(StrEnum):
@@ -197,7 +222,17 @@ class RecursionDepthManifest(BaseModel):
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
-        unit_max_turns: The turn ceiling one unit's session gets.
+        planner_max_turns: The turn ceiling one PLANNING session gets. Its own
+            field rather than a share of ``unit_max_turns`` because the two
+            bound different things and only one of them has a product limit:
+            a planner writes a plan and a unit builds software, so what is
+            generous for the first is not necessarily enough for the second,
+            and one value serving both means raising either raises both until
+            the stricter limit refuses the pair.
+        unit_max_turns: The turn ceiling one unit's session gets. Bounded
+            loosely, because a unit is held by ``unit_token_ceiling`` in
+            practice: turns are a base budget that re-earns itself up to
+            ``engine.max_turn_extensions`` times, so they never stop a runaway.
         unit_cost_ceiling: What one unit's session may spend before the
             gateway's own hard kill stops it. Money only, so it is half a
             bound: see ``unit_token_ceiling``.
@@ -234,13 +269,16 @@ class RecursionDepthManifest(BaseModel):
     reviewer: ModelPair
     independence: Independence
     merge_attempts: int = Field(ge=1, le=10)
-    unit_max_turns: int = Field(ge=1, le=200)
+    planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
+    unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
     projected_branching: int = Field(ge=2, le=50)
 
-    def projected_sessions(self, depth_cap: int) -> int:
+    def projected_sessions(
+        self, depth_cap: int, *, branching: int | None = None
+    ) -> int:
         """How many sessions one cell at *depth_cap* is expected to cost.
 
         A cap of ``d`` admits ``d`` levels of PLANNING (a node plans at
@@ -260,11 +298,17 @@ class RecursionDepthManifest(BaseModel):
 
         Args:
             depth_cap: The cap this cell runs at.
+            branching: How wide one planning session splits. Defaults to the
+                manifest's assumption, which is what the plan projection
+                prints before any tree exists. A running sweep passes what it
+                has MEASURED instead: the assumption is the one input a
+                recording can correct about itself, and it is wrong in the
+                direction that compounds with depth.
 
         Returns:
             The projected session count for one cell.
         """
-        branching = self.projected_branching
+        branching = self.projected_branching if branching is None else branching
         # Annotated because ``int ** int`` widens to Any: the exponent could be
         # negative, and this one is bounded at one by the caller's own field.
         leaves: int = branching**depth_cap
@@ -365,13 +409,7 @@ class RecursionDepthManifest(BaseModel):
         """
         if self.independence is Independence.CROSS_FAMILY:
             return None
-        return (
-            "The reviewer and the executor share a model family, so judge "
-            "independence here is by model rather than by family. Self-preference "
-            "runs 75-84% toward a model's own family, which biases the gated arm "
-            "toward the null: a gap in its favour survives this, a null result is "
-            "not interpretable under it."
-        )
+        return SHARED_FAMILY_CAVEAT
 
 
 def load_manifest(path: Path) -> RecursionDepthManifest:

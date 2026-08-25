@@ -30,13 +30,26 @@ from pydantic import (
 )
 
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.manifest import Arm, Independence, ModelPair
+from evals.recursion_depth.manifest import (
+    SHARED_FAMILY_CAVEAT,
+    Arm,
+    Independence,
+    ModelPair,
+)
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
-RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 1
+#:
+#: Version 2 reshaped :class:`DepthPoint`: a fraction of the SPECIFICATION
+#: (``required``/``satisfied``) replaced a fraction of the leaves' own claims
+#: (``delivered_claims``/``surviving_claims``/``runs``). A version-1 artifact
+#: therefore has no reading under this model at all, and the version check is
+#: what says so: left at 1, such a file would pass the version field and then
+#: fail on the shape, reporting a field error for what is a whole-artifact
+#: mismatch.
+RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 2
 
 
 #: What a recorded unit may be. Declared as a closed set rather than free text
@@ -59,6 +72,12 @@ MERGE: Final[Literal["merge"]] = "merge"
 #: end exactly where the question is.
 PLAN: Final[Literal["plan"]] = "plan"
 
+#: What a plan unit's id ends in. Planning is the one unit whose id is minted
+#: rather than taken from the task it ran, because there is no task: the tree
+#: does not exist yet. Anything reading a journalled id back has to recognise
+#: the plan row by its shape, so the shape is declared once here.
+PLAN_UNIT_SUFFIX: Final[str] = "-plan"
+
 #: What the harness measures under, stated wherever the number is. Held beside
 #: the field they populate rather than beside the renderer, because the writer
 #: seeds them and the renderer only draws them, and a caveat owned by the
@@ -71,10 +90,66 @@ SIZING_CAVEAT: Final[str] = (
     "own split, which no published system has."
 )
 
+#: What the y-axis is, stated because it is NOT what the acceptance criterion
+#: asked for. The artefacts travel without the design page that explains the
+#: substitution, so a reader holding only the chart and the JSON would take the
+#: axis for leaf survival and compare it against a number that means something
+#: else.
+METRIC_CAVEAT: Final[str] = (
+    "The y-axis is the share of the SPECIFICATION the merged tree satisfies, "
+    "not the share of leaf work surviving the merge, which is the question "
+    "this sweep set out to ask. Leaf-level attribution proved too sparse to "
+    "carry a rate and produced no point at all for whole cells. The two "
+    "coincide only where the merge adds nothing of its own, so a tree scoring "
+    "well because the merging agent rebuilt it reads here exactly like one "
+    "whose leaves survived."
+)
+
 #: What the held-out oracle buys, stated for the same reason.
 ORACLE_CAVEAT: Final[str] = (
     "The oracle is held out: it never enters a workspace and is named in no "
     "brief, so a delivery cannot be built to it."
+)
+
+#: What a sweep that stopped on its own ceiling says about itself.
+CEILING_CAVEAT: Final[str] = (
+    "The sweep stopped early on its session ceiling, so the depths and "
+    "repetitions the manifest asked for are not all present. Read the cell "
+    "list, not the manifest, for what was actually measured."
+)
+
+#: The same, for a sweep the provider account stopped.
+QUOTA_CAVEAT: Final[str] = (
+    "The sweep stopped early because the provider account ran out of quota, "
+    "so the depths and repetitions the manifest asked for are not all "
+    "present, and the cell it stopped on was cut off part-way rather than "
+    "measured. Read the cell list, not the manifest, for what was actually "
+    "measured, and re-run the remainder once the account's window resets."
+)
+
+#: The caveats a re-score CARRIES rather than rebuilds, and the whole set of
+#: them. Every other caveat either stands for every sweep or is a function of
+#: the cells, so a re-score derives it and gets this release's wording; these
+#: three are facts about how one run went that the journal does not hold, so
+#: they survive only by being copied. Declared as a set because recognising
+#: them is what lets everything else be rebuilt: carrying an unrecognised
+#: sentence forward instead is how a report comes to hold two wordings of one
+#: caveat, and re-deriving one of these would silently drop it.
+RUN_STATE_CAVEATS: Final[frozenset[str]] = frozenset(
+    {CEILING_CAVEAT, QUOTA_CAVEAT, SHARED_FAMILY_CAVEAT}
+)
+
+#: Derived from the cells rather than standing for every sweep, but here with
+#: its siblings because a report's caveats are one vocabulary and splitting them
+#: across the modules that happen to raise each one is how two of them come to
+#: contradict each other.
+UNRESOLVED_CLAIMS_CAVEAT: Final[str] = (
+    "{dropped} planner claim(s) named no requirement this specification "
+    "defines and were dropped before scoring. A handful is one planner "
+    "inventing a requirement; a large share means the criterion template and "
+    "the id pattern have drifted apart. The curve divides by the specification "
+    "rather than by these claims, so it is unaffected, but the per-unit "
+    "attribution is."
 )
 
 
@@ -356,18 +431,13 @@ class DepthPoint(BaseModel):
         depth: The depth this point bins, in levels rather than zero-based, so
             it reads the way the question is asked.
         arm: Which line the point belongs to.
-        delivered_claims: Requirements claimed by leaves that delivered. The
-            denominator.
-        surviving_claims: Those still satisfied by the final merged tree. The
-            numerator.
-        cells: How many runs contributed CLAIMS here. On the achieved-depth
-            curve a run contributes to every level its leaves sat at, so this
-            is the population behind the fraction and nothing else.
-        runs: How many runs this bucket IS. A run's spend belongs to the run,
-            booked once at the bucket the curve puts the run itself in, so this
-            is the population behind ``cost`` and ``attempts``. It differs from
-            ``cells`` on the achieved-depth curve, and reporting one figure for
-            both made spend-per-run a ratio of two different populations.
+        required: The specification's own requirement count, summed over the
+            runs in this bucket. The denominator, and one that cannot empty.
+        satisfied: How many of those the merged tree satisfies, per the
+            held-out oracle. The numerator.
+        cells: How many runs this bucket holds. One run contributes one point's
+            worth of both the fraction and the spend, so this is the population
+            behind every figure on the point.
         cost: What the runs booked here spent in total.
         tokens: What they spent in tokens. The equal-budget check reads this
             rather than cost, because a price change moves cost and leaves the
@@ -379,17 +449,20 @@ class DepthPoint(BaseModel):
 
     depth: int = Field(ge=1)
     arm: Arm
-    delivered_claims: int = Field(ge=0)
-    surviving_claims: int = Field(ge=0)
+    required: int = Field(ge=0)
+    satisfied: int = Field(ge=0)
     cells: int = Field(ge=0)
-    runs: int = Field(default=0, ge=0)
     cost: float = Field(default=0.0, ge=0.0)
     tokens: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _survivors_are_a_subset(self) -> Self:
-        """Reject a point claiming more survivors than there was work.
+        """Reject a point satisfying more than the specification asks for.
+
+        Both operands derive from the same requirement set, so a satisfied
+        count exceeding the required one means the oracle and the provenance
+        have come apart about WHICH specification was run.
 
         Returns:
             ``self`` when the fraction is in range.
@@ -397,10 +470,10 @@ class DepthPoint(BaseModel):
         Raises:
             ValueError: The numerator exceeds the denominator.
         """
-        if self.surviving_claims > self.delivered_claims:
+        if self.satisfied > self.required:
             msg = (
-                f"depth {self.depth} {self.arm.value}: {self.surviving_claims} "
-                f"surviving claims against {self.delivered_claims} delivered"
+                f"depth {self.depth} {self.arm.value}: {self.satisfied} "
+                f"satisfied against {self.required} required"
             )
             raise ValueError(msg)
         return self
@@ -411,15 +484,22 @@ class DepthPoint(BaseModel):
     @computed_field
     @property
     def fraction(self) -> float | None:
-        """The fraction of leaf work surviving to a correct merged result.
+        """The fraction of the specification the merged tree satisfies.
+
+        Deliberately NOT the fraction of leaf work that survived the merge,
+        which is the question this experiment asks. Leaf-level attribution is
+        too sparse to carry a rate: a leaf must pass its own suite to count at
+        all, most do not, and a delivered leaf at depth 2 or deeper often
+        claims nothing, so whole cells produce no point. This denominator is
+        the specification's own requirement count, which every cell shares and
+        which cannot empty.
 
         Returns:
-            The fraction, or ``None`` when no leaf at this depth delivered
-            anything, which is an absence rather than a zero.
+            The fraction, or ``None`` when the bucket holds no run at all.
         """
-        if self.delivered_claims == 0:
+        if self.required == 0:
             return None
-        return self.surviving_claims / self.delivered_claims
+        return self.satisfied / self.required
 
 
 class Provenance(BaseModel):
@@ -558,6 +638,7 @@ __all__ = [
     "LEAF",
     "MERGE",
     "PLAN",
+    "PLAN_UNIT_SUFFIX",
     "RECURSION_DEPTH_SCHEMA_VERSION",
     "CellRecord",
     "DepthPoint",

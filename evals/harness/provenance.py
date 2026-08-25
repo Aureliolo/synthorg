@@ -95,11 +95,56 @@ def manifest_digest(manifest_path: Path) -> str:
     return f"sha256:{digest}"
 
 
-def capture_git_state(repo_root: Path) -> GitState:
+def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
+    """The status query that asks whether the CODE under test was edited.
+
+    A recorder writes its report into a directory it was given, and both
+    harnesses here default that to a TRACKED one, because the artifact is
+    committed. So a recording that finishes turns the tree dirty by its own
+    output, and since ``dirty`` is part of the resume identity, the next
+    ``--resume`` is refused and every cell already paid for is forfeit. What the
+    flag is meant to say is that the commit does not fully describe the code
+    that ran, and the recorder's own output is not that.
+
+    Excluded by pathspec rather than by filtering the output, so git does the
+    matching: a directory outside the repository, or none at all, excludes
+    nothing and the query is the plain one. The REPOSITORY ROOT is the same
+    case for the opposite reason: ``:(exclude).`` matches every tracked path,
+    so a recording writing to ``--out-dir .`` would read clean however much
+    source it had edited, and a resume would then mix two source states under
+    one provenance record.
+
+    Rendered with forward slashes because a pathspec is git's syntax rather than
+    the platform's, and a Windows separator inside ``:(exclude)`` matches
+    nothing at all: the exclusion would silently do nothing on the one platform
+    this is recorded from.
+
+    Args:
+        repo_root: Repository the thing under test was measured from.
+        ignoring: A directory this recording writes into, or ``None``.
+
+    Returns:
+        The argv after ``git``.
+    """
+    if ignoring is None:
+        return ("status", "--porcelain")
+    try:
+        relative = ignoring.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        # Outside the repository, so nothing it holds was ever going to appear.
+        return ("status", "--porcelain")
+    if relative == Path():
+        return ("status", "--porcelain")
+    return ("status", "--porcelain", "--", ".", f":(exclude){relative.as_posix()}")
+
+
+def capture_git_state(repo_root: Path, *, ignoring: Path | None = None) -> GitState:
     """Read the commit and tree state a recording is being made from.
 
     Args:
         repo_root: Repository the thing under test was measured from.
+        ignoring: A directory this recording writes its own artifacts into,
+            which is excluded from the dirty check. See :func:`_dirty_argv`.
 
     Returns:
         The :class:`GitState`.
@@ -108,7 +153,7 @@ def capture_git_state(repo_root: Path) -> GitState:
         ProvenanceUnavailableError: The git metadata could not be read.
     """
     commit = _git("rev-parse", "HEAD", repo_root=repo_root)
-    dirty = bool(_git("status", "--porcelain", repo_root=repo_root))
+    dirty = bool(_git(*_dirty_argv(repo_root, ignoring), repo_root=repo_root))
     if dirty:
         # Not fatal: a maintainer may deliberately record an in-progress change.
         # It is recorded so the reader knows the commit alone does not fully

@@ -26,10 +26,11 @@ it.
 """
 
 import asyncio
+import contextlib
 import zlib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -41,14 +42,15 @@ from evals.errors import (
     HarnessProviderMissingError,
     OracleUnusableError,
     RecursionDepthGateUnbuildableError,
-    RecursionDepthNoCellsMeasuredError,
     RecursionDepthPlannerSubstitutedError,
     RecursionDepthSessionCeilingError,
 )
 from evals.harness.journal import RecordedCells
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
+from evals.recursion_depth.emit import assemble_report, derived_caveats
 from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
+from evals.recursion_depth.forecast import estimate_sessions
 from evals.recursion_depth.gate import (
     BlindMergeReviewer,
     MergeReviewer,
@@ -70,10 +72,14 @@ from evals.recursion_depth.merge import (
     run_merge,
 )
 from evals.recursion_depth.models import (
+    CEILING_CAVEAT,
     LEAF,
     MERGE,
+    METRIC_CAVEAT,
     ORACLE_CAVEAT,
     PLAN,
+    PLAN_UNIT_SUFFIX,
+    QUOTA_CAVEAT,
     SIZING_CAVEAT,
     CellRecord,
     PlannedTreeRecord,
@@ -83,11 +89,6 @@ from evals.recursion_depth.models import (
 )
 from evals.recursion_depth.oracle import run_oracle
 from evals.recursion_depth.planner import PlanningSpend, TreePlanner
-from evals.recursion_depth.score import (
-    achieved_depth_histogram,
-    curve_by_achieved_depth,
-    curve_by_depth_cap,
-)
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -117,7 +118,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_CELL_RECORDED,
     EVALS_RECURSION_CELL_RESTARTED,
     EVALS_RECURSION_CELL_UNAVAILABLE,
-    EVALS_RECURSION_NO_CELLS,
+    EVALS_RECURSION_LEAF_FAILURE_MASKED,
     EVALS_RECURSION_PLAN_RETRIED,
     EVALS_RECURSION_QUOTA_EXHAUSTED,
     EVALS_RECURSION_SESSION_CEILING,
@@ -163,28 +164,6 @@ _PLAN_RETRY_BASE_SECONDS: Final[float] = 5.0
 #: Ceiling on that wait. With one retry it is never reached; it exists because
 #: the retry handler refuses a cap below its base.
 _PLAN_RETRY_CAP_SECONDS: Final[float] = 30.0
-
-_CEILING_CAVEAT: str = (
-    "The sweep stopped early on its session ceiling, so the depths and "
-    "repetitions the manifest asked for are not all present. Read the cell "
-    "list, not the manifest, for what was actually measured."
-)
-
-_UNRESOLVED_CLAIMS_CAVEAT: str = (
-    "{dropped} planner claim(s) named no requirement this specification "
-    "defines and were dropped before scoring. A handful is one planner "
-    "inventing a requirement; a large share means the criterion template and "
-    "the id pattern have drifted apart, which deflates both halves of the "
-    "survival ratio and reads on the chart like a gate that does not help."
-)
-
-_QUOTA_CAVEAT: str = (
-    "The sweep stopped early because the provider account ran out of quota, "
-    "so the depths and repetitions the manifest asked for are not all "
-    "present, and the cell it stopped on was cut off part-way rather than "
-    "measured. Read the cell list, not the manifest, for what was actually "
-    "measured, and re-run the remainder once the account's window resets."
-)
 
 
 def _quota_exhaustion(exc: BaseException) -> ProviderQuotaExceededError | None:
@@ -233,6 +212,37 @@ def _report_quota_exhaustion(
     return True
 
 
+@contextlib.asynccontextmanager
+async def _cell_ledger(
+    context: SweepContext, cell: SweepCell
+) -> AsyncIterator[SweepContext]:
+    """Install ONE cost sink for the length of one cell.
+
+    The sink is a process-wide field, so installing it swaps something every
+    session reads. Doing that per session was safe only while sessions ran one
+    at a time: with sibling leaves in flight the swaps interleave, the last one
+    installed collects everyone's records and the rest collect none. Measured
+    at concurrency 4, 42 of 129 leaf sessions journalled zero after running up
+    to 56 turns, and the run's spend column understated by about a quarter.
+
+    A cell boundary is where nothing is concurrent, so the swap is safe there,
+    and a session separates its own records out by task id. Cells are recorded
+    strictly one at a time, and within a cell every unit id is distinct, so the
+    pair is unique. Across cells it is not: the root merge's task id is derived
+    from the specification, so every cell's root assembly shares one, which is
+    why the ledger is scoped per cell rather than per sweep.
+
+    Yields:
+        The context whose sessions all report into this cell's sink, or the
+        context unchanged when no gateway is hosted.
+    """
+    if context.deps.open_run_ledger is None:
+        yield context
+        return
+    async with context.deps.open_run_ledger(cell.key) as ledger:
+        yield replace(context, deps=replace(context.deps, cell_ledger=ledger))
+
+
 async def _run_and_record(
     context: SweepContext,
     cell: SweepCell,
@@ -267,8 +277,11 @@ async def _run_and_record(
         MemoryError: Never handled here.
         RecursionError: Never handled here.
     """
+    if _refused_on_budget(context, cell, records, caveats):
+        return True
     try:
-        records.add(await _run_cell(context, cell, units, resumed))
+        async with _cell_ledger(context, cell) as scoped:
+            records.add(await _run_cell(scoped, cell, units, resumed))
     except MemoryError, RecursionError:
         raise
     except RecursionDepthSessionCeilingError as exc:
@@ -281,7 +294,7 @@ async def _run_and_record(
             error=safe_error_description(exc),
         )
         records.add(_unavailable(cell, exc, units.records))
-        caveats.append(_CEILING_CAVEAT)
+        caveats.append(CEILING_CAVEAT)
         return True
     except _SYSTEMIC_FAILURES as exc:
         # Logged before it propagates: this ends the whole sweep and writes no
@@ -300,7 +313,7 @@ async def _run_and_record(
             exc, measured=len(records) - 1, remaining=remaining
         ):
             return False
-        caveats.append(_QUOTA_CAVEAT)
+        caveats.append(QUOTA_CAVEAT)
         return True
     return False
 
@@ -327,6 +340,38 @@ class SessionBudget:
     def spent(self) -> int:
         """How many sessions the sweep has run."""
         return self._spent
+
+    @property
+    def ceiling(self) -> int:
+        """The ceiling this budget actually enforces.
+
+        Read from here rather than from ``manifest.max_sessions`` wherever a
+        figure is reported: the manifest is what the budget was BUILT from, and
+        a caller that built one from anything else would otherwise be described
+        by a number nothing is holding it to.
+        """
+        return self._ceiling
+
+    @property
+    def remaining(self) -> int:
+        """Sessions left before the ceiling, never negative."""
+        return max(0, self._ceiling - self._spent)
+
+    def can_afford(self, sessions: int) -> bool:
+        """Whether *sessions* more would still fit under the ceiling.
+
+        Asked BEFORE a cell rather than after each unit, because the two
+        answer different questions. :meth:`spend` stops a sweep that has
+        already overrun; this stops one from starting work it cannot finish,
+        which is the only point at which that spend can still be saved.
+
+        Args:
+            sessions: What the cell about to run is expected to cost.
+
+        Returns:
+            True when the budget covers it.
+        """
+        return self._spent + sessions <= self._ceiling
 
     def spend(self, sessions: int) -> None:
         """Book *sessions* and refuse to go past the ceiling.
@@ -359,6 +404,16 @@ class SweepContext:
         roster: The org the work is dispatched to and judged by.
         planner: What writes the tree each run is executed from.
         budget: The sweep's session ceiling.
+        leaf_concurrency: How many sibling leaves may build at once. One is
+            the sequential behaviour. Siblings are independent by
+            construction, meeting only at the merge that assembles them, so
+            this changes wall clock and nothing that is measured: the same
+            sessions run, spending the same tokens, judged the same way.
+
+            NOT part of the provenance, deliberately. It is passed per
+            invocation rather than declared in the manifest, so a run can be
+            resumed at a different concurrency without the identity check
+            refusing its own journal.
     """
 
     manifest: RecursionDepthManifest
@@ -369,6 +424,7 @@ class SweepContext:
     roster: SweepRoster
     planner: TreePlanner
     budget: SessionBudget
+    leaf_concurrency: int = 1
 
     @property
     def limits(self) -> SessionLimits:
@@ -484,10 +540,10 @@ async def run_sweep(
         RecursionDepthGateUnbuildableError: The gated arm has nowhere to read a
             verdict from.
     """
-    # Seeded, not accumulated: these two hold for every sweep this harness can
-    # run, and a report that states them only when something went wrong states
-    # them in exactly the runs nobody reads closely.
-    caveats: list[str] = [SIZING_CAVEAT, ORACLE_CAVEAT]
+    # Seeded, not accumulated: these three hold for every sweep this harness
+    # can run, and a report that states them only when something went wrong
+    # states them in exactly the runs nobody reads closely.
+    caveats: list[str] = [METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT]
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
@@ -531,29 +587,62 @@ async def run_sweep(
             ):
                 break
         cells = records.cells
-    measured = tuple(record for record in cells if record.achieved_depth is not None)
-    if not measured:
-        msg = (
-            "the recursion-depth sweep measured no cells; every run is "
-            "unavailable, and a report of those is not a curve"
-        )
-        logger.warning(
-            EVALS_RECURSION_NO_CELLS,
-            planned_cells=len(planned),
-            recorded_cells=len(records),
-        )
-        raise RecursionDepthNoCellsMeasuredError(msg)
-    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
-    if dropped:
-        caveats.append(_UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped))
-    return RecursionDepthReport(
+    caveats.extend(derived_caveats(cells))
+    return assemble_report(
         provenance=provenance,
         cells=cells,
-        by_achieved_depth=curve_by_achieved_depth(measured),
-        by_depth_cap=curve_by_depth_cap(measured),
-        achieved_depth_histogram=achieved_depth_histogram(measured),
-        caveats=tuple(caveats),
+        caveats=caveats,
+        planned_cells=len(planned),
     )
+
+
+def _refused_on_budget(
+    context: SweepContext,
+    cell: SweepCell,
+    records: RecordedCells[CellRecord],
+    caveats: list[str],
+) -> bool:
+    """Decline to start a cell the remaining budget cannot finish.
+
+    The ceiling itself books sessions after they run, so it can only stop a
+    sweep that has already overrun. A cell entered without the budget to
+    complete it spends everything left, records no ``achieved_depth``, and
+    enters no curve: the measurement is lost either way, and the spend is lost
+    with it. Refusing first is what makes the difference recoverable, since the
+    sweep can be resumed against a raised ceiling or a narrower ``--depths``
+    with every finished cell replayed free.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: The run about to start.
+        records: Sink the refusal is recorded to.
+        caveats: Sink the stopping reason is appended to.
+
+    Returns:
+        True when the cell was refused and the sweep must stop.
+    """
+    estimate = estimate_sessions(context.manifest, records.cells, cell.depth_cap)
+    if context.budget.can_afford(estimate):
+        return False
+    msg = (
+        f"a cell at depth cap {cell.depth_cap} is expected to cost "
+        f"{estimate} sessions and {context.budget.remaining} remain of the "
+        f"{context.budget.ceiling}-session ceiling, so it was not "
+        f"started; raise max_sessions or narrow --depths and resume"
+    )
+    exc = RecursionDepthSessionCeilingError(msg)
+    logger.warning(
+        EVALS_RECURSION_SESSION_CEILING,
+        spent=context.budget.spent,
+        ceiling=context.budget.ceiling,
+        estimated=estimate,
+        depth_cap=cell.depth_cap,
+        measured_cells=len(records),
+        error=safe_error_description(exc),
+    )
+    records.add(_unavailable(cell, exc, ()))
+    caveats.append(CEILING_CAVEAT)
+    return True
 
 
 def _unavailable(
@@ -637,7 +726,7 @@ async def _plan_with_retry(
         lambda: context.planner.plan(
             task=root,
             depth_cap=cell.depth_cap,
-            execution_id=f"{cell.key}-plan",
+            execution_id=f"{cell.key}{PLAN_UNIT_SUFFIX}",
             spend=spend,
         ),
         cell=cell.key,
@@ -738,7 +827,7 @@ def _plan_unit(
         The planning session's record.
     """
     return UnitRecord(
-        unit_id=NotBlankStr(f"{cell.key}-plan"),
+        unit_id=NotBlankStr(f"{cell.key}{PLAN_UNIT_SUFFIX}"),
         title=NotBlankStr(f"Plan: {context.spec.title}"),
         kind=PLAN,
         depth=0,
@@ -993,17 +1082,18 @@ async def _leaf_pieces(
     Returns:
         One piece per child, in the order the level declares them.
     """
+    await _build_missing_leaves(
+        context,
+        cell,
+        node,
+        definitions=definitions,
+        produced=produced,
+        delivered=delivered,
+        units=units,
+    )
     pieces: list[MergePiece] = []
     for index, task in enumerate(node.created_tasks):
         key = str(task.id)
-        if key not in produced:
-            leaf = await _run_one_leaf(
-                context, cell, task=task, definition=definitions[key]
-            )
-            produced[key] = leaf.workspace
-            delivered[key] = leaf.delivered
-            units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
-            context.budget.spend(leaf.attempts)
         pieces.append(
             MergePiece(
                 title=str(task.title),
@@ -1013,6 +1103,112 @@ async def _leaf_pieces(
             )
         )
     return tuple(pieces)
+
+
+async def _build_missing_leaves(
+    context: SweepContext,
+    cell: SweepCell,
+    node: DecompositionResult,
+    *,
+    definitions: Mapping[str, SubtaskDefinition],
+    produced: dict[str, CellWorkspace],
+    delivered: dict[str, bool],
+    units: CellUnits,
+) -> None:
+    """Build every child of *node* that is not already on disk.
+
+    Siblings are independent by construction, meeting only at the merge that
+    assembles them, so up to ``leaf_concurrency`` build at once. Nothing that
+    is measured changes: the same sessions run, spending the same tokens, and
+    each is judged by the same oracle.
+
+    Two properties are load-bearing for a resume and neither survives the
+    obvious implementation.
+
+    Each leaf is recorded the moment it RETURNS rather than after the batch,
+    so a run killed with four in flight still keeps every leaf that had
+    finished. Recording after the gather would lose finished, paid-for work
+    for no reason but the shape of the code.
+
+    And a failing sibling neither cancels the others nor changes what the
+    caller sees. ``gather`` collects rather than cancels, so the leaves that
+    were going to finish still do and still journal; then the first failure is
+    re-raised UNCHANGED. That last word is the point: an ``ExceptionGroup``
+    from a task group would reach the classifier as an unrecognised type, and
+    a quota refusal, which is the failure this sweep is most likely to meet,
+    would be filed as an ordinary unavailable cell rather than stopping the
+    matrix with its own reason.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        node: The level whose children are being built.
+        definitions: Every task id mapped to its planner definition.
+        produced: Each built id mapped to its tree. Mutated.
+        delivered: Each built id mapped to whether it delivered. Mutated.
+        units: Sink the per-unit records are appended to. Mutated.
+
+    Raises:
+        BaseException: Whatever the first failing leaf raised, unchanged.
+    """
+    pending = [task for task in node.created_tasks if str(task.id) not in produced]
+    if not pending:
+        return
+    limiter = asyncio.Semaphore(max(1, context.leaf_concurrency))
+
+    async def build(task: Task) -> None:
+        async with limiter:
+            leaf = await _run_one_leaf(
+                context, cell, task=task, definition=definitions[str(task.id)]
+            )
+        key = str(task.id)
+        produced[key] = leaf.workspace
+        delivered[key] = leaf.delivered
+        units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
+        context.budget.spend(leaf.attempts)
+
+    outcomes = await asyncio.gather(
+        *(build(task) for task in pending), return_exceptions=True
+    )
+    raised = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    if raised:
+        raise report_masked_failures(raised)
+
+
+def report_masked_failures(raised: Sequence[BaseException]) -> BaseException:
+    """Log every sibling failure and answer the one that may propagate.
+
+    Only ONE can propagate, so the choice is not the first in submission
+    order: a sibling's ``MemoryError`` decides how the whole process must end,
+    and losing it to an ordinary failure that happened to be submitted earlier
+    is the classifier reading a survivable run.
+
+    SELECTED before anything is logged, and the logging then skips the
+    selection rather than the first entry. Raising inside the search dropped
+    every sibling whenever the fatal error sat past index 0, and each of those
+    is a session the sweep has already paid for.
+
+    Args:
+        raised: Every failure the wave produced, in submission order. Never
+            empty; the caller has nothing to report otherwise.
+
+    Returns:
+        The failure to raise.
+    """
+    fatal = next(
+        (item for item in raised if isinstance(item, MemoryError | RecursionError)),
+        None,
+    )
+    propagating = fatal if fatal is not None else raised[0]
+    for outcome in raised:
+        if outcome is propagating:
+            continue
+        logger.warning(
+            EVALS_RECURSION_LEAF_FAILURE_MASKED,
+            error_type=type(outcome).__name__,
+            error=safe_error_description(outcome),
+        )
+    return propagating
 
 
 async def _run_one_leaf(

@@ -145,9 +145,20 @@ recursion-depth:
 # null).
 #
 # This is a large bill, so stage it. `--depths` narrows the sweep to a subset of
-# the manifest's caps and `--max-sessions` lowers the ceiling:
+# the manifest's caps, `--repetitions CAP:COUNT` trades samples at the deep end
+# (where a cap costs its branching to the power of its depth, so this is the
+# lever that reaches the bill), and `--max-sessions` lowers the ceiling:
 #
 #   make recursion-depth-record ARGS="--company-config my-providers.yaml --depths 1,2"
+#
+# Stages are CUMULATIVE, and each one after the first adds `--resume`. The report
+# holds exactly the caps the invocation planned, so a stage naming only the new
+# cap emits a chart missing every cap already paid for. A journalled cell is
+# replayed for free, so listing the earlier caps again costs nothing:
+#
+#   ... --depths 1,2
+#   ... --depths 1,2,3 --resume
+#   ... --depths 1,2,3,4 --resume
 #
 # `--keep-workspaces` leaves every unit's tree on disk, which is where the thing
 # the sweep actually built ends up.

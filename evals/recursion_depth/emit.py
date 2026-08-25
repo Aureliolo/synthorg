@@ -8,15 +8,117 @@ into it rather than left in the prose beside it.
 """
 
 import json
+from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
+from typing import get_args
 
+from pydantic import BaseModel, JsonValue
+
+from evals.errors import RecursionDepthNoCellsMeasuredError
 from evals.recursion_depth.chart import render_chart
-from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import MERGE, DepthPoint, RecursionDepthReport
+from evals.recursion_depth.journal import cell_key
+from evals.recursion_depth.manifest import Arm, ModelPair
+from evals.recursion_depth.models import (
+    MERGE,
+    UNRESOLVED_CLAIMS_CAVEAT,
+    CellRecord,
+    DepthPoint,
+    Provenance,
+    RecursionDepthReport,
+    UnitRecord,
+)
+from evals.recursion_depth.score import (
+    achieved_depth_histogram,
+    curve_by_achieved_depth,
+    curve_by_depth_cap,
+)
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_REPORT_EMITTED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_NO_CELLS,
+    EVALS_RECURSION_REPORT_EMITTED,
+)
 
 logger = get_logger(__name__)
+
+#: The three artifacts a report is, named once. A re-score reads the JSON back
+#: for what only it holds, so a second literal spelling would be one rename
+#: from reading a file nothing writes.
+REPORT_JSON_NAME: str = "depth_curve.json"
+REPORT_MARKDOWN_NAME: str = "depth_curve.md"
+REPORT_CHART_NAME: str = "chart.svg"
+
+
+def derived_caveats(cells: Sequence[CellRecord]) -> list[str]:
+    """The caveats a set of recorded cells implies on its own.
+
+    Separated from the assembler so the caller owns the final list. A re-score
+    carries the original report's caveats forward verbatim, which is the only
+    way the run-state ones survive (the ceiling and quota caveats are appended
+    while the loop runs and are recoverable from nowhere else), and an
+    assembler appending its own on top would emit this line twice.
+
+    Returns:
+        The caveats these cells imply, which may be none.
+    """
+    dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
+    return [UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []
+
+
+def assemble_report(
+    *,
+    provenance: Provenance,
+    cells: Sequence[CellRecord],
+    caveats: Sequence[str],
+    planned_cells: int,
+) -> RecursionDepthReport:
+    """Build the report from cells that are already measured and journalled.
+
+    The single owner of how a report is shaped, so the recorder and the
+    re-score cannot drift apart while both keep producing a valid report.
+
+    Here rather than in the runner because it is a property of the ARTIFACT
+    rather than of the run: it takes cells that are already on disk and calls no
+    provider. ``check_recording_harness_journalled`` treats a call to this as
+    assembling a report, so a driver still cannot reach a report without
+    journalling the cells that paid for it.
+
+    Args:
+        provenance: What the sweep was measured against. Supplies the
+            requirement count both curves divide by.
+        cells: Every recorded cell, measured or unavailable.
+        caveats: The final list, already complete. Nothing is appended here.
+        planned_cells: How many cells the matrix asked for, for the log line
+            below. A re-score passes the recorded count, since everything on
+            disk was by construction planned.
+
+    Returns:
+        The assembled report.
+
+    Raises:
+        RecursionDepthNoCellsMeasuredError: Every run is unavailable.
+    """
+    measured = tuple(record for record in cells if record.achieved_depth is not None)
+    if not measured:
+        msg = (
+            "the recursion-depth sweep measured no cells; every run is "
+            "unavailable, and a report of those is not a curve"
+        )
+        logger.warning(
+            EVALS_RECURSION_NO_CELLS,
+            planned_cells=planned_cells,
+            recorded_cells=len(cells),
+        )
+        raise RecursionDepthNoCellsMeasuredError(msg)
+    required = provenance.requirement_count
+    return RecursionDepthReport(
+        provenance=provenance,
+        cells=tuple(cells),
+        by_achieved_depth=curve_by_achieved_depth(measured, requirement_count=required),
+        by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
+        achieved_depth_histogram=achieved_depth_histogram(measured),
+        caveats=tuple(caveats),
+    )
 
 
 def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...]:
@@ -30,9 +132,9 @@ def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...
         The written paths, in the order JSON, Markdown, SVG.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / "depth_curve.json"
-    md_path = out_dir / "depth_curve.md"
-    svg_path = out_dir / "chart.svg"
+    json_path = out_dir / REPORT_JSON_NAME
+    md_path = out_dir / REPORT_MARKDOWN_NAME
+    svg_path = out_dir / REPORT_CHART_NAME
     json_path.write_text(
         report.model_dump_json(indent=2) + "\n", encoding="utf-8", newline=""
     )
@@ -116,9 +218,26 @@ def _markdown(report: RecursionDepthReport) -> str:
         "",
         *_histogram_table(report),
         "",
-        "## Escalations and amendments",
+        "## What each arm spent, and what it bought",
         "",
         *_gate_table(report),
+        "",
+        "## Who judged whom",
+        "",
+        "The gate is the treatment, so a reviewer that came up on the executor's",
+        "own binding would bias the result toward the null while every",
+        "sweep-level field still read correctly. Every pairing that actually ran",
+        "is listed, with the families the decorrelation claim rests on.",
+        "",
+        *_pairing_table(report),
+        "",
+        "## Every merge",
+        "",
+        "Both parties per merge, which is the grain the independence claim is",
+        "made at. The same rows are in `depth_curve.json` under each cell's",
+        "`units`.",
+        "",
+        *_merge_table(report),
         "",
         "## Caveats",
         "",
@@ -142,25 +261,20 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
     Returns:
         The table lines.
     """
-    # Two population columns rather than one: "Contributing" is what the
-    # fraction is over, "Runs" is what the spend is over, and on the
-    # achieved-depth curve they differ. One column for both invited a
-    # spend-per-run read that divided across two populations.
     header = (
-        "| Depth | Arm | Surviving | Delivered | Fraction | Contributing "
-        "| Runs | Sessions | Tokens | Spend |"
+        "| Depth | Arm | Satisfied | Required | Fraction | Runs "
+        "| Sessions | Tokens | Spend |"
     )
-    rows = [header, "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    rows = [header, "|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
     for point in points:
         fraction = point.fraction
-        # An absence rather than a zero: nothing was delivered at this depth,
-        # so there is no rate to report and printing 0.000 would say the merge
-        # lost work that never existed.
+        # An absence rather than a zero: the bucket holds no run, so there is
+        # no rate to report and printing 0.000 would claim a measured failure.
         rendered = "n/a" if fraction is None else f"{fraction:.3f}"
         rows.append(
-            f"| {point.depth} | {point.arm.value} | {point.surviving_claims} "
-            f"| {point.delivered_claims} | {rendered} | {point.cells} "
-            f"| {point.runs} | {point.attempts} | {point.tokens} "
+            f"| {point.depth} | {point.arm.value} | {point.satisfied} "
+            f"| {point.required} | {rendered} | {point.cells} "
+            f"| {point.attempts} | {point.tokens} "
             f"| {point.cost:.4f} |"
         )
     return rows
@@ -179,8 +293,34 @@ def _histogram_table(report: RecursionDepthReport) -> list[str]:
     return rows
 
 
+type _Merge = tuple[CellRecord, UnitRecord]
+
+
+def _merges_of(report: RecursionDepthReport) -> tuple[_Merge, ...]:
+    """Every assembly the sweep ran, with the cell it belongs to.
+
+    The single owner of that traversal, because three tables below ask the same
+    question of it and a second walk is where two of them come to disagree about
+    how many merges there were.
+
+    Returns:
+        Each merge unit paired with its cell, in recorded order.
+    """
+    return tuple(
+        (cell, unit)
+        for cell in report.measured_cells
+        for unit in cell.units
+        if unit.kind == MERGE
+    )
+
+
 def _gate_table(report: RecursionDepthReport) -> list[str]:
-    """Render the parked escalations and contract amendments per arm.
+    """Render what each arm spent on merging and what it got for it.
+
+    Sessions, tokens and spend sit beside the escalations because the arms are
+    only comparable if their budgets were: repair in the gated arm alone would
+    let it win by spending more rather than by catching anything, and the
+    equal-budget claim is read here or nowhere.
 
     Returns:
         The table lines.
@@ -188,22 +328,171 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     parked = dict.fromkeys(Arm, 0)
     amendments = dict.fromkeys(Arm, 0)
     merges = dict.fromkeys(Arm, 0)
-    for cell in report.measured_cells:
-        for unit in cell.units:
-            if unit.kind != MERGE:
-                continue
-            merges[cell.arm] += 1
-            parked[cell.arm] += int(unit.parked)
-            amendments[cell.arm] += unit.amendments
+    attempts = dict.fromkeys(Arm, 0)
+    tokens = dict.fromkeys(Arm, 0)
+    cost = dict.fromkeys(Arm, 0.0)
+    for cell, unit in _merges_of(report):
+        merges[cell.arm] += 1
+        parked[cell.arm] += int(unit.parked)
+        amendments[cell.arm] += unit.amendments
+        attempts[cell.arm] += unit.attempts
+        tokens[cell.arm] += unit.tokens
+        cost[cell.arm] += unit.cost
     rows = [
-        "| Arm | Merges | Parked escalations | Contract amendments |",
-        "|---|---:|---:|---:|",
+        (
+            "| Arm | Merges | Sessions | Tokens | Spend | Parked escalations "
+            "| Contract amendments |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     rows.extend(
-        f"| {arm.value} | {merges[arm]} | {parked[arm]} | {amendments[arm]} |"
+        f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
+        f"| {cost[arm]:.4f} | {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
     )
     return rows
+
+
+def _pair_label(pair: ModelPair | None) -> str:
+    """Render one party of a merge, family included.
+
+    An absent pair is named rather than blanked: on the ungated arm nobody
+    judged, which is the arm's definition, and on the gated arm it would mean a
+    merge whose judge was not recorded at all.
+
+    Returns:
+        ``provider/model_id (family)``, or a stated absence.
+    """
+    if pair is None:
+        return "none"
+    return f"{pair.label} ({pair.family or 'family undeclared'})"
+
+
+def _cell(value: str) -> str:
+    """Render *value* so it stays inside the one table cell it belongs to.
+
+    Every dynamic value on these rows is agent-authored (a unit title, a
+    verdict) or operator-authored (a model id), so a ``|`` splits one merge
+    into several cells and a newline splits it into several ROWS. The table's
+    whole claim is one row per merge, and either character silently breaks it
+    in a file whose only reader is a person.
+
+    Args:
+        value: The text to place in a cell.
+
+    Returns:
+        The text, safe to interpolate between two delimiters.
+    """
+    flattened = " ".join(value.splitlines())
+    return flattened.replace("|", "\\|")
+
+
+def _pairing_table(report: RecursionDepthReport) -> list[str]:
+    """Render every ``(executor, reviewer)`` combination that actually ran.
+
+    Read off the units rather than off the manifest, because the manifest says
+    what the roster was ASKED to bind and these say what answered.
+
+    Returns:
+        The table lines.
+    """
+    counts: dict[tuple[str, str, str], int] = defaultdict(int)
+    for cell, unit in _merges_of(report):
+        pairing = (
+            cell.arm.value,
+            _cell(_pair_label(unit.executor)),
+            _cell(_pair_label(unit.reviewer)),
+        )
+        counts[pairing] += 1
+    rows = ["| Arm | Assembled by | Judged by | Merges |", "|---|---|---|---:|"]
+    rows.extend(
+        f"| {arm} | {executor} | {reviewer} | {count} |"
+        for (arm, executor, reviewer), count in sorted(counts.items())
+    )
+    return rows
+
+
+def _merge_table(report: RecursionDepthReport) -> list[str]:
+    """Render one row per merge, both parties named.
+
+    Returns:
+        The table lines.
+    """
+    rows = [
+        (
+            "| Cell | Depth | Assembly | Assembled by | Judged by | Verdict "
+            "| Parked | Amendments | Delivered |"
+        ),
+        "|---|---:|---|---|---|---|---|---:|---|",
+    ]
+    rows.extend(
+        f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
+        f"| {_cell(unit.title)} | {_cell(_pair_label(unit.executor))} "
+        f"| {_cell(_pair_label(unit.reviewer))} | {_cell(unit.verdict or 'none')} "
+        f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
+        f"| {'yes' if unit.delivered else 'no'} |"
+        for cell, unit in _merges_of(report)
+    )
+    return rows
+
+
+def _without_derived(value: JsonValue, model: type[BaseModel]) -> JsonValue:
+    """Drop from *value* the keys *model* derives rather than stores.
+
+    The report is written with ``model_dump_json``, which serialises every
+    ``computed_field``, and read back into models that are ``extra="forbid"``,
+    which refuses them: the writer and the reader disagreed about the same
+    file, so nothing this harness emitted could be loaded at all. Stripping is
+    the honest direction, because a derived value read from a file is a second
+    answer to something the model already decides.
+
+    Derived from ``model_computed_fields`` rather than a list of names, since a
+    list is one ``@computed_field`` away from disagreeing with the model.
+
+    Args:
+        value: The decoded JSON at this level.
+        model: The model it will be validated against.
+
+    Returns:
+        The value, with this level's derived keys and its children's removed.
+    """
+    if not isinstance(value, dict):
+        return value
+    nested = {
+        name: field.annotation
+        for name, field in model.model_fields.items()
+        if field.annotation is not None
+    }
+    stripped: dict[str, JsonValue] = {}
+    for key, item in value.items():
+        if key in model.model_computed_fields:
+            continue
+        child = _nested_model(nested.get(key))
+        stripped[key] = (
+            [_without_derived(entry, child) for entry in item]
+            if child is not None and isinstance(item, list)
+            else _without_derived(item, child)
+            if child is not None
+            else item
+        )
+    return stripped
+
+
+def _nested_model(annotation: object) -> type[BaseModel] | None:
+    """The model a field holds, directly or inside a sequence.
+
+    Args:
+        annotation: The field's declared type.
+
+    Returns:
+        The model, or ``None`` when the field holds no model.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        if isinstance(arg, type) and issubclass(arg, BaseModel):
+            return arg
+    return None
 
 
 def load_report(path: Path) -> RecursionDepthReport:
@@ -215,9 +504,16 @@ def load_report(path: Path) -> RecursionDepthReport:
     Returns:
         The parsed report.
     """
+    decoded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     return RecursionDepthReport.model_validate(
-        json.loads(path.read_text(encoding="utf-8"))
+        _without_derived(decoded, RecursionDepthReport)
     )
 
 
-__all__ = ["load_report", "write_report"]
+__all__ = [
+    "REPORT_CHART_NAME",
+    "REPORT_JSON_NAME",
+    "REPORT_MARKDOWN_NAME",
+    "load_report",
+    "write_report",
+]

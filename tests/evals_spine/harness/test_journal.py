@@ -19,6 +19,7 @@ from evals.harness.journal import (
     ResumeState,
     RunJournal,
     open_journal,
+    read_journal,
 )
 from evals.recursion_depth.journal import (
     JOURNAL_KIND,
@@ -30,6 +31,7 @@ from evals.recursion_depth.journal import (
     matrix_identity,
     open_cell_journal,
     progress_by_cell,
+    read_recorded_cells,
     sessions_spent,
 )
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
@@ -535,6 +537,49 @@ class TestTheSweepsOwnEntryPoint:
         assert not state.completed
         _, resumed = open_cell_journal(tmp_path, provenance=_provenance(), resume=True)
         assert len(resumed.completed) == 1
+
+
+class TestReadingOneBackWithoutOpeningIt:
+    """The re-score path, which must not create what it cannot find."""
+
+    def test_it_returns_the_recording_commit_not_this_one(self, tmp_path: Path) -> None:
+        # The whole reason a re-score reads the header instead of stamping a
+        # fresh provenance: the artefact names the commit that SPENT the money.
+        journal, _ = _opened(tmp_path, resume=False, commit="a" * 40)
+        journal.record(_measured())
+        journal.close()
+
+        provenance, cells = read_recorded_cells(tmp_path)
+
+        assert provenance.git_commit == "a" * 40
+        assert len(cells) == 1
+
+    def test_a_missing_journal_is_refused_rather_than_created(
+        self, tmp_path: Path
+    ) -> None:
+        # open_journal creates on absence, which is right for a recording and
+        # wrong here: a typo would leave a fresh empty journal behind and
+        # report that the recording measured nothing.
+        with pytest.raises(HarnessJournalMismatchError):
+            read_journal(tmp_path / JOURNAL_NAME, SPEC)
+
+        assert not (tmp_path / JOURNAL_NAME).exists()
+
+    def test_another_harness_journal_is_refused_by_name(self, tmp_path: Path) -> None:
+        path = tmp_path / JOURNAL_NAME
+        path.write_text(
+            json.dumps({"journal_kind": "loop-ab"}) + "\n", encoding="utf-8"
+        )
+
+        with pytest.raises(HarnessJournalMismatchError):
+            read_journal(path, SPEC)
+
+    def test_an_empty_journal_is_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / JOURNAL_NAME
+        path.write_text("", encoding="utf-8")
+
+        with pytest.raises(HarnessJournalMismatchError):
+            read_journal(path, SPEC)
 
 
 class TestRecordingIsOneOwner:

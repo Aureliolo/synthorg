@@ -43,8 +43,10 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_RESUMED
 
 logger = get_logger(__name__)
 
@@ -227,19 +229,118 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    detail = await _undelivered_reason(deps, task, workspace, outcome, baseline)
+    attempts = 1
+    # The attempt that died is still spend: its calls were billed and its turns
+    # were taken. Each figure below is what ONE session added, because the
+    # ledger read is a delta past the count standing when that session opened
+    # and the loop's turn list is its own, so reporting the resume's alone
+    # would file a 30-turn failure followed by a 4-turn resume as a 4-turn unit.
+    spent = _Spend.of(outcome)
+    if _died_in_flight(outcome):
+        # RESUMED, not re-run. The engine replays the conversation this
+        # execution_id checkpointed and continues from the last turn, so an
+        # infrastructure failure costs the turns still in flight rather than
+        # every turn the unit had already paid for. Re-running from scratch
+        # would cost the same money twice and discard the tree built so far.
+        logger.warning(
+            EVALS_RECURSION_UNIT_RESUMED,
+            execution_id=execution_id,
+            task_id=str(task.id),
+            termination=outcome.termination,
+            turns=outcome.turns,
+        )
+        outcome = await run_session(
+            deps,
+            identity=owner,
+            task=task,
+            workspace=workspace,
+            execution_id=execution_id,
+            limits=limits,
+            resume=True,
+        )
+        attempts = 2
+        spent = spent.plus(outcome)
+    detail = await _undelivered_reason(
+        deps, task, workspace, outcome, baseline, turns=spent.turns
+    )
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
         delivered=not detail,
-        attempts=1,
-        turns=outcome.turns,
-        cost=outcome.cost,
-        tokens=outcome.tokens,
+        attempts=attempts,
+        turns=spent.turns,
+        cost=spent.cost,
+        tokens=spent.tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         undeclared_paths=final.missing,
         detail=detail,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Spend:
+    """What a leaf has cost across every session it took.
+
+    Attributes:
+        turns: Turns taken, summed over the attempts.
+        cost: Money booked, summed over the attempts.
+        tokens: Tokens booked, summed over the attempts.
+    """
+
+    turns: int
+    cost: float
+    tokens: int
+
+    @classmethod
+    def of(cls, outcome: SessionOutcome) -> _Spend:
+        """Open the running total on one session's figures.
+
+        Args:
+            outcome: The session that has run.
+
+        Returns:
+            The total so far.
+        """
+        return cls(turns=outcome.turns, cost=outcome.cost, tokens=outcome.tokens)
+
+    def plus(self, outcome: SessionOutcome) -> _Spend:
+        """Add a further session's figures.
+
+        Args:
+            outcome: The session that has just run.
+
+        Returns:
+            The total including it.
+        """
+        return _Spend(
+            turns=self.turns + outcome.turns,
+            cost=self.cost + outcome.cost,
+            tokens=self.tokens + outcome.tokens,
+        )
+
+
+def _died_in_flight(outcome: SessionOutcome) -> bool:
+    """Whether the session was cut off rather than reaching an end it chose.
+
+    ``ERROR`` alone. Every other termination is the run deciding something:
+    ``MAX_TURNS`` and ``BUDGET_EXHAUSTED`` spent what they were given,
+    ``NO_OP`` produced nothing and that IS the measurement, and ``COMPLETED``
+    is a delivery whose artifacts are judged separately. Resuming any of those
+    would buy a second opinion on a verdict the sweep exists to record.
+
+    ``ERROR`` is the one that is never about the work: the loop returns it when
+    a provider call fails past its retries, which says nothing about whether
+    the unit could have delivered. It is also the only reason whose turns are
+    worth continuing rather than re-running, because the conversation was
+    making progress when the infrastructure went away.
+
+    Args:
+        outcome: How the session ended.
+
+    Returns:
+        True when a resume is worth an attempt.
+    """
+    return outcome.termination == TerminationReason.ERROR.value
 
 
 async def _undelivered_reason(
@@ -248,6 +349,8 @@ async def _undelivered_reason(
     workspace: CellWorkspace,
     outcome: SessionOutcome,
     baseline: ArtifactPresence,
+    *,
+    turns: int,
 ) -> str:
     """Say why *task*'s tree is not a delivery, or nothing when it is.
 
@@ -259,12 +362,26 @@ async def _undelivered_reason(
     leaves at zero turns and zero tokens, all of them saying the agent had
     written no files.
 
+    Args:
+        deps: The sweep's injected collaborators.
+        task: The leaf whose tree is being judged.
+        workspace: Its own recreated tree.
+        outcome: The session that ran last, for the ending it reports.
+        baseline: What the tree held before the unit ran.
+        turns: Turns the UNIT took, summed over its attempts. Separate from
+            ``outcome.turns`` because the guard below asks whether anything
+            ran at all, which is a fact about the unit: a resumed attempt
+            that errors immediately takes no turn of its own, and reading its
+            count alone would file a leaf that built for thirty turns as
+            never having started, skipping the artifact and own-test checks
+            that decide whether it delivered.
+
     Returns:
         The reason, empty when the leaf delivered.
     """
-    if outcome.turns == 0:
+    if turns == 0:
         return (
-            f"the session ran no turns, so nothing was built and this is not a "
+            f"the unit ran no turns, so nothing was built and this is not a "
             f"delivery failure: it terminated {outcome.termination}"
         )
     if await asyncio.to_thread(produced_nothing, task, workspace, baseline):

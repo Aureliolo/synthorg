@@ -35,6 +35,7 @@ recordable at all, and it puts every unit on one authoritative cost ledger.
 import argparse
 import asyncio
 import hashlib
+import json
 import shutil
 from functools import partial
 from pathlib import Path
@@ -44,6 +45,7 @@ from evals.errors import (
     RecursionDepthCapabilityUnresolvedError,
     RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
+    RecursionDepthSpendRepairEmptyError,
 )
 from evals.harness.binding import HarnessBinder
 from evals.harness.host import (
@@ -52,12 +54,24 @@ from evals.harness.host import (
     RecordingHostConfig,
 )
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
-from evals.recursion_depth.emit import write_report
+from evals.recursion_depth.emit import (
+    REPORT_JSON_NAME,
+    assemble_report,
+    derived_caveats,
+    write_report,
+)
 from evals.recursion_depth.grading import SandboxUnitGrader
+from evals.recursion_depth.journal import read_recorded_cells
 from evals.recursion_depth.manifest import (
     ModelPair,
     RecursionDepthManifest,
     load_manifest,
+)
+from evals.recursion_depth.models import (
+    METRIC_CAVEAT,
+    ORACLE_CAVEAT,
+    RUN_STATE_CAVEATS,
+    SIZING_CAVEAT,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import run_preflight
@@ -69,14 +83,22 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import SessionLimits, SweepDeps
+from evals.recursion_depth.spend_repair import (
+    SPEND_REPAIRED_CAVEAT,
+    repair_cell_spend,
+    tokens_by_unit,
+)
 from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_RECORD_START
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+    EVALS_RECURSION_RECORD_START,
+)
 from synthorg.providers.family import model_named
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
@@ -188,6 +210,64 @@ def check_declared_families(
     raise RecursionDepthJudgeNotIndependentError(msg)
 
 
+def _reachable_caps(manifest: RecursionDepthManifest) -> str:
+    """Which of the swept caps the ceiling can pay for, cheapest first.
+
+    Returns:
+        A human-readable summary of the prefix that fits, or a statement that
+        not even the shallowest cap does.
+    """
+    arms = len(manifest.arms)
+    spent = 0
+    ordered = sorted(manifest.depths)
+    afforded: list[int] = []
+    for depth in ordered:
+        spent += manifest.repetitions[depth] * arms * manifest.projected_sessions(depth)
+        if spent > manifest.max_sessions:
+            break
+        afforded.append(depth)
+    if not afforded:
+        return "not even the shallowest cap fits"
+    caps = ", ".join(str(depth) for depth in afforded)
+    # The next SWEPT cap, not the next integer. `--depths 1,2,3,5` affording
+    # three would otherwise name cap 4, which this sweep never runs, so the
+    # operator is told the run stops somewhere it was never going.
+    remaining = ordered[len(afforded) :]
+    if not remaining:
+        return f"caps {caps} fit; the whole matrix is affordable"
+    return f"caps {caps} fit; the sweep is expected to stop inside cap {remaining[0]}"
+
+
+def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]:
+    """Say plainly when the matrix cannot be paid for, before anything is.
+
+    The projection and the ceiling were printed on adjacent lines with nothing
+    relating them, and this is the one screen where the spend decision is taken:
+    a run was launched at a ceiling four times too small from exactly that
+    reading, and it bought a whole planned tree, six built units and no
+    measurement at all. Doing the comparison for the reader costs a line.
+
+    Args:
+        manifest: The recording matrix, already narrowed by any override.
+        projected: What a full tree at the declared branching would cost.
+
+    Returns:
+        The lines to append, empty when the ceiling covers the projection.
+    """
+    if projected <= manifest.max_sessions:
+        return []
+    return [
+        "",
+        (
+            f"  SHORTFALL     : the projection is {projected:,} sessions against a "
+            f"ceiling of {manifest.max_sessions:,}, so a full tree at this "
+            f"branching cannot be recorded in one sweep. The sweep stops at the "
+            f"ceiling and reports what it measured; {_reachable_caps(manifest)}. "
+            f"Narrow --depths, raise --max-sessions, or expect a partial curve."
+        ),
+    ]
+
+
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
     """Render the matrix a record run would execute.
 
@@ -268,6 +348,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
             "money ceiling above can never fire"
         ),
     ]
+    lines.extend(_ceiling_note(manifest, projected))
     caveat = manifest.caveat()
     if caveat is not None:
         lines.extend(["", f"  CAVEAT: {caveat}"])
@@ -325,6 +406,7 @@ async def _record(
                     manifest_path=args.manifest,
                     manifest=manifest,
                     spec=spec,
+                    out_dir=args.out_dir,
                 )
             )
             report = await run_sweep(
@@ -445,8 +527,12 @@ async def _build_context(
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
     )
-    limits = SessionLimits(
-        max_turns=manifest.unit_max_turns,
+    # What a PLANNING session gets. The units are bounded by
+    # ``SweepContext.limits``, which reads the manifest itself; the two share a
+    # spend ceiling and differ in turns, because the shipped decomposition
+    # config caps a planner's turns and nothing caps a unit's.
+    planner_limits = SessionLimits(
+        max_turns=manifest.planner_max_turns,
         cost_ceiling=manifest.unit_cost_ceiling,
         token_ceiling=manifest.unit_token_ceiling,
     )
@@ -461,12 +547,13 @@ async def _build_context(
             deps=deps,
             roster=roster,
             executor=manifest.executor,
-            limits=limits,
+            limits=planner_limits,
             config_resolver=config_resolver_of(app_state),
         ),
         # The override is already folded into the manifest by `narrow`, so the
         # ceiling the run enforces is the one the plan printed.
         budget=SessionBudget(manifest.max_sessions),
+        leaf_concurrency=args.leaf_concurrency,
     )
 
 
@@ -516,6 +603,12 @@ def _build_deps(
         transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
         project_repo=host.project_repo,
+        # A sweep unit is hours of work, so its conversation goes on disk turn
+        # by turn and a session cut off by infrastructure is RESUMED rather
+        # than re-run. Both or neither: the engine refuses one without the
+        # other.
+        checkpoint_repo=host.checkpoint_repo,
+        heartbeat_repo=host.heartbeat_repo,
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
         declared_pairs=declared_pairs,
@@ -635,7 +728,41 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Comma-separated depth caps to record, narrowing the manifest's "
             "own list. This is how a large sweep is staged: record the shallow "
-            "end, read the curve forming, then pay for the deep end."
+            "end, read the curve forming, then pay for the deep end. Stages are "
+            "CUMULATIVE: each one names every cap recorded so far, not only the "
+            "new one, because the report holds exactly the caps this invocation "
+            "planned. A journalled cell is replayed for free, so listing the "
+            "earlier caps again costs nothing and omitting them emits a chart "
+            "missing every cap already paid for."
+        ),
+    )
+    parser.add_argument(
+        "--repetitions",
+        default=None,
+        help=(
+            "Override how many times a cap is recorded, as CAP:COUNT pairs "
+            "(for example '4:1'). Only the caps named change. This is the "
+            "lever for the deep end, where the bill is: a cap costs its "
+            "branching to the power of its depth, so trading one repetition "
+            "at the deepest cap buys back more time than anything else here. "
+            "The committed counts are the experimental DESIGN (samples "
+            "concentrated where the aggregation transition is expected), so "
+            "they are overridden per run rather than edited, and the manifest "
+            "digest a resume pins is taken over the file, which this does not "
+            "touch."
+        ),
+    )
+    parser.add_argument(
+        "--leaf-concurrency",
+        type=_positive_int,
+        default=1,
+        help=(
+            "How many sibling leaves may build at once. Siblings are "
+            "independent by construction, meeting only at the merge that "
+            "assembles them, so this changes wall clock and nothing that is "
+            "measured. It does NOT reduce quota: the same sessions run and "
+            "spend the same tokens, just sooner. Not part of the provenance, "
+            "so a run may be resumed at a different value."
         ),
     )
     parser.add_argument(
@@ -711,38 +838,148 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "digest along with the commit, the spec and both pairs, and a "
             "resume against a changed manifest is refused rather than mixing "
             "two matrices into one curve, which forfeits the planning already "
-            "paid for. --max-sessions is the only lever a resume has, because "
-            "it is folded into the manifest before the plan is printed rather "
-            "than applied to the run. Editing manifest.yaml to run a cheaper "
-            "matrix means starting a new --out-dir."
+            "paid for. --depths, --repetitions and --max-sessions are the "
+            "levers a resume still has, because each is folded into the "
+            "manifest before the plan is printed rather than applied to the "
+            "run, and none of them touches the file the digest is taken over. "
+            "Editing manifest.yaml to run a cheaper matrix means starting a "
+            "new --out-dir, and so does committing, because the identity pins "
+            "the commit too."
         ),
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--record",
         action="store_true",
         help="Execute the sweep against real providers (real spend).",
     )
-    return parser.parse_args(argv)
+    mode.add_argument(
+        "--rescore",
+        action="store_true",
+        help=(
+            "Re-emit the report from a finished recording's journal in "
+            "--out-dir, spending nothing and running no provider call. Every "
+            "input a report takes is already on disk, so a scoring change does "
+            "not need the matrix run again. The RECORDING commit is carried "
+            "across from the journal header rather than replaced by whatever "
+            "HEAD is now, so the artefact cannot claim the sweep ran against "
+            "code that did not exist when it ran."
+        ),
+    )
+    parser.add_argument(
+        "--repair-spend-from",
+        type=Path,
+        default=None,
+        help=(
+            "Rebuild the token column from a recorder log while re-scoring. "
+            "For a recording whose sessions shared one process-wide cost sink "
+            "swapped per session, where concurrent leaves could journal zero. "
+            "The log holds one cost record per CALL, which no swap can "
+            "scramble. Adds a caveat naming the repair, because a silently "
+            "reconstructed spend column is worse than the fault. Refuses when "
+            "the log places no call at all, rather than claim a repair that "
+            "changed nothing."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.repair_spend_from is not None and not args.rescore:
+        # Only the rescore branch reads it, so without this the flag parses,
+        # does nothing, and reports nothing: the operator is left believing the
+        # token column was rebuilt on a run that never touched it.
+        parser.error("--repair-spend-from is only meaningful with --rescore")
+    return args
+
+
+def parse_repetitions(
+    raw: str | None, manifest: RecursionDepthManifest
+) -> dict[int, int] | None:
+    """Read a ``CAP:COUNT`` repetition override off the command line.
+
+    Only the caps named are changed; the rest keep the manifest's own count, so
+    an operator lowering the deep end does not silently reshape the shallow one.
+
+    A cap the manifest does not sweep is REFUSED rather than ignored. The
+    manifest validator only checks that every swept depth HAS a count, so an
+    extra key validates cleanly and does nothing: ``--repetitions 41:1`` would
+    be a typo for ``4:1`` that plans the full three repetitions and reports
+    nothing wrong, which is the shape of mistake that gets discovered a day into
+    a paid run.
+
+    Args:
+        raw: The command-line text, or ``None`` for no override.
+        manifest: The loaded matrix, for the caps it actually sweeps.
+
+    Returns:
+        The overridden counts per cap, or ``None`` when nothing was asked for.
+
+    Raises:
+        ValueError: The text is malformed, names a cap the manifest does not
+            sweep, or asks for a count below one.
+    """
+    if raw is None:
+        return None
+    wanted: dict[int, int] = {}
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        cap_text, separator, count_text = entry.partition(":")
+        if not separator:
+            msg = f"--repetitions wants CAP:COUNT pairs, got {entry!r}"
+            raise ValueError(msg)
+        try:
+            cap, count = int(cap_text), int(count_text)
+        except ValueError as exc:
+            msg = f"--repetitions wants whole numbers, got {entry!r}"
+            raise ValueError(msg) from exc
+        if cap not in manifest.depths:
+            msg = (
+                f"--repetitions names cap {cap}, which this matrix does not "
+                f"sweep: {list(manifest.depths)}"
+            )
+            raise ValueError(msg)
+        if count < 1:
+            msg = (
+                f"--repetitions asks for {count} repetitions of cap {cap}; to "
+                f"record none of it, leave the cap out of --depths"
+            )
+            raise ValueError(msg)
+        wanted[cap] = count
+    if not wanted:
+        msg = "--repetitions was given no CAP:COUNT pair"
+        raise ValueError(msg)
+    return wanted
 
 
 def narrow(
     manifest: RecursionDepthManifest,
     depths: str | None,
     max_sessions: int | None = None,
+    repetitions: str | None = None,
 ) -> RecursionDepthManifest:
-    """Narrow *manifest* to the depth caps *depths* names and *max_sessions*.
+    """Narrow *manifest* to what this run records, and what it may spend.
 
-    Both overrides are applied to the manifest itself rather than only to the
+    Every override is applied to the manifest itself rather than only to the
     run, because the plan is what an operator reads to decide whether to spend:
     a ceiling applied downstream of the plan prints the manifest's own figure
     beside the flags that were meant to lower it, which is the one moment the
     number is being relied on.
+
+    None of them touches the manifest FILE, and the journal's identity pins the
+    file's digest, so an override never turns a resumable matrix into a foreign
+    one. What DOES is a commit, because the identity pins that too.
 
     Args:
         manifest: The loaded matrix.
         depths: Comma-separated caps, or ``None`` to keep the manifest's own.
         max_sessions: Session ceiling override, or ``None`` to keep the
             manifest's own.
+        repetitions: ``CAP:COUNT`` pairs, or ``None`` to keep the manifest's
+            own. This is the lever for the deep end, where the bill is: the
+            committed counts are the experimental design (samples concentrated
+            where ARIES puts the transition), and an operator trading one of
+            them for a schedule should not have to edit that design into
+            something the next reader inherits.
 
     Returns:
         The narrowed matrix.
@@ -750,11 +987,14 @@ def narrow(
     Raises:
         ValueError: A named cap is not in the manifest.
     """
-    if depths is None and max_sessions is None:
+    counts = parse_repetitions(repetitions, manifest)
+    if depths is None and max_sessions is None and counts is None:
         return manifest
     override: dict[str, object] = {}
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
+    if counts is not None:
+        override["repetitions"] = manifest.repetitions | counts
     if depths is None:
         return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
@@ -773,6 +1013,135 @@ def narrow(
     )
 
 
+def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
+    """The caveats the last report written here carried.
+
+    The only way a run-state caveat survives a re-score. The ceiling and quota
+    ones are appended while the sweep runs and the journal does not hold them,
+    so re-deriving from the cells alone would silently drop the sentence saying
+    the matrix stopped early.
+
+    An absent report is not an error: a re-score of a recording whose report
+    never landed is exactly the case the mode is useful in, and the caller
+    seeds the standing caveats instead. A report that is THERE and unreadable
+    is a different fact and is logged, because it is the only copy of those
+    sentences and returning the same empty tuple for both would quietly emit a
+    report reading as though the sweep finished.
+
+    Returns:
+        The caveats, or empty when there is no readable previous report.
+    """
+    path = out_dir / REPORT_JSON_NAME
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ()
+    # `UnicodeDecodeError` derives from `ValueError`, not `OSError`, so a
+    # truncated or half-written report escaped both handlers and aborted the
+    # re-score that this function is documented to return empty for.
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    try:
+        previous = json.loads(text)
+    except json.JSONDecodeError as exc:
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    caveats = previous.get("caveats") if isinstance(previous, dict) else None
+    if not isinstance(caveats, list):
+        logger.error(
+            EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
+            path=str(path),
+            error_type="SchemaMismatch",
+            error="no caveats list",
+        )
+        return ()
+    return tuple(str(entry) for entry in caveats)
+
+
+def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
+    """Re-emit a finished recording's report from its own journal.
+
+    Spends nothing and calls no provider: the cells, the provenance and both
+    curves are all recoverable from what the recording already wrote.
+
+    Shipped as a mode here rather than run as a scratch script because an
+    artefact produced by an uncommitted script is not reproducible by anyone,
+    which is most of what a provenance block is for, and because a second path
+    that builds a report is one refactor from disagreeing with the one the
+    recorder uses.
+
+    Args:
+        out_dir: Where the recording wrote its journal and its report.
+        repair_from: A recorder log to rebuild the token column from, or
+            ``None`` to keep the journalled figures.
+
+    Returns:
+        Process exit code.
+    """
+    provenance, cells = read_recorded_cells(out_dir)
+    # Rebuilt by default, carried only by declaration. The STANDING caveats
+    # hold for every sweep this harness runs and the DERIVED ones are a pure
+    # function of the cells, so re-deriving both is what gives an old report
+    # this release's wording; carrying them instead froze a report at the
+    # vocabulary it was written with, and re-scoring one twice left it holding
+    # two wordings of the same caveat side by side.
+    #
+    # `RUN_STATE_CAVEATS` is the whole set that cannot be re-derived: they are
+    # facts about how one run went (the session ceiling, a quota refusal, a
+    # same-family judge) and the journal records cells, not why the sweep
+    # stopped. Matching on the declared set rather than on "anything I do not
+    # recognise" is what stops a retired sentence living for ever.
+    #
+    # The repair caveat is deliberately in neither group. The journal holds the
+    # RAW figures and the repair is applied at scoring time, so a re-score
+    # without the flag emits unrepaired numbers and inheriting the sentence
+    # saying they were repaired would make the report state the opposite of
+    # what it holds.
+    caveats = [
+        METRIC_CAVEAT,
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+        *derived_caveats(cells),
+        *(
+            caveat
+            for caveat in dict.fromkeys(_previous_caveats(out_dir))
+            if caveat in RUN_STATE_CAVEATS
+        ),
+    ]
+    if repair_from is not None:
+        attributed = tokens_by_unit(repair_from)
+        if not attributed:
+            # The caveat is a provenance claim, so appending it beside figures
+            # nothing touched is the worse outcome of the two.
+            msg = (
+                f"{repair_from} attributed no calls to any unit; the log is "
+                f"not this recording's, or its rendering no longer parses"
+            )
+            raise RecursionDepthSpendRepairEmptyError(msg)
+        cells = repair_cell_spend(cells, attributed)
+        caveats.append(SPEND_REPAIRED_CAVEAT)
+    report = assemble_report(
+        provenance=provenance,
+        cells=cells,
+        caveats=caveats,
+        planned_cells=len(cells),
+    )
+    written = write_report(report, out_dir)
+    print("report written: " + ", ".join(str(path) for path in written))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -780,7 +1149,18 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = _parse_args(argv)
-    manifest = narrow(load_manifest(args.manifest), args.depths, args.max_sessions)
+    if args.rescore:
+        # Before the manifest and the company config are touched. A re-score
+        # needs neither, and --company-config defaults to the operator's own
+        # gitignored pair file, so loading it here would fail on a clean
+        # checkout, which is precisely the reproduction this mode exists for.
+        return _rescore(args.out_dir, repair_from=args.repair_spend_from)
+    manifest = narrow(
+        load_manifest(args.manifest),
+        args.depths,
+        args.max_sessions,
+        args.repetitions,
+    )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)
     # Checked on the plan path too, not only before a record. The plan path is

@@ -71,6 +71,7 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_HOST_ADMIN_PRESENT,
     EVALS_HARNESS_HOST_ADMIN_SEEDED,
     EVALS_HARNESS_HOST_IMAGES_INSTALLED,
     EVALS_HARNESS_HOST_SECRETS_INSTALLED,
@@ -81,8 +82,13 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_IMAGE_UNRESOLVED,
 )
 from synthorg.observability.redaction import safe_error_description
+from synthorg.persistence.checkpoint_protocol import (
+    CheckpointRepository,
+    HeartbeatRepository,
+)
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.tools.sandbox._image_resolution import (
@@ -426,6 +432,38 @@ class RecordingGatewayHost:
         return self._persistence.projects
 
     @property
+    def checkpoint_repo(self) -> CheckpointRepository:
+        """Where a session's conversation is persisted, turn by turn.
+
+        Returns:
+            The started host's checkpoint repository.
+
+        Raises:
+            HarnessGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = "the recording host's checkpoints were read before it was started"
+            raise HarnessGatewayUnavailableError(msg)
+        return self._persistence.checkpoints
+
+    @property
+    def heartbeat_repo(self) -> HeartbeatRepository:
+        """The liveness half of the checkpoint mechanism.
+
+        Returns:
+            The started host's heartbeat repository.
+
+        Raises:
+            HarnessGatewayUnavailableError: The host has not been started, so
+                there is no connected backend to read from.
+        """
+        if self._persistence is None:
+            msg = "the recording host's heartbeats were read before it was started"
+            raise HarnessGatewayUnavailableError(msg)
+        return self._persistence.heartbeats
+
+    @property
     def images(self) -> RecordedImages:
         """The images this recording resolved for its two legs.
 
@@ -652,7 +690,7 @@ class RecordingGatewayHost:
             )
             logger.info(EVALS_HARNESS_HOST_STOPPED, port=port)
 
-    async def _seed_admin(self, persistence: SQLitePersistenceBackend) -> None:
+    async def _seed_admin(self, persistence: PersistenceBackend) -> None:
         """Occupy the single-CEO slot before the host can accept a connection.
 
         ``POST /auth/setup`` is force-excluded from authentication so a real
@@ -666,6 +704,16 @@ class RecordingGatewayHost:
         Args:
             persistence: The connected, migrated scratch backend.
         """
+        # Asked before writing, because what closes the route is that a CEO
+        # EXISTS rather than that this boot created one, and the scratch
+        # database can outlive a process: ``stop`` removes it on the way out,
+        # so a run that was KILLED leaves it behind with a CEO already in it.
+        # That is precisely the run somebody resumes. Seeding unconditionally
+        # made the next boot die on ``UNIQUE constraint failed: users.role``,
+        # before the sweep could read the journal it was resuming from.
+        if await persistence.users.count_by_role(HumanRole.CEO):
+            logger.info(EVALS_HARNESS_HOST_ADMIN_PRESENT)
+            return
         auth = AuthService(self._config.company_config.api.auth)
         # Random and never disclosed: this account exists to be present, not to
         # be logged in as, and the run needs no human at the console.

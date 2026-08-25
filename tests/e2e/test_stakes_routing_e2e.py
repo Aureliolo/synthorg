@@ -110,6 +110,13 @@ _PROVIDER = "test-provider"
 _CHEAP_SUBTASK_TITLE = "Tidy the log formatting"
 _CRITICAL_SUBTASK_TITLE = "Migrate the production schema"
 
+# The brief's definition of done, held here because the scripted plan has to
+# claim these criteria VERBATIM: the parser matches a subtask's `satisfies`
+# against the objective's own text, so two copies of the sentence would refuse
+# the plan the moment one of them was reworded.
+_LOG_CRITERION = "The log line is tidied without changing behaviour"
+_MIGRATION_CRITERION = "The production schema migration is applied and verified"
+
 # Capability-priced model catalogue. Model ids are the canonical
 # ``example-<capability>`` archetypes, so the heuristic classifier assigns each
 # its rung, and the scripted driver can price each completion by rung.
@@ -193,6 +200,7 @@ class _MixedStakesStrategy:
                                     "acceptance_criteria": [
                                         "Log lines align consistently.",
                                     ],
+                                    "satisfies": [_LOG_CRITERION],
                                     # Prose, not a path: this harness runs no
                                     # real editor, and the artifact probe asks
                                     # the workspace only about path-shaped
@@ -215,6 +223,7 @@ class _MixedStakesStrategy:
                                     "acceptance_criteria": [
                                         "The schema migrates without data loss.",
                                     ],
+                                    "satisfies": [_MIGRATION_CRITERION],
                                     "expected_artifacts": [
                                         "a migrated production schema"
                                     ],
@@ -445,10 +454,7 @@ async def _run_brief(
         # A definition of done so the coordinator's clarification gate (on
         # by default) passes and the team path runs; this test exercises
         # capability routing, not the under-specified-work refinement path.
-        acceptance_criteria=(
-            "The log line is tidied without changing behaviour",
-            "The production schema migration is applied and verified",
-        ),
+        acceptance_criteria=(_LOG_CRITERION, _MIGRATION_CRITERION),
     )
     result = await pipeline.run(work_item)
     assert result.verdict is RoutingVerdict.SPLITTABLE

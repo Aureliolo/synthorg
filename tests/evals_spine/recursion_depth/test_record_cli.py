@@ -283,6 +283,58 @@ class TestPlanMode:
 
         assert "CAVEAT" not in plan
 
+    def test_a_matrix_the_ceiling_cannot_pay_for_says_so(self) -> None:
+        """The comparison is done for the reader, on the one screen it matters.
+
+        The projection and the ceiling used to sit on adjacent lines with
+        nothing relating them, and this is where the spend decision is taken: a
+        run was launched at a ceiling four times too small from exactly that
+        reading, and it bought a whole planned tree, six built units and no
+        measurement at all.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        assert "SHORTFALL" in plan
+        assert f"{manifest.max_sessions:,}" in plan
+        # And which of the caps the ceiling actually reaches, because "narrow
+        # --depths" is only actionable once the operator knows how far.
+        assert "caps 1, 2, 3 fit" in plan
+        assert "stop inside cap 4" in plan
+
+    def test_the_stopping_cap_is_one_the_sweep_actually_runs(self) -> None:
+        """`--depths` may be non-contiguous, and the note names a SWEPT cap.
+
+        Adding one to the deepest affordable cap reads correctly only while
+        the caps happen to be consecutive. Told to stop inside a cap the run
+        never planned, an operator narrows against a number that means
+        nothing.
+        """
+        gapped = narrow(load_manifest(_MANIFEST), "1,2,3,5")
+
+        plan = describe_plan(gapped, _spec())
+
+        assert "caps 1, 2, 3 fit" in plan
+        assert "stop inside cap 5" in plan
+        assert "cap 4" not in plan
+
+    def test_a_ceiling_that_covers_the_matrix_stays_quiet(self) -> None:
+        # The note is a warning, not a running commentary: printed always, it
+        # would be the line an operator stops reading.
+        covered = narrow(load_manifest(_MANIFEST), "1,2", 100_000)
+
+        assert "SHORTFALL" not in describe_plan(covered, _spec())
+
+    def test_a_ceiling_below_even_the_shallowest_cap_says_that(self) -> None:
+        # The prefix is empty, and reporting "caps  fit" would read as though
+        # something did.
+        starved = narrow(load_manifest(_MANIFEST), None, 1)
+
+        plan = describe_plan(starved, _spec())
+
+        assert "not even the shallowest cap fits" in plan
+
     def test_a_weakened_judge_puts_its_caveat_on_the_plan(self) -> None:
         # The operator is told before spending, not after reading the chart.
         shipped = load_manifest(_MANIFEST)
@@ -381,6 +433,73 @@ class TestStaging:
         # reads as a measured zero.
         with pytest.raises(ValueError, match="does not carry"):
             narrow(load_manifest(_MANIFEST), "1,4,9")
+
+
+class TestTradingRepetitionsForASchedule:
+    """The deep end is where the bill is, so it is where the lever belongs.
+
+    A cap costs its branching to the power of its depth, so one repetition
+    fewer at the deepest cap buys back more time than any other single change.
+    The committed counts are the experimental design (samples concentrated
+    where the aggregation transition is expected), so an operator trading one
+    of them for a schedule overrides it per run rather than editing that design
+    into something the next reader inherits as if it were intended.
+    """
+
+    def test_only_the_named_cap_changes(self) -> None:
+        shipped = load_manifest(_MANIFEST)
+
+        narrowed = narrow(shipped, None, None, "4:1")
+
+        assert narrowed.repetitions[4] == 1
+        for cap in (1, 2, 3, 5, 6):
+            assert narrowed.repetitions[cap] == shipped.repetitions[cap]
+
+    def test_it_reaches_the_plan_the_operator_reads(self) -> None:
+        # Same reason --max-sessions is folded into the manifest: a count
+        # applied downstream of the plan prints the manifest's own figure
+        # beside the flag meant to lower it.
+        narrowed = narrow(load_manifest(_MANIFEST), "3,4", None, "4:1")
+
+        plan = describe_plan(narrowed, _spec())
+
+        assert "cap 4: 1" in plan
+
+    def test_it_composes_with_the_other_two_levers(self) -> None:
+        narrowed = narrow(load_manifest(_MANIFEST), "1,2,3,4", 6000, "4:1")
+
+        assert narrowed.depths == (1, 2, 3, 4)
+        assert narrowed.max_sessions == 6000
+        assert narrowed.repetitions[4] == 1
+
+    def test_it_lowers_the_planned_cell_count(self) -> None:
+        shipped = load_manifest(_MANIFEST)
+
+        narrowed = narrow(shipped, "1,2,3,4", None, "4:1")
+
+        assert len(planned_cells(narrowed)) < len(
+            planned_cells(narrow(shipped, "1,2,3,4"))
+        )
+
+    def test_a_cap_the_matrix_does_not_sweep_is_refused(self) -> None:
+        # The manifest validator only checks that every SWEPT depth has a
+        # count, so an extra key validates cleanly and does nothing: '41:1' is
+        # a typo for '4:1' that plans the full three repetitions and reports
+        # nothing wrong, which is discovered a day into a paid run.
+        with pytest.raises(ValueError, match="does not sweep"):
+            narrow(load_manifest(_MANIFEST), None, None, "41:1")
+
+    def test_zero_repetitions_is_refused(self) -> None:
+        # Recording none of a cap is what --depths is for, and expressing it
+        # here would leave the cap in the swept list with nothing under it.
+        with pytest.raises(ValueError, match="leave the cap out of --depths"):
+            narrow(load_manifest(_MANIFEST), None, None, "4:0")
+
+    @pytest.mark.parametrize("raw", ["4", "four:1", "4:one", ""])
+    def test_malformed_input_is_refused_rather_than_ignored(self, raw: str) -> None:
+        # Ignored, every one of these would silently run the full matrix.
+        with pytest.raises(ValueError, match="--repetitions"):
+            narrow(load_manifest(_MANIFEST), None, None, raw)
 
 
 def _record_args(tmp_path: Path) -> argparse.Namespace:

@@ -27,9 +27,16 @@ hand back the same broken report the operator restarted to escape.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
-from evals.harness.journal import JournalSpec, RecordedCells, ResumeState, open_journal
+from evals.harness.journal import (
+    JournalSpec,
+    RecordedCells,
+    ResumeState,
+    open_journal,
+    read_journal,
+)
 from evals.recursion_depth.manifest import Arm
 from evals.recursion_depth.models import (
     CellProgressRecord,
@@ -396,6 +403,37 @@ def open_progress_journal(
     )
 
 
+def read_recorded_cells(out_dir: Path) -> tuple[Provenance, list[CellRecord]]:
+    """Read a finished recording back for re-scoring.
+
+    Writes nothing and spends nothing: every input a report takes is already on
+    disk, so a scoring change does not need the matrix run again.
+
+    ``generated_at`` is minted here rather than read, because the header
+    deliberately omits it: it is the single field ``matrix_identity`` excludes,
+    since a timestamp would make every resume a different matrix. Everything
+    else is carried across unchanged, so ``git_commit`` keeps naming the commit
+    the sweep RAN at rather than whatever HEAD the re-score happens to see.
+
+    Args:
+        out_dir: Where the recording wrote its journal.
+
+    Returns:
+        The recording's provenance and every cell it recorded.
+
+    Raises:
+        HarnessJournalMismatchError: There is no readable journal to re-score.
+    """
+    header, cells = read_journal(out_dir / JOURNAL_NAME, SPEC)
+    provenance = Provenance.model_validate(
+        {
+            **header,
+            "generated_at": datetime.now(UTC),
+        }
+    )
+    return provenance, cells
+
+
 __all__ = [
     "JOURNAL_KIND",
     "JOURNAL_NAME",
@@ -412,5 +450,6 @@ __all__ = [
     "open_progress_journal",
     "progress_by_cell",
     "progress_key",
+    "read_recorded_cells",
     "sessions_spent",
 ]

@@ -149,6 +149,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         parent_task_id: NotBlankStr,
         capture: PlanCapture,
         available_roles: tuple[NotBlankStr, ...] = (),
+        objective_criteria: tuple[NotBlankStr, ...] = (),
     ) -> None:
         super().__init__(
             name="submit_decomposition_plan",
@@ -167,6 +168,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         self._parent_task_id = parent_task_id
         self._capture = capture
         self._available_roles = available_roles
+        self._objective_criteria = objective_criteria
 
     @override
     async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
@@ -209,6 +211,7 @@ class SubmitDecompositionPlanTool(BaseTool):
                 cast("dict[str, JsonValue]", arguments),
                 self._parent_task_id,
                 self._available_roles,
+                self._objective_criteria,
             )
         except DecompositionError as exc:
             return await self._refuse(arguments, exc)

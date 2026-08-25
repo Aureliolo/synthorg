@@ -279,6 +279,7 @@ async def _run_supervised(
             manifest_path=manifest_path,
             brief_suite_version=_suite_version(briefs),
             images=host.images,
+            out_dir=out_dir,
         )
     )
     matrix = asyncio.ensure_future(

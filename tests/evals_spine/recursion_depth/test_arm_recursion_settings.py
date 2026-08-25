@@ -58,6 +58,58 @@ async def _writes(*, enabled: bool = True) -> list[tuple[str, str]]:
     ]
 
 
+async def _provider_writes() -> list[tuple[str, str]]:
+    """The ``providers`` writes ``arm_recursion`` made, in order.
+
+    Returns:
+        ``(key, value)`` pairs.
+    """
+    settings = mock_of[SettingsService](
+        set=AsyncMock(return_value=None), registry=get_registry()
+    )
+    await arm_recursion(settings, enabled=True)
+    return [
+        (call.args[1], call.args[2])
+        for call in settings.set.await_args_list
+        if call.args[0] == "providers"
+    ]
+
+
+class TestTheRetryLadderIsOpenedAllTheWay:
+    """A provider blip that outlasts the ladder discards the whole session.
+
+    ``call_provider`` turns an exhausted retry into a terminal ERROR result
+    and the loop returns it unchanged, so a leaf thirty turns into building a
+    subsystem loses all thirty. Nothing persisted that conversation, so
+    nothing can re-enter it. The ladder is the only thing standing in front of
+    that, and the sweep buys every attempt the setting allows.
+    """
+
+    async def test_the_sweep_arms_the_declared_maximum(self) -> None:
+        ceiling = _declared_maximum(
+            mock_of[SettingsService](
+                set=AsyncMock(return_value=None), registry=get_registry()
+            ),
+            "retry_max_attempts",
+            namespace="providers",
+        )
+
+        assert await _provider_writes() == [("retry_max_attempts", str(int(ceiling)))]
+
+    async def test_the_armed_ladder_is_longer_than_the_product_default(
+        self,
+    ) -> None:
+        # Read off the product rather than asserting a literal: the point is
+        # that the sweep buys MORE than a request handler gets, which stays
+        # true only while the two are compared rather than pinned.
+        definition = get_registry().get("providers", "retry_max_attempts")
+        assert definition is not None
+        assert definition.default is not None
+        armed = dict(await _provider_writes())["retry_max_attempts"]
+
+        assert int(armed) > int(definition.default)
+
+
 async def _armed(*, enabled: bool = True) -> dict[str, str]:
     """The coordination settings ``arm_recursion`` wrote, keyed by setting.
 
@@ -213,7 +265,12 @@ async def test_the_armed_event_reports_every_setting_that_was_written() -> None:
     with structlog.testing.capture_logs() as logs:
         await arm_recursion(settings, enabled=True)
 
-    written = {call.args[1]: call.args[2] for call in settings.set.await_args_list}
+    # Keyed by namespace as well, because the sweep arms two of them and a
+    # bare key does not say which setting moved.
+    written = {
+        f"{call.args[0]}.{call.args[1]}": call.args[2]
+        for call in settings.set.await_args_list
+    }
     armed = [
         entry for entry in logs if entry["event"] == EVALS_RECURSION_SETTINGS_ARMED
     ]

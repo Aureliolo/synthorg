@@ -335,6 +335,55 @@ def _lines(path: Path) -> list[str]:
     return [line for line in body.split("\n") if line.strip()]
 
 
+def read_journal[RecordT: BaseModel](
+    path: Path, spec: JournalSpec[RecordT]
+) -> tuple[Mapping[str, object], list[RecordT]]:
+    """Read a finished journal without opening it for append.
+
+    A re-score reads what a recording already paid for and writes nothing, so
+    it must not take the append path: that one creates the file when it is
+    absent and would leave a fresh empty journal behind on a typo.
+
+    The header is returned rather than checked against an identity, because a
+    re-score has nothing to compare it to. It IS the identity, and it carries
+    the RECORDING commit, which the caller must keep rather than stamping
+    whatever HEAD happens to be when the report is re-emitted.
+
+    Args:
+        path: The journal to read.
+        spec: What this journal holds.
+
+    Returns:
+        The header's identity fields, with this module's own kind marker
+        removed, and every record under it. Stripping the marker here keeps
+        the caller from having to know a bookkeeping field it never wrote.
+
+    Raises:
+        HarnessJournalMismatchError: The file is missing, empty, holds another
+            harness's journal, or is corrupt before its last line.
+    """
+    if not path.is_file():
+        msg = (
+            f"there is no journal at {path} to re-score; a re-score reads a "
+            f"recording that already happened and cannot create one"
+        )
+        raise HarnessJournalMismatchError(msg)
+    lines = _lines(path)
+    if not lines:
+        msg = (
+            f"the journal at {path} is empty, so its header never reached the "
+            f"disk and nothing under it can be attributed"
+        )
+        raise HarnessJournalMismatchError(msg)
+    # Identity deliberately empty: every field would be compared against
+    # itself. The kind check still applies, so another harness's journal is
+    # refused by name rather than parsed into the wrong record type.
+    _refuse_foreign(path, lines[0], kind=spec.kind, identity={})
+    stamped: dict[str, object] = json.loads(lines[0])
+    stamped.pop(_HEADER_KIND_FIELD, None)
+    return stamped, _recorded(path, lines[1:], spec)
+
+
 def _started[RecordT: BaseModel](
     path: Path, spec: JournalSpec[RecordT], identity: Mapping[str, object]
 ) -> RunJournal[RecordT]:
@@ -426,4 +475,5 @@ __all__ = [
     "ResumeState",
     "RunJournal",
     "open_journal",
+    "read_journal",
 ]

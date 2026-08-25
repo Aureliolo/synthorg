@@ -379,6 +379,29 @@ class TestFirstRunSetup:
 
         assert await persistence.users.count_by_role(HumanRole.CEO) == 1
 
+    async def test_seeding_a_database_that_already_has_a_ceo_is_a_no_op(
+        self, host: RecordingGatewayHost, tmp_path: Path
+    ) -> None:
+        """The resume path: a killed run leaves its scratch database behind.
+
+        ``stop`` removes it on a clean exit, so a populated scratch database
+        only outlives a run that was KILLED, which is precisely the run
+        somebody resumes. Seeding unconditionally made that boot die on
+        ``UNIQUE constraint failed: users.role`` before the sweep could read
+        the journal it was resuming from, and that journal is a recording
+        already paid for.
+
+        What closes the unauthenticated setup route is that a CEO EXISTS, not
+        that this boot created one, so finding one is success rather than a
+        collision to report.
+        """
+        persistence = persistence_of(host.app_state)
+        second = RecordingGatewayHost(_config(tmp_path, scratch=tmp_path / "second"))
+
+        await second._seed_admin(persistence)
+
+        assert await persistence.users.count_by_role(HumanRole.CEO) == 1
+
 
 class TestOpenHandsImage:
     async def test_image_override_reaches_the_setting(self, tmp_path: Path) -> None:

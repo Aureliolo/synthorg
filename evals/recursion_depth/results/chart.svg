@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1142" width="900" height="1142" role="img" aria-label="Fraction of the specification satisfied after the root merge, by depth, gated and ungated">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --grid: #e2e2e2;
+      --gated: #2f6f4f;
+      --ungated: #a4432f;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181c;
+        --fg: #e8e8e8;
+        --muted: #a0a0a0;
+        --grid: #2c2f36;
+        --gated: #6fbf95;
+        --ungated: #e08a72;
+      }
+    }
+    .bg { fill: var(--bg); }
+    .title { fill: var(--fg); font: 600 15px system-ui, sans-serif; }
+    .axis-label { fill: var(--muted); font: 13px system-ui, sans-serif; }
+    .tick { fill: var(--muted); font: 12px system-ui, sans-serif; }
+    .legend { fill: var(--fg); font: 13px system-ui, sans-serif; }
+    .caption { fill: var(--muted); font: 12px system-ui, sans-serif; }
+    .grid { stroke: var(--grid); stroke-width: 1; }
+    .axis { stroke: var(--grid); stroke-width: 1.5; }
+    .series { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+    .secondary { stroke-width: 1.25; opacity: 0.4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="900" height="1142"/>
+  <text class="title" x="70" y="26">Fraction of the specification satisfied after the root merge</text>
+  <line class="grid" x1="70" y1="428.0" x2="870" y2="428.0"/>
+  <text class="tick" x="60" y="432.0" text-anchor="end">0.00</text>
+  <line class="grid" x1="70" y1="333.0" x2="870" y2="333.0"/>
+  <text class="tick" x="60" y="337.0" text-anchor="end">0.25</text>
+  <line class="grid" x1="70" y1="238.0" x2="870" y2="238.0"/>
+  <text class="tick" x="60" y="242.0" text-anchor="end">0.50</text>
+  <line class="grid" x1="70" y1="143.0" x2="870" y2="143.0"/>
+  <text class="tick" x="60" y="147.0" text-anchor="end">0.75</text>
+  <line class="grid" x1="70" y1="48.0" x2="870" y2="48.0"/>
+  <text class="tick" x="60" y="52.0" text-anchor="end">1.00</text>
+  <text class="tick" x="70.0" y="448.0" text-anchor="middle">1</text>
+  <text class="tick" x="470.0" y="448.0" text-anchor="middle">2</text>
+  <text class="tick" x="870.0" y="448.0" text-anchor="middle">3</text>
+  <polyline class="series secondary" points="70.0,428.0 470.0,102.3 870.0,102.3" stroke="var(--gated)"/>
+  <polyline class="series secondary" points="70.0,428.0 470.0,129.4 870.0,111.3" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <polyline class="series" points="70.0,428.0 470.0,102.3 870.0,102.3" stroke="var(--gated)"/>
+  <circle cx="70.0" cy="428.0" r="4" fill="var(--gated)"/>
+  <circle cx="470.0" cy="102.3" r="4" fill="var(--gated)"/>
+  <circle cx="870.0" cy="102.3" r="4" fill="var(--gated)"/>
+  <polyline class="series" points="70.0,428.0 470.0,129.4 870.0,111.3" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <circle cx="70.0" cy="428.0" r="4" fill="var(--ungated)"/>
+  <circle cx="470.0" cy="129.4" r="4" fill="var(--ungated)"/>
+  <circle cx="870.0" cy="111.3" r="4" fill="var(--ungated)"/>
+  <text class="axis-label" x="450" y="472" text-anchor="middle">depth reached (levels of decomposition)</text>
+  <text class="title" x="70" y="476.0">Spend per run, same axis</text>
+  <line class="axis" x1="70" y1="662.0" x2="870" y2="662.0"/>
+  <text class="tick" x="60" y="502.0" text-anchor="end">0.00</text>
+  <text class="tick" x="60" y="666.0" text-anchor="end">0</text>
+  <polyline class="series" points="70.0,662.0 470.0,662.0 870.0,662.0" stroke="var(--gated)"/>
+  <polyline class="series" points="70.0,662.0 470.0,662.0 870.0,662.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <line class="series" x1="70" y1="696.0" x2="98" y2="696.0" stroke="var(--gated)"/>
+  <text class="legend" x="106" y="700.0">gate at every merge</text>
+  <line class="series" x1="270" y1="696.0" x2="298" y2="696.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <text class="legend" x="306" y="700.0">no merge gate</text>
+  <line class="series secondary" x1="470" y1="696.0" x2="498" y2="696.0" stroke="var(--fg)"/>
+  <text class="legend" x="506" y="700.0">faint: same runs binned on the depth cap allowed</text>
+  <text class="caption" x="70" y="726">Runs reaching each depth: cap=1 gated reached=1 (1), cap=1 ungated reached=1 (1), cap=2 gated reached=2 (1),</text>
+  <text class="caption" x="70" y="744">cap=2 ungated reached=2 (1), cap=3 gated reached=3 (1), cap=3 ungated reached=3 (1).</text>
+  <text class="caption" x="70" y="762">The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the share of leaf work surviving</text>
+  <text class="caption" x="70" y="780">the merge, which is the question this sweep set out to ask. Leaf-level attribution proved too sparse to carry</text>
+  <text class="caption" x="70" y="798">a rate and produced no point at all for whole cells. The two coincide only where the merge adds nothing of its</text>
+  <text class="caption" x="70" y="816">own, so a tree scoring well because the merging agent rebuilt it reads here exactly like one whose leaves</text>
+  <text class="caption" x="70" y="834">survived.</text>
+  <text class="caption" x="70" y="852">Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated</text>
+  <text class="caption" x="70" y="870">recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'.</text>
+  <text class="caption" x="70" y="888">Separating them needs an agent that has read the code deciding its own split, which no published system has.</text>
+  <text class="caption" x="70" y="906">The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to</text>
+  <text class="caption" x="70" y="924">it.</text>
+  <text class="caption" x="70" y="942">143 planner claim(s) named no requirement this specification defines and were dropped before scoring. A</text>
+  <text class="caption" x="70" y="960">handful is one planner inventing a requirement; a large share means the criterion template and the id pattern</text>
+  <text class="caption" x="70" y="978">have drifted apart. The curve divides by the specification rather than by these claims, so it is unaffected,</text>
+  <text class="caption" x="70" y="996">but the per-unit attribution is.</text>
+  <text class="caption" x="70" y="1014">The token column was rebuilt from the recorder's per-call log. This recording's sessions shared one</text>
+  <text class="caption" x="70" y="1032">process-wide cost sink swapped per session, so concurrent leaves could journal zero while a neighbour absorbed</text>
+  <text class="caption" x="70" y="1050">their records. The repair attributes each call from the log, which is written per call and cannot be scrambled</text>
+  <text class="caption" x="70" y="1068">by that swap, cutting a repeated task id into intervals at the point each unit was journalled. The money</text>
+  <text class="caption" x="70" y="1086">column is untouched: every connection here is flat-rate, so it reads zero throughout. Session and attempt</text>
+  <text class="caption" x="70" y="1104">counts were never affected.</text>
+</svg>

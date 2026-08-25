@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.emit import write_report
+from evals.recursion_depth.emit import load_report, write_report
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -19,7 +20,9 @@ from evals.recursion_depth.manifest import (
 )
 from evals.recursion_depth.models import (
     LEAF,
+    MERGE,
     ORACLE_CAVEAT,
+    RECURSION_DEPTH_SCHEMA_VERSION,
     SIZING_CAVEAT,
     CellRecord,
     DepthPoint,
@@ -28,12 +31,15 @@ from evals.recursion_depth.models import (
     UnitRecord,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.agent_session import (
+    AgentSessionDecompositionConfig,
+)
 
 pytestmark = pytest.mark.unit
 
-_COMMITTED_MANIFEST = (
-    Path(__file__).resolve().parents[3] / "evals" / "recursion_depth" / "manifest.yaml"
-)
+_RECURSION_DEPTH = Path(__file__).resolve().parents[3] / "evals" / "recursion_depth"
+_COMMITTED_MANIFEST = _RECURSION_DEPTH / "manifest.yaml"
+_COMMITTED_CURVE = _RECURSION_DEPTH / "results" / "depth_curve.json"
 
 
 def _manifest_payload(**overrides: object) -> dict[str, object]:
@@ -62,6 +68,7 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "independence": "same_family",
         "merge_attempts": 3,
         "unit_max_turns": 40,
+        "planner_max_turns": 40,
         "unit_cost_ceiling": 2.0,
         "unit_token_ceiling": 600000,
         "max_sessions": 100,
@@ -69,6 +76,42 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+class TestThePlannerAndTheUnitsAreBoundedSeparately:
+    """One turn budget for both is a limit on one deciding the other.
+
+    The shipped decomposition config refuses more than 50 turns and the unit
+    loop takes its cap as a plain argument, so a shared field means a unit may
+    never have more room than a planner is allowed, and a value chosen for a
+    unit is refused for reasons that have nothing to do with units.
+    """
+
+    def test_the_planner_is_held_to_what_the_product_accepts(self) -> None:
+        # Refused at LOAD. Accepted here, it would boot a host and then fail
+        # every cell at dispatch, against a matrix nobody can record.
+        with pytest.raises(ValidationError, match="planner_max_turns"):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(planner_max_turns=51)
+            )
+
+    def test_a_unit_may_exceed_the_planners_ceiling(self) -> None:
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(unit_max_turns=120)
+        )
+
+        assert manifest.unit_max_turns == 120
+        assert manifest.planner_max_turns == 40
+
+    def test_the_shipped_planner_budget_is_one_the_product_accepts(self) -> None:
+        # Against the real consumer rather than against the manifest's mirror
+        # of its bound: a mirror that drifts is exactly the failure this pins,
+        # and it can only be caught by asking the thing being mirrored.
+        manifest = load_manifest(_COMMITTED_MANIFEST)
+
+        config = AgentSessionDecompositionConfig(max_turns=manifest.planner_max_turns)
+
+        assert config.max_turns == manifest.planner_max_turns
 
 
 class TestTheJudgeMustBeIndependent:
@@ -295,23 +338,21 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
             DepthPoint(
                 depth=2,
                 arm=Arm.GATED,
-                delivered_claims=4,
-                surviving_claims=3,
-                cells=1,
-                # Set, not defaulted: `_cost_series` skips a point booking no
+                required=4,
+                satisfied=3,
+                # Set, not defaulted: `_cost_series` skips a point holding no
                 # runs, so a fixture leaving this at 0 renders no cost panel
                 # and every assertion about that panel passes on an empty one.
-                runs=1,
+                cells=1,
                 cost=1.5,
                 attempts=6,
             ),
             DepthPoint(
                 depth=2,
                 arm=Arm.UNGATED,
-                delivered_claims=4,
-                surviving_claims=1,
+                required=4,
+                satisfied=1,
                 cells=1,
-                runs=1,
                 cost=1.0,
                 attempts=6,
             ),
@@ -372,13 +413,41 @@ class TestTheReportRefusesASilentGap:
                 unavailable_reason="and also this",
             )
 
-    def test_more_survivors_than_delivered_work_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="surviving claims"):
+    def test_a_version_one_artifact_is_refused_by_name(self) -> None:
+        """A v1 report has no reading under v2, so it is refused as a VERSION.
+
+        ``DepthPoint`` changed from a fraction of the leaves' own claims to a
+        fraction of the specification, and ``extra="forbid"`` means the old
+        field names cannot be read at all. Left at version 1, the file would
+        pass the version field and fail on the shape, reporting an unknown
+        field for what is a whole-artifact mismatch.
+        """
+        payload = _report(cells=(_measured_cell(Arm.GATED),)).model_dump(mode="json")
+        payload["schema_version"] = 1
+
+        with pytest.raises(ValidationError, match="schema version mismatch"):
+            RecursionDepthReport.model_validate(payload)
+
+    def test_the_committed_curve_carries_the_current_version(self) -> None:
+        """The shipped artifact is loadable by the code that ships with it.
+
+        The one file a version bump can leave behind is the recording already
+        committed, which nothing else re-validates.
+        """
+        report = load_report(_COMMITTED_CURVE)
+
+        assert report.schema_version == RECURSION_DEPTH_SCHEMA_VERSION
+
+    def test_satisfying_more_than_the_spec_asks_is_refused(self) -> None:
+        # Now a check that the oracle and the provenance agree about WHICH
+        # specification was run: both operands come from one requirement set,
+        # so exceeding it means they have come apart.
+        with pytest.raises(ValueError, match="satisfied against"):
             DepthPoint(
                 depth=1,
                 arm=Arm.GATED,
-                delivered_claims=1,
-                surviving_claims=2,
+                required=1,
+                satisfied=2,
                 cells=1,
             )
 
@@ -440,3 +509,154 @@ class TestTheEmittedArtifacts:
         _, md_path, _ = write_report(report, tmp_path)
 
         assert "the Docker daemon went away" in md_path.read_text(encoding="utf-8")
+
+
+_EXECUTOR_PAIR = ModelPair(
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-capable-001"),
+    capability="capable",
+    family=NotBlankStr("example-family-a"),
+)
+
+_REVIEWER_PAIR = ModelPair(
+    provider=NotBlankStr("example-provider"),
+    model_id=NotBlankStr("example-expert-001"),
+    capability="expert",
+    family=NotBlankStr("example-family-b"),
+)
+
+
+def _cell_with_a_merge(arm: Arm, *, reviewer: ModelPair | None) -> CellRecord:
+    """One measured run holding a leaf and the assembly above it.
+
+    Args:
+        arm: Which arm the run belongs to.
+        reviewer: The pair that judged the merge, ``None`` in the ungated arm
+            where nobody does.
+
+    Returns:
+        The cell.
+    """
+    return CellRecord(
+        depth_cap=2,
+        arm=arm,
+        repetition=0,
+        achieved_depth=1,
+        units=(
+            UnitRecord(
+                unit_id=NotBlankStr(f"{arm.value}-leaf"),
+                title=NotBlankStr("build it"),
+                kind=LEAF,
+                depth=1,
+                claimed=(RequirementId("R01"),),
+                delivered=True,
+                attempts=1,
+                tokens=100,
+                cost=0.5,
+                executor=_EXECUTOR_PAIR,
+            ),
+            UnitRecord(
+                unit_id=NotBlankStr(f"{arm.value}-merge"),
+                title=NotBlankStr("Assemble: the whole thing"),
+                kind=MERGE,
+                depth=0,
+                delivered=True,
+                attempts=4,
+                turns=9,
+                tokens=900,
+                cost=1.25,
+                executor=_EXECUTOR_PAIR,
+                reviewer=reviewer,
+                verdict=NotBlankStr("approve") if reviewer is not None else None,
+                amendments=2,
+            ),
+        ),
+        merged_passing=(RequirementId("R01"),),
+    )
+
+
+class TestTheReportNamesBothPartiesPerMerge:
+    """The gate is the treatment, so who judged is part of the result.
+
+    A reviewer that silently came up on the executor's own binding biases the
+    gated arm toward the null while every sweep-level field still reads
+    correctly, so the pairing has to be legible at the grain it happened at.
+    """
+
+    def _markdown(self, tmp_path: Path) -> str:
+        """Emit a two-arm report and return its Markdown.
+
+        Returns:
+            The rendered report.
+        """
+        report = _report(
+            cells=(
+                _cell_with_a_merge(Arm.GATED, reviewer=_REVIEWER_PAIR),
+                _cell_with_a_merge(Arm.UNGATED, reviewer=None),
+            )
+        )
+        _, md_path, _ = write_report(report, tmp_path)
+        return md_path.read_text(encoding="utf-8")
+
+    def test_the_pairing_table_names_both_families(self, tmp_path: Path) -> None:
+        rendered = self._markdown(tmp_path)
+
+        assert "## Who judged whom" in rendered
+        assert "example-provider/example-capable-001 (example-family-a)" in rendered
+        assert "example-provider/example-expert-001 (example-family-b)" in rendered
+
+    def test_an_unjudged_merge_says_so_rather_than_rendering_blank(
+        self, tmp_path: Path
+    ) -> None:
+        # The ungated arm's definition is that nobody judged, and a blank cell
+        # reads as a recording that lost the reviewer rather than as the arm
+        # working exactly as designed.
+        rendered = self._markdown(tmp_path)
+
+        assert "| none |" in rendered
+
+    def test_every_merge_gets_its_own_row(self, tmp_path: Path) -> None:
+        rendered = self._markdown(tmp_path)
+
+        assert "## Every merge" in rendered
+        assert rendered.count("| Assemble: the whole thing |") == 2
+        assert "d2-gated-r0" in rendered
+        assert "d2-ungated-r0" in rendered
+
+    def test_a_title_carrying_table_syntax_stays_in_one_row(
+        self, tmp_path: Path
+    ) -> None:
+        """One row per merge, whatever the agent called its unit.
+
+        A unit title is agent-authored, so a ``|`` splits one merge across
+        extra cells and a newline splits it across extra ROWS, which is
+        exactly the claim this table makes. Neither shows up as an error: the
+        file simply renders a table that says something else.
+        """
+        awkward = _cell_with_a_merge(Arm.GATED, reviewer=_REVIEWER_PAIR)
+        merge = awkward.units[1].model_copy(
+            update={"title": NotBlankStr("Assemble: a|b\nand c")}
+        )
+        report = _report(
+            cells=(awkward.model_copy(update={"units": (awkward.units[0], merge)}),)
+        )
+
+        _, md_path, _ = write_report(report, tmp_path)
+        rendered = md_path.read_text(encoding="utf-8")
+
+        assert "| Assemble: a\\|b and c |" in rendered
+        merge_rows = [
+            line
+            for line in rendered.splitlines()
+            if line.startswith("| d2-gated-r0 |") and "Assemble:" in line
+        ]
+        assert len(merge_rows) == 1
+
+    def test_each_arm_reports_what_merging_cost_it(self, tmp_path: Path) -> None:
+        # Repair in the gated arm alone would let it win by spending more
+        # rather than by catching anything, so the equal-budget claim is read
+        # off this table or nowhere.
+        rendered = self._markdown(tmp_path)
+
+        assert "| gated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
+        assert "| ungated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
