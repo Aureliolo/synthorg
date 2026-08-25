@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from synthorg.core.plan import PlanItem
+from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
@@ -83,26 +83,25 @@ ROOT_ASSEMBLY_PATHS: Final[AssemblyPaths] = AssemblyPaths(
 )
 
 
-def subtree_slug(title: str, *, index: int) -> str:
-    """Derive the directory one subtree's assembly writes under.
+def subtree_slug(step: SubtreeStep) -> str:
+    """Derive the directory segment one hop down the tree writes under.
 
     The title is planner-authored, so it reaches the filesystem sanitised
-    rather than trusted, and the index keeps two siblings whose titles
-    sanitise to the same thing apart. A title rather than an id, because the
-    path is rendered on the artifact list an operator reads.
+    rather than trusted, and the sibling position keeps two siblings whose
+    titles sanitise to the same thing apart. A title rather than an id,
+    because the path is rendered on the artifact list an operator reads.
 
     Args:
-        title: The container item's title.
-        index: Its position among its siblings.
+        step: The container's title and its position among its siblings.
 
     Returns:
-        The slug.
+        The segment.
     """
-    stem = _SLUG_ALLOWED.sub("-", title.lower()).strip("-")[:_SLUG_MAX_CHARS]
-    return f"{index:02d}-{stem}" if stem else f"{index:02d}"
+    stem = _SLUG_ALLOWED.sub("-", step.title.lower()).strip("-")[:_SLUG_MAX_CHARS]
+    return f"{step.position:02d}-{stem}" if stem else f"{step.position:02d}"
 
 
-def subtree_assembly_paths(title: str, *, index: int) -> AssemblyPaths:
+def subtree_assembly_paths(address: Sequence[SubtreeStep]) -> AssemblyPaths:
     """Where the assembly of one subtree writes its evidence.
 
     Namespaced per subtree, because a plan holds as many assemblies as it has
@@ -110,17 +109,22 @@ def subtree_assembly_paths(title: str, *, index: int) -> AssemblyPaths:
     two paths would leave each one overwriting the last, and the probe would
     credit whichever wrote most recently to all of them.
 
+    Namespaced on the WHOLE address rather than the container's own position,
+    because a position among siblings repeats across the tree: two containers
+    under different parents both sitting first, both titled "Setup", resolve to
+    one directory and overwrite each other, which is the collision the
+    namespacing exists to prevent rather than a corner of it.
+
     Args:
-        title: The container item's title.
-        index: Its position among its siblings.
+        address: The container's place in the tree, root-first.
 
     Returns:
         The subtree's paths.
     """
-    slug = subtree_slug(title, index=index)
+    namespace = "/".join(subtree_slug(step) for step in address)
     return AssemblyPaths(
-        report=f"{_ASSEMBLY_ROOT}/{slug}/report.md",
-        test_output=f"{_ASSEMBLY_ROOT}/{slug}/end-to-end.txt",
+        report=f"{_ASSEMBLY_ROOT}/{namespace}/report.md",
+        test_output=f"{_ASSEMBLY_ROOT}/{namespace}/end-to-end.txt",
     )
 
 
@@ -199,23 +203,79 @@ _STAKES_LADDER: Final[tuple[Stakes, ...]] = (
 )
 
 
-def escalated_stakes(items: Sequence[PlanItem]) -> Stakes:
-    """Return the stakes an assembly of *items* runs at.
+def escalated_stakes(assembled: Sequence[Stakes]) -> Stakes:
+    """Return the stakes an assembly of work at *assembled* runs at.
+
+    Takes the stakes themselves rather than whatever carries them, because the
+    same answer is needed for a durable plan's items and for the transient
+    definitions a decomposition is still building, and a signature naming
+    either one forces the other path to grow a second copy of the ladder.
 
     Args:
-        items: What is being assembled: a plan's whole item set at the root,
-            a container's own children below it.
+        assembled: The stakes of what is being assembled: a plan's whole item
+            set at the root, a container's own children below it.
 
     Returns:
-        One level above the highest stakes among *items*, capped at
-        ``CRITICAL``, and ``HIGH`` for an empty set (which is one above the
-        default a unit carries when nobody calibrated it).
+        One level above the highest, capped at ``CRITICAL``, and ``HIGH`` for
+        an empty set (one above the default a unit carries when nobody
+        calibrated it).
     """
     highest = max(
-        (_STAKES_LADDER.index(item.stakes) for item in items),
+        (_STAKES_LADDER.index(stakes) for stakes in assembled),
         default=_STAKES_LADDER.index(Stakes.NORMAL),
     )
     return _STAKES_LADDER[min(highest + 1, len(_STAKES_LADDER) - 1)]
+
+
+@dataclass(frozen=True, slots=True)
+class Assembly:
+    """What a container dispatches instead of the work below it.
+
+    Attributes:
+        brief: The assembly brief, naming its own children as the pieces.
+        paths: Where this subtree's evidence goes, namespaced so no two
+            containers in the tree overwrite each other.
+        stakes: One rung above the highest of what it assembles.
+    """
+
+    brief: str
+    paths: AssemblyPaths
+    stakes: Stakes
+
+
+def build_assembly(
+    *,
+    title: str,
+    pieces: Sequence[str],
+    criteria: Sequence[str],
+    assembled: Sequence[Stakes],
+    address: Sequence[SubtreeStep],
+) -> Assembly:
+    """Describe the assembly one container dispatches.
+
+    The single owner of "a container is an assembly, not the work below it".
+    Both the durable projection and the decomposition service reach it, so a
+    container cannot be an assembly on one path and its own oversized work
+    description on the other, which is how it came to run twice.
+
+    Args:
+        title: The container's own title.
+        pieces: The titles of its own children.
+        criteria: What the assembled subtree is judged against.
+        assembled: The stakes of its own children.
+        address: Its place in the tree, root-first.
+
+    Returns:
+        The assembly.
+    """
+    paths = subtree_assembly_paths(address)
+    return Assembly(
+        brief=build_assembly_brief(
+            objective_title=title, pieces=pieces, criteria=criteria, paths=paths
+        ),
+        paths=paths,
+        stakes=escalated_stakes(assembled),
+    )
 
 
 __all__ = [
@@ -223,8 +283,10 @@ __all__ = [
     "INTEGRATION_REPORT_PATH",
     "INTEGRATION_TEST_OUTPUT_PATH",
     "ROOT_ASSEMBLY_PATHS",
+    "Assembly",
     "AssemblyPaths",
     "assembly_title",
+    "build_assembly",
     "build_assembly_brief",
     "escalated_stakes",
     "subtree_assembly_paths",

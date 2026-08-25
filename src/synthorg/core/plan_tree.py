@@ -14,9 +14,24 @@ lookup against the same two maps, and a caller holding a plan asks several.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Self
+from typing import NamedTuple, Self
 
 from synthorg.core.plan import PlanItem
+
+
+class SubtreeStep(NamedTuple):
+    """One hop down a plan's containment, as an assembly address reads it.
+
+    Attributes:
+        title: The container's own title, which is what makes anything derived
+            from an address readable to the operator who has to find it.
+        position: Where it sits among its siblings, which keeps two siblings
+            whose titles sanitise to the same thing apart. Not named ``index``,
+            which a :class:`NamedTuple` inherits from ``tuple`` as a method.
+    """
+
+    title: str
+    position: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +129,44 @@ class PlanTree:
             current = self.parent_id(current)
         return level
 
+    def address(self, item_id: str) -> tuple[SubtreeStep, ...]:
+        """Where *item_id* sits in the tree, root-first.
+
+        The chain of sibling positions IS a unique address in a tree, which a
+        position among siblings alone is not: two containers under different
+        parents share theirs, so anything namespaced on one collides with its
+        cousin and the two overwrite each other.
+
+        Returns:
+            One step per level, from the workstream down to *item_id*; empty
+            for an unknown id.
+        """
+        chain: list[SubtreeStep] = []
+        current = self.by_id.get(item_id)
+        while current is not None:
+            siblings = (
+                self.workstreams
+                if current.parent_id is None
+                else self.children(current.parent_id)
+            )
+            chain.append(
+                SubtreeStep(
+                    title=str(current.title),
+                    position=next(
+                        (
+                            at
+                            for at, sibling in enumerate(siblings)
+                            if sibling.id == current.id
+                        ),
+                        0,
+                    ),
+                )
+            )
+            current = (
+                None if current.parent_id is None else self.by_id.get(current.parent_id)
+            )
+        return tuple(reversed(chain))
+
     def subtree_ids(self, item_id: str) -> frozenset[str]:
         """Every id at or below *item_id*.
 
@@ -156,4 +209,4 @@ class PlanTree:
         )
 
 
-__all__ = ["PlanTree"]
+__all__ = ["PlanTree", "SubtreeStep"]

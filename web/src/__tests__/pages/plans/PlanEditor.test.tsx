@@ -179,6 +179,40 @@ describe('PlanEditor', () => {
       expect(screen.getAllByLabelText('Belongs to')[1]).toHaveValue('engine')
     })
 
+    it('drops the removed item from what other items wait on', async () => {
+      // Containment is only half of what points at a removed item. There is
+      // no dependency field in this editor, so an edge left naming it is a
+      // guaranteed 422 the operator has no way in here to clear.
+      resetStore()
+      const waiting = makePlan('plan-1', {
+        items: [
+          makePlanItem('engine', { title: 'Engine' }),
+          makePlanItem('board', { title: 'Board', dependencies: ['engine'] }),
+        ],
+      })
+      let sent: unknown = null
+      server.use(
+        http.patch('/api/v1/plans/:id', async ({ request }) => {
+          sent = await request.json()
+          return HttpResponse.json(apiSuccess(makePlan('plan-1', { version: 2 })))
+        }),
+      )
+      const user = userEvent.setup()
+      render(<PlanEditor plan={waiting} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: /Remove item 1/ }))
+      await user.click(screen.getByRole('button', { name: /Save revision/ }))
+
+      await waitFor(() => {
+        expect(sent).not.toBeNull()
+      })
+      const items = (
+        sent as { items: readonly { id: string; dependencies: readonly string[] }[] }
+      ).items
+      expect(items).toHaveLength(1)
+      expect(items[0]?.dependencies).toEqual([])
+    })
+
     it('sends the parent link back on save', async () => {
       resetStore()
       let sent: unknown = null

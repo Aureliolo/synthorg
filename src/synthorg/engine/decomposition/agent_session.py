@@ -49,6 +49,7 @@ from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
     DecompositionSubtaskLimitError,
+    DecompositionUnsplittableError,
 )
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
@@ -402,7 +403,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 termination_detail=detail,
             )
             self._reject_empty_session(
-                task, owner_id=str(owner.id), result=result, detail=detail
+                task,
+                owner_id=str(owner.id),
+                result=result,
+                detail=detail,
+                declined_to_split=capture.declined_to_split,
             )
             return await self._fallback_plan(task, context)
 
@@ -447,6 +452,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         owner_id: str,
         result: ExecutionResult,
         detail: str | None,
+        declined_to_split: bool,
     ) -> None:
         """Refuse to substitute a blind plan for a session that just ran.
 
@@ -461,9 +467,20 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         (:func:`_stopped_short`), so this is the exhausted case, not the
         discouraged one.
 
+        Args:
+            task: The objective the session was planning.
+            owner_id: Who ran it, for the log line.
+            result: How the session ended.
+            detail: What its last error said, already scrubbed.
+            declined_to_split: Whether its last refusal was the size
+                correction, which is the one condition the level that asked
+                for this one can act on.
+
         Raises:
+            DecompositionUnsplittableError: When the session ran out of turns
+                still unable to widen a level with no depth below it.
             DecompositionError: When the session terminated normally with
-                no plan submitted.
+                no plan submitted for any other reason.
         """
         if not _ran_without_submitting(result.termination_reason):
             return
@@ -480,6 +497,8 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             termination=result.termination_reason.value,
             error=msg,
         )
+        if declined_to_split:
+            raise DecompositionUnsplittableError(msg)
         raise DecompositionError(msg)
 
     async def _fallback_plan(

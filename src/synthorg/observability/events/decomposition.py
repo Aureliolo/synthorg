@@ -127,8 +127,17 @@ DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED: Final[str] = (
 
 The planner is asked to spend BREADTH where depth has run out, on the same
 correction channel a graph violation takes, so the loop closes without an
-operator. Only a plan that still cannot comply once its retries are spent
-reaches the operator, as a reported condition on the items."""
+operator. A plan that still cannot comply once its retries are spent ends at
+``DECOMPOSITION_PLANNER_DECLINED``, as a reported condition on the items."""
+
+DECOMPOSITION_PLANNER_DECLINED: Final[str] = "decomposition.planner_declined"
+"""A level spent its correction retries still unable to widen an oversized unit.
+
+The terminal end of ``DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED``, and the
+one child-planning failure the level above answers rather than propagates: its
+own plan is valid, so the unit dispatches carrying the reason. Distinct from the
+two backstop events because no bound bound here: the depth and the budget were
+both available and the planner could not comply."""
 
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""

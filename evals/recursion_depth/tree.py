@@ -70,6 +70,15 @@ _OPEN_CRITERIA_SETTING: Final[str] = "subtask_max_criteria"
 #: per-session token and cost ceilings.
 _TREE_TIMEOUT_SETTING: Final[str] = "decomposition_tree_timeout_seconds"
 
+#: The whole-tree PLANNING-SESSION budget, opened for the same reason the tree
+#: timeout is. It ships sized for a product deployment, and this sweep's own
+#: branching model puts a depth-4 cell above a hundred planning nodes, so the
+#: shipped value stops the split partway and returns a tree carrying
+#: SESSIONS_BACKSTOP notes. That is not a smaller measurement of depth 4: it is
+#: a truncated tree filed under the depth it was ASKED for, which silently
+#: flattens the independent variable at exactly the depths worth paying for.
+_TREE_SESSIONS_SETTING: Final[str] = "decomposition_tree_max_sessions"
+
 #: Wall-clock ceiling on one planning session, raised well above the product
 #: default of 600s.
 #:
@@ -280,10 +289,15 @@ def _armed_coordination(settings: SettingsService, *, enabled: bool) -> dict[str
     unavailable cell, which reads as "the planner could not decompose this"
     rather than "the harness could not finish a tree it was paying for".
 
-    The tree ceiling is armed at the widest value the setting accepts, which
-    ships as 24 hours. No per-tree bound is derivable, so the sweep does not
-    invent one: what actually bounds it is the per-session ceiling, the session
-    budget, and the per-session token and cost ceilings.
+    The whole-tree SESSION budget is armed for the same reason and would be a
+    worse omission, because it does not kill a cell: it stops the split and
+    returns a partial tree, which the sweep would then record as the depth it
+    asked for rather than the depth it got.
+
+    Both tree ceilings are armed at the widest value the setting accepts. No
+    per-tree bound is derivable, so the sweep does not invent one: what
+    actually bounds it is the per-session ceiling, the sweep's own
+    ``--max-sessions``, and the per-session token and cost ceilings.
 
     Args:
         settings: The service whose registry declares the ceilings.
@@ -304,6 +318,9 @@ def _armed_coordination(settings: SettingsService, *, enabled: bool) -> dict[str
         _OPEN_CRITERIA_SETTING: str(int(criteria)),
         "decomposition_timeout_seconds": _PLANNING_TIMEOUT_SECONDS,
         _TREE_TIMEOUT_SETTING: str(_declared_maximum(settings, _TREE_TIMEOUT_SETTING)),
+        _TREE_SESSIONS_SETTING: str(
+            int(_declared_maximum(settings, _TREE_SESSIONS_SETTING))
+        ),
         "decomposition_max_retries": _PLANNING_MAX_RETRIES,
     }
 

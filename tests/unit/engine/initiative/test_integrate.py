@@ -251,7 +251,7 @@ class TestMinting:
 
     def test_stakes_escalation_is_capped(self) -> None:
         plan = _plan(_item(_ITEM_A, stakes=Stakes.CRITICAL))
-        assert escalated_stakes(plan.items) is Stakes.CRITICAL
+        assert escalated_stakes([item.stakes for item in plan.items]) is Stakes.CRITICAL
 
 
 class TestGuards:

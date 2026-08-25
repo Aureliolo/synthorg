@@ -12,13 +12,13 @@ next restart would be a knob they could turn with no effect until then.
 """
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.pipeline.models import RoutingVerdict
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import PIPELINE_ROUTING_DECIDED
+from synthorg.settings.kill_switch import resolve_int_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -58,31 +58,21 @@ class LeafThresholdRoutingPolicy:
     async def _live_threshold(self) -> int:
         """Read the threshold in force for this decision.
 
+        Through the shared resolver helper rather than a local try/except: it
+        already names the namespace and the key it failed on, under the event
+        that means a settings read failed, and a threshold nobody can read
+        still routes on the wired value rather than refusing every objective.
+
         Returns:
             The operator's current value, else the one this policy was built
-            with. A threshold nobody can read still routes rather than
-            refusing every objective.
+            with.
         """
-        if self._config_resolver is None:
-            return self._threshold
-        try:
-            return await self._config_resolver.get_int(
-                "coordination", "leaf_subtask_threshold"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read; the wiring
-            # value still bounds the decision, so routing is unaffected in
-            # kind and only the operator's latest revision is missed
-            reraise_critical(exc)
-            logger.warning(
-                PIPELINE_ROUTING_DECIDED,
-                policy="leaf-threshold",
-                note="threshold unreadable; using the wired value",
-                threshold=self._threshold,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return self._threshold
+        return await resolve_int_with_fallback(
+            resolver=self._config_resolver,
+            namespace="coordination",
+            key="leaf_subtask_threshold",
+            fallback=self._threshold,
+        )
 
     async def decide(
         self,

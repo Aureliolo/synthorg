@@ -436,10 +436,14 @@ class TestSubmitDecompositionPlanTool:
         """
         capture = PlanCapture(sid("obj-1"))
         for index in range(_REMEMBERED_REFUSALS):
-            assert await capture.record_refusal(f"exhausted-{index}") == 1
+            seen = await capture.record_refusal(
+                f"exhausted-{index}", unsplittable=False
+            )
+            assert seen == 1
 
-        assert await capture.record_refusal("the plan that comes back") == 1
-        assert await capture.record_refusal("the plan that comes back") == 2
+        again = "the plan that comes back"
+        assert await capture.record_refusal(again, unsplittable=False) == 1
+        assert await capture.record_refusal(again, unsplittable=False) == 2
 
     async def test_an_unserialisable_submission_still_gets_a_digest(self) -> None:
         """A digest that cannot be computed must not collide with a real one.
@@ -454,8 +458,8 @@ class TestSubmitDecompositionPlanTool:
 
         digest = submit_module._submission_digest
         with structlog.testing.capture_logs() as cap:
-            first = await capture.record_refusal(digest(circular))
-            second = await capture.record_refusal(digest(circular))
+            first = await capture.record_refusal(digest(circular), unsplittable=False)
+            second = await capture.record_refusal(digest(circular), unsplittable=False)
 
         assert (first, second) == (1, 2)
         assert [

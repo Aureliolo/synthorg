@@ -96,12 +96,18 @@ conditions, any of which makes it oversized:
 
 The third is the operative one and it is not configurable: a unit advancing
 several of the objective's own success criteria is several units, whatever its
-artifact count says. It is also self-terminating, which is what makes depth
-emergent rather than a number somebody picked: a unit claiming one criterion
-becomes a task with one acceptance criterion, so its own children can claim at
-most that one, and the tree stops once every unit advances exactly one thing.
-Depth therefore tracks the objective's own criterion count: less if it needs
-less, more if it needs more.
+artifact count says. It terminates on its own **while the planner honours the
+contract**, which is what makes depth emergent rather than a number somebody
+picked: a unit claiming one criterion becomes a task with one acceptance
+criterion, so its own children can claim at most that one, and the tree stops
+once every unit advances exactly one thing. Depth therefore tracks the
+objective's own criterion count: less if it needs less, more if it needs more.
+
+That conditional is why the backstops below are not redundant. Nothing forces a
+child to claim only what its parent held, so a planner that widens what it
+claims at each level breaks the induction and the tree does not converge. The
+depth and session backstops are what stops that being unbounded, and the
+last-level correction is what asks the planner to fix it first.
 
 The first two are loose "obviously too large" guards rather than the
 discriminator. At one artifact, an item that writes a module plus its test read
@@ -154,7 +160,18 @@ Breadth spent where depth ran out, without an operator being asked.
 correct.
 
 Only when the retries are spent does the condition reach the plan, as
-`PlanItem.unsplit_reason`.
+`PlanItem.unsplit_reason`, and it gets there through a typed error rather than
+through the generic one. A child planning session that exhausts its retries on
+the size correction raises `DecompositionUnsplittableError`; the level that
+ASKED for that session catches exactly that class, files
+`PLANNER_DECLINED` on the unit and dispatches it whole. Its own plan is valid
+and its sibling units are dispatchable, so discarding the tree above it would
+throw away every level already paid for to report one unit's size.
+
+The type is what keeps that from becoming a swallow. Every other decomposition
+failure still propagates: a transport that kept mangling replies is a fault an
+operator fixes at the provider, and filing it as a note on one plan item would
+put a systemic outage somewhere nobody looks for one.
 
 ## The backstops, and what a bind reports
 
@@ -338,12 +355,34 @@ sole ownership of declared order.
 ### A container is its own assembly task
 
 An item with children is not dispatched as work; that would do the work twice.
-`_item_tasks.task_from_item` gives it an assembly brief over its own children,
-its declared artifacts plus that subtree's own namespaced evidence paths
-(`.synthorg/integration/<slug>/`), and stakes one rung above the highest of
-what it assembles. Its `plan_item_id` is set, so `tasks_by_item`,
+`engine/assembly.build_assembly` is the single owner of that: it gives a
+container an assembly brief over its own children, its declared artifacts plus
+that subtree's own namespaced evidence paths, and stakes one rung above the
+highest of what it assembles. Its `plan_item_id` is set, so `tasks_by_item`,
 `collect_item_progress`, `item_is_done` and the rollup work unchanged, and it
 runs through routing, waves and the review gate like any other item.
+
+BOTH paths reach that owner, because there are two and they are not the same
+call. `decomposition_from_plan` rebuilds a tree from the durable plan (the
+approve-a-reviewed-plan route), and `DecompositionService` builds one in memory
+(`coordinate()` with no precomputed plan). A container is an assembly on one
+and its own oversized work description on the other is not a smaller version of
+the same bug: it is the double execution, on whichever route a given deployment
+takes.
+
+It reaches BOTH ends of one decision too. Routing admits candidates against
+`SubtaskDefinition.stakes` and dispatch judges `Task.stakes`, so the escalation
+is applied to each from the one verdict; escalating only the task routes a
+container to an agent the dispatch then refuses.
+
+The evidence namespace is keyed on the container's whole ADDRESS in the tree
+(`.synthorg/integration/<slug>/<slug>/`, one segment per level), not on its
+position among its own siblings. A sibling position repeats across the tree, so
+two cousins both sitting first under different parents, both titled "Setup",
+resolve to one directory and overwrite each other's report: the collision the
+namespacing exists to prevent, rather than a corner of it. The chain of
+positions is unique by construction, and each segment still carries the
+sanitised title so an operator can read the path.
 
 That is what turns one wide fan-in at the top into the narrow ones the sweep
 measured. The root keeps today's `INTEGRATING` tail stage, and its brief now

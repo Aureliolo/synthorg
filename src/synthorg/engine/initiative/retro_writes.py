@@ -23,6 +23,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.plan import Plan
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.retro_models import (
@@ -84,9 +85,14 @@ def build_retro_material(
 ) -> str:
     """Assemble the finished-work material the lead distils from.
 
+    Workstreams rather than every item, because a plan is a tree: at depth,
+    one entry per item is a hundred entries with their criteria under them,
+    and what the lead distils a retrospective from is how the tracks went
+    rather than every leaf that made one up.
+
     Returns:
         A human-readable summary of the objective, its acceptance criteria,
-        the completed plan items, and who worked it.
+        the completed workstreams, and who worked it.
     """
     lines: list[str] = [
         f"Objective: {plan.objective_title}",
@@ -96,8 +102,8 @@ def build_retro_material(
         lines.append("Objective acceptance criteria:")
         lines.extend(f"  - {c}" for c in plan.objective_criteria)
     lines.append(f"Contributors: {len(contributors)}")
-    lines.append("Completed plan items:")
-    for item in plan.items:
+    lines.append("Completed workstreams:")
+    for item in PlanTree.of(plan.items).workstreams:
         lines.append(f"  - [{item.kind.value}] {item.title}")
         lines.extend(f"      done when: {c}" for c in item.acceptance_criteria)
     return "\n".join(lines)

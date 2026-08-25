@@ -287,6 +287,43 @@ describe('derivePlanCoverage', () => {
     expect(coverage.entries[1]?.coveredBy).toEqual([])
   })
 
+  it('names the workstream rather than every leaf under it', () => {
+    // What a reviewer reads on a recursive plan: a criterion advanced by
+    // several leaves of one track is that track's name once, not a wall of
+    // leaf titles that says less.
+    const items = [
+      makePlanItem('engine', { title: 'Engine' }),
+      makePlanItem('board', {
+        title: 'Board',
+        parent_id: 'engine',
+        satisfies: ['Playable board'],
+      }),
+      makePlanItem('grid', {
+        title: 'Grid',
+        parent_id: 'board',
+        satisfies: ['Playable board'],
+      }),
+    ]
+
+    const coverage = derivePlanCoverage(['Playable board'], items)
+
+    expect(coverage.entries[0]?.coveredBy).toEqual(['Board', 'Grid'])
+    expect(coverage.entries[0]?.coveredByWorkstream).toEqual(['Engine'])
+  })
+
+  it('reads the same both ways on a flat plan', () => {
+    // Every item IS its own workstream when nothing contains anything, so the
+    // coarse view must not quietly differ where there is nothing to coarsen.
+    const items = [
+      makePlanItem('a', { title: 'Board', satisfies: ['Playable board'] }),
+      makePlanItem('b', { title: 'Score', satisfies: ['Playable board'] }),
+    ]
+
+    const entry = derivePlanCoverage(['Playable board'], items).entries[0]
+
+    expect(entry?.coveredByWorkstream).toEqual(entry?.coveredBy)
+  })
+
   it('returns empty coverage when the objective declared no criteria', () => {
     const coverage = derivePlanCoverage([], [makePlanItem('a')])
     expect(coverage.total).toBe(0)

@@ -250,7 +250,7 @@ class IntegrationStageService:
             ),
             status=TaskStatus.CREATED,
             estimated_complexity=Complexity.COMPLEX,
-            stakes=escalated_stakes(plan.items),
+            stakes=escalated_stakes([item.stakes for item in plan.items]),
         )
         await self._persistence.tasks.save(task)
         await self._hand_to_pipeline(plan, objective, task)

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { Plus, Trash2 } from 'lucide-react'
 
@@ -168,6 +168,26 @@ const UNASSIGNED_OWNER: SelectOption = { value: '', label: 'Unassigned' }
 const NO_PARENT: SelectOption = { value: '', label: 'No parent (a workstream)' }
 
 /**
+ * Every draft's own id mapped to the ids of its children.
+ *
+ * Built once per draft list rather than re-derived per row: the closure below
+ * is a walk over the whole list, and running one inside each of a thousand
+ * rows on every keystroke is the shape that makes a plain edit unusable.
+ */
+function childIndex(
+  drafts: readonly DraftItem[],
+): ReadonlyMap<string, readonly string[]> {
+  const children = new Map<string, string[]>()
+  for (const draft of drafts) {
+    if (draft.parentId === '') continue
+    const kids = children.get(draft.parentId)
+    if (kids === undefined) children.set(draft.parentId, [draft.id])
+    else kids.push(draft.id)
+  }
+  return children
+}
+
+/**
  * The items this one may be moved under.
  *
  * Everything the backend would refuse is left out rather than offered and
@@ -178,19 +198,24 @@ const NO_PARENT: SelectOption = { value: '', label: 'No parent (a workstream)' }
  */
 function parentOptions(
   drafts: readonly DraftItem[],
+  children: ReadonlyMap<string, readonly string[]>,
   index: number,
 ): readonly SelectOption[] {
   const subject = drafts[index]
   if (subject === undefined) return [NO_PARENT]
+  // Walked down from the subject rather than swept repeatedly over the list,
+  // so list order cannot hide a grandchild whose parent comes later, and the
+  // cost is the subtree rather than the plan. The frontier is bounded by the
+  // draft count because each id is added once, which is also what stops a
+  // cycle an unsaved edit can hold from spinning here.
   const below = new Set<string>([subject.id])
-  // Repeated until it stops growing: a child can sit before its parent in the
-  // list, so one pass would miss a grandchild whose parent comes later.
-  for (let pass = 0; pass < drafts.length; pass += 1) {
-    const before = below.size
-    for (const draft of drafts) {
-      if (below.has(draft.parentId)) below.add(draft.id)
+  const frontier = [subject.id]
+  while (frontier.length > 0) {
+    for (const child of children.get(frontier.pop() as string) ?? []) {
+      if (below.has(child)) continue
+      below.add(child)
+      frontier.push(child)
     }
-    if (below.size === before) break
   }
   return [
     NO_PARENT,
@@ -393,15 +418,19 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
     setDrafts((prev) => {
       const removed = prev[index]
       if (removed === undefined) return prev
-      // Whatever hung off it moves to where it sat, rather than being left
-      // naming a parent the plan no longer holds, which the backend refuses.
+      // Both references to it go, not just the containment one. Whatever hung
+      // off it moves to where it sat, and whatever waited on it stops waiting,
+      // rather than being left naming an item the plan no longer holds. The
+      // backend refuses either, and there is no dependency field here, so an
+      // orphaned edge is a 422 the operator has no way to clear.
       return prev
         .filter((_, i) => i !== index)
-        .map((draft) =>
-          draft.parentId === removed.id
-            ? { ...draft, parentId: removed.parentId }
-            : draft,
-        )
+        .map((draft) => ({
+          ...draft,
+          parentId:
+            draft.parentId === removed.id ? removed.parentId : draft.parentId,
+          dependencies: draft.dependencies.filter((id) => id !== removed.id),
+        }))
     })
   }, [])
 
@@ -422,6 +451,8 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
   // criterion (capped at MAX_CRITERIA), a dispatchable owner or none, and, for
   // a work item, at least one expected deliverable. Gate the save on all of
   // them rather than surfacing the 422 after a round trip.
+  const children = useMemo(() => childIndex(drafts), [drafts])
+
   const canSave =
     drafts.length > 0 &&
     drafts.length <= MAX_ITEMS &&
@@ -441,7 +472,7 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           draft={draft}
           canRemove={drafts.length > 1}
           roster={roster}
-          parentChoices={parentOptions(drafts, index)}
+          parentChoices={parentOptions(drafts, children, index)}
           onChange={handleChange}
           onRemove={handleRemove}
         />

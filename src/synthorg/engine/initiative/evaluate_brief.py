@@ -16,6 +16,7 @@ from typing import Final
 from synthorg.core.evaluation_verdict import CriterionVerdict
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_tree import PlanTree
 from synthorg.engine.initiative.tail_stages import read_integration_state
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
@@ -30,14 +31,21 @@ _MAX_TEST_RUNS: Final[int] = 20
 
 
 def _delivered_lines(plan: Plan) -> list[str]:
-    """List what the plan's work items were supposed to produce.
+    """List what the plan's workstreams were supposed to produce.
+
+    Workstreams rather than every item, for the reason ``_MAX_TEST_RUNS``
+    states one constant below: a plan is a tree, so one line per item is a
+    hundred lines at depth, and they crowd out the criteria this material
+    exists to have judged. Each workstream was itself assembled by its own
+    container task, which declared its own evidence, so the coarse list is
+    also the one whose deliverables actually cover the whole subtree.
 
     Returns:
-        One line per work item, naming its declared deliverables so the lead
-        knows where to look rather than being told they exist.
+        One line per top-level work item, naming its declared deliverables so
+        the lead knows where to look rather than being told they exist.
     """
     lines: list[str] = []
-    for item in plan.items:
+    for item in PlanTree.of(plan.items).workstreams:
         if item.kind is not PlanItemKind.WORK:
             continue
         artifacts = ", ".join(item.expected_artifacts)

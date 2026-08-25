@@ -21,7 +21,7 @@ from synthorg.core.plan_tree import PlanTree
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStructure
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition._item_tasks import task_from_item
+from synthorg.engine.decomposition._item_tasks import assembly_of, task_from_item
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -247,23 +247,30 @@ def plan_shell(provenance: PlanProvenance) -> Plan:
     )
 
 
-def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
+def _subtask_from_item(item: PlanItem, *, tree: PlanTree) -> SubtaskDefinition:
     """Project a durable plan item back onto a decomposition subtask.
 
     The item's ``owner`` maps back to the subtask's ``required_role``, and the
     per-item acceptance criteria and expected artifacts round-trip so a
     re-decomposition off a durable plan keeps the guard armed.
 
+    A container's stakes come from the same :func:`assembly_of` verdict the
+    task does, because these two are read at the two ends of one decision:
+    routing admits candidates against the definition's value and dispatch
+    judges the task's, so a container routed on the un-escalated value is
+    placed with an agent the escalated one then refuses.
+
     Returns:
         A :class:`SubtaskDefinition` mirroring the plan item.
     """
+    assembly = assembly_of(item, tree=tree)
     return SubtaskDefinition(
         id=item.id,
         title=item.title,
         description=item.description,
         dependencies=item.dependencies,
         estimated_complexity=item.estimated_complexity,
-        stakes=item.stakes,
+        stakes=item.stakes if assembly is None else assembly.stakes,
         required_skills=item.required_skills,
         required_tags=item.required_tags,
         required_role=item.owner,
@@ -368,7 +375,7 @@ def _level_from_items(
     return DecompositionResult(
         plan=DecompositionPlan(
             parent_task_id=NotBlankStr(parent_task_id),
-            subtasks=tuple(_subtask_from_item(item) for item in items),
+            subtasks=tuple(_subtask_from_item(item, tree=tree) for item in items),
             task_structure=plan.task_structure,
             coordination_topology=plan.coordination_topology,
         ),

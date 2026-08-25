@@ -655,8 +655,8 @@ rather than dispatched whole, which makes a decomposition a tree rather than a
 list. The recursion point, the size signal that drives it, and the experiment
 measuring whether verifying at every merge holds off aggregation collapse as
 that tree deepens are in
-[Recursive Decomposition](recursive-decomposition.md). It ships off, for a
-reason that page states.
+[Recursive Decomposition](recursive-decomposition.md), which owns what bounds
+the tree and what a bound reports when it binds.
 
 Empirical research on agent scaling
 ([Kim et al., 2025](https://arxiv.org/abs/2512.08296); 180 controlled

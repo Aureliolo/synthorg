@@ -9,7 +9,10 @@ assume the shape it walks.
 import pytest
 
 from synthorg.api.controllers._plan_input_validation import reject_malformed_tree
-from synthorg.api.controllers._plan_translation import item_from_payload
+from synthorg.api.controllers._plan_translation import (
+    item_from_payload,
+    items_from_payloads,
+)
 from synthorg.api.dto_plans import PlanItemPayload
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.plan import PlanItem, PlanOption
@@ -138,22 +141,93 @@ class TestTheTreeAnOperatorMaySubmit:
 
 class TestWhatTheEditPayloadCarries:
     def test_the_parent_link_round_trips(self) -> None:
-        item = item_from_payload(_payload(id=sid("board"), parent_id=sid("engine")))
+        item = item_from_payload(
+            _payload(id=sid("board"), parent_id=sid("engine")), previous=None
+        )
         assert item.parent_id == sid("engine")
 
     def test_an_item_may_be_promoted_to_a_workstream(self) -> None:
-        assert item_from_payload(_payload(parent_id=None)).parent_id is None
+        assert (
+            item_from_payload(_payload(parent_id=None), previous=None).parent_id is None
+        )
 
     def test_an_item_cannot_be_its_own_parent(self) -> None:
         with pytest.raises(ValueError, match="cannot be its own parent"):
             _payload(parent_id=sid("a"))
 
-    def test_the_unsplit_note_is_dropped_by_an_edit(self) -> None:
-        # The operator has just revised the item, so a note about the version
-        # they replaced describes nothing. It is absent from the payload
-        # entirely rather than carried and ignored.
+    def test_the_unsplit_note_is_not_a_field_an_operator_may_set(self) -> None:
+        # It is written by the planner and read by the reviewer; an operator
+        # asserting it would let a plan claim a size it was never held to.
         with pytest.raises(ValueError, match="unsplit_reason"):
             _payload(unsplit_reason="was still oversized")
 
-    def test_an_edited_item_carries_no_note_forward(self) -> None:
-        assert item_from_payload(_payload()).unsplit_reason is None
+    def test_a_new_item_carries_no_note(self) -> None:
+        assert item_from_payload(_payload(), previous=None).unsplit_reason is None
+
+
+class TestWhatSurvivesAnEditOfSomethingElse:
+    """A PATCH replaces the WHOLE list, so absence is not a clearing.
+
+    Reading it as one wiped the oversized notes off every item the operator did
+    not touch, which is the reviewer-facing flag they carry them for.
+    """
+
+    def _was(self, label: str) -> PlanItem:
+        """The item as the plan currently holds it, carrying a note.
+
+        Returns:
+            The previous item.
+        """
+        return _item(label).model_copy(
+            update={"unsplit_reason": NotBlankStr("still three deliverables")}
+        )
+
+    def test_an_untouched_item_keeps_its_note(self) -> None:
+        item = item_from_payload(
+            _payload(
+                id=sid("a"),
+                acceptance_criteria=["a works"],
+                expected_artifacts=["src/a.py"],
+            ),
+            previous=self._was("a"),
+        )
+
+        assert item.unsplit_reason == "still three deliverables"
+
+    def test_resizing_the_item_drops_it(self) -> None:
+        # The note names counts the operator has just changed, so it now
+        # describes a version of the item that no longer exists.
+        item = item_from_payload(
+            _payload(
+                id=sid("a"),
+                acceptance_criteria=["a works"],
+                expected_artifacts=["src/a.py", "src/a_test.py"],
+            ),
+            previous=self._was("a"),
+        )
+
+        assert item.unsplit_reason is None
+
+    def test_the_whole_list_is_projected_against_the_one_it_replaces(self) -> None:
+        items = items_from_payloads(
+            (
+                _payload(
+                    id=sid("a"),
+                    acceptance_criteria=["a works"],
+                    expected_artifacts=["src/a.py"],
+                ),
+                _payload(
+                    id=sid("b"),
+                    title="Item b",
+                    description="Build b",
+                    acceptance_criteria=["b works"],
+                    expected_artifacts=["src/b.py"],
+                ),
+            ),
+            previous=(self._was("a"), _item("b")),
+        )
+
+        assert [item.unsplit_reason for item in items] == [
+            "still three deliverables",
+            None,
+        ]

@@ -6,6 +6,7 @@ update parent. Rollup + parent lifecycle walk live in
 :mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
+import asyncio
 from collections.abc import (
     Callable,
 )
@@ -530,11 +531,15 @@ class MultiAgentCoordinator:
         engine = self._task_engine
         if engine is None:
             return 0
-        missing = [
-            child
-            for child in result.all_tasks
-            if await engine.get_task(str(child.id)) is None
-        ]
+        # The probes are independent and there is now one per node of the
+        # WHOLE tree rather than one per top-level item, so awaiting them in
+        # turn costs a round trip per item on every coordinate() call.
+        async with asyncio.TaskGroup() as group:
+            probes = [
+                (child, group.create_task(engine.get_task(str(child.id))))
+                for child in result.all_tasks
+            ]
+        missing = [child for child, probe in probes if probe.result() is None]
         await engine.file_tasks(missing)
         return len(missing)
 

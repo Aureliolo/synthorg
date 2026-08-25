@@ -2,7 +2,7 @@
 """Bind the shared assembly brief to the initiative's root assembly.
 
 The wording, the two evidence paths and the fencing live in
-:mod:`synthorg.engine.assembly_brief`, which the container items of a
+:mod:`synthorg.engine.assembly`, which the container items of a
 recursive plan bind to as well. This module supplies only what is the ROOT's
 own: the objective it assembles, the workstreams it joins, and the objective's
 success criteria.

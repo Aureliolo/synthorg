@@ -12,11 +12,15 @@ recursion beside it stays a loop over verdicts rather than a loop with four
 exits.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.assembly import Assembly
+from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._recursion import RecursionBudget, TreeSessionLedger
 from synthorg.engine.decomposition.atomicity import (
     DEPTH_BACKSTOP,
@@ -45,14 +49,27 @@ class SplitOutcome:
             beside the children rather than logged and dropped, because the
             operator reviewing the plan is the one who can raise the bound or
             narrow the objective, and a container log is not where they look.
+        assemblies: Each subtask that DID split, mapped to the assembly it
+            dispatches instead of the work below it. A unit that split is a
+            container, and the level that split it is the only place that
+            fact exists on this path: without it the container keeps the
+            oversized description its own children were planned from and runs
+            that work a second time, alongside them.
     """
 
     children: tuple[DecompositionResult, ...]
     unsplit: Mapping[str, str]
+    assemblies: Mapping[str, Assembly]
 
 
 class SplitVerdict(StrEnum):
     """What to do with one of a level's units.
+
+    Three rather than two, because the two that decline are not the same thing
+    and the operator can act on only one of them: a unit that is already one
+    agent's work needs nothing, while a unit that is NOT and still could not be
+    split has hit a bound they can move, and a plan that says only "not split"
+    for both hides which.
 
     Members:
         LEAVE: Dispatch it as it stands; it is one agent's worth of work, or
@@ -159,4 +176,72 @@ def decide_split(
     return SplitDecision(verdict=SplitVerdict.SPLIT)
 
 
-__all__ = ["SplitDecision", "SplitOutcome", "SplitVerdict", "decide_split"]
+def assembled_subtasks(
+    subtasks: Sequence[SubtaskDefinition], outcome: SplitOutcome
+) -> tuple[SubtaskDefinition, ...]:
+    """Re-describe every definition that split as the assembly it became.
+
+    Args:
+        subtasks: This level's definitions, in plan order.
+        outcome: What the splitting pass produced.
+
+    Returns:
+        The definitions, each container carrying its assembly brief and the
+        stakes assembly runs at.
+    """
+    return tuple(
+        subtask
+        if (assembly := outcome.assemblies.get(subtask.id)) is None
+        else subtask.model_copy(
+            update={
+                "description": NotBlankStr(assembly.brief),
+                "stakes": assembly.stakes,
+                "expected_artifacts": (
+                    *subtask.expected_artifacts,
+                    *(NotBlankStr(path) for path in assembly.paths.declared),
+                ),
+            }
+        )
+        for subtask in subtasks
+    )
+
+
+def assembled_task(task: Task, assembly: Assembly | None) -> Task:
+    """Re-describe *task* as *assembly*, or leave it as the work it is.
+
+    Its own declarations PLUS the assembly's evidence: the first is what the
+    planner said this unit produces, the second is what shows the pieces run
+    together, and a probe can only credit a path it was given.
+
+    Args:
+        task: The task built from the definition.
+        assembly: What it assembles, or ``None`` when it split nothing.
+
+    Returns:
+        The task, unchanged for a leaf.
+    """
+    if assembly is None:
+        return task
+    return task.model_copy(
+        update={
+            "description": NotBlankStr(assembly.brief),
+            "stakes": assembly.stakes,
+            "artifacts_expected": (
+                *task.artifacts_expected,
+                *(
+                    expected_artifact_from_spec(NotBlankStr(path))
+                    for path in assembly.paths.declared
+                ),
+            ),
+        }
+    )
+
+
+__all__ = [
+    "SplitDecision",
+    "SplitOutcome",
+    "SplitVerdict",
+    "assembled_subtasks",
+    "assembled_task",
+    "decide_split",
+]

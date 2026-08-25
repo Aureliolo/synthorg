@@ -15,8 +15,11 @@ one: breadth spent where depth ran out. Both strategies converge on a
 inherit this by reaching the same function.
 
 Bounded by ``coordination.decomposition_max_retries`` like every other
-correction. Only a plan that still cannot comply once those are spent reaches
-the operator, as a reported condition on the items.
+correction. A plan that still cannot comply once those are spent raises
+``DecompositionUnsplittableError``, typed apart from every other decomposition
+failure precisely so the level that asked for this one can answer it: that
+level's own plan is valid, so it files ``PLANNER_DECLINED`` on the unit and
+dispatches it whole rather than discarding a tree it already paid for.
 """
 
 from collections.abc import Sequence

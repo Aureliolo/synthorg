@@ -8,7 +8,7 @@ from hypothesis import strategies as st
 
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
-from synthorg.core.plan_tree import PlanTree
+from synthorg.core.plan_tree import PlanTree, SubtreeStep
 from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, sid
@@ -95,7 +95,7 @@ class TestTreeInvariants:
     def test_rejects_an_unresolvable_parent(self) -> None:
         problems = describe_malformed_tree((_item("a", parent="ghost"),))
         assert len(problems) == 1
-        assert "unknown item" in problems[0]
+        assert "not an item of this plan" in problems[0]
 
     def test_rejects_a_parent_cycle(self) -> None:
         # a -> b -> a. Neither is a self-parent, so the item-level rule cannot
@@ -123,7 +123,7 @@ class TestTreeInvariants:
         assert len(problems) == 2
 
     def test_plan_refuses_an_unresolvable_parent(self) -> None:
-        with pytest.raises(ValueError, match="unknown item"):
+        with pytest.raises(ValueError, match="not an item of this plan"):
             _plan((_item("a", parent="ghost"),))
 
     def test_plan_refuses_a_parent_cycle(self) -> None:
@@ -224,6 +224,40 @@ class TestPlanTree:
         tree = PlanTree.of(())
         assert tree.workstreams == ()
         assert tree.deepest_first() == ()
+
+
+class TestAddress:
+    def test_a_workstream_is_one_step(self) -> None:
+        tree = PlanTree.of(_THREE_LEVELS)
+        assert tree.address(sid("engine")) == (
+            SubtreeStep(title="Item engine", position=0),
+        )
+
+    def test_a_nested_item_carries_its_whole_chain(self) -> None:
+        tree = PlanTree.of(_THREE_LEVELS)
+        assert tree.address(sid("sprite")) == (
+            SubtreeStep(title="Item ui", position=1),
+            SubtreeStep(title="Item render", position=0),
+            SubtreeStep(title="Item sprite", position=0),
+        )
+
+    def test_cousins_at_the_same_sibling_position_get_different_addresses(
+        self,
+    ) -> None:
+        # The whole reason the address is the chain rather than the position:
+        # both of these sit first under their own parent, so anything derived
+        # from the position alone puts them in one place.
+        items = (
+            _item("front"),
+            _item("back"),
+            _item("setup-a", parent="front"),
+            _item("setup-b", parent="back"),
+        )
+        tree = PlanTree.of(items)
+        assert tree.address(sid("setup-a")) != tree.address(sid("setup-b"))
+
+    def test_an_unknown_id_has_no_address(self) -> None:
+        assert PlanTree.of(_THREE_LEVELS).address(sid("ghost")) == ()
 
 
 @st.composite

@@ -16,6 +16,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr, PersonaLabelStr
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
@@ -64,6 +65,13 @@ class DecompositionContext(BaseModel):
             the root and stamps them, so every level of one tree is planned
             under one budget and a caller that declares one still wins.
         current_depth: Current nesting depth.
+        address: Where the unit being decomposed sits in the tree, root-first
+            and empty at the root. The chain of sibling positions is what
+            makes an assembly's evidence directory unique: a container's own
+            position among its siblings repeats across the tree, so two
+            cousins would namespace their evidence into one directory and
+            overwrite each other. ``child_context`` is its only writer, the
+            same way it is ``current_depth``'s.
         atomicity: The size signal this level is held to at PARSE time, set
             only where no further level is available so an oversized unit
             cannot be delegated downward. ``None`` everywhere else, which is
@@ -105,6 +113,10 @@ class DecompositionContext(BaseModel):
         default=0,
         ge=0,
         description="Current nesting depth",
+    )
+    address: tuple[SubtreeStep, ...] = Field(
+        default=(),
+        description="Where this unit sits in the tree, root-first",
     )
     workspace_summary: str | None = Field(
         default=None,

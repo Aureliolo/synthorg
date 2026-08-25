@@ -79,6 +79,18 @@ class DecompositionError(EngineError):
     """Base exception for task decomposition failures."""
 
 
+class DecompositionUnsplittableError(DecompositionError):
+    """Raised when the planner could not widen a level it has no depth below.
+
+    Distinct from every other decomposition failure because the CALLER can act
+    on it and on nothing else: the level that asked for this one already holds
+    a valid plan, so a unit it could not divide dispatches carrying the reason
+    rather than discarding the whole tree above it. A transport that kept
+    mangling replies is not that, and stays a raise, so a systemic outage is
+    never filed as a note on one item.
+    """
+
+
 class DecompositionBudgetExhaustedError(DecompositionError):
     """Raised when the model hit its token ceiling before writing content.
 

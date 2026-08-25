@@ -72,7 +72,14 @@ export interface PlacedItem {
  */
 export function placedByTree(tree: PlanTree): readonly PlacedItem[] {
   const placed: PlacedItem[] = []
+  // Each item is placed at most once. The backend refuses a containment cycle,
+  // so this cannot happen on a fetched plan; it is here because the cost of
+  // being wrong about that is an unbounded recursion in the browser rather
+  // than a wrong row, and every other reader of this module is downstream.
+  const seen = new Set<string>()
   const walk = (item: PlanItem, depth: number, label: string): void => {
+    if (seen.has(item.id)) return
+    seen.add(item.id)
     const children = childrenOf(tree, item.id)
     placed.push({ item, depth, childCount: children.length, label })
     children.forEach((child, index) => walk(child, depth + 1, `${label}.${index + 1}`))
@@ -84,7 +91,10 @@ export function placedByTree(tree: PlanTree): readonly PlacedItem[] {
 /** The workstream an item belongs to, itself when it is one. */
 export function workstreamOf(tree: PlanTree, itemId: string): PlanItem | undefined {
   let current = tree.byId.get(itemId)
+  const seen = new Set<string>()
   while (current !== undefined && current.parent_id !== null) {
+    if (seen.has(current.id)) break
+    seen.add(current.id)
     const parent = tree.byId.get(current.parent_id)
     if (parent === undefined) break
     current = parent

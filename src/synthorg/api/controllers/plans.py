@@ -42,7 +42,7 @@ from synthorg.api.controllers._plan_replan import (
 from synthorg.api.controllers._plan_rework import replan_for_change_request
 from synthorg.api.controllers._plan_rows import plan_page, plan_row
 from synthorg.api.controllers._plan_translation import (
-    item_from_payload,
+    items_from_payloads,
     parse_status,
 )
 from synthorg.api.controllers._requester import extract_requester
@@ -314,7 +314,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        items = tuple(item_from_payload(item) for item in data.items)
+        items = items_from_payloads(data.items, previous=existing.items)
         await reject_unroutable_owners(state.app_state, items)
         reject_undecidable_graph(items, task_structure=data.task_structure)
         reject_malformed_tree(items)
@@ -377,7 +377,7 @@ class PlanController(Controller):
             state.app_state,
             existing,
             revision=RevisionInputs(
-                items=tuple(item_from_payload(item) for item in data.items),
+                items=items_from_payloads(data.items, previous=existing.items),
                 task_structure=data.task_structure,
                 coordination_topology=data.coordination_topology,
             ),

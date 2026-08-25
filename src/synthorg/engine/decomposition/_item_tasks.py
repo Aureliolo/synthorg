@@ -13,38 +13,15 @@ assembles, so it runs through routing, waves and the review gate exactly as
 every other item does.
 """
 
-from dataclasses import dataclass
-
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_tree import PlanTree
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import Stakes, TaskStatus
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.assembly import (
-    AssemblyPaths,
-    build_assembly_brief,
-    escalated_stakes,
-    subtree_assembly_paths,
-)
+from synthorg.engine.assembly import Assembly, build_assembly
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.decomposition.plan_context import with_plan_context
-
-
-@dataclass(frozen=True, slots=True)
-class Assembly:
-    """What a container item dispatches instead of the work below it.
-
-    Attributes:
-        brief: The assembly brief, naming its own children as the pieces.
-        paths: Where this subtree's evidence goes, namespaced so siblings do
-            not overwrite each other.
-        stakes: One rung above the highest of what it assembles.
-    """
-
-    brief: str
-    paths: AssemblyPaths
-    stakes: Stakes
 
 
 def assembly_of(item: PlanItem, *, tree: PlanTree) -> Assembly | None:
@@ -65,21 +42,12 @@ def assembly_of(item: PlanItem, *, tree: PlanTree) -> Assembly | None:
     children = tree.children(item.id)
     if not children:
         return None
-    siblings = (
-        tree.workstreams if item.parent_id is None else tree.children(item.parent_id)
-    )
-    paths = subtree_assembly_paths(
-        str(item.title), index=[s.id for s in siblings].index(item.id)
-    )
-    return Assembly(
-        brief=build_assembly_brief(
-            objective_title=str(item.title),
-            pieces=[str(child.title) for child in children],
-            criteria=[str(criterion) for criterion in item.acceptance_criteria],
-            paths=paths,
-        ),
-        paths=paths,
-        stakes=escalated_stakes(children),
+    return build_assembly(
+        title=str(item.title),
+        pieces=[str(child.title) for child in children],
+        criteria=[str(criterion) for criterion in item.acceptance_criteria],
+        assembled=[child.stakes for child in children],
+        address=tree.address(item.id),
     )
 
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan_tree import SubtreeStep
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.context import (
     DEFAULT_MAX_DEPTH,
@@ -23,7 +24,11 @@ from synthorg.engine.decomposition.context import (
     depth_budget,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.decomposition import DECOMPOSITION_FAILED
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_CEILING_UNREADABLE,
+    DECOMPOSITION_FAILED,
+)
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -118,20 +123,31 @@ def flat_budget() -> RecursionBudget:
     )
 
 
-def child_context(context: DecompositionContext) -> DecompositionContext:
-    """Return *context* one level deeper.
+def child_context(
+    context: DecompositionContext, *, step: SubtreeStep
+) -> DecompositionContext:
+    """Return *context* one level deeper, under *step*.
 
-    The only place ``current_depth`` is written. It was declared, read by three
-    strategies and by the planning prompt, and set by nothing, so every
-    decomposition the product ever ran believed it was at the root.
+    The only place ``current_depth`` and ``address`` are written. The first was
+    declared, read by three strategies and by the planning prompt, and set by
+    nothing, so every decomposition the product ever ran believed it was at the
+    root; the second is written here for the same reason, so a level cannot
+    disagree with its parent about where in the tree it sits.
 
     Args:
         context: The level being decomposed now.
+        step: The unit being descended into: its title and its position among
+            its siblings at this level.
 
     Returns:
         The context the child level plans under.
     """
-    return context.model_copy(update={"current_depth": context.current_depth + 1})
+    return context.model_copy(
+        update={
+            "current_depth": context.current_depth + 1,
+            "address": (*context.address, step),
+        }
+    )
 
 
 async def resolve_recursion_budget(
@@ -187,6 +203,37 @@ async def resolve_recursion_budget(
     return RecursionBudget(enabled=enabled, policy=policy)
 
 
+async def _bound(
+    resolver: ConfigResolverProtocol | None, key: str, fallback: int
+) -> int:
+    """Read one runaway backstop, falling back only where the setting is at fault.
+
+    Args:
+        resolver: The live settings resolver, or ``None`` in a harness.
+        key: The ``coordination`` key holding the bound.
+        fallback: The definition's own default.
+
+    Returns:
+        The operator's value, else *fallback*.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        return await resolver.get_int("coordination", key)
+    except (SettingNotFoundError, ValueError) as exc:
+        # lint-allow: swallow-ok -- a backstop the setting cannot answer for is
+        # the definition's default by construction, and a bound still stands,
+        # so the runaway this exists to catch is caught either way
+        logger.warning(
+            DECOMPOSITION_CEILING_UNREADABLE,
+            setting=key,
+            fallback=fallback,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return fallback
+
+
 async def resolve_decomposition_bounds(
     context: DecompositionContext,
     resolver: ConfigResolverProtocol | None,
@@ -200,6 +247,11 @@ async def resolve_decomposition_bounds(
     read falls back to the definition's own default. Every level below plans
     under the stamped values, so one tree is never planned under two budgets.
 
+    Each bound is read on its own, and only the two failures the SETTING can
+    be wrong about are absorbed: a store that cannot answer at all is a
+    different fault, and quietly planning an operator's eight-level tree at
+    the shipped five is not a fallback, it is a different plan.
+
     Args:
         context: The root context, as the caller built it.
         resolver: The live settings resolver, or ``None`` in a harness.
@@ -211,34 +263,13 @@ async def resolve_decomposition_bounds(
         return context
     depth = context.max_depth
     width = context.max_subtasks
-    if resolver is not None:
-        try:
-            if depth is None:
-                depth = await resolver.get_int(
-                    "coordination", "decomposition_max_depth"
-                )
-            if width is None:
-                width = await resolver.get_int(
-                    "coordination", "decomposition_max_subtasks"
-                )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- a backstop the setting cannot answer
-            # for is the definition's default by construction, and a bound
-            # still stands, so the runaway this exists to catch is caught
-            # either way
-            reraise_critical(exc)
-            logger.warning(
-                DECOMPOSITION_FAILED,
-                note="decomposition bounds unreadable; using the definitions'",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    return context.model_copy(
-        update={
-            "max_depth": DEFAULT_MAX_DEPTH if depth is None else depth,
-            "max_subtasks": DEFAULT_MAX_SUBTASKS if width is None else width,
-        }
-    )
+    if depth is None:
+        depth = await _bound(resolver, "decomposition_max_depth", DEFAULT_MAX_DEPTH)
+    if width is None:
+        width = await _bound(
+            resolver, "decomposition_max_subtasks", DEFAULT_MAX_SUBTASKS
+        )
+    return context.model_copy(update={"max_depth": depth, "max_subtasks": width})
 
 
 __all__ = [

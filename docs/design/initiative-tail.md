@@ -61,9 +61,10 @@ through the normal work pipeline.
 This stage is the **root** assembly, and on a plan that recursed it is no
 longer the only one. An item with children is the assembly of the work below
 it, dispatched as an ordinary plan item with an assembly brief over its own
-children and its own namespaced evidence paths
-(`.synthorg/integration/<slug>/`), so a wide fan-in at the top becomes the
-narrow ones the recursion-depth sweep measured. Those carry their container's
+children and its own namespaced evidence paths, keyed on its whole address in
+the tree (`.synthorg/integration/<slug>/<slug>/`, one segment per level) so no
+two containers can write over each other, so a wide fan-in at the top becomes
+the narrow ones the recursion-depth sweep measured. Those carry their container's
 `plan_item_id` like any other item, so `item_is_done` reads them normally and
 `derive_plan_status` opens `INTEGRATING` only once every subtree has assembled.
 The root's brief then names the plan's **workstreams** rather than every leaf in

@@ -6,6 +6,7 @@ believed it was at the root and an oversized item was dispatched whole. These
 cover the write, the split it enables, and the two ways it must stop.
 """
 
+from typing import override
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -14,7 +15,11 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.atomicity import DEPTH_BACKSTOP, SESSIONS_BACKSTOP
+from synthorg.engine.decomposition.atomicity import (
+    DEPTH_BACKSTOP,
+    PLANNER_DECLINED,
+    SESSIONS_BACKSTOP,
+)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import (
@@ -23,6 +28,10 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.errors import (
+    DecompositionError,
+    DecompositionUnsplittableError,
+)
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import as_uuid, mock_of, sid
 
@@ -51,16 +60,32 @@ _MAX_TREE_SESSIONS = 40
 
 
 def _resolver(
-    *, recursion_enabled: bool, tree_sessions: int = _MAX_TREE_SESSIONS
+    *,
+    recursion_enabled: bool = True,
+    tree_sessions: int = _MAX_TREE_SESSIONS,
+    bool_error: Exception | None = None,
 ) -> MagicMock:
     """Build a settings resolver answering every key the service reads.
+
+    Every key, including the ones a given case does not care about: an
+    unscripted one answers with the mock itself, which reaches an arithmetic
+    comparison and fails as a TypeError rather than as the behaviour under test.
+
+    Args:
+        recursion_enabled: What the recursion switch answers.
+        tree_sessions: The whole-tree planning-session budget.
+        bool_error: Raised instead of answering the switch, for the cases
+            about a settings store that cannot be read.
 
     Returns:
         The scripted resolver.
     """
     resolver: MagicMock = mock_of[ConfigResolverProtocol]()
     resolver.get_float.return_value = _A_GENEROUS_CEILING
-    resolver.get_bool.return_value = recursion_enabled
+    if bool_error is None:
+        resolver.get_bool.return_value = recursion_enabled
+    else:
+        resolver.get_bool.side_effect = bool_error
     resolver.get_int.side_effect = lambda _namespace, key: {
         "subtask_max_artifacts": _MAX_ARTIFACTS,
         "subtask_max_criteria": _MAX_CRITERIA,
@@ -324,6 +349,75 @@ class TestAnOversizedUnitIsSplitRatherThanDispatched:
         assert sid("big") in {str(task.id) for task in result.all_tasks}
 
 
+class TestAContainerIsDispatchedAsItsAssembly:
+    """Wave building dispatches the WHOLE tree, so a container runs too.
+
+    Whether it runs its own children's work over again, or assembles what they
+    delivered, is decided here and not on the projection path: this is the one
+    a ``coordinate()`` call with no reviewed plan takes.
+    """
+
+    async def _tree(self) -> DecompositionResult:
+        """Decompose a root whose first unit splits.
+
+        Returns:
+            The two-level tree.
+        """
+        service, _ = _two_level_service(recursion_enabled=True)
+        return await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=2)
+        )
+
+    def _container(self, tree: DecompositionResult) -> SubtaskDefinition:
+        """Find the container definition in *tree*'s root level.
+
+        Returns:
+            The definition of the unit that split.
+        """
+        return next(unit for unit in tree.plan.subtasks if unit.id == sid("big"))
+
+    async def test_the_container_task_is_briefed_to_assemble_its_children(
+        self,
+    ) -> None:
+        tree = await self._tree()
+
+        container = next(task for task in tree.all_tasks if str(task.id) == sid("big"))
+
+        assert "Assemble the delivered work" in container.description
+        assert "Unit big-a" in container.description
+        assert "Unit big-b" in container.description
+
+    async def test_the_container_declares_its_subtree_s_own_evidence(self) -> None:
+        tree = await self._tree()
+
+        container = next(task for task in tree.all_tasks if str(task.id) == sid("big"))
+
+        declared = {artifact.path for artifact in container.artifacts_expected}
+        assert any(
+            path.startswith(".synthorg/integration/") and path.endswith("report.md")
+            for path in declared
+        )
+
+    async def test_a_leaf_is_left_as_the_work_it_is(self) -> None:
+        tree = await self._tree()
+
+        leaf = next(task for task in tree.all_tasks if str(task.id) == sid("small"))
+
+        assert "Assemble the delivered work" not in leaf.description
+
+    async def test_routing_and_dispatch_read_one_stakes_verdict(self) -> None:
+        # Routing admits candidates against the DEFINITION and dispatch judges
+        # the TASK. Escalating only one routes an assembly to an agent the
+        # other then refuses, and the escalation reaches no selection at all.
+        tree = await self._tree()
+
+        container_task = next(
+            task for task in tree.all_tasks if str(task.id) == sid("big")
+        )
+
+        assert self._container(tree).stakes is container_task.stakes
+
+
 class TestAStrategyThatPlansOneTaskIsNotRecursedInto:
     """A working endpoint must not start failing because depth was enabled."""
 
@@ -384,9 +478,9 @@ class TestRecursionStops:
     async def test_an_unreadable_switch_leaves_the_result_flat(self) -> None:
         # An unreadable switch means behaving as the product did before
         # recursion existed, which is the only safe reading of it.
-        resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-        resolver.get_float.return_value = _A_GENEROUS_CEILING
-        resolver.get_bool.side_effect = RuntimeError("settings backend is gone")
+        resolver = _resolver(
+            bool_error=RuntimeError("settings backend is gone"),
+        )
         root = _plan(
             str(as_uuid("root")),
             (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
@@ -498,6 +592,128 @@ class TestTheTreeBudgetStopsGracefully:
         reason = _definition(sid("big"), result).unsplit_reason
         assert reason is not None
         assert DEPTH_BACKSTOP in reason
+
+
+class _RefusingStrategy(_ScriptedStrategy):
+    """Plans the root, then fails every child level with *failure*."""
+
+    def __init__(
+        self, plans: dict[str, DecompositionPlan], *, failure: Exception
+    ) -> None:
+        super().__init__(plans)
+        self._failure = failure
+
+    @override
+    async def decompose(
+        self, task: Task, context: DecompositionContext
+    ) -> DecompositionPlan:
+        """Answer the scripted plan, or fail where none was scripted.
+
+        Returns:
+            The scripted plan.
+
+        Raises:
+            Exception: The configured failure, for any unscripted task.
+        """
+        self.seen_depths.append(context.current_depth)
+        plan = self._plans.get(str(task.id))
+        if plan is None:
+            raise self._failure
+        return plan
+
+
+def _service_whose_child_level_fails(failure: Exception) -> DecompositionService:
+    """Build a service whose root splits and whose child planning fails.
+
+    Returns:
+        The service.
+    """
+    root = _plan(
+        str(as_uuid("root")),
+        (
+            _subtask("big", artifacts=_MAX_ARTIFACTS + 1),
+            _subtask("small", artifacts=_MAX_ARTIFACTS),
+        ),
+    )
+    return DecompositionService(
+        _RefusingStrategy({str(as_uuid("root")): root}, failure=failure),
+        TaskStructureClassifier(),
+        config_resolver=_resolver(recursion_enabled=True),
+    )
+
+
+class TestAPlannerThatCannotComplyEndsOnThePlan:
+    """The terminal end of the last-level correction.
+
+    Its own retries are spent inside the child's strategy. What the level that
+    ASKED for that child does with the exhaustion is the whole question: its
+    own plan is valid, so discarding it would throw away every level already
+    paid for in order to report one unit's size.
+    """
+
+    async def test_the_level_that_asked_keeps_its_plan(self) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionUnsplittableError("still three deliverables")
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert {str(task.id) for task in result.leaf_tasks} == {
+            sid("big"),
+            sid("small"),
+        }
+
+    async def test_the_unit_says_the_planner_declined(self) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionUnsplittableError("still three deliverables")
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        reason = next(
+            unit.unsplit_reason
+            for unit in result.plan.subtasks
+            if unit.id == sid("big")
+        )
+        assert reason is not None
+        assert PLANNER_DECLINED in reason
+
+    async def test_a_unit_that_was_never_oversized_still_carries_no_reason(
+        self,
+    ) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionUnsplittableError("still three deliverables")
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert (
+            next(
+                unit for unit in result.plan.subtasks if unit.id == sid("small")
+            ).unsplit_reason
+            is None
+        )
+
+    async def test_every_other_child_failure_still_surfaces(self) -> None:
+        # The type is what keeps the catch above from being a swallow: a
+        # transport that kept mangling replies is fixed at the provider, and
+        # filing it as a note on one plan item hides an outage.
+        service = _service_whose_child_level_fails(
+            DecompositionError("retries exhausted: malformed JSON")
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
+
+        assert not isinstance(caught.value, DecompositionUnsplittableError)
 
 
 class TestASmallObjectiveStaysSmall:

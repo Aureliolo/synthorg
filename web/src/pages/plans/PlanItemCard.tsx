@@ -15,7 +15,7 @@ import {
 } from './PlanItemCard.parts'
 
 /**
- * Spacing steps a subtree is indented per level. Two steps reads as nesting
+ * Spacing steps a subtree is indented per level. Four steps reads as nesting
  * without pushing a level-three card off a narrow viewport.
  */
 const SUBTREE_INDENT_STEPS = 4

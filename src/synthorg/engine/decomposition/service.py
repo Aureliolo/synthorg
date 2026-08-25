@@ -7,9 +7,11 @@ to decompose a parent task into executable subtasks.
 import asyncio
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.assembly import Assembly, build_assembly
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ceilings import (
     DEFAULT_SESSION_CEILING_SECONDS,
@@ -29,8 +31,11 @@ from synthorg.engine.decomposition._recursion import (
 from synthorg.engine.decomposition._split_decision import (
     SplitOutcome,
     SplitVerdict,
+    assembled_subtasks,
+    assembled_task,
     decide_split,
 )
+from synthorg.engine.decomposition.atomicity import PLANNER_DECLINED, unsplit_reason
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.dag import DependencyGraph
@@ -46,13 +51,14 @@ from synthorg.engine.decomposition.protocol import (
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import DecompositionError, DecompositionUnsplittableError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
+    DECOMPOSITION_PLANNER_DECLINED,
     DECOMPOSITION_RECURSED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
@@ -437,6 +443,18 @@ class DecompositionService:
         split = await self._split_oversized(
             plan.subtasks, created_tasks, context, budget, ledger=ledger
         )
+        # 6b. A unit that split is no longer work: it is the assembly of what
+        # was split out of it. Applied to the definition AND the task, because
+        # routing reads the first and dispatch judges the second, and a unit
+        # left as work on either runs its own children's work over again.
+        if split.assemblies:
+            plan = plan.model_copy(
+                update={"subtasks": assembled_subtasks(plan.subtasks, split)}
+            )
+            created_tasks = [
+                assembled_task(built, split.assemblies.get(subtask_def.id))
+                for subtask_def, built in zip(plan.subtasks, created_tasks, strict=True)
+            ]
         if split.unsplit:
             # Stamped after the tasks exist, because the note belongs to the
             # PLAN an operator reviews rather than to the work: a unit that
@@ -509,7 +527,7 @@ class DecompositionService:
             # at one artifact, so every subtask declaring two would take the
             # depth-exhausted branch below, at warning level, on every
             # decomposition the product runs.
-            return SplitOutcome(children=(), unsplit={})
+            return SplitOutcome(children=(), unsplit={}, assemblies={})
 
         if not self._strategy.plans_any_task():
             # A strategy holding one operator-supplied plan for one parent
@@ -519,11 +537,14 @@ class DecompositionService:
             # plan whose subtask declares two artifacts the moment an operator
             # enabled recursion, which is a setting about depth breaking a
             # feature about neither.
-            return SplitOutcome(children=(), unsplit={})
+            return SplitOutcome(children=(), unsplit={}, assemblies={})
 
         children: list[DecompositionResult] = []
         unsplit: dict[str, str] = {}
-        for subtask_def, child_task in zip(subtasks, created_tasks, strict=True):
+        assemblies: dict[str, Assembly] = {}
+        for position, (subtask_def, child_task) in enumerate(
+            zip(subtasks, created_tasks, strict=True)
+        ):
             decision = decide_split(
                 subtask_def,
                 task_id=str(child_task.id),
@@ -536,10 +557,38 @@ class DecompositionService:
             if decision.reason is not None:
                 unsplit[subtask_def.id] = decision.reason
                 continue
-            child = await self._do_decompose(
-                child_task, child_context(context), budget, ledger=ledger
-            )
+            step = SubtreeStep(title=str(subtask_def.title), position=position)
+            try:
+                child = await self._do_decompose(
+                    child_task, child_context(context, step=step), budget, ledger=ledger
+                )
+            except DecompositionUnsplittableError as exc:
+                # The one child failure this level can answer. Its own plan is
+                # valid and its other units are dispatchable, so the unit the
+                # planner could not divide goes out carrying the reason rather
+                # than taking the whole tree above it down with it. Every
+                # other decomposition failure still propagates: a transport
+                # that kept mangling replies is not something an operator
+                # fixes by reading a note on one item.
+                unsplit[subtask_def.id] = unsplit_reason(
+                    budget.policy.assess(subtask_def), backstop=PLANNER_DECLINED
+                )
+                logger.warning(
+                    DECOMPOSITION_PLANNER_DECLINED,
+                    task_id=str(child_task.id),
+                    subtask_id=subtask_def.id,
+                    current_depth=context.current_depth,
+                    error=safe_error_description(exc),
+                )
+                continue
             children.append(child)
+            assemblies[subtask_def.id] = build_assembly(
+                title=str(subtask_def.title),
+                pieces=[str(piece.title) for piece in child.plan.subtasks],
+                criteria=[str(c) for c in subtask_def.acceptance_criteria],
+                assembled=[piece.stakes for piece in child.plan.subtasks],
+                address=(*context.address, step),
+            )
             logger.info(
                 DECOMPOSITION_RECURSED,
                 task_id=str(child_task.id),
@@ -548,7 +597,9 @@ class DecompositionService:
                 leaf_count=len(child.leaf_tasks),
                 sessions_remaining=ledger.remaining,
             )
-        return SplitOutcome(children=tuple(children), unsplit=unsplit)
+        return SplitOutcome(
+            children=tuple(children), unsplit=unsplit, assemblies=assemblies
+        )
 
     def rollup_status(
         self,
