@@ -101,8 +101,8 @@ inputs:
       layer held 6.3 GB of the 9.81 GB in use, and the export took the
       build from its usual 15-20 minutes to 45, having previously hung
       outright until the job ceiling killed it. `mode=min` is not the
-      answer for that shape, because the venv is COPYed into the final
-      stage and so is exported either way.
+      answer for that shape, because a `COPY` pulls the venv into the
+      final stage, so it is exported either way.
     required: false
     default: "true"
   free-disk-space:
