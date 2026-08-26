@@ -186,6 +186,18 @@ class TestTheRootStamp:
 
         assert stamped.objective_criteria == (_ROOT_CRITERIA[0],)
 
+    def test_a_declared_vocabulary_is_deduplicated_too(self) -> None:
+        """Which branch supplies it decides whose criteria, not whether canonical."""
+        restated = NotBlankStr(f"  {str(_ROOT_CRITERIA[0]).upper()} ")
+        task = _task("root", criteria=_ROOT_CRITERIA)
+        declared = DecompositionContext(
+            objective_criteria=(_ROOT_CRITERIA[0], restated)
+        )
+
+        stamped = stamp_objective_criteria(task, declared)
+
+        assert stamped.objective_criteria == (_ROOT_CRITERIA[0],)
+
 
 class TestTheNarrowing:
     def test_a_child_takes_exactly_what_its_parent_claimed(self) -> None:

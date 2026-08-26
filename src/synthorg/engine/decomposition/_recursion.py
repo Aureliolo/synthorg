@@ -150,6 +150,13 @@ def stamp_objective_criteria(
     asked for exactly that the objective's whole criteria list instead, and
     every level below then accepts claims the caller meant to refuse.
 
+    Which branch supplies the vocabulary decides WHOSE criteria it is, never
+    whether it is canonical: the field carries no uniqueness constraint, so a
+    caller declaring ``("R01: X", "r01: x")`` hands the tree one criterion
+    countable twice, exactly as an objective declaring both would. Both
+    branches therefore go through :func:`unique_criteria`, which leaves an
+    explicitly empty vocabulary empty.
+
     Args:
         task: The objective being decomposed.
         context: The root context, as the caller built it.
@@ -157,15 +164,13 @@ def stamp_objective_criteria(
     Returns:
         The context with its vocabulary resolved.
     """
-    if "objective_criteria" in context.model_fields_set:
-        return context
-    return context.model_copy(
-        update={
-            "objective_criteria": unique_criteria(
-                criterion.description for criterion in task.acceptance_criteria
-            )
-        }
+    declared = "objective_criteria" in context.model_fields_set
+    criteria = (
+        context.objective_criteria
+        if declared
+        else tuple(criterion.description for criterion in task.acceptance_criteria)
     )
+    return context.model_copy(update={"objective_criteria": unique_criteria(criteria)})
 
 
 def child_context(
