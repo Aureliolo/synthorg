@@ -53,6 +53,15 @@ interface CharterState {
    * reach that.
    */
   hydrateOpenCharter: () => Promise<void>
+  /**
+   * Re-read the draft on screen so a decision that landed elsewhere shows.
+   *
+   * The complement to {@link hydrateOpenCharter}, which deliberately refuses
+   * to run over an active draft: this one refreshes THAT draft rather than
+   * looking for another, which is the case a card stuck on an unsettled
+   * mutation is in.
+   */
+  refreshDraftStatus: () => Promise<void>
   editDraft: (
     id: string,
     data: CharterEditRequest,
@@ -206,6 +215,52 @@ async function hydrateOpenCharterImpl(
   }
 }
 
+/**
+ * Re-read the draft on screen, in case its decision landed elsewhere.
+ *
+ * The card's state comes from one in-flight promise, so a promise that never
+ * settles leaves it showing the decision as untaken for ever. A live run met
+ * exactly that: the approval landed on the first click and was recorded in the
+ * database, while the page went on showing a `Drafted` charter and an enabled
+ * `Approve & start run` button, with every poll on the page stopped. The
+ * obvious operator response is to click again. A reload recovered it, which is
+ * the tell: nothing was wrong with the data, only with the one edge the card
+ * was waiting on.
+ *
+ * So the truth is re-asked rather than awaited. Adopting only on a STATUS
+ * move, never a version bump, is what keeps this from costing the operator
+ * their unsaved edits: the card's local brief and budget re-initialise when
+ * the charter identity changes, and a status move means the decision is
+ * already taken and those edits are moot anyway.
+ *
+ * ``mutating`` is cleared with it, or a card recovered this way would render
+ * the right state with every control still disabled by a mutation nothing is
+ * going to finish.
+ */
+async function refreshDraftStatusImpl(
+  set: CharterSet,
+  get: CharterGet,
+): Promise<void> {
+  const draft = get().draftCharter
+  if (draft === null) return
+  const generation = get().draftGeneration
+  try {
+    const latest = await charterApi.getCharter(draft.id)
+    if (!_draftIsCurrent(get, generation)) return
+    if (latest.status === draft.status) return
+    set((state) => ({
+      draftCharter: latest,
+      draftGeneration: state.draftGeneration + 1,
+      mutating: false,
+    }))
+  } catch (err) {
+    // Read-only: a failure leaves the card exactly as it was, which is what it
+    // showed before this existed. Logged rather than toasted, because nothing
+    // the operator did failed.
+    log.warn('Charter refresh failed', sanitizeForLog(err))
+  }
+}
+
 async function approveImpl(
   set: CharterSet,
   get: CharterGet,
@@ -298,6 +353,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
     })),
 
   hydrateOpenCharter: () => hydrateOpenCharterImpl(set, get),
+  refreshDraftStatus: () => refreshDraftStatusImpl(set, get),
 
   editDraft: (id, data) => editDraftImpl(set, get, id, data),
   approve: (id) => approveImpl(set, get, id),
