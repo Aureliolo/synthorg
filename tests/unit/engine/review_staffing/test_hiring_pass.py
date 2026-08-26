@@ -188,6 +188,41 @@ class TestAnUncompletableHireIsWithdrawn:
             is None
         )
 
+    async def test_an_approved_request_with_no_candidate_is_withdrawn_too(
+        self,
+    ) -> None:
+        # The second uncompletable shape, and the one a lost pair does not
+        # cover: the request's own candidate card is not on it, so every pass
+        # raises InvalidCandidateError on the same frozen data. Caught as an
+        # ordinary DomainError it retried for ever, exactly as a lost pair did
+        # before it had a class of its own.
+        store = ApprovalStore()
+        hiring = _service(store, with_catalogue=True)
+        await ensure_hire_open(
+            hiring, COMPLETION_REVIEWER_ROLE_NAME, notifications=None, actor=_ACTOR
+        )
+        opened = hiring.find_in_flight_request_for_role(COMPLETION_REVIEWER_ROLE_NAME)
+        assert opened is not None
+        request_id = str(opened.id)
+        await hiring.approve_request(request_id, decided_by="operator")
+        # Written directly because no public call produces it: approval
+        # selects a candidate. A durable row can still carry the shape (one
+        # persisted before its candidates were, or a partial write), and
+        # rehydration puts it straight back into this sweep's query.
+        approved = hiring.get_request(request_id)
+        assert approved is not None
+        hiring._requests[request_id] = approved.model_copy(
+            update={"selected_candidate_id": None}
+        )
+
+        completed = await finish_approved_hires(hiring, notifications=None)
+
+        assert completed == 0
+        assert hiring.find_approved_requests() == ()
+        withdrawn = hiring.get_request(request_id)
+        assert withdrawn is not None
+        assert withdrawn.status is HiringRequestStatus.REJECTED
+
     async def test_a_transient_block_is_still_retried(self) -> None:
         # The complement, so withdrawal cannot become the new silence: a
         # catalogue that comes back must still finish the hire the operator

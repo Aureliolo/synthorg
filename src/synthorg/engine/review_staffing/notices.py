@@ -128,8 +128,9 @@ async def notify_hire_withdrawn(
 
     Carries the reason verbatim, because the operator's next action depends
     on which one it is: a request that named no pair needs a model configured
-    for the role, and one whose pair is gone needs the connection back or a
-    different pair.
+    for the role, one whose pair is gone needs the connection back or a
+    different pair, and one whose selected candidate is not on it needs the
+    hire opened again rather than anything configured.
 
     Args:
         notifications: Late-bound dispatcher source, or ``None`` when

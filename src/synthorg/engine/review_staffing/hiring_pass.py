@@ -22,7 +22,11 @@ from synthorg.engine.review_staffing.notices import (
     notify_hire_waiting,
     notify_hire_withdrawn,
 )
-from synthorg.hr.errors import HiringUnbindableError, HRError
+from synthorg.hr.errors import (
+    HiringUnbindableError,
+    HRError,
+    InvalidCandidateError,
+)
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger, safe_error_description
@@ -42,10 +46,28 @@ logger = get_logger(__name__)
 WITHDRAWN_BY: Final[str] = "review-staffing-reconciler"
 
 
+#: The failures that are facts about the request's OWN frozen data, so no
+#: later pass changes the answer: it names a pair this organisation cannot
+#: run, or its selected candidate card is absent from the request carrying
+#: it. Deliberately NOT keyed on ``HRError.is_retryable``, which is the API
+#: layer's flag (it defaults False across the whole HR family so a caller is
+#: not silently retried into a double-apply) and says nothing about whether
+#: a SWEEP can change the outcome. Read as terminal it would withdraw an
+#: approved hire over a provider catalogue that has merely not finished
+#: wiring, and over a persistence blip: both surface as a bare
+#: ``HiringError`` carrying ``is_retryable = False``, and both clear on
+#: their own. Those are the exact conditions ``HiringUnbindableError`` was
+#: typed apart FROM, so keying on the flag would undo the distinction.
+_UNCOMPLETABLE: Final[tuple[type[DomainError], ...]] = (
+    HiringUnbindableError,
+    InvalidCandidateError,
+)
+
+
 async def _withdraw(
     hiring: HiringService,
     request: HiringRequest,
-    exc: HiringUnbindableError,
+    exc: DomainError,
     *,
     notifications: DispatcherSource,
 ) -> None:
@@ -135,20 +157,23 @@ async def finish_approved_hires(
     for request in hiring.find_approved_requests():
         try:
             identity = await hiring.instantiate_agent(request)
-        except HiringUnbindableError as exc:
+        except _UNCOMPLETABLE as exc:
             # Nothing a later pass does changes this one: the request names no
-            # pair, or names one the organisation no longer has. Retried as
-            # though it were transient it re-fails on every sweep, appears on
-            # no dashboard page and has no exit any pass could reach.
-            # Withdrawing it on the FIRST sweep that proves it unbindable
-            # gives it one, and the operator is told rather than left to read
-            # the log.
+            # pair the organisation has, or its selected candidate card is not
+            # on the request. Retried as though it were transient it re-fails
+            # on every sweep, appears on no dashboard page and has no exit any
+            # pass could reach. Withdrawing it on the FIRST sweep that proves
+            # it uncompletable gives it one, and the operator is told rather
+            # than left to read the log.
             await _withdraw(hiring, request, exc, notifications=notifications)
             continue
         except DomainError as exc:
             # Deliberately not fatal to the pass: one request blocked on a
             # condition that may clear (wiring still coming up, a registry
             # outage) must not stop the others, and the next pass retries it.
+            # A status that moved out of APPROVED under the lock lands here
+            # too and needs nothing: the next sweep's query no longer returns
+            # it, so it is not a state without an exit.
             #
             # Every DomainError, not the two the hiring layer raises directly.
             # Instantiation reaches the registry and the repositories under
