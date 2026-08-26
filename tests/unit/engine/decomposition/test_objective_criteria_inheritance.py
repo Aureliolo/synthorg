@@ -177,6 +177,15 @@ class TestTheRootStamp:
 
         assert stamped.objective_criteria == ()
 
+    def test_two_criteria_the_matcher_cannot_tell_apart_stamp_as_one(self) -> None:
+        """Otherwise one claim matches both and the level below inherits two."""
+        restated = NotBlankStr(f"  {str(_ROOT_CRITERIA[0]).upper()} ")
+        task = _task("root", criteria=(_ROOT_CRITERIA[0], restated))
+
+        stamped = stamp_objective_criteria(task, DecompositionContext())
+
+        assert stamped.objective_criteria == (_ROOT_CRITERIA[0],)
+
 
 class TestTheNarrowing:
     def test_a_child_takes_exactly_what_its_parent_claimed(self) -> None:

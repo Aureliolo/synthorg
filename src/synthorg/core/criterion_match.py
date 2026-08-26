@@ -61,10 +61,45 @@ def criterion_key(text: str) -> str:
     return collapse_whitespace_lowercase(text)
 
 
+def unique_criteria(criteria: Iterable[str]) -> tuple[NotBlankStr, ...]:
+    """Build a claim vocabulary, keeping one spelling per criterion.
+
+    The single owner of "how does an objective's acceptance criteria become a
+    vocabulary", because two entries with the same key are ONE criterion by
+    this module's own definition of sameness, and carrying both makes it
+    countable twice everywhere downstream: one claim matches both, the
+    coverage map lists it twice, and a child level inherits a vocabulary of
+    two that admits exactly one sentence.
+
+    The FIRST spelling wins, so the vocabulary reads as the objective's author
+    wrote it rather than as whichever duplicate happened to sort last.
+
+    Args:
+        criteria: The objective's acceptance criteria, as authored.
+
+    Returns:
+        The criteria in the order given, blank ones dropped, each key once.
+    """
+    seen: set[str] = set()
+    vocabulary: list[NotBlankStr] = []
+    for criterion in criteria:
+        key = criterion_key(criterion)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        vocabulary.append(NotBlankStr(criterion))
+    return tuple(vocabulary)
+
+
 def matched_criteria(
     claims: Iterable[str], *, objective: Sequence[NotBlankStr]
 ) -> tuple[NotBlankStr, ...]:
     """The objective criteria at least one of *claims* names.
+
+    Answers one entry per MATCHING objective entry, so a vocabulary carrying
+    the same criterion twice answers twice. :func:`unique_criteria` is what
+    keeps that from arising, since deduplicating here would leave the
+    double-counted entry in the coverage list this is read beside.
 
     Args:
         claims: What a unit declared it advances.
@@ -163,5 +198,6 @@ __all__ = [
     "criterion_key",
     "describe_unnamed_claims",
     "matched_criteria",
+    "unique_criteria",
     "unmatched_claims",
 ]

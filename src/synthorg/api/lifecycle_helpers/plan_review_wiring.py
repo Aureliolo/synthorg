@@ -41,6 +41,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import CASRetryHandler
+from synthorg.core.criterion_match import unique_criteria
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.display_name import UNNAMED_PROJECT
 from synthorg.core.domain_errors import (
@@ -247,8 +248,8 @@ class PlanReviewApprovalGate:
             forecast_id=work_item.forecast_id,
             review=review.review,
             review_absent_reason=review.absent_reason,
-            objective_criteria=tuple(
-                NotBlankStr(c.description) for c in task.acceptance_criteria
+            objective_criteria=unique_criteria(
+                c.description for c in task.acceptance_criteria
             ),
         )
 

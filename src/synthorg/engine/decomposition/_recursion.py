@@ -14,7 +14,7 @@ explains.
 from dataclasses import dataclass
 from typing import Final
 
-from synthorg.core.criterion_match import matched_criteria
+from synthorg.core.criterion_match import matched_criteria, unique_criteria
 from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -161,9 +161,8 @@ def stamp_objective_criteria(
         return context
     return context.model_copy(
         update={
-            "objective_criteria": tuple(
-                NotBlankStr(criterion.description)
-                for criterion in task.acceptance_criteria
+            "objective_criteria": unique_criteria(
+                criterion.description for criterion in task.acceptance_criteria
             )
         }
     )

@@ -13,6 +13,7 @@ from synthorg.core.criterion_match import (
     criterion_key,
     describe_unnamed_claims,
     matched_criteria,
+    unique_criteria,
     unmatched_claims,
 )
 from synthorg.core.types import NotBlankStr
@@ -46,6 +47,44 @@ class TestTheKey:
 
     def test_a_different_sentence_is_a_different_key(self) -> None:
         assert criterion_key("R01: The header") != criterion_key("R01: the footer")
+
+
+class TestTheVocabulary:
+    """Two entries with one key are one criterion, so the list carries one.
+
+    Left in, the same criterion is countable twice everywhere downstream: one
+    claim matches both, the coverage map lists it twice, and a child level
+    inherits a vocabulary of two that admits exactly one sentence.
+    """
+
+    def test_a_normalised_duplicate_is_dropped(self) -> None:
+        restated = "  r01:  the HEADER row\tnames the columns  "
+
+        vocabulary = unique_criteria((_OBJECTIVE[0], restated))
+
+        assert vocabulary == (_OBJECTIVE[0],)
+
+    def test_the_first_spelling_is_the_one_kept(self) -> None:
+        """The vocabulary reads as its author wrote it, not as a later copy."""
+        vocabulary = unique_criteria(("R01: The Header", "r01: the header"))
+
+        assert vocabulary == (NotBlankStr("R01: The Header"),)
+
+    def test_distinct_criteria_all_survive_in_order(self) -> None:
+        assert unique_criteria(_OBJECTIVE) == _OBJECTIVE
+
+    def test_an_entry_with_no_key_is_not_a_criterion(self) -> None:
+        assert unique_criteria(("R01: The header", "   ")) == (
+            NotBlankStr("R01: The header"),
+        )
+
+    def test_one_claim_cannot_match_a_deduplicated_criterion_twice(self) -> None:
+        """The defect the vocabulary exists to close, asserted end to end."""
+        objective = unique_criteria(("R01: The Header", "r01: the header  "))
+
+        assert matched_criteria(("R01: The header",), objective=objective) == (
+            NotBlankStr("R01: The Header"),
+        )
 
 
 class TestAMatchAnswersWithTheObjective:
