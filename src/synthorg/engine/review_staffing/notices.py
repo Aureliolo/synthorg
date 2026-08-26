@@ -10,8 +10,10 @@ until a task has already run, been paid for, and stopped.
 The third says a hire the operator already approved has been withdrawn
 because it can never be completed. It is the one alert about something the
 org did rather than something it needs, and it exists because the alternative
-was silence: such a request sat approved for seven days, re-failing on every
-sweep, on no dashboard page and in no notification.
+was silence: such a request re-fails on every sweep, appears on no dashboard
+page and reaches no notification. It is withdrawn on the FIRST sweep that
+proves it unbindable, since nothing a later one does can change the verdict,
+and this alert is what the operator hears instead of nothing.
 
 Kept beside the reconciler rather than inside it: the reconciler's job is
 deciding what to sweep and what to open, and the copy an operator reads is

@@ -16,10 +16,20 @@ inherit this by reaching the same function.
 
 The level's WIDTH is corrected here too, and for the same reason: splitting
 to atomicity is what pushes a level past its cap, so a level whose every unit
-is now one agent's work is exactly the one likeliest to be over it. The
-post-session guard refuses such a level outright, so a gate that only spoke
-about size spent the session and then failed the level with the planner never
-told what was wrong.
+is now one agent's work is exactly the one likeliest to be over it. Either
+condition alone earns a correction, because an over-cap level of atomic units
+is the case a size-only gate cannot see at all, and the post-session guard
+refuses that level outright: the session is spent and then the level fails
+for a reason the planner was never given.
+
+A level exactly AT the cap is the one case that stays silent. There is no
+depth below it and no width beside it, so asking produces a plan the width cap
+then refuses, which is what killed a twenty-one-session tree: the planner
+widened to eleven against a limit of ten, exactly as instructed, and the run
+failed on the result. Those units dispatch carrying their backstop reason
+instead, which is what the depth backstop is for. Equality, not ``>=``: a
+level already OVER the cap can still be saved by merging or dropping, so it is
+exactly the level that needs to hear the cap named.
 
 Bounded by ``coordination.decomposition_max_retries`` like every other
 correction. A plan that still cannot comply once those are spent raises
@@ -71,19 +81,8 @@ def describe_unsplittable(
         return None
     count = len(subtasks)
     if count == width_limit:
-        # Nowhere left to go: no depth below, no width beside. Asking anyway
-        # is asking for a plan the width cap then refuses, which is what
-        # killed a twenty-one-session tree: the planner widened to eleven
-        # against a limit of ten, exactly as instructed, and the run failed
-        # on the result. The units dispatch carrying their backstop reason
-        # instead, which is what the depth backstop is for.
-        #
-        # EQUALITY, not ``>=``. A level already OVER the cap is a different
-        # case: the post-session guard refuses it outright, so staying silent
-        # here spends the session and then fails the level anyway, with the
-        # planner never told what was wrong. The correction below names the
-        # cap and says to merge or drop, which is the one thing that can
-        # still save it, so it is exactly the level that needs to hear it.
+        # Exactly AT the cap, which is the one silent case: nowhere to put
+        # anything, so asking produces a plan the width cap then refuses.
         return None
     over_cap = count > width_limit
     offenders = [
@@ -96,11 +95,6 @@ def describe_unsplittable(
         if subtask.kind is PlanItemKind.WORK
         and (assessment := policy.assess(subtask)).is_oversized
     ]
-    # Either condition alone earns a correction. A level over the cap whose
-    # units are each atomic is the case the size check cannot see at all, and
-    # it is not hypothetical: splitting to atomicity is precisely what pushes
-    # a level past its width. Silent, the session is spent and the guard then
-    # refuses the level for a reason the planner was never given.
     if not offenders and not over_cap:
         return None
     oversized = ""

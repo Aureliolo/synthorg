@@ -37,9 +37,17 @@ function subsystemsHandler(phase: 'active' | 'blocked' = 'active') {
  *
  * The hazard needs one read still in flight across a reset AND a later read,
  * which no instant handler can produce.
+ *
+ * `onStart` fires as the handler is entered, and the test awaits it before
+ * touching the handler set. MSW resolves a request against the handlers
+ * current when it dispatches, which is a microtask after `fetch` returns:
+ * without the signal, a `server.use` on the next line can land first, the
+ * "held" request is served by the NEW handler, and the assertion passes
+ * having exercised nothing.
  */
-function heldSubsystems(gate: Promise<void>) {
+function heldSubsystems(gate: Promise<void>, onStart: () => void) {
   return http.get('/api/v1/subsystems', async () => {
+    onStart()
     await gate
     return HttpResponse.json(
       successFor<typeof getSubsystems>({
@@ -214,25 +222,64 @@ describe('useOrgPulseStore', () => {
     expect(state.loaded).toBe(false)
   })
 
-  it('drops a pre-reset read once the reset has been followed by a new one', async () => {
+  it('drops a pre-reset pill read once the reset has been followed by a new one', async () => {
     let release!: () => void
+    let begin!: () => void
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    server.use(heldSubsystems(gate), emptyTasks())
-    const stale = useOrgPulseStore.getState().fetchOrgPulse()
+    const started = new Promise<void>((resolve) => {
+      begin = resolve
+    })
+    server.use(heldSubsystems(gate, begin))
+    const stale = useOrgPulseStore.getState().fetchSubsystems()
+    // The held handler must have taken the request before the handler set
+    // changes underneath it, or the "stale" read is served by the new one.
+    await started
 
     useOrgPulseStore.getState().reset()
-    server.use(subsystemsHandler('active'), emptyTasks())
-    await useOrgPulseStore.getState().fetchOrgPulse()
+    server.use(subsystemsHandler('active'))
+    await useOrgPulseStore.getState().fetchSubsystems()
 
     release()
     await stale
 
-    // The counter is module state, so it outlives the store's fields. Zeroed
-    // on reset, the pre-reset read is handed the very number the post-reset
-    // read claims, matches on it, and puts a verdict from before the clear
-    // back on the always-mounted health pill.
+    // The pill reads subsystems alone, so this half is decided by
+    // `subsystemRevision` and nothing else. That counter is module state and
+    // outlives the store's fields: zeroed on reset, the pre-reset read is
+    // handed the very number the post-reset read claims, matches on it, and
+    // puts a verdict from before the clear back on the always-mounted pill.
     expect(useOrgPulseStore.getState().subsystems[0]?.phase).toBe('active')
+  })
+
+  it('drops a superseded pulse read entirely, blocked tasks and load flags', async () => {
+    let release!: () => void
+    let begin!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      begin = resolve
+    })
+    // The task half FAILS, so the stale response carries something visible:
+    // an error message the fresh store must not acquire.
+    server.use(heldSubsystems(gate, begin), failingTasks())
+    const stale = useOrgPulseStore.getState().fetchOrgPulse()
+    await started
+
+    useOrgPulseStore.getState().reset()
+
+    release()
+    await stale
+
+    // The blocked-task half and the load flags used to apply unconditionally,
+    // on the reasoning that only this reader writes them. That is a different
+    // claim from "only one of this reader is ever in flight": a superseded
+    // response wrote its own outcome over a store that had just been cleared
+    // and marked it as already read.
+    const state = useOrgPulseStore.getState()
+    expect(state.blockedTasksError).toBeNull()
+    expect(state.loaded).toBe(false)
+    expect(state.loading).toBe(false)
   })
 })

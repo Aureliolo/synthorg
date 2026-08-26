@@ -138,10 +138,11 @@ async def finish_approved_hires(
         except HiringUnbindableError as exc:
             # Nothing a later pass does changes this one: the request names no
             # pair, or names one the organisation no longer has. Retried as
-            # though it were transient, one such request re-failed on every
-            # sweep for seven days, appeared on no dashboard page, and had no
-            # exit any pass could reach. Withdrawing it gives it one, and the
-            # operator is told rather than left to read the log.
+            # though it were transient it re-fails on every sweep, appears on
+            # no dashboard page and has no exit any pass could reach.
+            # Withdrawing it on the FIRST sweep that proves it unbindable
+            # gives it one, and the operator is told rather than left to read
+            # the log.
             await _withdraw(hiring, request, exc, notifications=notifications)
             continue
         except DomainError as exc:
