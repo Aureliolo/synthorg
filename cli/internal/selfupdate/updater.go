@@ -448,6 +448,18 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 	return fetchJSON[Release](ctx, url)
 }
 
+// IsNewer reports whether latest supersedes current, on the same ordering
+// the update check itself uses (stable beats a dev pre-release at the same
+// base version, and a bare "dev" build is always superseded).
+//
+// Exported for the image half of the update preview. The CLI half already has
+// its answer in CheckResult.UpdateAvail, but the installed image tag is
+// tracked separately in the CLI's own config and has to be compared against
+// the same release, or the preview reports "yes" for images that are current.
+func IsNewer(current, latest string) (bool, error) {
+	return isUpdateAvailable(current, latest)
+}
+
 func isUpdateAvailable(current, latest string) (bool, error) {
 	cur := strings.TrimPrefix(current, "v")
 	if cur == "dev" {
