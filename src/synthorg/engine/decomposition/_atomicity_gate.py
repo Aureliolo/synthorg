@@ -38,6 +38,7 @@ def describe_unsplittable(
     subtasks: Sequence[SubtaskDefinition],
     *,
     policy: SubtaskAtomicityPolicy | None,
+    width_limit: int,
 ) -> str | None:
     """Name the units this level cannot split, and what to do instead.
 
@@ -49,12 +50,24 @@ def describe_unsplittable(
             where there is no depth left, so a level with room still splits
             rather than corrects: refusing there would trade the measured
             mechanism for an unmeasured one.
+        width_limit: How many units this level may hold. Load-bearing twice
+            over, and a live run died for the lack of it: the correction is
+            the only place the planner is told, and a level already at the
+            limit cannot be asked to widen at all.
 
     Returns:
         The correction to hand back, or ``None`` when every unit is already
-        one agent's worth of work.
+        one agent's worth of work, or when widening is not available.
     """
     if policy is None:
+        return None
+    if len(subtasks) >= width_limit:
+        # Nowhere left to go: no depth below, no width beside. Asking anyway
+        # is asking for a plan the width cap then refuses, which is what
+        # killed a twenty-one-session tree: the planner widened to eleven
+        # against a limit of ten, exactly as instructed, and the run failed
+        # on the result. The units dispatch carrying their backstop reason
+        # instead, which is what the depth backstop is for.
         return None
     offenders = [
         (subtask, assessment)
@@ -82,7 +95,9 @@ def describe_unsplittable(
         f"LEVEL rather than leaving them large, so that each unit produces at "
         f"most {policy.max_expected_artifacts} deliverable(s), defines at "
         f"most {policy.max_acceptance_criteria} acceptance criteria, and "
-        f"advances at most one of the objective's success criteria."
+        f"advances at most one of the objective's success criteria. "
+        f"The whole level must still come to at most {width_limit} units, "
+        f"so merge or drop what does not fit rather than exceeding it."
     )
 
 

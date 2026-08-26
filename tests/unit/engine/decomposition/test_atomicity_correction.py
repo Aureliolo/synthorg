@@ -270,6 +270,9 @@ class TestTheSessionToolAnswersTheSameWay:
             # What the level is answerable for, as a real run supplies it. A
             # tool built without it refuses every claim these units make.
             objective_criteria=(NotBlankStr(_CRITERION),),
+            # Wider than any level these cases submit, so the correction is
+            # judged on atomicity alone.
+            width_limit=20,
         )
 
     async def test_an_oversized_level_is_refused_and_recorded_as_declining(

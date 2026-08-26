@@ -57,6 +57,10 @@ from tests._shared.scripted_provider import (
 
 pytestmark = pytest.mark.unit
 
+#: Wider than any level these cases submit, so the width cap is never what
+#: they are measuring.
+_WIDE = 20
+
 #: The shape a live run produced twice: repeated fields collapsed into nested
 #: text nodes, which is valid JSON carrying no ``subtasks`` at all.
 _MANGLED_ARGS: dict[str, JsonValue] = {
@@ -362,7 +366,9 @@ class TestAgentSessionDecompose:
 class TestSubmitDecompositionPlanTool:
     async def test_captures_valid_plan(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         result = await tool.execute(arguments=dict(_plan_args()))
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error
@@ -371,14 +377,18 @@ class TestSubmitDecompositionPlanTool:
 
     async def test_rejects_malformed_plan(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         result = await tool.execute(arguments={"subtasks": "not-a-list"})
         assert result.is_error
         assert capture.plan is None
 
     async def test_double_submit_overwrites_with_latest(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         await tool.execute(arguments=dict(_plan_args()))
         assert capture.plan is not None
         assert len(capture.plan.subtasks) == 2
@@ -408,7 +418,9 @@ class TestSubmitDecompositionPlanTool:
         specific change instead of "fix the issue".
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         rejected: dict[str, object] = dict(_self_dependent_plan_args())
 
         first = await tool.execute(arguments=dict(rejected))
@@ -471,7 +483,9 @@ class TestSubmitDecompositionPlanTool:
     async def test_key_order_alone_is_not_a_correction(self) -> None:
         """A serialiser that reordered keys resubmitted the same plan."""
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         rejected: dict[str, object] = dict(_self_dependent_plan_args())
         reordered: dict[str, object] = dict(reversed(list(rejected.items())))
 
@@ -483,7 +497,9 @@ class TestSubmitDecompositionPlanTool:
     async def test_a_genuinely_changed_resubmission_is_refused_plainly(self) -> None:
         """A model correcting itself must not be told it repeated itself."""
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
 
         first = await tool.execute(arguments=dict(_self_dependent_plan_args()))
         second = await tool.execute(arguments={"subtasks": "not-a-list"})
@@ -500,7 +516,9 @@ class TestSubmitDecompositionPlanTool:
         submissions in a live run arrived in this shape.
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
 
         detail = await tool.transport_fault(_MANGLED_ARGS)
 
@@ -540,7 +558,9 @@ class TestSubmitDecompositionPlanTool:
         field it filled in correctly.
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         invoker = ToolInvoker(ToolRegistry([tool]))
 
         result = await invoker.invoke(

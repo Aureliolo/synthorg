@@ -99,7 +99,11 @@ def _reject_unsplittable(
             parse failure so the level that asked for this one can tell a plan
             it must abandon from one it can dispatch with a note.
     """
-    oversized = describe_unsplittable(plan.subtasks, policy=context.atomicity)
+    oversized = describe_unsplittable(
+        plan.subtasks,
+        policy=context.atomicity,
+        width_limit=width_budget(context),
+    )
     if oversized is None:
         return
     logger.info(

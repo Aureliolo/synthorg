@@ -188,6 +188,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         available_roles: tuple[NotBlankStr, ...] = (),
         objective_criteria: tuple[NotBlankStr, ...] = (),
         atomicity: SubtaskAtomicityPolicy | None = None,
+        width_limit: int,
     ) -> None:
         super().__init__(
             name="submit_decomposition_plan",
@@ -209,6 +210,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         self._available_roles = available_roles
         self._objective_criteria = objective_criteria
         self._atomicity = atomicity
+        self._width_limit = width_limit
 
     @override
     async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
@@ -258,7 +260,11 @@ class SubmitDecompositionPlanTool(BaseTool):
         # Asked here rather than after the session, because this IS the
         # session's correction channel: at the last level there is nowhere to
         # split into, so the plan is handed back for a wider one instead.
-        oversized = describe_unsplittable(plan.subtasks, policy=self._atomicity)
+        oversized = describe_unsplittable(
+            plan.subtasks,
+            policy=self._atomicity,
+            width_limit=self._width_limit,
+        )
         if oversized is not None:
             logger.info(
                 DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,

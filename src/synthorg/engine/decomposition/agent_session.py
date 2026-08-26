@@ -680,6 +680,9 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             # rather than the objective the tree is being built for.
             objective_criteria=context.objective_criteria,
             atomicity=context.atomicity,
+            # The same budget this strategy enforces after the session, so the
+            # correction cannot ask for a level the enforcement then refuses.
+            width_limit=width_budget(context),
         )
         planning_tools = self._planning_tools(task, owner)
         tools: list[BaseTool] = [submit_tool, *planning_tools]
