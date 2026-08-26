@@ -702,6 +702,7 @@ export const PROJECT_STATUS_VALUES = [
     'on_hold',
     'completed',
     'cancelled',
+    'failed',
 ] as const
 export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 

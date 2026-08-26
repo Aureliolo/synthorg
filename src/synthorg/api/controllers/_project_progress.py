@@ -41,12 +41,19 @@ from synthorg.engine.initiative.completion import (
 )
 from synthorg.engine.initiative.contributors import initiative_contributors
 from synthorg.engine.initiative.critical_path import longest_dependency_chain
+from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 #: Page size for draining a plan's tasks; a plan's items are bounded well below
 #: this at the request boundary, so one page is the normal case.
 _TASK_PAGE_SIZE: Final[int] = 200
+
+#: How many of a project's plans the unlinked fallback reads before picking the
+#: most recent. Only the newest is wanted, and a project accumulates one plan
+#: per replan, so this is a ceiling on a small number rather than a page size
+#: anything is expected to fill.
+_PLAN_PAGE_SIZE: Final[int] = 200
 
 
 class ProjectProgressAssembler:
@@ -110,6 +117,7 @@ class ProjectProgressAssembler:
             contributors=self._contributor_refs(contributors),
             plan_id=plan.id,
             plan_status=plan.status,
+            plan_failure_reason=plan.failure_reason,
             objective_title=plan.objective_title,
             items=tuple(
                 item.model_copy(update={"on_critical_path": item.item_id in on_path})
@@ -136,15 +144,32 @@ class ProjectProgressAssembler:
         )
 
     async def _plan_of(self, project: Project) -> Plan | None:
-        """Resolve the plan the project is executing.
+        """Resolve the plan this project's progress is about.
+
+        ``project.plan_id`` is written at DISPATCH, so a plan that died before
+        it, in decomposition or at the approval gate, is never linked. Reading
+        only the link therefore reported "no plan yet" for a project whose plan
+        existed and had failed with a recorded reason, which is the one thing
+        the operator opening this page needs to know. So the link is preferred
+        and the project's own plans are the fallback.
 
         Returns:
-            The plan named by ``project.plan_id``, or ``None`` when the project
-            has not dispatched one (or its plan row has since been removed).
+            The plan named by ``project.plan_id``; else the project's most
+            recent plan; else ``None`` when it has never had one.
         """
-        if project.plan_id is None:
+        if project.plan_id is not None:
+            linked = await self._persistence.plans.get(
+                NotBlankStr(str(project.plan_id))
+            )
+            if linked is not None:
+                return linked
+        plans = await self._persistence.plans.query(
+            PlanFilterSpec(project=NotBlankStr(str(project.id))),
+            limit=_PLAN_PAGE_SIZE,
+        )
+        if not plans:
             return None
-        return await self._persistence.plans.get(NotBlankStr(str(project.plan_id)))
+        return max(plans, key=lambda plan: plan.created_at)
 
     async def _tasks_by_item(self, plan: Plan) -> dict[UUID, Task]:
         """Index the plan's dispatched tasks by the item each implements.

@@ -54,6 +54,7 @@ export const AllStatuses: Story = {
           'integrating',
           'evaluating',
           'on_hold',
+          'failed',
           'completed',
           'cancelled',
         ] satisfies ProjectStatus[]

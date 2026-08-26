@@ -784,6 +784,45 @@ class TestProjectProgress:
         assert by_title["Choose a queue"]["done"] is False
         assert body["counts"]["done"] == 1
 
+    async def test_a_plan_that_died_before_dispatch_reports_its_failure(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """``project.plan_id`` is written at dispatch, so a plan that never got
+        there is unlinked. Reading only the link reported "no plan yet" for an
+        initiative whose plan existed and had failed with a recorded reason,
+        which is the one thing the operator opening this page needs.
+        """
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Died in planning"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        backend = persistence_of(async_test_client.app.state.app_state)
+        await backend.plans.save(
+            Plan(
+                id=as_uuid("plan-died"),
+                project=NotBlankStr(project_id),
+                project_name=NotBlankStr("Died in planning"),
+                objective_id=NotBlankStr("obj-died"),
+                objective_title=NotBlankStr("Ship the initiative"),
+                parent_task_id=NotBlankStr(sid("task-root")),
+                items=(),
+                status=PlanStatus.FAILED,
+                failure_reason=NotBlankStr("decomposition exhausted its turns"),
+                created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+            )
+        )
+
+        resp = await async_test_client.get(f"/api/v1/projects/{project_id}/progress")
+
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["plan_status"] == "failed"
+        assert body["plan_failure_reason"] == "decomposition exhausted its turns"
+        assert body["items"] == []
+
     async def test_project_without_a_plan_reports_empty_progress(
         self, async_test_client: LoopAsyncClient
     ) -> None:

@@ -14668,6 +14668,8 @@ export type components = {
             readonly items: readonly components["schemas"]["ProjectProgressItem"][];
             /** @description What the initiative set out to do */
             readonly objective_title: string | null;
+            /** @description Why the plan failed, when it did */
+            readonly plan_failure_reason: string | null;
             /**
              * Format: uuid
              * @description Plan the project is executing (None before dispatch)
@@ -14820,10 +14822,16 @@ export type components = {
          *     pieces are being assembled, and from one being scored against its
          *     objective: showing all three as ACTIVE would hide the difference between
          *     work in flight and work awaiting a verdict.
+         *
+         *     ``FAILED`` mirrors a plan that could not be delivered at all, and is
+         *     distinct from ``CANCELLED`` because nobody chose it: a live run left a
+         *     project reading ``PLANNING`` for ever behind a plan that had failed, so the
+         *     board went on showing an initiative being planned with nothing behind it.
+         *     Telling that operator their project was cancelled would be a different lie.
          * @default planning
          * @enum {string}
          */
-        readonly ProjectStatus: "planning" | "active" | "integrating" | "evaluating" | "on_hold" | "completed" | "cancelled";
+        readonly ProjectStatus: "planning" | "active" | "integrating" | "evaluating" | "on_hold" | "completed" | "cancelled" | "failed";
         /**
          * PromptClassAlertConfig
          * @description Per-prompt-purpose cost / latency alert thresholds.
