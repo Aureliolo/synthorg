@@ -62,7 +62,7 @@ src/synthorg/engine/evolution/service.py::EvolutionService.__init__::9
 src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::11
 src/synthorg/engine/intake/strategies/agent_intake.py::AgentIntake.__init__::9
 src/synthorg/engine/loop_protocol.py::ExecutionLoop.execute::9
-src/synthorg/engine/pipeline/factory.py::build_work_pipeline::14
+src/synthorg/engine/pipeline/factory.py::build_work_pipeline::10
 src/synthorg/engine/pipeline/service.py::DefaultWorkPipeline.__init__::11
 src/synthorg/engine/prompt.py::build_system_prompt::16
 src/synthorg/engine/prompt_render.py::build_template_context::13
