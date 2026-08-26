@@ -46,6 +46,7 @@ will know it is done:
 | 9 | the whole product driven through the browser as an operator; 59 findings | plan repair could not converge. The parser broke on the first graph violation, the planner regenerates the whole plan with fresh ids on a targeted correction, and "Request changes" burned all twelve turns, was rejected seven consecutive times by one rule on seven different pairs, then returned 500 after 5m17s |
 | 10 | charter intake, a five-question interview that asked for a timeline unprompted, and the first recursive decomposition the product has ever run: 39 planning sessions, 76 plan corrections that converged, depth 4 against a cap of 5, `unsplit_count=0` on every finished node, and one workstream alone returning 40 leaves | one planning session outran its own ceiling and took the whole tree with it. Session 39 ran 599.7s against `coordination.decomposition_timeout_seconds` at 600, which raises the non-retryable `DecompositionTimeoutError`, and nothing between that raise and the plan absorbs it: plan `planning -> failed`, objective task `created -> failed`, and all 39 levels discarded after 1h 48m and 2.3M tokens. The graceful bound that returns a partial tree was two sessions from firing (`sessions_remaining=2` of 40) |
 | 10b | the same brief re-run against a fix for the ceiling, on a three-question interview; 3 planning sessions, 13 subtasks, 3 levels | the same defect through a **third** bound the fix did not cover. A depth-2 session spent all 12 turns on `search_memory`, got `ranked_count=0` on all 17 calls, never once called `submit_decomposition_plan`, and no stagnation detector fired (`extensions_granted=0`). Turn exhaustion raises the **base** `DecompositionError`, which the parent does not absorb because that type is also every genuine fault, so one stuck node discarded the tree again after 3m 56s |
+| 10c | re-run against fixes for all three bounds. 21 minutes, ~21 planning sessions, a tree to **depth 4** with subtrees of 20, 15, 12 and 11 leaves, and **both previously-fatal bounds absorbed live**: a wall-clock ceiling at depth 3 and turn exhaustion at depth 2, each costing one unit's split rather than the tree | the two caps that size a level contradict each other, and the planner cannot obey both. At the last permitted depth the atomicity gate cannot ask for depth, so it orders "split them into more units AT THIS LEVEL" while naming only per-unit limits; it has no access to `max_subtasks` and never mentions it. The planner complied, produced 11 units against a cap of 10, and `DecompositionSubtaskLimitError` failed the whole tree. Two owners for "how many units may this level have", and the quieter one wins fatally |
 
 ## Where the stop has moved
 
@@ -78,6 +79,22 @@ Attempt 2 also caught the layer beneath: the session was not merely slow, it was
 stuck, repeating one tool call that returned nothing every single time, and no
 stagnation detection fired before the turn budget ran out. Absorbing the failure
 keeps the tree; it does not make the node's plan appear.
+
+Attempt 3 proved both fixes in one live run, absorbing a wall-clock ceiling at
+depth 3 and turn exhaustion at depth 2 while the tree kept every other level,
+and then died on something different in kind. The first two stops were a node
+failing and the tree not surviving it. The third is **the system issuing an
+instruction it will then refuse**: at the last permitted depth the atomicity
+gate orders the planner to widen, the width cap kills the level for widening,
+and neither knows the other exists. Compliance was fatal and non-compliance was
+rejected, so no amount of retrying could resolve it.
+
+That is worth stating plainly because it also corrects this log. Finding F4,
+"the breadth cap and the depth ban fight each other", was recorded as closed on
+the evidence that a tree had replaced ten coarse items. That is true of the
+original symptom and false of the finding's own words: the two caps still
+fight, and they fight hardest at the last level, where the depth ban is
+absolute.
 
 ## How to add a row
 
