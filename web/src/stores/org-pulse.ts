@@ -41,6 +41,14 @@ interface OrgPulseState {
    */
   loaded: boolean
   fetchOrgPulse: () => Promise<void>
+  /**
+   * Read the subsystem reports alone, for the always-mounted health pill.
+   *
+   * Separate from {@link fetchOrgPulse} because the pill needs the subsystem
+   * verdict and nothing else; the blocked-task sample is the dashboard
+   * panel's input.
+   */
+  fetchSubsystems: () => Promise<void>
   reset: () => void
 }
 
@@ -137,7 +145,38 @@ async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
   }
 }
 
-const INITIAL: Omit<OrgPulseState, 'fetchOrgPulse' | 'reset'> = {
+async function fetchSubsystemsImpl(set: PulseSet): Promise<void> {
+  // The subsystem half alone, for the always-mounted health pill.
+  //
+  // The pill folds the subsystem verdict into its roll-up but fetched
+  // nothing, so it only ever saw what some OTHER page had put in this store.
+  // On the dashboard that meant "system degraded" with five subsystems
+  // blocked, and on every other route the same deployment read "all systems
+  // normal" seconds later. Falling short of the whole truth is what the pill
+  // was designed to do; saying the strongest possible thing on no data is
+  // not falling short, it is contradicting the panel it opens.
+  //
+  // Not `fetchOrgPulse`, which also samples blocked tasks: that is the
+  // dashboard panel's input and the pill has no use for it, so putting it on
+  // every page would be a query added rather than a verdict fixed.
+  try {
+    const response = await getSubsystems()
+    const reports = settle<SubsystemReport>(
+      { status: 'fulfilled', value: response },
+      (value: SubsystemsResponse) => value.subsystems,
+    )
+    set((state) => ({
+      // A failed poll keeps the last good answer, as the full pulse read
+      // does: one transient 500 must not blank the verdict.
+      subsystems: reports.items ?? state.subsystems,
+      subsystemsError: reports.error,
+    }))
+  } catch (err) {
+    set({ subsystemsError: getErrorMessage(err) })
+  }
+}
+
+const INITIAL: Omit<OrgPulseState, 'fetchOrgPulse' | 'fetchSubsystems' | 'reset'> = {
   subsystems: [],
   blockedTasks: [],
   subsystemsError: null,
@@ -149,6 +188,7 @@ const INITIAL: Omit<OrgPulseState, 'fetchOrgPulse' | 'reset'> = {
 export const useOrgPulseStore = create<OrgPulseState>((set, get) => ({
   ...INITIAL,
   fetchOrgPulse: () => fetchOrgPulseImpl(set, get),
+  fetchSubsystems: () => fetchSubsystemsImpl(set),
   reset: () => set({ ...INITIAL }),
 }))
 

@@ -1,11 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useOrgPulseStore } from '@/stores/org-pulse'
 import { useWebSocketStore } from '@/stores/websocket'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { apiError, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { getHealthDetail } from '@/api/endpoints/health'
+import type { getSubsystems } from '@/api/endpoints/subsystems'
 import type { HealthStatus, MemoryHealth } from '@/api/types/system'
 
 /**
@@ -164,5 +166,61 @@ describe('StatusBar health pill resolution', () => {
       expect(screen.getByText('system degraded')).toBeInTheDocument(),
     )
     expect(screen.queryByText('all systems normal')).not.toBeInTheDocument()
+  })
+})
+
+describe('the pill reads the subsystems itself', () => {
+  beforeEach(() => {
+    resetStore()
+    useWebSocketStore.setState({ connected: true })
+    useOrgPulseStore.getState().reset()
+    server.use(http.get('/api/v1/health', healthOk))
+  })
+
+  it('reports a blocked subsystem on a route that fetched nothing', async () => {
+    // The whole defect: reading this store without fetching it, the pill saw
+    // the subsystem reports only on the dashboard, so the same deployment read
+    // "system degraded" there and "all systems normal" everywhere else. The
+    // store starts empty here, exactly as it does on any route but `/`.
+    server.use(
+      http.get('/api/v1/subsystems', () =>
+        HttpResponse.json(
+          successFor<typeof getSubsystems>({
+            subsystems: [
+              {
+                name: 'memory_backend',
+                phase: 'blocked',
+                waiting_on: ['memory.embedder_model'],
+                detail: 'No embedding model resolved.',
+              },
+            ],
+            active: 0,
+            degraded: 0,
+            waiting: 0,
+            unreachable: 0,
+            rebuilding: 0,
+            blocked: 1,
+            failed: 0,
+            disabled: 0,
+          }),
+        ),
+      ),
+    )
+
+    render(<StatusBar />)
+
+    await waitFor(() =>
+      expect(screen.getByText('system degraded')).toBeInTheDocument(),
+    )
+  })
+
+  it('still reads healthy when nothing is blocked', async () => {
+    // The complement, so the case above cannot pass by reporting degraded
+    // whenever the pill fetches at all.
+    render(<StatusBar />)
+
+    await waitFor(() =>
+      expect(screen.getByText('all systems normal')).toBeInTheDocument(),
+    )
   })
 })
