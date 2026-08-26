@@ -44,6 +44,25 @@ will know it is done:
 | 7 | 3 waves dispatched, 4 items ran real work (243 tool invocations on one), the all-dead plan correctly derived `mixed_dead` and scheduled a replan | every item failed completion review for having delivered nothing: the review reads the deliverable from a frame store written after the review has already ruled, so a first run can never have one. The replan then exhausted its decomposition retries |
 | 8 | charter intake to approved plan, waves dispatched, real work executed, and a parked question answered from the plan page landed on the plan verbatim | replan hit the generation cap: 3 items completed, 1 failed, 3 parked `dependency_failed`, the plan left `executing` while the rollup re-scheduled a replan the trigger refuses, on every cadence, indefinitely |
 | 9 | the whole product driven through the browser as an operator; 59 findings | plan repair could not converge. The parser broke on the first graph violation, the planner regenerates the whole plan with fresh ids on a targeted correction, and "Request changes" burned all twelve turns, was rejected seven consecutive times by one rule on seven different pairs, then returned 500 after 5m17s |
+| 10 | charter intake, a five-question interview that asked for a timeline unprompted, and the first recursive decomposition the product has ever run: 39 planning sessions, 76 plan corrections that converged, depth 4 against a cap of 5, `unsplit_count=0` on every finished node, and one workstream alone returning 40 leaves | one planning session outran its own ceiling and took the whole tree with it. Session 39 ran 599.7s against `coordination.decomposition_timeout_seconds` at 600, which raises the non-retryable `DecompositionTimeoutError`, and nothing between that raise and the plan absorbs it: plan `planning -> failed`, objective task `created -> failed`, and all 39 levels discarded after 1h 48m and 2.3M tokens. The graceful bound that returns a partial tree was two sessions from firing (`sessions_remaining=2` of 40) |
+
+## Where the stop has moved
+
+Nothing has entered `INTEGRATING`, so neither half of
+[the evidence contract](../design/initiative-tail.md#what-proves-the-tail-ran)
+has been produced. What has changed is where the runs die.
+
+Rounds 1 to 5 died on the deployment: authentication, an event-loop split, a
+reasoning-model channel, a provider incident. Rounds 6 to 9 died in planning and
+review. Round 10 is the first to die on the far side of planning, with a tree
+that had converged, and the first whose stop is a bound rather than a broken
+mechanism.
+
+Round 10 is also the first round where the thing being tested was new: recursive
+decomposition shipped on by default days earlier, and had never run in the
+product. Its own machinery worked. What did not was the interaction between a
+per-node bound and a tree of 39 nodes, which no round before it could have
+reached.
 
 ## How to add a row
 
