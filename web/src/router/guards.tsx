@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { Navigate, Outlet } from 'react-router'
+import { Navigate, Outlet, useLocation } from 'react-router'
 import { useAuthStore, useAuthStatus, useIsAuthenticated } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
+import { readReturnTo } from './return-to'
 import { ROUTES } from './routes'
 
 /** Shared full-screen loading indicator for guard states. */
@@ -103,12 +104,19 @@ export function SetupGuard() {
 }
 
 /**
- * Guest-only guard for /login. Redirects to dashboard if already authenticated.
+ * Guest-only guard for /login. Redirects on once authenticated.
  * Shows loading while auth status is being determined.
+ *
+ * The destination is where the operator was when their session ended, when the
+ * expiry carried one in, and the dashboard otherwise. Signing back in belongs
+ * here rather than in the form: this is the one place that sees the transition
+ * to authenticated however it happened, so a session recovered by another tab
+ * returns the operator too.
  */
 export function GuestGuard({ children }: { children: React.ReactNode }) {
   const authStatus = useAuthStatus()
   const checkSession = useAuthStore((s) => s.checkSession)
+  const location = useLocation()
 
   useEffect(() => {
     if (authStatus === 'unknown') {
@@ -121,7 +129,7 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (authStatus === 'authenticated') {
-    return <Navigate to={ROUTES.DASHBOARD} replace />
+    return <Navigate to={readReturnTo(location.search)} replace />
   }
 
   return <>{children}</>

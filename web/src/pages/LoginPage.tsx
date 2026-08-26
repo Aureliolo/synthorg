@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router'
 import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
+import { wasInterrupted } from '@/router/return-to'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginLockout } from '@/hooks/useLoginLockout'
@@ -179,6 +181,28 @@ function LoginHeading({ mode }: { mode: Mode }) {
   )
 }
 
+/**
+ * Say that this screen appeared because a session ended, not because the
+ * operator navigated here.
+ *
+ * A session expiring mid-run replaced the page an operator was watching with
+ * what looks like a fresh visit, and one did about 50 minutes into a live run
+ * with a decomposition still in flight. Nothing said why, and the run itself
+ * was unaffected, so the only thing the silence cost was the operator's
+ * confidence that it had been.
+ */
+function SessionEndedNotice() {
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-border bg-surface p-card text-sm text-text-secondary"
+    >
+      Your session ended, so you were signed out. Signing in returns you to the
+      page you were on; the org kept working in the meantime.
+    </div>
+  )
+}
+
 function LoginAlerts({
   error,
   locked,
@@ -270,6 +294,10 @@ function LoginFields({
 export default function LoginPage() {
   const { mode, minPasswordLength } = useLoginMode()
   const form = useAuthForm({ mode, minPasswordLength })
+  const location = useLocation()
+  // Only when signing in, never during first-run setup: nothing has expired
+  // for somebody who has not had a session yet.
+  const interrupted = mode === 'login' && wasInterrupted(location.search)
 
   return (
     // ``h-full`` (100% of the ``height:100%`` #root chain), NOT ``min-h-screen``
@@ -287,6 +315,8 @@ export default function LoginPage() {
         >
           {/* Wordmark */}
           <p className="text-center font-sans text-2xl font-bold text-accent">SynthOrg</p>
+
+          {interrupted && <SessionEndedNotice />}
 
           {mode === 'loading' ? (
             <p className="text-center text-sm text-text-secondary">Checking setup status...</p>
