@@ -785,6 +785,24 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
                 _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
             )
 
+    async def test_a_bare_timeout_from_a_child_is_not_absorbed(self) -> None:
+        # The regression absorbing a child ceiling could introduce, and the
+        # reason the catch is on the TYPE rather than on TimeoutError. A bare
+        # TimeoutError is what reaches this level when the WHOLE-TREE scope is
+        # what expired: the session scope has not, so the session site re-raises
+        # what it caught. The bound it breached covers every level, so no level
+        # holds a plan that outlived it and nothing here may file it as a note
+        # on one unit. It travels to the root, which classifies it against its
+        # own scope.
+        service = _service_whose_child_level_fails(TimeoutError())
+
+        with pytest.raises(DecompositionError) as caught:
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
+
+        assert not isinstance(caught.value, DecompositionTimeoutError)
+
 
 class TestASmallObjectiveStaysSmall:
     """Less if it needs less: the backstops are guards, not targets.
