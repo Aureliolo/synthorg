@@ -27,6 +27,7 @@ from synthorg.engine.decomposition._recursion import (
     child_context,
     resolve_decomposition_bounds,
     resolve_recursion_budget,
+    stamp_objective_criteria,
 )
 from synthorg.engine.decomposition._split_decision import (
     SplitOutcome,
@@ -230,7 +231,9 @@ class DecompositionService:
         # Resolved once, at the root, and stamped onto the context every level
         # below plans under: one tree is never planned under two budgets, and
         # a caller that declared its own shape (the manual endpoints) keeps it.
-        context = await resolve_decomposition_bounds(context, self._config_resolver)
+        context = stamp_objective_criteria(
+            task, await resolve_decomposition_bounds(context, self._config_resolver)
+        )
         # The outer of the two ceilings, and the only one that bounds a
         # CALLER. The inner one below bounds a planning session, and a
         # recursion runs one per node, so the number of sessions is the
@@ -558,9 +561,12 @@ class DecompositionService:
                 unsplit[subtask_def.id] = decision.reason
                 continue
             step = SubtreeStep(title=str(subtask_def.title), position=position)
+            child_ctx = child_context(
+                context, step=step, satisfied=subtask_def.satisfies
+            )
             try:
                 child = await self._do_decompose(
-                    child_task, child_context(context, step=step), budget, ledger=ledger
+                    child_task, child_ctx, budget, ledger=ledger
                 )
             except DecompositionUnsplittableError as exc:
                 # The one child failure this level can answer. Its own plan is
@@ -596,6 +602,12 @@ class DecompositionService:
                 subtask_count=len(child.created_tasks),
                 leaf_count=len(child.leaf_tasks),
                 sessions_remaining=ledger.remaining,
+                # What the level below is answerable for, and what it claimed
+                # to get there. A subtree narrowing to zero is the shape that
+                # ends coverage checking for everything under it, and it is
+                # otherwise only visible by reading the plan afterwards.
+                claimed_count=len(subtask_def.satisfies),
+                covers_count=len(child_ctx.objective_criteria),
             )
         return SplitOutcome(
             children=tuple(children), unsplit=unsplit, assemblies=assemblies

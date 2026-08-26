@@ -40,6 +40,8 @@ export interface RowProps {
   roster: ReadonlySet<string> | undefined
   /** What this row may be moved under, computed against the whole draft set. */
   parentChoices: readonly SelectOption[]
+  /** The plan's objective criteria, which is the whole claimable vocabulary. */
+  objectiveCriteria: readonly string[]
   onChange: (index: number, patch: Partial<DraftItem>) => void
   onRemove: (index: number) => void
 }

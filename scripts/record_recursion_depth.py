@@ -61,7 +61,7 @@ from evals.recursion_depth.emit import (
     write_report,
 )
 from evals.recursion_depth.grading import SandboxUnitGrader
-from evals.recursion_depth.journal import read_recorded_cells
+from evals.recursion_depth.journal import adopt_repaired_spend, read_recorded_cells
 from evals.recursion_depth.manifest import (
     ModelPair,
     RecursionDepthManifest,
@@ -72,6 +72,9 @@ from evals.recursion_depth.models import (
     ORACLE_CAVEAT,
     RUN_STATE_CAVEATS,
     SIZING_CAVEAT,
+    CellRecord,
+    Provenance,
+    RecursionDepthReport,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import run_preflight
@@ -84,7 +87,7 @@ from evals.recursion_depth.runner import (
 )
 from evals.recursion_depth.session import SessionLimits, SweepDeps
 from evals.recursion_depth.spend_repair import (
-    SPEND_REPAIRED_CAVEAT,
+    placed_units,
     repair_cell_spend,
     tokens_by_unit,
 )
@@ -268,46 +271,18 @@ def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]
     ]
 
 
-def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
-    """Render the matrix a record run would execute.
-
-    The session count is what a FULL tree costs at the declared branching, not
-    a bound in either direction: a planner that stops short of the cap spends
-    less, and one that branches wider spends more, neither of which the
-    manifest can predict, which is exactly why ``max_sessions`` exists. It is
-    derived from the TREE each cap admits rather than from the size of the
-    matrix: a depth sweep's sessions come from the tree, so a matrix-shaped
-    figure is the one an operator sizes a ceiling from and loses a paid run to.
-    Against a real cap-3 cost of about 158 sessions PER CELL, a ceiling of 30
-    bought a planned 85-leaf tree, six built units and nothing measured.
-
-    The assumption is printed beside the figure rather than buried, because a
-    model whose input is hidden reads as a measurement.
+def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[str]:
+    """Render what the matrix is projected to cost, and on what assumption.
 
     Args:
         manifest: The recording matrix.
-        spec: The specification the sweep builds.
+        projected: Sessions a full tree costs across every planned cell.
 
     Returns:
-        A human-readable plan.
+        The projection block.
     """
-    cells = planned_cells(manifest)
-    projected = sum(manifest.projected_sessions(cell.depth_cap) for cell in cells)
     per_cell = {depth: manifest.projected_sessions(depth) for depth in manifest.depths}
-    lines = [
-        "Recursion-depth recording plan",
-        "",
-        f"  specification : {spec.spec_id} ({len(spec.requirement_ids)} requirements)",
-        f"  depth caps    : {', '.join(str(d) for d in manifest.depths)}",
-        "  repetitions   : "
-        + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
-        f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
-        f"  executor      : {_pair(manifest.executor)}",
-        f"  reviewer      : {_pair(manifest.reviewer)}",
-        f"  independence  : {manifest.independence.value}",
-        f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
-        "",
-        f"  runs          : {len(cells)}",
+    return [
         (
             f"  sessions      : {projected:,} for a full tree "
             "("
@@ -348,12 +323,122 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
             "money ceiling above can never fire"
         ),
     ]
+
+
+def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
+    """Render the matrix a record run would execute.
+
+    The session count is what a FULL tree costs at the declared branching, not
+    a bound in either direction: a planner that stops short of the cap spends
+    less, and one that branches wider spends more, neither of which the
+    manifest can predict, which is exactly why ``max_sessions`` exists. It is
+    derived from the TREE each cap admits rather than from the size of the
+    matrix: a depth sweep's sessions come from the tree, so a matrix-shaped
+    figure is the one an operator sizes a ceiling from and loses a paid run to.
+    Against a real cap-3 cost of about 158 sessions PER CELL, a ceiling of 30
+    bought a planned 85-leaf tree, six built units and nothing measured.
+
+    The assumption is printed beside the figure rather than buried, because a
+    model whose input is hidden reads as a measurement.
+
+    Args:
+        manifest: The recording matrix.
+        spec: The specification the sweep builds.
+
+    Returns:
+        A human-readable plan.
+    """
+    cells = planned_cells(manifest)
+    projected = sum(manifest.projected_sessions(cell.depth_cap) for cell in cells)
+    lines = [
+        "Recursion-depth recording plan",
+        "",
+        f"  specification : {spec.spec_id} ({len(spec.requirement_ids)} requirements)",
+        f"  depth caps    : {', '.join(str(d) for d in manifest.depths)}",
+        "  repetitions   : "
+        + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
+        f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
+        f"  executor      : {_pair(manifest.executor)}",
+        f"  reviewer      : {_pair(manifest.reviewer)}",
+        f"  independence  : {manifest.independence.value}",
+        f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
+        "",
+        f"  runs          : {len(cells)}",
+        *_projection_lines(manifest, projected),
+    ]
     lines.extend(_ceiling_note(manifest, projected))
     caveat = manifest.caveat()
     if caveat is not None:
         lines.extend(["", f"  CAVEAT: {caveat}"])
     lines.extend(["", "Each session spends real provider tokens. Pass --record."])
     return "\n".join(lines)
+
+
+async def _release(
+    binder: HarnessBinder | None, run_work_root: Path, *, keep: bool
+) -> None:
+    """Give back what the sweep held, whether or not it finished.
+
+    Grading and the oracle open their own containers, and both run OUTSIDE the
+    session context whose exit drains the agent's. Left to that hook alone,
+    each grading container waits for the next unit's teardown and the last ones
+    are never reclaimed at all, which is the leak ``release_tool_sandboxes``
+    exists to prevent, reintroduced by a second producer.
+
+    Nested, so releasing the containers and reclaiming the trees are two
+    independent obligations rather than a sequence where the first one failing
+    silently drops the second.
+
+    Args:
+        binder: The harness binder, or ``None`` if the host never stood up.
+        run_work_root: Where this run built its trees.
+        keep: Whether the trees stay. An unfinished sweep keeps them, because
+            they are what ``--resume`` continues with: discarding them on the
+            way out of a failure turns every part-built cell into one that has
+            to be paid for again, which is the loss the journal exists to stop.
+    """
+    try:
+        if binder is not None:
+            await binder.release_tool_sandboxes()
+    finally:
+        await _reclaim_workspaces(run_work_root, keep=keep)
+
+
+async def _sweep_under(
+    context: SweepContext,
+    *,
+    args: argparse.Namespace,
+    manifest: RecursionDepthManifest,
+    spec: SpecBrief,
+) -> RecursionDepthReport:
+    """Stamp what this run is measured against, then run it.
+
+    The two belong together: provenance is captured from the tree the sweep is
+    about to run against, so capturing it anywhere else is capturing it about a
+    different commit than the one that produced the cells.
+
+    Args:
+        context: The bound sweep.
+        args: The parsed command line.
+        manifest: The recording matrix.
+        spec: The specification the sweep builds.
+
+    Returns:
+        The report the sweep produced.
+    """
+    provenance = await asyncio.to_thread(
+        partial(
+            capture_provenance,
+            repo_root=Path.cwd(),
+            manifest_path=args.manifest,
+            manifest=manifest,
+            spec=spec,
+            out_dir=args.out_dir,
+        )
+    )
+    return await run_sweep(
+        context, provenance=provenance, out_dir=args.out_dir, resume=args.resume
+    )
 
 
 async def _record(
@@ -399,47 +484,17 @@ async def _record(
                 work_root=run_work_root,
             )
             _log_record_start(args, manifest=manifest, host=host)
-            provenance = await asyncio.to_thread(
-                partial(
-                    capture_provenance,
-                    repo_root=Path.cwd(),
-                    manifest_path=args.manifest,
-                    manifest=manifest,
-                    spec=spec,
-                    out_dir=args.out_dir,
-                )
-            )
-            report = await run_sweep(
-                context,
-                provenance=provenance,
-                out_dir=args.out_dir,
-                resume=args.resume,
+            report = await _sweep_under(
+                context, args=args, manifest=manifest, spec=spec
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
             paths = await asyncio.to_thread(write_report, report, args.out_dir)
             completed = True
     finally:
-        # Grading and the oracle open their own containers, and both run OUTSIDE
-        # the session context whose exit drains the agent's. Left to that hook
-        # alone, each grading container waits for the next unit's teardown and
-        # the last ones are never reclaimed at all, which is the leak
-        # release_tool_sandboxes exists to prevent, reintroduced by a second
-        # producer.
-        # Nested, so releasing the containers and reclaiming the trees are two
-        # independent obligations rather than a sequence where the first one
-        # failing silently drops the second.
-        try:
-            if binder is not None:
-                await binder.release_tool_sandboxes()
-        finally:
-            # An unfinished sweep keeps its trees, because they are what
-            # ``--resume`` continues with: discarding them on the way out of a
-            # failure turns every part-built cell into one that has to be paid
-            # for again, which is the loss the journal exists to stop.
-            await _reclaim_workspaces(
-                run_work_root, keep=args.keep_workspaces or not completed
-            )
+        await _release(
+            binder, run_work_root, keep=args.keep_workspaces or not completed
+        )
     print("report written: " + ", ".join(str(path) for path in paths))
     if not report.measured_cells:
         msg = (
@@ -1068,6 +1123,51 @@ def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
     return tuple(str(entry) for entry in caveats)
 
 
+def _repaired(
+    out_dir: Path,
+    provenance: Provenance,
+    cells: list[CellRecord],
+    *,
+    log: Path,
+) -> tuple[Provenance, list[CellRecord]]:
+    """Rebuild the spend column from a recorder log and adopt it.
+
+    Written back to the journal, not just to the report. A repair applied at
+    scoring time leaves the artefact reproducible only by whoever still has the
+    log, and the log is not a committed thing: the next re-score silently
+    regresses the column to figures this recording's own caveat calls
+    scrambled.
+
+    Args:
+        out_dir: Where the recording wrote its journal.
+        provenance: What the recording says it is measured against.
+        cells: The cells as journalled.
+        log: The recorder log to attribute from.
+
+    Returns:
+        The provenance declaring a repaired column, and the repaired cells.
+
+    Raises:
+        RecursionDepthSpendRepairEmptyError: The log placed nothing on THIS
+            recording, so the claim would sit beside figures nothing touched,
+            which is the worse outcome of the two.
+    """
+    attributed = tokens_by_unit(log)
+    # Against the recording's own units rather than against the attribution
+    # alone: a log from a DIFFERENT recording parses perfectly and names cells
+    # and units this one does not have, so it rewrites nothing while reading as
+    # a full account of somebody's spend.
+    if not placed_units(cells, attributed):
+        msg = (
+            f"{log} attributed no calls to any unit of this recording; the log "
+            f"is not this recording's, or its rendering no longer parses"
+        )
+        raise RecursionDepthSpendRepairEmptyError(msg)
+    return adopt_repaired_spend(
+        out_dir, provenance=provenance, cells=repair_cell_spend(cells, attributed)
+    )
+
+
 def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
     """Re-emit a finished recording's report from its own journal.
 
@@ -1102,34 +1202,24 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
     # stopped. Matching on the declared set rather than on "anything I do not
     # recognise" is what stops a retired sentence living for ever.
     #
-    # The repair caveat is deliberately in neither group. The journal holds the
-    # RAW figures and the repair is applied at scoring time, so a re-score
-    # without the flag emits unrepaired numbers and inheriting the sentence
-    # saying they were repaired would make the report state the opposite of
-    # what it holds.
+    # The repair caveat is in neither group either, and for a different reason
+    # from the two above: it is DERIVED, off the provenance the journal itself
+    # carries. Stated instead by whoever typed the flag, it says nothing at all
+    # on a later re-score of the same journal, or the opposite of what that
+    # journal holds.
+    if repair_from is not None:
+        provenance, cells = _repaired(out_dir, provenance, cells, log=repair_from)
     caveats = [
         METRIC_CAVEAT,
         SIZING_CAVEAT,
         ORACLE_CAVEAT,
-        *derived_caveats(cells),
+        *derived_caveats(cells, spend_source=provenance.spend_source),
         *(
             caveat
             for caveat in dict.fromkeys(_previous_caveats(out_dir))
             if caveat in RUN_STATE_CAVEATS
         ),
     ]
-    if repair_from is not None:
-        attributed = tokens_by_unit(repair_from)
-        if not attributed:
-            # The caveat is a provenance claim, so appending it beside figures
-            # nothing touched is the worse outcome of the two.
-            msg = (
-                f"{repair_from} attributed no calls to any unit; the log is "
-                f"not this recording's, or its rendering no longer parses"
-            )
-            raise RecursionDepthSpendRepairEmptyError(msg)
-        cells = repair_cell_spend(cells, attributed)
-        caveats.append(SPEND_REPAIRED_CAVEAT)
     report = assemble_report(
         provenance=provenance,
         cells=cells,

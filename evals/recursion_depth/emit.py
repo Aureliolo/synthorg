@@ -11,28 +11,38 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import get_args
+from typing import Final, get_args
 
 from pydantic import BaseModel, JsonValue
 
-from evals.errors import RecursionDepthNoCellsMeasuredError
+from evals.errors import (
+    RecursionDepthClaimUnresolvableError,
+    RecursionDepthNoCellsMeasuredError,
+)
 from evals.recursion_depth.chart import render_chart
 from evals.recursion_depth.journal import cell_key
 from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
     MERGE,
+    UNATTRIBUTED_LEAVES_CAVEAT,
+    UNRESOLVABLE_CLAIM_CELLS_CAVEAT,
     UNRESOLVED_CLAIMS_CAVEAT,
     CellRecord,
     DepthPoint,
     Provenance,
     RecursionDepthReport,
+    SpendSource,
+    SurvivalPoint,
     UnitRecord,
 )
 from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
     curve_by_depth_cap,
+    survival_by_achieved_depth,
+    survival_by_depth_cap,
 )
+from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_NO_CELLS,
@@ -41,16 +51,23 @@ from synthorg.observability.events.evals import (
 
 logger = get_logger(__name__)
 
+#: What an unavailable cell's reason starts with when a claim named nothing.
+#: Derived from the class rather than spelled out, so renaming the error keeps
+#: the caveat firing instead of silently ceasing to.
+_CLAIM_UNRESOLVABLE: Final[str] = RecursionDepthClaimUnresolvableError.__name__
+
 #: The three artifacts a report is, named once. A re-score reads the JSON back
 #: for what only it holds, so a second literal spelling would be one rename
 #: from reading a file nothing writes.
-REPORT_JSON_NAME: str = "depth_curve.json"
-REPORT_MARKDOWN_NAME: str = "depth_curve.md"
-REPORT_CHART_NAME: str = "chart.svg"
+REPORT_JSON_NAME: Final[str] = "depth_curve.json"
+REPORT_MARKDOWN_NAME: Final[str] = "depth_curve.md"
+REPORT_CHART_NAME: Final[str] = "chart.svg"
 
 
-def derived_caveats(cells: Sequence[CellRecord]) -> list[str]:
-    """The caveats a set of recorded cells implies on its own.
+def derived_caveats(
+    cells: Sequence[CellRecord], *, spend_source: SpendSource
+) -> list[str]:
+    """The caveats a recording implies on its own.
 
     Separated from the assembler so the caller owns the final list. A re-score
     carries the original report's caveats forward verbatim, which is the only
@@ -58,11 +75,31 @@ def derived_caveats(cells: Sequence[CellRecord]) -> list[str]:
     while the loop runs and are recoverable from nowhere else), and an
     assembler appending its own on top would emit this line twice.
 
+    Args:
+        cells: Every recorded cell.
+        spend_source: What the recording says its token column is. Read from
+            the journal rather than from whoever typed a flag, because a claim
+            about the figures a reader is holding has to survive being
+            re-scored by somebody else.
+
     Returns:
-        The caveats these cells imply, which may be none.
+        The caveats this recording implies, which may be none.
     """
+    blank = sum(
+        1 for point in survival_by_achieved_depth(cells) if point.delivered_claims == 0
+    )
     dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
-    return [UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []
+    stopped = sum(
+        1
+        for cell in cells
+        if (cell.unavailable_reason or "").startswith(_CLAIM_UNRESOLVABLE)
+    )
+    return [
+        *([UNATTRIBUTED_LEAVES_CAVEAT.format(buckets=blank)] if blank else []),
+        *([UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []),
+        *([UNRESOLVABLE_CLAIM_CELLS_CAVEAT.format(cells=stopped)] if stopped else []),
+        *([SPEND_REPAIRED_CAVEAT] if spend_source is SpendSource.REPAIRED else []),
+    ]
 
 
 def assemble_report(
@@ -116,6 +153,8 @@ def assemble_report(
         cells=tuple(cells),
         by_achieved_depth=curve_by_achieved_depth(measured, requirement_count=required),
         by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
+        survival_by_achieved_depth=survival_by_achieved_depth(measured),
+        survival_by_depth_cap=survival_by_depth_cap(measured),
         achieved_depth_histogram=achieved_depth_histogram(measured),
         caveats=tuple(caveats),
     )
@@ -144,6 +183,7 @@ def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...
             points=report.by_achieved_depth,
             caption_lines=_caption(report),
             by_cap=report.by_depth_cap,
+            survival=report.survival_by_achieved_depth,
         ),
         encoding="utf-8",
         newline="",
@@ -174,14 +214,14 @@ def _caption(report: RecursionDepthReport) -> tuple[str, ...]:
     )
 
 
-def _markdown(report: RecursionDepthReport) -> str:
-    """Render the human-readable report.
+def _provenance_lines(report: RecursionDepthReport) -> list[str]:
+    """Render what the sweep was measured against.
 
     Returns:
-        The Markdown text.
+        The heading and the provenance bullets.
     """
     provenance = report.provenance
-    lines = [
+    return [
         "# Recursion-depth sweep",
         "",
         "Does verification at every merge hold off aggregation collapse as",
@@ -199,21 +239,64 @@ def _markdown(report: RecursionDepthReport) -> str:
             f"reviewer `{provenance.reviewer.label}` "
             f"({provenance.independence.value})"
         ),
-        f"- Total spend: {report.total_cost:.4f} across {report.total_tokens} tokens",
+        (
+            f"- Total spend: {report.total_cost:.4f} across "
+            f"{report.total_tokens} tokens "
+            f"({provenance.spend_source.value})"
+        ),
         "",
-        "## Survival by depth reached",
+    ]
+
+
+def _curve_sections(report: RecursionDepthReport) -> list[str]:
+    """Render the two curves, four tables, in the order they are read.
+
+    Returns:
+        The curve sections.
+    """
+    return [
+        "## Specification satisfied by depth reached",
         "",
-        "The primary curve. Binned on the depth each leaf actually sat at, not",
-        "on the cap its run was allowed: sweeping the cap does not sweep depth.",
+        "What share of the specification the merged tree satisfies. Binned on",
+        "the depth each tree actually reached, not on the cap its run was",
+        "allowed: sweeping the cap does not sweep depth. This denominator is",
+        "the same for every cell and cannot empty, so every run has a point,",
+        "and it says nothing about where the work came from.",
         "",
         *_curve_table(report.by_achieved_depth),
         "",
-        "## Survival by depth cap",
+        "## Specification satisfied by depth cap",
         "",
         "The manipulated variable, for comparison with the histogram below.",
         "",
         *_curve_table(report.by_depth_cap),
         "",
+        "## Leaf-work survival by depth reached",
+        "",
+        "The question the sweep was built around: of the requirements the",
+        "DELIVERED leaves claimed, how many the merged tree still satisfies.",
+        "Same axis as the curve above, so the two read together. A bucket",
+        "whose delivered leaves claimed nothing has no rate and reads `n/a`,",
+        "which is not the same as a rate of zero.",
+        "",
+        *_survival_table(report.survival_by_achieved_depth),
+        "",
+        "## Leaf-work survival by depth cap",
+        "",
+        *_survival_table(report.survival_by_depth_cap),
+        "",
+    ]
+
+
+def _markdown(report: RecursionDepthReport) -> str:
+    """Render the human-readable report.
+
+    Returns:
+        The Markdown text.
+    """
+    lines = [
+        *_provenance_lines(report),
+        *_curve_sections(report),
         "## How deep the runs went",
         "",
         *_histogram_table(report),
@@ -276,6 +359,32 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
             f"| {point.required} | {rendered} | {point.cells} "
             f"| {point.attempts} | {point.tokens} "
             f"| {point.cost:.4f} |"
+        )
+    return rows
+
+
+def _survival_table(points: tuple[SurvivalPoint, ...]) -> list[str]:
+    """Render one survival curve as a Markdown table.
+
+    No spend columns: a run books what it cost once, on its specification
+    point, and repeating the figure beside a second denominator would let two
+    columns of one number come to disagree.
+
+    Returns:
+        The table lines.
+    """
+    rows = [
+        "| Depth | Arm | Survived | Claimed | Fraction | Runs |",
+        "|---:|---|---:|---:|---:|---:|",
+    ]
+    for point in points:
+        fraction = point.fraction
+        # An absence rather than a zero: the delivered leaves claimed nothing,
+        # so there is no rate, and 0.000 would say every claim was lost.
+        rendered = "n/a" if fraction is None else f"{fraction:.3f}"
+        rows.append(
+            f"| {point.depth} | {point.arm.value} | {point.surviving_claims} "
+            f"| {point.delivered_claims} | {rendered} | {point.cells} |"
         )
     return rows
 

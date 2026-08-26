@@ -77,6 +77,7 @@ is produced today, and "Evidence" is the collapse that surfaced it.
 | Which agent takes this work | the coordination ranker | the capability floor dispatch refused on | A, then the work was rejected downstream | no | the selection ladder (`core/capability_fit.py::partition_by_fit`), which the solo path and the coordination path both apply before ranking | audit |
 | May this work run under-capable | selection's own filter | dispatch's own re-check | B | no | `CapabilityPolicy.judge(...).sanctioned`, one verdict both sides read off the same shared instance | audit |
 | Who contributed to this initiative | `Project.team` | the tasks that actually ran | A, and it was always empty | no | `engine/initiative/contributors.py::initiative_contributors`; the stored field is deleted | audit |
+| What vocabulary a plan item's `satisfies` is drawn from | the objective the tree is planned from | whatever prose the level above happened to write about this unit | B, at every level below the root, and the ROOT's criteria simply stopped existing one level down | no | `_recursion.py::child_context`, narrowing `DecompositionContext.objective_criteria` to the criteria the parent unit claimed, with `stamp_objective_criteria` filling it once at the root. The claim itself is matched by one function (`core/criterion_match.py`) at both boundaries that write one | a recursion-depth sweep, which dropped 143 claims naming nothing and could attribute no leaf work at all |
 
 Three of these are worth reading as a set. The model and capability rows are one
 decision split across two registries; the `task_structure` and plan rows are one
@@ -153,6 +154,15 @@ A new loop decision passes this checklist before it ships.
    indistinguishable from a decision nobody made, which is why five of the
    thirty-eight collapses were observability defects about an actor the system
    knew and never wrote down.
+
+Not every entry earns a gate, and the `satisfies` vocabulary row is the worked
+example of one that does not. Its population is two call sites of one matcher,
+both directly test-covered at the boundary they guard, so a gate asserting
+"these two reach the matcher" would restate the tests rather than catch what
+they cannot. What a gate could add is a rule against a THIRD writer appearing
+with its own hand-rolled comparison, and deciding by expression shape whether
+some `in` or `intersection` is that comparison is a heuristic, which is exactly
+the kind of rule this page says an AST cannot make.
 
 ## See also
 

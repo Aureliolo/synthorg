@@ -2,11 +2,12 @@
 """Translate between a spec requirement id and the criterion text that carries it.
 
 The root objective is filed with one acceptance criterion per requirement, and
-the planner echoes those criterion STRINGS back on each subtask's ``satisfies``
-(the product's field means "objective success criteria this subtask advances",
-not "requirement ids"). Everything downstream wants the id: the brief looks the
-requirement's prose up by id, and survival is scored by intersecting claims with
-the ids the oracle reports passing.
+every level of the plan claims from that same list: the product narrows an
+objective's criteria to what a unit claimed before planning the level below it,
+so a claim made at any depth still names a criterion this module minted.
+Everything downstream wants the id: the brief looks the requirement's prose up
+by id, and survival is scored by intersecting claims with the ids the oracle
+reports passing.
 
 Both directions live here because they are one fact. Split across the module
 that mints the criterion and the modules that read it back, they drifted, and
@@ -15,21 +16,18 @@ every requirement a leaf was answerable for, so every executor worked from its
 unit title alone; and the survival intersection compared criterion text against
 bare ids, so the surviving count was zero in every cell of every run.
 
-That mapping is still not sound, and the curve no longer rests on it: a live
-sweep dropped 143 claims naming no requirement the specification defines, which
-is why :mod:`evals.recursion_depth.score` divides by the specification rather
-than by what the leaves claimed. The claims here still decide what a leaf is
-told it is answerable for, so the brief half remains load-bearing.
+The criterion carries the requirement's TITLE as well as its id, because the
+criterion is what a planner at depth is shown as the thing it must still cover
+and the specification prose does not travel down with it: a child task's
+description is the prose the level above wrote about that unit. An id alone is
+not something a planner can allocate work against.
 """
 
 import re
 from collections.abc import Iterable, Sequence
-from typing import NamedTuple, NewType
+from typing import NewType
 
-from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_CLAIM_UNRESOLVED
-
-logger = get_logger(__name__)
+from evals.errors import RecursionDepthClaimUnresolvableError
 
 #: One token of the closed vocabulary the specification declares.
 #:
@@ -43,7 +41,7 @@ logger = get_logger(__name__)
 RequirementId = NewType("RequirementId", str)
 
 #: The criterion a requirement id is filed as on the root objective.
-_CRITERION_TEMPLATE = "{identifier} is satisfied"
+_CRITERION_TEMPLATE = "{identifier}: {title}"
 
 #: A requirement id anywhere in a criterion, so a planner that rewords the
 #: text around the id still resolves. The id itself is never reworded: it is
@@ -51,60 +49,49 @@ _CRITERION_TEMPLATE = "{identifier} is satisfied"
 _IDENTIFIER = re.compile(r"\bR\d+\b")
 
 
-class ResolvedClaims(NamedTuple):
-    """What one unit's claims resolved to.
-
-    Two fields rather than one, because the counts are in DIFFERENT UNITS and
-    neither can be derived from the other: ``ids`` counts requirements, after
-    deduplication, while ``unresolved`` counts CLAIMS. Subtracting the first
-    from the claim count is wrong in both directions, and both are reachable
-    from an ordinary planner: one claim naming two requirements makes the
-    difference negative, which ``UnitRecord.unresolved_claims`` refuses at
-    ``ge=0`` and so discards a cell every leaf of which was already paid for;
-    two claims naming one requirement makes it over-report drift, which is the
-    one signal the caveat exists to carry.
-
-    Attributes:
-        ids: The resolved ids, deduplicated, in the order first seen.
-        unresolved: How many claims named no requirement the spec defines.
-    """
-
-    ids: tuple[RequirementId, ...]
-    unresolved: int
-
-
-def criterion_for(identifier: RequirementId) -> str:
+def criterion_for(identifier: RequirementId, title: str) -> str:
     """Render the acceptance criterion carrying *identifier*.
+
+    Args:
+        identifier: The requirement the criterion is for.
+        title: Its one-line title, so a planner reading the criterion at depth
+            can allocate work against it without the specification in front of
+            it.
 
     Returns:
         The criterion text filed on the root objective.
     """
-    return _CRITERION_TEMPLATE.format(identifier=identifier)
+    return _CRITERION_TEMPLATE.format(identifier=identifier, title=title)
 
 
 def requirement_ids_of(
     claims: Iterable[str], *, known: Sequence[RequirementId], unit: str
-) -> ResolvedClaims:
+) -> tuple[RequirementId, ...]:
     """Resolve *claims* to the spec requirement ids they name.
 
     A claim resolves on the id token it contains, checked against *known*, so
-    a planner that rewords the criterion still scores and one that invents a
-    requirement does not. An unresolvable claim is dropped with a WARNING
-    naming it rather than passed through: passed through it reaches the brief
-    as "no such requirement" and the survival intersection as a string that
-    matches nothing, both of which read as an ordinary zero.
+    a planner that rewords the criterion still scores. One that names no
+    requirement at all RAISES: passed through it reaches the brief as "no such
+    requirement" and the survival intersection as a string that matches
+    nothing, both of which read as an ordinary zero, and dropped with a warning
+    it is 143 silent deflations of the ratio the sweep exists to measure.
+
+    Raising here is the backstop. The product refuses such a claim at the
+    boundary the planner writes it, where the session can still correct it, so
+    reaching this means that boundary regressed and no measurement taken from
+    the tree would mean anything.
 
     Args:
         claims: What the planner declared for one unit.
         known: Every requirement id the specification defines.
-        unit: The unit the claims belong to, for the warning.
+        unit: The unit the claims belong to, for the message.
 
     Returns:
-        The resolved ids and how many claims resolved to nothing. The count is
-        taken HERE, where a claim is still one claim, rather than derived by a
-        caller from the two lengths: those are different units and the
-        subtraction is wrong whenever a claim names two requirements or two
-        claims name one.
+        The resolved ids, deduplicated, in the order first seen.
+
+    Raises:
+        RecursionDepthClaimUnresolvableError: A claim names no requirement the
+            specification defines.
     """
     vocabulary = frozenset(known)
     resolved: list[RequirementId] = []
@@ -116,7 +103,6 @@ def requirement_ids_of(
     # invisible at the call site. A claim that names one requirement twice is
     # what separates them, and the set makes the answer independent of that.
     seen: set[RequirementId] = set()
-    unresolved = 0
     for claim in claims:
         found = [
             RequirementId(one)
@@ -124,19 +110,21 @@ def requirement_ids_of(
             if one in vocabulary
         ]
         if not found:
-            logger.warning(EVALS_RECURSION_CLAIM_UNRESOLVED, unit=unit, claim=claim)
-            unresolved += 1
-            continue
+            msg = (
+                f"unit {unit!r} claims {claim!r}, which names none of the "
+                f"{len(vocabulary)} requirements this specification defines, "
+                f"so nothing it delivers can be attributed"
+            )
+            raise RecursionDepthClaimUnresolvableError(msg)
         for identifier in found:
             if identifier not in seen:
                 seen.add(identifier)
                 resolved.append(identifier)
-    return ResolvedClaims(ids=tuple(resolved), unresolved=unresolved)
+    return tuple(resolved)
 
 
 __all__ = [
     "RequirementId",
-    "ResolvedClaims",
     "criterion_for",
     "requirement_ids_of",
 ]

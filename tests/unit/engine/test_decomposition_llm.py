@@ -15,6 +15,7 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm import (
@@ -62,6 +63,13 @@ def _make_task(
     )
 
 
+#: What the objective states, and so the vocabulary every plan below it copies
+#: from. Carried on the context because that is what a real run is handed:
+#: ``stamp_objective_criteria`` fills it from the task before the first
+#: strategy call, and a level answerable for nothing admits no claim.
+_OBJECTIVE_CRITERIA: tuple[NotBlankStr, ...] = (NotBlankStr("Login returns token"),)
+
+
 def _make_context(
     max_subtasks: int = 10,
     max_depth: int = 3,
@@ -72,6 +80,7 @@ def _make_context(
         max_subtasks=max_subtasks,
         max_depth=max_depth,
         current_depth=current_depth,
+        objective_criteria=_OBJECTIVE_CRITERIA,
     )
 
 
@@ -229,7 +238,10 @@ class TestLlmDecompositionStrategy:
 
         with pytest.raises(DecompositionError, match="Unknown task_structure"):
             args_to_decomposition_plan(
-                cast("dict[str, JsonValue]", args), "task-parent-1"
+                cast("dict[str, JsonValue]", args),
+                "task-parent-1",
+                (),
+                _OBJECTIVE_CRITERIA,
             )
 
     @pytest.mark.unit
@@ -246,7 +258,10 @@ class TestLlmDecompositionStrategy:
 
         with pytest.raises(DecompositionError, match="Unknown task_structure"):
             args_to_decomposition_plan(
-                cast("dict[str, JsonValue]", args), "task-parent-1"
+                cast("dict[str, JsonValue]", args),
+                "task-parent-1",
+                (),
+                _OBJECTIVE_CRITERIA,
             )
 
     @pytest.mark.unit
@@ -264,7 +279,10 @@ class TestLlmDecompositionStrategy:
 
         with pytest.raises(DecompositionError, match="no dependencies"):
             args_to_decomposition_plan(
-                cast("dict[str, JsonValue]", args), "task-parent-1"
+                cast("dict[str, JsonValue]", args),
+                "task-parent-1",
+                (),
+                _OBJECTIVE_CRITERIA,
             )
 
     @pytest.mark.unit
@@ -297,6 +315,9 @@ class TestLlmDecompositionStrategy:
                 ),
             ],
         }
+        # No objective criteria: these items claim nothing, and this case is
+        # about the graph. Handing it a vocabulary would fail the plan on
+        # coverage before the edge under test was ever reached.
         # Sanity: with the dependency declared the plan is accepted, so the
         # failure below is the missing edge and not the titles themselves.
         args_to_decomposition_plan(cast("dict[str, JsonValue]", args), "task-parent-1")
@@ -328,6 +349,8 @@ class TestLlmDecompositionStrategy:
             "coordination_topology": "auto",
             "subtasks": [server, page],
         }
+        # No objective criteria, for the reason the case above gives: these
+        # items claim nothing and this case is about the criterion's reach.
         # Sanity: the plan stands until the criterion reaches downstream, so
         # the failure below is the criterion and not the pair of items.
         args_to_decomposition_plan(cast("dict[str, JsonValue]", args), "task-parent-1")
@@ -347,7 +370,10 @@ class TestLlmDecompositionStrategy:
             subtask["dependencies"] = []
 
         plan = args_to_decomposition_plan(
-            cast("dict[str, JsonValue]", args), "task-parent-1"
+            cast("dict[str, JsonValue]", args),
+            "task-parent-1",
+            (),
+            _OBJECTIVE_CRITERIA,
         )
 
         assert plan.task_structure is TaskStructure.PARALLEL
@@ -443,6 +469,7 @@ class TestLlmDecompositionStrategy:
             max_subtasks=3,
             max_depth=3,
             current_depth=0,
+            objective_criteria=_OBJECTIVE_CRITERIA,
             atomicity=SubtaskAtomicityPolicy(
                 max_expected_artifacts=1, max_acceptance_criteria=1
             ),

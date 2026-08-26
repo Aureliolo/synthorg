@@ -145,9 +145,10 @@ class PlanItem(BaseModel):
     )
     satisfies: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Advisory tags naming the objective criteria this item "
-        "advances; matched leniently for the coverage map, not enforced to "
-        "name an entry of the plan's objective_criteria",
+        description="Which of the plan's objective_criteria this item "
+        "advances, copied from them and matched ignoring case and "
+        "surrounding or repeated whitespace; both write boundaries refuse an "
+        "entry naming none of them, and an item may claim nothing",
     )
     unsplit_reason: NotBlankStr | None = Field(
         default=None,

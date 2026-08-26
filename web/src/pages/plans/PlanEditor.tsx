@@ -12,6 +12,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
 import { isUnroutableOwner } from '@/utils/plans'
 
+import { CoverageField } from './PlanEditorCoverage'
 import { usePlanEditorRows } from './PlanEditor.paging'
 import {
   acceptanceText,
@@ -135,30 +136,10 @@ function ItemGradingFields({ index, draft, onChange }: GradingProps) {
   )
 }
 
-function PlanEditorRow({
-  index,
-  draft,
-  canRemove,
-  roster,
-  parentChoices,
-  onChange,
-  onRemove,
-}: RowProps) {
+/** What an item IS: its title, its prose, and what it must deliver. */
+function ItemTextFields({ index, draft, onChange }: GradingProps) {
   return (
-    <div className="space-y-3 rounded-md border border-border p-card">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">Item {index + 1}</span>
-        {canRemove && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Remove item ${String(index + 1)}`}
-            onClick={() => onRemove(index)}
-          >
-            <Trash2 />
-          </Button>
-        )}
-      </div>
+    <>
       <InputField
         label="Title"
         value={draft.title}
@@ -201,6 +182,36 @@ function PlanEditorRow({
           onChange(index, { expectedArtifacts: value.split('\n') })
         }
       />
+    </>
+  )
+}
+
+function PlanEditorRow({
+  index,
+  draft,
+  canRemove,
+  roster,
+  parentChoices,
+  objectiveCriteria,
+  onChange,
+  onRemove,
+}: RowProps) {
+  return (
+    <div className="space-y-3 rounded-md border border-border p-card">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-foreground">Item {index + 1}</span>
+        {canRemove && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Remove item ${String(index + 1)}`}
+            onClick={() => onRemove(index)}
+          >
+            <Trash2 />
+          </Button>
+        )}
+      </div>
+      <ItemTextFields index={index} draft={draft} onChange={onChange} />
       <OwnerField index={index} draft={draft} roster={roster} onChange={onChange} />
       <ParentField
         index={index}
@@ -209,6 +220,12 @@ function PlanEditorRow({
         onChange={onChange}
       />
       <ItemGradingFields index={index} draft={draft} onChange={onChange} />
+      <CoverageField
+        index={index}
+        satisfies={draft.satisfies}
+        objectiveCriteria={objectiveCriteria}
+        onChange={onChange}
+      />
     </div>
   )
 }
@@ -265,6 +282,7 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           canRemove={drafts.length > 1}
           roster={roster}
           parentChoices={choices[offset] ?? []}
+          objectiveCriteria={plan.objective_criteria}
           onChange={change}
           onRemove={remove}
         />

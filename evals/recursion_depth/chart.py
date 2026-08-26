@@ -2,26 +2,27 @@
 """The deliverable: one chart, emitted as a self-contained SVG.
 
 Hand-emitted rather than plotted by a library. The repository carries no
-plotting dependency, a two-series six-point line chart with a cost panel does
-not justify adding one, and a committed SVG diffs, renders in the docs and can
-be read without running anything.
+plotting dependency, three stacked panels of a two-series six-point line do not
+justify adding one, and a committed SVG diffs, renders in the docs and can be
+read without running anything.
 
 The palette is declared for both themes and the page paints its own background,
 because an SVG with no background renders as light-on-light for half its
 readers.
 
-The caption is part of the chart rather than prose beside it. Three things must
-travel with the curve wherever it is pasted: how many runs actually reached each
-depth, that unit sizing was the planner's own, and what independence the judge
-had. A number separated from its caveats gets over-read, which is the failure
-this whole experiment exists downstream of.
+The caption is part of the chart rather than prose beside it. Four things must
+travel with the curve wherever it is pasted: what each of the two curves
+measures, how many runs actually reached each depth, that unit sizing was the
+planner's own, and what independence the judge had. A number separated from its
+caveats gets over-read, which is the failure this whole experiment exists
+downstream of.
 """
 
 from collections.abc import Iterable
 from typing import Final
 
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import DepthPoint
+from evals.recursion_depth.models import DepthPoint, SurvivalPoint
 
 #: Chart geometry, in user units. The viewBox scales, so these are ratios
 #: rather than pixels.
@@ -34,8 +35,14 @@ _MARGIN_TOP: Final[int] = 48
 _GAP: Final[int] = 64
 _CAPTION_LINE_HEIGHT: Final[int] = 18
 
-#: Y-axis gridlines on the survival panel, as fractions.
+#: Y-axis gridlines on a fraction panel, as fractions.
 _GRID_FRACTIONS: Final[tuple[float, ...]] = (0.0, 0.25, 0.5, 0.75, 1.0)
+
+#: Where each panel's plot area starts, derived once so a panel and the thing
+#: below it cannot disagree about how tall the one above was.
+_SPEC_PANEL_TOP: Final[float] = float(_MARGIN_TOP)
+_SURVIVAL_PANEL_TOP: Final[float] = _SPEC_PANEL_TOP + _PLOT_HEIGHT + _GAP
+_COST_PANEL_TOP: Final[float] = _SURVIVAL_PANEL_TOP + _PLOT_HEIGHT + _GAP
 
 #: Radius of a plotted point.
 _POINT_RADIUS: Final[int] = 4
@@ -81,7 +88,9 @@ def _wrap(text: str, width: int) -> list[str]:
     return lines
 
 
-def _series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, float]]]:
+def _series(
+    points: Iterable[DepthPoint | SurvivalPoint],
+) -> dict[Arm, list[tuple[int, float]]]:
     """Split points into one plottable series per arm.
 
     A point with no delivered work carries no fraction and is left out rather
@@ -153,36 +162,43 @@ def _polyline(
     )
 
 
-def _survival_panel(
+def _fraction_panel(
     series: dict[Arm, list[tuple[int, float]]],
     xs: dict[int, float],
-    secondary: dict[Arm, list[tuple[int, float]]],
+    *,
+    top: float,
+    title: str,
+    secondary: dict[Arm, list[tuple[int, float]]] | None = None,
+    note: str = "",
 ) -> list[str]:
-    """Draw the survival axes, gridlines and lines.
+    """Draw one fraction panel: axes, gridlines and lines.
 
-    The cap curve is drawn first and faint, so it sits behind the primary one:
-    the two answer different questions and the achieved-depth curve is the
-    finding. Drawn at all because a planner that stops splitting at three
-    produces identical trees at caps four, five and six, and the pair read
-    together is what distinguishes "gating holds at depth" from "nothing went
-    there".
+    Both panels are the same drawing over a different ratio, and each names
+    what it plots in its own title. The chart travels without the prose that
+    qualifies it, so a panel whose title did not say which denominator it is
+    over would be read as the other one.
+
+    The cap curve, where a panel has one, is drawn first and faint so it sits
+    behind the primary one: the two answer different questions and the
+    achieved-depth curve is the finding. Drawn at all because a planner that
+    stops splitting at three produces identical trees at caps four, five and
+    six, and the pair read together is what distinguishes "gating holds at
+    depth" from "nothing went there".
 
     Returns:
         The SVG fragments.
     """
-    top = float(_MARGIN_TOP)
     parts: list[str] = [
         (
-            # Names what is PLOTTED, which is the adjacent question: the share
-            # of the specification a merged tree satisfies. The chart travels
-            # without the prose that qualifies it, so a title naming the leaf
-            # survival this sweep set out to measure would be the one artefact
-            # asserting the substitution never happened.
-            f'<text class="title" x="{_MARGIN_LEFT}" y="26">'
-            "Fraction of the specification satisfied after the root merge"
-            "</text>"
+            f'<text class="title" x="{_MARGIN_LEFT}" y="{top - 22:.1f}">'
+            f"{_escape(title)}</text>"
         )
     ]
+    if note:
+        parts.append(
+            f'<text class="caption" x="{_MARGIN_LEFT}" y="{top - 6:.1f}">'
+            f"{_escape(note)}</text>"
+        )
     for fraction in _GRID_FRACTIONS:
         y = top + _PLOT_HEIGHT - fraction * _PLOT_HEIGHT
         parts.append(
@@ -198,25 +214,43 @@ def _survival_panel(
             f'<text class="tick" x="{x:.1f}" y="{top + _PLOT_HEIGHT + 20:.1f}" '
             f'text-anchor="middle">{depth}</text>'
         )
-    for arm, values in secondary.items():
-        if not values:
-            continue
-        colour, dash = _ARM_STYLE[arm]
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        points = _polyline(values, xs, top=top, height=_PLOT_HEIGHT, ceiling=1.0)
-        parts.append(
-            f'<polyline class="series secondary" points="{points}" '
-            f'stroke="{colour}"{dash_attr}/>'
-        )
+    parts.extend(_fraction_lines(secondary or {}, xs, top=top, primary=False))
+    parts.extend(_fraction_lines(series, xs, top=top, primary=True))
+    return parts
+
+
+def _fraction_lines(
+    series: dict[Arm, list[tuple[int, float]]],
+    xs: dict[int, float],
+    *,
+    top: float,
+    primary: bool,
+) -> list[str]:
+    """Draw one set of arm lines onto a fraction panel.
+
+    Args:
+        series: Each arm's points, keyed by arm.
+        xs: Where each depth sits horizontally.
+        top: The panel's top edge.
+        primary: Whether these are the panel's own curve, which carries its
+            point markers, or the faint one drawn behind it.
+
+    Returns:
+        The SVG fragments.
+    """
+    parts: list[str] = []
     for arm, values in series.items():
         if not values:
             continue
         colour, dash = _ARM_STYLE[arm]
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         points = _polyline(values, xs, top=top, height=_PLOT_HEIGHT, ceiling=1.0)
+        css = "series" if primary else "series secondary"
         parts.append(
-            f'<polyline class="series" points="{points}" stroke="{colour}"{dash_attr}/>'
+            f'<polyline class="{css}" points="{points}" stroke="{colour}"{dash_attr}/>'
         )
+        if not primary:
+            continue
         parts.extend(
             f'<circle cx="{xs[depth]:.1f}" '
             f'cy="{top + _PLOT_HEIGHT - value * _PLOT_HEIGHT:.1f}" '
@@ -229,7 +263,7 @@ def _survival_panel(
 def _cost_panel(
     series: dict[Arm, list[tuple[int, float]]], xs: dict[int, float]
 ) -> list[str]:
-    """Draw the cost-against-depth panel beneath the survival curve.
+    """Draw the cost-against-depth panel beneath the two fraction curves.
 
     Present because the gated arm reviews every merge and both arms spend the
     same attempt budget: a reader has to be able to see what the gating bought
@@ -238,7 +272,7 @@ def _cost_panel(
     Returns:
         The SVG fragments.
     """
-    top = float(_MARGIN_TOP + _PLOT_HEIGHT + _GAP)
+    top = _COST_PANEL_TOP
     ceiling = max(
         (value for values in series.values() for _, value in values), default=0.0
     )
@@ -272,6 +306,25 @@ def _cost_panel(
             f'<polyline class="series" points="{points}" stroke="{colour}"{dash_attr}/>'
         )
     return parts
+
+
+def _absent_note(absent: int) -> str:
+    """Say how many survival buckets carry no point at all.
+
+    A missing point on a line chart reads as a gap in the sweep rather than as
+    a bucket whose delivered leaves claimed nothing, and the second is a fact
+    about the plans rather than about coverage. Said on the panel because the
+    chart is the thing that gets pasted somewhere else.
+
+    Returns:
+        The note, or the empty string when every bucket carries a rate.
+    """
+    if not absent:
+        return ""
+    return (
+        f"{absent} bucket(s) have no point: their delivered leaves claimed "
+        f"nothing, which is not a rate of zero."
+    )
 
 
 def _legend(top: float) -> list[str]:
@@ -311,33 +364,58 @@ def render_chart(
     points: tuple[DepthPoint, ...],
     caption_lines: tuple[str, ...],
     by_cap: tuple[DepthPoint, ...] = (),
+    survival: tuple[SurvivalPoint, ...] = (),
 ) -> str:
-    """Render the survival curve, the cost panel and the caption as one SVG.
+    """Render both curves, the cost panel and the caption as one SVG.
+
+    The two fraction panels share an x axis and sit one above the other,
+    because the pair coming apart is the finding: a specification line holding
+    up while the survival line under it falls says the merging agent rebuilt
+    the work, and that reading is unavailable from either panel alone.
 
     Args:
-        points: The primary curve, binned on the depth each leaf reached, one
-            entry per ``(depth, arm)``.
+        points: The specification curve, binned on the depth each leaf reached,
+            one entry per ``(depth, arm)``.
         caption_lines: What must travel with the number wherever it is pasted.
         by_cap: The same measurement binned on the cap the run was allowed,
             drawn faint behind the primary curve. Empty draws nothing.
+        survival: The leaf-work survival curve, on the same axis. Empty draws
+            an empty panel rather than none, so a chart that measured no
+            attributable work says so where the line would be.
 
     Returns:
         A self-contained SVG document.
     """
-    depths = tuple(sorted({point.depth for point in (*points, *by_cap)}))
+    plotted: set[int] = {point.depth for point in points}
+    plotted.update(point.depth for point in by_cap)
+    plotted.update(point.depth for point in survival)
+    depths = tuple(sorted(plotted))
     xs = _x_positions(depths) if depths else {}
-    survival = _series(points)
-    capped = _series(by_cap)
     costs = _cost_series(points)
-    legend_top = float(_MARGIN_TOP + _PLOT_HEIGHT + _GAP + _COST_HEIGHT + 34)
+    absent = sum(1 for point in survival if point.fraction is None)
+    legend_top = _COST_PANEL_TOP + _COST_HEIGHT + 34
     wrapped = [line for text in caption_lines for line in _wrap(text, 110)]
     caption_top = legend_top + 30
     height = int(caption_top + len(wrapped) * _CAPTION_LINE_HEIGHT + 20)
     body = [
-        *_survival_panel(survival, xs, capped),
+        *_fraction_panel(
+            _series(points),
+            xs,
+            top=_SPEC_PANEL_TOP,
+            title="Fraction of the specification satisfied after the root merge",
+            secondary=_series(by_cap),
+        ),
+        *_fraction_panel(
+            _series(survival),
+            xs,
+            top=_SURVIVAL_PANEL_TOP,
+            title="Fraction of the delivered leaves' own claims the merge kept",
+            note=_absent_note(absent),
+        ),
         (
             f'<text class="axis-label" x="{_WIDTH / 2:.0f}" '
-            f'y="{_MARGIN_TOP + _PLOT_HEIGHT + 44}" text-anchor="middle">'
+            f'y="{_SURVIVAL_PANEL_TOP + _PLOT_HEIGHT + 44:.0f}" '
+            'text-anchor="middle">'
             "depth reached (levels of decomposition)</text>"
         ),
         *_cost_panel(costs, xs),
@@ -360,8 +438,8 @@ def _document(*, height: int, body: list[str]) -> str:
     drawn = "\n  ".join(body)
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_WIDTH} {height}" \
 width="{_WIDTH}" height="{height}" role="img" \
-aria-label="Fraction of the specification satisfied after the root merge, by depth, \
-gated and ungated">
+aria-label="Fraction of the specification satisfied after the root merge, and fraction \
+of the delivered leaves' own claims the merge kept, by depth, gated and ungated">
   <style>
     :root {{
       --bg: #ffffff;

@@ -14030,7 +14030,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Advisory tags naming the objective criteria this item advances; matched leniently for the coverage map, not enforced to name an entry of the plan's objective_criteria
+             * @description Which of the plan's objective_criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; both write boundaries refuse an entry naming none of them, and an item may claim nothing
              * @default []
              */
             readonly satisfies: readonly string[];
@@ -14127,7 +14127,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Objective success criteria this item advances
+             * @description Which of the plan's objective criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; an entry naming none of them is refused
              * @default []
              */
             readonly satisfies: readonly string[];
@@ -14179,7 +14179,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Advisory tags naming the objective criteria this item advances; matched leniently for the coverage map, not enforced to name an entry of the plan's objective_criteria
+             * @description Which of the plan's objective_criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; both write boundaries refuse an entry naming none of them, and an item may claim nothing
              * @default []
              */
             readonly satisfies: readonly string[];

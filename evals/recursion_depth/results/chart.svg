@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1142" width="900" height="1142" role="img" aria-label="Fraction of the specification satisfied after the root merge, by depth, gated and ungated">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1676" width="900" height="1676" role="img" aria-label="Fraction of the specification satisfied after the root merge, and fraction of the delivered leaves' own claims the merge kept, by depth, gated and ungated">
   <style>
     :root {
       --bg: #ffffff;
@@ -29,8 +29,8 @@
     .series { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
     .secondary { stroke-width: 1.25; opacity: 0.4; }
   </style>
-  <rect class="bg" x="0" y="0" width="900" height="1142"/>
-  <text class="title" x="70" y="26">Fraction of the specification satisfied after the root merge</text>
+  <rect class="bg" x="0" y="0" width="900" height="1676"/>
+  <text class="title" x="70" y="26.0">Fraction of the specification satisfied after the root merge</text>
   <line class="grid" x1="70" y1="428.0" x2="870" y2="428.0"/>
   <text class="tick" x="60" y="432.0" text-anchor="end">0.00</text>
   <line class="grid" x1="70" y1="333.0" x2="870" y2="333.0"/>
@@ -54,39 +54,65 @@
   <circle cx="70.0" cy="428.0" r="4" fill="var(--ungated)"/>
   <circle cx="470.0" cy="129.4" r="4" fill="var(--ungated)"/>
   <circle cx="870.0" cy="111.3" r="4" fill="var(--ungated)"/>
-  <text class="axis-label" x="450" y="472" text-anchor="middle">depth reached (levels of decomposition)</text>
-  <text class="title" x="70" y="476.0">Spend per run, same axis</text>
-  <line class="axis" x1="70" y1="662.0" x2="870" y2="662.0"/>
-  <text class="tick" x="60" y="502.0" text-anchor="end">0.00</text>
-  <text class="tick" x="60" y="666.0" text-anchor="end">0</text>
-  <polyline class="series" points="70.0,662.0 470.0,662.0 870.0,662.0" stroke="var(--gated)"/>
-  <polyline class="series" points="70.0,662.0 470.0,662.0 870.0,662.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
-  <line class="series" x1="70" y1="696.0" x2="98" y2="696.0" stroke="var(--gated)"/>
-  <text class="legend" x="106" y="700.0">gate at every merge</text>
-  <line class="series" x1="270" y1="696.0" x2="298" y2="696.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
-  <text class="legend" x="306" y="700.0">no merge gate</text>
-  <line class="series secondary" x1="470" y1="696.0" x2="498" y2="696.0" stroke="var(--fg)"/>
-  <text class="legend" x="506" y="700.0">faint: same runs binned on the depth cap allowed</text>
-  <text class="caption" x="70" y="726">Runs reaching each depth: cap=1 gated reached=1 (1), cap=1 ungated reached=1 (1), cap=2 gated reached=2 (1),</text>
-  <text class="caption" x="70" y="744">cap=2 ungated reached=2 (1), cap=3 gated reached=3 (1), cap=3 ungated reached=3 (1).</text>
-  <text class="caption" x="70" y="762">The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the share of leaf work surviving</text>
-  <text class="caption" x="70" y="780">the merge, which is the question this sweep set out to ask. Leaf-level attribution proved too sparse to carry</text>
-  <text class="caption" x="70" y="798">a rate and produced no point at all for whole cells. The two coincide only where the merge adds nothing of its</text>
-  <text class="caption" x="70" y="816">own, so a tree scoring well because the merging agent rebuilt it reads here exactly like one whose leaves</text>
-  <text class="caption" x="70" y="834">survived.</text>
-  <text class="caption" x="70" y="852">Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated</text>
-  <text class="caption" x="70" y="870">recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'.</text>
-  <text class="caption" x="70" y="888">Separating them needs an agent that has read the code deciding its own split, which no published system has.</text>
-  <text class="caption" x="70" y="906">The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to</text>
-  <text class="caption" x="70" y="924">it.</text>
-  <text class="caption" x="70" y="942">143 planner claim(s) named no requirement this specification defines and were dropped before scoring. A</text>
-  <text class="caption" x="70" y="960">handful is one planner inventing a requirement; a large share means the criterion template and the id pattern</text>
-  <text class="caption" x="70" y="978">have drifted apart. The curve divides by the specification rather than by these claims, so it is unaffected,</text>
-  <text class="caption" x="70" y="996">but the per-unit attribution is.</text>
-  <text class="caption" x="70" y="1014">The token column was rebuilt from the recorder's per-call log. This recording's sessions shared one</text>
-  <text class="caption" x="70" y="1032">process-wide cost sink swapped per session, so concurrent leaves could journal zero while a neighbour absorbed</text>
-  <text class="caption" x="70" y="1050">their records. The repair attributes each call from the log, which is written per call and cannot be scrambled</text>
-  <text class="caption" x="70" y="1068">by that swap, cutting a repeated task id into intervals at the point each unit was journalled. The money</text>
-  <text class="caption" x="70" y="1086">column is untouched: every connection here is flat-rate, so it reads zero throughout. Session and attempt</text>
-  <text class="caption" x="70" y="1104">counts were never affected.</text>
+  <text class="title" x="70" y="470.0">Fraction of the delivered leaves' own claims the merge kept</text>
+  <text class="caption" x="70" y="486.0">2 bucket(s) have no point: their delivered leaves claimed nothing, which is not a rate of zero.</text>
+  <line class="grid" x1="70" y1="872.0" x2="870" y2="872.0"/>
+  <text class="tick" x="60" y="876.0" text-anchor="end">0.00</text>
+  <line class="grid" x1="70" y1="777.0" x2="870" y2="777.0"/>
+  <text class="tick" x="60" y="781.0" text-anchor="end">0.25</text>
+  <line class="grid" x1="70" y1="682.0" x2="870" y2="682.0"/>
+  <text class="tick" x="60" y="686.0" text-anchor="end">0.50</text>
+  <line class="grid" x1="70" y1="587.0" x2="870" y2="587.0"/>
+  <text class="tick" x="60" y="591.0" text-anchor="end">0.75</text>
+  <line class="grid" x1="70" y1="492.0" x2="870" y2="492.0"/>
+  <text class="tick" x="60" y="496.0" text-anchor="end">1.00</text>
+  <text class="tick" x="70.0" y="892.0" text-anchor="middle">1</text>
+  <text class="tick" x="470.0" y="892.0" text-anchor="middle">2</text>
+  <text class="tick" x="870.0" y="892.0" text-anchor="middle">3</text>
+  <polyline class="series" points="70.0,872.0 470.0,576.4 870.0,541.6" stroke="var(--gated)"/>
+  <circle cx="70.0" cy="872.0" r="4" fill="var(--gated)"/>
+  <circle cx="470.0" cy="576.4" r="4" fill="var(--gated)"/>
+  <circle cx="870.0" cy="541.6" r="4" fill="var(--gated)"/>
+  <polyline class="series" points="70.0,872.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <circle cx="70.0" cy="872.0" r="4" fill="var(--ungated)"/>
+  <text class="axis-label" x="450" y="916" text-anchor="middle">depth reached (levels of decomposition)</text>
+  <text class="title" x="70" y="920.0">Spend per run, same axis</text>
+  <line class="axis" x1="70" y1="1106.0" x2="870" y2="1106.0"/>
+  <text class="tick" x="60" y="946.0" text-anchor="end">0.00</text>
+  <text class="tick" x="60" y="1110.0" text-anchor="end">0</text>
+  <polyline class="series" points="70.0,1106.0 470.0,1106.0 870.0,1106.0" stroke="var(--gated)"/>
+  <polyline class="series" points="70.0,1106.0 470.0,1106.0 870.0,1106.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <line class="series" x1="70" y1="1140.0" x2="98" y2="1140.0" stroke="var(--gated)"/>
+  <text class="legend" x="106" y="1144.0">gate at every merge</text>
+  <line class="series" x1="270" y1="1140.0" x2="298" y2="1140.0" stroke="var(--ungated)" stroke-dasharray="6 4"/>
+  <text class="legend" x="306" y="1144.0">no merge gate</text>
+  <line class="series secondary" x1="470" y1="1140.0" x2="498" y2="1140.0" stroke="var(--fg)"/>
+  <text class="legend" x="506" y="1144.0">faint: same runs binned on the depth cap allowed</text>
+  <text class="caption" x="70" y="1170">Runs reaching each depth: cap=1 gated reached=1 (1), cap=1 ungated reached=1 (1), cap=2 gated reached=2 (1),</text>
+  <text class="caption" x="70" y="1188">cap=2 ungated reached=2 (1), cap=3 gated reached=3 (1), cap=3 ungated reached=3 (1).</text>
+  <text class="caption" x="70" y="1206">Two curves, and they answer different questions. SPECIFICATION is the share of the specification's own</text>
+  <text class="caption" x="70" y="1224">requirements the merged tree satisfies: a denominator every cell shares, which cannot empty, and which says</text>
+  <text class="caption" x="70" y="1242">nothing about where the work came from, so a tree scoring well because the merging agent rebuilt it reads</text>
+  <text class="caption" x="70" y="1260">there exactly like one whose leaves survived. SURVIVAL is the share of the requirements DELIVERED leaves</text>
+  <text class="caption" x="70" y="1278">claimed that the merged tree still satisfies: the question this sweep was built around, on a denominator that</text>
+  <text class="caption" x="70" y="1296">is leaf work and can be empty, in which case the point is absent rather than zero. The two coming apart IS the</text>
+  <text class="caption" x="70" y="1314">finding.</text>
+  <text class="caption" x="70" y="1332">Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated</text>
+  <text class="caption" x="70" y="1350">recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'.</text>
+  <text class="caption" x="70" y="1368">Separating them needs an agent that has read the code deciding its own split, which no published system has.</text>
+  <text class="caption" x="70" y="1386">The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to</text>
+  <text class="caption" x="70" y="1404">it.</text>
+  <text class="caption" x="70" y="1422">2 bucket(s) carry no survival point: their delivered leaves claimed no requirement between them, so the ratio</text>
+  <text class="caption" x="70" y="1440">has an empty denominator and is reported as absent rather than as zero. A planner may legitimately leave a</text>
+  <text class="caption" x="70" y="1458">subtree claiming nothing; a whole arm reading this way means the plans stopped tagging what they advance.</text>
+  <text class="caption" x="70" y="1476">143 planner claim(s) named no requirement this specification defines and were dropped before scoring, so the</text>
+  <text class="caption" x="70" y="1494">per-unit attribution in this recording is not trustworthy. A claim naming nothing is now refused where the</text>
+  <text class="caption" x="70" y="1512">planner writes it, and one reaching the harness ends its cell before any leaf is paid for, so a later</text>
+  <text class="caption" x="70" y="1530">recording carrying this line is reporting a regression rather than a known gap.</text>
+  <text class="caption" x="70" y="1548">The token column was rebuilt from the recorder's per-call log. This recording's sessions shared one</text>
+  <text class="caption" x="70" y="1566">process-wide cost sink swapped per session, so concurrent leaves could journal zero while a neighbour absorbed</text>
+  <text class="caption" x="70" y="1584">their records. The repair attributes each call from the log, which is written per call and cannot be scrambled</text>
+  <text class="caption" x="70" y="1602">by that swap, cutting a repeated task id into intervals at the point each unit was journalled. The money</text>
+  <text class="caption" x="70" y="1620">column is untouched: every connection here is flat-rate, so it reads zero throughout. Session and attempt</text>
+  <text class="caption" x="70" y="1638">counts were never affected.</text>
 </svg>

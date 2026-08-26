@@ -14,6 +14,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import DecompositionContext, width_budget
 from synthorg.engine.decomposition.llm_prompt import (
     DECOMPOSITION_FENCES,
+    coverage_guidance,
+    criteria_lines,
     foundation_lines,
     safe_roles,
 )
@@ -97,9 +99,10 @@ def planning_brief(
         The user-message brief driving the planning session.
     """
     inner = [f"Title: {task.title}", f"Description: {task.description}"]
-    if task.acceptance_criteria:
-        inner.append("Acceptance criteria:")
-        inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
+    # The submit tool validates ``satisfies`` against the level's inherited
+    # vocabulary, so the brief has to render it or the planner is judged on a
+    # list it was never shown.
+    inner.extend(criteria_lines(task, context, own_heading="Acceptance criteria:"))
     return "\n".join(
         [
             "You are the accountable owner planning this objective. Produce",
@@ -122,6 +125,12 @@ def planning_brief(
             "  critical for irreversible or high-blast-radius work.",
             "- Give every item concrete expected_artifacts and verifiable",
             "  acceptance_criteria (never empty).",
+            # Stated here as well as in the tool schema, for the reason the
+            # roster is: the schema's description reaches only a provider that
+            # enforces schemas.
+            coverage_guidance(covers_objective=bool(context.objective_criteria)).rstrip(
+                "\n"
+            ),
             *foundation_lines(context.workspace_summary),
             "- Where the plan hinges on a real choice (stack, architecture),",
             "  surface a decision item (kind 'decision') with 2-4 options and",

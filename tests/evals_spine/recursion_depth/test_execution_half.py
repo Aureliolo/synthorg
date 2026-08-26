@@ -20,6 +20,7 @@ import structlog
 from evals.errors import (
     EvalToolMissingError,
     HarnessDockerUnavailableError,
+    RecursionDepthClaimUnresolvableError,
     RecursionDepthNoCellsMeasuredError,
     RecursionDepthSessionCeilingError,
 )
@@ -50,6 +51,7 @@ from evals.recursion_depth.journal import (
     progress_by_cell,
 )
 from evals.recursion_depth.manifest import (
+    SHARED_FAMILY_CAVEAT,
     Arm,
     Independence,
     ModelPair,
@@ -1568,6 +1570,60 @@ class TestTheMatrix:
         assert "submitted nothing" in reason
         assert len(report.measured_cells) == 1
 
+    async def test_an_unresolvable_claim_ends_its_cell_and_not_the_sweep(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # Which side of the classification this lands on decides whether one
+        # bad plan costs one cell or the whole matrix. It sits next to
+        # `OracleUnusableError` conceptually, and grouping it with the systemic
+        # failures would lose every cell after it with nothing to say why.
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await _swept(context, tmp_path)
+
+        assert len(report.unavailable_cells) == 1
+        assert len(report.measured_cells) == 1
+
+    async def test_the_stopped_cell_says_a_claim_was_unresolvable(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+
+        report = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        reason = report.unavailable_cells[0].unavailable_reason
+        assert reason is not None
+        assert RecursionDepthClaimUnresolvableError.__name__ in reason
+
+    async def test_that_cell_earns_the_report_its_own_caveat(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        """Otherwise it only lowers a histogram bar and says nothing."""
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+
+        report = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        assert any("stopped before any leaf ran" in line for line in report.caveats)
+
     async def test_a_resumed_sweep_reads_its_measured_cells_back(
         self, tmp_path: Path, assembled_trees: None
     ) -> None:
@@ -1818,7 +1874,11 @@ class TestTheMatrix:
         self, tmp_path: Path, assembled_trees: None
     ) -> None:
         # The three standing caveats always hold; the independence one is a
-        # statement about a weakness this manifest does not have.
+        # statement about a weakness this manifest does not have. Asserted by
+        # ABSENCE rather than by an exact set, because the derived caveats are
+        # facts about the cells and this sweep's stubbed leaves legitimately
+        # produce one: a rule reading "these three and nothing else" would fail
+        # on an accurate sentence about a different subject.
         del assembled_trees
         planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
         context = await _context(
@@ -1832,7 +1892,8 @@ class TestTheMatrix:
 
         report = await _swept(context, tmp_path)
 
-        assert set(report.caveats) == {METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT}
+        assert {METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT} <= set(report.caveats)
+        assert SHARED_FAMILY_CAVEAT not in report.caveats
 
     async def test_a_depleted_account_stops_the_sweep_instead_of_shredding_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

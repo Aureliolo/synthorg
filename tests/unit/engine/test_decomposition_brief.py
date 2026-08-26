@@ -10,14 +10,16 @@ directory at all. Recalled experience is precedent; it is never inventory.
 
 import pytest
 
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
 )
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm_prompt import (
+    OBJECTIVE_CRITERIA_LABEL,
     build_system_message,
     build_task_message,
 )
@@ -158,3 +160,67 @@ class TestTheSingleShotPlannerIsGroundedToo:
         system = build_system_message(())
 
         assert TAG_UNTRUSTED_ARTIFACT in str(system.content)
+
+
+class TestTheSessionSeesWhatItIsJudgedOn:
+    """The submit tool validates ``satisfies`` against the level's inherited
+    vocabulary, so the brief has to render it.
+
+    Below the root the two criteria lists are different things, and rendering
+    only the unit's own leaves the planner copying from a heading its schema
+    names and its prompt does not contain. Every plan it produces is then
+    refused for a list it was never shown.
+    """
+
+    def _inherited(self) -> DecompositionContext:
+        """A below-root context whose vocabulary differs from the task's.
+
+        Returns:
+            The context.
+        """
+        return DecompositionContext(
+            objective_criteria=(NotBlankStr("R01: A player can play a full game"),)
+        )
+
+    def test_the_inherited_criteria_are_rendered(self) -> None:
+        brief = planning_brief(_task(), self._inherited(), ())
+
+        assert "R01: A player can play a full game" in brief
+
+    def test_they_are_rendered_under_the_heading_the_schema_names(self) -> None:
+        brief = planning_brief(_task(), self._inherited(), ())
+
+        assert OBJECTIVE_CRITERIA_LABEL in brief
+
+    def test_they_sit_inside_the_task_data_fence(self) -> None:
+        """Agent-authored below the root, so they are content, not directive."""
+        brief = planning_brief(_task(), self._inherited(), ())
+        opened = brief.index(f"<{TAG_TASK_DATA}>")
+        closed = brief.index(f"</{TAG_TASK_DATA}>")
+
+        assert opened < brief.index("R01: A player can play a full game") < closed
+
+    def test_a_level_answerable_for_nothing_is_told_to_claim_nothing(self) -> None:
+        brief = planning_brief(_task(), DecompositionContext(), ())
+
+        assert "Leave satisfies empty on every item" in brief
+        assert OBJECTIVE_CRITERIA_LABEL not in brief
+
+    def test_the_single_shot_prompt_renders_them_too(self) -> None:
+        """Both planners, or the grounding lapses on whichever one runs."""
+        message = build_task_message(_task(), self._inherited())
+
+        assert "R01: A player can play a full game" in str(message.content)
+        assert OBJECTIVE_CRITERIA_LABEL in str(message.content)
+
+    def test_the_root_renders_one_list_rather_than_the_same_one_twice(self) -> None:
+        """At the root the two coincide, under the heading the schema names."""
+        criterion = "R01: A player can play a full game"
+        own = (AcceptanceCriterion(description=criterion),)
+        task = _task().model_copy(update={"acceptance_criteria": own})
+        context = DecompositionContext(objective_criteria=(NotBlankStr(criterion),))
+
+        brief = planning_brief(task, context, ())
+
+        assert brief.count(criterion) == 1
+        assert OBJECTIVE_CRITERIA_LABEL in brief

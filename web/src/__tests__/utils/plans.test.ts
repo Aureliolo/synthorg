@@ -329,6 +329,19 @@ describe('derivePlanCoverage', () => {
     expect(coverage.total).toBe(0)
     expect(coverage.uncovered).toEqual([])
   })
+
+  it('matches a claim differing only in spacing, as the backend does', () => {
+    // The backend refuses a claim that names no criterion under exactly this
+    // rule (trim, lowercase, collapse whitespace runs), so a looser match here
+    // would place a claim it rejected and a stricter one would show a
+    // criterion it accepted as uncovered.
+    const items = [makePlanItem('a', { title: 'Board', satisfies: ['  playable   board '] })]
+
+    const coverage = derivePlanCoverage(['Playable board'], items)
+
+    expect(coverage.covered).toBe(1)
+    expect(coverage.entries[0]?.coveredBy).toEqual(['Board'])
+  })
 })
 
 describe('answeredQuestions', () => {

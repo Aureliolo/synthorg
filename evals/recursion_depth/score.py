@@ -1,41 +1,43 @@
 # module-kind: code
-"""The measurement: what fraction of the specification a merged tree satisfies.
+"""The measurement, on two axes that answer two different questions.
 
 After the root merge, the held-out oracle runs against the final tree and says
-which of the specification's requirements it satisfies. That count over the
-specification's own requirement count is the point this module plots, per
-achieved depth and per cap, for each arm.
+which of the specification's requirements it satisfies. From that one grading
+this module derives both curves, per achieved depth and per cap, for each arm.
 
-**This is not the question this experiment asks, and the difference matters.**
-That question is whether LEAF WORK survives the merge, and it wants a
-denominator of work the leaves delivered. Measured on a live run, that
-denominator does not hold up: a leaf must pass its own suite to count at all
-and 62 of 183 did, a delivered leaf at depth 2 or deeper often claims nothing,
-and 143 planner claims named no requirement the specification defines. Whole
-cells came out with a zero denominator and therefore no point at all, the
-ungated arm among them at depths 2 and 3, which deletes the arm comparison that
-is the entire acceptance criterion.
+**SPECIFICATION** is that count over the specification's own requirement count.
+Its denominator is identical for every cell and cannot empty, so every run
+produces a point and the two arms are comparable at every depth, including
+where a cell's leaves all failed. What it does not say is where the work came
+from: a tree scoring well because the merging agent rebuilt it and one scoring
+well because its leaves' work survived are the same number there.
 
-So the denominator is the specification, which every cell shares, which cannot
-empty, and which the same oracle grades. What that buys is a point for every
-cell and two comparable arms at every depth. What it costs is attribution: a
-tree scoring well because the merging agent rebuilt it and a tree scoring well
-because the leaves' work survived are the same number here. The per-unit records
-still carry the claim-level figures, so a later analysis can ask the narrower
-question once the claim mapping is trustworthy.
+**SURVIVAL** is the question this experiment was built around: of the
+requirements the DELIVERED leaves claimed, how many the merged tree still
+satisfies. Delivery rather than standalone correctness gates the denominator,
+because a leaf's own tree usually cannot run the spec oracle at all (at depth a
+unit is one function and nothing above it exists yet), so requiring a standalone
+pass would empty the denominator exactly where the curve is most interesting.
+This denominator is leaf work, so it CAN empty, and an empty one is reported as
+an absent point rather than a zero: nothing was measured there, and a zero says
+everything was lost.
+
+The two are plotted together because the pair coming apart IS the finding, and
+neither replaces the other.
 
 **Depth is the depth the tree ACHIEVED.** The cap is what the run was allowed;
 the planner decides what it uses. Binning on the cap makes caps the planner
-never reached look like measured points, so the primary curve bins each run on
-the depth it reached and the cap curve is reported beside it with the histogram
-that says how much of the sweep was real.
+never reached look like measured points, so the primary curves bin each run on
+the depth it reached and the cap curves are reported beside them with the
+histogram that says how much of the sweep was real.
 """
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import CellRecord, DepthPoint
+from evals.recursion_depth.models import CellRecord, DepthPoint, SurvivalPoint
 
 #: Says which bucket a run belongs in, for both its fraction and its spend.
 type RunBucket = Callable[[CellRecord], int]
@@ -148,6 +150,87 @@ def _curve(
     )
 
 
+def survival_by_achieved_depth(
+    cells: Iterable[CellRecord],
+) -> tuple[SurvivalPoint, ...]:
+    """Bin leaf-work survival on the depth each tree actually reached.
+
+    Args:
+        cells: The measured runs.
+
+    Returns:
+        One point per ``(depth, arm)`` that any run reached, ascending, on the
+        same axis :func:`curve_by_achieved_depth` uses.
+    """
+    return _survival(cells, bucket=_achieved_bucket)
+
+
+def survival_by_depth_cap(cells: Iterable[CellRecord]) -> tuple[SurvivalPoint, ...]:
+    """Bin leaf-work survival on the ``max_depth`` cap the run was allowed.
+
+    Args:
+        cells: The measured runs.
+
+    Returns:
+        One point per ``(cap, arm)``, ascending.
+    """
+    return _survival(cells, bucket=_cap_bucket)
+
+
+def _delivered_claims(cell: CellRecord) -> set[RequirementId]:
+    """The requirements this run's DELIVERED leaves claimed.
+
+    A set, because two leaves claiming one requirement is a planner producing
+    overlapping units rather than more work, and counting it twice weights the
+    bucket by how repetitive the plan was.
+
+    Returns:
+        The claimed requirement ids.
+    """
+    return {
+        identifier
+        for leaf in cell.leaves
+        if leaf.delivered
+        for identifier in leaf.claimed
+    }
+
+
+def _survival(
+    cells: Iterable[CellRecord], *, bucket: RunBucket
+) -> tuple[SurvivalPoint, ...]:
+    """Fold every run into one survival point per ``(bin, arm)``.
+
+    Summed across repetitions rather than averaged over them: a repetition that
+    produced more leaf work carries more weight, which is what a rate over work
+    rather than a mean of rates means, and it is what keeps a bucket whose
+    every leaf failed reporting an absent point rather than dragging a mean.
+
+    Returns:
+        The points, ordered by depth then arm.
+    """
+    delivered: dict[tuple[int, Arm], int] = defaultdict(int)
+    surviving: dict[tuple[int, Arm], int] = defaultdict(int)
+    counted: dict[tuple[int, Arm], int] = defaultdict(int)
+    for cell in cells:
+        if cell.achieved_depth is None:
+            continue
+        slot = (bucket(cell), cell.arm)
+        claimed = _delivered_claims(cell)
+        delivered[slot] += len(claimed)
+        surviving[slot] += len(claimed & set(cell.merged_passing))
+        counted[slot] += 1
+    return tuple(
+        SurvivalPoint(
+            depth=depth,
+            arm=arm,
+            delivered_claims=delivered[(depth, arm)],
+            surviving_claims=surviving[(depth, arm)],
+            cells=counted[(depth, arm)],
+        )
+        for depth, arm in sorted(counted, key=lambda slot: (slot[0], slot[1].value))
+    )
+
+
 def achieved_depth_histogram(cells: Iterable[CellRecord]) -> dict[str, int]:
     """How many runs at each cap reached each depth, per arm.
 
@@ -180,4 +263,6 @@ __all__ = [
     "achieved_depth_histogram",
     "curve_by_achieved_depth",
     "curve_by_depth_cap",
+    "survival_by_achieved_depth",
+    "survival_by_depth_cap",
 ]

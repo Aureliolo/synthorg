@@ -39,9 +39,17 @@ export interface PlanCoverage {
   readonly uncovered: readonly string[]
 }
 
-/** Normalise a criterion for matching (trim + case-fold) so near-copies align. */
-function coverageKey(text: string): string {
-  return text.trim().toLowerCase()
+/**
+ * Normalise a criterion for matching so near-copies align.
+ *
+ * Mirrors `synthorg.core.criterion_match.criterion_key`, which is what the
+ * backend refuses a claim on: trim, lowercase, collapse internal whitespace
+ * runs. A looser rule here would place a claim the backend rejected; a
+ * stricter one would leave a criterion the backend accepted reading as
+ * uncovered.
+ */
+export function coverageKey(text: string): string {
+  return text.trim().toLowerCase().split(/\s+/).join(' ')
 }
 
 /** Append `value` under `key` unless it is already there. */
@@ -54,9 +62,9 @@ function addUnique(index: Map<string, string[]>, key: string, value: string): vo
 /**
  * Map each objective acceptance criterion to the plan items that advance it
  * (via their ``satisfies`` tags), so the review surface can flag any criterion
- * nothing covers. Matching is trim + case-insensitive so a verbatim-ish copy
- * still aligns. Returns an empty coverage when the objective declared no
- * criteria (nothing to check).
+ * nothing covers. Matching is `coverageKey`'s: trim, case-insensitive, and
+ * whitespace-collapsed, so a verbatim-ish copy still aligns. Returns an empty
+ * coverage when the objective declared no criteria (nothing to check).
  */
 export function derivePlanCoverage(
   objectiveCriteria: readonly string[],

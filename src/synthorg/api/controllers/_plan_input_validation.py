@@ -5,18 +5,23 @@ Three controller paths hand the plan service items a person or an agent
 wrote: the edit on ``PATCH /plans/{id}``, the successor on
 ``POST /plans/{id}/replan``, and the re-decomposition behind
 ``POST /plans/{id}/request-changes``. They share these checks because the
-payload model cannot make either of them: one needs the roster to know
-whether an owner routes, and the other needs the whole item set to know
-whether the graph says what the plan claims.
+payload model cannot make any of them: one needs the roster to know whether
+an owner routes, one needs the whole item set to know whether the graph says
+what the plan claims, and one needs the objective's criteria to know whether
+an item's ``satisfies`` names anything.
 
 They live here rather than beside any one caller so that a fourth path
 cannot quietly get a different answer, and so that "what an operator may
-submit" is one thing to read.
+submit" is one thing to read. Which checks a given path runs is the caller's
+own: the two that take a hand-written item list ask all four, while the
+re-decomposition receives items a parse boundary has already held to the
+claim rule and asks the other three.
 """
 
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
+from synthorg.core.criterion_match import describe_unnamed_claims
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
 from synthorg.core.plan_reference_validation import describe_unstated_references
@@ -29,6 +34,7 @@ from synthorg.core.plan_validation import (
     describe_undecidable_criteria,
 )
 from synthorg.core.task_enums import TaskStructure
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
@@ -39,8 +45,47 @@ logger = get_logger(__name__)
 __all__ = [
     "reject_malformed_tree",
     "reject_undecidable_graph",
+    "reject_unnamed_claims",
     "reject_unroutable_owners",
 ]
+
+
+def reject_unnamed_claims(
+    items: Sequence[PlanItem], objective_criteria: Sequence[NotBlankStr]
+) -> None:
+    """Refuse a hand-written item claiming a criterion the objective never states.
+
+    The same question the planner's own parse asks, at the boundary the
+    operator writes through, for the reason the two validators below exist:
+    ``satisfies`` has exactly two writers, and refusing at one of them leaves
+    the other free to write a claim that reads as coverage on every surface
+    showing the field and is coverage to none of them.
+
+    Asked against the plan's own denormalised ``objective_criteria``, which is
+    also what the review surface's coverage map reads, so an item this accepts
+    is an item that map can place.
+
+    An item claiming NOTHING is untouched: a genuine pure-support item advances
+    no objective criterion directly, which is the field's documented semantics.
+
+    Args:
+        items: The revised items, as the operator wrote them.
+        objective_criteria: The criteria the plan's objective declares. Empty
+            is the strictest case rather than an exemption: a plan answerable
+            for no criterion admits only items that claim nothing.
+
+    Raises:
+        ValidationError: One or more items claim something unstated. Every
+            offending item is reported together: a revision is edited as a
+            whole, so surfacing one per attempt would cost a round trip each.
+    """
+    detail = combine_graph_violations(
+        describe_unnamed_claims(items, objective=objective_criteria)
+    )
+    if detail is None:
+        return
+    logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
+    raise ValidationError(detail)
 
 
 def reject_malformed_tree(items: Sequence[PlanItem]) -> None:

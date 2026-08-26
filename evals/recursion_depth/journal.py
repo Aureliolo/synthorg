@@ -25,11 +25,15 @@ reason it failed, so it is attempted again. Resuming an unavailable cell would
 hand back the same broken report the operator restarted to escape.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from shutil import copy2, rmtree
+from tempfile import mkdtemp
+from typing import Final
 
+from evals.errors import RecursionDepthSpendAlreadyAdoptedError
 from evals.harness.journal import (
     JournalSpec,
     RecordedCells,
@@ -43,25 +47,39 @@ from evals.recursion_depth.models import (
     CellRecord,
     PlannedTreeRecord,
     Provenance,
+    SpendSource,
     UnitRecord,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SPEND_ADOPTED,
+    EVALS_RECURSION_SPEND_ADOPTING,
+)
+
+logger = get_logger(__name__)
 
 #: The file a sweep appends finished cells to, beside the report it will
 #: eventually write.
-JOURNAL_NAME: str = "cells.jsonl"
+JOURNAL_NAME: Final[str] = "cells.jsonl"
+
+#: Where the journalled figures go when a per-call repair replaces them as the
+#: recording's ledger. Kept rather than discarded: the records under it are
+#: real spend, and a repair is a claim about them that a reader may want to
+#: check.
+RAW_JOURNAL_NAME: Final[str] = "cells.raw.jsonl"
 
 #: The file a sweep appends every finished SESSION to, so a cell killed
 #: part-way leaves what it built rather than nothing.
-PROGRESS_NAME: str = "progress.jsonl"
+PROGRESS_NAME: Final[str] = "progress.jsonl"
 
 #: Names this journal in its own header, so a file from another harness is
 #: refused rather than parsed into confusion.
-JOURNAL_KIND: str = "recursion-depth"
+JOURNAL_KIND: Final[str] = "recursion-depth"
 
 #: The same, for the finer journal. Distinct from :data:`JOURNAL_KIND` so the
 #: two files cannot be read as each other: they sit in one directory and hold
 #: different row models.
-PROGRESS_KIND: str = "recursion-depth-progress"
+PROGRESS_KIND: Final[str] = "recursion-depth-progress"
 
 
 def cell_key(depth_cap: int, arm: Arm, repetition: int) -> str:
@@ -315,6 +333,12 @@ def matrix_identity(provenance: Provenance) -> Mapping[str, object]:
     Everything except ``generated_at``, which is the one field that MUST differ
     between the run that wrote a cell and the run reading it back.
 
+    ``spend_source`` is among them, which makes a repaired recording terminal:
+    a live sweep always builds its provenance at the default, so resuming one
+    to record MORE cells is refused on the mismatch. That is the wanted
+    posture, since the alternative is a token column that is half journalled
+    and half rebuilt while claiming to be one or the other.
+
     Args:
         provenance: What this recording is measured against.
 
@@ -434,16 +458,110 @@ def read_recorded_cells(out_dir: Path) -> tuple[Provenance, list[CellRecord]]:
     return provenance, cells
 
 
+def adopt_repaired_spend(
+    out_dir: Path, *, provenance: Provenance, cells: Sequence[CellRecord]
+) -> tuple[Provenance, list[CellRecord]]:
+    """Make a repaired spend column the recording's own ledger.
+
+    A repair applied at scoring time leaves the report reproducible only by
+    whoever still holds the recorder log, which is not a committed thing: the
+    next re-score reads the journal, finds the raw figures, and silently
+    publishes a column this recording's own caveat calls scrambled. Writing the
+    repaired cells back is what makes the artefact reproducible from the
+    repository alone, which is most of what a provenance block is for.
+
+    The raw journal is KEPT rather than overwritten, for the reason
+    :func:`evals.harness.journal.open_journal` refuses to open onto one: the
+    records under it are real spend, and this is not the place to decide they
+    are worthless. It keeps its name plus ``.raw``, beside the ledger that
+    replaced it.
+
+    Refused outright on a recording that already reads repaired, because a
+    second adoption reads the FIRST repair's output and would move it on top of
+    the raw journal, destroying the only copy of the original figures. The log
+    cannot give them back: it produces repaired figures by construction.
+
+    Ordered so no instant has an unreadable directory. The replacement is
+    written and fsynced under a staging directory first, then the original is
+    copied to its ``.raw`` name, and only then is the swap made. Writing the
+    replacement over a journal that had already been renamed away left a window
+    where a crash meant NO ledger at all, which reads exactly like a recording
+    that was never taken.
+
+    Args:
+        out_dir: Where the recording wrote its journal.
+        provenance: What this recording is measured against.
+        cells: The cells carrying the repaired figures.
+
+    Returns:
+        The provenance now declaring a repaired column, and the same cells as a
+        list, so a caller hands on one value rather than pairing a stamped
+        provenance with figures it read somewhere else.
+
+    Raises:
+        RecursionDepthSpendAlreadyAdoptedError: The recording already carries a
+            repaired column, or a raw journal from an earlier adoption.
+    """
+    raw = out_dir / RAW_JOURNAL_NAME
+    if provenance.spend_source is SpendSource.REPAIRED or raw.exists():
+        msg = (
+            f"{out_dir / JOURNAL_NAME} already holds a repaired spend column, "
+            f"and {raw} holds the figures it replaced. Repairing again would "
+            f"overwrite those with already-repaired ones, and the recorder log "
+            f"cannot re-derive them. Move {raw} aside if this is deliberate."
+        )
+        raise RecursionDepthSpendAlreadyAdoptedError(msg)
+    stamped = provenance.model_copy(update={"spend_source": SpendSource.REPAIRED})
+    # Before the first write, not after the last: a failure part-way leaves a
+    # staging directory and an untouched ledger, and this line is what tells
+    # the operator which of the two states they are looking at.
+    logger.warning(
+        EVALS_RECURSION_SPEND_ADOPTING,
+        journal=str(out_dir / JOURNAL_NAME),
+        preserving=str(raw),
+        cells=len(cells),
+    )
+    staging = Path(mkdtemp(dir=out_dir, prefix=".adopt-"))
+    swapped = False
+    try:
+        journal, _ = open_journal(
+            staging, SPEC, identity=matrix_identity(stamped), resume=False
+        )
+        for cell in cells:
+            journal.record(cell)
+        journal.close()
+        copy2(out_dir / JOURNAL_NAME, raw)
+        (staging / JOURNAL_NAME).replace(out_dir / JOURNAL_NAME)
+        swapped = True
+    finally:
+        # The raw journal is the sentinel the guard above reads, so a copy that
+        # outlives a swap that never happened says a repair completed when the
+        # ledger is still the untouched one, and every later attempt is refused
+        # on a state nothing produced.
+        if not swapped:
+            raw.unlink(missing_ok=True)
+        rmtree(staging, ignore_errors=True)
+    logger.info(
+        EVALS_RECURSION_SPEND_ADOPTED,
+        journal=str(out_dir / JOURNAL_NAME),
+        superseded=str(raw),
+        cells=len(cells),
+    )
+    return stamped, list(cells)
+
+
 __all__ = [
     "JOURNAL_KIND",
     "JOURNAL_NAME",
     "PROGRESS_KIND",
     "PROGRESS_NAME",
     "PROGRESS_SPEC",
+    "RAW_JOURNAL_NAME",
     "SPEC",
     "CellProgress",
     "CellUnits",
     "ResumedProgress",
+    "adopt_repaired_spend",
     "cell_key",
     "matrix_identity",
     "open_cell_journal",

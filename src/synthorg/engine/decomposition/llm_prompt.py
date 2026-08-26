@@ -10,19 +10,17 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import Task
-from synthorg.core.task_enums import (
-    Complexity,
-    CoordinationTopology,
-    Stakes,
-    TaskStructure,
-)
 from synthorg.core.types import NotBlankStr, flatten_label
 from synthorg.engine.decomposition.context import (
     DecompositionContext,
     depth_budget,
     width_budget,
+)
+from synthorg.engine.decomposition.llm_tool_schema import (
+    PLAN_PROPERTIES,
+    SUBTASK_PROPERTIES,
+    SUBTASK_REQUIRED,
 )
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -37,6 +35,14 @@ from synthorg.providers.models import (
 )
 
 TOOL_NAME = "submit_decomposition_plan"
+
+#: Heading of the list an item's ``satisfies`` is copied out of.
+#:
+#: One constant because the block and the field that points at it are two
+#: halves of one instruction: a schema naming a heading the message does not
+#: render tells the planner to copy from a list it cannot find, and below the
+#: root there is a second criteria list right there to copy instead.
+OBJECTIVE_CRITERIA_LABEL: Final[str] = "Objective criteria to cover:"
 
 
 #: Every fence tag a decomposition prompt can emit, whichever strategy builds
@@ -136,179 +142,57 @@ def _role_field(available_roles: tuple[NotBlankStr, ...]) -> dict[str, JsonValue
     }
 
 
-#: Every subtask property except ``required_role``, which is the one the
-#: roster changes. Module-level because a JSON Schema is data: rebuilding it
-#: per call put a 180-line literal inside the builder and buried the one
-#: roster-dependent line in the middle of it. Treated as read-only; the
-#: builder composes a fresh outer mapping around it and never mutates it.
-_SUBTASK_PROPERTIES: Final[dict[str, JsonValue]] = {
-    "id": {
-        "type": "string",
-        "description": "Unique subtask identifier",
-    },
-    "title": {
-        "type": "string",
-        "description": "Short subtask title",
-    },
-    "description": {
-        "type": "string",
-        "description": "Detailed subtask description",
-    },
-    "dependencies": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": "IDs of subtasks this depends on",
-    },
-    "estimated_complexity": {
-        "type": "string",
-        "enum": [c.value for c in Complexity],
-        "description": (
-            "Effort/uncertainty estimate. Reserve 'epic' for a whole "
-            "workstream that should itself be broken down further."
-        ),
-    },
-    "stakes": {
-        "type": "string",
-        "enum": [s.value for s in Stakes],
-        "description": (
-            "How consequential this item is if done wrong. Most items "
-            "are 'normal'; reserve 'high'/'critical' for irreversible "
-            "or high-blast-radius work (a handful, not most)."
-        ),
-    },
-    "required_skills": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": "Skills needed for this subtask",
-    },
-    # No minItems: a 'decision' item builds nothing and MUST declare an empty
-    # list, so a schema-level floor of one would make a decision item
-    # unsatisfiable and push a schema-enforcing provider into emitting
-    # artifacts the parser then rejects. The kind-dependent invariant is
-    # stated here and enforced by ``validate_expected_artifacts`` at parse
-    # time, where it can see the kind.
-    "expected_artifacts": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": (
-            "Concrete deliverables this subtask must produce "
-            "(file paths, docs, or test suites). A 'work' item must "
-            "list at least one and the plan is rejected without it, "
-            "because the fail-loud zero-artifact guard engages off "
-            "this list when the item runs. A 'decision' item builds "
-            "nothing and must leave this empty."
-        ),
-    },
-    "acceptance_criteria": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": (
-            "Verifiable criteria that define done for this subtask, each "
-            "decidable from this item's own expected_artifacts plus those "
-            "of the items it depends on. Naming a file a later item "
-            "produces makes the criterion unjudgeable and the plan is "
-            "rejected at parse time."
-        ),
-    },
-    "satisfies": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": (
-            "Which of the objective's acceptance criteria (copied "
-            "verbatim) this item advances, so success-criteria coverage "
-            "can be checked. Omit only for pure-support items that "
-            "advance no objective criterion directly."
-        ),
-    },
-    "kind": {
-        "type": "string",
-        "enum": [k.value for k in PlanItemKind],
-        "description": (
-            "'work' for a unit of work, or 'decision' for a real choice "
-            "the reviewer must make (e.g. stack/architecture). A decision "
-            "carries options and records the choice rather than building."
-        ),
-    },
-    "options": {
-        "type": "array",
-        "description": (
-            "For a 'decision' subtask only: 2-4 options to choose among, "
-            "exactly one marked recommended."
-        ),
-        "items": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "string", "description": "Stable option id"},
-                "title": {"type": "string", "description": "Option title"},
-                "summary": {
-                    "type": "string",
-                    "description": "The option's tradeoffs and rationale",
-                },
-                "recommended": {
-                    "type": "boolean",
-                    "description": "Whether the owner recommends this option",
-                },
-            },
-            "required": ["id", "title", "summary"],
-        },
-    },
-}
+def _satisfies_field(*, covers_objective: bool) -> dict[str, JsonValue]:
+    """Build the ``satisfies`` schema for a level's own vocabulary.
 
-#: The subtask fields a plan is rejected without.
-_SUBTASK_REQUIRED: Final[list[JsonValue]] = [
-    "id",
-    "title",
-    "description",
-    "stakes",
-    "required_role",
-    "expected_artifacts",
-    "acceptance_criteria",
-]
+    Args:
+        covers_objective: Whether this level is answerable for any objective
+            criterion at all.
 
-#: Every plan-level property except ``subtasks``, which is the one that
-#: embeds the roster-dependent subtask schema.
-_PLAN_PROPERTIES: Final[dict[str, JsonValue]] = {
-    "task_structure": {
-        "type": "string",
-        # AUTO is the absence of a declaration, so offering it as a choice
-        # would invite the planner to punt on a field it is better placed to
-        # answer than the keyword classifier that otherwise fills the gap.
-        # Omitting the field says the same thing without dressing it as an
-        # answer.
-        "enum": [s.value for s in TaskStructure if s is not TaskStructure.AUTO],
-        "description": (
-            "Overall structure: 'parallel'/'mixed' when independent "
-            "workstreams can run at once, 'sequential' only when every "
-            "item genuinely depends on the previous one."
-        ),
-    },
-    "coordination_topology": {
-        "type": "string",
-        "enum": [t.value for t in CoordinationTopology],
-        "description": "Coordination topology",
-    },
-    "open_questions": {
+    Returns:
+        A schema fragment naming the block to copy from, or one saying the
+        field must be left empty. Conditional because the message renders the
+        block only when there is one: a schema naming a heading the planner
+        cannot find is the instruction it has no way to follow, and below a
+        unit that claimed nothing there is no heading to render.
+    """
+    if not covers_objective:
+        return {
+            "type": "array",
+            "items": {"type": "string"},
+            # The same reason `_role_field` puts an `enum` on `required_role`:
+            # the rule is absolute, so a schema-enforcing provider should be
+            # unable to break it rather than merely told not to. Stated in
+            # prose alone, an entry costs the whole planning attempt at parse.
+            "maxItems": 0,
+            "description": (
+                "Leave empty. This level is answerable for no objective "
+                "criterion, because the unit it decomposes claimed none, so "
+                "there is nothing here an item can advance. The plan is "
+                "REJECTED for any entry: a criterion this item defines for "
+                "itself belongs in acceptance_criteria."
+            ),
+        }
+    return {
         "type": "array",
         "items": {"type": "string"},
         "description": (
-            "Questions you could not resolve that need the human's input "
-            "before the plan is approved (e.g. an ambiguous requirement or "
-            "an external dependency). Omit when nothing is open."
+            f"Which entries of '{OBJECTIVE_CRITERIA_LABEL.rstrip(':')}' "
+            "this item advances, copied verbatim from that list, so "
+            "success-criteria coverage can be checked. The plan is "
+            "REJECTED for an entry that is not on it: a criterion this "
+            "item defines for itself belongs in acceptance_criteria, and "
+            "one nobody stated names nothing anything can check. Omit "
+            "only for pure-support items that advance no objective "
+            "criterion directly."
         ),
-    },
-    "assumptions": {
-        "type": "array",
-        "items": {"type": "string"},
-        "description": (
-            "Load-bearing assumptions the plan rests on, so the human can "
-            "correct a wrong one before approving. Omit when none."
-        ),
-    },
-}
+    }
 
 
 def build_decomposition_tool(
     available_roles: tuple[NotBlankStr, ...] = (),
+    *,
+    covers_objective: bool = True,
 ) -> ToolDefinition:
     """Build the ``submit_decomposition_plan`` tool definition.
 
@@ -317,6 +201,9 @@ def build_decomposition_tool(
             on ``required_role``, so a schema-enforcing provider cannot emit
             an owner nothing can be dispatched to. Empty leaves the field a
             free string, which is what an org with no roster needs.
+        covers_objective: Whether this level is answerable for any objective
+            criterion. False tells the planner to leave ``satisfies`` empty,
+            because the message renders no list for it to copy from.
 
     Returns:
         A ``ToolDefinition`` with a JSON Schema describing the plan
@@ -335,10 +222,11 @@ def build_decomposition_tool(
         # will reach for, and one outside the org's own template is work it
         # assigns to nothing that can be dispatched to.
         "properties": {
-            **deepcopy(_SUBTASK_PROPERTIES),
+            **deepcopy(SUBTASK_PROPERTIES),
             "required_role": _role_field(available_roles),
+            "satisfies": _satisfies_field(covers_objective=covers_objective),
         },
-        "required": list(_SUBTASK_REQUIRED),
+        "required": list(SUBTASK_REQUIRED),
     }
     schema: dict[str, JsonValue] = {
         "type": "object",
@@ -348,7 +236,7 @@ def build_decomposition_tool(
                 "items": subtask_schema,
                 "description": "Ordered subtask definitions",
             },
-            **deepcopy(_PLAN_PROPERTIES),
+            **deepcopy(PLAN_PROPERTIES),
         },
         "required": ["subtasks"],
     }
@@ -383,8 +271,37 @@ def _roster_guidance(available_roles: tuple[NotBlankStr, ...]) -> str:
     )
 
 
+def coverage_guidance(*, covers_objective: bool) -> str:
+    """Render the ``satisfies`` guideline for the system prompt.
+
+    Args:
+        covers_objective: Whether this level is answerable for any objective
+            criterion.
+
+    Returns:
+        The guideline matching what the task message actually renders, so the
+        planner is never told to copy from a list that is not in front of it.
+    """
+    if not covers_objective:
+        return (
+            "- Leave satisfies empty on every item. This level is answerable "
+            "for no objective criterion, because the unit it decomposes "
+            "claimed none, so there is nothing here to advance and an item "
+            "claiming one is REJECTED.\n"
+        )
+    return (
+        f"- Tag each item with the entries of "
+        f"'{OBJECTIVE_CRITERIA_LABEL.rstrip(':')}' it advances (satisfies, "
+        "copied verbatim from that list) so coverage is checkable. Between "
+        "them, the items must cover every one of them. A criterion that is "
+        "not on that list is REJECTED, whoever wrote it.\n"
+    )
+
+
 def build_system_message(
     available_roles: tuple[NotBlankStr, ...] = (),
+    *,
+    covers_objective: bool = True,
 ) -> ChatMessage:
     """Build the system prompt for decomposition.
 
@@ -397,6 +314,8 @@ def build_system_message(
             Stated here as well as in the tool schema because the ``enum``
             only reaches a provider that enforces schemas, and the planner
             invents plausible near-misses when it is left to guess.
+        covers_objective: Whether this level is answerable for any objective
+            criterion, which decides which ``satisfies`` guideline is stated.
 
     Returns:
         A ``ChatMessage`` with ``MessageRole.SYSTEM``.
@@ -434,10 +353,8 @@ def build_system_message(
         "those of the items it depends on. A criterion naming a file another "
         "item produces later can never pass, and the plan is REJECTED for it: "
         "either declare that dependency or judge the item on what it builds.\n"
-        "- Tag each item with the objective acceptance criteria it advances "
-        "(satisfies, copied verbatim) so coverage is checkable. Between them, "
-        "the items must cover every objective criterion.\n"
-        "- Where the plan hinges on a real choice (stack, architecture), surface "
+        + coverage_guidance(covers_objective=covers_objective)
+        + "- Where the plan hinges on a real choice (stack, architecture), surface "
         "a decision item (kind 'decision') with 2-4 options and a recommended "
         "one, rather than silently deciding; its criterion is that the decision "
         "is recorded with a rationale.\n"
@@ -461,6 +378,41 @@ def build_system_message(
         "same schema.\n\n" + untrusted_content_directive(DECOMPOSITION_FENCES)
     )
     return ChatMessage(role=MessageRole.SYSTEM, content=content)
+
+
+def criteria_lines(
+    task: Task, context: DecompositionContext, *, own_heading: str
+) -> list[str]:
+    """Render the criteria block a planning message carries.
+
+    Two criteria lists, and below the root they are different things: one says
+    when THIS unit is done, the other what the objective the whole tree serves
+    is still waiting for. At the root they are the same list, so it is rendered
+    once, under the heading the submit tool's schema names.
+
+    Shared by both planners rather than written per prompt. A schema pointing
+    at a heading one of them does not render is the defect this exists to
+    close, and two copies of the rule is two chances to reintroduce it on one
+    side only.
+
+    Args:
+        task: The unit being decomposed.
+        context: What this level is answerable for.
+        own_heading: What to call the unit's OWN criteria, which the two
+            prompts capitalise differently.
+
+    Returns:
+        The block, ready to join into the fenced content.
+    """
+    lines: list[str] = []
+    own = tuple(c.description for c in task.acceptance_criteria)
+    if own and own != tuple(context.objective_criteria):
+        lines.append(own_heading)
+        lines.extend(f"  - {description}" for description in own)
+    if context.objective_criteria:
+        lines.append(OBJECTIVE_CRITERIA_LABEL)
+        lines.extend(f"  - {criterion}" for criterion in context.objective_criteria)
+    return lines
 
 
 def build_task_message(
@@ -488,9 +440,9 @@ def build_task_message(
         f"Title: {task.title}",
         f"Description: {task.description}",
     ]
-    if task.acceptance_criteria:
-        inner.append("Acceptance Criteria:")
-        inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
+    # Fenced with the rest, because a criterion is operator-authored at the
+    # root and agent-authored below it.
+    inner.extend(criteria_lines(task, context, own_heading="Acceptance Criteria:"))
 
     parts = [
         wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),

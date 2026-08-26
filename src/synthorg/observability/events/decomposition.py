@@ -142,6 +142,13 @@ both available and the planner could not comply."""
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""
 
+DECOMPOSITION_SESSIONS_EXHAUSTED: Final[str] = "decomposition.sessions_exhausted"
+"""A tree spent its whole planning-session budget.
+
+Emitted once, where the ledger flips, so the node that ran the tree out is
+named. Every unit below it goes unsplit carrying that backstop as its reason,
+which says WHAT bound but not WHERE the budget went."""
+
 DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
 """No explicit provider + model pair is bound for decomposition.
 

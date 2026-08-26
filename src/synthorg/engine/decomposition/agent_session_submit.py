@@ -199,7 +199,8 @@ class SubmitDecompositionPlanTool(BaseTool):
                 "once, last, after you have researched and self-reviewed."
             ),
             parameters_schema=build_decomposition_tool(
-                available_roles
+                available_roles,
+                covers_objective=bool(objective_criteria),
             ).parameters_schema,
             category=ToolCategory.OTHER,
         )

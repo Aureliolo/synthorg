@@ -15,6 +15,8 @@ from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
     curve_by_depth_cap,
+    survival_by_achieved_depth,
+    survival_by_depth_cap,
 )
 from evals.recursion_depth.tree import achieved_levels
 from synthorg.core.task import Task
@@ -172,13 +174,12 @@ _REQUIRED = 4
 
 
 class TestWhatEntersTheDenominator:
-    """The specification, not the work the leaves happened to claim.
+    """The specification, for the curve that must produce a point per cell.
 
-    A leaf-survival denominator is too sparse to carry a rate: a leaf must pass
-    its own suite to count, 62 of 183 did on a live run, and whole cells come
-    out with nothing in the denominator and therefore no point at all. Both
-    arms lost their depth-2 and depth-3 points that way, which deletes the
-    comparison the sweep exists for.
+    Its denominator is identical for every cell and cannot empty, which is what
+    makes the two arms comparable at every depth even where a cell's leaves all
+    failed. What it costs is attribution, and that is what the survival curve
+    beside it reports.
     """
 
     def test_the_denominator_is_the_specification(self) -> None:
@@ -228,11 +229,10 @@ class TestWhatEntersTheDenominator:
         assert point.satisfied == 0
         assert point.fraction == pytest.approx(0.0)
 
-    def test_what_a_leaf_claimed_does_not_reach_the_curve(self) -> None:
+    def test_what_a_leaf_claimed_does_not_reach_this_curve(self) -> None:
         # Deliberate: a tree scoring well because the merging agent rebuilt it
         # and one scoring well because leaf work survived are the same number
-        # here. The per-unit records still carry the claims, so the narrower
-        # question stays askable later.
+        # here. The survival curve is where that difference shows.
         cell = _cell(
             cap=2,
             achieved=2,
@@ -289,6 +289,187 @@ class TestWhatEntersTheDenominator:
         point = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
 
         assert point.satisfied == 1
+
+
+class TestLeafWorkSurvival:
+    """The question the sweep was built around, beside the adjacent one.
+
+    Of what the delivered leaves claimed, how much did the merge keep. The
+    denominator is leaf work rather than the specification, so it CAN empty,
+    and the empty case is reported as absent rather than as a zero: nothing was
+    measured there, and a zero says everything was lost.
+    """
+
+    def test_only_delivered_leaves_enter_the_denominator(self) -> None:
+        """Work that never worked cannot be work the merge lost."""
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(
+                _leaf("a", depth=1, claimed=("R01",)),
+                _leaf("b", depth=1, claimed=("R02",), delivered=False),
+            ),
+            passing=("R01", "R02"),
+        )
+
+        point = survival_by_achieved_depth((cell,))[0]
+
+        assert point.delivered_claims == 1
+        assert point.surviving_claims == 1
+        assert point.fraction == pytest.approx(1.0)
+
+    def test_a_claim_the_merge_dropped_lowers_the_fraction(self) -> None:
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01", "R02")),),
+            passing=("R01",),
+        )
+
+        point = survival_by_achieved_depth((cell,))[0]
+
+        assert point.delivered_claims == 2
+        assert point.surviving_claims == 1
+        assert point.fraction == pytest.approx(0.5)
+
+    def test_a_bucket_with_no_attributable_work_has_no_point_value(self) -> None:
+        """Absent, not zero: the two read as opposite conclusions."""
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01",), delivered=False),),
+            passing=("R01",),
+        )
+
+        point = survival_by_achieved_depth((cell,))[0]
+
+        assert point.delivered_claims == 0
+        assert point.fraction is None
+
+    def test_two_leaves_claiming_one_requirement_count_it_once(self) -> None:
+        # Overlapping units are a property of the plan, not more work, and
+        # counting them twice weights the level by how repetitive it was.
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(
+                _leaf("a", depth=1, claimed=("R01",)),
+                _leaf("b", depth=1, claimed=("R01",)),
+            ),
+            passing=("R01",),
+        )
+
+        point = survival_by_achieved_depth((cell,))[0]
+
+        assert point.delivered_claims == 1
+
+    def test_a_merge_unit_contributes_nothing(self) -> None:
+        merge = UnitRecord(
+            unit_id=NotBlankStr("root"),
+            title=NotBlankStr("assemble"),
+            kind=MERGE,
+            depth=0,
+            claimed=(RequirementId("R09"),),
+            delivered=True,
+        )
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(merge, _leaf("a", depth=1, claimed=("R01",))),
+            passing=("R01",),
+        )
+
+        point = survival_by_achieved_depth((cell,))[0]
+
+        assert point.delivered_claims == 1
+
+    def test_both_curves_bin_a_cell_on_the_same_axis(self) -> None:
+        """One chart, two lines: a shared x is what makes them comparable."""
+        cell = _cell(
+            cap=4,
+            achieved=3,
+            units=(_leaf("a", depth=2, claimed=("R01",)),),
+            passing=("R01",),
+        )
+
+        spec = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
+        survival = survival_by_achieved_depth((cell,))
+
+        assert [point.depth for point in spec] == [point.depth for point in survival]
+
+    def test_the_cap_curve_bins_on_the_cap(self) -> None:
+        cell = _cell(
+            cap=4,
+            achieved=3,
+            units=(_leaf("a", depth=2, claimed=("R01",)),),
+            passing=("R01",),
+        )
+
+        assert survival_by_depth_cap((cell,))[0].depth == 4
+
+    def test_the_two_curves_come_apart_where_the_merge_rebuilt_the_work(
+        self,
+    ) -> None:
+        """The whole reason both are reported.
+
+        A merged tree satisfying most of the specification while almost none of
+        its leaves' own work survived is exactly the reading the specification
+        curve cannot distinguish from a tree whose leaves carried it.
+        """
+        cell = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01", "R02", "R03", "R04")),),
+            passing=("R01", "R05", "R06", "R07"),
+        )
+
+        spec = curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)[0]
+        survival = survival_by_achieved_depth((cell,))[0]
+
+        assert spec.fraction == pytest.approx(1.0)
+        assert survival.fraction == pytest.approx(0.25)
+
+    def test_two_cells_in_one_bucket_add_up(self) -> None:
+        first = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01",)),),
+            passing=("R01",),
+        )
+        second = _cell(
+            cap=2,
+            achieved=2,
+            repetition=1,
+            units=(_leaf("b", depth=1, claimed=("R02", "R03")),),
+            passing=("R02",),
+        )
+
+        point = survival_by_achieved_depth((first, second))[0]
+
+        assert point.cells == 2
+        assert point.delivered_claims == 3
+        assert point.surviving_claims == 2
+
+    def test_each_arm_gets_its_own_point(self) -> None:
+        gated = _cell(
+            cap=2,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01",)),),
+            passing=("R01",),
+        )
+        ungated = _cell(
+            cap=2,
+            arm=Arm.UNGATED,
+            achieved=2,
+            units=(_leaf("b", depth=1, claimed=("R02",)),),
+            passing=(),
+        )
+
+        points = survival_by_achieved_depth((gated, ungated))
+
+        assert [point.arm for point in points] == [Arm.GATED, Arm.UNGATED]
+        assert points[0].fraction == pytest.approx(1.0)
+        assert points[1].fraction == pytest.approx(0.0)
 
 
 class TestWhatTheAxisMeans:

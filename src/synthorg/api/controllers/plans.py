@@ -32,6 +32,7 @@ from synthorg.api.controllers._plan_filters import (
 from synthorg.api.controllers._plan_input_validation import (
     reject_malformed_tree,
     reject_undecidable_graph,
+    reject_unnamed_claims,
     reject_unroutable_owners,
 )
 from synthorg.api.controllers._plan_removal import remove_plan, remove_plans
@@ -318,6 +319,7 @@ class PlanController(Controller):
         await reject_unroutable_owners(state.app_state, items)
         reject_undecidable_graph(items, task_structure=data.task_structure)
         reject_malformed_tree(items)
+        reject_unnamed_claims(items, existing.objective_criteria)
         revised = await service.edit(
             existing,
             items=items,
@@ -373,11 +375,25 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
+        items = items_from_payloads(data.items, previous=existing.items)
+        # Here rather than inside `replan_initiative`, which the automatic
+        # replan trigger also enters: its items come from a decomposition the
+        # parse boundary already held to this rule, against the objective TASK's
+        # live criteria, while the plan carries a denormalised copy taken when
+        # it was opened. Asking the shared function would hold generated items
+        # to the older of two answers.
+        #
+        # That holds because every level's vocabulary is a SUBSET of the root's:
+        # `matched_criteria` narrows to members of the parent's own list, and a
+        # level narrowed to empty admits no claim rather than every claim. So a
+        # decomposed item can never carry a claim this check would refuse, and
+        # the two boundaries cannot disagree about one.
+        reject_unnamed_claims(items, existing.objective_criteria)
         successor = await replan_initiative(
             state.app_state,
             existing,
             revision=RevisionInputs(
-                items=items_from_payloads(data.items, previous=existing.items),
+                items=items,
                 task_structure=data.task_structure,
                 coordination_topology=data.coordination_topology,
             ),

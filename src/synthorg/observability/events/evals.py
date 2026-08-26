@@ -103,7 +103,6 @@ EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
 EVALS_RECURSION_QUOTA_EXHAUSTED: Final[str] = "evals.recursion_depth.quota_exhausted"
-EVALS_RECURSION_CLAIM_UNRESOLVED: Final[str] = "evals.recursion_depth.claim_unresolved"
 EVALS_RECURSION_NO_CELLS: Final[str] = "evals.recursion_depth.no_cells_measured"
 EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_failure"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
@@ -168,6 +167,20 @@ EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repair
 Re-scoring an old recording whose per-session ledger was scrambled by
 concurrency. Logged because a repaired figure is a provenance claim: a token
 column silently reconstructed is worse than the fault it corrects."""
+EVALS_RECURSION_SPEND_ADOPTING: Final[str] = "evals.recursion_depth.spend_adopting"
+"""A rebuilt spend column is about to replace a recording's journal.
+
+Emitted BEFORE the first write, because the operation moves a file holding real
+spend and a failure part-way leaves a state somebody has to read. Without this
+line an interrupted adoption is indistinguishable from one that never
+started."""
+EVALS_RECURSION_SPEND_ADOPTED: Final[str] = "evals.recursion_depth.spend_adopted"
+"""A rebuilt spend column became the recording's own journal.
+
+The repair above computes the figures; this records that they were WRITTEN
+BACK, superseding the journalled ones. Logged separately because it is the step
+that makes the artefact reproducible from the repository alone, and the step
+that moves a file holding real spend."""
 EVALS_RECURSION_SPEND_UNCLAIMED: Final[str] = "evals.recursion_depth.spend_unclaimed"
 """The repair found calls that no journalled unit claimed.
 

@@ -18,6 +18,7 @@ chart could otherwise mislead.
 """
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Final, Literal, Self
 
 from pydantic import (
@@ -42,14 +43,16 @@ from synthorg.engine.decomposition.models import DecompositionResult
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
 #:
-#: Version 2 reshaped :class:`DepthPoint`: a fraction of the SPECIFICATION
-#: (``required``/``satisfied``) replaced a fraction of the leaves' own claims
-#: (``delivered_claims``/``surviving_claims``/``runs``). A version-1 artifact
-#: therefore has no reading under this model at all, and the version check is
-#: what says so: left at 1, such a file would pass the version field and then
-#: fail on the shape, reporting a field error for what is a whole-artifact
-#: mismatch.
-RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 2
+#: Version 3 carries BOTH questions rather than one: :class:`DepthPoint` keeps
+#: the fraction of the SPECIFICATION a merged tree satisfies, and
+#: :class:`SurvivalPoint` reports beside it the fraction of the leaves' own
+#: claims that survived. A unit no longer counts claims that resolved to
+#: nothing, because such a claim now ends the cell before it is paid for. An
+#: artifact written under an earlier version therefore has no reading under
+#: this model at all, and the version check is what says so: left where it
+#: was, such a file would pass the version field and then fail on the shape,
+#: reporting a field error for what is a whole-artifact mismatch.
+RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 3
 
 
 #: What a recorded unit may be. Declared as a closed set rather than free text
@@ -90,19 +93,21 @@ SIZING_CAVEAT: Final[str] = (
     "own split, which no published system has."
 )
 
-#: What the y-axis is, stated because it is NOT what the acceptance criterion
-#: asked for. The artefacts travel without the design page that explains the
-#: substitution, so a reader holding only the chart and the JSON would take the
-#: axis for leaf survival and compare it against a number that means something
-#: else.
+#: What each curve is, stated because two of them travel together and only one
+#: answers the question the sweep was built around. The artefacts travel
+#: without the design page, so a reader holding only the chart and the JSON
+#: would otherwise read either axis as the other.
 METRIC_CAVEAT: Final[str] = (
-    "The y-axis is the share of the SPECIFICATION the merged tree satisfies, "
-    "not the share of leaf work surviving the merge, which is the question "
-    "this sweep set out to ask. Leaf-level attribution proved too sparse to "
-    "carry a rate and produced no point at all for whole cells. The two "
-    "coincide only where the merge adds nothing of its own, so a tree scoring "
-    "well because the merging agent rebuilt it reads here exactly like one "
-    "whose leaves survived."
+    "Two curves, and they answer different questions. SPECIFICATION is the "
+    "share of the specification's own requirements the merged tree satisfies: "
+    "a denominator every cell shares, which cannot empty, and which says "
+    "nothing about where the work came from, so a tree scoring well because "
+    "the merging agent rebuilt it reads there exactly like one whose leaves "
+    "survived. SURVIVAL is the share of the requirements DELIVERED leaves "
+    "claimed that the merged tree still satisfies: the question this sweep "
+    "was built around, on a denominator that is leaf work and can be empty, "
+    "in which case the point is absent rather than zero. The two coming apart "
+    "IS the finding."
 )
 
 #: What the held-out oracle buys, stated for the same reason.
@@ -143,13 +148,38 @@ RUN_STATE_CAVEATS: Final[frozenset[str]] = frozenset(
 #: its siblings because a report's caveats are one vocabulary and splitting them
 #: across the modules that happen to raise each one is how two of them come to
 #: contradict each other.
+UNATTRIBUTED_LEAVES_CAVEAT: Final[str] = (
+    "{buckets} bucket(s) carry no survival point: their delivered leaves "
+    "claimed no requirement between them, so the ratio has an empty "
+    "denominator and is reported as absent rather than as zero. A planner may "
+    "legitimately leave a subtree claiming nothing; a whole arm reading this "
+    "way means the plans stopped tagging what they advance."
+)
+
+#: The same, for a recording taken before an unresolvable claim stopped its own
+#: cell. Nothing this harness records can produce it now, and it is kept
+#: because the recording that did is still on disk, still readable, and still
+#: the evidence of what the drift cost.
 UNRESOLVED_CLAIMS_CAVEAT: Final[str] = (
     "{dropped} planner claim(s) named no requirement this specification "
-    "defines and were dropped before scoring. A handful is one planner "
-    "inventing a requirement; a large share means the criterion template and "
-    "the id pattern have drifted apart. The curve divides by the specification "
-    "rather than by these claims, so it is unaffected, but the per-unit "
-    "attribution is."
+    "defines and were dropped before scoring, so the per-unit attribution in "
+    "this recording is not trustworthy. A claim naming nothing is now refused "
+    "where the planner writes it, and one reaching the harness ends its cell "
+    "before any leaf is paid for, so a later recording carrying this line is "
+    "reporting a regression rather than a known gap."
+)
+
+#: The complement of the line above, for a cell this harness stopped rather
+#: than deflated. It rides the caption because an unmeasured cell is otherwise
+#: invisible on the chart: it lowers a histogram bar and says nothing, and this
+#: particular reason means the product's own write boundary let a claim through
+#: rather than that a sample was unlucky.
+UNRESOLVABLE_CLAIM_CELLS_CAVEAT: Final[str] = (
+    "{cells} cell(s) were stopped before any leaf ran because a planner claim "
+    "named no requirement this specification defines. That claim should have "
+    "been refused where it was written, so these cells are evidence of a "
+    "regression in the product rather than of a difficult sample; the depths "
+    "they would have reached are missing from every curve below."
 )
 
 
@@ -162,13 +192,19 @@ class UnitRecord(BaseModel):
         kind: :data:`LEAF`, :data:`MERGE` or :data:`PLAN`.
         depth: Its level in the decomposition tree, ``0`` at the root.
         claimed: The spec requirement ids the planner said this unit advances.
+            Empty only where the unit genuinely claimed nothing: a claim naming
+            no requirement this specification defines ends its cell before any
+            leaf runs, rather than being dropped into this field's silence.
         unresolved_claims: How many of the planner's claims named no
-            requirement this specification defines, so they were dropped
-            before scoring. Carried into the report rather than left in a
-            warning log because the survival metric is a ratio over what
-            survives here: a drift between the criterion template and the id
-            pattern would deflate both halves toward zero and read on the
-            chart exactly like a gate that does not help.
+            requirement this specification defines. Structurally zero on
+            anything this harness records: such a claim is refused where the
+            planner writes it, and one that reaches the harness anyway ends
+            the cell at ``claimed_requirements`` before the first leaf session
+            opens. It is carried because a recording taken while that was not
+            true is still on disk and still readable, and because the count it
+            holds is the whole evidence of what went wrong: dropped instead,
+            an unresolvable claim deflates both halves of the survival ratio
+            and reads on the chart exactly like a gate that does not help.
         delivered: Whether it changed something it declared and its own tests
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
@@ -425,7 +461,12 @@ class CellProgressRecord(BaseModel):
 
 
 class DepthPoint(BaseModel):
-    """One point on the survival curve.
+    """One point on the specification-satisfaction curve.
+
+    The PRIMARY curve, and not the same question as
+    :class:`SurvivalPoint`: this one asks how much of the specification the
+    merged tree satisfies, against a denominator fixed by the specification
+    that cannot empty.
 
     Attributes:
         depth: The depth this point bins, in levels rather than zero-based, so
@@ -486,12 +527,10 @@ class DepthPoint(BaseModel):
     def fraction(self) -> float | None:
         """The fraction of the specification the merged tree satisfies.
 
-        Deliberately NOT the fraction of leaf work that survived the merge,
-        which is the question this experiment asks. Leaf-level attribution is
-        too sparse to carry a rate: a leaf must pass its own suite to count at
-        all, most do not, and a delivered leaf at depth 2 or deeper often
-        claims nothing, so whole cells produce no point. This denominator is
-        the specification's own requirement count, which every cell shares and
+        Deliberately NOT the fraction of leaf work that survived the merge:
+        :class:`SurvivalPoint` answers that, on the same axis, and the two
+        coming apart is what the pair exists to show. This denominator is the
+        specification's own requirement count, which every cell shares and
         which cannot empty.
 
         Returns:
@@ -500,6 +539,96 @@ class DepthPoint(BaseModel):
         if self.required == 0:
             return None
         return self.satisfied / self.required
+
+
+class SurvivalPoint(BaseModel):
+    """One point on the leaf-work survival curve.
+
+    A model of its own rather than more fields on :class:`DepthPoint`, because
+    the two have different denominators and different empty cases, and because
+    spend belongs to a RUN and is booked once, there. Binned on the same axis
+    so the pair reads off one chart.
+
+    Attributes:
+        depth: The depth this point bins, in levels, matching its
+            :class:`DepthPoint` sibling.
+        arm: Which line the point belongs to.
+        delivered_claims: How many distinct requirements the DELIVERED leaves
+            of these runs claimed. The denominator, and the one that can empty:
+            a leaf must have changed something it declared and passed its own
+            suite to count at all, so a bucket whose leaves all failed has no
+            leaf work to have survived anything.
+        surviving_claims: How many of those the merged tree still satisfies,
+            per the held-out oracle. The numerator.
+        cells: How many runs this bucket holds.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth: int = Field(ge=1)
+    arm: Arm
+    delivered_claims: int = Field(ge=0)
+    surviving_claims: int = Field(ge=0)
+    cells: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _survivors_are_a_subset(self) -> Self:
+        """Reject a point where more survived than was ever delivered.
+
+        Both operands are derived by intersecting one set with another, so a
+        numerator exceeding the denominator means the two were taken from
+        different populations.
+
+        Returns:
+            ``self`` when the fraction is in range.
+
+        Raises:
+            ValueError: The numerator exceeds the denominator.
+        """
+        if self.surviving_claims > self.delivered_claims:
+            msg = (
+                f"depth {self.depth} {self.arm.value}: "
+                f"{self.surviving_claims} surviving against "
+                f"{self.delivered_claims} delivered"
+            )
+            raise ValueError(msg)
+        return self
+
+    # Serialised for the same reason its sibling's is: a report carrying two
+    # operands and not the ratio makes every reader recompute it and disagree
+    # about the empty case, which here is the case that matters most.
+    @computed_field
+    @property
+    def fraction(self) -> float | None:
+        """The fraction of claimed leaf work the merge kept.
+
+        Returns:
+            The fraction, or ``None`` when the delivered leaves of this bucket
+            claimed nothing between them. ``None`` rather than zero: nothing
+            was measured there, and a zero reads as everything having been
+            lost, which is the opposite conclusion.
+        """
+        if self.delivered_claims == 0:
+            return None
+        return self.surviving_claims / self.delivered_claims
+
+
+class SpendSource(StrEnum):
+    """Where a recording's token column came from.
+
+    A property of the DATA rather than of the invocation that scored it. Read
+    off the run alone, "were these figures repaired" is answerable only by
+    whoever typed the command, so a re-score of the same journal by anyone else
+    either states the opposite of what it holds or says nothing at all.
+
+    Members:
+        JOURNALLED: What each session recorded for itself.
+        REPAIRED: Rebuilt per call, because the sessions shared one
+            process-wide cost sink that a concurrent run scrambles.
+    """
+
+    JOURNALLED = "journalled"
+    REPAIRED = "repaired"
 
 
 class Provenance(BaseModel):
@@ -515,6 +644,12 @@ class Provenance(BaseModel):
         executor: The pair every unit was built on.
         reviewer: The pair every review ran on.
         independence: How far apart those two are.
+        spend_source: Whether the token column is what the sessions journalled
+            or what a per-call repair rebuilt. Carried here rather than
+            appended as a sentence at scoring time, because it is a claim about
+            the figures a reader is holding: stated only by the run that typed
+            the flag, a later re-score of the same journal reports the opposite
+            of what it holds.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -528,6 +663,7 @@ class Provenance(BaseModel):
     executor: ModelPair
     reviewer: ModelPair
     independence: Independence
+    spend_source: SpendSource = SpendSource.JOURNALLED
 
     @field_validator("generated_at")
     @classmethod
@@ -556,11 +692,17 @@ class RecursionDepthReport(BaseModel):
         schema_version: Bumped only as a deliberate breaking change.
         provenance: What the sweep ran against.
         cells: Every run, measured or unavailable.
-        by_achieved_depth: The primary curve, binned on the depth leaves
-            actually sat at.
+        by_achieved_depth: The primary curve, binned on the depth each tree
+            actually reached.
         by_depth_cap: The secondary curve, binned on the cap the run was
             allowed. Kept because the cap is the manipulated variable and a
             reader needs to see how much of the sweep the planner used.
+        survival_by_achieved_depth: What share of the DELIVERED leaves' own
+            claims the merge kept, on the same axis as ``by_achieved_depth``.
+            The question the sweep was built around; its sibling answers the
+            adjacent one, and the pair coming apart is the finding.
+        survival_by_depth_cap: The same, binned on the cap, beside
+            ``by_depth_cap`` for the same reason that one exists.
         achieved_depth_histogram: How many runs reached each depth, per cap.
             Without it a flat right half of the primary curve is unreadable.
         caveats: What a reader must hold in mind, in the report's own words.
@@ -573,6 +715,8 @@ class RecursionDepthReport(BaseModel):
     cells: tuple[CellRecord, ...] = Field(min_length=1)
     by_achieved_depth: tuple[DepthPoint, ...] = ()
     by_depth_cap: tuple[DepthPoint, ...] = ()
+    survival_by_achieved_depth: tuple[SurvivalPoint, ...] = ()
+    survival_by_depth_cap: tuple[SurvivalPoint, ...] = ()
     achieved_depth_histogram: dict[str, int] = Field(default_factory=dict)
     caveats: tuple[str, ...] = ()
 
@@ -644,6 +788,8 @@ __all__ = [
     "DepthPoint",
     "Provenance",
     "RecursionDepthReport",
+    "SpendSource",
+    "SurvivalPoint",
     "UnitKind",
     "UnitRecord",
 ]

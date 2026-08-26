@@ -244,4 +244,37 @@ def repair_cell_spend(
     return repaired
 
 
-__all__ = ["SPEND_REPAIRED_CAVEAT", "repair_cell_spend", "tokens_by_unit"]
+def placed_units(
+    cells: Sequence[CellRecord], attributed: Mapping[tuple[str, str], int]
+) -> int:
+    """Count the recorded units *attributed* actually reaches.
+
+    Asked separately from :func:`repair_cell_spend` because that function is
+    silent about a miss by design: a unit the log never saw keeps what it
+    journalled, so a log belonging to a DIFFERENT recording rewrites nothing
+    and returns cells identical to the ones handed in. Non-empty attribution is
+    therefore not evidence the repair placed anything here, and the caveat the
+    adopted report carries is a provenance claim.
+
+    Args:
+        cells: The recorded cells.
+        attributed: Tokens per ``(cell key, unit id)`` from
+            :func:`tokens_by_unit`.
+
+    Returns:
+        How many recorded units the attribution names.
+    """
+    recorded = {
+        (cell_key(cell.depth_cap, cell.arm, cell.repetition), unit.unit_id)
+        for cell in cells
+        for unit in cell.units
+    }
+    return len(recorded & set(attributed))
+
+
+__all__ = [
+    "SPEND_REPAIRED_CAVEAT",
+    "placed_units",
+    "repair_cell_spend",
+    "tokens_by_unit",
+]

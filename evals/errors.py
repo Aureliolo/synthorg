@@ -269,6 +269,24 @@ class OracleUnusableError(EvalError):
     default_message: ClassVar[str] = "The held-out oracle could not be run"
 
 
+class RecursionDepthClaimUnresolvableError(EvalError):
+    """Raised when a planner claim names no requirement the specification has.
+
+    The backstop rather than the primary refusal: the product's own parse
+    boundary rejects such a claim where the planning session can still correct
+    it, so one reaching the harness means that boundary regressed. Raised
+    rather than dropped because dropping is what a recorded sweep did 143
+    times, which deflated the ratio it was measuring at both ends and read on
+    the chart as a gate that does not help.
+
+    Per cell rather than per sweep: the tree one planner produced is the thing
+    at fault, and asked before any leaf runs, so the cell costs its planning
+    sessions rather than its whole leaf budget.
+    """
+
+    default_message: ClassVar[str] = "A planner claim named no known requirement"
+
+
 class RecursionDepthNoCellsMeasuredError(EvalError):
     """Raised when a completed recursion-depth sweep measured no cell.
 
@@ -407,6 +425,23 @@ class RecursionDepthSpendRepairEmptyError(EvalError):
     default_message: ClassVar[str] = "Spend repair attributed no calls to any unit"
 
 
+class RecursionDepthSpendAlreadyAdoptedError(EvalError):
+    """Raised when a repair would overwrite a recording's own raw ledger.
+
+    A second repair reads the ledger the first one wrote, so adopting it again
+    would move REPAIRED figures on top of the raw journal that was kept
+    precisely so a reader could check the claim. The rows under it are real
+    spend and cannot be re-derived from the log, which produces repaired
+    figures by construction. Refusing names the file, because the operator who
+    meant the second repair can move it aside and the one who did not has just
+    been told what they were about to destroy.
+    """
+
+    default_message: ClassVar[str] = (
+        "This recording's spend column was already repaired"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -448,11 +483,13 @@ __all__ = [
     "ProvenanceUnavailableError",
     "RecursionDepthCapabilityUnresolvedError",
     "RecursionDepthCeilingUndeclaredError",
+    "RecursionDepthClaimUnresolvableError",
     "RecursionDepthGateUnbuildableError",
     "RecursionDepthJudgeNotIndependentError",
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
+    "RecursionDepthSpendAlreadyAdoptedError",
     "RecursionDepthSpendRepairEmptyError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",

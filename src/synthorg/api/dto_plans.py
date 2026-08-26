@@ -129,7 +129,9 @@ class PlanItemPayload(BaseModel):
     satisfies: tuple[NotBlankStr, ...] = Field(
         default=(),
         max_length=_MAX_CRITERIA,
-        description="Objective success criteria this item advances",
+        description="Which of the plan's objective criteria this item "
+        "advances, copied from them and matched ignoring case and surrounding "
+        "or repeated whitespace; an entry naming none of them is refused",
     )
 
     @model_validator(mode="after")

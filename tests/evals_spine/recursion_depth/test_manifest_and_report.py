@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.emit import load_report, write_report
+from evals.recursion_depth.emit import derived_caveats, load_report, write_report
 from evals.recursion_depth.manifest import (
     Arm,
     Independence,
@@ -28,8 +28,11 @@ from evals.recursion_depth.models import (
     DepthPoint,
     Provenance,
     RecursionDepthReport,
+    SpendSource,
+    SurvivalPoint,
     UnitRecord,
 )
+from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
@@ -357,6 +360,28 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 attempts=6,
             ),
         ),
+        # Set for the same reason the cost points are: the survival table and
+        # the second chart panel render off these, so a fixture leaving them
+        # empty asserts every claim about them against nothing. One arm
+        # carries an EMPTY denominator, which is the case the two rendering
+        # paths handle differently from zero.
+        survival_by_achieved_depth=(
+            SurvivalPoint(
+                depth=2, arm=Arm.GATED, delivered_claims=4, surviving_claims=3, cells=1
+            ),
+            SurvivalPoint(
+                depth=2,
+                arm=Arm.UNGATED,
+                delivered_claims=0,
+                surviving_claims=0,
+                cells=1,
+            ),
+        ),
+        survival_by_depth_cap=(
+            SurvivalPoint(
+                depth=2, arm=Arm.GATED, delivered_claims=4, surviving_claims=3, cells=1
+            ),
+        ),
         # The key shape `achieved_depth_histogram` actually emits, arm
         # included. Without the arm this fixture asserted a caption against a
         # string the sweep cannot produce, so a change to the real format
@@ -450,6 +475,101 @@ class TestTheReportRefusesASilentGap:
                 satisfied=2,
                 cells=1,
             )
+
+
+class TestBothCurvesReachTheReader:
+    """Two curves, reported side by side, and the divergence is the finding.
+
+    A tree can satisfy most of the specification because the merging agent
+    rebuilt everything itself, with no leaf work surviving at all, so a reader
+    handed one number cannot tell those apart.
+    """
+
+    def test_the_markdown_carries_the_survival_table(self, tmp_path: Path) -> None:
+        report = _report(cells=(_measured_cell(Arm.GATED),))
+
+        _, md_path, _ = write_report(report, tmp_path)
+
+        assert "survival" in md_path.read_text(encoding="utf-8").lower()
+
+    def test_an_empty_denominator_reads_as_absent_rather_than_zero(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing measured is not everything lost, and 0.0 says the second."""
+        report = _report(cells=(_measured_cell(Arm.GATED),))
+
+        _, md_path, _ = write_report(report, tmp_path)
+
+        assert "n/a" in md_path.read_text(encoding="utf-8")
+
+    def test_the_chart_carries_a_second_panel(self, tmp_path: Path) -> None:
+        report = _report(cells=(_measured_cell(Arm.GATED),))
+
+        _, _, svg_path = write_report(report, tmp_path)
+
+        svg = svg_path.read_text(encoding="utf-8")
+        assert "Fraction of the specification satisfied" in svg
+        assert "Fraction of the delivered leaves' own claims" in svg
+
+    def test_the_json_carries_both_series(self, tmp_path: Path) -> None:
+        report = _report(cells=(_measured_cell(Arm.GATED),))
+
+        json_path, _, _ = write_report(report, tmp_path)
+        reloaded = load_report(json_path)
+
+        assert len(reloaded.survival_by_achieved_depth) == 2
+        assert len(reloaded.survival_by_depth_cap) == 1
+
+    def test_an_absent_point_is_left_out_of_the_chart_rather_than_drawn_low(
+        self, tmp_path: Path
+    ) -> None:
+        """Drawing it at zero would read as everything having been lost, so
+        the panel says how many buckets it left out instead."""
+        report = _report(cells=(_measured_cell(Arm.GATED),))
+
+        _, _, svg_path = write_report(report, tmp_path)
+
+        assert "which is not a rate of zero" in svg_path.read_text(encoding="utf-8")
+
+
+class TestTheCaveatsARecordingImplies:
+    """Derived from the cells, so a re-score cannot forget one."""
+
+    def test_a_clean_recording_implies_none(self) -> None:
+        cells = (_measured_cell(Arm.GATED),)
+
+        assert derived_caveats(cells, spend_source=SpendSource.JOURNALLED) == []
+
+    def test_an_unattributed_bucket_is_named(self) -> None:
+        cells = (
+            _measured_cell(Arm.GATED).model_copy(
+                update={"units": (), "merged_passing": ()}
+            ),
+        )
+
+        caveats = derived_caveats(cells, spend_source=SpendSource.JOURNALLED)
+
+        assert any("no survival point" in line for line in caveats)
+
+    def test_a_repaired_column_is_declared(self) -> None:
+        cells = (_measured_cell(Arm.GATED),)
+
+        caveats = derived_caveats(cells, spend_source=SpendSource.REPAIRED)
+
+        assert SPEND_REPAIRED_CAVEAT in caveats
+
+    def test_two_conditions_produce_two_lines_rather_than_clobbering(self) -> None:
+        """They are separate facts and a reader needs both."""
+        cells = (
+            _measured_cell(Arm.GATED).model_copy(
+                update={"units": (), "merged_passing": ()}
+            ),
+        )
+
+        caveats = derived_caveats(cells, spend_source=SpendSource.REPAIRED)
+
+        assert len(caveats) == 2
+        assert SPEND_REPAIRED_CAVEAT in caveats
 
 
 class TestTheEmittedArtifacts:

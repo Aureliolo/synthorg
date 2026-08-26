@@ -16,6 +16,7 @@ transport (tool call, JSON content, markdown fence) they are both reached
 through.
 """
 
+from synthorg.core.criterion_match import describe_unnamed_claims, matched_criteria
 from synthorg.core.plan_reference_validation import describe_unstated_references
 from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_validation import (
@@ -69,85 +70,107 @@ def validate_coverage(
     subtasks: tuple[SubtaskDefinition, ...],
     objective_criteria: tuple[NotBlankStr, ...],
 ) -> None:
-    """Reject a plan that advances none of the objective it decomposes.
+    """Reject a plan whose ``satisfies`` cannot be read against the objective.
 
-    ``satisfies`` exists so success-criteria coverage can be CHECKED, and until
-    now nothing checked it. The prompt states the contract ("Between them, the
-    items must cover every objective criterion"), the schema leaves the field
-    out of the required list, and its description invites omission per item
-    ("Omit only for pure-support items"). A planner that reads every item as
-    pure support therefore produces a plan tagged with nothing, which parses
-    cleanly, reads correctly, and answers "which of the objective's criteria
-    does this plan address?" with silence.
+    Two rules, and they are different claims about the same field.
 
-    Observed on a live decomposition of a 42-criterion objective: all seven
-    subtasks came back with ``satisfies=[]``, on the same specification where
-    an earlier run of the same planner tagged all seven. So it is variance
-    rather than a planner that cannot do it, which is worse: it poisons an
-    unpredictable subset of plans rather than failing consistently.
+    **The plan advances something.** ``satisfies`` exists so success-criteria
+    coverage can be CHECKED, and nothing checked it. The prompt
+    states the contract, the schema leaves the field out of the required list,
+    and its description invites omission per item ("Omit only for pure-support
+    items"). A planner that reads every item as pure support therefore produces
+    a plan tagged with nothing, which parses cleanly, reads correctly, and
+    answers "which of the objective's criteria does this plan address?" with
+    silence. Observed on a live decomposition of a 42-criterion objective: all
+    seven subtasks came back with ``satisfies=[]``, on the same specification
+    where an earlier run of the same planner tagged all seven. So it is
+    variance rather than a planner that cannot do it, which is worse: it
+    poisons an unpredictable subset of plans rather than failing consistently.
+    That rule is at PLAN level, because the field's own semantics allow a
+    genuine pure-support item to claim nothing; what cannot be true is that
+    every item is, since then nothing builds the objective.
 
-    The check is at PLAN level, not item level, because the field's own
-    semantics allow a genuine pure-support item to claim nothing. What cannot
-    be true is that every item is pure support: then nothing builds the
-    objective.
-
-    What counts is an OVERLAP with the objective's own criteria, not a
-    non-empty field. ``satisfies`` carries criterion TEXT, so a plan tagging
-    every item with a sentence the objective never states advances exactly as
-    much as one tagging nothing, while reading as covered: a non-empty test
-    turns the rule into a formality any invented string passes.
+    **Each claim names something.** A claim carrying a sentence the objective
+    never states reads as coverage on every surface that shows the field and is
+    coverage to none of them. A recorded sweep dropped 143 such claims at
+    scoring time, which deflated the ratio it was measuring at both ends; the
+    boundary that WRITES a claim is where that has a fix, because here the
+    planning session still has a turn left to correct it. An item may still
+    claim NOTHING: that rule is about invention, not omission.
 
     FULL coverage is documented and deliberately NOT enforced. Partial coverage
     is still a plan worth having, while zero coverage has no reading at all,
     and putting a rule the planner keeps re-breaking in front of the retry
     ladder is how the em-dash style rule once took 18 of 25 planning calls.
+    Naming a criterion verbatim is a different order of demand: the list to
+    copy from is in the message, and the refusal quotes it back.
+
+    Both violations are reported together, for the reason
+    :func:`validate_graph` records: a session that regenerates its whole plan
+    on each rejection cannot converge while it is told one at a time.
+
+    The two rules answer an empty vocabulary differently, and the asymmetry is
+    the point. Nothing to cover means the first rule has no question to ask, so
+    it is skipped. Nothing to claim means the second rule refuses EVERYTHING,
+    because a level answerable for no criterion cannot advance one. Skipping
+    both instead left every descendant of a pure-support unit unchecked, since
+    such a unit is judged oversized on its artifact count alone and is recursed
+    into with an empty vocabulary.
 
     Args:
         subtasks: The parsed subtasks.
-        objective_criteria: The acceptance criteria of the task being
-            decomposed. Empty skips the check, because an objective that
-            declares no criteria has no coverage to claim.
+        objective_criteria: The criteria this level is answerable for. Empty
+            skips the coverage rule and tightens the claim rule to admit
+            nothing.
 
     Raises:
-        DecompositionError: The objective declares criteria and no subtask
-            claims any of them.
+        DecompositionError: The level declares criteria and no subtask claims
+            any of them, or a subtask claims something the level does not
+            state.
     """
-    if not objective_criteria:
-        return
-    stated = set(objective_criteria)
-    if any(stated.intersection(sub.satisfies) for sub in subtasks):
-        return
-    claimed = sorted({claim for sub in subtasks for claim in sub.satisfies})
-    detail = (
-        f"No subtask's 'satisfies' names any of the objective's "
-        f"{len(objective_criteria)} acceptance criteria, so this plan "
-        f"advances none of the objective and coverage cannot be checked"
-        f"{_names(claimed)}. Tag each item with the objective criteria it "
-        f"advances, copied verbatim; a genuine pure-support item may claim "
-        f"none, but they cannot all be pure support."
+    detail = combine_graph_violations(
+        (
+            *(
+                _uncovered_objective(subtasks, objective_criteria)
+                if objective_criteria
+                else ()
+            ),
+            *describe_unnamed_claims(subtasks, objective=objective_criteria),
+        )
     )
+    if detail is None:
+        return
     logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
     raise DecompositionError(detail)
 
 
-def _names(claimed: list[str]) -> str:
-    """Say what the plan claimed instead, when it claimed anything.
-
-    A plan tagged with nothing and one tagged with invented criteria are
-    different mistakes with different fixes, and the second is the one a
-    planner cannot see: its items look tagged. Quoting what it wrote is what
-    lets the next turn compare the two lists rather than guess.
+def _uncovered_objective(
+    subtasks: tuple[SubtaskDefinition, ...],
+    objective_criteria: tuple[NotBlankStr, ...],
+) -> tuple[str, ...]:
+    """Describe a plan whose every item is pure support.
 
     Args:
-        claimed: Every criterion the plan claimed, deduplicated and ordered.
+        subtasks: The parsed subtasks.
+        objective_criteria: The criteria this level is answerable for.
 
     Returns:
-        A clause naming the claims, or the empty string when there are none.
+        One message, or empty when at least one item advances the objective.
     """
-    if not claimed:
-        return ""
-    quoted = ", ".join(repr(claim) for claim in claimed)
-    return f"; the plan claims {quoted}, which the objective does not state"
+    if any(
+        matched_criteria(sub.satisfies, objective=objective_criteria)
+        for sub in subtasks
+    ):
+        return ()
+    detail = (
+        f"No subtask's 'satisfies' names any of the objective's "
+        f"{len(objective_criteria)} acceptance criteria, so this plan "
+        f"advances none of the objective and coverage cannot be checked. Tag "
+        f"each item with the objective criteria it advances, copied verbatim; "
+        f"a genuine pure-support item may claim none, but they cannot all be "
+        f"pure support"
+    )
+    return (detail,)
 
 
 def validate_graph(
