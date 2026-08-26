@@ -10,7 +10,13 @@ import type { DraftItem } from './PlanEditor.types'
 // Rows held on screen at once. Not a backend bound: a row is a whole form and
 // its container picker offers every item in the plan, so this is what keeps
 // the browser's work a function of the page rather than of the plan.
-const ROWS_PER_PAGE = 20
+//
+// Ten because a row is close to a screen tall (four text areas, four selects),
+// so a page is what the operator can actually scan before reaching for the
+// pager, and the first paint stays a fraction of a second. Twenty measured at
+// around ten times the cost of the same page rendered warm, which is a wait
+// the operator pays on every cold open of a plan past one page.
+export const ROWS_PER_PAGE = 10
 
 export interface PagedRows {
   /** The rows to render, in plan order. */

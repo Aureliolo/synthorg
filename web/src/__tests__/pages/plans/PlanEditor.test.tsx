@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { apiSuccess } from '@/mocks/handlers'
 import { PlanEditor } from '@/pages/plans/PlanEditor'
+import { ROWS_PER_PAGE } from '@/pages/plans/PlanEditor.paging'
 import { usePlansStore } from '@/stores/plans'
 import { server } from '@/test-setup'
 
@@ -171,10 +172,16 @@ describe('PlanEditor', () => {
   })
 
   describe('paging', () => {
+    // Sized off the page rather than a literal, so tuning the page size stays
+    // a judgement about what an operator can scan rather than a test edit.
+    // One row past a full second page keeps a partial last page in play.
+    const OVERFLOW = ROWS_PER_PAGE + 5
+    const FIRST_ON_PAGE_TWO = ROWS_PER_PAGE + 1
+
     // Titles deliberately unlike the "Item N" row headers, so a header
     // assertion cannot be satisfied by a title that happens to read the same.
     const many = makePlan('plan-1', {
-      items: Array.from({ length: 25 }, (_, index) =>
+      items: Array.from({ length: OVERFLOW }, (_, index) =>
         makePlanItem(`i${String(index + 1)}`, { title: `Task ${String(index + 1)}` }),
       ),
     })
@@ -186,9 +193,11 @@ describe('PlanEditor', () => {
       resetStore()
       renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
 
-      expect(screen.getAllByLabelText('Belongs to')).toHaveLength(20)
-      expect(screen.getByDisplayValue('Task 20')).toBeInTheDocument()
-      expect(screen.queryByDisplayValue('Task 21')).not.toBeInTheDocument()
+      expect(screen.getAllByLabelText('Belongs to')).toHaveLength(ROWS_PER_PAGE)
+      expect(screen.getByDisplayValue(`Task ${String(ROWS_PER_PAGE)}`)).toBeInTheDocument()
+      expect(
+        screen.queryByDisplayValue(`Task ${String(FIRST_ON_PAGE_TWO)}`),
+      ).not.toBeInTheDocument()
     })
 
     it('numbers the rows by their place in the plan, not in the page', async () => {
@@ -200,8 +209,10 @@ describe('PlanEditor', () => {
 
       await user.click(screen.getByRole('button', { name: 'Next page' }))
 
-      expect(screen.getByDisplayValue('Task 21')).toBeInTheDocument()
-      expect(screen.getByText('Item 21')).toBeInTheDocument()
+      expect(
+        screen.getByDisplayValue(`Task ${String(FIRST_ON_PAGE_TWO)}`),
+      ).toBeInTheDocument()
+      expect(screen.getByText(`Item ${String(FIRST_ON_PAGE_TWO)}`)).toBeInTheDocument()
       expect(screen.queryByText('Item 1')).not.toBeInTheDocument()
     })
 
@@ -214,7 +225,7 @@ describe('PlanEditor', () => {
 
       await user.click(screen.getByRole('button', { name: /Add item/ }))
 
-      expect(screen.getByText('Item 26')).toBeInTheDocument()
+      expect(screen.getByText(`Item ${String(OVERFLOW + 1)}`)).toBeInTheDocument()
     })
 
     it('still gates the save on an item the operator has paged away from', async () => {
@@ -225,7 +236,7 @@ describe('PlanEditor', () => {
       renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
 
       await user.click(screen.getByRole('button', { name: 'Next page' }))
-      await user.clear(screen.getByDisplayValue('Task 21'))
+      await user.clear(screen.getByDisplayValue(`Task ${String(FIRST_ON_PAGE_TWO)}`))
       await user.click(screen.getByRole('button', { name: 'Previous page' }))
 
       expect(screen.getByDisplayValue('Task 1')).toBeInTheDocument()
