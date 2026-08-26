@@ -1,13 +1,18 @@
 # LLM Gateway
 
 The LLM gateway is an OpenAI-compatible HTTP surface that fronts the
-in-process provider registry. It exists so an embedded coding harness
-(OpenHands, the bundled [execution loop](openhands-loop.md)) can point its
-LiteLLM client at a `base_url` and still route every call through
+in-process provider registry. It exists so a process outside the runtime can
+point its client at a `base_url` and still route every call through
 SynthOrg's governance: explicit `(provider, model)` binding, per-run cost
 and prompt attribution, a hard token-budget kill, and SEC-1 log
 redaction. Provider-agnosticism becomes a **gateway property**, not a
-harness property.
+property of whatever dials it.
+
+Nothing the product itself runs dispatches here: the agent loop reaches the
+provider registry in-process. The gateway's live consumer is the recording
+harness under `evals/`, which routes every completion of a measured run
+through it precisely because that is the one place a run's real spend and its
+prompts are both observable.
 
 ## Boundary
 
@@ -25,7 +30,7 @@ That exclusion leaves `scope["user"]` unset, which the rate limiter would
 otherwise read as anonymous: the tier sized for a stranger with an IP, which an
 agent doing ordinary work spends in seconds before dying on a 429 from its own
 control plane. `api/rate_limits/tiers.py::bears_own_credential` therefore puts
-this route (and the credentialed-tool MCP server) on the authenticated tier,
+this route on the authenticated tier,
 but **only** when the request actually presents a well-formed
 `Authorization: Bearer` header. The path alone says where a request was aimed,
 not who sent it, and the authenticated tier is far larger. Syntax is all the
@@ -43,10 +48,11 @@ The gateway mints one short-lived HMAC-SHA256 token per agent run
 provider, model_id, cost_ceiling, currency)` and an expiry, so the gateway
 can enforce Explicit Provider Binding and the budget from the request
 alone, with **no server-side session table**. The signer is shared
-in-process: the boot wiring hands the [OpenHands loop](openhands-loop.md)
-the *same* `GatewaySigner` instance the gateway verifies with (pulled from
-the gateway feature slice), so a token minted by the loop is accepted by
-the gateway without a second secret to keep in sync.
+in-process: whatever mints a run token pulls the *same* `GatewaySigner`
+instance the gateway verifies with, out of the gateway feature slice, so a
+minted token is accepted without a second secret to keep in sync. A caller
+holding an instance of its own gets a 401 on every request, which is the
+defect the sharing exists to prevent.
 
 Minting is the single enforcement point for Explicit Provider Binding
 (`llm/gateway_binding.py`): a `ModelRef` with no bound provider raises
@@ -69,14 +75,14 @@ Minting is the single enforcement point for Explicit Provider Binding
 4. **Dispatch under cost scope**: `provider.complete` / `provider.stream`
    run inside `cost_recording_scope(purpose=None,
    call_category=PRODUCTIVE, ...)`. The gateway carries no single registered
-   prompt purpose (the embedded harness issues arbitrary prompts), so
+   prompt purpose (a caller outside the runtime issues arbitrary prompts), so
    `purpose` is `None`: cost is attributed by run and call-category through
    the single provider chokepoint, not by prompt purpose. The response is
    translated back to the
    OpenAI shape with `usage` echoed for the adapter's `TurnRecord`s.
 5. **SEC-1 posture**: fencing of untrusted upstream content is enforced at
-   the source (the [credentialed-MCP](credentialed-mcp.md) boundary wraps
-   tool outputs). At the gateway we route every log through
+   the source, where the tool that fetched it knows what it is. At the
+   gateway we route every log through
    `safe_error_description` / `scrub_secret_tokens`, run the shared
    injection heuristics over inbound content as an advisory signal, and set
    OTLP spans with `record_exception=False`.
@@ -106,25 +112,26 @@ are reading one measurement rather than two.
 
 ## Settings
 
-All under the `providers` namespace: `gateway_enabled`,
-`gateway_token_ttl_seconds`, `gateway_base_url` (the sandbox-reachable app
-address handed to the harness, which both compose deployments set from the
-published backend port). `gateway_enabled` and `gateway_base_url` apply while
-the system runs, the latter because the runtime-reload subscriber watches it.
-`gateway_token_ttl_seconds` is read only while the runtime is assembled (once
-onto the frozen `OpenHandsLoopConfig`, and once more to check the run cap sits
-below it), and the loop mints every per-run bearer from that stored value rather
-than re-reading the setting. A write therefore takes effect no earlier than the
-next rebuild.
+One, `providers.gateway_enabled`, re-read live per request so toggling it
+takes effect on the next call.
 
-`gateway_enabled` ships **on**, because `tools.openhands_enabled` does and a
-wired loop whose every call 503s is not a capability; the route carries no
-ambient authority, authenticating only with a per-run signed bearer. Turning it
-back on after it was explicitly turned off reopens an egress path, so that
-`false -> true` transition still routes through the deliberate
-confirm+reason+actor guardrail in `settings/write_governance.py`. An unset
-value is the shipped posture rather than a decision to reopen, so it is not
-treated as a transition.
+A bearer's lifetime is not a setting. It has to outlive the longest run that
+dispatches through the gateway, and the harness minting the bearer is the only
+thing that knows how long that is, so it owns the value
+(`_BEARER_TTL_SECONDS` in `evals/harness/binding.py`). An operator knob would
+be a second answer to a question the caller has already settled, and a wrong
+one fails a paid run part way through rather than at the ceiling that bounds
+it.
+
+`gateway_enabled` ships **off**. Nothing inside the product dispatches through
+the gateway, so an enabled endpoint with no caller is surface for nothing; the
+recording harness turns it on for the length of a run. The route carries no
+ambient authority even when enabled, authenticating only with a per-run signed
+bearer, but enabling it opens a path on which billed LLM calls can be made
+from outside the runtime. The **first** stored `true` therefore routes through
+the deliberate confirm+reason+actor guardrail in
+`settings/write_governance.py`, unset counting as off, because for a
+default-off capability the first enable is the transition that matters.
 
 ## Wiring
 

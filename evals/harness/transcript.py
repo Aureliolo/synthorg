@@ -1,15 +1,15 @@
 # module-kind: code
-"""Record what each loop actually said, at the one place both are observable.
+"""Record what a run actually said, at the one place it is observable.
 
-A scoreboard says which loop scored better. It cannot say whether one thought
-before acting, argued with itself, restated the task four times, or drifted off
-the brief, and those are the differences an operator asks about first.
+A scoreboard says which cell scored better. It cannot say whether the agent
+thought before acting, argued with itself, restated the task four times, or
+drifted off the brief, and those are the differences an operator asks about
+first.
 
-Neither loop can be read for that directly. The native loop's messages live in
-its own context and the OpenHands harness runs inside a container whose
-reasoning never reaches this process at all. What both do is dial this host's
-LLM gateway for every turn, so the prompts and completions of both legs pass
-through one ASGI application on their way out and back.
+The loop cannot be read for that directly: its messages live in its own
+context and never reach this process. What it does do is dial this host's LLM
+gateway for every turn, so every prompt and completion passes through one ASGI
+application on its way out and back.
 
 So the tap sits there, wrapping the host's app rather than reaching into the
 gateway: that boundary is governance and stays exactly as it ships. What is

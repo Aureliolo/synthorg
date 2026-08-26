@@ -59,11 +59,18 @@ _GIT_PUSH_ACTIONS: frozenset[str] = frozenset(
 # action type would allow action-type-based checking.
 _GIT_CLONE_TOOL_NAMES: frozenset[str] = frozenset({"git_clone"})
 
-# Action types that require outbound network access.
+# Action types that require outbound network access. Deploy and publish both
+# reach a remote over HTTPS (a deploy connection, a registry), so a level whose
+# network mode forbids outbound traffic must refuse them for the same reason it
+# refuses a chat send.
 _NETWORK_ACTION_TYPES: frozenset[str] = frozenset(
     {
         ActionType.COMMS_EXTERNAL,
         ActionType.EXTERNAL_DATA_REQUEST,
+        ActionType.DEPLOY_STAGING,
+        ActionType.DEPLOY_PRODUCTION,
+        ActionType.PUBLISH_STAGING,
+        ActionType.PUBLISH_PRODUCTION,
     }
 )
 
@@ -149,10 +156,12 @@ class SubConstraintEnforcer:
     ) -> SubConstraintViolation | None:
         """Enforce network mode constraint.
 
-        ``NONE`` blocks tools that perform outbound network requests
-        (the ``COMMS_EXTERNAL`` and ``EXTERNAL_DATA_REQUEST`` action types)
-        and git clone (external fetch). Local-only tools like
-        ``HtmlParserTool`` (``CODE_READ``) are allowed even under ``NONE``.
+        ``NONE`` blocks every action type in ``_NETWORK_ACTION_TYPES``
+        (``COMMS_EXTERNAL``, ``EXTERNAL_DATA_REQUEST``, and the staging and
+        production halves of both ``DEPLOY_*`` and ``PUBLISH_*``, each of which
+        reaches a remote over HTTPS) plus git clone (external fetch).
+        Local-only tools like ``HtmlParserTool`` (``CODE_READ``) are allowed
+        even under ``NONE``.
 
         Returns:
             A ``SubConstraintViolation`` if the constraint is breached,

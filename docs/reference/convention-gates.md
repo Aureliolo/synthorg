@@ -40,7 +40,6 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
-| `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
 | `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
@@ -127,6 +126,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |
+| `check_recording_harness_journalled.py` | push | `evals/` | full | no | none | add |
 | `check_run_recovery_covers_plan_statuses.py` | push | `core/plan_enums.py` + `engine/run_recovery/` | full | no | none | add |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
@@ -157,7 +157,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->134<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->133<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

@@ -40,7 +40,7 @@ assessment and source file references.
 | **Execution Trace** | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. 100+ event constant domains. |
 | **Nodes (atomic actions)** | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `src/synthorg/engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | **Edges (control/data flow)** | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `src/synthorg/engine/decomposition/models.py` | Strong for multi-agent | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
-| **Scheduling Policies** | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `src/synthorg/engine/loop_selector.py`, `src/synthorg/engine/routing/models.py` | Strong | Per-complexity loop selection (react/openhands) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. |
+| **Scheduling Policies** | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `src/synthorg/engine/loop_selector.py`, `src/synthorg/engine/routing/models.py` | Strong | Per-complexity loop selection (react/openhands) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. *(Loop selection has since been removed: one loop ships, so there is nothing to schedule between.)* |
 
 ### Dynamic Behaviour Concepts
 
@@ -87,11 +87,15 @@ greater gains.
 loop type. Which loop suits which complexity is deliberately left to measurement: the
 inner-loop A/B harness ranks the shipped loops on the same coding work and its
 scoreboard is applied as `engine.loop_complexity_overrides`, so the routing is set from
-evidence rather than judgement.
+evidence rather than judgement. *(Since removed: the A/B ran, one loop won, and both the
+selector and the harness went with it. The measurement is preserved at
+[`inner-loop-ab-recording.md`](inner-loop-ab-recording.md).)*
 
-**Implication**: The loop selector is doing real structural work. Adding complexity to
-system prompts for tasks that should use a different loop is not a substitute. This
-validates investing in the auto-selector's classification accuracy over prompt length.
+**Implication**: While two loops shipped, the selector was doing real structural work,
+and adding complexity to system prompts for tasks that suited the other loop was not a
+substitute. The measurement settled which loop that was, so the structural lever is now
+the topology selector rather than the loop selector; the finding stands, its subject
+moved.
 
 ### Finding 2: Strong Verifiers Enable More Aggressive Graph Mutation
 
@@ -117,7 +121,9 @@ outperforms generating arbitrary workflows from scratch.
 `src/synthorg/core/role_catalog.py` are a super-graph of organisational patterns. Template
 packs in `api/controllers/template_packs.py` apply curated patterns. The meeting protocols
 (3 variants) and loop types (React and OpenHands) are a bounded selection space rather
-than open-ended generation.
+than open-ended generation. *(Since removed: the meeting stack was deleted whole, and one
+loop ships, so neither is a selection space any more. The super-graph argument stands on
+the roles and template packs alone.)*
 
 **Implication**: Adding more template packs and expanding the super-graph is a higher-value
 investment than adding more free-form configuration options.

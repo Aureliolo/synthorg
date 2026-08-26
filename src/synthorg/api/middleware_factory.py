@@ -212,12 +212,6 @@ def _build_auth_exclude_paths(
     # Anchored with ``(/|$)`` so it matches only the gateway route and its
     # sub-paths, never a sibling like ``/gateway-admin`` (fail-open prefix).
     gateway_path = f"^{prefix}/gateway(/|$)"
-    # The credentialed-tool MCP server authenticates with the same per-run
-    # bearer (verified inside the handler) and is reachable only over the
-    # sandbox sidecar egress; exclude it from session/bearer auth so the
-    # request reaches the handler's token check. Fail-safe (mandatory).
-    # Anchored (``(/|$)``) like the gateway path so no sibling route matches.
-    mcp_gateway_path = f"^{prefix}/mcp-gateway(/|$)"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -257,7 +251,6 @@ def _build_auth_exclude_paths(
         oauth_callback_path,
         webhooks_path,
         gateway_path,
-        mcp_gateway_path,
     ]
     if a2a_enabled:
         mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))

@@ -871,17 +871,18 @@ time from the live roster and never written onto a record: a row that copied
 an agent's department would silently change meaning the day that agent moved,
 which is exactly what makes historical numbers wrong.
 
-## LLM Gateway (embedded-harness boundary)
+## LLM Gateway (out-of-process boundary)
 
-An embedded coding harness (the [OpenHands loop](openhands-loop.md)) cannot
-call the in-process `ProviderRegistry` directly, so the [LLM gateway](llm-gateway.md)
-exposes an OpenAI-compatible HTTP surface that fronts the registry. Every
-gateway call inherits the provider-layer governance described above: Explicit
-Provider Binding (resolved from a per-run signed token, never the request's
-`model`), cost and run attribution through `cost_recording_scope` (no single
-prompt purpose applies to the harness's arbitrary prompts, so `purpose` is
-`None`), and SEC-1 log redaction, plus a hard per-run token-budget kill. Provider
-agnosticism thus becomes a property of the gateway, not the harness.
+A process outside the runtime cannot call the in-process `ProviderRegistry`
+directly, so the [LLM gateway](llm-gateway.md) exposes an OpenAI-compatible
+HTTP surface that fronts the registry. Every gateway call inherits the
+provider-layer governance described above: Explicit Provider Binding (resolved
+from a per-run signed token, never the request's `model`), cost, and run
+attribution through `cost_recording_scope` (no single prompt purpose applies to
+an arbitrary caller's prompts, so `purpose` is `None`), and SEC-1 log
+redaction, plus a hard per-run token-budget kill. Provider agnosticism thus
+becomes a property of the gateway rather than of the caller. It ships disabled;
+the recording harness under `evals/` is what turns it on.
 
 The gateway does **not** fail over. Its pair comes from the verified per-run
 token claims, so there is no operator-declared route keyed on it and nothing

@@ -121,6 +121,14 @@ func validateBackendChoices(p Params) error {
 	if p.BusBackend != "" && !config.IsValidBusBackend(p.BusBackend) {
 		return fmt.Errorf("invalid bus backend %q: must be one of %s", p.BusBackend, config.BusBackendNames())
 	}
+	// Empty is a forward-compat shim resolving to GPU; anything else must name
+	// a real variant. Checked here rather than at render time so a hand-built
+	// Params fails as an error the caller can report, not a panic mid-template.
+	if p.FineTuningVariant != "" &&
+		p.FineTuningVariant != config.FineTuneVariantGPU &&
+		p.FineTuningVariant != config.FineTuneVariantCPU {
+		return fmt.Errorf("invalid fine-tuning variant %q: must be %q or %q", p.FineTuningVariant, config.FineTuneVariantGPU, config.FineTuneVariantCPU)
+	}
 	return nil
 }
 

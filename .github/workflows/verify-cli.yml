@@ -89,8 +89,8 @@ jobs:
   # docker/sidecar is its own Go module and was previously covered by nothing:
   # build-images.yml only compiles it inside the image build, which cannot fail
   # a lint or run a test. It is the sole enforcement point between a sandboxed
-  # agent and the host network, including the per-request path narrowing the
-  # OpenHands loop depends on, so it gates here like the CLI does.
+  # agent and the host network, including the per-request path narrowing an
+  # egress-pinned sandbox depends on, so it gates here like the CLI does.
   sidecar-verify:
     name: Sidecar Lint + Test
     runs-on: ubuntu-24.04

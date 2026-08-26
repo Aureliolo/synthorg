@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { formatLabel } from '@/utils/format'
+import { getTaskTypeLabel } from '@/utils/tasks'
 import { cn } from '@/lib/utils'
 import type { TaskType } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
@@ -14,9 +14,8 @@ const TYPE_COLORS: Record<TaskType, string> = {
   design: 'bg-success',
   research: 'bg-warning',
   review: 'bg-accent-dim',
-  meeting: 'bg-muted-foreground',
   admin: 'bg-muted-foreground',
-  analysis: 'bg-info',
+  analysis: 'bg-violet',
 }
 
 /**
@@ -72,7 +71,7 @@ function TaskHistoryBarImpl({ task, maxDurationMs }: TaskHistoryBarProps) {
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-sans text-foreground truncate">{task.title}</span>
           <span className="text-micro font-mono text-muted-foreground shrink-0">
-            {formatLabel(task.type)}
+            {getTaskTypeLabel(task.type)}
           </span>
         </div>
         <div className="relative h-2 w-full rounded-full bg-border overflow-hidden">

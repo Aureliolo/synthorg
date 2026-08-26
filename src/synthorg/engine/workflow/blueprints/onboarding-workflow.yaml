@@ -83,7 +83,7 @@ blueprint:
       position_y: 200.0
       config:
         title: "Complete orientation review"
-        task_type: "meeting"
+        task_type: "admin"
         priority: "medium"
         complexity: "simple"
 

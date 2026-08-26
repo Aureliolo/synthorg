@@ -29,6 +29,7 @@ from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.completion_oracle.tool_names import (
     SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
 )
+from synthorg.security.autonomy.enums import ToolCategory
 
 #: Tool surface a judging session runs with. STANDARD covers reading the
 #: deliverable and running the build and test commands a verdict rests on.
@@ -47,9 +48,24 @@ from synthorg.engine.completion_oracle.tool_names import (
 #: another way to file. Naming the one tool keeps the narrowing honest;
 #: raising the level to ELEVATED would hand a reviewer every other category
 #: too, which is exactly what the narrowing exists to prevent.
+#: Categories a judging session is barred from whatever STANDARD grants.
+#: ``EXTERNAL_DATA`` is the category every governed connection tool carries
+#: (forge, chat, deploy, publish) plus the external-API and research tools:
+#: everything that reaches outside the organisation. Judging a deliverable
+#: needs none of it, and an injection planted in the artefact under review
+#: runs inside this session, so a reviewer that could reach ``deploy_release``
+#: could be made to file a production-deploy approval request under a role an
+#: operator trusts to judge rather than to originate. Withheld by CATEGORY
+#: rather than by name because a name list re-opens the hole the day a tool
+#: joins the category.
+REVIEW_DENIED_CATEGORIES: Final[tuple[ToolCategory, ...]] = (
+    ToolCategory.EXTERNAL_DATA,
+)
+
 REVIEW_TOOL_PERMISSIONS: Final[ToolPermissions] = ToolPermissions(
     access_level=ToolAccessLevel.STANDARD,
     allowed=(SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,),
+    denied_categories=REVIEW_DENIED_CATEGORIES,
     mcp_capabilities=(),
 )
 
@@ -81,6 +97,7 @@ def as_review_session(reviewer: AgentIdentity) -> AgentIdentity:
 
 __all__ = [
     "REVIEW_AUTONOMY_LEVEL",
+    "REVIEW_DENIED_CATEGORIES",
     "REVIEW_TOOL_PERMISSIONS",
     "as_review_session",
 ]

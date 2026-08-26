@@ -98,7 +98,6 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
   design: 'Design',
   research: 'Research',
   review: 'Review',
-  meeting: 'Meeting',
   admin: 'Admin',
   analysis: 'Analysis',
 }

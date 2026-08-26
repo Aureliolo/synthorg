@@ -944,9 +944,10 @@ distinct write seams:
 ## 35. Run-context / run-state split for wide loop signatures
 
 A loop helper that needs most of a run's collaborators takes two
-parameters, not a long list: a frozen context and a mutable state. The
-canonical pair is `OpenHandsLoopDeps` / `_RunState`
-(`engine/openhands/`).
+parameters, not a long list: a frozen context and a mutable state. No pair
+ships (the loop that carried the canonical one was removed), so this records
+the shape the next wide loop signature should take rather than pointing at an
+instance.
 
 * **Context** -- `@dataclass(frozen=True, slots=True, kw_only=True)`.
   Holds the collaborators fixed for one `execute()` call (provider,

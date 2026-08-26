@@ -716,5 +716,5 @@ so in those words.
   production tail drives a plan with.
 - [Verification and quality](verification-quality.md) for the completion-oracle
   gate this experiment treats as its independent variable.
-- [Inner-loop A/B harness](loop-ab-harness.md) for the recording spine both
-  harnesses share.
+- [Inner-loop A/B recording](../research/inner-loop-ab-recording.md) for the
+  measurement the shared recording spine was first built for.

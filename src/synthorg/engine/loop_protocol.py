@@ -176,15 +176,10 @@ class TurnProgress(NamedTuple):
 
 
 TurnObserver = Callable[[TurnProgress], Awaitable[None]]
-"""Async progress callback invoked with a :class:`TurnProgress`. Two calling
-conventions share this shape:
-
-- ReAct loop: fires *after* each continuing turn with the tool names that turn
-  requested; the terminal turn (which ends the loop) returns before the hook,
-  so no observation marks it.
-- OpenHands loop: fires as each event arrives off the harness stream, with a
-  one-element tuple naming the tool the event used, or empty when the event
-  named none.
+"""Async progress callback invoked with a :class:`TurnProgress`. It fires
+*after* each continuing turn with the tool names that turn requested; the
+terminal turn (which ends the loop) returns before the hook, so no observation
+marks it.
 
 Purely observational: it never affects control flow, and an observer raising
 must not corrupt the run. Used to surface incremental progress on a streamed

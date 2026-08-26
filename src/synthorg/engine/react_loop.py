@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """ReAct execution loop -- think, act, observe.
 
 Implements the ``ExecutionLoop`` protocol using the ReAct pattern:
@@ -6,7 +7,7 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
-import asyncio
+from typing import Self
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
@@ -27,7 +28,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
-    EXECUTION_TURN_OBSERVER_FAILED,
 )
 from synthorg.providers.models import (
     CompletionConfig,
@@ -46,6 +46,7 @@ from .loop_control_helpers import (
     check_stagnation,
     invoke_compaction,
 )
+from .loop_controls import LoopControls
 from .loop_empty_run import delivered_nothing, nudge_empty_run
 from .loop_helpers import (
     build_result,
@@ -62,7 +63,6 @@ from .loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
-    TurnProgress,
 )
 from .loop_quality_signals import attach_whole_run_signals
 from .loop_silent_turn import continue_silent_turn
@@ -77,6 +77,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .loop_turn_budget import ceiling_result, grant_extension
+from .loop_turn_observer import notify_turn_observer
 from .loop_unresolved_tools import unresolved_tools_result
 from .loop_unusable_turn import (
     continue_unusable_turn,
@@ -154,39 +155,6 @@ class ReactLoop:
         """
         return await attach_whole_run_signals(result, turns, self._step_classifier)
 
-    async def _notify_turn_observer(
-        self,
-        turn_number: int,
-        response: CompletionResponse,
-        observer: TurnObserver | None,
-        ctx: AgentContext,
-    ) -> None:
-        """Fire the optional turn observer with this turn's progress.
-
-        Purely observational: an observer failure is logged and swallowed
-        so it can never corrupt the run, but cancellation still propagates
-        so a client disconnect tears a streamed action down at once.
-
-        Raises:
-            CancelledError: Propagated so a client disconnect halts the run.
-        """
-        if observer is None:
-            return
-        tool_names = tuple(call.name for call in response.tool_calls)
-        try:
-            await observer(TurnProgress(turn_number, tool_names, ctx))
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort observer
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_TURN_OBSERVER_FAILED,
-                turn_number=turn_number,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
     @property
     def approval_gate(self) -> ApprovalGate | None:
         """Return the approval gate, or ``None``."""
@@ -206,6 +174,50 @@ class ReactLoop:
     def steering_inbox(self) -> SteeringInbox | None:
         """Return the steering inbox, or ``None``."""
         return self._steering_inbox
+
+    @property
+    def step_classifier(self) -> StepQualityClassifier | None:
+        """Return the step-quality classifier, or ``None``."""
+        return self._step_classifier
+
+    def rebuild_controls(self) -> LoopControls:
+        """Return every control a copy of this loop must carry over.
+
+        The single owner of that list. Naming these at a call site is what
+        makes a rebuild drop whichever control the next one adds, so both the
+        rebuild below and any specialised loop's own read them from here.
+
+        Returns:
+            This loop's controls, keyed as :class:`ReactLoop` accepts them.
+        """
+        return LoopControls(
+            approval_gate=self._approval_gate,
+            stagnation_detector=self._stagnation_detector,
+            compaction_callback=self._compaction_callback,
+            steering_inbox=self._steering_inbox,
+            step_classifier=self._step_classifier,
+            turn_observer=self._turn_observer,
+            clock=self._clock,
+        )
+
+    def with_checkpoint_callback(self, callback: CheckpointCallback) -> Self:
+        """Return a copy of this loop that also checkpoints.
+
+        Resume rebuilds the loop to attach a callback the engine could not
+        supply at construction. Built through ``type(self)`` rather than this
+        class by name, because resume reaches here for any loop passing
+        ``isinstance`` and a specialised one would otherwise come back as the
+        base. That construction is also the seam such a loop overrides: this
+        one knows nothing about a subclass constructor, so a loop taking more
+        than these controls meets a ``TypeError`` here unless it answers for
+        its own build, and :meth:`rebuild_controls` is what lets it do that
+        without restating the base half.
+
+        Returns:
+            A new loop of this one's own type carrying every control of this
+            one plus ``callback``.
+        """
+        return type(self)(callback, **self.rebuild_controls())
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -340,9 +352,7 @@ class ReactLoop:
                 return await self._attach_whole_run_signals(result, turns)
             ctx = result
 
-            await self._notify_turn_observer(
-                turn_number, response, effective_observer, ctx
-            )
+            await notify_turn_observer(turn_number, response, effective_observer, ctx)
 
             # Before the fingerprint detector, because this signal survives
             # drifting arguments: a turn whose every tool call resolved to

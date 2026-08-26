@@ -28,11 +28,6 @@
 docker/
 !docker/sidecar/
 !docker/sandbox/healthz.py
-# OpenHands image copies its entrypoint, the metrics reader that entrypoint
-# imports, and its hash-pinned lock from the context.
-!docker/openhands/run_task.py
-!docker/openhands/metrics_shape.py
-!docker/openhands/requirements.lock
 
 # Tests
 tests/
@@ -88,11 +83,6 @@ data/
 # must be excluded at every depth rather than only at the root.
 **/.env
 **/.env.*
-
-# The A/B recorder's working directory. Its uncommitted provider config and
-# its `env` file hold a real provider key, and neither pattern above matches
-# a file named literally `env`, so the whole tree is excluded by name.
-.loop-ab/
 
 # IDE
 **/.idea/

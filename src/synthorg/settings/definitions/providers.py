@@ -627,66 +627,21 @@ _r.register(
         namespace=SettingNamespace.PROVIDERS,
         key="gateway_enabled",
         type=SettingType.BOOLEAN,
-        default="true",
+        default="false",
         description=(
             "Enable the OpenAI-compatible LLM gateway: an in-process HTTP"
-            " surface that fronts the provider registry so an embedded coding"
-            " harness (OpenHands) can route its LLM calls through SynthOrg's"
-            " cost attribution, Explicit Provider Binding, hard token budget"
-            " and secret-redacted logging. On by default, because"
-            " tools.openhands_enabled is: a wired loop whose every call 503s is"
-            " not a capability. The route carries no ambient authority; it"
+            " surface that fronts the provider registry so a process outside"
+            " the runtime can route its LLM calls through SynthOrg's cost"
+            " attribution, Explicit Provider Binding, hard token budget and"
+            " secret-redacted logging. Off by default: nothing the product"
+            " itself runs dispatches through it, so an enabled endpoint with no"
+            " caller is surface for nothing. The recording harness in evals/"
+            " turns it on for a run. The route carries no ambient authority; it"
             " authenticates with a per-run signed bearer and rejects anything"
-            " else. Re-enabling after an explicit disable reopens the egress"
-            " path, so that transition takes the deliberate"
-            " confirm+reason+actor guardrail. Re-read live per request, so"
-            " toggling takes effect on the next call without a restart."
-        ),
-        group="Gateway",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.PROVIDERS,
-        key="gateway_token_ttl_seconds",
-        type=SettingType.INTEGER,
-        default="172800",
-        description=(
-            "Lifetime in seconds of a per-run gateway bearer token (default 2"
-            " days). Must exceed tools.openhands_max_runtime_seconds so a long"
-            " OpenHands run is force-ended by the wall-clock cap before its"
-            " bearer expires, never left to fail auth mid-run. A run that"
-            " outlives its token re-mints on resume, so this also bounds how"
-            " long a leaked token stays usable. Re-read live when a run token is"
-            " minted."
-        ),
-        group="Gateway",
-        level=SettingLevel.ADVANCED,
-        min_value=60,
-        max_value=604800,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.PROVIDERS,
-        key="gateway_base_url",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "OpenAI-compatible base URL the in-sandbox harness uses to reach"
-            " the LLM gateway: the app address reachable through the sandbox"
-            " sidecar egress allowlist, including the mounted gateway route, so"
-            " the client resolves .../v1/chat/completions. Both compose"
-            " deployments set it to"
-            " http://host.docker.internal:<published-port>/api/v1/gateway/v1"
-            " and give the loop container a matching host-gateway alias, so a"
-            " standard install needs no hand configuration. The registered"
-            " default is empty, which leaves the OpenHands execution loop"
-            " unavailable (it fails loud only if selected) on any deployment"
-            " that publishes no such address. Re-read live."
+            " else. Enabling it opens an egress path, so the first stored"
+            " 'true' takes the deliberate confirm+reason+actor guardrail."
+            " Re-read live per request, so toggling takes effect on the next"
+            " call without a restart."
         ),
         group="Gateway",
         level=SettingLevel.ADVANCED,

@@ -86,11 +86,6 @@ from synthorg.workers._memory_assembly import (
     resolved_procedural_config,
     wiki_exporter_or_none,
 )
-from synthorg.workers._openhands_wiring import (
-    build_auto_loop_config_or_none,
-    build_openhands_loop_config,
-    build_openhands_loop_deps_or_none,
-)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -100,9 +95,8 @@ if TYPE_CHECKING:
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
-    from synthorg.tools.chat._runtime import ChatToolsRuntime
+    from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
-    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -523,8 +517,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
-    forge_tools_runtime: ForgeToolsRuntime | None = None,
-    chat_tools_runtime: ChatToolsRuntime | None = None,
+    connection_tool_runtimes: ConnectionToolRuntimes | None = None,
     flight_recorder_sink: FlightRecorderSink | None = None,
     step_classifier: StepQualityClassifier | None = None,
     classification_detector_timeout_seconds: float | None = None,
@@ -622,8 +615,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
-        forge_tools_runtime=forge_tools_runtime,
-        chat_tools_runtime=chat_tools_runtime,
+        connection_tool_runtimes=connection_tool_runtimes,
         brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
         knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
         docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),
@@ -641,9 +633,6 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         step_classifier=step_classifier,
         compaction_callback=_build_compaction_callback(app_state, provider),
         recovery_strategy=_build_recovery_strategy(app_state),
-        openhands_loop_config=await build_openhands_loop_config(app_state),
-        openhands_loop_deps=await build_openhands_loop_deps_or_none(app_state),
-        auto_loop_config=await build_auto_loop_config_or_none(app_state),
         clock=app_state.clock,
     )
 

@@ -10,12 +10,10 @@ scratch database, serves it on a local port, and reads the signer off the state
 the boot wiring populated. Borrowing a running backend is not a shortcut here;
 it is the one configuration that cannot work.
 
-Owning the process rather than dialling one has two further consequences every
-artifact recorded through it depends on. The gateway's cost ledger belongs to
+Owning the process rather than dialling one has a further consequence every
+artifact recorded through it depends on: the gateway's cost ledger belongs to
 the recorder, so spend from calls made inside a container (rather than by the
-engine) is visible at all. And the credentialed-MCP surface an embedded harness
-insists on is the real one, served under the shipped empty capability grant, so
-the handshake completes while reaching no credentialed tool.
+engine) is visible at all.
 
 Serving the real application means serving *all* of it, which two things here
 exist to contain. ``/auth/setup`` is deliberately excluded from authentication
@@ -91,6 +89,7 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.state import config_resolver_of, settings_service_of
+from synthorg.settings.write_governance import SettingsWriteGovernance
 from synthorg.tools.sandbox._image_resolution import (
     set_resolved_sandbox_image,
     set_resolved_sidecar_image,
@@ -100,16 +99,26 @@ logger = get_logger(__name__)
 
 #: Mounted route prefixes, matching what the two controllers declare.
 _GATEWAY_PATH: Final[str] = "/api/v1/gateway/v1"
-_MCP_PATH: Final[str] = "/api/v1/mcp-gateway"
 
-#: Where the OpenHands container reaches the recorder from. The container joins
-#: the sidecar's network namespace, so its loopback is the sidecar's own; the
-#: wiring gives the sidecar this alias and nothing else resolves.
+#: Where a sandboxed container reaches the recorder from. A container that
+#: joins the sidecar's network namespace has the sidecar's own loopback, so
+#: the wiring gives the sidecar this alias and nothing else resolves.
 DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
 
-#: Turn extensions granted during a recording. Zero, because only the native
-#: leg can earn them: the brief's ceiling is what both loops are compared on.
+#: Turn extensions granted during a recording. Zero, so a brief's declared
+#: ceiling is the budget every cell was actually scored against.
 _NO_TURN_EXTENSIONS: Final[int] = 0
+
+#: ``providers.gateway_enabled`` ships off, so the first stored ``true`` is the
+#: write that opens the egress and takes the confirm+reason+actor guardrail.
+#: Starting a recording IS that deliberate act: the operator running the sweep
+#: is asking for billed completions to leave the process, so the harness names
+#: itself rather than relaxing the guard or the default.
+_RECORDING_GATEWAY_GOVERNANCE: Final[SettingsWriteGovernance] = SettingsWriteGovernance(
+    confirm=True,
+    reason="recording harness routes every measured completion through the gateway",
+    actor="evals-recording-harness",
+)
 
 #: How long the serving task gets to unwind before teardown stops waiting on it.
 #: Bounded because an in-flight request the container will never collect (its
@@ -251,17 +260,15 @@ class RecordingHostConfig:
             address the sandbox can still reach.
         bind_port: Port to listen on; ``0`` takes an ephemeral one.
         container_host: Host the sandbox addresses the recorder by.
-        openhands_image: Overrides ``tools.openhands_image`` when set, so a
-            maintainer can record against a locally built image.
-        sandbox_image: Overrides ``tools.sandbox_image``, the image the native
-            legs' shell tool runs in.
+        sandbox_image: Overrides ``tools.sandbox_image``, the image the shell
+            tool runs in.
         sidecar_image: Overrides ``tools.sidecar_image``, the egress-filtering
-            sidecar the OpenHands leg's pinned network needs.
+            sidecar a pinned-network sandbox needs.
 
-    All three image overrides exist for the same reason: nothing under
+    Both image overrides exist for the same reason: nothing under
     ``synthorg.tools.sandbox`` pulls, the registered defaults track the running
     version, and a recording is worth nothing if it cannot say which images the
-    two legs actually ran on.
+    run actually used.
     """
 
     company_config: RootConfig
@@ -270,7 +277,6 @@ class RecordingHostConfig:
     bind_host: str | None = None
     bind_port: int = 0
     container_host: str = DEFAULT_CONTAINER_HOST
-    openhands_image: str | None = None
     sandbox_image: str | None = None
     sidecar_image: str | None = None
 
@@ -318,20 +324,16 @@ class RecordedImages:
     mutable tag recorded as though it were an identity.
 
     Attributes:
-        sandbox: Image the native legs' shell tool runs in.
+        sandbox: Image the shell tool runs in.
         sidecar: Image the egress-filtering sidecar runs in.
-        openhands: Image the OpenHands loop's run container runs in.
         sandbox_id: Resolved image id for *sandbox*, or ``None``.
         sidecar_id: Resolved image id for *sidecar*, or ``None``.
-        openhands_id: Resolved image id for *openhands*, or ``None``.
     """
 
     sandbox: str
     sidecar: str
-    openhands: str
     sandbox_id: str | None
     sidecar_id: str | None
-    openhands_id: str | None
 
 
 class RecordingGatewayHost:
@@ -345,9 +347,9 @@ class RecordingGatewayHost:
     def __init__(self, config: RecordingHostConfig) -> None:
         self._config = config
         self._app: Litestar | None = None
-        #: Records every completion exchange of whichever cell is bound, which
-        #: is the only symmetric view of the two loops: one keeps its messages
-        #: in-process and the other reasons inside a container.
+        #: Records every completion exchange of whichever cell is bound. The
+        #: gateway is the only place a run's prompts and completions are
+        #: observable at all: the loop's own messages live in its context.
         self.transcripts = TranscriptRecorder()
         self._server: uvicorn.Server | None = None
         self._socket: socket.socket | None = None
@@ -484,7 +486,7 @@ class RecordingGatewayHost:
 
     @property
     def sandbox_image(self) -> str:
-        """The image the native legs' shell tool runs in.
+        """The image the shell tool runs in.
 
         Returns:
             The resolved sandbox image reference.
@@ -541,15 +543,6 @@ class RecordingGatewayHost:
             The container-facing gateway base URL.
         """
         return f"http://{self._config.container_host}:{self._port}{_GATEWAY_PATH}"
-
-    @property
-    def container_mcp_url(self) -> str:
-        """The credentialed-MCP base URL the sandbox reaches the recorder by.
-
-        Returns:
-            The container-facing MCP base URL (the runtime appends ``/mcp``).
-        """
-        return f"http://{self._config.container_host}:{self._port}{_MCP_PATH}"
 
     async def start(self) -> None:
         """Boot the application, serve it, and publish its endpoints.
@@ -627,10 +620,8 @@ class RecordingGatewayHost:
             EVALS_HARNESS_HOST_STARTED,
             port=self._port,
             gateway_base_url=self.container_gateway_url,
-            mcp_base_url=self.container_mcp_url,
             sandbox_image=images.sandbox,
             sidecar_image=images.sidecar,
-            openhands_image=images.openhands,
         )
 
     async def stop(self) -> None:
@@ -810,15 +801,12 @@ class RecordingGatewayHost:
         resolver = config_resolver_of(self.app_state)
         sandbox = await resolver.get_str("tools", "sandbox_image")
         sidecar = await resolver.get_str("tools", "sidecar_image")
-        openhands = await resolver.get_str("tools", "openhands_image")
         async with aiodocker.Docker() as docker:
             return RecordedImages(
                 sandbox=sandbox,
                 sidecar=sidecar,
-                openhands=openhands,
                 sandbox_id=await _image_id(docker, sandbox),
                 sidecar_id=await _image_id(docker, sidecar),
-                openhands_id=await _image_id(docker, openhands),
             )
 
     async def _serve(self, app: ASGIApp) -> None:
@@ -857,28 +845,31 @@ class RecordingGatewayHost:
     async def _publish_endpoints(self) -> None:
         """Write the endpoint settings the loop wiring reads.
 
-        These go to the database capability, which outranks the environment and the
-        code default, because the wiring resolves them through the settings
-        resolver rather than from this object. Neither carries a write
-        guardrail: the surfaces they address ship enabled already, so nothing
-        here weakens a posture an operator chose.
+        These go to the database capability, which outranks the environment and
+        the code default, because the pipeline resolves them through the
+        settings resolver rather than from this object.
 
-        The turn-extension allowance is zeroed for the same reason the images
-        are pinned: only one leg can use it. The native loop earns further turn
-        budgets while it is still calling tools, and the OpenHands harness is
-        capped at whatever it was handed with no equivalent, so a recording
-        that leaves extensions on gives one loop up to four times the ceiling
-        the other gets. Measured, that was 7 of 27 native sessions running past
-        the brief's ceiling, one of them by 3.8x, against 0 of 27. The brief's
-        ceiling is the comparison; extensions are a production behaviour that
-        has no counterpart to compare against.
+        The gateway ships off, and a recording is the caller it ships off for:
+        every completion this harness measures is dispatched through it, so an
+        unset value would leave the whole matrix unrecordable rather than
+        merely unrouted. It is set here rather than left to an operator so a
+        recording cannot silently measure nothing.
+
+        The turn-extension allowance is zeroed so a brief's declared ceiling is
+        the real one. A run that earns further turn budgets while it is still
+        calling tools runs past the ceiling its cell was scored against:
+        measured, 7 of 27 sessions did, one of them by 3.8x. Extensions are a
+        production behaviour; a matrix that lets some cells take them and not
+        others is comparing runs on different budgets.
         """
         settings = settings_service_of(self.app_state)
-        await settings.set("providers", "gateway_base_url", self.container_gateway_url)
-        await settings.set("tools", "credentialed_mcp_base_url", self.container_mcp_url)
+        await settings.set(
+            "providers",
+            "gateway_enabled",
+            "true",
+            governance=_RECORDING_GATEWAY_GOVERNANCE,
+        )
         await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
-        if self._config.openhands_image is not None:
-            await settings.set("tools", "openhands_image", self._config.openhands_image)
 
 
 __all__ = [

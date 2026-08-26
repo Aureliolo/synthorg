@@ -123,7 +123,7 @@ describe('computeBlockers', () => {
     const blockers = computeBlockers({
       ...NOTHING,
       subsystems: [
-        subsystem({ name: 'mcp_gateway', phase: 'waiting', waiting_on: ['tool_registry'] }),
+        subsystem({ name: 'docs_engine', phase: 'waiting', waiting_on: ['tool_registry'] }),
       ],
     })
     expect(blockers[0]!.detail).toContain('Tool Registry')

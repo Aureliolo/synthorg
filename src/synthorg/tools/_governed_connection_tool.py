@@ -26,6 +26,7 @@ from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import SecretRetrievalError
@@ -65,8 +66,11 @@ class _ConnectionToolRuntime(Protocol):
 
     @property
     def connection_catalog(self) -> ConnectionCatalog: ...
+    # ``None`` for a family that picks its target per call rather than binding
+    # one at boot, so a reader is forced to handle the absence. A blank string
+    # would read as a name and resolve to nothing in silence.
     @property
-    def connection_name(self) -> str: ...
+    def connection_name(self) -> NotBlankStr | None: ...
     @property
     def timeout_seconds(self) -> float: ...
 
@@ -285,14 +289,26 @@ class GovernedConnectionTool[
             ToolError: The family's typed leaf when the connection is
                 missing, of an unsupported type, or lacks a base_url.
         """
-        conn = await self._catalog.get(self._runtime.connection_name)
+        name = self._runtime.connection_name
+        if name is None:
+            # Only reachable if a per-call-target family stops overriding this
+            # method: it has no bound connection to resolve, so there is no
+            # sensible default and guessing one would dispatch at a target the
+            # operator never named.
+            logger.warning(
+                self._CONNECTION_FAILED_EVENT,
+                reason="no_bound_connection",
+            )
+            msg = f"{self._KIND} tools bind no single connection"
+            raise self._not_found_error(msg)
+        conn = await self._catalog.get(name)
         if conn is None:
             logger.warning(
                 self._CONNECTION_FAILED_EVENT,
-                connection=self._runtime.connection_name,
+                connection=name,
                 reason="connection_not_found",
             )
-            msg = f"{self._KIND} connection {self._runtime.connection_name!r} not found"
+            msg = f"{self._KIND} connection {name!r} not found"
             raise self._not_found_error(msg)
         if not self._supported(conn.connection_type):
             logger.warning(

@@ -1,13 +1,11 @@
 """A read-only root filesystem still has to leave a runtime somewhere to write.
 
 The sandbox mounts one writable tmpfs, at ``/tmp``. That is enough for an
-image whose runtime confines itself there, and not enough for the OpenHands
-SDK: it keeps its jinja cache, skills, plugins and profiles under ``$HOME``
-whatever ``persistence_dir`` the entrypoint passes, so a read-only home ends
-the run at conversation construction with ``Errno 30`` before a single turn.
-Declaring the extra mounts on the config keeps that an image-specific fact the
-wiring states, rather than a hole punched in the hardened defaults for
-everyone.
+image whose runtime confines itself there, and not enough for one that keeps
+caches, plugins or profiles under ``$HOME``: a read-only home ends such a run
+before it does any work, with ``Errno 30``. Declaring the extra mounts on the
+config keeps that an image-specific fact the caller states, rather than a hole
+punched in the hardened defaults for everyone.
 """
 
 from pathlib import Path
@@ -18,7 +16,6 @@ import pytest
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from synthorg.workers._openhands_wiring import _SDK_STATE_HOME
 from tests._shared import JsonDict
 
 pytestmark = pytest.mark.unit
@@ -137,10 +134,8 @@ class TestExtraTmpfsValidation:
     def test_defaults_to_none(self) -> None:
         assert DockerSandboxConfig().extra_tmpfs_paths == ()
 
-
-class TestOpenHandsWiring:
-    def test_the_sdk_state_home_is_an_absolute_path(self) -> None:
-        # Handed straight to the config, so a relative value would fail at
-        # container-build time on a live run rather than here.
-        config = DockerSandboxConfig(extra_tmpfs_paths=(_SDK_STATE_HOME,))
-        assert config.extra_tmpfs_paths == (_SDK_STATE_HOME,)
+    def test_an_absolute_home_is_accepted(self) -> None:
+        # A caller hands its image's home straight to the config, so a
+        # rejection here would surface at container-build time on a live run.
+        config = DockerSandboxConfig(extra_tmpfs_paths=(_HOME,))
+        assert config.extra_tmpfs_paths == (_HOME,)

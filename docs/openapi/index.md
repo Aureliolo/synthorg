@@ -133,7 +133,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Demo | `/demo` | Demo endpoint. |
 | Event Stream | `/events` | 2 routes under Event Stream. |
 | Experiments | `/experiments/{experiment}` | 3 routes under Experiments. |
-| Gateway | `/gateway/v1/chat/completions, /mcp-gateway/mcp` | 2 routes under Gateway. |
+| Gateway | `/gateway/v1/chat/completions` | Gateway endpoint. |
 | Health | `/healthz, /readyz` | 4 routes under Health. |
 | Integrations | `/integrations, /connections, /oauth, /webhooks` | 27 routes under Integrations. |
 | Interrupts | `/interrupts` | 2 routes under Interrupts. |

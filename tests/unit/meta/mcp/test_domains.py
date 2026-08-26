@@ -178,7 +178,7 @@ class TestWorkflowDomain:
         (MEMORY_TOOLS, 10),  # fine-tune, checkpoints, search
         (QUALITY_TOOLS, 7),  # reviews, quality reads
         (META_TOOLS, 5),  # self-improvement, proposals
-        (COMMUNICATION_TOOLS, 18),  # messaging, meetings, webhooks
+        (COMMUNICATION_TOOLS, 18),  # messaging, webhooks
         (INTEGRATION_TOOLS, 18),  # MCP catalog, OAuth, clients
         (INFRASTRUCTURE_TOOLS, 35),  # health, settings, providers
     ],

@@ -1,5 +1,5 @@
 # module-kind: tests
-"""The A/B recorder's own gateway host, driven over its real socket.
+"""The recorder's own gateway host, driven over its real socket.
 
 The whole point of the host is that mint and verify are the same
 ``GatewaySigner`` instance, which a standalone script cannot otherwise obtain.
@@ -23,7 +23,6 @@ from evals.errors import (
     HarnessHostAlreadyStartedError,
 )
 from evals.harness.host import (
-    DEFAULT_CONTAINER_HOST,
     RecordingGatewayHost,
     RecordingHostConfig,
     _cancel_serving,
@@ -70,15 +69,6 @@ _COMPLETION_BODY: dict[str, object] = {
     "model": "ignored",
     "messages": [{"role": "user", "content": "hi"}],
 }
-
-
-def _local_mcp_url(host: RecordingGatewayHost) -> str:
-    """Address the MCP endpoint over loopback rather than the container alias.
-
-    Returns:
-        The same mounted route, dialled the way this process can reach it.
-    """
-    return host.container_mcp_url.replace(DEFAULT_CONTAINER_HOST, "127.0.0.1")
 
 
 def _config(tmp_path: Path, *, scratch: Path | None = None) -> RecordingHostConfig:
@@ -131,7 +121,7 @@ def _bearer(host: RecordingGatewayHost) -> str:
     """
     return mint_run_token(
         host.signer,
-        execution_id=NotBlankStr("loop-ab-host-test"),
+        execution_id=NotBlankStr("harness-host-test"),
         agent_id=NotBlankStr("agent-1"),
         task_id=NotBlankStr("task-1"),
         ref=ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL),
@@ -182,7 +172,7 @@ class TestSigner:
         # is what a recorder pointed at a separately running backend would send.
         foreign = mint_run_token(
             GatewaySigner.with_random_key(),
-            execution_id=NotBlankStr("loop-ab-host-test"),
+            execution_id=NotBlankStr("harness-host-test"),
             agent_id=NotBlankStr("agent-1"),
             task_id=NotBlankStr("task-1"),
             ref=ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL),
@@ -199,56 +189,24 @@ class TestSigner:
 
 
 class TestEndpointSettings:
-    async def test_both_endpoints_resolve_to_the_bound_port(
+    async def test_the_gateway_is_enabled_at_the_bound_port(
         self, host: RecordingGatewayHost
     ) -> None:
-        # The loop wiring reads these settings, not the host object, so a port
-        # written anywhere else would leave the container dialling nothing.
+        # A recording dispatches every completion through the gateway, which
+        # ships off, so the host has to turn it on; and the URL a caller is
+        # given has to name the port actually bound, or it dials nothing.
         resolver = config_resolver_of(host.app_state)
 
-        gateway = await resolver.get_str("providers", "gateway_base_url")
-        mcp = await resolver.get_str("tools", "credentialed_mcp_base_url")
-
-        assert gateway == host.container_gateway_url
-        assert mcp == host.container_mcp_url
-        assert f":{host.port}/" in gateway
-        assert f":{host.port}/" in mcp
+        assert await resolver.get_bool("providers", "gateway_enabled") is True
+        assert f":{host.port}/" in host.container_gateway_url
 
     async def test_container_urls_address_the_docker_host_alias(
         self, host: RecordingGatewayHost
     ) -> None:
-        # The container joins the sidecar's network namespace, where loopback
-        # is the sidecar's own; only the host-gateway alias reaches the recorder.
+        # A container that joins the sidecar's network namespace has the
+        # sidecar's loopback; only the host-gateway alias reaches the recorder.
         assert host.container_gateway_url.startswith("http://host.docker.internal:")
         assert host.local_gateway_url.startswith("http://127.0.0.1:")
-
-
-class TestCredentialedMcp:
-    async def test_the_handshake_succeeds_but_grants_no_tools(
-        self, host: RecordingGatewayHost
-    ) -> None:
-        # The SDK will not build an agent without an MCP endpoint, so the
-        # surface has to answer. It must still hand the coding briefs nothing:
-        # they need no credentialed tool, and the shipped empty capability
-        # grant is what keeps the credentialed surface unreachable.
-        headers = {"Authorization": f"Bearer {_bearer(host)}"}
-        url = f"{_local_mcp_url(host)}/mcp"
-        async with httpx.AsyncClient() as client:
-            initialize = await client.post(
-                url,
-                headers=headers,
-                json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-            )
-            listed = await client.post(
-                url,
-                headers=headers,
-                json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
-            )
-
-        assert initialize.status_code == 200, initialize.text
-        assert initialize.json()["result"]["protocolVersion"]
-        assert listed.status_code == 200, listed.text
-        assert listed.json()["result"]["tools"] == []
 
 
 class TestLifecycle:
@@ -403,21 +361,20 @@ class TestFirstRunSetup:
         assert await persistence.users.count_by_role(HumanRole.CEO) == 1
 
 
-class TestOpenHandsImage:
-    async def test_image_override_reaches_the_setting(self, tmp_path: Path) -> None:
-        # A maintainer records against a locally built image; the loop wiring
-        # reads the setting, so the flag has to land there rather than on a
-        # field only the recorder consults.
+class TestGatewayEnabled:
+    async def test_the_host_enables_the_gateway_it_serves(self, tmp_path: Path) -> None:
+        # The setting ships off, and every completion a recording measures is
+        # dispatched through the gateway, so a host that did not turn it on
+        # would make the whole matrix unrecordable rather than merely unrouted.
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
             bind_host="127.0.0.1",
-            openhands_image="synthorg-openhands:local",
         )
 
         async with RecordingGatewayHost(config) as started:
-            resolved = await config_resolver_of(started.app_state).get_str(
-                "tools", "openhands_image"
+            resolved = await config_resolver_of(started.app_state).get_bool(
+                "providers", "gateway_enabled"
             )
 
-        assert resolved == "synthorg-openhands:local"
+        assert resolved is True

@@ -355,7 +355,7 @@ _CRASH_LINE = (
 )
 _CRASH_LINE_OTHER_TEST = (
     "worker 'gw1' crashed while running "
-    "'tests/unit/api/controllers/test_meetings.py::test_completed[2-2]'\n"
+    "'tests/unit/api/controllers/test_activities.py::test_completed[2-2]'\n"
 )
 _FAILED_LINE = (
     "FAILED tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]"
@@ -377,7 +377,7 @@ def test_parse_worker_crashes_extracts_worker_test_pairs() -> None:
         ),
         (
             "gw1",
-            "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
+            "tests/unit/api/controllers/test_activities.py::test_completed[2-2]",
         ),
     )
 
@@ -485,7 +485,7 @@ def test_classify_regression_when_distinct_crashes_only() -> None:
             "tests/unit/api/auth/test_postgres_session_store.py"
             "::test_enforce_session_limit_revokes_oldest[2-2]"
         ),
-        "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
+        "tests/unit/api/controllers/test_activities.py::test_completed[2-2]",
     )
 
 

@@ -190,7 +190,7 @@ _LEVEL_SUB_CONSTRAINTS: Final[MappingProxyType[ToolAccessLevel, ToolSubConstrain
                 git=GitAccess.READ_AND_BRANCH,
                 code_execution=CodeExecutionIsolation.CONTAINERIZED,
                 terminal=TerminalAccess.NONE,
-                requires_approval=("deploy:", "db:mutate"),
+                requires_approval=("deploy:", "publish:", "db:mutate"),
             ),
             ToolAccessLevel.STANDARD: ToolSubConstraints(
                 file_system=FileSystemScope.PROJECT_DIRECTORY,

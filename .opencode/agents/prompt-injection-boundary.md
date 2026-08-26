@@ -42,7 +42,7 @@ before you start, because your value is entirely in the gap they leave:
 | Gate | What it proves | What it cannot prove |
 | --- | --- | --- |
 | `check_chat_inbound_fenced` | The inbound package calls no LLM chokepoint, and the router passes `decision_reason=` | That the fenced value is the attacker-controlled one |
-| `check_credentialed_mcp_governed` | `visible_tool_names`, `parse_typed`, `.execute`, `wrap_untrusted` all appear on the path | That they wrap the right value, in the right order |
+| `check_governed_destructive_tools` | `_DESTRUCTIVE`, `_ACTION_TYPE` and `require_admin_guardrails` are all present on the class | That the guardrail actually refuses the call it should, and that the action type is not shared with a family an autonomy grant already auto-approves |
 | `check_governed_destructive_tools` | `require_admin_guardrails` is lexically first, `_ACTION_TYPE` is bound | That `_DESTRUCTIVE` is set on everything that destroys state |
 | `check_gateway_explicit_binding` | Claims-derived binding is present | That no other path reads the request's `model` |
 | `check_mcp_self_consumer_scoped` | `mcp_capabilities` feeds the capability set | That the resulting scope is actually least-privilege |

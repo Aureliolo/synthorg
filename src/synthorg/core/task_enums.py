@@ -194,7 +194,6 @@ class TaskType(StrEnum):
     DESIGN = "design"
     RESEARCH = "research"
     REVIEW = "review"
-    MEETING = "meeting"
     ADMIN = "admin"
     ANALYSIS = "analysis"
 

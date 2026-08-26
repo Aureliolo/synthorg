@@ -1,11 +1,11 @@
 # module-kind: tests
 """The task a brief becomes, and which briefs arm the zero-artifact guard.
 
-Both loops reclassify a COMPLETED run that called no tool into ``NO_OP`` only
-when the task declares expected artifacts. A brief that declares them and a task
-that does not is the guard silently disarmed: a loop that wrote nothing scores as
-a clean success, and the A/B's NO_OP rate reads zero because nothing could ever
-raise it.
+A COMPLETED run that called no tool is reclassified ``NO_OP`` only when the task
+declares expected artifacts. A brief that declares them and a task that does not
+is the guard silently disarmed: a run that wrote nothing scores as a clean
+success, and the recorded NO_OP rate reads zero because nothing could ever raise
+it.
 
 The gate is the workspace block, not the artifact list. A workspace-graded brief
 hands the loop a real directory and grades what it left there, so its declared
@@ -14,11 +14,8 @@ materialised into files by the runner afterwards, so the same declaration
 describes something the loop was never asked to produce.
 """
 
-from pathlib import Path
-
 import pytest
 
-from evals.loader.briefs import load_brief_suite
 from evals.models.brief import (
     ArtifactSpec,
     Brief,
@@ -37,7 +34,6 @@ from tests._shared import sid
 pytestmark = pytest.mark.unit
 
 _AGENT_ID = sid("brief-task-agent")
-_SUITE = Path(__file__).resolve().parents[2] / "evals" / "loop_ab" / "briefs"
 _CHECKS = ExecutableChecks(
     hidden_tests=(HiddenCheckSpec(cmd=(NotBlankStr("echo"), NotBlankStr("ok"))),)
 )
@@ -101,17 +97,6 @@ class TestExpectedArtifacts:
 
         assert task.artifacts_expected == ()
 
-    def test_every_shipped_ab_brief_arms_the_guard(self) -> None:
-        # The A/B's own suite is the one that has to work: a brief here whose
-        # artifacts never reached its task would be measured with the NO_OP
-        # rule switched off, and the scoreboard would report a rate of zero for
-        # a check that never ran.
-        for brief in load_brief_suite(_SUITE):
-            task = _brief_task(brief, agent_id=_AGENT_ID)
-            assert task.artifacts_expected, (
-                f"brief {brief.brief_id!r} does not arm the zero-artifact guard"
-            )
-
 
 class TestAcceptanceCriteria:
     def test_the_brief_criteria_reach_the_task(self) -> None:
@@ -127,16 +112,6 @@ class TestAcceptanceCriteria:
         task = _brief_task(brief, agent_id=_AGENT_ID)
 
         assert [c.description for c in task.acceptance_criteria] == ["it works"]
-
-    def test_every_shipped_ab_brief_states_its_criteria_on_the_task(self) -> None:
-        # Compared by text and in order, not by count: the agent reads these,
-        # so the same number of different sentences is the failure this would
-        # otherwise pass.
-        for brief in load_brief_suite(_SUITE):
-            task = _brief_task(brief, agent_id=_AGENT_ID)
-            assert [c.description for c in task.acceptance_criteria] == list(
-                brief.acceptance_criteria
-            ), f"brief {brief.brief_id!r} does not state its criteria on the task"
 
 
 class TestWallClockBudget:

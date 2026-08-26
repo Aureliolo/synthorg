@@ -90,14 +90,14 @@ buckets ended with no promotable loop at all, not because either loop is
 unsuitable but because neither model could do the work.
 
 The operational reading: a task whose complexity is `complex` or `epic` needs an
-expert model. The loop is not entirely without effect at the margin: at
-**capable**, openhands cleared the gate on `loop-ab-feature` and
+expert model. The loop was not entirely without effect at the margin: at
+**capable**, the second loop cleared the gate on `loop-ab-feature` and
 `loop-ab-pipeline` where react was disqualified. But where both were
 disqualified, at **basic**, no choice of loop recovered the brief.
 Routing such work to a cheaper rung does not degrade gracefully; it fails the
 acceptance checks outright. See
-[the A/B harness](../design/loop-ab-harness.md) for the recording and its
-limits.
+[the recording](../research/inner-loop-ab-recording.md) for the measurement and
+its limits.
 
 ## Pinned capabilities
 

@@ -30,7 +30,6 @@ mcp
 nats
 oauth
 onw
-openhands
 opencode
 opentelemetry
 otel
@@ -380,13 +379,6 @@ callsites
 cap_drop
 cassetted
 cerebras
-ceremony_auto_transition
-ceremony_policy
-ceremony_policy_overrides
-ceremony_strategy
-ceremony_strategy_config
-ceremony_transition_threshold
-ceremony_velocity_calculator
 chatbot
 check_run
 checkpointed
@@ -461,7 +453,6 @@ denylist
 depends_on
 deployment_id
 deps
-dept_ceremony_policies
 dequeueing
 dequeues
 deserialization
@@ -620,7 +611,6 @@ max_rounds
 md
 measurement_window_tasks
 medium_term
-meeting_based
 merge_id
 microtask
 middleware

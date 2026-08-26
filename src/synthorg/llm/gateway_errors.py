@@ -5,10 +5,10 @@ Each maps to a distinct :class:`ErrorCode` so the gateway controller can
 render the right OpenAI-shaped error body and HTTP status.
 ``GatewayBudgetExhaustedError`` subclasses the budget layer's
 ``BudgetExhaustedError`` so existing engine catch handlers cover it. The
-gateway's terminal 402 is the authoritative server-side hard kill; the
-OpenHands loop terminates ``BUDGET_EXHAUSTED`` separately, off its own
-per-turn budget checker (the 402 itself surfaces to the harness as a
-failed LLM call, not a mapped termination reason).
+gateway's terminal 402 is the authoritative server-side hard kill, and it
+is the only one a caller outside the runtime is subject to: the 402
+surfaces there as a failed LLM call rather than a mapped termination
+reason, because the gateway sees requests and not runs.
 """
 
 from typing import ClassVar

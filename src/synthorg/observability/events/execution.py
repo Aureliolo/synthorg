@@ -28,7 +28,6 @@ EXECUTION_LOOP_CEILING_PARKED: Final[str] = "execution.loop.ceiling_parked"
 EXECUTION_LOOP_BUDGET_EXHAUSTED: Final[str] = "execution.loop.budget_exhausted"
 EXECUTION_LOOP_ERROR: Final[str] = "execution.loop.error"
 EXECUTION_LOOP_TOOL_REJECTED: Final[str] = "execution.loop.tool_rejected"
-EXECUTION_LOOP_UNAVAILABLE: Final[str] = "execution.loop.unavailable"
 EXECUTION_RESPONSE_CEILING_REFUSED: Final[str] = "execution.response_ceiling.refused"
 """A resolved response ceiling was not a positive token count, so the shipped
 default was used instead. Logged at WARNING: every source of the value is
@@ -127,18 +126,6 @@ EXECUTION_TURN_OBSERVER_FAILED: Final[str] = "execution.turn.observer_failed"
 EXECUTION_RESUME_START: Final[str] = "execution.resume.start"
 EXECUTION_RESUME_COMPLETE: Final[str] = "execution.resume.complete"
 EXECUTION_RESUME_FAILED: Final[str] = "execution.resume.failed"
-
-# Loop auto-selection events
-EXECUTION_LOOP_AUTO_SELECTED: Final[str] = "execution.loop.auto_selected"
-EXECUTION_LOOP_STATIC_SELECTED: Final[str] = "execution.loop.static_selected"
-EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
-# The engine holds its selection config frozen for its lifetime, so this
-# records what a rebuild actually resolved rather than only that one happened.
-EXECUTION_LOOP_SELECTION_RESOLVED: Final[str] = "execution.loop.selection_resolved"
-# A stored setting still naming a retired loop. The dashboard shows the
-# operator the value they chose, so the substitution needs its own record or
-# the running loop silently disagrees with the configured one.
-EXECUTION_LOOP_RETIRED_NAME_COERCED: Final[str] = "execution.loop.retired_name_coerced"
 
 # Metrics events
 EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_type"

@@ -3,8 +3,8 @@ template:
   description: >-
     A product organization where UX research gathers requirements before
     any build begins. Designers, engineers, QA, and a data analyst
-    coordinate through structured meetings. Knowledge-heavy: discovery and
-    decisions are grounded in the shared knowledge base.
+    coordinate through shared plans and review gates. Knowledge-heavy:
+    discovery and decisions are grounded in the shared knowledge base.
   version: "1.2.0"
   min_agents: 9
   max_agents: 14

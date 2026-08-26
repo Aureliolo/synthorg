@@ -1,12 +1,11 @@
-"""A sandboxed agent is not a stranger with an IP.
+"""A caller holding a per-run bearer is not a stranger with an IP.
 
-The LLM gateway and the credentialed-tool MCP server verify their own per-run
-signed bearer inside the handler, which is exactly why both are excluded from
-session auth. That leaves ``scope["user"]`` unset, and the rate limiter reads
-an unset user as anonymous: the tier sized for a stranger, twenty requests a
-minute. An agent doing ordinary work spends that in seconds, and the run then
-dies on a 429 issued by its own control plane. Two OpenHands runs died that way
-in one A/B recording, on the MCP endpoint, mid-task.
+The LLM gateway verifies its own per-run signed bearer inside the handler,
+which is exactly why the route is excluded from session auth. That leaves
+``scope["user"]`` unset, and the rate limiter reads an unset user as anonymous:
+the tier sized for a stranger, twenty requests a minute. A run doing ordinary
+work spends that in seconds and then dies on a 429 issued by its own control
+plane, which is how two recorded runs died mid-task.
 """
 
 from types import SimpleNamespace
@@ -46,23 +45,11 @@ def _request(
 
 
 class TestSelfAuthenticatedPaths:
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/api/v1/gateway/v1/chat/completions",
-            "/api/v1/mcp-gateway/mcp",
-        ],
-    )
+    @pytest.mark.parametrize("path", ["/api/v1/gateway/v1/chat/completions"])
     def test_a_bearer_bearing_path_is_not_anonymous(self, path: str) -> None:
         assert throttle_when_anonymous(_request(path, bearer="Bearer r-1")) is False
 
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/api/v1/gateway/v1/chat/completions",
-            "/api/v1/mcp-gateway/mcp",
-        ],
-    )
+    @pytest.mark.parametrize("path", ["/api/v1/gateway/v1/chat/completions"])
     def test_a_bearer_bearing_path_takes_the_authenticated_tier(
         self, path: str
     ) -> None:
@@ -109,12 +96,10 @@ class TestOrdinaryTraffic:
         "path",
         [
             "/api/v1/gateway-admin/settings",
-            "/api/v1/mcp-gateway-admin/tools",
             "/api/v1/agents/gatewayish",
             # A route of the same name under a different root: unanchored, the
             # segment alone would hand it the authenticated tier's budget.
             "/other/gateway",
-            "/other/mcp-gateway/mcp",
             "/api/v2/gateway/v1/chat/completions",
         ],
     )

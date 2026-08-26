@@ -41,9 +41,6 @@ from synthorg.engine.agent_engine_context import (
 )
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
-from synthorg.engine.agent_engine_loop_factories import (
-    AgentEngineLoopFactoriesMixin,
-)
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
@@ -74,7 +71,6 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     make_budget_checker,
 )
-from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.post_execution.rework_settlement import (
     ScoredRun,
     resolve_rework_bound,
@@ -101,6 +97,7 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -135,10 +132,6 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
     from synthorg.engine.middleware.protocol import AgentMiddlewareChain
-    from synthorg.engine.openhands.config import (
-        OpenHandsLoopConfig,
-        OpenHandsLoopDeps,
-    )
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.recovery import RecoveryStrategy
@@ -169,9 +162,7 @@ if TYPE_CHECKING:
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
     from synthorg.settings.resolver import ConfigResolver
-    from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
-    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
@@ -195,7 +186,6 @@ class AgentEngine(
     AgentEngineContextMixin,
     AgentEngineErrorsMixin,
     AgentEngineFactoriesMixin,
-    AgentEngineLoopFactoriesMixin,
     AgentEnginePostExecMixin,
     AgentEngineRecoveryMixin,
     AgentEngineResumeMixin,
@@ -238,9 +228,6 @@ class AgentEngine(
         stagnation_detector: StagnationDetector | None = None,
         step_classifier: StepQualityClassifier | None = None,
         steering_inbox: SteeringInbox | None = None,
-        auto_loop_config: AutoLoopConfig | None = None,
-        openhands_loop_config: OpenHandsLoopConfig | None = None,
-        openhands_loop_deps: OpenHandsLoopDeps | None = None,
         compaction_callback: CompactionCallback | None = None,
         provider_registry: ProviderRegistry | None = None,
         provider_configs: Mapping[str, ProviderConfig] | None = None,
@@ -263,8 +250,7 @@ class AgentEngine(
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
-        forge_tools_runtime: ForgeToolsRuntime | None = None,
-        chat_tools_runtime: ChatToolsRuntime | None = None,
+        connection_tool_runtimes: ConnectionToolRuntimes | None = None,
         brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
         knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
         docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
@@ -287,13 +273,6 @@ class AgentEngine(
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._event_stream_hub = event_stream_hub
         self._interrupt_store = interrupt_store
-        if execution_loop is not None and auto_loop_config is not None:
-            msg = "execution_loop and auto_loop_config are mutually exclusive"
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                reason=msg,
-            )
-            raise ValueError(msg)
         self._provider = provider
         self._provider_registry = provider_registry
         self._provider_configs = provider_configs
@@ -305,8 +284,9 @@ class AgentEngine(
         self._clarification_enabled = clarification_enabled
         self._scoping_enabled = scoping_enabled
         self._external_api_runtime = external_api_runtime
-        self._forge_tools_runtime = forge_tools_runtime
-        self._chat_tools_runtime = chat_tools_runtime
+        self._connection_tool_runtimes = (
+            connection_tool_runtimes or ConnectionToolRuntimes()
+        )
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
         self._docs_tool_factory_provider = docs_tool_factory_provider
@@ -329,9 +309,6 @@ class AgentEngine(
         self._stagnation_detector = stagnation_detector
         self._step_classifier = step_classifier
         self._steering_inbox = steering_inbox
-        self._auto_loop_config = auto_loop_config
-        self._openhands_loop_config = openhands_loop_config
-        self._openhands_loop_deps = openhands_loop_deps
         self._compaction_callback = compaction_callback
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
@@ -441,17 +418,12 @@ class AgentEngine(
             )
         logger.debug(
             EXECUTION_ENGINE_CREATED,
-            loop_type=(
-                "auto"
-                if self._auto_loop_config is not None
-                else self._loop.get_loop_type()
-            ),
+            loop_type=self._loop.get_loop_type(),
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
             has_coordinator=self._coordinator is not None,
             has_compaction_callback=self._compaction_callback is not None,
-            has_openhands_loop_deps=self._openhands_loop_deps is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
         )
 
@@ -620,16 +592,11 @@ class AgentEngine(
                     effective_autonomy = await self._effective_autonomy_for(
                         identity, task_id=task_id, project_id=task.project
                     )
-                loop_mode = (
-                    "auto"
-                    if self._auto_loop_config is not None
-                    else self._loop.get_loop_type()
-                )
                 logger.info(
                     EXECUTION_ENGINE_START,
                     agent_id=agent_id,
                     task_id=task_id,
-                    loop_type=loop_mode,
+                    loop_type=self._loop.get_loop_type(),
                     max_turns=max_turns,
                 )
 
@@ -865,7 +832,7 @@ class AgentEngine(
                 estimated_tokens=system_prompt.estimated_tokens,
             )
 
-            loop = await self._resolve_loop(task, agent_id, task_id)
+            loop = self._loop
             # Project live execution progress onto the AG-UI stream (keyed by
             # session_id == task_id) so the dashboard can render the run
             # instead of a silent gap between propose and review. All

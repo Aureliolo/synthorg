@@ -112,6 +112,7 @@ class ToolPermissionChecker:
         access_level: ToolAccessLevel = ToolAccessLevel.STANDARD,
         allowed: frozenset[str] = frozenset(),
         denied: frozenset[str] = frozenset(),
+        denied_categories: frozenset[ToolCategory] = frozenset(),
         sub_constraints: ToolSubConstraints | None = None,
     ) -> None:
         """Initialize with access level, explicit name lists, and sub-constraints.
@@ -120,6 +121,9 @@ class ToolPermissionChecker:
             access_level: Base access level for category gating.
             allowed: Explicitly allowed tool names (normalized on store).
             denied: Explicitly denied tool names (normalized on store).
+            denied_categories: Categories withheld whatever the access
+                level grants, so an identity barred from a whole class of
+                tool stays barred as that class gains members.
             sub_constraints: Optional per-agent sub-constraints.  When
                 ``None``, defaults are resolved from the access level.
                 For ``CUSTOM`` level without sub-constraints, no
@@ -128,6 +132,7 @@ class ToolPermissionChecker:
         self._access_level = access_level
         self._allowed = frozenset(normalize_identifier(n) for n in allowed)
         self._denied = frozenset(normalize_identifier(n) for n in denied)
+        self._denied_categories = frozenset(denied_categories)
 
         # Resolve sub-constraint enforcer.  For CUSTOM without explicit
         # constraints, sub-constraint enforcement is skipped (only
@@ -159,6 +164,7 @@ class ToolPermissionChecker:
             access_level=permissions.access_level,
             allowed=frozenset(permissions.allowed),
             denied=frozenset(permissions.denied),
+            denied_categories=frozenset(permissions.denied_categories),
             sub_constraints=permissions.sub_constraints,
         )
 
@@ -177,6 +183,8 @@ class ToolPermissionChecker:
             return False
         if name_lower in self._allowed:
             return True
+        if category in self._denied_categories:
+            return False
         if self._access_level == ToolAccessLevel.CUSTOM:
             return False
         allowed_cats = self._LEVEL_CATEGORIES[self._access_level]
@@ -223,6 +231,12 @@ class ToolPermissionChecker:
         name_lower = normalize_identifier(tool_name)
         if name_lower in self._denied:
             return f"Tool {tool_name!r} is explicitly denied"
+        # A withheld category outranks the access level, so naming the level
+        # here would report a bar the tool clears. ``is_permitted`` readmits an
+        # explicitly allowed name ahead of this, which is why no branch for one
+        # belongs here: such a tool is permitted and never reaches this method.
+        if category in self._denied_categories:
+            return f"Category {category.value!r} is explicitly denied"
         if self._access_level == ToolAccessLevel.CUSTOM:
             return (
                 f"Tool {tool_name!r} is not in the allowed list (access level: custom)"

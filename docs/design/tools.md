@@ -689,25 +689,21 @@ code execution isolation, and approval requirements against each tool invocation
 overrides can customise all six dimensions via `ToolPermissions.sub_constraints`.  K8s sandbox
 backend integration is on the roadmap.
 
-## Credentialed-tool MCP boundary (embedded harness)
+## Per-target action types on the credential-holding families
 
-The in-process MCP machinery above is not network-facing. To let an embedded
-coding harness (the [OpenHands loop](openhands-loop.md)) call the
-credential-holding forge / chat / deploy / publish tools without ever seeing a
-credential, the [credentialed-tool MCP server](credentialed-mcp.md) exposes a
-scoped subset over a streamable-HTTP MCP endpoint on the API app. Tool
-execution, credential brokering, the `ConnectionApprovalGate`, the
-`ActionSignature` binding and the egress pin all run host-side; every output is
-fenced with `wrap_untrusted(TAG_TOOL_RESULT, ...)` at source. Visibility is
-actor-scoped by the per-run token's capabilities. The `deploy_*` and `publish_*`
-families additionally bind a per-target action type (`deploy:staging` /
-`deploy:production`, `publish:staging` / `publish:production`) so an autonomy
-grant for a tamer family never auto-approves a production release or image push,
-and their destructive tools carry the confirm + reason + actor guardrail.
+The `deploy_*` and `publish_*` families each bind a per-target action type
+(`deploy:staging` / `deploy:production`, `publish:staging` /
+`publish:production`) so an autonomy grant for a tamer family never
+auto-approves a production release or image push, and their destructive tools
+carry the confirm + reason + actor guardrail.
+
+A streamable-HTTP MCP server once exposed a scoped subset of these to an
+embedded coding harness. It went with the harness: the in-process MCP machinery
+above is not network-facing, and a network-facing credential-brokering endpoint
+with nothing calling it is attack surface for nothing.
 
 ## See Also
 
-- [Credentialed-tool MCP](credentialed-mcp.md): the governed harness tool boundary
 - [Providers](providers.md): LLM abstraction and routing
 - [Security & Approval](security.md): autonomy tiers, approval gates
 - [Design Overview](index.md): full index

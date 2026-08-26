@@ -493,22 +493,18 @@ def _fallback_factory(
     return _resolve
 
 
-async def test_delete_widening_credentialed_mcp_capabilities_is_hard_blocked() -> None:
-    """Deleting a narrow capabilities override that reverts to a broad env>default
+async def test_delete_widening_deploy_targets_is_hard_blocked() -> None:
+    """Deleting a narrow targets override that reverts to a broad env>default
     grant is a widening the silent delete path must hard-block."""
-    definition = _definition(
-        "tools", "credentialed_mcp_capabilities", SettingType.STRING
-    )
+    definition = _definition("tools", "deploy_tools_targets", SettingType.STRING)
     with pytest.raises(SecurityToggleConfirmationRequiredError):
         await guard_security_delete(
             "tools",
             [definition],
             resolve_fallback=_fallback_factory(
-                {("tools", "credentialed_mcp_capabilities"): "*"}
+                {("tools", "deploy_tools_targets"): "prod,staging"}
             ),
-            get_entry=_entry_factory(
-                {("tools", "credentialed_mcp_capabilities"): "forge:read"}
-            ),
+            get_entry=_entry_factory({("tools", "deploy_tools_targets"): "staging"}),
         )
 
 
@@ -543,14 +539,14 @@ async def test_delete_security_toggle_weakening_is_blocked() -> None:
 async def test_delete_non_weakening_transition_is_allowed() -> None:
     """A delete whose fallback equals the current value (no posture change) needs
     no governance and is permitted."""
-    definition = _definition("tools", "credentialed_mcp_enabled", SettingType.BOOLEAN)
+    definition = _definition("tools", "deploy_tools_enabled", SettingType.BOOLEAN)
     await guard_security_delete(
         "tools",
         [definition],
         resolve_fallback=_fallback_factory(
-            {("tools", "credentialed_mcp_enabled"): "false"}
+            {("tools", "deploy_tools_enabled"): "false"}
         ),
-        get_entry=_entry_factory({("tools", "credentialed_mcp_enabled"): "false"}),
+        get_entry=_entry_factory({("tools", "deploy_tools_enabled"): "false"}),
     )
 
 

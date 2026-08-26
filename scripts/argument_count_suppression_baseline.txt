@@ -44,7 +44,7 @@ src/synthorg/deliverable_receipts/builder.py::ReceiptBuilder.__init__::9
 src/synthorg/engine/_agent_engine_callables.py::HandleFatalError.__call__::11
 src/synthorg/engine/_review_completion_gates.py::run_completion_gates::16
 src/synthorg/engine/_review_gate_record.py::ReviewGateRecordMixin._append_decision::9
-src/synthorg/engine/agent_engine.py::AgentEngine.__init__::67
+src/synthorg/engine/agent_engine.py::AgentEngine.__init__::63
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._build_error_execution::9
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._handle_fatal_error::11
 src/synthorg/engine/agent_engine_post_exec.py::AgentEnginePostExecMixin._run_loop_with_timeout::12
@@ -62,8 +62,6 @@ src/synthorg/engine/evolution/service.py::EvolutionService.__init__::9
 src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::11
 src/synthorg/engine/intake/strategies/agent_intake.py::AgentIntake.__init__::9
 src/synthorg/engine/loop_protocol.py::ExecutionLoop.execute::9
-src/synthorg/engine/loop_selector.py::build_execution_loop::9
-src/synthorg/engine/openhands/loop.py::OpenHandsLoop.execute::9
 src/synthorg/engine/pipeline/factory.py::build_work_pipeline::14
 src/synthorg/engine/pipeline/service.py::DefaultWorkPipeline.__init__::11
 src/synthorg/engine/prompt.py::build_system_prompt::16
@@ -122,10 +120,9 @@ src/synthorg/tools/factory.py::build_default_tools_from_config::20
 src/synthorg/tools/invoker.py::ToolInvoker.__init__::10
 src/synthorg/tools/sandbox/docker_sandbox.py::DockerSandbox._build_container_config::9
 src/synthorg/tools/sandbox/docker_sandbox_exec.py::DockerSandboxExecMixin._build_container_config::9
-src/synthorg/tools/sandbox/docker_sandbox_stream.py::DockerSandboxStreamMixin._build_container_config::9
 src/synthorg/tools/web/providers/http_fetch_provider.py::HttpWebFetchProvider.__init__::9
 src/synthorg/tools/web/providers/http_search_provider.py::HttpWebSearchProvider.__init__::9
-src/synthorg/workers/_engine_assembly.py::_construct_agent_engine::11
+src/synthorg/workers/_engine_assembly.py::_construct_agent_engine::10
 src/synthorg/workers/execution_service/_agent_engine.py::AgentEngineExecutionService.__init__::12
 tests/conformance/persistence/test_charter_repository.py::_make_charter::11
 tests/conformance/persistence/test_code_execution_record_repository.py::_record::11

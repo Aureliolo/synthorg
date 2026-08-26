@@ -56,16 +56,11 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "completion_oracle_enabled"),
     ("engine", "completion_oracle_min_stakes"),
     ("engine", "completion_oracle_shadow_mode"),
-    # The engine holds its AutoLoopConfig frozen for its lifetime, so an edit
-    # to a loop-selection key reaches a task only via a rebuild.
-    ("engine", "default_loop_type"),
     ("engine", "enable_agent_middleware"),
     # Each of these three names the connection one runtime collaborator
     # dispatches on, resolved into it while the runtime is assembled, so a
     # reassignment reaches a run only through a rebuild.
     ("engine", "evolution_proposer_model"),
-    ("engine", "loop_auto_select_enabled"),
-    ("engine", "loop_complexity_overrides"),
     ("engine", "matcher_min_cloud_cost_tier"),
     ("engine", "matcher_min_usable_parameters"),
     ("engine", "matcher_prefer_local"),
@@ -92,7 +87,6 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("providers", "capability_evidence_capable_percentile"),
     ("providers", "capability_evidence_max_age_days"),
     ("providers", "capability_sources"),
-    ("providers", "gateway_base_url"),
     ("security", "grounding_model"),
     # The agent -> SynthOrg-MCP bridge is composed once when the engine is
     # built and held for its lifetime, so without a rebuild an operator
@@ -100,18 +94,10 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("security", "mcp_self_consumer_mode"),
     ("security", "vision_verify_model"),
     ("tools", "browser_image_pin"),
-    ("tools", "credentialed_mcp_base_url"),
     ("tools", "desktop_driver"),
     ("tools", "desktop_image_pin"),
     ("tools", "desktop_screen_height"),
     ("tools", "desktop_screen_width"),
-    # ``build_openhands_loop_deps_or_none`` reads each of these inside the
-    # rebuild and then holds the result for the engine's lifetime, so a key
-    # missing here is an operator edit that reaches no run.
-    ("tools", "openhands_enabled"),
-    ("tools", "openhands_idle_timeout_seconds"),
-    ("tools", "openhands_image"),
-    ("tools", "openhands_max_runtime_seconds"),
     # The web_fetch ladder is assembled per rebuild: which rungs exist, and
     # the budgets each bakes in.
     ("tools", "web_fetch_docs_index_discovery_enabled"),
@@ -129,6 +115,25 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     # Baked in at wiring time by the fetch ladder, the search provider and the
     # engine's own tool assembly.
     ("tools", "web_request_timeout_seconds"),
+    # Each governed connection-tool family is composed once per rebuild into a
+    # boot-scoped bundle, so repointing one at a different connection or
+    # narrowing its targets reaches a running agent only through a rebuild.
+    ("tools", "forge_tools_enabled"),
+    ("tools", "forge_tools_connection"),
+    ("tools", "forge_tools_timeout_seconds"),
+    ("tools", "forge_tools_max_read_chars"),
+    ("tools", "chat_tools_enabled"),
+    ("tools", "chat_tools_connection"),
+    ("tools", "chat_tools_timeout_seconds"),
+    ("tools", "deploy_tools_enabled"),
+    ("tools", "deploy_tools_targets"),
+    ("tools", "deploy_tools_timeout_seconds"),
+    ("tools", "deploy_tools_max_log_chars"),
+    ("tools", "publish_tools_enabled"),
+    ("tools", "publish_tools_targets"),
+    ("tools", "publish_tools_timeout_seconds"),
+    ("tools", "publish_tools_max_manifest_bytes"),
+    ("tools", "publish_tools_max_image_bytes"),
 )
 
 

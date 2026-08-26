@@ -112,7 +112,6 @@ _GATES: tuple[str, ...] = (
     "check_declared_failover_pairs",
     "check_no_silent_embedder_fallback",
     "check_gateway_explicit_binding",
-    "check_credentialed_mcp_governed",
     "check_governed_destructive_tools",
     "check_forge_repo_scoped",
     "check_chat_inbound_fenced",

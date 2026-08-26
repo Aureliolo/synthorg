@@ -3,7 +3,16 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import type { Complexity, Priority, TaskType } from '@/api/types/enums'
+import { formatLabel } from '@/utils/format'
+import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
+import {
+  COMPLEXITY_VALUES,
+  PRIORITY_VALUES,
+  TASK_TYPE_VALUES,
+  type Complexity,
+  type Priority,
+  type TaskType,
+} from '@/api/types/enums'
 import type {
   CreateTaskRequest,
   TaskBoardSubmissionResponse,
@@ -27,28 +36,24 @@ export interface TaskCreateDialogProps {
   onCreate: (data: CreateTaskRequest) => Promise<TaskBoardSubmissionResponse | null>
 }
 
-const TASK_TYPES: { value: TaskType; label: string }[] = [
-  { value: 'development', label: 'Development' },
-  { value: 'design', label: 'Design' },
-  { value: 'research', label: 'Research' },
-  { value: 'review', label: 'Review' },
-  { value: 'meeting', label: 'Meeting' },
-  { value: 'admin', label: 'Admin' },
-]
+// Derived from the generated enum tuples rather than listed, so a member added
+// to the backend enum becomes selectable here without an edit. A hand-written
+// list is how ``analysis`` came to be unofferable in this dialog while the
+// backend accepted it.
+const TASK_TYPES = TASK_TYPE_VALUES.map((value) => ({
+  value,
+  label: getTaskTypeLabel(value),
+}))
 
-const PRIORITIES: { value: Priority; label: string }[] = [
-  { value: 'critical', label: 'Critical' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-]
+const PRIORITIES = PRIORITY_VALUES.map((value) => ({
+  value,
+  label: getPriorityLabel(value),
+}))
 
-const COMPLEXITIES: { value: Complexity; label: string }[] = [
-  { value: 'simple', label: 'Simple' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'complex', label: 'Complex' },
-  { value: 'epic', label: 'Epic' },
-]
+const COMPLEXITIES = COMPLEXITY_VALUES.map((value) => ({
+  value,
+  label: formatLabel(value),
+}))
 
 interface TaskTemplate {
   label: string
@@ -101,12 +106,12 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-[var(--so-transition-default)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg md:max-w-2xl -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-card-tight sm:p-card md:p-card-roomy shadow-[var(--so-shadow-card-hover)]',
-            'transition-[opacity,translate,scale] duration-200 ease-out',
+            'transition-[opacity,translate,scale] duration-[var(--so-transition-default)] ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             'max-h-[85vh] overflow-y-auto sm:max-h-[80vh]',
@@ -147,7 +152,7 @@ interface TaskCreateDialogBodyProps {
 
 function TaskCreateDialogBody({ ctrl }: TaskCreateDialogBodyProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-section-gap">
       <TaskTemplatesRow onApplyTemplate={ctrl.applyTemplate} />
       <TitleDescriptionFields ctrl={ctrl} />
       <TypePriorityRow ctrl={ctrl} />

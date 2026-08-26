@@ -94,6 +94,37 @@ class TestNarrowing:
         permissions = ToolPermissionChecker.from_permissions(session.tools)
         assert not permissions.is_permitted("some_other_tool", ToolCategory.OTHER)
 
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["deploy_release", "publish_push", "forge_push", "chat_messages"],
+    )
+    def test_no_governed_connection_tool_is_reachable(self, tool_name: str) -> None:
+        """A judge cannot reach anything that acts outside the organisation.
+
+        The engine appends the governed connection families to every run's
+        registry without consulting the identity, and STANDARD grants their
+        category, so the refusal has to come from the session's own
+        permissions. An injection planted in the reviewed artefact runs here.
+        """
+        session = as_review_session(_privileged_holder())
+        permissions = ToolPermissionChecker.from_permissions(session.tools)
+        assert not permissions.is_permitted(tool_name, ToolCategory.EXTERNAL_DATA)
+
+    def test_the_bar_is_the_category_not_a_name_list(self) -> None:
+        """A tool added to the category later is refused without an edit."""
+        session = as_review_session(_privileged_holder())
+        permissions = ToolPermissionChecker.from_permissions(session.tools)
+        assert not permissions.is_permitted(
+            "some_future_external_tool", ToolCategory.EXTERNAL_DATA
+        )
+
+    def test_reading_and_testing_the_deliverable_still_works(self) -> None:
+        """The narrowing keeps what judging actually rests on."""
+        session = as_review_session(_privileged_holder())
+        permissions = ToolPermissionChecker.from_permissions(session.tools)
+        assert permissions.is_permitted("read_file", ToolCategory.FILE_SYSTEM)
+        assert permissions.is_permitted("shell_command", ToolCategory.TERMINAL)
+
     def test_the_roster_identity_is_untouched(self) -> None:
         holder = _privileged_holder()
         as_review_session(holder)

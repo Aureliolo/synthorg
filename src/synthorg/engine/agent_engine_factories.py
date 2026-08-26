@@ -5,9 +5,8 @@ from typing import TYPE_CHECKING, Literal
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.engine._agent_tool_registry import (
-    registry_with_chat_tools,
+    registry_with_connection_tools,
     registry_with_delegate_tool,
-    registry_with_forge_tools,
 )
 from synthorg.engine._security_factory import (
     SecurityLlmInfra,
@@ -18,10 +17,12 @@ from synthorg.engine._security_factory import (
 )
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionLoop
+from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import TOOL_REGISTRY_BUILT
 from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.settings.model_ref import ModelRef
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
@@ -45,12 +46,7 @@ if TYPE_CHECKING:
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.intervention.inbox import SteeringInbox
-    from synthorg.engine.loop_selector import AutoLoopConfig
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
-    from synthorg.engine.openhands.config import (
-        OpenHandsLoopConfig,
-        OpenHandsLoopDeps,
-    )
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.memory.injection import (
@@ -67,9 +63,7 @@ if TYPE_CHECKING:
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
     from synthorg.settings.resolver import ConfigResolver
-    from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
-    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
@@ -84,8 +78,7 @@ class AgentEngineFactoriesMixin:
     _scoping_enabled: bool
     _clock: Clock
     _external_api_runtime: ExternalApiRuntime | None
-    _forge_tools_runtime: ForgeToolsRuntime | None
-    _chat_tools_runtime: ChatToolsRuntime | None
+    _connection_tool_runtimes: ConnectionToolRuntimes
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
     _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
     _docs_tool_factory_provider: DocsToolFactoryProvider | None
@@ -104,10 +97,7 @@ class AgentEngineFactoriesMixin:
     _step_classifier: StepQualityClassifier | None
     _compaction_callback: CompactionCallback | None
     _steering_inbox: SteeringInbox | None
-    _auto_loop_config: AutoLoopConfig | None
     _loop: ExecutionLoop
-    _openhands_loop_config: OpenHandsLoopConfig | None
-    _openhands_loop_deps: OpenHandsLoopDeps | None
     _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
     _ontology_injection_strategy: OntologyInjectionStrategy | None
     _model_resolver: ModelResolver | None
@@ -145,6 +135,26 @@ class AgentEngineFactoriesMixin:
         """
         live = self._live_security_config()
         return live is not None and live.enabled
+
+    def _make_default_loop(self) -> ExecutionLoop:
+        """Build the engine's execution loop.
+
+        Every in-flight control the engine holds is passed by name, so a
+        control the engine was given but the loop never received is a type
+        error here rather than a silently ungoverned run.
+
+        Returns:
+            A :class:`ReactLoop` wired with this engine's approval gate,
+            stagnation detector, compaction callback, steering inbox and
+            step classifier.
+        """
+        return ReactLoop(
+            approval_gate=self._approval_gate,
+            stagnation_detector=self._stagnation_detector,
+            compaction_callback=self._compaction_callback,
+            steering_inbox=self._steering_inbox,
+            step_classifier=self._step_classifier,
+        )
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured.
@@ -292,17 +302,9 @@ class AgentEngineFactoriesMixin:
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
-        registry = registry_with_forge_tools(
+        registry = registry_with_connection_tools(
             registry,
-            self._forge_tools_runtime,
-            approval_store=self._approval_store,
-            identity=identity,
-            task_id=task_id,
-            effective_autonomy=effective_autonomy,
-        )
-        registry = registry_with_chat_tools(
-            registry,
-            self._chat_tools_runtime,
+            self._connection_tool_runtimes,
             approval_store=self._approval_store,
             identity=identity,
             task_id=task_id,

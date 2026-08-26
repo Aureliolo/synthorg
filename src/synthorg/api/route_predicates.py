@@ -49,23 +49,6 @@ def gateway_controller_ready(app_state: AppState) -> bool:
     return app_state.slice(GatewayStateSlice).service is not None
 
 
-def credentialed_mcp_controller_ready(app_state: AppState) -> bool:
-    """Mount the credentialed-tool MCP controller when its deps are wired.
-
-    Needs the gateway signer (for bearer verification) and the connection
-    catalog (for credential brokering). The ``tools.credentialed_mcp_enabled``
-    setting gates behaviour per request, so the route stays mounted and 503s
-    while disabled rather than 404.
-
-    Returns:
-        ``True`` when the gateway signer and connection catalog are wired.
-    """
-    return (
-        app_state.slice(GatewayStateSlice).signer is not None
-        and app_state.slice(IntegrationsStateSlice).connection_catalog is not None
-    )
-
-
 def connections_controller_ready(app_state: AppState) -> bool:
     """Mount the connections controller when the connection catalog is wired.
 

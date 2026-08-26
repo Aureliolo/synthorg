@@ -1,8 +1,7 @@
 """Factory for building a stakes assessor from config.
 
-Dispatches on ``StakesAssessmentConfig.assessor`` via a
-``StrategyRegistry`` (mirrors ``loop_selector._LOOP_REGISTRY``). Ships
-the deterministic heuristic as the only built-in; additional assessors
+Dispatches on ``StakesAssessmentConfig.assessor`` via a ``StrategyRegistry``.
+Ships the deterministic heuristic as the only built-in; additional assessors
 (e.g. an LLM-backed one) register here without touching call sites.
 """
 

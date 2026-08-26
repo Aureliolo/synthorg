@@ -298,10 +298,10 @@ class AgentEngineContextMixin:
         on the agent, so it holds however the agent got here: the workspace
         root is ``<repo_root>/projects/<id>`` with path escape refused, and
         the sandbox container reuse key carries the project, forcing a
-        teardown when it changes. The credentialed surfaces (forge repo
-        scope, the MCP tool surfaces, the SecOps action-type gate) bound the
-        same agent everywhere rather than per project, so they are a separate
-        boundary and not a replacement for this one.
+        teardown when it changes. The governed connection surfaces (forge
+        repo scope, the MCP tool surfaces, the SecOps action-type gate) bound
+        the same agent everywhere rather than per project, so they are a
+        separate boundary and not a replacement for this one.
 
         Args:
             task: The task about to run.

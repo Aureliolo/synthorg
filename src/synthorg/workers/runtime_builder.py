@@ -72,8 +72,7 @@ from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
 )
 from synthorg.workers._agent_tools_wiring import (
-    build_chat_tools_runtime_or_none,
-    build_forge_tools_runtime_or_none,
+    build_connection_tool_runtimes,
 )
 from synthorg.workers._completion_oracle_runtime import (
     attach_completion_oracle_gates,
@@ -338,8 +337,7 @@ async def build_runtime_services(
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
-    forge_tools_runtime = await build_forge_tools_runtime_or_none(app_state)
-    chat_tools_runtime = await build_chat_tools_runtime_or_none(app_state)
+    connection_tool_runtimes = await build_connection_tool_runtimes(app_state)
     flight_recorder_sink = await build_boot_flight_recorder_sink(app_state)
     try:
         engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
@@ -368,8 +366,7 @@ async def build_runtime_services(
         tool_registry=tool_registry,
         coordination_metrics_collector=coordination_metrics_collector,
         external_api_runtime=external_api_runtime,
-        forge_tools_runtime=forge_tools_runtime,
-        chat_tools_runtime=chat_tools_runtime,
+        connection_tool_runtimes=connection_tool_runtimes,
         flight_recorder_sink=flight_recorder_sink,
         step_classifier=step_classifier,
         classification_detector_timeout_seconds=(

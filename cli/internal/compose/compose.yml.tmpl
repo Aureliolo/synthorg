@@ -208,19 +208,6 @@ switching mid-process leaves a half-recorded transcript.
 {{- if .Sandbox}}
       SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
       SYNTHORG_SIDECAR_IMAGE: {{yamlStr (sidecarImageRef .ImageTag)}}
-      SYNTHORG_OPENHANDS_IMAGE: {{yamlStr (openhandsImageRef .ImageTag)}}
-{{- /*
-The OpenHands loop container runs on the default bridge network, not
-synthorg-net, so it reaches the API through the host rather than by compose
-service name: the loop gives its container a host.docker.internal:host-gateway
-alias and these two point at the published backend port. Derived from the same
-bind the service publishes above, so a standard install needs no hand
-configuration. The container appends /mcp to the MCP base itself. Gated with
-the images because the docker.sock mount that lets the backend spawn any
-container at all is gated here too.
-*/}}
-      SYNTHORG_PROVIDERS_GATEWAY_BASE_URL: "${SYNTHORG_PROVIDERS_GATEWAY_BASE_URL:-http://host.docker.internal:{{.BackendPort}}${SYNTHORG_API_API_PREFIX:-/api/v1}/gateway/v1}"
-      SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL: "${SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL:-http://host.docker.internal:{{.BackendPort}}${SYNTHORG_API_API_PREFIX:-/api/v1}/mcp-gateway}"
 {{- end}}
 {{- if and .Sandbox .FineTuning}}
       SYNTHORG_FINE_TUNE_IMAGE: {{yamlStr (fineTuneImageRef .ImageTag)}}

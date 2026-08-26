@@ -619,26 +619,21 @@ through `app_state.security_runtime_config`, which the
 `SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
 The same guardrail covers four more namespaces: `engine` (the completion-oracle
-keys, the agent middleware, the three loop-routing keys
-`loop_auto_select_enabled`, `default_loop_type` and `loop_complexity_overrides`,
-where naming the sandboxed loop is the weakening direction, and the three
+keys, the agent middleware, and the three
 human-ask toggles `ask_policy_enabled`, `clarification_enabled` and
 `scoping_enabled`, whose off direction removes the only in-run path by which an
 agent defers a material, hard-to-reverse choice to a human), `tools` (MCP
-sandbox isolation, the credentialed-MCP grant, `openhands_enabled`, and each
+sandbox isolation and each
 destructive tool family's enable + targets), `output_style` (disable, shadow,
 exemptions, pack swap), and `providers` (`gateway_enabled`,
 `failover_enabled`, `failover_routes`).
 
-Six of those toggles ship **on**, and the guarded direction differs by what
-turning one on actually does.
+The guarded direction differs by what turning a toggle on actually does.
 
-For the three **default-on capabilities** (`providers.gateway_enabled`,
-`tools.openhands_enabled`, `tools.credentialed_mcp_enabled`) the weakening
-direction is `false` -> `true`, because that is what reopens an egress or
-credential surface. An unset key already resolves to the registered `true`, so
-writing `true` over it restates the running posture and is unguarded; only an
-explicit stored `false` returning to `true` needs confirm+reason+actor.
+`providers.gateway_enabled` ships **off**, so its guarded direction is the plain
+one and unset counts as off: the first stored `true` needs
+confirm+reason+actor, because that is what opens an HTTP surface dispatching
+billed LLM calls from outside the runtime.
 
 For the three **human-ask toggles** (`ask_policy_enabled`,
 `clarification_enabled`, `scoping_enabled`) it is the mirror image: turning one
@@ -647,7 +642,8 @@ off is what removes the deferral path, so `true` -> `false` and `unset` ->
 registered `true`), while `false` -> `true` restores the posture and is
 unguarded.
 
-Either way the guardrail is a live-write control, not an upgrade-time one: a
+Whichever direction is guarded, the guardrail is a live-write control, not an
+upgrade-time one: a
 deployment that never wrote an explicit row inherits the new default on its
 next boot with no prompt, so a default flip on any of these belongs in the
 release notes.

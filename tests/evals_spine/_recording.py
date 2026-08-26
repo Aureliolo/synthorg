@@ -21,7 +21,6 @@ RECORDING_MODEL = "example-expert-001"
 #: Unresolvable on purpose: nothing in this suite launches a container.
 RECORDING_SANDBOX_IMAGE = "example.invalid/sandbox:under-test"
 RECORDING_SIDECAR_IMAGE = "example.invalid/sidecar:under-test"
-RECORDING_OPENHANDS_IMAGE = "example.invalid/openhands:under-test"
 
 
 def recording_company_config() -> RootConfig:
@@ -48,7 +47,6 @@ def recording_company_config() -> RootConfig:
 
 __all__ = [
     "RECORDING_MODEL",
-    "RECORDING_OPENHANDS_IMAGE",
     "RECORDING_PROVIDER",
     "RECORDING_SANDBOX_IMAGE",
     "RECORDING_SIDECAR_IMAGE",

@@ -108,7 +108,7 @@ TOOL_REGISTRY_INTEGRITY_CHECK_COMPLETE: Final[str] = "tool.registry.integrity.co
 # ── Memory tool events ────────────────────────────────────────────
 TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"
 
-# ── Forge / chat tool events ──────────────────────────────────────
+# ── Governed connection tool events ───────────────────────────────
 FORGE_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.forge.credential_failed"
 CHAT_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.chat.credential_failed"
 FORGE_TOOL_CONNECTION_FAILED: Final[str] = "tool.forge.connection_failed"
@@ -130,4 +130,11 @@ PUBLISH_TOOL_PUBLISHED: Final[str] = "tool.publish.published"
 GOVERNED_TOOL_GUARDRAIL_REJECTED: Final[str] = "tool.governed.guardrail_rejected"
 FORGE_TOOL_GRANTED: Final[str] = "tool.forge.granted"
 CHAT_TOOL_GRANTED: Final[str] = "tool.chat.granted"
+DEPLOY_TOOL_GRANTED: Final[str] = "tool.deploy.granted"
+PUBLISH_TOOL_GRANTED: Final[str] = "tool.publish.granted"
+# A family whose runtime IS wired but whose writes could not be gated, so the
+# tools were withheld rather than granted ungoverned. WARNING because it is
+# not the same condition as the feature being off: the operator asked for the
+# family and the approval store that makes it safe to grant is unavailable.
+GOVERNED_TOOL_WITHHELD_UNGATED: Final[str] = "tool.governed.withheld_ungated"
 DELEGATE_TOOL_GRANTED: Final[str] = "tool.delegate.granted"

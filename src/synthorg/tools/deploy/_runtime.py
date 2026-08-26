@@ -8,9 +8,9 @@ Unlike the forge and chat families this runtime carries an *allowlist* of
 target names rather than one bound connection: a synthetic org deploys to
 several targets, and which one a call uses is chosen per call. The
 allowlist is the operator's list, so an agent can pick from it but never
-extend it. The destructive path's audit identity is resolved host-side in
-the credentialed-MCP controller and passed to the release tool as a
-constructor argument, so it is deliberately not part of this bundle.
+extend it. The destructive path's audit identity is the run's own
+``AgentIdentity``, passed to the release tool as a constructor argument at
+augmentation time, so it is deliberately not part of this boot-scoped bundle.
 """
 
 from dataclasses import dataclass
@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.security.timeout.protocol import RiskTierClassifier
 
@@ -28,23 +29,21 @@ class DeployToolsRuntime:
 
     connection_catalog: ConnectionCatalog
     # Deploy-connection names the operator has approved as targets. Empty
-    # allows nothing, matching the secure-by-default posture of the
-    # credentialed capability grant itself.
+    # allows nothing, and an empty allowlist leaves the family unregistered
+    # rather than registered against every connection in the catalog.
     allowed_targets: frozenset[str]
     timeout_seconds: float
     max_log_chars: int
 
     @property
-    def connection_name(self) -> str:
-        """Satisfy the shared runtime protocol.
+    def connection_name(self) -> NotBlankStr | None:
+        """Always ``None``: this family binds per call, not per runtime.
 
-        Returns:
-            The empty string. This family resolves its connection from
-            the call's target, so there is no single bound connection;
-            :meth:`DeployToolsRuntime.allowed_targets` is the real bound
-            surface.
+        Each call resolves its connection from the target it names, so there is
+        no single bound connection to report here;
+        :attr:`DeployToolsRuntime.allowed_targets` is the real bound surface.
         """
-        return ""
+        return None
 
 
 @dataclass(frozen=True)

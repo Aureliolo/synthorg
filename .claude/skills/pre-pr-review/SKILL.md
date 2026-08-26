@@ -295,7 +295,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `.claude/agents/tool-parity-checker.md` prompt (verifies Claude Code <-> OpenCode config parity) |
 | **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `.claude/agents/diagram-syntax-validator.md` prompt (validates diagram syntax, conventions, fence types) |
 | **design-spec-conformance** | Any `src_py` or `web_src` changed | `design-spec-conformance` |
-| **prompt-injection-boundary** | Diff touches prompt construction, tool dispatch, either gateway, or an inbound integration: any file under `src/synthorg/engine/`, `src/synthorg/api/gateway/`, `src/synthorg/api/mcp_gateway/`, `src/synthorg/integrations/`, `src/synthorg/tools/`, `src/synthorg/meta/mcp/`, OR diff contains `wrap_untrusted`, `TAG_`, `require_admin_guardrails`, `visible_tool`, `_DESTRUCTIVE`, `_ACTION_TYPE`, `allowed_repos`, `decision_reason` | `prompt-injection-boundary` |
+| **prompt-injection-boundary** | Diff touches prompt construction, tool dispatch, either gateway, or an inbound integration: any file under `src/synthorg/engine/`, `src/synthorg/api/gateway/`, `src/synthorg/integrations/`, `src/synthorg/tools/`, `src/synthorg/meta/mcp/`, OR diff contains `wrap_untrusted`, `TAG_`, `require_admin_guardrails`, `visible_tool`, `_DESTRUCTIVE`, `_ACTION_TYPE`, `allowed_repos`, `decision_reason` | `prompt-injection-boundary` |
 
 ### Go-conventions-enforcer custom prompt
 

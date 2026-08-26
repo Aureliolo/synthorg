@@ -147,7 +147,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 - `AssumptionViolationMiddleware`: **IMPLEMENTED** as agent middleware (`after_model`) in `engine/middleware/s1_constraints.py`.
 - Pre-decomposition clarification gate: **IMPLEMENTED** as coordination middleware (`before_decompose`) in `engine/middleware/s1_constraints.py`.
 - Delegation-chain content hash: **IMPLEMENTED** as agent middleware (`before_agent`) in `engine/middleware/s1_constraints.py`.
-- `EvidenceWeightedSynthesizer`: not implemented (known limitation, not a wired component). The synthesizer limitation and the planned component are documented on the design surface: see the Meeting Protocol synthesizer note in [`communication-coordination.md`](../design/communication-coordination.md).
+- `EvidenceWeightedSynthesizer`: not implemented (known limitation, not a wired component). The synthesizer limitation and the planned component were documented on the design surface, in the Meeting Protocol synthesizer note. *(Since removed: the meeting stack was deleted whole, so the protocol the synthesizer would have served no longer exists.)*
 
 ---
 
@@ -157,8 +157,8 @@ The following edits have been applied:
 
 - [`docs/design/index.md`](../design/index.md): disclaimer under "What This Is NOT" clarifying SynthOrg is not a reasoning parallelizer.
 - [`docs/design/engine.md`](../design/engine.md) §Task Decomposability: updated research-basis callout citing papers 2 + 3 alongside Kim 2025; new "Coordination Group Size Bounds" subsection documenting the 3-4 per-wave default. New "Harness Middleware Layer" section documenting the middleware protocols, default chains, and configuration.
-- [`docs/design/communication-coordination.md`](../design/communication-coordination.md) §Conflict Resolution Protocol: warning box under Strategy 1: Authority + Dissent Log citing risk 2.2 (100% deterministic error mode) and referencing `AuthorityDeferenceGuard` (now **implemented** as middleware).
-- [`docs/design/communication-coordination.md`](../design/communication-coordination.md) §Meeting Protocol: risk notes under each protocol and pointer to the planned `EvidenceWeightedSynthesizer`.
+- [`docs/design/communication-coordination.md`](../design/communication-coordination.md) §Conflict Resolution Protocol: warning box under Strategy 1: Authority + Dissent Log citing risk 2.2 (100% deterministic error mode) and referencing `AuthorityDeferenceGuard` (now **implemented** as middleware). *(Since removed with the conflict-resolution stack; `AuthorityDeferenceGuard` itself still ships as middleware.)*
+- `docs/design/communication-coordination.md` §Meeting Protocol: risk notes under each protocol and pointer to the planned `EvidenceWeightedSynthesizer`. *(Since removed with the meeting stack.)*
 - [`docs/design/communication.md`](../design/communication.md) §Multi-Agent Failure Pattern Guardrails: cross-reference to this decision document and the 15-risk register.
 - [`docs/design/organization.md`](../design/organization.md) Company Types table: footnote distinguishing company size from per-task coordination-group size.
 - [`docs/research/multi-agent-failure-audit.md`](multi-agent-failure-audit.md): appendix enumerating the 15-risk taxonomy with coverage table.

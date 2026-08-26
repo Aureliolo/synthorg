@@ -41,8 +41,8 @@ DEFAULT_COMPLEXITY_STAKES_RULES: tuple[ComplexityStakesRule, ...] = (
     ComplexityStakesRule(complexity=Complexity.EPIC, stakes=Stakes.HIGH),
 )
 
-# Import-time completeness guard (mirrors loop_selector.DEFAULT_AUTO_LOOP_RULES):
-# every Complexity member must have a default base-stakes rule.
+# Import-time completeness guard: every Complexity member must have a default
+# base-stakes rule, or a task of that complexity is graded by nothing.
 _covered = {r.complexity for r in DEFAULT_COMPLEXITY_STAKES_RULES}
 if _covered != set(Complexity):
     _missing = set(Complexity) - _covered

@@ -176,6 +176,17 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
     'tools/chat_tools_connection',
     'tools/chat_tools_timeout_seconds',
   ],
+  'tools/deploy_tools_enabled': [
+    'tools/deploy_tools_targets',
+    'tools/deploy_tools_timeout_seconds',
+    'tools/deploy_tools_max_log_chars',
+  ],
+  'tools/publish_tools_enabled': [
+    'tools/publish_tools_targets',
+    'tools/publish_tools_timeout_seconds',
+    'tools/publish_tools_max_manifest_bytes',
+    'tools/publish_tools_max_image_bytes',
+  ],
   'output_style/enabled': [
     'output_style/shadow_mode',
     'output_style/pack',

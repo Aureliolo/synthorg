@@ -77,10 +77,6 @@ func buildPullItems(state config.State) []pullItem {
 			name: "sidecar",
 			ref:  verify.FormatImageRef("sidecar", state.ImageTag, pickDigest("sidecar")),
 		})
-		items = append(items, pullItem{
-			name: "openhands",
-			ref:  verify.FormatImageRef("openhands", state.ImageTag, pickDigest("openhands")),
-		})
 	}
 	if state.FineTuning {
 		variant := state.FineTuneVariantOrDefault()

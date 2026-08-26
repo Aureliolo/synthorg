@@ -9,9 +9,9 @@ rather than one bound connection: a synthetic org publishes to several
 registries, and which one a call uses is chosen per call. The workspace root
 is the host-side directory the coding harness builds into; ``workspace_push``
 reads the built image layout from under it, path-guarded. The destructive
-path's audit identity is resolved host-side in the credentialed-MCP controller
-and passed to the push tool as a constructor argument, so it is deliberately
-not part of this bundle.
+path's audit identity is the run's own ``AgentIdentity``, passed to the push
+tool as a constructor argument at augmentation time, so it is deliberately not
+part of this boot-scoped bundle.
 """
 
 from dataclasses import dataclass
@@ -20,6 +20,7 @@ from pathlib import Path
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.security.timeout.protocol import RiskTierClassifier
 
@@ -30,8 +31,8 @@ class PublishToolsRuntime:
 
     connection_catalog: ConnectionCatalog
     # Registry-connection names the operator has approved as targets. Empty
-    # allows nothing, matching the secure-by-default posture of the
-    # credentialed capability grant itself.
+    # allows nothing, and an empty allowlist leaves the family unregistered
+    # rather than registered against every connection in the catalog.
     allowed_targets: frozenset[str]
     timeout_seconds: float
     # Caps on what one push may move: the manifest read/published and the
@@ -44,16 +45,14 @@ class PublishToolsRuntime:
     workspace_root: Path
 
     @property
-    def connection_name(self) -> str:
-        """Satisfy the shared runtime protocol.
+    def connection_name(self) -> NotBlankStr | None:
+        """Always ``None``: this family binds per call, not per runtime.
 
-        Returns:
-            The empty string. This family resolves its connection from the
-            call's target, so there is no single bound connection;
-            :meth:`PublishToolsRuntime.allowed_targets` is the real bound
-            surface.
+        Each call resolves its connection from the target it names, so there is
+        no single bound connection to report here;
+        :attr:`PublishToolsRuntime.allowed_targets` is the real bound surface.
         """
-        return ""
+        return None
 
 
 @dataclass(frozen=True)

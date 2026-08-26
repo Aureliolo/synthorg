@@ -104,7 +104,6 @@ jobs:
           - synthorg-backend
           - synthorg-web
           - synthorg-sandbox
-          - synthorg-openhands
           - synthorg-sidecar
           - synthorg-fine-tune-cpu
           - synthorg-fine-tune-gpu

@@ -405,8 +405,7 @@ Per-type health check implementations with a background `HealthProberService`.
   reporting for every other connection.
 - **`REGISTRY`** has no registered checker: a container registry answers only
   under a repository-scoped token exchange, so a generic probe would report
-  `UNHEALTHY` for a correctly-configured connection. See
-  [credentialed-mcp.md](credentialed-mcp.md#registry-targets).
+  `UNHEALTHY` for a correctly-configured connection.
 
 ### Inbound readiness is reported separately from the probe
 

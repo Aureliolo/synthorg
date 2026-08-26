@@ -490,7 +490,7 @@ class TestTelemetryCollectorWithMockReporter:
                 template_name="startup",
                 persistence_backend="sqlite",
                 memory_backend="mem0",
-                features_enabled="meeting",
+                features_enabled="memory",
             ),
         )
 

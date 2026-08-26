@@ -639,11 +639,10 @@ def _log_record_start(
         max_sessions=args.max_sessions or manifest.max_sessions,
         independence=manifest.independence.value,
         work_root=str(args.work_root),
-        # A container that cannot reach these is the failure mode hardest to
-        # read from a run's output, so the addresses it was given are stated
+        # A container that cannot reach this is the failure mode hardest to
+        # read from a run's output, so the address it was given is stated
         # once up front rather than inferred from a stack of timeouts.
         gateway_base_url=host.container_gateway_url,
-        mcp_base_url=host.container_mcp_url,
         port=host.port,
     )
 

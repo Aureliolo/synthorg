@@ -277,10 +277,6 @@ torch = [
 target-version = "py314"
 line-length = 88
 src = ["src", "tests", "evals"]
-# Loop A/B seed fixtures are the benchmark's inputs, not project source: they
-# deliberately ship defective code for a loop to repair, and reformatting or
-# "fixing" them would silently change what the benchmark measures.
-extend-exclude = ["evals/loop_ab/briefs/seeds"]
 
 [tool.ruff.lint]
 # preview + explicit-preview-rules: required to activate TID255 (added via
@@ -618,18 +614,12 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
-# Loop A/B seed fixtures are benchmark inputs, not project source. They are only
-# importable once copied into a seeded workspace, and one of them ships
-# deliberately defective code for a loop to repair, so type-checking them would
-# report on the benchmark's subject matter rather than on the codebase.
-#
-# The recursion-depth reference tree is the same category one step further on:
-# it is a DELIVERED tree, standing in for what an agent produces, and it is
-# only importable from its own root (``python -m sqlcsv`` with that root as the
-# working directory), which is exactly how the held-out oracle runs it. Nothing
-# an agent delivers is type-checked by this repository either.
+# The recursion-depth reference tree is a DELIVERED tree, standing in for what
+# an agent produces, and it is only importable from its own root (``python -m
+# sqlcsv`` with that root as the working directory), which is exactly how the
+# held-out oracle runs it. Nothing an agent delivers is type-checked by this
+# repository either.
 exclude = [
-    "^evals/loop_ab/briefs/seeds/",
     "^tests/evals_spine/recursion_depth/reference_tree/",
 ]
 # Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
@@ -742,14 +732,6 @@ module = "d2.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# openhands-sdk is bundled only in the OpenHands sandbox image, never the
-# main venv, so it is absent at type-check time. The single importer
-# (engine/openhands/sdk_runtime.py) guards the import and fails loud when
-# the SDK is missing; this shim keeps the guarded module type-checkable.
-module = "openhands.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 # pydantic's ``@computed_field`` stacks on ``@property`` by design; mypy
 # cannot model the pass-through and flags ``prop-decorator`` at every site.
 # ``evals.*`` for the same reason: its report models are persisted with
@@ -780,11 +762,6 @@ extend_exclude = [
 package_module_name_map = { "pyjwt" = "jwt", "tree-sitter-language-pack" = "tree_sitter_language_pack" }
 
 [tool.deptry.per_rule_ignores]
-# DEP001: imported-but-not-declared. ``openhands-sdk`` is bundled ONLY in
-# the OpenHands sandbox image, never the main venv (it would drag in the
-# litellm / pyo3-3.14 pin holds); its sole importer guards the import and
-# fails loud when absent, so it is intentionally undeclared here.
-DEP001 = ["openhands"]
 # DEP002: declared-but-not-imported. The mismatch is intentional for
 # transitive type-stub packages and optional runtime extras.
 DEP002 = [

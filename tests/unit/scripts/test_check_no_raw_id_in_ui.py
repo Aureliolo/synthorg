@@ -128,7 +128,6 @@ class TestLegitimateUses:
     def test_a_call_wrapping_a_reference_is_still_the_reference(self) -> None:
         # A one-argument formatter prints what it was handed, so wrapping the
         # key in one changes how the line reads and not what reaches the screen.
-        # This shape is exactly how the meetings transcript rendered a UUID.
         assert _hits("<span>{formatTask(task.task_id)}</span>") == [
             "formatTask(task.task_id)"
         ]

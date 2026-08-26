@@ -272,7 +272,7 @@ _MAIN_DAEMON: Final[_Daemon] = _Daemon(
 # ``--no-warn-unused-configs`` because ``warn_unused_configs`` is on
 # project-wide but is only meaningful for a whole-tree run. Checking this scope
 # alone reaches a different subset of the third-party overrides, leaving the
-# rest (``d2``, ``openhands``, ``pdfplumber``, ``sentence_transformers``,
+# rest (``d2``, ``pdfplumber``, ``sentence_transformers``,
 # ``skimage``, ``tree_sitter_language_pack``, ``xdist`` at the time of writing)
 # reported unused; the exact set shifts with whichever synthorg modules the
 # scripts entry points happen to import. Cold mypy prints that as a note and

@@ -36,8 +36,8 @@ class TestEnumMemberCounts:
     def test_task_status_has_13_members(self) -> None:
         assert len(TaskStatus) == 13
 
-    def test_task_type_has_7_members(self) -> None:
-        assert len(TaskType) == 7
+    def test_task_type_has_6_members(self) -> None:
+        assert len(TaskType) == 6
 
     def test_priority_has_4_members(self) -> None:
         assert len(Priority) == 4
@@ -138,13 +138,17 @@ class TestEnumStringValues:
         assert TaskStatus.AWAITING_INPUT.value == "awaiting_input"
 
     def test_task_type_values(self) -> None:
-        assert TaskType.DEVELOPMENT.value == "development"
-        assert TaskType.DESIGN.value == "design"
-        assert TaskType.RESEARCH.value == "research"
-        assert TaskType.REVIEW.value == "review"
-        assert TaskType.MEETING.value == "meeting"
-        assert TaskType.ADMIN.value == "admin"
-        assert TaskType.ANALYSIS.value == "analysis"
+        # The member set, not just each value: a task type is offered in the
+        # dashboard and persisted unconstrained in ``tasks.type``, so adding
+        # one back is a decision that should cost a line here.
+        assert [t.value for t in TaskType] == [
+            "development",
+            "design",
+            "research",
+            "review",
+            "admin",
+            "analysis",
+        ]
 
     def test_priority_values(self) -> None:
         assert Priority.CRITICAL.value == "critical"
@@ -166,9 +170,14 @@ class TestEnumStringValues:
     def test_project_status_values(self) -> None:
         assert ProjectStatus.PLANNING.value == "planning"
         assert ProjectStatus.ACTIVE.value == "active"
+        assert ProjectStatus.INTEGRATING.value == "integrating"
+        assert ProjectStatus.EVALUATING.value == "evaluating"
         assert ProjectStatus.ON_HOLD.value == "on_hold"
         assert ProjectStatus.COMPLETED.value == "completed"
         assert ProjectStatus.CANCELLED.value == "cancelled"
+
+    def test_project_status_has_7_members(self) -> None:
+        assert len(ProjectStatus) == 7
 
     @pytest.mark.parametrize(
         ("member", "value"),

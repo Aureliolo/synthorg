@@ -131,13 +131,6 @@ if TYPE_CHECKING:
         ShutdownChecker,
         TerminationReason,
     )
-    from synthorg.engine.loop_selector import (
-        DEFAULT_AUTO_LOOP_RULES,
-        AutoLoopConfig,
-        AutoLoopRule,
-        build_execution_loop,
-        select_loop_type,
-    )
     from synthorg.engine.metrics import TaskCompletionMetrics
     from synthorg.engine.middleware.coordination_protocol import (
         BaseCoordinationMiddleware,
@@ -477,17 +470,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "ExecutionResult": ("synthorg.engine.loop_protocol", "ExecutionResult"),
     "ShutdownChecker": ("synthorg.engine.loop_protocol", "ShutdownChecker"),
     "TerminationReason": ("synthorg.engine.loop_protocol", "TerminationReason"),
-    "DEFAULT_AUTO_LOOP_RULES": (
-        "synthorg.engine.loop_selector",
-        "DEFAULT_AUTO_LOOP_RULES",
-    ),
-    "AutoLoopConfig": ("synthorg.engine.loop_selector", "AutoLoopConfig"),
-    "AutoLoopRule": ("synthorg.engine.loop_selector", "AutoLoopRule"),
-    "build_execution_loop": (
-        "synthorg.engine.loop_selector",
-        "build_execution_loop",
-    ),
-    "select_loop_type": ("synthorg.engine.loop_selector", "select_loop_type"),
     "TaskCompletionMetrics": ("synthorg.engine.metrics", "TaskCompletionMetrics"),
     "BaseCoordinationMiddleware": (
         "synthorg.engine.middleware.coordination_protocol",
@@ -721,7 +703,6 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    "DEFAULT_AUTO_LOOP_RULES",
     "DEFAULT_MAX_TURNS",
     "STRATEGY_MAP",
     "STRATEGY_NAME_AUCTION",
@@ -751,8 +732,6 @@ __all__ = [
     "AssumptionViolationEvent",
     "AssumptionViolationType",
     "AuctionBidRanker",
-    "AutoLoopConfig",
-    "AutoLoopRule",
     "AutoTopologyConfig",
     "BaseAgentMiddleware",
     "BaseCoordinationMiddleware",
@@ -906,7 +885,6 @@ __all__ = [
     "WorkspaceRequest",
     "WorkspaceSetupError",
     "add_token_usage",
-    "build_execution_loop",
     "build_execution_waves",
     "build_shutdown_strategy",
     "build_strategy_map",
@@ -914,5 +892,4 @@ __all__ = [
     "classify_execution_errors",
     "make_checkpoint_callback",
     "select_dispatcher",
-    "select_loop_type",
 ]

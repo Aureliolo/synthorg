@@ -1,6 +1,6 @@
 ---
 title: Agent Execution
-description: Agent execution status, execution loops (ReAct, OpenHands), prompt profiles, stagnation detection, context budget management, context compaction, brain / hands / session semantics, and ACG vocabulary.
+description: Agent execution status, the ReAct execution loop, prompt profiles, stagnation detection, context budget management, context compaction, brain / hands / session semantics, and ACG vocabulary.
 ---
 
 # Agent Execution
@@ -104,96 +104,48 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 :   Callback type `Callable[[], bool]` checked at turn boundaries to initiate
     cooperative shutdown.
 
-### Loop Implementations
+### The Loop
 
-=== "Loop 1: ReAct"
+`ReactLoop` is the one inner loop the product ships. A single interleaved
+cycle: the agent reasons about the current state, selects an action (tool call
+or response), observes the result, and repeats until done or `max_turns` is
+reached.
 
-    **Default for Simple Tasks**
+```mermaid
+graph LR
+    A[Think] --> B[Act]
+    B --> C[Observe]
+    C --> A
+    C --> D{Terminate?}
+    D -->|task complete, max turns,<br/>budget exhausted, or error| E[Done]
+```
 
-    A single interleaved loop: the agent reasons about the current state,
-    selects an action (tool call or response), observes the result, and repeats
-    until done or `max_turns` is reached.
+!!! note "Why one loop"
+    A second loop shipped for a time: an embedded OpenHands harness, run
+    in-sandbox over its container's stdin/stdout and governed at the LLM
+    gateway. It was there to be measured, and it was:
+    [the recording](../research/inner-loop-ab-recording.md) put 90 runs through
+    both loops across five briefs and three model capabilities, and ReAct
+    scored higher in 12 of 15 cells.
 
-    ```mermaid
-    graph LR
-        A[Think] --> B[Act]
-        B --> C[Observe]
-        C --> A
-        C --> D{Terminate?}
-        D -->|task complete, max turns,<br/>budget exhausted, or error| E[Done]
-    ```
-
-    ```yaml
-    execution_loop: "react"              # react, openhands, auto
-    ```
-
-    | | |
-    |---|---|
-    | **Strengths** | Simple, proven, flexible. Easy to implement. Works well for short tasks. |
-    | **Weaknesses** | Token-heavy on long tasks (re-reads full context every turn). No long-term planning; greedy step-by-step. |
-    | **Best for** | Simple tasks, quick fixes, single-file changes. |
-
-=== "Loop 2: OpenHands (embedded harness)"
-
-    A selectable second loop that runs the best-in-class open OpenHands coder
-    as the inner loop, so it can be A/B'd end to end against the native
-    loop and the winner promoted. It satisfies the same `ExecutionLoop`
-    protocol (`get_loop_type() -> "openhands"`) and honours the same
-    budget / shutdown / cancellation checkers and the NO_OP rule at turn
-    boundaries. It reaches models only through the [LLM gateway](llm-gateway.md)
-    and credentialed tools only through the [credentialed-MCP](credentialed-mcp.md)
-    boundary; the harness runs to completion in-sandbox, driven over the
-    container's stdin/stdout (no in-container server), with `openhands-sdk`
-    bundled only in the sandbox image. See the
-    [OpenHands loop](openhands-loop.md) page.
-
-    ```yaml
-    execution_loop: "openhands"
-    ```
-
-    | | |
-    |---|---|
-    | **Strengths** | Best-in-class open coder; provider-agnostic and governed at the gateway + credentialed-MCP boundaries; task-level resume via its own event log. |
-    | **Weaknesses** | Needs the sandbox image + the two boundaries provisioned; unavailable (fails loud) otherwise. |
-    | **Best for** | End-to-end A/B against the native loops; heavy autonomous coding once promoted. |
-
-!!! tip "Auto-selection"
-    When `execution_loop: "auto"`, the framework maps `estimated_complexity`
-    to a loop type through `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`),
-    falling back to `default_loop_type` (default: react) when no rule matches.
-    Every loop type in the rules and the default is validated against the
-    registry at construction time.
-
-    Every complexity defaults to **react**, and that default is now measured
-    rather than merely convenient. The
-    [inner-loop A/B harness](loop-ab-harness.md) recorded 90 runs across both
-    loops, five briefs and three model capabilities: react scored higher in 12 of 15
-    cells (11 of the 13 in which either loop cleared the correctness gate) and
-    took both buckets that produced a winner (simple `99.3`, medium `97.0`), so
-    `engine.loop_complexity_overrides` stays **empty**, since an override would
-    promote a loop no measurement backs. Complex and epic produced no winner at
-    all, both loops having failed the correctness gate on the weaker rungs.
-
-    The evidence covers workspace coding tasks on a five-tool surface, which is
-    the whole of what the OpenHands loop is for and a slice of what react is
-    for; nothing in it measures either loop on org work across the MCP surface.
-
-    A stored value naming a loop that no longer ships (`plan_execute`,
-    `hybrid`) resolves to react at the settings read. A setting is validated on
-    write and never on read, so a row written while those names were valid
-    would otherwise reach `AutoLoopConfig` and take the whole runtime rebuild
-    with it.
+    The result that decided it was not the score. Its builder took only
+    `**_unused: object`, so it silently discarded the six in-flight controls
+    the native builder receives by name, and 6 of its 45 runs terminated
+    `completed` while failing their own checks, against 2 of ReAct's 45. An
+    ungoverned run that reads downstream as a success is the expensive
+    failure for a supervised system, so the loop, the selection surface and
+    the settings that named one were removed together.
 
 ### AgentEngine Orchestrator
 
 `AgentEngine` is the top-level entry point for running an agent on a task. It
 composes the execution loop with prompt construction, context management, tool
-invocation, and cost tracking into a single `run()` call. When an
-`auto_loop_config` is provided (mutually exclusive with `execution_loop`),
-the engine dynamically selects the loop per task via `_resolve_loop()`.
-The optional `compaction_callback` and the OpenHands config / deps are
-forwarded to the auto-selected loop so it receives the same configuration as a
-statically configured loop.
+invocation, and cost tracking into a single `run()` call. It builds its loop
+through `_make_default_loop()`, which passes every in-flight control the engine
+holds (approval gate, stagnation detector, compaction callback, steering inbox,
+step classifier) by name, so a control the engine was given that the loop never
+received is a type error rather than a silently ungoverned run. An
+`execution_loop=` may still be injected, which tests use to drive a double.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see [Coordination](coordination.md)).
@@ -214,13 +166,6 @@ same answer from one owner: the solo `execute_once`, the coordinated
 `ParallelAgentExecutor`, and a resume. Only the solo path used to resolve it,
 which is why every coordinated agent silently lost its autonomy-tiered output
 scanning; the team path is the one the general loop actually uses.
-
-The credentialed-MCP screen is the same dispatch under a different transport,
-so it resolves through the same owner: `api/mcp_gateway/_request_context.py`
-reads the agent and task the verified bearer names and asks
-`AgentEngineExecutionService.resolve_effective_autonomy` for the answer, rather
-than screening a credentialed forge write or production deploy at whatever tier
-a missing argument happened to select.
 
 `AutonomyTieredPolicy` closes the remaining gap. With genuinely no tier to read
 (no run behind the screen, or a level the map does not cover) it responds at the
@@ -270,17 +215,11 @@ LOCKED organisation a weaker response than it chose and said nothing.
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
    with pre-computed baselines and alert deduplication) or from task budget limit
    alone when no enforcer is configured.
-9. **Resolve execution loop**: if `auto_loop_config` is set, calls
-   `select_loop_type()` with the task's `estimated_complexity`. When no auto
-   config is set, uses the statically configured loop. Each builder takes only
-   the dependencies its loop can act on: React receives the in-process controls
-   (`approval_gate`, `stagnation_detector`, `compaction_callback`,
-   `steering_inbox`, `step_classifier`), while OpenHands receives
-   `openhands_loop_config` and `openhands_loop_deps` and honours the boundary
-   checks passed to `execute()` (budget, shutdown, cancellation, `NO_OP`). The
-   in-process controls are not passed through to it, because the harness runs
-   its own loop in-sandbox where they have nothing to observe: the same split
-   the [stagnation section](#loop-integration) describes.
+9. **Take the loop**: the engine built it at construction, wired with every
+   in-process control it holds (`approval_gate`, `stagnation_detector`,
+   `compaction_callback`, `steering_inbox`, `step_classifier`). The boundary
+   checks (budget, shutdown, cancellation, `NO_OP`) are passed per call to
+   `execute()`.
 10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. The
    provider client is dispatched **per agent**, not fixed to the engine
@@ -671,9 +610,6 @@ sorted per-turn for order-independent comparison.
 
 - **ReactLoop**: stagnation checked after each successful turn; corrections
   counter is loop-scoped
-- **OpenHandsLoop**: the harness runs its own loop in-sandbox, so SynthOrg's
-  detector does not see its turns; the turn-boundary checks it does honour are
-  budget, shutdown, cancellation and the `NO_OP` rule
 - `STAGNATION` terminates the task `FAILED` (like `MAX_TURNS` and
   `BUDGET_EXHAUSTED`): a run that stopped mid-way has not delivered, and
   parking it at `IN_PROGRESS` hid it from the stall derivation
@@ -756,8 +692,6 @@ previously compacted (archived 12 turns). Previous error: ...
 - **ReactLoop**: compaction checked after stagnation detection, at turn
   boundaries (between completed turns), through the shared
   `invoke_compaction()` helper in `loop_helpers.py`
-- **OpenHandsLoop**: the harness manages its own context in-sandbox, so
-  SynthOrg's compaction hook does not apply
 
 ## Brain / Hands / Session
 
@@ -767,7 +701,7 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
-| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `OpenHandsLoop`) | Inference loop, middleware, decision-making. Stateless between turns; all state lives in the immutable `AgentContext`. |
+| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`) | Inference loop, middleware, decision-making. Stateless between turns; all state lives in the immutable `AgentContext`. |
 | **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope. Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager); they never enter the brain or session planes. |
 | **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit. Every significant action emits a structured event; the event stream is the session's source of truth. |
 
@@ -851,7 +785,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Execution Trace | `TurnRecord` tuple + observability events (100+ constants) | Strong | SynthOrg's trace is richer than ACG baseline |
 | Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Strong | Typed via `NodeType` enum on `TurnRecord.node_types` |
 | Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
-| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
+| Scheduling Policies | `CoordinationConfig` + `AutoTopologyConfig` | Strong | Topology selection |
 | Conditional Branching | Loop termination checks, stagnation intervention | Partial | Not expressed as graph-level conditionals |
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: pre-flight and in-flight enforcement |
@@ -899,7 +833,7 @@ memory offload, and semantic token-cost weighting) is tracked on the
 
 ## See Also
 
-- [Inner-loop A/B harness](loop-ab-harness.md): how the two loops are measured against each other and the winner promoted
+- [Inner-loop A/B recording](../research/inner-loop-ab-recording.md): the measurement that left one loop shipping
 - [Task & Workflow Engine](engine.md): task dispatch, routing, state coordination
 - [Coordination](coordination.md): multi-agent topology, decomposition, workspace isolation
 - [Verification & Quality](verification-quality.md): verification stage, review pipeline, harness middleware

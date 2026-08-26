@@ -2,8 +2,8 @@
 """LLM gateway feature state slice.
 
 Holds the gateway request pipeline plus the per-run token signer. The
-signer is shared: the controller verifies tokens with it and the
-OpenHands execution loop mints run tokens with the same instance. Both
+signer is shared: whatever mints a run token and the controller that
+verifies it must hold the same instance, or every request 401s. Both
 ``None`` until the construction wirer builds them at boot; the controller
 predicate leaves the route unmounted until then.
 """

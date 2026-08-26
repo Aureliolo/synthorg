@@ -154,7 +154,7 @@ async def guard_security_delete(
     delete. This holds across every governed namespace, which is whatever
     :func:`~synthorg.settings.write_governance_policy.is_guarded` covers rather
     than a list repeated here: deleting, say, the
-    ``tools.credentialed_mcp_enabled`` or ``providers.gateway_enabled``
+    ``tools.deploy_tools_enabled`` or ``providers.gateway_enabled``
     override would otherwise revert to a broader env/default value, bypassing
     the set-path guardrail. The guarded value is the real env>default fallback
     (resolved via *resolve_fallback*), not the bare code default, so a

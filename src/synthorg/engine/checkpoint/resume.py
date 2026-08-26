@@ -12,7 +12,6 @@ from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import ExecutionLoop
-from synthorg.engine.openhands.loop import OpenHandsLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import (
@@ -136,17 +135,17 @@ def make_loop_with_callback(
     creates a checkpoint callback and returns a new loop instance
     with it injected.  Otherwise returns the original loop unchanged.
 
-    The branches here dispatch on an already-built loop instance, never on
+    The branch here dispatches on an already-built loop instance, never on
     anything a checkpoint persisted: a ``Checkpoint`` stores a serialised
-    ``AgentContext``, which carries no loop identity. Resume always rebuilds
-    the loop from current configuration, so this can only ever see a loop the
-    registry can still build. That is why a loop type disappearing from the
-    registry cannot strand a stored checkpoint.
+    ``AgentContext``, which carries no loop identity. The engine builds a
+    ``ReactLoop``, so the fallback covers only a loop injected from outside
+    (a test double, or an experiment's own), which cannot be asked to carry
+    a callback it never declared.
 
     Returns:
         A new loop instance with the checkpoint callback injected,
         or the original ``loop`` when either repository is ``None``
-        or the loop type is not one of the supported variants.
+        or the loop was supplied from outside the engine.
     """
     if checkpoint_repo is None or heartbeat_repo is None:
         return loop
@@ -159,22 +158,8 @@ def make_loop_with_callback(
         task_id=task_id,
     )
 
-    # Forward steering_inbox so a checkpoint-resumed run still adopts
-    # mid-flight directives; omitting it leaves the rebuilt loop with a
-    # None inbox and steering silently dead for the rest of the run.
     if isinstance(loop, ReactLoop):
-        return ReactLoop(
-            checkpoint_callback=callback,
-            approval_gate=loop.approval_gate,
-            stagnation_detector=loop.stagnation_detector,
-            compaction_callback=loop.compaction_callback,
-            steering_inbox=loop.steering_inbox,
-        )
-    if isinstance(loop, OpenHandsLoop):
-        # OpenHands owns task-level resume via its own persisted EventLog, so
-        # the per-tool-exec SynthOrg checkpoint callback does not apply; return
-        # it unchanged rather than warning it is unsupported.
-        return loop
+        return loop.with_checkpoint_callback(callback)
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,
         loop_type=type(loop).__name__,
