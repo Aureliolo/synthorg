@@ -26,6 +26,7 @@ from synthorg.engine.decomposition.progress_protocol import (
     DecompositionProgressReporter,
 )
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.errors import DecompositionUnwiredError
 from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.memory.injection import MemoryInjectionStrategy
@@ -178,8 +179,8 @@ class DecompositionStrategyDeps:
             The bound provider selector.
 
         Raises:
-            ValueError: No selector was wired.
+            DecompositionUnwiredError: No selector was wired.
         """
         if self.provider_selector is None:
-            raise ValueError(_NO_SELECTOR_MESSAGE)
+            raise DecompositionUnwiredError(_NO_SELECTOR_MESSAGE)
         return self.provider_selector

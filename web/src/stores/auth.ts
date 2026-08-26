@@ -177,7 +177,14 @@ function _redirectToLogin(): void {
   // had been. Carried in the URL rather than stored, because it is transient
   // navigation state and the dashboard persists no state client-side.
   const url = new URL(ROUTES.LOGIN, window.location.origin)
-  url.searchParams.set(RETURN_TO_PARAM, currentPath + window.location.search)
+  // The hash too: it is where the operator WAS on the page, and several
+  // surfaces address a row by it (a plan item's anchor is exactly this). The
+  // reader already carries a fragment through, so dropping it here returned
+  // them to the right page and the wrong place on it.
+  url.searchParams.set(
+    RETURN_TO_PARAM,
+    currentPath + window.location.search + window.location.hash,
+  )
   window.location.href = url.pathname + url.search
 }
 

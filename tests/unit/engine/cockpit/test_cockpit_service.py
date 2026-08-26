@@ -68,10 +68,16 @@ def _live(
     last_active: datetime,
     status: ExecutionStatus = ExecutionStatus.EXECUTING,
     started_at: datetime | None = None,
+    execution_id: str | None = None,
 ) -> AgentRuntimeState:
+    # The default deliberately does NOT match ``_frame``'s: most cases here are
+    # about a run the task scan cannot see, which by definition carries an
+    # execution the frames do not. A case about the same run passes the frame's
+    # id explicitly, which is what production does (one ReactLoop mints one
+    # execution id and both the frames and the agent-state row carry it).
     return AgentRuntimeState(
         agent_id=NotBlankStr(agent),
-        execution_id=NotBlankStr(f"live-exec-{task_id or agent}"),
+        execution_id=NotBlankStr(execution_id or f"live-exec-{task_id or agent}"),
         task_id=None if task_id is None else NotBlankStr(task_id),
         status=status,
         turn_count=turns,
@@ -652,6 +658,12 @@ class TestRunsTheTaskScanCannotSee:
     ) -> None:
         # The complement: without this the same agent would appear twice, once
         # per source, and the active count would double-report the org.
+        #
+        # ONE execution, named on both sides, because that is what the two
+        # sources carry for one run: the ReactLoop mints the execution id and
+        # the flight-recorder frames and the agent-state row both record it.
+        # Fabricating two ids here would describe an agent genuinely holding
+        # two executions, which the dedupe is right to show as two rows.
         repo = FakeFlightRecorderFrameRepository()
         await repo.append(
             _frame(task_id="t1", turn=2, cost=0.4, ts=_NOW - timedelta(minutes=1)),
@@ -667,6 +679,7 @@ class TestRunsTheTaskScanCannotSee:
                     turns=2,
                     cost=0.4,
                     last_active=_NOW - timedelta(minutes=1),
+                    execution_id="exec-t1",
                 ),
             ),
         )

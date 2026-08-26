@@ -10596,7 +10596,7 @@ export type components = {
              */
             readonly total_runs: number;
             /**
-             * @description True when the in-flight-task query failed; utilization_percent is then a floor, not a measured value.
+             * @description True when either the in-flight-task query or the live agent-state query failed; utilization_percent is then a floor, not a measured value.
              * @default false
              */
             readonly utilization_degraded: boolean;

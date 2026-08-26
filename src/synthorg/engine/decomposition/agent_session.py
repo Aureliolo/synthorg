@@ -14,7 +14,6 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Final, override
@@ -27,8 +26,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.agent_state_recording import (
     make_runtime_state_observer,
-    mark_agent_idle,
     mark_agent_running,
+    release_agent_row,
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
@@ -494,11 +493,21 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         costs that agent every future live-state read across restarts. Both
         ceilings this session runs under (per-session and whole-tree) can fire
         moments apart, and an unshielded ``await`` in a ``finally`` is exactly
-        what the second one interrupts. The shield lets the cancellation
-        propagate while the write still lands.
+        what the second one interrupts.
+
+        The shielded task is HELD and awaited again on cancellation. The
+        shield alone protects the write from being cancelled but not from
+        being abandoned: it re-raises into this frame the moment the
+        cancellation lands, leaving the inner task running with nothing
+        waiting on it, so a shutdown closing the loop next takes the write
+        with it. Awaiting the handle is what makes the clear actually land.
 
         Yields:
             Nothing; the row is the effect.
+
+        Raises:
+            asyncio.CancelledError: Re-raised after the clear has landed, so a
+                cancelled session still frees the owner's row.
         """
         if self._agent_states is None:
             yield
@@ -512,13 +521,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
             yield
         finally:
-            await asyncio.shield(
-                mark_agent_idle(
-                    repository_provider=self._agent_states,
-                    agent_id=str(ctx.identity.id),
-                    execution_id=ctx.execution_id,
-                    currency=currency,
-                )
+            await release_agent_row(
+                repository_provider=self._agent_states,
+                agent_id=str(ctx.identity.id),
+                execution_id=ctx.execution_id,
+                currency=currency,
             )
 
     def _resume_unsubmitted(

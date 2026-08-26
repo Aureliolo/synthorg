@@ -129,7 +129,10 @@ const SCORE_PER_TERM = 10
 const MAX_SCORED_TERMS = Math.ceil(SCORE_TIER_GAP / SCORE_PER_TERM) - 1
 
 function terms(query: string): readonly string[] {
-  return normalize(query.trim()).split(' ').filter(Boolean)
+  // All whitespace, not the space alone: a query pasted from a doc or a log
+  // carries tabs and newlines, and splitting on ' ' turns the whole thing
+  // into one term that matches nothing.
+  return normalize(query.trim()).split(/\s+/).filter(Boolean)
 }
 
 function countContaining(haystack: string, queryTerms: readonly string[]): number {

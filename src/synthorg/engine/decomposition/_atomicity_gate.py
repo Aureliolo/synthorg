@@ -61,13 +61,20 @@ def describe_unsplittable(
     """
     if policy is None:
         return None
-    if len(subtasks) >= width_limit:
+    if len(subtasks) == width_limit:
         # Nowhere left to go: no depth below, no width beside. Asking anyway
         # is asking for a plan the width cap then refuses, which is what
         # killed a twenty-one-session tree: the planner widened to eleven
         # against a limit of ten, exactly as instructed, and the run failed
         # on the result. The units dispatch carrying their backstop reason
         # instead, which is what the depth backstop is for.
+        #
+        # EQUALITY, not ``>=``. A level already OVER the cap is a different
+        # case: the post-session guard refuses it outright, so staying silent
+        # here spends the session and then fails the level anyway, with the
+        # planner never told what was wrong. The correction below names the
+        # cap and says to merge or drop, which is the one thing that can
+        # still save it, so it is exactly the level that needs to hear it.
         return None
     offenders = [
         (subtask, assessment)

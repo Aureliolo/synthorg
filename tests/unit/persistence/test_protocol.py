@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.deleted_entity import DeletedEntity
 from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.resume_intent import ResumeIntent
@@ -955,6 +956,16 @@ class _FakePlanRepository:
     ) -> PlanDeleteOutcome:
         del entity_id, terminal_statuses
         return PlanDeleteOutcome(deleted=False)
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: NotBlankStr,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> Plan | None:
+        del parent_task_id, progress
+        return None
 
 
 class _FakePlanItemCommentRepository:

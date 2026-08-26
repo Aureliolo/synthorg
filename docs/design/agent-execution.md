@@ -67,12 +67,25 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     and releases the row itself and wires the same observer; it was otherwise
     the one agent run that appeared nowhere.
 
-    The clear is **shielded**. An `await` in a `finally` is not, and a row left
+    The clear is **shielded, and the shielded write is awaited again on
+    cancellation**. An `await` in a `finally` is not protected, and a row left
     behind here is worse than stale: the write is a compare-and-set on
     execution ownership, so a later run presents a different execution id, is
     refused, and is refused permanently. Nothing reaps an `EXECUTING` row and
     the row is durable, so one interrupted clear would cost that agent every
-    live-state read from then on.
+    live-state read from then on. Shielding alone is not enough: the shield
+    re-raises the moment the cancellation lands, leaving the write running
+    with nothing waiting on it, so a shutdown that closes the loop next takes
+    it with it. Holding the task and awaiting it is what makes the clear land.
+
+    That covers every in-process interruption, which is the whole of what the
+    process can cover. **A hard kill (SIGKILL, container death) still strands
+    the row**, and nothing reclaims it: the agent is then refused for ever. A
+    boot-time pass is the shape that closes it, because a process that has
+    just started knows nothing it did not start is running, but only where
+    this process owns execution: with work handed to a distributed queue,
+    another worker's live rows would be exactly what such a pass cleared.
+    Untracked here rather than half-built.
 
 **Supporting models:**
 

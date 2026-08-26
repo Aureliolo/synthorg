@@ -449,9 +449,18 @@ class SQLitePlanRepository:
         """
         async with self._write_context():
             try:
+                # ONE row, chosen deterministically. Nothing constrains a
+                # parent task to a single ``PLANNING`` plan, and a bare
+                # predicate would stamp every match while ``RETURNING``
+                # handed back an arbitrary one, so the row announced need not
+                # be the row an operator then reads. ``ORDER BY id LIMIT 1``
+                # is the same selection the task-delete guard makes on this
+                # table, and ``idx_plans_parent_task`` already covers it.
                 cursor = await self._db.execute(
                     f"UPDATE plans SET decomposition_progress=? "  # noqa: S608
-                    f"WHERE parent_task_id=? AND status=? RETURNING {COLUMNS}",
+                    f"WHERE id = (SELECT id FROM plans "
+                    f"WHERE parent_task_id=? AND status=? ORDER BY id LIMIT 1) "
+                    f"RETURNING {COLUMNS}",
                     (
                         serialise_progress(progress),
                         parent_task_id,

@@ -275,12 +275,13 @@ Check these before diagnosing something new.
 ## Finishing
 
 The run ends when both claims are evidenced, **every finding in the log is
-fixed**, and the honest arm's deliverable has been handed over in a form the
-operator can open. Then commit, push, and `/pre-pr-review`.
+fixed or explicitly carried by the operator**, and the honest arm's deliverable
+has been handed over in a form the operator can open. Then commit, push, and
+`/pre-pr-review`.
 
-A finding still open at that point is either fixed before finishing or is one
-the operator has explicitly agreed to carry, in the form they chose. There is no
-third state where a defect is "recorded" and left.
+Carried means the operator was shown the finding and chose to ship without it,
+in the form they chose. There is no third state where a defect is "recorded"
+and left.
 
 Close the tracking issue only when a **single** run produced both halves of the
 evidence contract with nothing outstanding. Otherwise the PR references it

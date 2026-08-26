@@ -124,7 +124,7 @@ class SharedMemoryFusionMixin:
                 source="shared",
                 agent_id=agent_id,
                 error=safe_error_description(exc),
-                error_type=type(exc).__qualname__,
+                error_type=type(exc).__name__,
                 reason="org_knowledge_unavailable_personal_only",
             )
             return ()

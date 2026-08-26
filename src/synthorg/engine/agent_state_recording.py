@@ -21,6 +21,7 @@ one, and the cockpit reads that instead: see
 holds the task and the frames afterwards.
 """
 
+import asyncio
 from collections.abc import Callable
 
 from synthorg.budget.currency import CurrencyCode
@@ -290,10 +291,68 @@ async def mark_agent_idle(
         )
 
 
+async def release_agent_row(
+    *,
+    repository_provider: AgentStateRepositoryProvider,
+    agent_id: str,
+    execution_id: str,
+    currency: CurrencyCode,
+    clock: Clock | None = None,
+) -> None:
+    """Clear the row from a ``finally``, so a cancellation cannot lose it.
+
+    The two loops that hold a live row (the engine's dispatch and the
+    decomposition planning session) both release it in a ``finally``, and an
+    ``await`` there is not protected: a cancellation arriving mid-write
+    aborts it. What survives is worse than a stale row. The write is a
+    compare-and-set on execution ownership, so every later run by that agent
+    presents a different execution id and is refused, permanently and across
+    restarts, with nothing anywhere reaping the row.
+
+    Shielding alone does not fix it, which is the part that is easy to get
+    wrong: the shield re-raises into the caller the moment the cancellation
+    lands, leaving the write running with nothing waiting on it, so a
+    shutdown that closes the loop next takes it with it. The task is
+    therefore HELD and awaited again on the way out.
+
+    One owner, because two hand-written copies of this is two chances to keep
+    the shield and drop the second await, and the defect that produces is
+    invisible until a process is killed at the wrong moment.
+
+    Args:
+        repository_provider: Returns the current repository, or ``None``.
+        agent_id: The agent that has stopped.
+        execution_id: The run that has stopped.
+        currency: The operator's active currency.
+        clock: Time source for ``last_activity_at``.
+
+    Raises:
+        asyncio.CancelledError: Re-raised once the clear has landed.
+    """
+    release = asyncio.ensure_future(
+        mark_agent_idle(
+            repository_provider=repository_provider,
+            agent_id=agent_id,
+            execution_id=execution_id,
+            currency=currency,
+            clock=clock,
+        )
+    )
+    try:
+        await asyncio.shield(release)
+    except asyncio.CancelledError:
+        # Uncancellable by construction: `release` was never the task
+        # cancelled, so this returns once the write is durable and the
+        # cancellation then propagates as it should.
+        await release
+        raise
+
+
 __all__ = [
     "AgentStateRepositoryProvider",
     "compose_turn_observers",
     "make_runtime_state_observer",
     "mark_agent_idle",
     "mark_agent_running",
+    "release_agent_row",
 ]

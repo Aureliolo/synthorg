@@ -136,10 +136,10 @@ def _build_agent_session_strategy(
         single-shot LLM strategy over the same *provider* + *model*.
 
     Raises:
-        ValueError: If *deps* carries no ``provider_selector``. The session
-            dispatches each owner on its own bound pair and has no shared
-            default to fall back on, so a missing selector is a wiring fault
-            rather than a degraded mode.
+        DecompositionUnwiredError: If *deps* carries no ``provider_selector``.
+            The session dispatches each owner on its own bound pair and has no
+            shared default to fall back on, so a missing selector is a wiring
+            fault rather than a degraded mode.
     """
     from synthorg.engine.decomposition.agent_session import (  # noqa: PLC0415
         AgentSessionDecompositionStrategy,
@@ -183,9 +183,10 @@ def build_decomposition_strategy(
 
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
-            is supplied -- both or neither must be given; or a provider is
-            given without a ``provider_selector`` (the agent session dispatches
-            each owner on its own bound provider).
+            is supplied -- both or neither must be given.
+        DecompositionUnwiredError: If a provider is given without a
+            ``provider_selector`` (the agent session dispatches each owner on
+            its own bound provider).
         StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:

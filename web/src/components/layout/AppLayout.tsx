@@ -216,7 +216,10 @@ function _buildGlobalNavCommands(
     { id: 'nav-meta', label: 'Meta Loop', icon: Sparkles, action: () => navigate(ROUTES.META), group: 'Navigation', keywords: ['meta', 'governance', 'self-improvement', 'loop'] },
     { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
     { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
-    { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },
+    // Alt, matching `_isNotificationShortcut` and the GLOBAL_SHORTCUTS row.
+    // The palette is where an operator LEARNS the shortcut, so a stale one
+    // here teaches a key combination that does nothing.
+    { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['alt', 'N'] },
   ]
 }
 

@@ -104,10 +104,32 @@ function settle<T>(
     : { items: null, error: NOT_A_LIST }
 }
 
+/**
+ * Which subsystem read owns the answer.
+ *
+ * Two callers read subsystems, on different cadences and from different
+ * mounts: the dashboard panel's 30-second poll and the always-mounted health
+ * pill. Both write the same two fields, and nothing ordered them, so a slow
+ * response could land after a faster later one and put a stale verdict back
+ * on screen. The pill is the surface that shows on EVERY route, so the stale
+ * answer it restores is the one an operator sees next.
+ *
+ * A counter rather than an abort: neither read is cancellable at the point
+ * the other starts, and the question is not "stop that request" but "is this
+ * result still the newest", which only the write site can answer.
+ */
+let subsystemRevision = 0
+
+function claimSubsystemRead(): number {
+  subsystemRevision += 1
+  return subsystemRevision
+}
+
 async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
   // Only the first read is a loading state. This is also the 30s poll, and a
   // panel that flashes "reading the org's state" every 30s reads as churn.
   const first = !get().loaded
+  const revision = claimSubsystemRead()
   set({ loading: first })
   try {
     // Independently useful: a failed subsystem read must not cost the operator
@@ -121,12 +143,15 @@ async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
       (value: SubsystemsResponse) => value.subsystems,
     )
     const parked = settle<Task>(tasksResult, (value: PaginatedResult<Task>) => value.data)
+    // The blocked-task half is this reader's alone, so it always applies; the
+    // subsystem half is shared with the pill and applies only while newest.
+    const current = revision === subsystemRevision
     set((state) => ({
       // A failed poll keeps the last good answer rather than blanking it: one
       // transient 500 must not erase the blockers an operator is reading. The
       // error beside it is what marks the data stale.
-      subsystems: reports.items ?? state.subsystems,
-      subsystemsError: reports.error,
+      subsystems: current ? reports.items ?? state.subsystems : state.subsystems,
+      subsystemsError: current ? reports.error : state.subsystemsError,
       blockedTasks: parked.items ?? state.blockedTasks,
       blockedTasksError: parked.error,
       loading: false,
@@ -136,12 +161,13 @@ async function fetchOrgPulseImpl(set: PulseSet, get: PulseGet): Promise<void> {
     // Neither read settled, so both inputs are unknown. Still loaded: the panel
     // now has an answer, and "we tried and here is why not" is one.
     const message = getErrorMessage(err)
-    set({
+    const current = revision === subsystemRevision
+    set((state) => ({
       loading: false,
       loaded: true,
-      subsystemsError: message,
+      subsystemsError: current ? message : state.subsystemsError,
       blockedTasksError: message,
-    })
+    }))
   }
 }
 
@@ -159,12 +185,14 @@ async function fetchSubsystemsImpl(set: PulseSet): Promise<void> {
   // Not `fetchOrgPulse`, which also samples blocked tasks: that is the
   // dashboard panel's input and the pill has no use for it, so putting it on
   // every page would be a query added rather than a verdict fixed.
+  const revision = claimSubsystemRead()
   try {
     const response = await getSubsystems()
     const reports = settle<SubsystemReport>(
       { status: 'fulfilled', value: response },
       (value: SubsystemsResponse) => value.subsystems,
     )
+    if (revision !== subsystemRevision) return
     set((state) => ({
       // A failed poll keeps the last good answer, as the full pulse read
       // does: one transient 500 must not blank the verdict.
@@ -172,6 +200,7 @@ async function fetchSubsystemsImpl(set: PulseSet): Promise<void> {
       subsystemsError: reports.error,
     }))
   } catch (err) {
+    if (revision !== subsystemRevision) return
     set({ subsystemsError: getErrorMessage(err) })
   }
 }
@@ -189,7 +218,12 @@ export const useOrgPulseStore = create<OrgPulseState>((set, get) => ({
   ...INITIAL,
   fetchOrgPulse: () => fetchOrgPulseImpl(set, get),
   fetchSubsystems: () => fetchSubsystemsImpl(set),
-  reset: () => set({ ...INITIAL }),
+  reset: () => {
+    // The revision counter is module state, so it outlives the store's own
+    // fields and would carry one test's in-flight reads into the next.
+    subsystemRevision = 0
+    set({ ...INITIAL })
+  },
 }))
 
 /** Test teardown hook, registered in ``test-setup.tsx``. */

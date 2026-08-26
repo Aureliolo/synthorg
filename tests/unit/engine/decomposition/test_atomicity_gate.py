@@ -149,6 +149,23 @@ class TestDescribeUnsplittable:
             is None
         )
 
+    def test_a_level_already_over_the_cap_is_still_corrected(self) -> None:
+        # Distinct from the level AT the cap above, and the distinction is the
+        # whole point: this plan is refused outright by the post-session width
+        # guard, so staying silent spends the session and then fails the level
+        # with the planner never told what was wrong. The correction names the
+        # cap and says to merge or drop, which is the one thing that can still
+        # save it.
+        detail = describe_unsplittable(
+            tuple(_subtask(f"n{index}", artifacts=4) for index in range(8)),
+            policy=_POLICY,
+            width_limit=6,
+        )
+
+        assert detail is not None
+        assert "at most 6 units" in detail
+        assert "merge or drop" in detail
+
     def test_summarises_past_the_naming_cap(self) -> None:
         detail = describe_unsplittable(
             tuple(_subtask(f"n{i}", artifacts=4) for i in range(9)),

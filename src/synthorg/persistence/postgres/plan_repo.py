@@ -444,9 +444,17 @@ class PostgresPlanRepository:
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
+                # ONE row, chosen deterministically, and the same selection
+                # the SQLite arm makes. Nothing constrains a parent task to a
+                # single ``PLANNING`` plan, and a bare predicate would stamp
+                # every match while ``RETURNING`` handed back an arbitrary
+                # one, so the row announced need not be the row an operator
+                # then reads.
                 await cur.execute(
                     f"UPDATE plans SET decomposition_progress=%s "  # noqa: S608
-                    f"WHERE parent_task_id=%s AND status=%s RETURNING {COLUMNS}",
+                    f"WHERE id = (SELECT id FROM plans "
+                    f"WHERE parent_task_id=%s AND status=%s ORDER BY id LIMIT 1) "
+                    f"RETURNING {COLUMNS}",
                     (
                         serialise_progress(progress),
                         parent_task_id,

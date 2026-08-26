@@ -96,6 +96,15 @@ def _plan(
         task_structure=TaskStructure.SEQUENTIAL,
         coordination_topology=CoordinationTopology.AUTO,
         status=status,
+        # A FAILED plan must carry a reason and no other status may, both in
+        # the model and in each backend's CHECK, so it is derived from the
+        # status rather than passed: a caller parametrising over statuses
+        # cannot then build one the database would refuse.
+        failure_reason=(
+            NotBlankStr("planning did not converge")
+            if status is PlanStatus.FAILED
+            else None
+        ),
         objective_criteria=(NotBlankStr("A playable board"), NotBlankStr("Scoring")),
         created_at=_CREATED_AT,
         updated_at=_CREATED_AT,

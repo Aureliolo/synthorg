@@ -317,12 +317,14 @@ async def _resolve_agent_counts(
     read before that and which produced the surprising "4 active / 0 idle /
     0 tasks".
 
-    Uses :class:`AgentRegistryService` when available to resolve
-    employed agents.  When the registry is unavailable, returns
-    ``(0, config_agent_count)`` because without the HR registry
-    there is no way to tell which agents are employed vs. merely
-    assigned to tasks, and treating every agent as idle is the
-    safest conservative display.
+    Uses :class:`AgentRegistryService` when available to resolve employed
+    agents. When the registry is unavailable the payroll is unknowable, so
+    "idle" falls back to the configured total minus the busy ones; "active"
+    does NOT fall back, because who is working is answerable without the
+    registry, from the task board and the live agent-state rows. Reporting
+    zero active there was the conservative display and it was also wrong: an
+    org mid-decomposition reported nobody working while the runtime knew
+    otherwise.
 
     Args:
         app_state: Application state.

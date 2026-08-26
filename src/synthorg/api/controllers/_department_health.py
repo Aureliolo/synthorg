@@ -71,10 +71,12 @@ class DepartmentHealth(BaseModel):
             0-100 score; None when task_success_rate is None (no-data).
         utilization_percent: Derived (computed_field) from
             active_agent_count / agent_count.
-        utilization_degraded: True when the in-flight-task query failed, so
-            active_agent_count (and thus utilization_percent) is a floor, not
-            a measured value; the dashboard renders utilisation as "unknown"
-            rather than a confident number.
+        utilization_degraded: True when EITHER input to the busy count could
+            not be read: the in-flight-task query, or the live agent-state
+            query that covers a run the board cannot see. Either way
+            active_agent_count (and thus utilization_percent) is a floor
+            rather than a measured value, and the dashboard renders
+            utilisation as "unknown" instead of a confident number.
         currency: ISO 4217 currency code.
     """
 
@@ -108,8 +110,9 @@ class DepartmentHealth(BaseModel):
     utilization_degraded: bool = Field(
         default=False,
         description=(
-            "True when the in-flight-task query failed; utilization_percent is"
-            " then a floor, not a measured value."
+            "True when either the in-flight-task query or the live"
+            " agent-state query failed; utilization_percent is then a floor,"
+            " not a measured value."
         ),
     )
     task_success_rate: float | None = Field(

@@ -13,6 +13,7 @@ that ended badly: a row left EXECUTING makes a finished agent look occupied for
 the life of the process, which is the same defect pointing the other way.
 """
 
+import asyncio
 from typing import override
 
 import pytest
@@ -119,6 +120,43 @@ class _RecordingStates:
         """
         del entity_id
         return False
+
+
+class _SlowReleasingStates(_RecordingStates):
+    """A repository whose RELEASE takes long enough to be cancelled through.
+
+    The defect this exposes needs the cancellation to arrive while the write
+    is in flight, which an instant fake never allows: it completes inside the
+    same step that starts it, so the shield is never actually tested.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.release_started = asyncio.Event()
+        self.release_finished = False
+
+    @override
+    async def save_if_execution(
+        self, entity: AgentRuntimeState, /, *, expected_execution_id: str
+    ) -> bool:
+        """Record the write, pausing part-way through a release.
+
+        Returns:
+            ``True``, as a repository whose row still belongs to this run does.
+        """
+        if entity.status is not ExecutionStatus.IDLE:
+            return await super().save_if_execution(
+                entity, expected_execution_id=expected_execution_id
+            )
+        self.release_started.set()
+        # A real write is I/O, so it yields; without a yield the write would
+        # be atomic against the cancellation and prove nothing.
+        await asyncio.sleep(0)
+        result = await super().save_if_execution(
+            entity, expected_execution_id=expected_execution_id
+        )
+        self.release_finished = True
+        return result
 
 
 class _SentinelFallback(DecompositionStrategy):
@@ -229,10 +267,37 @@ class TestThePlanningSessionIsVisibleWhileItRuns:
             _task(), DecompositionContext(owner_identity=owner)
         )
 
-        assert len(states.saved) == 1
+        # The claim is the FIRST write, before any turn runs, because that is
+        # what makes the org read busy for the whole session rather than from
+        # the moment the first turn finishes.
         claimed = states.saved[0]
         assert claimed.agent_id == str(owner.id)
         assert claimed.status is ExecutionStatus.EXECUTING
+        assert claimed.turn_count == 0
+
+    async def test_the_row_is_refreshed_on_every_turn(self) -> None:
+        # A row written once and left alone reports turn 0 and zero spend for
+        # the life of the session, which is what the cockpit renders. The
+        # per-turn observer is what makes those two columns mean anything.
+        states = _RecordingStates()
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("done"),
+            ]
+        )
+        owner = make_e2e_identity()
+
+        await _strategy(provider, states).decompose(
+            _task(), DecompositionContext(owner_identity=owner)
+        )
+
+        assert len(states.saved) != 1
+        # Every write names the same run, so a sibling session's row is never
+        # the one being refreshed. Recursion runs a session per subtree.
+        assert {s.agent_id for s in states.saved} == {str(owner.id)}
+        assert len({s.execution_id for s in states.saved}) == 1
+        assert states.saved[-1].turn_count != 0
 
     async def test_it_releases_the_row_when_the_session_ends(self) -> None:
         states = _RecordingStates()
@@ -254,6 +319,39 @@ class TestThePlanningSessionIsVisibleWhileItRuns:
         # Named, so a sibling planning session's row is left alone. Recursion
         # runs a session per subtree and one owner can hold several.
         assert execution_id == states.saved[0].execution_id
+
+    async def test_a_cancelled_session_still_releases_the_row(self) -> None:
+        # The release is shielded AND awaited again on cancellation. Shielding
+        # alone protects the write from being cancelled but not from being
+        # abandoned: the shield re-raises the moment the cancellation lands,
+        # leaving the write running with nothing waiting on it, and a
+        # shutdown that closes the loop next takes it with it.
+        #
+        # The row that survives is not merely stale. The write is a
+        # compare-and-set on execution ownership, so this agent's every later
+        # session presents a different execution id and is refused, for ever
+        # and across restarts, with nothing anywhere reaping the row.
+        states = _SlowReleasingStates()
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("done"),
+            ]
+        )
+        owner = make_e2e_identity()
+
+        run = asyncio.ensure_future(
+            _strategy(provider, states).decompose(
+                _task(), DecompositionContext(owner_identity=owner)
+            )
+        )
+        await states.release_started.wait()
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+        assert states.release_finished, "the release was abandoned mid-write"
+        assert len(states.cleared) == 1
 
     async def test_a_session_that_failed_still_releases_the_row(self) -> None:
         # The release is in a ``finally`` for exactly this: a row left

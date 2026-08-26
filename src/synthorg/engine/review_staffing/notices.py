@@ -145,8 +145,9 @@ async def notify_hire_withdrawn(
                 f"You approved a hire for {role}, and it cannot be completed: "
                 f"{reason} Retrying would have failed the same way on every "
                 "pass, so it has been withdrawn. Nobody holds the role, so "
-                "work needing it still parks; fix the cause and a fresh hire "
-                "will be opened on the next pass."
+                "work needing it still parks. Fix the cause, and a later "
+                "sweep opens a fresh hire IF work is still parked on the "
+                "role; with nothing waiting on it, nothing is opened."
             ),
             source=NotBlankStr(ACTOR),
             metadata={"role": role},

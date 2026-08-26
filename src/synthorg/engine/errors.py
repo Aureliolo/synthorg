@@ -173,6 +173,16 @@ class DecompositionDepthError(DecompositionError):
     """Raised when decomposition exceeds the maximum nesting depth."""
 
 
+class DecompositionUnwiredError(DecompositionError):
+    """Raised when a strategy is asked to run without a dependency it needs.
+
+    A wiring fault, not a planning one, and typed so it is distinguishable
+    from one: a bare ``ValueError`` from an accessor reads to every caller
+    like a malformed argument, and the two want opposite responses (a
+    deployment fix versus a retry with different input).
+    """
+
+
 class DecompositionSubtaskLimitError(DecompositionError):
     """Raised when a plan carries more subtasks than the caller allowed.
 
