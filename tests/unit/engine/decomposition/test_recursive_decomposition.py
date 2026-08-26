@@ -723,7 +723,7 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
     """
 
     async def test_the_level_that_asked_keeps_its_plan(self) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionTimeoutError(
                 "Decomposition outran its planning-session wall-clock ceiling"
             )
@@ -743,7 +743,7 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
         # not comply wants a narrower objective, while a session that ran out
         # of clock wants a higher ceiling. One backstop phrase for both would
         # send every reader to the wrong one half the time.
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionTimeoutError(
                 "Decomposition outran its planning-session wall-clock ceiling"
             )
@@ -760,7 +760,7 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
     async def test_a_sibling_that_was_never_oversized_still_carries_no_reason(
         self,
     ) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionTimeoutError(
                 "Decomposition outran its planning-session wall-clock ceiling"
             )
@@ -785,7 +785,7 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
                 ),
             ),
             TaskStructureClassifier(),
-            config_resolver=_resolver(recursion_enabled=True),
+            config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
         )
 
         with pytest.raises(DecompositionTimeoutError):
@@ -802,7 +802,7 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
         # holds a plan that outlived it and nothing here may file it as a note
         # on one unit. It travels to the root, which classifies it against its
         # own scope.
-        service = _service_whose_child_level_fails(TimeoutError())
+        service, _ = _service_whose_child_level_fails(TimeoutError())
 
         with pytest.raises(DecompositionError) as caught:
             await service.decompose_task(
@@ -827,7 +827,7 @@ class TestAChildSessionThatExhaustedItselfKeepsTheTree:
     """
 
     async def test_running_out_of_turns_keeps_the_level_that_asked(self) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionTurnBudgetError("terminated 'max_turns' without a plan")
         )
 
@@ -850,7 +850,7 @@ class TestAChildSessionThatExhaustedItselfKeepsTheTree:
             (DecompositionSessionBudgetError("out of tokens"), SESSION_BUDGET_BACKSTOP),
             (DecompositionStagnationError("going nowhere"), STAGNATION_BACKSTOP),
         ):
-            service = _service_whose_child_level_fails(failure)
+            service, _ = _service_whose_child_level_fails(failure)
 
             result = await service.decompose_task(
                 _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
@@ -869,7 +869,7 @@ class TestAChildSessionThatExhaustedItselfKeepsTheTree:
                 failure=DecompositionTurnBudgetError("out of turns"),
             ),
             TaskStructureClassifier(),
-            config_resolver=_resolver(recursion_enabled=True),
+            config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
         )
 
         with pytest.raises(DecompositionTurnBudgetError):
@@ -882,7 +882,7 @@ class TestAChildSessionThatExhaustedItselfKeepsTheTree:
         # genuine fault raises, so absorbing it would file an outage as a note
         # on one plan item, which is the thing the whole absorb path is fenced
         # against.
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionError("the transport kept mangling replies")
         )
 
