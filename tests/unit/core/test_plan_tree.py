@@ -225,6 +225,23 @@ class TestPlanTree:
         assert tree.workstreams == ()
         assert tree.deepest_first() == ()
 
+    def test_a_chain_as_deep_as_a_plan_is_large_still_orders(self) -> None:
+        # The backend accepts a thousand items (`_MAX_ITEMS` in dto_plans.py)
+        # and nothing stops them forming one chain, so the containment depth
+        # reaches the interpreter's own recursion limit. A walk that recursed
+        # per level answered this valid plan with a RecursionError.
+        depth = 1000
+        chain = tuple(
+            _item(f"n{index}", parent=None if index == 0 else f"n{index - 1}")
+            for index in range(depth)
+        )
+
+        order = [item.id for item in PlanTree.of(chain).deepest_first()]
+
+        assert len(order) == depth
+        # Deepest first, so the chain comes back exactly reversed.
+        assert order == [item.id for item in reversed(chain)]
+
 
 class TestAddress:
     def test_a_workstream_is_one_step(self) -> None:

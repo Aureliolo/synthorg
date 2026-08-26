@@ -509,6 +509,25 @@ class TestSubmitDecompositionPlanTool:
         assert "serialisation fault" in detail
         assert capture.plan is None
 
+    async def test_a_mangled_call_clears_an_earlier_unsplittable_refusal(
+        self,
+    ) -> None:
+        """A call the transport lost says nothing about whether it can split.
+
+        Left set, a session that refused an oversized plan and then lost its
+        correction to the transport ends empty carrying the unsplittable
+        verdict, and the level above reads a transport failure as a deliberate
+        refusal to split.
+        """
+        capture = PlanCapture(sid("obj-1"))
+
+        await capture.record_refusal("digest-1", unsplittable=True)
+        assert capture.declined_to_split
+
+        await capture.record_mangled()
+
+        assert not capture.declined_to_split
+
     async def test_the_collapse_is_answered_before_the_schema_refuses_it(
         self,
     ) -> None:

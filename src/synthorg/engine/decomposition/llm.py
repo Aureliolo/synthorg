@@ -335,10 +335,24 @@ class LlmDecompositionStrategy:
                         for criterion in task.acceptance_criteria
                     ),
                 )
+                # Width first, because a plan can be both too wide and too
+                # coarse and only one of the two errors carries numbers the
+                # caller can act on: the ceiling refusal names the produced
+                # count and the limit, so an operator can raise the limit to
+                # what was actually planned, while the unsplittable refusal
+                # names neither and the caller treats it as a dispatchable
+                # reason not to split at all.
+                self._validate_plan(plan, context)
                 # Asked here rather than after the loop, so a level that came
                 # back too coarse is corrected on the channel that already
                 # re-prompts, spending breadth where depth has run out.
                 _reject_unsplittable(plan, context, task_id=str(task.id))
+            except DecompositionSubtaskLimitError:
+                # Propagates rather than retrying, for the reason the budget
+                # ceiling below propagates: the limit is the same on the next
+                # attempt, and catching it as a retryable parse failure would
+                # replace both numbers with a bare retries-exhausted error.
+                raise
             except DecompositionBudgetExhaustedError:
                 # Not retried: the ceiling is the same on the next attempt, so
                 # every further call truncates at the same place and the run

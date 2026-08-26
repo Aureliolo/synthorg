@@ -200,13 +200,31 @@ class PlanTree:
     def _below(self, item: PlanItem) -> tuple[PlanItem, ...]:
         """*item*'s subtree, children before it.
 
+        Walked on an explicit stack rather than by recursion, because the
+        depth here is the plan's containment depth and a plan may hold a
+        thousand items: a chain of them is a tree the validator accepts and
+        the interpreter's own limit refuses, so the recursive form turned a
+        valid plan into a ``RecursionError``.
+
         Returns:
             The subtree in assembly order.
         """
-        return (
-            *(node for child in self.children(item.id) for node in self._below(child)),
-            item,
-        )
+        ordered: list[PlanItem] = []
+        # The flag says whether this node's children are already on the stack,
+        # which is what turns a pre-order walk into the post-order one an
+        # assembly needs: a node is emitted on its SECOND visit, by which time
+        # everything below it has been emitted.
+        pending: list[tuple[PlanItem, bool]] = [(item, False)]
+        while pending:
+            node, expanded = pending.pop()
+            if expanded:
+                ordered.append(node)
+                continue
+            pending.append((node, True))
+            # Reversed because a stack returns them backwards, and siblings
+            # are emitted in plan order.
+            pending.extend((child, False) for child in reversed(self.children(node.id)))
+        return tuple(ordered)
 
 
 __all__ = ["PlanTree", "SubtreeStep"]

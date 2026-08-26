@@ -159,6 +159,13 @@ class PlanCapture:
             How many calls this session has now lost to the transport.
         """
         async with self._lock:
+            # Same latest-wins rule :meth:`record_refusal` applies, and for the
+            # same reason: a call the transport mangled carried no plan at all,
+            # so it says nothing about whether the unit can be split. Left set,
+            # it makes the empty session raise the unsplittable error and the
+            # recursive caller read a transport failure as a deliberate refusal
+            # to split.
+            self._unsplittable = False
             self._mangled += 1
             return self._mangled
 

@@ -348,26 +348,23 @@ class DecompositionResult(BaseModel):
         dependency to resolve within its own level, and its children are a
         level below.
 
+        Splitting a unit must not drop what that unit was waiting for. A
+        container's own edges keep it ordered, but a container is only the
+        ASSEMBLY: the work moved down to its children, and a child that
+        inherited nothing is ready immediately, so a subtask declared to run
+        after another could have its actual work scheduled alongside it. The
+        prerequisites therefore travel down to the subtree's entry nodes, and
+        only those: anything with a declared edge of its own already waits on
+        an entry node transitively, so repeating them there would add edges
+        the plan never stated and say nothing new.
+
         Returns:
             Every unit of :attr:`all_subtasks`, with each split one carrying
-            its children as extra edges. Identical to ``plan.subtasks`` for a
-            tree that never split.
+            its children as extra edges and each subtree's entry nodes
+            carrying what the unit above them waits on. Identical to
+            ``plan.subtasks`` for a tree that never split.
         """
-        contained_by = {
-            child.plan.parent_task_id: tuple(s.id for s in child.plan.subtasks)
-            for child in self.children
-        }
-        own = tuple(
-            subtask.model_copy(
-                update={"dependencies": (*subtask.dependencies, *contained)}
-            )
-            if (contained := contained_by.get(subtask.id))
-            else subtask
-            for subtask in self.plan.subtasks
-        )
-        return own + tuple(
-            subtask for child in self.children for subtask in child.dispatch_subtasks
-        )
+        return _dispatch_after(self, ())
 
     @property
     def max_depth_reached(self) -> int:
@@ -466,3 +463,44 @@ class DecompositionResult(BaseModel):
                     f"{child.depth}, expected {self.depth + 1}"
                 )
                 raise ValueError(msg)
+
+
+def _dispatch_after(
+    result: DecompositionResult, inherited: tuple[NotBlankStr, ...]
+) -> tuple[SubtaskDefinition, ...]:
+    """*result*'s whole subtree flattened, gated behind *inherited*.
+
+    A function rather than a method because it recurses over the CHILDREN, and
+    a method reaching into a sibling instance is a private access however it
+    is spelled.
+
+    Args:
+        result: The subtree to flatten.
+        inherited: What the unit this subtree was split out of waits on, empty
+            at the root, which was split out of nothing.
+
+    Returns:
+        This level's units followed by each child subtree's, in plan order.
+    """
+    contained_by = {
+        child.plan.parent_task_id: tuple(s.id for s in child.plan.subtasks)
+        for child in result.children
+    }
+    # An entry node is one with no declared edge at this level, so it is
+    # exactly what the level's inherited prerequisites have to gate.
+    waits_on = {
+        subtask.id: subtask.dependencies or inherited
+        for subtask in result.plan.subtasks
+    }
+    own = tuple(
+        subtask.model_copy(update={"dependencies": edges})
+        if (edges := (*waits_on[subtask.id], *contained_by.get(subtask.id, ())))
+        != subtask.dependencies
+        else subtask
+        for subtask in result.plan.subtasks
+    )
+    return own + tuple(
+        node
+        for child in result.children
+        for node in _dispatch_after(child, waits_on.get(child.plan.parent_task_id, ()))
+    )

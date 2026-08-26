@@ -112,6 +112,20 @@ def _three_level_tree() -> DecompositionResult:
     )
 
 
+def _engine_after_ui() -> tuple[PlanItem, ...]:
+    """The three-level tree with engine declared to run after ui.
+
+    Returns:
+        The items, engine alone carrying the declared edge.
+    """
+    return tuple(
+        item.model_copy(update={"dependencies": (NotBlankStr(sid("ui")),)})
+        if item.id == sid("engine")
+        else item
+        for item in items_from_decomposition(_three_level_tree())
+    )
+
+
 def _provenance() -> PlanProvenance:
     return PlanProvenance(
         project=NotBlankStr("beachhead"),
@@ -319,6 +333,43 @@ class TestDispatchSubtasks:
             sid("rotation"),
         }
 
+    def test_a_split_unit_hands_its_prerequisites_to_its_subtree(self) -> None:
+        # The container's own edge only orders the ASSEMBLY. The work moved
+        # down to its children, so a subtree that inherited nothing is ready
+        # immediately and engine's work would run alongside the ui it was
+        # declared to follow.
+        rebuilt = decomposition_from_plan(
+            _plan_of(_engine_after_ui()), parent_task=_objective()
+        )
+        by_id = {s.id: s for s in rebuilt.dispatch_subtasks}
+        assert by_id[sid("board")].dependencies == (sid("ui"), sid("grid"))
+        assert by_id[sid("rotation")].dependencies == (sid("ui"),)
+
+    def test_the_prerequisite_reaches_every_level_it_was_split_into(self) -> None:
+        # grid sits BELOW board rather than after it, so board waiting on ui
+        # orders board's assembly and nothing else. grid is where board's work
+        # actually went, so stopping the inheritance at the first level down
+        # would leave the deepest work running alongside ui after all.
+        rebuilt = decomposition_from_plan(
+            _plan_of(_engine_after_ui()), parent_task=_objective()
+        )
+        by_id = {s.id: s for s in rebuilt.dispatch_subtasks}
+        assert by_id[sid("grid")].dependencies == (sid("ui"),)
+
+    def test_a_unit_with_its_own_edge_does_not_also_inherit(self) -> None:
+        # ui is the entry node at the root and engine is not, so engine keeps
+        # the edge it declared plus its children and gains nothing else.
+        rebuilt = decomposition_from_plan(
+            _plan_of(_engine_after_ui()), parent_task=_objective()
+        )
+        by_id = {s.id: s for s in rebuilt.dispatch_subtasks}
+        assert by_id[sid("ui")].dependencies == ()
+        assert set(by_id[sid("engine")].dependencies) == {
+            sid("ui"),
+            sid("board"),
+            sid("rotation"),
+        }
+
     def test_a_flat_result_is_unchanged_by_the_view(self) -> None:
         result = _node(parent=_objective(), labels=("engine", "ui"), depth=0)
         assert result.dispatch_subtasks == result.plan.subtasks
@@ -360,6 +411,22 @@ class TestWhatTheWaveBuilderReads:
         # one global computation is what keeps cross-subtree parallelism.
         levels = self._levels()
         assert {sid("grid"), sid("ui")} <= levels[0]
+
+    def test_a_split_unit_still_runs_after_its_declared_prerequisite(self) -> None:
+        # The defect this guards put ui and engine's own work in the same
+        # wave: the container waited, but the work it had been split into did
+        # not, so the plan's declared order held for nothing that ran.
+        rebuilt = decomposition_from_plan(
+            _plan_of(_engine_after_ui()), parent_task=_objective()
+        )
+        graph = DependencyGraph(rebuilt.dispatch_subtasks)
+        position = {
+            subtask_id: index
+            for index, group in enumerate(graph.parallel_groups())
+            for subtask_id in group
+        }
+        for label in ("board", "rotation", "grid", "engine"):
+            assert position[sid("ui")] < position[sid(label)]
 
     def test_every_unit_of_the_tree_is_scheduled(self) -> None:
         # A unit in no wave is one no dispatcher runs, no gate parks and no
