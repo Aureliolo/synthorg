@@ -51,7 +51,7 @@ function subtreeOf(
 }
 
 /**
- * What each row may be moved under, one option list per draft in order.
+ * What the rows in *shown* may be moved under, one option list each, in order.
  *
  * Everything the backend would refuse is left out rather than offered and
  * rejected after a round trip: itself, anything already below it (which would
@@ -59,15 +59,21 @@ function subtreeOf(
  * decomposed so nothing can hang off one. The backend still enforces all
  * three; this only keeps the operator from being told no.
  *
- * Every row at once, and the option objects built once for the whole list
- * rather than once per row. Only which of them a row may offer differs, so
- * mapping the draft list inside each row allocated a fresh object per pair:
- * at the thousand items the editor accepts that is a million objects on every
- * keystroke, which is the same shape `childIndex` exists to avoid.
+ * Two lists, because they answer different questions. What may be OFFERED is a
+ * property of the whole plan, since an item on any page is a legal container,
+ * so `drafts` is the full list. Who is ASKING is only ever a row on screen, so
+ * `shown` is the rendered page: an option list nothing renders is a thousand
+ * entries built for nobody, and building one per draft is what made a single
+ * keystroke O(items squared).
+ *
+ * The option objects are also built once for the whole call rather than once
+ * per asking row. Only which of them a row may offer differs, so mapping the
+ * draft list inside each row allocated a fresh object per pair.
  */
 export function parentChoices(
   drafts: readonly DraftItem[],
   children: ReadonlyMap<string, readonly string[]>,
+  shown: readonly DraftItem[],
 ): readonly (readonly SelectOption[])[] {
   const offerable = drafts
     .filter((draft) => draft.kind !== 'decision')
@@ -75,7 +81,7 @@ export function parentChoices(
       value: draft.id,
       label: draft.title.trim() === '' ? 'Untitled item' : draft.title,
     }))
-  return drafts.map((subject) => {
+  return shown.map((subject) => {
     const below = subtreeOf(subject.id, children)
     return [NO_PARENT, ...offerable.filter((option) => !below.has(option.value))]
   })

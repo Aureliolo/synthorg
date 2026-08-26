@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 
 import { apiSuccess } from '@/mocks/handlers'
@@ -14,6 +16,16 @@ function resetStore(): void {
   usePlansStore.getState().reset()
 }
 
+/**
+ * Render the editor inside a router.
+ *
+ * The row list is paged and the pager keeps its page in the URL, so a deep
+ * link reopens where the operator left off. That needs a router context.
+ */
+function renderEditor(ui: ReactElement): void {
+  render(<MemoryRouter>{ui}</MemoryRouter>)
+}
+
 const plan = makePlan('plan-1', {
   items: [makePlanItem('i1', { title: 'Scaffold', description: 'Board' })],
 })
@@ -22,7 +34,7 @@ describe('PlanEditor', () => {
   it('adds and removes items', async () => {
     resetStore()
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
+    renderEditor(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
 
     expect(screen.getByText('Item 1')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Add item/ }))
@@ -35,7 +47,7 @@ describe('PlanEditor', () => {
   it('disables save when an item title is blank', async () => {
     resetStore()
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
+    renderEditor(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
 
     const titleInput = screen.getByDisplayValue('Scaffold')
     await user.clear(titleInput)
@@ -54,7 +66,7 @@ describe('PlanEditor', () => {
         }),
       ],
     })
-    render(<PlanEditor plan={withCriterion} roster={undefined} onDone={vi.fn()} />)
+    renderEditor(<PlanEditor plan={withCriterion} roster={undefined} onDone={vi.fn()} />)
 
     // The backend requires at least one acceptance criterion per item, so
     // clearing the last one disables save rather than round-tripping to a 422.
@@ -71,7 +83,7 @@ describe('PlanEditor', () => {
       http.patch('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(revised))),
     )
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} roster={undefined} onDone={onDone} />)
+    renderEditor(<PlanEditor plan={plan} roster={undefined} onDone={onDone} />)
 
     await user.click(screen.getByRole('button', { name: /Save revision/ }))
     await waitFor(() => {
@@ -101,7 +113,7 @@ describe('PlanEditor', () => {
         }),
       ],
     })
-    render(<PlanEditor plan={withArtifact} roster={undefined} onDone={vi.fn()} />)
+    renderEditor(<PlanEditor plan={withArtifact} roster={undefined} onDone={vi.fn()} />)
 
     // Found by its value rather than its label: a required field renders a
     // marker after the label text, so the accessible name is not the string
@@ -116,7 +128,7 @@ describe('PlanEditor', () => {
 
   it('offers the staffed roles as owner choices', () => {
     resetStore()
-    render(
+    renderEditor(
       <PlanEditor
         plan={plan}
         roster={new Set(['Backend Developer', 'Designer'])}
@@ -135,7 +147,7 @@ describe('PlanEditor', () => {
     const invented = makePlan('plan-1', {
       items: [makePlanItem('i1', { title: 'Scaffold', owner: 'Backend Engineer' })],
     })
-    render(
+    renderEditor(
       <PlanEditor
         plan={invented}
         roster={new Set(['Backend Developer'])}
@@ -153,9 +165,72 @@ describe('PlanEditor', () => {
 
   it('leaves the owner free text while the roster is unknown', () => {
     resetStore()
-    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
+    renderEditor(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
 
     expect(screen.getByLabelText('Owner (role)')).toHaveRole('textbox')
+  })
+
+  describe('paging', () => {
+    // Titles deliberately unlike the "Item N" row headers, so a header
+    // assertion cannot be satisfied by a title that happens to read the same.
+    const many = makePlan('plan-1', {
+      items: Array.from({ length: 25 }, (_, index) =>
+        makePlanItem(`i${String(index + 1)}`, { title: `Task ${String(index + 1)}` }),
+      ),
+    })
+
+    it('holds one page of rows on screen rather than the whole plan', () => {
+      // A row is a whole form, and its container picker offers every item in
+      // the plan. Rendering all of them at the thousand items the backend
+      // accepts is around a million option elements before anyone types.
+      resetStore()
+      renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
+
+      expect(screen.getAllByLabelText('Belongs to')).toHaveLength(20)
+      expect(screen.getByDisplayValue('Task 20')).toBeInTheDocument()
+      expect(screen.queryByDisplayValue('Task 21')).not.toBeInTheDocument()
+    })
+
+    it('numbers the rows by their place in the plan, not in the page', async () => {
+      // The number is how the operator refers to an item, so it has to mean
+      // the same thing on page two as on page one.
+      resetStore()
+      const user = userEvent.setup()
+      renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: 'Next page' }))
+
+      expect(screen.getByDisplayValue('Task 21')).toBeInTheDocument()
+      expect(screen.getByText('Item 21')).toBeInTheDocument()
+      expect(screen.queryByText('Item 1')).not.toBeInTheDocument()
+    })
+
+    it('follows a newly added item onto its own page', async () => {
+      // Appended to the end, which is not the page being read, so an add that
+      // stayed put would look like it had done nothing.
+      resetStore()
+      const user = userEvent.setup()
+      renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: /Add item/ }))
+
+      expect(screen.getByText('Item 26')).toBeInTheDocument()
+    })
+
+    it('still gates the save on an item the operator has paged away from', async () => {
+      // The paged-away row is what a 422 would come back about, so a gate that
+      // only saw the page would let the operator try and be refused.
+      resetStore()
+      const user = userEvent.setup()
+      renderEditor(<PlanEditor plan={many} roster={undefined} onDone={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: 'Next page' }))
+      await user.clear(screen.getByDisplayValue('Task 21'))
+      await user.click(screen.getByRole('button', { name: 'Previous page' }))
+
+      expect(screen.getByDisplayValue('Task 1')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Save revision/ })).toBeDisabled()
+    })
   })
 
   describe('containment', () => {
@@ -177,7 +252,7 @@ describe('PlanEditor', () => {
 
     it('shows what each item currently belongs to', () => {
       resetStore()
-      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
 
       expect(screen.getAllByLabelText('Belongs to')[1]).toHaveValue('engine')
     })
@@ -186,7 +261,7 @@ describe('PlanEditor', () => {
       // Choosing one would close a containment cycle, which the backend
       // rejects: better never offered than refused after a round trip.
       resetStore()
-      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
 
       expect(parentChoicesFor(0)).not.toContain('engine')
       expect(parentChoicesFor(0)).not.toContain('board')
@@ -197,7 +272,7 @@ describe('PlanEditor', () => {
       // A decision is chosen rather than decomposed, so nothing can hang off
       // one: dispatch strips it and its children would be orphaned.
       resetStore()
-      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
 
       expect(parentChoicesFor(1)).not.toContain('pick')
     })
@@ -206,7 +281,7 @@ describe('PlanEditor', () => {
       // Left naming a parent the plan no longer holds, the save would 422.
       resetStore()
       const user = userEvent.setup()
-      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
 
       await user.click(screen.getByRole('button', { name: /Remove item 2/ }))
 
@@ -233,7 +308,7 @@ describe('PlanEditor', () => {
         }),
       )
       const user = userEvent.setup()
-      render(<PlanEditor plan={waiting} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={waiting} roster={undefined} onDone={vi.fn()} />)
 
       await user.click(screen.getByRole('button', { name: /Remove item 1/ }))
       await user.click(screen.getByRole('button', { name: /Save revision/ }))
@@ -258,7 +333,7 @@ describe('PlanEditor', () => {
         }),
       )
       const user = userEvent.setup()
-      render(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
+      renderEditor(<PlanEditor plan={tree} roster={undefined} onDone={vi.fn()} />)
 
       await user.click(screen.getByRole('button', { name: /Save revision/ }))
 
