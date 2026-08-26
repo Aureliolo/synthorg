@@ -45,6 +45,7 @@ will know it is done:
 | 8 | charter intake to approved plan, waves dispatched, real work executed, and a parked question answered from the plan page landed on the plan verbatim | replan hit the generation cap: 3 items completed, 1 failed, 3 parked `dependency_failed`, the plan left `executing` while the rollup re-scheduled a replan the trigger refuses, on every cadence, indefinitely |
 | 9 | the whole product driven through the browser as an operator; 59 findings | plan repair could not converge. The parser broke on the first graph violation, the planner regenerates the whole plan with fresh ids on a targeted correction, and "Request changes" burned all twelve turns, was rejected seven consecutive times by one rule on seven different pairs, then returned 500 after 5m17s |
 | 10 | charter intake, a five-question interview that asked for a timeline unprompted, and the first recursive decomposition the product has ever run: 39 planning sessions, 76 plan corrections that converged, depth 4 against a cap of 5, `unsplit_count=0` on every finished node, and one workstream alone returning 40 leaves | one planning session outran its own ceiling and took the whole tree with it. Session 39 ran 599.7s against `coordination.decomposition_timeout_seconds` at 600, which raises the non-retryable `DecompositionTimeoutError`, and nothing between that raise and the plan absorbs it: plan `planning -> failed`, objective task `created -> failed`, and all 39 levels discarded after 1h 48m and 2.3M tokens. The graceful bound that returns a partial tree was two sessions from firing (`sessions_remaining=2` of 40) |
+| 10b | the same brief re-run against a fix for the ceiling, on a three-question interview; 3 planning sessions, 13 subtasks, 3 levels | the same defect through a **third** bound the fix did not cover. A depth-2 session spent all 12 turns on `search_memory`, got `ranked_count=0` on all 17 calls, never once called `submit_decomposition_plan`, and no stagnation detector fired (`extensions_granted=0`). Turn exhaustion raises the **base** `DecompositionError`, which the parent does not absorb because that type is also every genuine fault, so one stuck node discarded the tree again after 3m 56s |
 
 ## Where the stop has moved
 
@@ -63,6 +64,20 @@ decomposition shipped on by default days earlier, and had never run in the
 product. Its own machinery worked. What did not was the interaction between a
 per-node bound and a tree of 39 nodes, which no round before it could have
 reached.
+
+Its second attempt is the more useful half, because it turned one instance into
+a rule. A child planning session can end without a plan three ways: the planner
+declines to split, the session outruns its wall-clock ceiling, or the session
+runs out of turns. The first was already absorbed by the level that asked for
+it, the second was absorbed by the fix attempt 1 produced, and the third was
+not, because turn exhaustion raises the base `DecompositionError` that every
+genuine fault also raises. **A per-node bound has to declare what it does to the
+tree above it, and a fix written from one observed instance covers one bound.**
+
+Attempt 2 also caught the layer beneath: the session was not merely slow, it was
+stuck, repeating one tool call that returned nothing every single time, and no
+stagnation detection fired before the turn budget ran out. Absorbing the failure
+keeps the tree; it does not make the node's plan appear.
 
 ## How to add a row
 

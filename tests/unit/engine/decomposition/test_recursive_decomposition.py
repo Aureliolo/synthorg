@@ -15,11 +15,15 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._session_exhaustion import raise_session_exhaustion
 from synthorg.engine.decomposition.atomicity import (
     DEPTH_BACKSTOP,
     PLANNER_DECLINED,
+    SESSION_BUDGET_BACKSTOP,
     SESSION_CEILING_BACKSTOP,
     SESSIONS_BACKSTOP,
+    STAGNATION_BACKSTOP,
+    TURN_BUDGET_BACKSTOP,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
@@ -31,9 +35,13 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import (
     DecompositionError,
+    DecompositionSessionBudgetError,
+    DecompositionStagnationError,
     DecompositionTimeoutError,
+    DecompositionTurnBudgetError,
     DecompositionUnsplittableError,
 )
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.settings.errors import SettingNotFoundError
 from tests._shared import as_uuid, sid
 from tests.unit.engine.decomposition._doubles import (
@@ -802,6 +810,112 @@ class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
             )
 
         assert not isinstance(caught.value, DecompositionTimeoutError)
+
+
+class TestAChildSessionThatExhaustedItselfKeepsTheTree:
+    """A session's own budget bounds ONE node, exactly as its ceiling does.
+
+    A live re-run against the ceiling fix died four minutes in on the same
+    shape reached through a different bound: a depth-2 session spent all twelve
+    turns on a memory search that returned nothing every time, never called its
+    one tool, and the resulting plain ``DecompositionError`` discarded a
+    thirteen-subtask tree. The ceiling fix keyed on the exception TYPE, and
+    turn exhaustion raised the base type, so it was not covered.
+
+    A session can run out three ways that are bounds rather than faults, and
+    all three leave the level that asked for the child holding a valid plan.
+    """
+
+    async def test_running_out_of_turns_keeps_the_level_that_asked(self) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionTurnBudgetError("terminated 'max_turns' without a plan")
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert {str(task.id) for task in result.leaf_tasks} == {
+            sid("big"),
+            sid("small"),
+        }
+
+    async def test_each_bound_names_itself_on_the_unit(self) -> None:
+        # The three remedies differ and only the reason on the unit carries
+        # which one applies: a turn cap to raise, a token budget to raise, or
+        # a session that had both and used neither. One shared phrase would
+        # send two readers in three to a knob that would not have helped.
+        for failure, backstop in (
+            (DecompositionTurnBudgetError("out of turns"), TURN_BUDGET_BACKSTOP),
+            (DecompositionSessionBudgetError("out of tokens"), SESSION_BUDGET_BACKSTOP),
+            (DecompositionStagnationError("going nowhere"), STAGNATION_BACKSTOP),
+        ):
+            service = _service_whose_child_level_fails(failure)
+
+            result = await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
+
+            reason = _definition(sid("big"), result).unsplit_reason
+            assert reason is not None
+            assert backstop in reason
+
+    async def test_the_root_running_out_of_turns_still_fails(self) -> None:
+        # Same asymmetry the ceiling has: absorbing is safe only because a
+        # valid plan exists above to carry the unit, and the root has none.
+        service = DecompositionService(
+            _RefusingStrategy(
+                {},
+                failure=DecompositionTurnBudgetError("out of turns"),
+            ),
+            TaskStructureClassifier(),
+            config_resolver=_resolver(recursion_enabled=True),
+        )
+
+        with pytest.raises(DecompositionTurnBudgetError):
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
+
+    async def test_a_plain_decomposition_error_is_still_not_absorbed(self) -> None:
+        # The regression this fix could introduce. The base type is what every
+        # genuine fault raises, so absorbing it would file an outage as a note
+        # on one plan item, which is the thing the whole absorb path is fenced
+        # against.
+        service = _service_whose_child_level_fails(
+            DecompositionError("the transport kept mangling replies")
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
+
+        assert type(caught.value) is DecompositionError
+
+
+class TestWhichExhaustedSessionRaisesWhat:
+    """The classifier deciding bound from fault, at the raise site."""
+
+    def test_each_bound_gets_its_own_type(self) -> None:
+        for reason, expected in (
+            (TerminationReason.MAX_TURNS, DecompositionTurnBudgetError),
+            (TerminationReason.BUDGET_EXHAUSTED, DecompositionSessionBudgetError),
+            (TerminationReason.STAGNATION, DecompositionStagnationError),
+        ):
+            with pytest.raises(expected):
+                raise_session_exhaustion(reason, "no plan")
+
+    def test_finishing_on_its_own_terms_stays_a_plain_fault(self) -> None:
+        # COMPLETED and NO_OP mean the session stopped with its one job undone
+        # while nothing was exhausted, so the next attempt is a fresh roll of
+        # the dice and the retry ladder above is the right answer. Typing
+        # these as bounds would absorb a planner that simply did not deliver.
+        for reason in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
+            with pytest.raises(DecompositionError) as caught:
+                raise_session_exhaustion(reason, "no plan")
+
+            assert type(caught.value) is DecompositionError
 
 
 class TestASmallObjectiveStaysSmall:

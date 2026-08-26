@@ -174,6 +174,15 @@ SESSIONS_BACKSTOP: Final[str] = "the tree's planning budget was spent"
 SESSION_CEILING_BACKSTOP: Final[str] = (
     "its planning session outran the per-session wall-clock ceiling"
 )
+TURN_BUDGET_BACKSTOP: Final[str] = (
+    "its planning session used every turn without producing a plan"
+)
+SESSION_BUDGET_BACKSTOP: Final[str] = (
+    "its planning session spent its whole token budget without producing a plan"
+)
+STAGNATION_BACKSTOP: Final[str] = (
+    "its planning session stopped making progress before producing a plan"
+)
 PLANNER_DECLINED: Final[str] = "the planner could not split it further"
 
 
@@ -211,7 +220,10 @@ __all__ = [
     "MAX_SATISFIED_CRITERIA",
     "PLANNER_DECLINED",
     "SESSIONS_BACKSTOP",
+    "SESSION_BUDGET_BACKSTOP",
     "SESSION_CEILING_BACKSTOP",
+    "STAGNATION_BACKSTOP",
+    "TURN_BUDGET_BACKSTOP",
     "AtomicityAssessment",
     "AtomicityVerdict",
     "SubtaskAtomicityPolicy",

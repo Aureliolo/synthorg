@@ -150,6 +150,17 @@ objective, while a session that ran out of clock wants a higher ceiling. Also
 distinct from ``DECOMPOSITION_FAILED``, which is what the same breach still
 does at the root, where there is no plan above it to carry the unit."""
 
+DECOMPOSITION_CHILD_BUDGET_ABSORBED: Final[str] = "decomposition.child_budget_absorbed"
+"""A child's planning session exhausted itself and the level above kept its plan.
+
+Covers the three ways a session can run out on its own terms without ever
+submitting: turns, tokens, and a loop that stopped progressing. One event for
+all three because the level above does the same thing in each case, while the
+reason recorded on the unit names the specific bound, which is what an operator
+needs in order to know which knob would have helped. Separate from
+``DECOMPOSITION_CHILD_CEILING_ABSORBED`` because a wall-clock ceiling is a bound
+on elapsed time rather than on what the session spent."""
+
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""
 

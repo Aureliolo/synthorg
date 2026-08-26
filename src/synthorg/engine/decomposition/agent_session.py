@@ -29,6 +29,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
+from synthorg.engine.decomposition._session_exhaustion import raise_session_exhaustion
 from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
@@ -47,7 +48,6 @@ from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
     DecompositionDepthError,
-    DecompositionError,
     DecompositionSubtaskLimitError,
     DecompositionUnsplittableError,
 )
@@ -479,8 +479,9 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         Raises:
             DecompositionUnsplittableError: When the session ran out of turns
                 still unable to widen a level with no depth below it.
-            DecompositionError: When the session terminated normally with
-                no plan submitted for any other reason.
+            DecompositionError: When the session produced no plan for any
+                other reason, typed by which bound it reached, if any
+                (see :mod:`._session_exhaustion`).
         """
         if not _ran_without_submitting(result.termination_reason):
             return
@@ -499,7 +500,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         )
         if declined_to_split:
             raise DecompositionUnsplittableError(msg)
-        raise DecompositionError(msg)
+        raise_session_exhaustion(result.termination_reason, msg)
 
     async def _fallback_plan(
         self,

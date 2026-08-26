@@ -27,17 +27,24 @@ from typing import Final
 
 from synthorg.engine.decomposition.atomicity import (
     PLANNER_DECLINED,
+    SESSION_BUDGET_BACKSTOP,
     SESSION_CEILING_BACKSTOP,
+    STAGNATION_BACKSTOP,
+    TURN_BUDGET_BACKSTOP,
     AtomicityAssessment,
     unsplit_reason,
 )
 from synthorg.engine.errors import (
     DecompositionError,
+    DecompositionSessionBudgetError,
+    DecompositionStagnationError,
     DecompositionTimeoutError,
+    DecompositionTurnBudgetError,
     DecompositionUnsplittableError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_CHILD_BUDGET_ABSORBED,
     DECOMPOSITION_CHILD_CEILING_ABSORBED,
     DECOMPOSITION_PLANNER_DECLINED,
 )
@@ -53,6 +60,18 @@ _ABSORBED: Final[dict[type[DecompositionError], tuple[str, str]]] = {
     DecompositionTimeoutError: (
         SESSION_CEILING_BACKSTOP,
         DECOMPOSITION_CHILD_CEILING_ABSORBED,
+    ),
+    DecompositionTurnBudgetError: (
+        TURN_BUDGET_BACKSTOP,
+        DECOMPOSITION_CHILD_BUDGET_ABSORBED,
+    ),
+    DecompositionSessionBudgetError: (
+        SESSION_BUDGET_BACKSTOP,
+        DECOMPOSITION_CHILD_BUDGET_ABSORBED,
+    ),
+    DecompositionStagnationError: (
+        STAGNATION_BACKSTOP,
+        DECOMPOSITION_CHILD_BUDGET_ABSORBED,
     ),
 }
 
