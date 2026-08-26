@@ -76,11 +76,12 @@ func TestRunUpdateDryRun_currentInstallationReportsNothingToDo(t *testing.T) {
 		},
 	)
 
-	requireContains(t, got,
-		"CLI update", "no (already current)",
-		"Image update",
-		"this installation is current",
-	)
+	// Pinned per key. A whole-buffer substring search cannot tell the two
+	// labels apart, so a build that swapped which line carries which verdict
+	// would pass every assertion in a file written to catch exactly that.
+	requireLineValue(t, got, "CLI update", "no (already current)")
+	requireLineValue(t, got, "Image update", "no (already current)")
+	requireContains(t, got, "this installation is current")
 	if strings.Contains(got, "Remove --dry-run to execute") {
 		t.Errorf("a current installation must not be told to run the update\n--- got ---\n%s", got)
 	}
@@ -100,7 +101,9 @@ func TestRunUpdateDryRun_behindInstallationReportsBothHalves(t *testing.T) {
 		},
 	)
 
-	requireContains(t, got, "yes", "Remove --dry-run to execute")
+	requireLineValue(t, got, "CLI update", "yes")
+	requireLineValue(t, got, "Image update", "yes")
+	requireContains(t, got, "Remove --dry-run to execute")
 	if strings.Contains(got, "already current") {
 		t.Errorf("an installation behind the channel must not read as current\n--- got ---\n%s", got)
 	}
@@ -121,7 +124,9 @@ func TestRunUpdateDryRun_halvesAreJudgedSeparately(t *testing.T) {
 		},
 	)
 
-	requireContains(t, got, "no (already current)", "Remove --dry-run to execute")
+	requireLineValue(t, got, "CLI update", "no (already current)")
+	requireLineValue(t, got, "Image update", "yes")
+	requireContains(t, got, "Remove --dry-run to execute")
 	if strings.Contains(got, "this installation is current") {
 		t.Errorf("images are behind, so the install is not current\n--- got ---\n%s", got)
 	}
@@ -142,7 +147,55 @@ func TestRunUpdateDryRun_scopeAndCurrencyAreDistinguished(t *testing.T) {
 		},
 	)
 
-	requireContains(t, got, "no (excluded by flags)")
+	requireLineValue(t, got, "CLI update", "no (excluded by flags)")
+	requireLineValue(t, got, "Image update", "yes")
+}
+
+func TestRunUpdateDryRun_anOutOfScopeHalfDoesNotPromptAnUpdate(t *testing.T) {
+	// The staged case an ordinary operator reaches: they ran --cli-only once,
+	// so the CLI is current and the images are not, and they run --cli-only
+	// again. Both in-scope verdicts read "no", and judging the summary on the
+	// RAW availability still told them to remove --dry-run and run an update
+	// that would do nothing.
+	withScopeFlags(t, true, false, false)
+	withVersion(t, "0.9.4-dev.168")
+
+	got := dryRunOutput(t,
+		config.State{Channel: "dev", ImageTag: "0.9.3"},
+		selfupdate.CheckResult{
+			UpdateAvail:    false,
+			CurrentVersion: "0.9.4-dev.168",
+			LatestVersion:  "v0.9.4-dev.168",
+		},
+	)
+
+	requireLineValue(t, got, "CLI update", "no (already current)")
+	requireLineValue(t, got, "Image update", "no (excluded by flags)")
+	requireContains(t, got, "this installation is current")
+	if strings.Contains(got, "Remove --dry-run to execute") {
+		t.Errorf("nothing in scope will change, so nothing is worth running\n--- got ---\n%s", got)
+	}
+}
+
+func TestRunUpdateDryRun_anUnorderableImageTagDoesNotAbortThePreview(t *testing.T) {
+	// `latest` is what ImageTagForVersion falls back to and what an operator
+	// on a private registry may set, and it is not a version. Ordering it
+	// against a release errors, and refusing the read-only preview over a
+	// value the real update handles by equality makes the preview stricter
+	// than the command it previews.
+	withScopeFlags(t, false, false, false)
+	withVersion(t, "0.9.3")
+
+	got := dryRunOutput(t,
+		config.State{Channel: "stable", ImageTag: "latest"},
+		selfupdate.CheckResult{
+			UpdateAvail:    true,
+			CurrentVersion: "0.9.3",
+			LatestVersion:  "v0.9.4",
+		},
+	)
+
+	requireLineValue(t, got, "Image update", "yes")
 }
 
 func TestRunUpdateDryRun_cliOnlySuppressesTheRestart(t *testing.T) {
@@ -160,7 +213,7 @@ func TestRunUpdateDryRun_cliOnlySuppressesTheRestart(t *testing.T) {
 		},
 	)
 
-	requireContains(t, got, "no (excluded by flags)")
+	requireLineValue(t, got, "Image update", "no (excluded by flags)")
 	requireLineValue(t, got, "Restart after pull", "no (nothing to pull)")
 }
 
@@ -182,25 +235,68 @@ func TestRunUpdateDryRun_noRestartFlagIsNotTheSameAsNothingToPull(t *testing.T) 
 	requireLineValue(t, got, "Restart after pull", "no (excluded by flags)")
 }
 
-// requireLineValue asserts the rendered value of one key-value line. The
-// separator is whatever padding the UI chose, so the line is matched by its
-// key and then read for its value rather than reconstructed.
+// requireLineValue asserts the rendered value of one key-value line.
+//
+// “ui.KeyValue“ always renders the key followed by exactly one colon, so the
+// line splits on that rather than being unwrapped prefix by prefix. Comparing
+// the whole key also stops one key matching another's prefix.
 func requireLineValue(t *testing.T, out, key, want string) {
 	t.Helper()
 	for line := range strings.SplitSeq(out, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, key) {
+		lineKey, value, found := strings.Cut(strings.TrimSpace(line), ":")
+		if !found || strings.TrimSpace(lineKey) != key {
 			continue
 		}
-		value := strings.TrimSpace(
-			strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, key)), ":"),
-		)
-		if value != want {
-			t.Errorf("%s = %q, want %q\n--- got ---\n%s", key, value, want, out)
+		if got := strings.TrimSpace(value); got != want {
+			t.Errorf("%s = %q, want %q\n--- got ---\n%s", key, got, want, out)
 		}
 		return
 	}
 	t.Errorf("no %q line in output\n--- got ---\n%s", key, out)
+}
+
+func TestUpdateVerdict(t *testing.T) {
+	cases := []struct {
+		name      string
+		inScope   bool
+		available bool
+		want      string
+	}{
+		{"out of scope reads as the operator's own flag", false, true, "no (excluded by flags)"},
+		{"in scope and current reads as the installation", true, false, "no (already current)"},
+		{"in scope and behind is the only yes", true, true, "yes"},
+		{"out of scope wins over currency", false, false, "no (excluded by flags)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := updateVerdict(tc.inScope, tc.available); got != tc.want {
+				t.Errorf("updateVerdict(%v, %v) = %q, want %q",
+					tc.inScope, tc.available, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRestartVerdict(t *testing.T) {
+	cases := []struct {
+		name        string
+		pullsImages bool
+		noRestart   bool
+		want        string
+	}{
+		{"nothing to pull is the installation's state", false, false, "no (nothing to pull)"},
+		{"nothing to pull outranks the flag", false, true, "no (nothing to pull)"},
+		{"a pull the operator excluded names the flag", true, true, "no (excluded by flags)"},
+		{"a pull with no exclusion restarts", true, false, "yes"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := restartVerdict(tc.pullsImages, tc.noRestart); got != tc.want {
+				t.Errorf("restartVerdict(%v, %v) = %q, want %q",
+					tc.pullsImages, tc.noRestart, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestRunUpdateDryRun_noRestartWhenNothingIsPulled(t *testing.T) {

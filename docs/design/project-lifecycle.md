@@ -113,8 +113,15 @@ stateDiagram-v2
     ACTIVE --> ON_HOLD: operator pauses
     ON_HOLD --> ACTIVE: operator resumes
     ON_HOLD --> CANCELLED: operator cancels a paused project
+    PLANNING --> FAILED: its plan failed terminally
+    ACTIVE --> FAILED: its plan failed terminally
+    INTEGRATING --> FAILED: its plan failed terminally
+    EVALUATING --> FAILED: its plan failed terminally
+    FAILED --> PLANNING: a fresh plan is written
+    FAILED --> ACTIVE: a fresh plan is dispatched
     PLANNING --> CANCELLED
     ACTIVE --> CANCELLED
+    FAILED --> CANCELLED
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
@@ -211,23 +218,32 @@ The append runs after the status write commits, so a ledger outage is logged at
 ERROR with every field the row would have carried and never reported to the
 caller as a failed transition: the move already happened.
 
-### There is no failed project
+### A failed project mirrors a failed plan, and nothing else
 
-`ProjectStatus` has no failure value, and this is a design decision rather than
-an omission.
+`ProjectStatus.FAILED` exists, and it is reached from exactly one place: the
+rollup mirroring `PlanStatus.FAILED`. Nothing else derives it.
 
-Nothing downstream can honestly derive that an initiative is dead. A
-completion-oracle `REJECT` routes a task back to `IN_PROGRESS` for rework, not to
-failure. A task that does reach `FAILED` stays reassignable (`FAILED -> ASSIGNED`
-in the task state machine). So a derived failure would flap the moment the work
-was retried, and it would assert a judgement the system is not entitled to make.
+That narrowness is the whole design, because the argument against a derived
+failure is still correct for every other source. A completion-oracle `REJECT`
+routes a task back to `IN_PROGRESS` for rework, not to failure. A task that does
+reach `FAILED` stays reassignable (`FAILED -> ASSIGNED` in the task state
+machine). Derived from task outcomes, a project failure would flap the moment
+the work was retried, and it would assert a judgement the system is not entitled
+to make. So failed and blocked TASKS still surface as **derived counts** on the
+progress view and move no project status at all.
 
-Ending an initiative is a human act, and `CANCELLED` already expresses it.
-Recovery is a human act too: replan. Failed and blocked work surfaces as
-**derived counts** on the progress view, so the operator can tell that an initiative
-needs attention without the system pretending to have decided its fate.
+A terminally-failed PLAN is different in kind: it does not flap, it carries the
+reason somebody can read, and the project it belongs to has nothing left in
+flight. Leaving that project at `PLANNING` was not neutrality, it was the
+dashboard asserting that planning was still happening.
 
-The general rule: **statuses are what the organisation decides; "something is
+`FAILED` is therefore not terminal. A fresh plan walks the project back out
+(`FAILED -> PLANNING` or `-> ACTIVE`), and an operator can still cancel it. It
+is a park, not an ending, and ending an initiative remains a human act that
+`CANCELLED` expresses.
+
+The general rule survives, with its scope stated: **a status is what the
+organisation decides or what its plan has already recorded; "some work went
 wrong" is signal.**
 
 ## Completion

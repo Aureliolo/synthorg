@@ -32,7 +32,7 @@ func TestIsUpdateAvailable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.current+"->"+tt.latest, func(t *testing.T) {
-			got, err := isUpdateAvailable(tt.current, tt.latest)
+			got, err := IsNewer(tt.current, tt.latest)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -40,10 +40,10 @@ func TestIsUpdateAvailable(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("isUpdateAvailable(%q, %q) unexpected error: %v", tt.current, tt.latest, err)
+				t.Fatalf("IsNewer(%q, %q) unexpected error: %v", tt.current, tt.latest, err)
 			}
 			if got != tt.want {
-				t.Errorf("isUpdateAvailable(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
+				t.Errorf("IsNewer(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
 			}
 		})
 	}

@@ -301,10 +301,7 @@ func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
 	// binary, so it is compared to the release rather than assumed to share
 	// the binary's answer: an operator who ran --cli-only has one current and
 	// the other behind.
-	imagesBehind, err := selfupdate.IsNewer(state.ImageTag, result.LatestVersion)
-	if err != nil {
-		return fmt.Errorf("comparing installed image tag: %w", err)
-	}
+	imagesBehind := imagesAreBehind(state.ImageTag, result.LatestVersion)
 
 	out.Section("Dry run: update preview")
 	out.KeyValue("Current CLI", version.Version)
@@ -313,19 +310,41 @@ func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
 	// A remote tag name, so it takes the same scrub every other remote label
 	// on this path takes.
 	out.KeyValue("Latest release", versionLabel(result.LatestVersion))
-	pullsImages := !updateCLIOnly && imagesBehind
+	cliDue := !updateImagesOnly && result.UpdateAvail
+	imagesDue := !updateCLIOnly && imagesBehind
 	out.KeyValue("CLI update", updateVerdict(!updateImagesOnly, result.UpdateAvail))
 	out.KeyValue("Image update", updateVerdict(!updateCLIOnly, imagesBehind))
 	// A restart is what pulling images costs, so it follows the pull rather
 	// than the flag alone: promising one on an installation that will pull
 	// nothing tells the operator to expect downtime they will not get.
-	out.KeyValue("Restart after pull", restartVerdict(pullsImages))
-	if !result.UpdateAvail && !imagesBehind {
+	out.KeyValue("Restart after pull", restartVerdict(imagesDue, updateNoRestart))
+	// Judged on the SCOPED verdicts, not the raw ones. Read raw, an operator
+	// who passed --cli-only on a current CLI was told to remove --dry-run and
+	// run an update that would do nothing, because the out-of-scope half was
+	// behind. That is the same two-surfaces-disagreeing defect this function
+	// exists to fix, one level down.
+	if !cliDue && !imagesDue {
 		out.Success("Nothing to update; this installation is current.")
 		return nil
 	}
 	out.HintNextStep("Remove --dry-run to execute the update")
 	return nil
+}
+
+// imagesAreBehind reports whether the installed image tag trails the release.
+//
+// An unorderable tag is "not known to be behind" rather than an error. The tag
+// is an operator-settable config value documented for private registries, and
+// `latest` is what ImageTagForVersion falls back to, so neither is exotic;
+// the update path itself only ever compares it for equality. Refusing the
+// PREVIEW over a value the real command handles would make the read-only
+// surface the stricter of the two.
+func imagesAreBehind(installed, latest string) bool {
+	behind, err := selfupdate.IsNewer(installed, latest)
+	if err != nil {
+		return installed != targetImageTag(latest)
+	}
+	return behind
 }
 
 // updateVerdict renders one half of the preview.
@@ -348,11 +367,15 @@ func updateVerdict(inScope, available bool) string {
 // applies. --no-restart is the operator's own choice; having nothing to pull
 // is the installation's state, and only one of them changes if they run the
 // update again tomorrow.
-func restartVerdict(pullsImages bool) string {
+//
+// Both inputs are parameters, like updateVerdict's: read off the package flag
+// instead, this could only be exercised through the flag-mutating harness its
+// sibling does not need.
+func restartVerdict(pullsImages, noRestart bool) string {
 	if !pullsImages {
 		return "no (nothing to pull)"
 	}
-	if updateNoRestart {
+	if noRestart {
 		return "no (excluded by flags)"
 	}
 	return "yes"

@@ -508,7 +508,7 @@ class DecompositionService:
 
         Raises:
             DecompositionError: A child failed in a way this level's plan
-                cannot describe. The two it can are recorded on the unit
+                cannot describe. The ones it can are recorded on the unit
                 instead; see :mod:`._child_failure`.
         """
         if not budget.enabled:
@@ -557,9 +557,9 @@ class DecompositionService:
                     child_task, child_ctx, budget, ledger=ledger
                 )
             except DecompositionError as exc:
-                # Two child failures leave this level's plan usable, so the
-                # unit dispatches carrying a reason rather than discarding
-                # every level already paid for. Which two, and why nothing
+                # A child failure that leaves this level's plan usable
+                # dispatches the unit carrying a reason rather than discarding
+                # every level already paid for. Which ones, and why nothing
                 # else, lives in `_child_failure`.
                 reason = absorbed_child_reason(
                     exc,

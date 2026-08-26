@@ -200,6 +200,31 @@ Two derived markers, both from operator settings:
 - **runaway**: spend has passed `cockpit.runaway_cost_percent` of the task's
   `budget_limit`.
 
+### A live run that drives no task
+
+The scan above is keyed on task status, so it sees an agent only while a task
+it holds reads `IN_PROGRESS` or `BLOCKED`. Real work falls outside that and was
+invisible: a decomposition planning session runs as a staffed agent, for turns,
+against a real bill, and drives no task row at all, because the objective it is
+planning stays at `CREATED` until dispatch. A live run showed the org planning
+for 54 minutes under the heading "Nothing is running".
+
+Those runs get a row of their own, built from the live agent-state row alone,
+which is the whole answer for them: the turn count, the spend and the last
+activity are all written there per turn. `AgentActivity.task_id` and `.status`
+are therefore nullable, and the dashboard says what is true of the RUN rather
+than borrowing a status from a task that does not exist.
+
+Two things follow. **Runaway is never flagged** on such a row: the marker
+compares spend against the TASK's `budget_limit`, and with no task there is no
+bound to compare to, so a fabricated one would mark healthy work as
+overspending. And **Pause and Kill are absent** from it, because both controls
+address a task id the row does not carry.
+
+Deduplication against the task scan is keyed on the EXECUTION, not the agent:
+one agent can hold a task and a planning session at once, and keying by agent
+drops the session the moment its owner also has work.
+
 ## Settings
 
 | Setting | Default | Effect |

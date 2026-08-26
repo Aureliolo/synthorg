@@ -44,9 +44,9 @@ will know it is done:
 | 7 | 3 waves dispatched, 4 items ran real work (243 tool invocations on one), the all-dead plan correctly derived `mixed_dead` and scheduled a replan | every item failed completion review for having delivered nothing: the review reads the deliverable from a frame store written after the review has already ruled, so a first run can never have one. The replan then exhausted its decomposition retries |
 | 8 | charter intake to approved plan, waves dispatched, real work executed, and a parked question answered from the plan page landed on the plan verbatim | replan hit the generation cap: 3 items completed, 1 failed, 3 parked `dependency_failed`, the plan left `executing` while the rollup re-scheduled a replan the trigger refuses, on every cadence, indefinitely |
 | 9 | the whole product driven through the browser as an operator; 59 findings | plan repair could not converge. The parser broke on the first graph violation, the planner regenerates the whole plan with fresh ids on a targeted correction, and "Request changes" burned all twelve turns, was rejected seven consecutive times by one rule on seven different pairs, then returned 500 after 5m17s |
-| 10 | charter intake, a five-question interview that asked for a timeline unprompted, and the first recursive decomposition the product has ever run: 39 planning sessions, 76 plan corrections that converged, depth 4 against a cap of 5, `unsplit_count=0` on every finished node, and one workstream alone returning 40 leaves | one planning session outran its own ceiling and took the whole tree with it. Session 39 ran 599.7s against `coordination.decomposition_timeout_seconds` at 600, which raises the non-retryable `DecompositionTimeoutError`, and nothing between that raise and the plan absorbs it: plan `planning -> failed`, objective task `created -> failed`, and all 39 levels discarded after 1h 48m and 2.3M tokens. The graceful bound that returns a partial tree was two sessions from firing (`sessions_remaining=2` of 40) |
-| 10b | the same brief re-run against a fix for the ceiling, on a three-question interview; 3 planning sessions, 13 subtasks, 3 levels | the same defect through a **third** bound the fix did not cover. A depth-2 session spent all 12 turns on `search_memory`, got `ranked_count=0` on all 17 calls, never once called `submit_decomposition_plan`, and no stagnation detector fired (`extensions_granted=0`). Turn exhaustion raises the **base** `DecompositionError`, which the parent does not absorb because that type is also every genuine fault, so one stuck node discarded the tree again after 3m 56s |
-| 10c | re-run against fixes for all three bounds. 21 minutes, ~21 planning sessions, a tree to **depth 4** with subtrees of 20, 15, 12 and 11 leaves, and **both previously-fatal bounds absorbed live**: a wall-clock ceiling at depth 3 and turn exhaustion at depth 2, each costing one unit's split rather than the tree | the two caps that size a level contradict each other, and the planner cannot obey both. At the last permitted depth the atomicity gate cannot ask for depth, so it orders "split them into more units AT THIS LEVEL" while naming only per-unit limits; it has no access to `max_subtasks` and never mentions it. The planner complied, produced 11 units against a cap of 10, and `DecompositionSubtaskLimitError` failed the whole tree. Two owners for "how many units may this level have", and the quieter one wins fatally |
+| 10 (honest arm) | charter intake, a five-question interview that asked for a timeline unprompted, and the first recursive decomposition the product has ever run: 39 planning sessions, 76 plan corrections that converged, depth 4 against a cap of 5, `unsplit_count=0` on every finished node, and one workstream alone returning 40 leaves | **decomposition.** One planning session outran its own ceiling and took the whole tree with it. Session 39 ran 599.7s against `coordination.decomposition_timeout_seconds` at 600, which raises the non-retryable `DecompositionTimeoutError`, and nothing between that raise and the plan absorbs it: plan `planning -> failed`, objective task `created -> failed`, and all 39 levels discarded after 1h 48m and 2.3M tokens. The graceful bound that returns a partial tree was two sessions from firing (`sessions_remaining=2` of 40) |
+| 10b (honest arm) | the same brief re-run against a fix for the ceiling, on a three-question interview; 3 planning sessions, 13 subtasks, 3 levels | **decomposition.** The same defect through a **third** bound the fix did not cover. A depth-2 session spent all 12 turns on `search_memory`, got `ranked_count=0` on all 17 calls, never once called `submit_decomposition_plan`, and no stagnation detector fired (`extensions_granted=0`). Turn exhaustion raises the **base** `DecompositionError`, which the parent does not absorb because that type is also every genuine fault, so one stuck node discarded the tree again after 3m 56s |
+| 10c (honest arm) | re-run against fixes for all three bounds. 21 minutes, ~21 planning sessions, a tree to **depth 4** with subtrees of 20, 15, 12 and 11 leaves, and **both previously-fatal bounds absorbed live**: a wall-clock ceiling at depth 3 and turn exhaustion at depth 2, each costing one unit's split rather than the tree | **decomposition.** The two caps that size a level contradict each other, and the planner cannot obey both. At the last permitted depth the atomicity gate cannot ask for depth, so it orders "split them into more units AT THIS LEVEL" while naming only per-unit limits; it has no access to `max_subtasks` and never mentions it. The planner complied, produced 11 units against a cap of 10, and `DecompositionSubtaskLimitError` failed the whole tree. Two owners for "how many units may this level have", and the quieter one wins fatally |
 
 ## Where the stop has moved
 
@@ -65,6 +65,19 @@ decomposition shipped on by default days earlier, and had never run in the
 product. Its own machinery worked. What did not was the interaction between a
 per-node bound and a tree of 39 nodes, which no round before it could have
 reached.
+
+That ordering inverts the round's own premise, and the inversion is the useful
+part. The round was scoped to run BEFORE the tree work, to decide whether the
+tree work was what unblocked the product: a stop upstream of decomposition would
+have said no, a stop at or below it would have said yes. It ran after, so
+neither branch can be evaluated as written. What it produced instead is a third
+answer the question did not allow for. The stop is INSIDE the tree machinery,
+which means the tree work was necessary (no earlier round could reach a
+39-node tree at all) and was not sufficient (three separate per-node bounds each
+took the whole tree down before the loop could get past decomposition). Running
+it first would have measured the product without the mechanism whose bounds
+turned out to be the stop, and answered a question about a system that no longer
+exists.
 
 Its second attempt is the more useful half, because it turned one instance into
 a rule. A child planning session can end without a plan three ways: the planner
@@ -99,10 +112,14 @@ absolute.
 ## How to add a row
 
 A round's row is written when the round stops, and it is written whether or not
-the round reached the tail. Record the stage it stopped at against the edges in
+the round reached the tail. Name the arm beside the round, since it is the one
+axis the rounds vary on. Open the reason with the stage it stopped at, named
+from the edges in
 [what each edge owes you](../guides/end-to-end-run.md#what-each-edge-owes-you),
-and state the reason in one sentence that names the mechanism rather than the
-symptom.
+then state in one sentence what stopped it, naming the mechanism rather than the
+symptom. Rounds 1 to 9 carry no arm, because none of them reached the answer
+that distinguishes the two and the record does not say which was given; do not
+infer one.
 
 The round's own success metric is **whether the stop point moved downstream**
 of the previous round's, not how many findings it produced. Rounds have been

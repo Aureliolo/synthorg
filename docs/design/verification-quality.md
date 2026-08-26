@@ -504,6 +504,16 @@ Two things then happen without an operator watching:
   and registers the agent, which it did not before: the tail from "human
   approves" to "agent exists" was unreachable, so auto-hire would have been
   theatre.
+
+    An approved hire can still be **unbindable**, and that is a third outcome
+    rather than a failure to retry: the request names no `(provider, model)`
+    pair, or names one whose connection or model the operator has since
+    removed. No sweep changes that, and one such request re-failed on every
+    pass for seven days with nothing on any surface saying so. It is now
+    withdrawn and the operator told, which is the honest end state: the hire
+    the human authorised cannot happen as written, so the decision goes back
+    to them rather than being retried forever. A transient failure is still
+    just retried.
 - **The park heals**, level-triggered. `engine/review_staffing/reconciler.py`
   sweeps tasks parked on either staffing reason and walks each one
   `BLOCKED -> IN_REVIEW` once an eligible holder exists, so the review runs

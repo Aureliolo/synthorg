@@ -62,6 +62,18 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     never appear as running at all, and marks the agent idle in a `finally`,
     naming its own execution so a sibling dispatch's row is left alone.
 
+    The engine is not the only writer. The decomposition planning session
+    builds its own loop rather than going through `AgentEngine`, so it claims
+    and releases the row itself and wires the same observer; it was otherwise
+    the one agent run that appeared nowhere.
+
+    The clear is **shielded**. An `await` in a `finally` is not, and a row left
+    behind here is worse than stale: the write is a compare-and-set on
+    execution ownership, so a later run presents a different execution id, is
+    refused, and is refused permanently. Nothing reaps an `EXECUTING` row and
+    the row is durable, so one interrupted clear would cost that agent every
+    live-state read from then on.
+
 **Supporting models:**
 
 `TerminationReason`

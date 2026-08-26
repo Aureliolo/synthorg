@@ -92,9 +92,11 @@ the product.
 
 ## The objective
 
-Both arms file the **same** sentence, verbatim:
-
-> I want a tetris game I can play in the browser, with a shared leaderboard.
+Both arms file the **same** sentence, verbatim, and it is stated in exactly one
+place: **[the round log](../../../docs/reference/loop-round-log.md#the-brief)**.
+Read it from there. The log is one table across every round, so a brief that
+drifts between copies silently changes what every number in it means, and a
+second copy here is how that drift starts.
 
 That is the whole brief. Everything else is left for the org to ask:
 
