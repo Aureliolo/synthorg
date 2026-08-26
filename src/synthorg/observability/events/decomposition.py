@@ -139,6 +139,17 @@ own plan is valid, so the unit dispatches carrying the reason. Distinct from the
 two backstop events because no bound bound here: the depth and the budget were
 both available and the planner could not comply."""
 
+DECOMPOSITION_CHILD_CEILING_ABSORBED: Final[str] = (
+    "decomposition.child_ceiling_absorbed"
+)
+"""A child's planning session outran its ceiling and the level above kept its plan.
+
+Its own event rather than a variant of ``DECOMPOSITION_PLANNER_DECLINED``
+because the remedy differs: a planner that could not comply wants a narrower
+objective, while a session that ran out of clock wants a higher ceiling. Also
+distinct from ``DECOMPOSITION_FAILED``, which is what the same breach still
+does at the root, where there is no plan above it to carry the unit."""
+
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""
 

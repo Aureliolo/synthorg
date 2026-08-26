@@ -236,8 +236,29 @@ number.
 The session budget is the one that stops GRACEFULLY, which is why it exists
 beside the wall-clock ceilings rather than instead of one. Past it no further
 child session is opened, the tree returns what it has, and the units it could
-not split say so. The wall-clock ceiling raises and discards every level
-already paid for.
+not split say so.
+
+**A per-session ceiling bounds one node, so it ends one node.** The ceiling
+exists so a level waiting on a provider that never answers cannot hold the
+tree. Letting its breach propagate does the opposite: it hands every node in a
+deep tree an independent chance to destroy every other node's work. A live run
+spent 39 planning sessions and 1h 48m, reached `sessions_remaining=2` of 40,
+and discarded every level because session 39 ran 599.7s against the 600s
+ceiling while it was in the last-level correction loop.
+
+So a child whose session outruns the ceiling is absorbed by the level that
+asked for it, exactly as a child the planner could not split is: that level
+already holds a valid plan, the unit dispatches carrying
+`SESSION_CEILING_BACKSTOP` as its reason, and the tree survives. The two
+remaining bounds are what stop this buying unbounded time, and neither is
+weakened: the session budget still caps how many ceilings a tree can pay, and
+the whole-tree ceiling still fires as a bare `TimeoutError` that no handler
+absorbs. At the ROOT there is no plan above to carry the unit, so the same
+breach still fails the decomposition and says so.
+
+The whole-tree ceiling remains the one that raises and discards every level
+already paid for, which is why it is set well above a real tree rather than
+at it.
 
 The tree ceiling is not a multiple of the per-session one and cannot be derived
 from the depth cap: sessions scale with the NODE COUNT, which is the branching
@@ -249,8 +270,12 @@ bounds a tree's cost. Two of the four callers are request handlers.
 ### The reported condition
 
 A unit that reached the plan still oversized carries `PlanItem.unsplit_reason`,
-naming the rule that fired, both numbers, and which of the three bounds stopped
-the split. It is written by the projection from what the service recorded, and
+naming the rule that fired, both numbers, and which bound stopped the split.
+There are four phrasings and they are kept apart because the remedies differ:
+the depth backstop and the session budget each want their own bound raised,
+`SESSION_CEILING_BACKSTOP` wants the per-session ceiling raised, and
+`PLANNER_DECLINED` wants a narrower objective because no bound was reached at
+all. It is written by the projection from what the service recorded, and
 it is deliberately ABSENT from `PlanItemPayload`: an operator editing the item
 has just revised it, and a note about the version they replaced describes
 nothing.

@@ -18,6 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.atomicity import (
     DEPTH_BACKSTOP,
     PLANNER_DECLINED,
+    SESSION_CEILING_BACKSTOP,
     SESSIONS_BACKSTOP,
 )
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
@@ -30,6 +31,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.errors import (
     DecompositionError,
+    DecompositionTimeoutError,
     DecompositionUnsplittableError,
 )
 from synthorg.settings.errors import SettingNotFoundError
@@ -694,6 +696,94 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
             )
 
         assert not isinstance(caught.value, DecompositionUnsplittableError)
+
+
+class TestAChildSessionThatOutranItsCeilingKeepsTheTree:
+    """A per-session ceiling is a bound on ONE node, not on the tree.
+
+    The ceiling exists so a level waiting on a provider that never answers
+    cannot hold the tree. On a deep tree it also hands every node an
+    independent chance to destroy the other nodes' work, which is the opposite
+    of what it is for: a live run spent thirty-nine planning sessions and one
+    hour forty-eight minutes, reached ``sessions_remaining=2`` of forty, and
+    then discarded every level because session thirty-nine ran 599.7 seconds
+    against a six-hundred-second ceiling.
+
+    The level that ASKED for that child already holds a valid plan, exactly as
+    it does when the child could not be split, so the unit dispatches carrying
+    the reason instead.
+    """
+
+    async def test_the_level_that_asked_keeps_its_plan(self) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionTimeoutError(
+                "Decomposition outran its planning-session wall-clock ceiling"
+            )
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert {str(task.id) for task in result.leaf_tasks} == {
+            sid("big"),
+            sid("small"),
+        }
+
+    async def test_the_unit_says_its_planning_session_ran_out_of_time(self) -> None:
+        # The operator needs the two remedies to differ: a planner that could
+        # not comply wants a narrower objective, while a session that ran out
+        # of clock wants a higher ceiling. One backstop phrase for both would
+        # send every reader to the wrong one half the time.
+        service = _service_whose_child_level_fails(
+            DecompositionTimeoutError(
+                "Decomposition outran its planning-session wall-clock ceiling"
+            )
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        reason = _definition(sid("big"), result).unsplit_reason
+        assert reason is not None
+        assert SESSION_CEILING_BACKSTOP in reason
+
+    async def test_a_sibling_that_was_never_oversized_still_carries_no_reason(
+        self,
+    ) -> None:
+        service = _service_whose_child_level_fails(
+            DecompositionTimeoutError(
+                "Decomposition outran its planning-session wall-clock ceiling"
+            )
+        )
+
+        result = await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert _definition(sid("small"), result).unsplit_reason is None
+
+    async def test_the_root_session_outrunning_its_ceiling_still_fails(self) -> None:
+        # Absorbing a child's ceiling is only safe because a valid plan exists
+        # above it to carry the unit. The root has nothing above it, so the
+        # same breach there is a decomposition that produced nothing and must
+        # still say so rather than returning an empty tree.
+        service = DecompositionService(
+            _RefusingStrategy(
+                {},
+                failure=DecompositionTimeoutError(
+                    "Decomposition outran its planning-session wall-clock ceiling"
+                ),
+            ),
+            TaskStructureClassifier(),
+            config_resolver=_resolver(recursion_enabled=True),
+        )
+
+        with pytest.raises(DecompositionTimeoutError):
+            await service.decompose_task(
+                _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+            )
 
 
 class TestASmallObjectiveStaysSmall:

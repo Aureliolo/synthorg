@@ -165,11 +165,15 @@ class SubtaskAtomicityPolicy:
 
 
 #: What stopped a split, named so the reason on the plan says which bound the
-#: operator can move. Two backstops and one refusal, because they are answered
-#: differently: raise the depth, raise the tree's session budget, or accept a
-#: unit the planner could not express any smaller.
+#: operator can move. Three backstops and one refusal, because they are
+#: answered differently: raise the depth, raise the tree's session budget,
+#: raise the per-session ceiling, or accept a unit the planner could not
+#: express any smaller.
 DEPTH_BACKSTOP: Final[str] = "the depth backstop was reached"
 SESSIONS_BACKSTOP: Final[str] = "the tree's planning budget was spent"
+SESSION_CEILING_BACKSTOP: Final[str] = (
+    "its planning session outran the per-session wall-clock ceiling"
+)
 PLANNER_DECLINED: Final[str] = "the planner could not split it further"
 
 
@@ -207,6 +211,7 @@ __all__ = [
     "MAX_SATISFIED_CRITERIA",
     "PLANNER_DECLINED",
     "SESSIONS_BACKSTOP",
+    "SESSION_CEILING_BACKSTOP",
     "AtomicityAssessment",
     "AtomicityVerdict",
     "SubtaskAtomicityPolicy",
