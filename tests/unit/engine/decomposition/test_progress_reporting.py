@@ -18,6 +18,7 @@ from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._progress_publish import publish_progress
 from synthorg.engine.decomposition._recursion import TreeSessionLedger
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
@@ -25,8 +26,11 @@ from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,
 )
+from synthorg.engine.decomposition.progress_protocol import (
+    DecompositionProgressReporter,
+)
 from synthorg.engine.decomposition.service import DecompositionService
-from tests._shared import as_uuid, sid
+from tests._shared import FakeClock, as_uuid, sid
 from tests.unit.engine.decomposition._doubles import Bounds, ScriptedStrategy
 from tests.unit.engine.decomposition._doubles import (
     config_resolver as scripted_resolver,
@@ -118,7 +122,7 @@ def _subtask(label: str) -> SubtaskDefinition:
     )
 
 
-def _service(reporter: object) -> DecompositionService:
+def _service(reporter: DecompositionProgressReporter) -> DecompositionService:
     """Build a service over a flat two-unit plan, reporting into *reporter*.
 
     Returns:
@@ -133,7 +137,7 @@ def _service(reporter: object) -> DecompositionService:
         ScriptedStrategy({str(as_uuid("root")): plan}),
         TaskStructureClassifier(),
         config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
-        progress_reporter=reporter,  # type: ignore[arg-type]
+        progress_reporter=reporter,
     )
 
 
@@ -205,12 +209,37 @@ class TestReportingCannotBreakTheRun:
 
 
 class TestSilentWhenThereIsNothingToAddress:
+    """Asserted against ``publish_progress``, which owns the rule.
+
+    The service delegates to it and holds no second copy of the condition, so
+    testing the service's own wrapper would pin the delegation rather than the
+    behaviour, and would only reach it through a private method.
+    """
+
     async def test_a_ledger_naming_no_objective_reports_nothing(self) -> None:
         # A harness builds the ledger itself and never names an objective, so
         # a report would address a row that does not exist.
         reporter = _RecordingReporter()
-        service = _service(reporter)
 
-        await service._report_progress(TreeSessionLedger(remaining=1, limit=1))
+        await publish_progress(
+            TreeSessionLedger(remaining=1, limit=1),
+            reporter=reporter,
+            clock=FakeClock(),
+        )
 
         assert reporter.reports == []
+
+    async def test_a_named_ledger_does_report(self) -> None:
+        # The complement, so the case above is silence for the stated reason
+        # rather than silence because nothing publishes at all.
+        reporter = _RecordingReporter()
+
+        await publish_progress(
+            TreeSessionLedger(
+                remaining=1, limit=1, objective_task_id=str(as_uuid("root"))
+            ),
+            reporter=reporter,
+            clock=FakeClock(),
+        )
+
+        assert [task_id for task_id, _ in reporter.reports] == [str(as_uuid("root"))]

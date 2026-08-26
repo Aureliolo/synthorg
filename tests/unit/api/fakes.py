@@ -1597,7 +1597,7 @@ class FakePlanRepository:
         /,
         *,
         progress: DecompositionProgress,
-    ) -> bool:
+    ) -> Plan | None:
         """Stamp progress on the objective's planning shell.
 
         Conditional on the status the same way the real backends are, so a
@@ -1605,18 +1605,16 @@ class FakePlanRepository:
         decomposition sees the stamp refused rather than reviving the row.
 
         Returns:
-            ``True`` when a shell took the stamp.
+            The stamped shell, or ``None`` when none took it.
         """
-        stamped = False
+        stamped: Plan | None = None
         for plan_id, plan in self._plans.items():
             if (
                 plan.parent_task_id == parent_task_id
                 and plan.status is PlanStatus.PLANNING
             ):
-                self._plans[plan_id] = plan.model_copy(
-                    update={"decomposition_progress": progress}
-                )
-                stamped = True
+                stamped = plan.model_copy(update={"decomposition_progress": progress})
+                self._plans[plan_id] = stamped
         return stamped
 
     async def delete_if_no_live_tasks(

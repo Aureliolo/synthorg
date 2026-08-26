@@ -429,28 +429,32 @@ class PostgresPlanRepository:
         /,
         *,
         progress: DecompositionProgress,
-    ) -> bool:
+    ) -> Plan | None:
         """Stamp decomposition progress on the objective's ``PLANNING`` shell.
 
         Returns:
-            ``True`` when a shell took the stamp.
+            The stamped shell, or ``None`` when none was there to take it.
 
         Raises:
             QueryError: If the database operation fails.
         """
         msg = f"Failed to record decomposition progress for {parent_task_id!r}"
         try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
                 await cur.execute(
-                    "UPDATE plans SET decomposition_progress=%s "
-                    "WHERE parent_task_id=%s AND status=%s",
+                    f"UPDATE plans SET decomposition_progress=%s "  # noqa: S608
+                    f"WHERE parent_task_id=%s AND status=%s RETURNING {COLUMNS}",
                     (
                         serialise_progress(progress),
                         parent_task_id,
                         PlanStatus.PLANNING.value,
                     ),
                 )
-                return cur.rowcount > 0
+                row = await cur.fetchone()
+                return row_to_plan(row) if row is not None else None
         except psycopg.Error as exc:
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,

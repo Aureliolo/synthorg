@@ -28,6 +28,7 @@ from synthorg.api.dto_project_progress import (
     ProjectProgressCounts,
     ProjectProgressItem,
 )
+from synthorg.core.pagination import collect_all
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.project import Project
@@ -49,10 +50,11 @@ from synthorg.persistence.task_protocol import TaskFilterSpec
 #: this at the request boundary, so one page is the normal case.
 _TASK_PAGE_SIZE: Final[int] = 200
 
-#: How many of a project's plans the unlinked fallback reads before picking the
-#: most recent. Only the newest is wanted, and a project accumulates one plan
-#: per replan, so this is a ceiling on a small number rather than a page size
-#: anything is expected to fill.
+#: Rows per query while the unlinked fallback drains a project's plans. Every
+#: page is read, because the repository orders by id and the newest is wanted:
+#: taking the newest of ONE page picks the newest of an arbitrary subset, which
+#: for a project past this many plans is a different plan than the answer. A
+#: project accumulates one plan per replan, so the drain is normally one page.
 _PLAN_PAGE_SIZE: Final[int] = 200
 
 
@@ -163,9 +165,16 @@ class ProjectProgressAssembler:
             )
             if linked is not None:
                 return linked
-        plans = await self._persistence.plans.query(
-            PlanFilterSpec(project=NotBlankStr(str(project.id))),
-            limit=_PLAN_PAGE_SIZE,
+        # Drained rather than read one page deep: the repository orders by id
+        # and this wants the newest by creation, so a single page is an
+        # arbitrary subset to take a maximum over.
+        plans = await collect_all(
+            lambda limit, offset: self._persistence.plans.query(
+                PlanFilterSpec(project=NotBlankStr(str(project.id))),
+                limit=limit,
+                offset=offset,
+            ),
+            page_size=_PLAN_PAGE_SIZE,
         )
         if not plans:
             return None

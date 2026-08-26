@@ -39,6 +39,9 @@ const NOT_A_DESTINATION: ReadonlySet<string> = new Set<string>([
  */
 const RESOLUTION_BASE = 'https://return-to.invalid'
 
+/** A path separator smuggled through the parse as an escape, either case. */
+const ENCODED_SEPARATOR = /%2f/i
+
 /**
  * Read the destination out of a query string, refusing anything off-site.
  *
@@ -72,6 +75,13 @@ export function readReturnTo(search: string): string {
   // A path that is itself scheme-relative: what `/..//host` collapses to once
   // the dot segments are resolved, on an origin that still reads as ours.
   if (resolved.pathname.startsWith('//')) return DEFAULT_DESTINATION
+  // An encoded separator survives the parse and every resolution after it
+  // (measured: `/.%2f%2fhost` stays on this origin however many times it is
+  // resolved), so this is not closing an escape. It refuses a shape no route
+  // this dashboard serves can have: every path segment here is a slug or a
+  // UUID, so a segment carrying an encoded slash arrived from somebody
+  // constructing one, and the only place it can land is a 404.
+  if (ENCODED_SEPARATOR.test(resolved.pathname)) return DEFAULT_DESTINATION
   if (NOT_A_DESTINATION.has(resolved.pathname)) return DEFAULT_DESTINATION
   return resolved.pathname + resolved.search + resolved.hash
 }

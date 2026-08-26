@@ -5,9 +5,14 @@ Thin wrapper over :class:`PlanRepository` so callers do not reach into
 ``app_state.persistence.plans`` directly. Owns the plan's lifecycle
 transitions (edit -> new revision, request-changes -> back to draft, and the
 approval-decision sync -> approved/rejected) with uniform ``API_PLAN_*`` audit
-logging, mirroring :class:`ProjectService`. A terminal plan cannot be reworked,
-and every write is version-guarded so a concurrent edit cannot silently clobber
-another.
+logging, mirroring :class:`ProjectService`. A terminal plan cannot be reworked.
+
+Every write that REVISES a plan is version-guarded, so a concurrent edit
+cannot silently clobber another. :meth:`PlanService.record_progress` is
+deliberately not: it stamps how far a running decomposition has got, and the
+decomposition ends by claiming its shell at the version it started from, so a
+guarded stamp would fail the very write it exists to describe. Its condition is
+the plan's STATUS instead, applied at write time.
 """
 
 from pydantic import ValidationError as PydanticValidationError
@@ -439,7 +444,7 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
 
     async def record_progress(
         self, *, parent_task_id: NotBlankStr, progress: DecompositionProgress
-    ) -> None:
+    ) -> Plan | None:
         """Stamp how far the decomposition writing a plan has got.
 
         Addressed by the objective task rather than the plan id, because the
@@ -471,18 +476,23 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
             parent_task_id: The objective the tree is being planned for.
             progress: How far it has got.
 
+        Returns:
+            The stamped shell, so the caller can announce it to a page holding
+            it open, or ``None`` when nothing took the stamp.
+
         Raises:
             QueryError: Repository write failure.
         """
         stamped = await self._repo.record_decomposition_progress(
             parent_task_id, progress=progress
         )
-        if not stamped:
+        if stamped is None:
             logger.debug(
                 API_PLAN_UPDATED,
                 parent_task_id=parent_task_id,
                 note="no planning shell took the progress stamp",
             )
+        return stamped
 
     async def record_decomposed(self, decomposed: Plan, *, shell: Plan | None) -> None:
         """Persist a decomposed plan over its planning shell.

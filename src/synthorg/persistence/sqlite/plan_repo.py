@@ -438,11 +438,11 @@ class SQLitePlanRepository:
         /,
         *,
         progress: DecompositionProgress,
-    ) -> bool:
+    ) -> Plan | None:
         """Stamp decomposition progress on the objective's ``PLANNING`` shell.
 
         Returns:
-            ``True`` when a shell took the stamp.
+            The stamped shell, or ``None`` when none was there to take it.
 
         Raises:
             QueryError: If the operation fails.
@@ -450,14 +450,15 @@ class SQLitePlanRepository:
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
-                    "UPDATE plans SET decomposition_progress=? "
-                    "WHERE parent_task_id=? AND status=?",
+                    f"UPDATE plans SET decomposition_progress=? "  # noqa: S608
+                    f"WHERE parent_task_id=? AND status=? RETURNING {COLUMNS}",
                     (
                         serialise_progress(progress),
                         parent_task_id,
                         PlanStatus.PLANNING.value,
                     ),
                 )
+                row = await cursor.fetchone()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
@@ -469,7 +470,7 @@ class SQLitePlanRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-            return cursor.rowcount > 0
+            return row_to_plan(row) if row is not None else None
 
     async def delete_if_no_live_tasks(
         self,

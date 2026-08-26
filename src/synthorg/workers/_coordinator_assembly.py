@@ -471,6 +471,10 @@ async def _build_runtime_coordinator(
             # plan reads PLANNING with zero items for the whole run with
             # nothing to say whether that is progress or a hang.
             progress_reporter=PlanRowProgressReporter(app_state),
+            # Read only through that reporter, and it is the deployment's own
+            # clock: a snapshot stamped off a different one is the one field
+            # an operator uses to tell planning from hanging.
+            clock=app_state.clock,
         ),
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,

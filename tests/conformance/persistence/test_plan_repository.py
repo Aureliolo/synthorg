@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     DuplicateRecordError,
@@ -41,6 +42,15 @@ _SQLSTATE_FOREIGN_KEY = "23503"
 #: rather than imported so a change to the production set has to be made
 #: deliberately in both places.
 _TERMINAL_STATUSES = frozenset({"completed", "cancelled", "rejected"})
+
+#: A mid-run snapshot: two levels deep, part of the way through its budget.
+_PROGRESS = DecompositionProgress(
+    sessions_spent=12,
+    sessions_limit=40,
+    deepest_level=2,
+    units_planned=27,
+    updated_at=datetime(2026, 1, 1, 12, 30, tzinfo=UTC),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -294,6 +304,95 @@ class TestPlanRepository:
         assert fetched is not None
         assert fetched.planning_strategy is None
         assert fetched.review_absent_reason is None
+
+    async def test_progress_round_trips_through_both_backends(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The snapshot survives the column it is stored in.
+
+        SQLite stores it as TEXT and Postgres as JSONB, so the two disagree
+        about what an absent value even looks like coming back. Asserting on
+        the reconstructed model is the only reading that holds for both.
+        """
+        await backend.plans.save(_plan(status=PlanStatus.PLANNING))
+
+        stamped = await backend.plans.record_decomposition_progress(
+            NotBlankStr(sid(_PARENT_TASK_ID)), progress=_PROGRESS
+        )
+
+        assert stamped is not None
+        assert stamped.decomposition_progress == _PROGRESS
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.decomposition_progress == _PROGRESS
+
+    async def test_progress_returns_the_shell_it_stamped(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The caller announces the change, so it needs the row, not a flag."""
+        await backend.plans.save(_plan(status=PlanStatus.PLANNING))
+
+        stamped = await backend.plans.record_decomposition_progress(
+            NotBlankStr(sid(_PARENT_TASK_ID)), progress=_PROGRESS
+        )
+
+        assert stamped is not None
+        assert stamped.id == as_uuid("plan-001")
+        assert stamped.status is PlanStatus.PLANNING
+
+    async def test_progress_leaves_the_version_and_timestamp_alone(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A progress line describes a run; it does not revise the plan.
+
+        The decomposition ends by claiming this shell at the version it
+        started from, so a stamp that bumped the version would fail the very
+        write it exists to describe.
+        """
+        await backend.plans.save(_plan(status=PlanStatus.PLANNING))
+
+        stamped = await backend.plans.record_decomposition_progress(
+            NotBlankStr(sid(_PARENT_TASK_ID)), progress=_PROGRESS
+        )
+
+        assert stamped is not None
+        assert stamped.version == 1
+        assert stamped.updated_at == _CREATED_AT
+
+    @pytest.mark.parametrize(
+        "status",
+        [PlanStatus.FAILED, PlanStatus.PENDING_REVIEW, PlanStatus.APPROVED],
+    )
+    async def test_progress_refused_off_the_planning_shell(
+        self, backend: PersistenceBackend, status: PlanStatus
+    ) -> None:
+        """The status is a WRITE condition, so a moved plan takes no stamp.
+
+        The recovery sweep fails a shell whose decomposition died, under a
+        decomposition that may still be reporting. A stamp that landed anyway
+        would revive the plan and discard the reason somebody recorded.
+        """
+        await backend.plans.save(_plan(status=status))
+
+        stamped = await backend.plans.record_decomposition_progress(
+            NotBlankStr(sid(_PARENT_TASK_ID)), progress=_PROGRESS
+        )
+
+        assert stamped is None
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.decomposition_progress is None
+
+    async def test_progress_with_no_plan_at_all(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """An objective with no shell is not an error, just nothing to stamp."""
+        assert (
+            await backend.plans.record_decomposition_progress(
+                NotBlankStr(sid("task-nobody")), progress=_PROGRESS
+            )
+            is None
+        )
 
     async def test_save_upsert(self, backend: PersistenceBackend) -> None:
         plan = _plan()

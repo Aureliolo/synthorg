@@ -12,6 +12,7 @@ import { useMissionControlStore } from '@/stores/mission-control'
 import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { cn } from '@/lib/utils'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { activityRowKey } from '@/utils/activity-rows'
 import { formatCurrency } from '@/utils/format'
 
 const _PAUSE_REASON = 'Paused from mission control'
@@ -22,22 +23,6 @@ const RUNNING_WITHOUT_TASK_STATUS = 'running'
 
 /** What the title slot says for a run that drives no task. */
 const WORK_WITHOUT_TASK_LABEL = 'no task assigned'
-
-/**
- * Identify one row.
- *
- * The task is the identity where there is one, because a single agent can hold
- * two at once and keying on the agent would collapse them into one row. A run
- * driving no task has only the agent, and there is at most one such row per
- * agent by construction: the snapshot adds them only for agents its task scan
- * did not already cover.
- *
- * @param activity - The row to identify.
- * @returns A key unique within one snapshot.
- */
-function rowKey(activity: AgentActivity): string {
-  return activity.task_id ?? activity.agent_id
-}
 
 function statusTone(activity: AgentActivity): string {
   if (activity.is_runaway) return 'text-danger'
@@ -106,9 +91,18 @@ const AgentRow = memo(function AgentRow({
   const executionId = activity.execution_id
   const taskId = activity.task_id
 
+  const headerId = `agent-row-${activityRowKey(activity)}`
+
   return (
-    <div className="rounded-lg border border-border bg-card p-card">
-      <AgentRowHeader activity={activity} headerId={`agent-row-${rowKey(activity)}`} />
+    // Grouped and labelled by the row's own heading. The id was already set on
+    // that heading and referenced by nothing, so a screen reader entering the
+    // row announced its controls with no idea whose work they steer.
+    <div
+      role="group"
+      aria-labelledby={headerId}
+      className="rounded-lg border border-border bg-card p-card"
+    >
+      <AgentRowHeader activity={activity} headerId={headerId} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {/* Both controls address a TASK, so a run driving none cannot offer
@@ -215,7 +209,7 @@ function CockpitAgentList({
   return (
     <div className="space-y-grid-gap">
       {agents.map((activity) => (
-        <AgentRow key={rowKey(activity)} activity={activity} onReplay={onReplay} />
+        <AgentRow key={activityRowKey(activity)} activity={activity} onReplay={onReplay} />
       ))}
     </div>
   )

@@ -7,7 +7,7 @@ bound to its order sit together: ``row_params`` writes positionally in
 same list rather than hand-maintained beside it.
 """
 
-from typing import Final
+from typing import Final, LiteralString
 from uuid import UUID
 
 from psycopg.rows import DictRow
@@ -24,7 +24,11 @@ from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.persistence._shared import coerce_row_timestamp
 
-COLUMNS: Final[str] = (
+# ``LiteralString``, not ``str``: every SQL fragment built from this list is an
+# f-string, and psycopg only accepts a literal query. Typed as ``str`` the
+# constant launders its own literal-ness away and each interpolation reads as
+# an injection site to the checker.
+COLUMNS: Final[LiteralString] = (
     "id, project, project_name, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "

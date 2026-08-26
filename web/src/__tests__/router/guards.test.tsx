@@ -9,6 +9,7 @@ import {
   SetupCompleteGuard,
   SetupGuard,
 } from '@/router/guards'
+import { RETURN_TO_PARAM } from '@/router/return-to'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { renderRoutes } from '../test-utils'
@@ -367,6 +368,57 @@ describe('GuestGuard', () => {
     )
 
     expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByText('Login Form')).not.toBeInTheDocument()
+  })
+
+  // Signing back in resolves here rather than in the form: this is the one
+  // place that sees the transition to authenticated however it happened, so a
+  // session another tab recovered returns this one too.
+  function renderGuestAt(search: string) {
+    renderRoutes(
+      [
+        {
+          path: '/login',
+          element: (
+            <GuestGuard>
+              <div>Login Form</div>
+            </GuestGuard>
+          ),
+        },
+        { path: '/', element: <div>Dashboard</div> },
+        { path: '/plans/:id', element: <div>Plan Detail</div> },
+      ],
+      { initialEntries: [`/login${search}`] },
+    )
+  }
+
+  it('returns the operator to the page their session ended on', () => {
+    useAuthStore.setState({ authStatus: 'authenticated' })
+
+    renderGuestAt(`?${RETURN_TO_PARAM}=%2Fplans%2Fabc`)
+
+    expect(screen.getByText('Plan Detail')).toBeInTheDocument()
+  })
+
+  it('refuses a destination that leaves this origin', () => {
+    // The guard hands its result straight to Navigate, so a destination an
+    // attacker put in the link is a redirect off the dashboard the moment the
+    // operator signs in. Judged on the PARSED url, because the browser strips
+    // tabs and newlines and resolves dot segments before it ever navigates.
+    useAuthStore.setState({ authStatus: 'authenticated' })
+
+    renderGuestAt(`?${RETURN_TO_PARAM}=%2F%09%2Fevil.example`)
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    expect(screen.queryByText('Plan Detail')).not.toBeInTheDocument()
+  })
+
+  it('refuses a destination that would loop back to the login screen', () => {
+    useAuthStore.setState({ authStatus: 'authenticated' })
+
+    renderGuestAt(`?${RETURN_TO_PARAM}=%2Flogin`)
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(screen.queryByText('Login Form')).not.toBeInTheDocument()
   })
 })

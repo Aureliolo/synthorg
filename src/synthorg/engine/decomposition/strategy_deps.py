@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.session_budget import SessionCeilings
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.clock import Clock
 from synthorg.engine.agent_state_recording import AgentStateRepositoryProvider
 from synthorg.engine.decomposition.progress_protocol import (
     DecompositionProgressReporter,
@@ -139,10 +140,18 @@ class DecompositionStrategyDeps:
             answering ``None``) plans without recording liveness.
         progress_reporter: Where the SERVICE publishes how far the tree has
             got, so a plan that is ``PLANNING`` with no items can say whether
-            it is working. The one dependency here belonging to the service
-            rather than to a strategy, and it travels with the rest because a
-            wiring path resolving some of these cannot leave the others at
-            their defaults in silence. ``None`` decomposes without reporting.
+            it is working. One of the two dependencies here belonging to the
+            service rather than to a strategy, and it travels with the rest
+            because a wiring path resolving some of these cannot leave the
+            others at their defaults in silence. ``None`` decomposes without
+            reporting.
+        clock: What stamps each progress snapshot. The other service-owned
+            dependency, and it travels beside the reporter because it is only
+            READ through it: a service left on its own ``SystemClock`` while
+            the deployment runs on another is a snapshot timestamped off a
+            clock nothing else in the process agrees with, and the timestamp
+            is the whole of how a working decomposition is told from a hung
+            one. ``None`` uses the system clock.
     """
 
     provider_selector: ProviderSelector | None = None
@@ -154,6 +163,7 @@ class DecompositionStrategyDeps:
     config_resolver: ConfigResolverProtocol | None = None
     agent_states: AgentStateRepositoryProvider | None = None
     progress_reporter: DecompositionProgressReporter | None = None
+    clock: Clock | None = None
 
     def require_provider_selector(self) -> ProviderSelector:
         """Return the selector, refusing the one field that is not optional.

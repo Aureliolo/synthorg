@@ -62,11 +62,24 @@ describe('readReturnTo', () => {
   it.each([
     ['/..//elsewhere.example', 'dot segments resolving to a scheme-relative host'],
     ['/foo/../..//elsewhere.example', 'the same, buried under a real-looking path'],
-    ['/.%2f%2felsewhere.example', 'the same, with the slashes percent-encoded'],
   ])('refuses %s (%s)', (next) => {
-    // Every one of these starts with a single slash, so a prefix check passes
-    // it, and every one normalises to `//elsewhere.example` by the time the
-    // browser resolves it. This is why the guard parses instead of matching.
+    // Both start with a single slash, so a prefix check passes them, and both
+    // normalise to `//elsewhere.example` by the time the browser resolves
+    // them. This is why the guard parses instead of matching.
+    expect(readReturnTo(search(next))).toBe('/')
+  })
+
+  it.each([
+    ['/.%2f%2felsewhere.example', 'a dot segment ahead of them'],
+    ['/%2f%2felsewhere.example', 'nothing ahead of them'],
+    ['/%2F%2Felsewhere.example', 'upper case, which the parser preserves'],
+  ])('refuses an encoded separator: %s (%s)', (next) => {
+    // NOT because these escape the origin. Measured against the parser, they
+    // do not: the encoding survives resolution, so `/.%2f%2fhost` stays on
+    // this origin however many times it is resolved, and the scheme-relative
+    // check above never sees them. They are refused because no route this
+    // dashboard serves has an encoded slash in a segment, so one arrived from
+    // somebody constructing it and the only place it lands is a 404.
     expect(readReturnTo(search(next))).toBe('/')
   })
 

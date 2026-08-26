@@ -148,7 +148,11 @@ class ProjectProgress(BaseModel):
         default=None,
         description="Status of the executing plan",
     )
-    plan_failure_reason: str | None = Field(
+    # ``NotBlankStr``, because the page renders this instead of the plan and a
+    # blank string is a reason that says nothing while reading as present:
+    # ``None`` is what "no reason recorded" is spelled as, and the two must
+    # not both reach the surface as the same empty panel.
+    plan_failure_reason: NotBlankStr | None = Field(
         default=None,
         description="Why the plan failed, when it did",
     )

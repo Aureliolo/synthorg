@@ -289,6 +289,7 @@ def build_coordinator(  # noqa: PLR0913
         classifier,
         workspace_inventory=project_workspace_service,
         progress_reporter=decomposition.progress_reporter,
+        clock=decomposition.clock,
     )
 
     routing = routing or CoordinatorRoutingDeps()

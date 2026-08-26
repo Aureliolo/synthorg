@@ -31,10 +31,16 @@ vi.mock('@/hooks/useLoginLockout', () => {
 })
 
 import LoginPage from '@/pages/LoginPage'
+import { RETURN_TO_PARAM } from '@/router/return-to'
 
 function renderLogin() {
+  return renderLoginAt('/login')
+}
+
+/** The same page, reached at *entry*, so its query string is readable. */
+function renderLoginAt(entry: string) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <LoginPage />
     </MemoryRouter>,
   )
@@ -489,6 +495,53 @@ describe('LoginPage', () => {
 
       expect(shell?.className).not.toMatch(/\bmin-h-screen\b/)
       expect(shell?.className).not.toMatch(/\bh-screen\b/)
+    })
+  })
+
+  describe('an interrupted session', () => {
+    /**
+     * A session expiring mid-run replaces the page an operator is watching
+     * with what looks like a fresh visit. One did about 50 minutes into a
+     * live run with a decomposition still in flight; nothing said why, and
+     * the run itself was unaffected, so the only thing the silence cost was
+     * the operator's confidence that it had been.
+     */
+    it('says the session ended when one carried the operator here', async () => {
+      installSetupStatus({ kind: 'success', body: setupStatusResponse() })
+
+      renderLoginAt(`/login?${RETURN_TO_PARAM}=%2Fplans%2Fabc`)
+
+      expect(
+        await screen.findByText(/your session ended, so you were signed out/i),
+      ).toBeInTheDocument()
+    })
+
+    it('says nothing on an ordinary visit to the login screen', async () => {
+      installSetupStatus({ kind: 'success', body: setupStatusResponse() })
+
+      renderLoginAt('/login')
+
+      expect(await screen.findByLabelText('Username')).toBeInTheDocument()
+      expect(
+        screen.queryByText(/your session ended, so you were signed out/i),
+      ).not.toBeInTheDocument()
+    })
+
+    it('says nothing during first-run setup', async () => {
+      // Nothing has expired for somebody who has not had a session yet, so
+      // the notice would be telling a first-time operator about a session
+      // they never had.
+      installSetupStatus({
+        kind: 'success',
+        body: setupStatusResponse({ needs_admin: true }),
+      })
+
+      renderLoginAt(`/login?${RETURN_TO_PARAM}=%2Fplans%2Fabc`)
+
+      expect(await screen.findByText('Create Admin Account')).toBeInTheDocument()
+      expect(
+        screen.queryByText(/your session ended, so you were signed out/i),
+      ).not.toBeInTheDocument()
     })
   })
 })

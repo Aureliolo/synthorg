@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
@@ -71,10 +72,22 @@ class MemorySearchArgs(
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format memory entries as human-readable text.
+    """Format memory entries as the fenced text a tool call returns.
+
+    A stored memory is agent-written, so an agent prompt-injected on an
+    earlier run can have persisted an instruction that this retrieval
+    now hands to a different agent as a tool result. Each entry is
+    fenced individually rather than the joined block being fenced once,
+    so a single entry closing the fence cannot un-fence its siblings.
+
+    Category and relevance stay OUTSIDE the fence: both are the
+    retriever's own measurements, not the untrusted content, and an
+    entry that could restate them inside its own text would otherwise
+    be indistinguishable from the ones this layer wrote.
 
     Returns:
-        Result of type ``str``.
+        One fenced block per entry, or a plain sentence when the search
+        matched nothing (there is no untrusted content to fence).
     """
     if not entries:
         return "No memories found."
@@ -85,7 +98,8 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
             if entry.relevance_score is not None
             else ""
         )
-        parts.append(f"[{entry.category.value}]{score} {entry.content}")
+        fenced = wrap_untrusted(TAG_MEMORY_ENTRY, entry.content)
+        parts.append(f"[{entry.category.value}]{score}\n{fenced}")
     return "\n".join(parts)
 
 

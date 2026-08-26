@@ -110,8 +110,23 @@ const SCORE_GROUPING_ALL_TERMS = 400
 const SCORE_DESCRIPTION_ALL_TERMS = 200
 const SCORE_FUZZY = 50
 
-/** Per-term credit within a tier, small enough never to cross one. */
+/** The distance between adjacent tiers, which no bonus may close. */
+const SCORE_TIER_GAP = SCORE_KEY_ALL_TERMS - SCORE_KEY_SOME_TERMS
+
+/** Per-term credit within a tier. */
 const SCORE_PER_TERM = 10
+
+/**
+ * Terms that earn per-term credit, derived so the tier order actually holds.
+ *
+ * "Small enough never to cross a tier" is a claim about the query, not just
+ * about the constant: at ten a term and two hundred between tiers, a query of
+ * twenty terms carries the some-terms tier onto the all-terms tier above it,
+ * and a setting matching most of a long query outranks one matching all of it.
+ * Derived rather than written down, because a later edit to either constant
+ * would otherwise leave the comment true and the code not.
+ */
+const MAX_SCORED_TERMS = Math.ceil(SCORE_TIER_GAP / SCORE_PER_TERM) - 1
 
 function terms(query: string): readonly string[] {
   return normalize(query.trim()).split(' ').filter(Boolean)
@@ -150,7 +165,8 @@ const SCORE_TIERS: readonly ScoreTier[] = [
   },
   (def, q) => {
     const hits = countContaining(def.key, q.terms)
-    return hits > 0 ? SCORE_KEY_SOME_TERMS + hits * SCORE_PER_TERM : null
+    if (hits === 0) return null
+    return SCORE_KEY_SOME_TERMS + Math.min(hits, MAX_SCORED_TERMS) * SCORE_PER_TERM
   },
   // Namespace and group are what an operator browsing rather than naming
   // types, so they rank above prose and below a name.

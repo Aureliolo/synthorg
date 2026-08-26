@@ -1,4 +1,5 @@
 import type { SettingEntry } from '@/api/types/settings'
+import { makeSettingEntry } from '@/__tests__/helpers/factories'
 import {
   entriesToObject,
   serializeEntries,
@@ -8,30 +9,24 @@ import {
   MAX_EDITOR_BYTES,
 } from '@/pages/settings/code-editor-utils'
 
-function makeEntry(overrides: Partial<SettingEntry['definition']> & { value?: string; source?: SettingEntry['source'] } = {}): SettingEntry {
-  const { value = '10', source = 'db', ...defOverrides } = overrides
-  return {
-    definition: {
-      namespace: 'api',
-      key: 'max_retries',
-      type: 'int',
-      default: '10',
-      description: 'Maximum retry attempts',
-      group: 'Execution',
-      level: 'basic',
-      sensitive: false,
-      compose_set: false,
-      env_var_override: null,
-      enum_values: [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-      ...defOverrides,
-    },
-    value,
-    source,
-    updated_at: null,
-  }
+// These cases are about the editor's round trip, so a row is an int with a
+// persisted value: a default-sourced string would exercise neither.
+function makeEntry(
+  overrides: Partial<SettingEntry['definition']> & {
+    value?: string
+    source?: SettingEntry['source']
+  } = {},
+): SettingEntry {
+  return makeSettingEntry({
+    key: 'max_retries',
+    type: 'int',
+    default: '10',
+    description: 'Maximum retry attempts',
+    group: 'Execution',
+    value: '10',
+    source: 'db',
+    ...overrides,
+  })
 }
 
 describe('entriesToObject', () => {

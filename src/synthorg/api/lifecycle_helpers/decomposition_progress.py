@@ -12,8 +12,15 @@ that reaches a durable row. It lives here rather than in the engine because it
 needs the plan service, and the decomposition service deliberately holds no
 repository: it decomposes tasks, and which row carries the answer is a wiring
 question.
+
+It also announces the stamp, for the same reason it writes one: a durable row
+nobody is told about answers the question only for whoever reloads. The plan
+page subscribes to ``plan.updated`` already, so an open page follows the tree
+down its levels rather than showing the snapshot it opened on for the hour the
+decomposition runs.
 """
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.core.decomposition_progress import DecompositionProgress
@@ -57,7 +64,15 @@ class PlanRowProgressReporter:
         except ServiceUnavailableError:
             return
         plans = build_plan_service(backend, clock=self._app_state.clock)
-        await plans.record_progress(
+        stamped = await plans.record_progress(
             parent_task_id=NotBlankStr(objective_task_id),
             progress=progress,
         )
+        if stamped is None:
+            return
+        # Announced only when a shell actually took the stamp: a subscriber
+        # refetches on this event, and telling a page to re-read a row that
+        # did not change is work with nothing behind it.
+        notify = self._app_state.slice(ApiCoreStateSlice).plan_notifier
+        if notify is not None:
+            notify(stamped)

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router'
 import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { wasInterrupted } from '@/router/return-to'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { useAuthStore } from '@/stores/auth'
 import { useLoginLockout } from '@/hooks/useLoginLockout'
 import { getSetupStatus } from '@/api/endpoints/setup'
@@ -193,13 +194,12 @@ function LoginHeading({ mode }: { mode: Mode }) {
  */
 function SessionEndedNotice() {
   return (
-    <div
-      role="status"
-      className="rounded-md border border-border bg-surface p-card text-sm text-text-secondary"
-    >
-      Your session ended, so you were signed out. Signing in returns you to the
-      page you were on; the org kept working in the meantime.
-    </div>
+    <ErrorBanner
+      variant="inline"
+      severity="info"
+      title="Your session ended, so you were signed out"
+      description="Signing in returns you to the page you were on; the org kept working in the meantime."
+    />
   )
 }
 

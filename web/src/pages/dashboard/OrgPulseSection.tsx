@@ -5,6 +5,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { cn } from '@/lib/utils'
+import { activityRowKey } from '@/utils/activity-rows'
 import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { formatRelativeTime } from '@/utils/format'
 import type { Blocker, PulseQueue } from '@/utils/org-pulse'
@@ -33,20 +34,6 @@ const UNTITLED_TASK = 'Untitled task'
 
 /** What a row says when the work it names is not a task at all. */
 const WORK_WITHOUT_TASK = 'Working, no task assigned'
-
-/**
- * Identify one activity row.
- *
- * Keyed on the task where there is one, because an agent can hold two at once
- * and keying on the agent alone would collapse them. A run driving no task has
- * only the agent, and the snapshot emits at most one such row per agent.
- *
- * @param activity - The row to identify.
- * @returns A key unique within one snapshot.
- */
-function activityKey(activity: AgentActivity): string {
-  return activity.task_id ?? activity.agent_id
-}
 
 /**
  * Name the work a row is about.
@@ -168,7 +155,7 @@ function ActivityRows({ rows }: { rows: readonly AgentActivity[] }) {
   return (
     <StaggerGroup className="space-y-1.5">
       {rows.map((activity) => (
-        <StaggerItem key={activityKey(activity)}>
+        <StaggerItem key={activityRowKey(activity)}>
           <RunningRow activity={activity} />
         </StaggerItem>
       ))}

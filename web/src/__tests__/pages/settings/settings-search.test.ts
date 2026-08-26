@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SettingEntry } from '@/api/types/settings'
+import { makeSettingEntry as makeEntry } from '@/__tests__/helpers/factories'
 import {
   filterByNamespace,
   filterNamespaceEntries,
@@ -15,33 +15,6 @@ import { matchesSetting, scoreSetting } from '@/pages/settings/utils'
  * Seconds, and the setting actually NAMED Decomposition Model was far below.
  * An operator who knows a setting's name had no way to search for it.
  */
-
-function makeEntry(
-  overrides: Partial<SettingEntry['definition']> = {},
-): SettingEntry {
-  return {
-    definition: {
-      namespace: 'api',
-      key: 'server_host',
-      type: 'str',
-      default: '127.0.0.1',
-      description: 'Server bind address',
-      group: 'Server',
-      level: 'basic',
-      sensitive: false,
-      compose_set: false,
-      env_var_override: null,
-      enum_values: [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-      ...overrides,
-    },
-    value: 'v',
-    source: 'default',
-    updated_at: null,
-  }
-}
 
 /** The setting the reported query was looking for. */
 const DECOMPOSITION_MODEL = makeEntry({
@@ -101,6 +74,23 @@ describe('scoreSetting', () => {
     // "prt" matching server_port is why subsequence matching is kept at all:
     // the box has to work before a whole word has been typed.
     expect(scoreSetting(makeEntry({ key: 'server_port' }), 'prt')).toBeGreaterThan(0)
+  })
+
+  it('never lets a long query carry a weaker tier onto a stronger one', () => {
+    // The per-term bonus is what makes a partial name match rank by how much
+    // of the query it answers. Uncapped it is also unbounded, and past twenty
+    // terms it closes the gap between tiers: a setting matching MOST of a long
+    // query would outrank one matching ALL of it, which inverts the whole
+    // ordering the tiers exist to express.
+    const query = Array.from({ length: 40 }, (_, i) => `term${i}`).join(' ')
+    const everyTerm = makeEntry({ key: query.split(' ').join('_') })
+    const allButOne = makeEntry({
+      key: query.split(' ').slice(0, -1).join('_'),
+    })
+
+    expect(scoreSetting(everyTerm, query)).toBeGreaterThan(
+      scoreSetting(allButOne, query),
+    )
   })
 
   it('scores nothing for a query the setting does not answer', () => {

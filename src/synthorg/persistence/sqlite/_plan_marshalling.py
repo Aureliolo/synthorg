@@ -8,7 +8,7 @@ same list rather than hand-maintained beside it.
 """
 
 import json
-from typing import Final
+from typing import Final, LiteralString
 from uuid import UUID
 
 import aiosqlite
@@ -24,7 +24,10 @@ from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
-COLUMNS: Final[str] = (
+# ``LiteralString``, not ``str``: every SQL fragment built from this list is an
+# f-string, and typing it ``str`` launders the constant's own literal-ness
+# away, so each interpolation reads as an injection site to the checker.
+COLUMNS: Final[LiteralString] = (
     "id, project, project_name, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "

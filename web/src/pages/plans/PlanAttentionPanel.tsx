@@ -1,4 +1,5 @@
 import { AlertTriangle, ChevronRight, FileQuestion, ShieldCheck } from 'lucide-react'
+import { useMemo } from 'react'
 
 import type { DecompositionProgress, PlanItem, PlanStatus } from '@/api/types/plans'
 import { SectionCard } from '@/components/ui/section-card'
@@ -150,6 +151,14 @@ export function PlanAttentionPanel({
   status: PlanStatus | undefined
   decompositionProgress: DecompositionProgress | null
 }) {
+  // Memoised, and hoisted above the empty-plan return so it stays a hook.
+  // `collectFlagged` rebuilds the whole plan tree, which the detail view has
+  // already built for its own list, so left in the render body this walked
+  // every item of a 100-item plan again on every poll.
+  const flagged = useMemo(
+    () => collectFlagged(items, criticalPath, roster),
+    [items, criticalPath, roster],
+  )
   if (items.length === 0) {
     const copy = emptyCopy(status, decompositionProgress)
     return (
@@ -162,7 +171,6 @@ export function PlanAttentionPanel({
   // not a request. Asking a second time for input on a plan already running is
   // asking for something the page has no control to accept.
   const solicits = status === undefined || planSolicitsReview(status)
-  const flagged = collectFlagged(items, criticalPath, roster)
   if (flagged.length === 0) {
     return (
       <SectionCard

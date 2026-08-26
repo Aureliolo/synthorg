@@ -233,9 +233,18 @@ async function hydrateOpenCharterImpl(
  * the charter identity changes, and a status move means the decision is
  * already taken and those edits are moot anyway.
  *
- * ``mutating`` is cleared with it, or a card recovered this way would render
- * the right state with every control still disabled by a mutation nothing is
- * going to finish.
+ * ``mutating`` is cleared on any successful read, not only on a status move.
+ * A card recovered this way would otherwise render the right state with every
+ * control still disabled by a mutation nothing is going to finish, and an
+ * edit that hung bumps the charter's version without moving its status, so
+ * gating the clear on the status would leave exactly that card stuck.
+ *
+ * The generation is deliberately NOT bumped. It exists to invalidate a write
+ * whose draft was replaced under it, and this read replaces nothing: it
+ * adopts the same charter's newer state. Bumping it orphaned a mutation that
+ * was still in flight, so an approval that then succeeded wrote nothing and
+ * raised no toast, and the operator was told nothing at all about a decision
+ * that had landed.
  */
 async function refreshDraftStatusImpl(
   set: CharterSet,
@@ -247,17 +256,18 @@ async function refreshDraftStatusImpl(
   try {
     const latest = await charterApi.getCharter(draft.id)
     if (!_draftIsCurrent(get, generation)) return
-    if (latest.status === draft.status) return
     set((state) => ({
-      draftCharter: latest,
-      draftGeneration: state.draftGeneration + 1,
+      draftCharter: latest.status === draft.status ? state.draftCharter : latest,
       mutating: false,
     }))
   } catch (err) {
     // Read-only: a failure leaves the card exactly as it was, which is what it
     // showed before this existed. Logged rather than toasted, because nothing
     // the operator did failed.
-    log.warn('Charter refresh failed', sanitizeForLog(err))
+    // Named, because a refresh that keeps failing leaves the operator on the
+    // stuck card this exists to recover, and "a charter refresh failed" does
+    // not say which one.
+    log.warn('Charter refresh failed', { draftId: draft.id }, sanitizeForLog(err))
   }
 }
 

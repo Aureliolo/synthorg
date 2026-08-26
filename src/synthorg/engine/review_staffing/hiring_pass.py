@@ -144,10 +144,18 @@ async def finish_approved_hires(
             # operator is told rather than left to read the log.
             await _withdraw(hiring, request, exc, notifications=notifications)
             continue
-        except (HRError, ServiceUnavailableError) as exc:
+        except DomainError as exc:
             # Deliberately not fatal to the pass: one request blocked on a
             # condition that may clear (wiring still coming up, a registry
             # outage) must not stop the others, and the next pass retries it.
+            #
+            # Every DomainError, not the two the hiring layer raises directly.
+            # Instantiation reaches the registry and the repositories under
+            # it, so a QueryError or a persistence refusal arrives typed and
+            # from somewhere this list could not name in advance. Caught as
+            # two, one such request took the whole pass down with it and every
+            # request after it in the batch waited for the next sweep to be
+            # abandoned the same way.
             logger.warning(
                 REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
                 request_id=str(request.id),
