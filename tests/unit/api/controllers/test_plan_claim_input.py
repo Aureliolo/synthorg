@@ -49,42 +49,42 @@ class TestAClaimMustNameSomething:
 
         assert "it feels good to play" in str(caught.value)
 
-    def test_the_refusal_quotes_the_criteria_to_copy_from(self) -> None:
+    def test_the_refusal_quotes_every_criterion_to_copy_from(self) -> None:
+        """All of them: a partial list is one the operator cannot copy from."""
         items = (_item("alpha", satisfies=("it feels good to play",)),)
 
         with pytest.raises(ValidationError) as caught:
             reject_unnamed_claims(items, _OBJECTIVE)
 
-        assert str(_OBJECTIVE[0]) in str(caught.value)
+        detail = str(caught.value)
+        assert all(str(criterion) in detail for criterion in _OBJECTIVE)
 
     def test_a_claim_naming_a_criterion_is_accepted(self) -> None:
         items = (_item("alpha", satisfies=(str(_OBJECTIVE[0]),)),)
 
         reject_unnamed_claims(items, _OBJECTIVE)
 
-    def test_a_nested_item_claims_from_the_same_vocabulary(self) -> None:
-        """The case the recursion fix makes reachable at all.
+    def test_a_claim_differing_only_in_case_and_spacing_is_accepted(self) -> None:
+        """Forgiving about spelling, unforgiving about content, at the wire."""
+        items = (_item("alpha", satisfies=("  A PLAYER   can play a full game ",)),)
 
-        A nested item used to claim its local parent's prose, which is in no
-        plan's ``objective_criteria``, so the review surface's coverage map
-        could never place it.
-        """
-        parent = _item("alpha", satisfies=(str(_OBJECTIVE[0]),))
-        child = parent.model_copy(
-            update={
-                "id": NotBlankStr(sid("alpha-child")),
-                "parent_id": parent.id,
-                "satisfies": (_OBJECTIVE[0],),
-            }
-        )
-
-        reject_unnamed_claims((parent, child), _OBJECTIVE)
+        reject_unnamed_claims(items, _OBJECTIVE)
 
     def test_an_item_claiming_nothing_is_pure_support(self) -> None:
         reject_unnamed_claims((_item("alpha"),), _OBJECTIVE)
 
-    def test_an_objective_with_no_criteria_refuses_nothing(self) -> None:
-        reject_unnamed_claims((_item("alpha", satisfies=("anything",)),), ())
+    def test_a_claim_is_refused_when_the_plan_states_no_criteria(self) -> None:
+        """A plan answerable for nothing admits no claim.
+
+        Not an exemption but the strictest case: it is what a subtree below a
+        unit that claimed nothing inherits, and admitting everything there is
+        what left one unchecked.
+        """
+        with pytest.raises(ValidationError):
+            reject_unnamed_claims((_item("alpha", satisfies=("anything",)),), ())
+
+    def test_a_plan_claiming_nothing_against_no_criteria_is_accepted(self) -> None:
+        reject_unnamed_claims((_item("alpha"),), ())
 
     def test_every_offending_item_is_reported_at_once(self) -> None:
         """A revision is edited as a whole, so one per attempt is a round trip."""

@@ -20,6 +20,7 @@ import structlog
 from evals.errors import (
     EvalToolMissingError,
     HarnessDockerUnavailableError,
+    RecursionDepthClaimUnresolvableError,
     RecursionDepthNoCellsMeasuredError,
     RecursionDepthSessionCeilingError,
 )
@@ -1568,6 +1569,60 @@ class TestTheMatrix:
         assert reason is not None
         assert "submitted nothing" in reason
         assert len(report.measured_cells) == 1
+
+    async def test_an_unresolvable_claim_ends_its_cell_and_not_the_sweep(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        # Which side of the classification this lands on decides whether one
+        # bad plan costs one cell or the whole matrix. It sits next to
+        # `OracleUnusableError` conceptually, and grouping it with the systemic
+        # failures would lose every cell after it with nothing to say why.
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+        context = await _context(tmp_path, planner=planner)
+
+        report = await _swept(context, tmp_path)
+
+        assert len(report.unavailable_cells) == 1
+        assert len(report.measured_cells) == 1
+
+    async def test_the_stopped_cell_says_a_claim_was_unresolvable(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+
+        report = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        reason = report.unavailable_cells[0].unavailable_reason
+        assert reason is not None
+        assert RecursionDepthClaimUnresolvableError.__name__ in reason
+
+    async def test_that_cell_earns_the_report_its_own_caveat(
+        self, tmp_path: Path, assembled_trees: None
+    ) -> None:
+        """Otherwise it only lowers a histogram bar and says nothing."""
+        del assembled_trees
+        planner = _FlakyPlanner(
+            answer=_Plan(result=_tree(), cost=1.5, sessions=1),
+            fail_first=RecursionDepthClaimUnresolvableError(
+                "'Ingest' claims 'R99: nothing', which names no requirement"
+            ),
+        )
+
+        report = await _swept(await _context(tmp_path, planner=planner), tmp_path)
+
+        assert any("stopped before any leaf ran" in line for line in report.caveats)
 
     async def test_a_resumed_sweep_reads_its_measured_cells_back(
         self, tmp_path: Path, assembled_trees: None

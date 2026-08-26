@@ -1,0 +1,15 @@
+{
+  "why": "A claim names a criterion, or it does not, and two languages decide that. synthorg.core.criterion_match.criterion_key refuses the write; web/src/utils/planCoverage.ts::coverageKey decides what the review surface shows as covered. Looser in the browser places a claim the backend rejected; stricter leaves one it accepted reading as uncovered. Both sides key every case below and must agree, so a change to either is a failing test rather than a silent divergence.",
+  "cases": [
+    { "text": "R01: The header row names the columns", "key": "r01: the header row names the columns" },
+    { "text": "  R01: The header row names the columns  ", "key": "r01: the header row names the columns" },
+    { "text": "R01:   The header    row names the columns", "key": "r01: the header row names the columns" },
+    { "text": "R01:\tThe header\nrow names the columns", "key": "r01: the header row names the columns" },
+    { "text": "r01: THE HEADER ROW NAMES THE COLUMNS", "key": "r01: the header row names the columns" },
+    { "text": "R01: the footer row names the columns", "key": "r01: the footer row names the columns" },
+    { "text": "", "key": "" },
+    { "text": "   ", "key": "" },
+    { "text": "A decimal column reads as a float", "key": "a decimal column reads as a float" },
+    { "text": "Ship it", "key": "ship it" }
+  ]
+}

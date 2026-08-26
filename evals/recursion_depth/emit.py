@@ -11,17 +11,21 @@ import json
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import get_args
+from typing import Final, get_args
 
 from pydantic import BaseModel, JsonValue
 
-from evals.errors import RecursionDepthNoCellsMeasuredError
+from evals.errors import (
+    RecursionDepthClaimUnresolvableError,
+    RecursionDepthNoCellsMeasuredError,
+)
 from evals.recursion_depth.chart import render_chart
 from evals.recursion_depth.journal import cell_key
 from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
     MERGE,
     UNATTRIBUTED_LEAVES_CAVEAT,
+    UNRESOLVABLE_CLAIM_CELLS_CAVEAT,
     UNRESOLVED_CLAIMS_CAVEAT,
     CellRecord,
     DepthPoint,
@@ -47,12 +51,17 @@ from synthorg.observability.events.evals import (
 
 logger = get_logger(__name__)
 
+#: What an unavailable cell's reason starts with when a claim named nothing.
+#: Derived from the class rather than spelled out, so renaming the error keeps
+#: the caveat firing instead of silently ceasing to.
+_CLAIM_UNRESOLVABLE: Final[str] = RecursionDepthClaimUnresolvableError.__name__
+
 #: The three artifacts a report is, named once. A re-score reads the JSON back
 #: for what only it holds, so a second literal spelling would be one rename
 #: from reading a file nothing writes.
-REPORT_JSON_NAME: str = "depth_curve.json"
-REPORT_MARKDOWN_NAME: str = "depth_curve.md"
-REPORT_CHART_NAME: str = "chart.svg"
+REPORT_JSON_NAME: Final[str] = "depth_curve.json"
+REPORT_MARKDOWN_NAME: Final[str] = "depth_curve.md"
+REPORT_CHART_NAME: Final[str] = "chart.svg"
 
 
 def derived_caveats(
@@ -80,9 +89,15 @@ def derived_caveats(
         1 for point in survival_by_achieved_depth(cells) if point.delivered_claims == 0
     )
     dropped = sum(unit.unresolved_claims for cell in cells for unit in cell.units)
+    stopped = sum(
+        1
+        for cell in cells
+        if (cell.unavailable_reason or "").startswith(_CLAIM_UNRESOLVABLE)
+    )
     return [
         *([UNATTRIBUTED_LEAVES_CAVEAT.format(buckets=blank)] if blank else []),
         *([UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []),
+        *([UNRESOLVABLE_CLAIM_CELLS_CAVEAT.format(cells=stopped)] if stopped else []),
         *([SPEND_REPAIRED_CAVEAT] if spend_source is SpendSource.REPAIRED else []),
     ]
 
@@ -199,14 +214,14 @@ def _caption(report: RecursionDepthReport) -> tuple[str, ...]:
     )
 
 
-def _markdown(report: RecursionDepthReport) -> str:
-    """Render the human-readable report.
+def _provenance_lines(report: RecursionDepthReport) -> list[str]:
+    """Render what the sweep was measured against.
 
     Returns:
-        The Markdown text.
+        The heading and the provenance bullets.
     """
     provenance = report.provenance
-    lines = [
+    return [
         "# Recursion-depth sweep",
         "",
         "Does verification at every merge hold off aggregation collapse as",
@@ -230,6 +245,16 @@ def _markdown(report: RecursionDepthReport) -> str:
             f"({provenance.spend_source.value})"
         ),
         "",
+    ]
+
+
+def _curve_sections(report: RecursionDepthReport) -> list[str]:
+    """Render the two curves, four tables, in the order they are read.
+
+    Returns:
+        The curve sections.
+    """
+    return [
         "## Specification satisfied by depth reached",
         "",
         "What share of the specification the merged tree satisfies. Binned on",
@@ -260,6 +285,18 @@ def _markdown(report: RecursionDepthReport) -> str:
         "",
         *_survival_table(report.survival_by_depth_cap),
         "",
+    ]
+
+
+def _markdown(report: RecursionDepthReport) -> str:
+    """Render the human-readable report.
+
+    Returns:
+        The Markdown text.
+    """
+    lines = [
+        *_provenance_lines(report),
+        *_curve_sections(report),
         "## How deep the runs went",
         "",
         *_histogram_table(report),

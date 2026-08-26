@@ -1,0 +1,484 @@
+# module-kind: tests
+"""What happens when a planner replies, in both shapes it can reply in.
+
+Split from the prompt-building tests because they are different questions
+about the same wire: that file asks what the planner is TOLD, this one what the
+parser does with what comes back. The builders both need are in
+_decomposition_doubles.
+"""
+
+import json
+from typing import cast
+from uuid import UUID
+
+import pytest
+
+from synthorg.core.completion_enums import FinishReason
+from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.task_enums import (
+    Complexity,
+    CoordinationTopology,
+    Stakes,
+    TaskStructure,
+)
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.llm_parse import (
+    parse_content_response,
+    parse_tool_call_response,
+)
+from synthorg.engine.decomposition.models import DecompositionPlan
+from synthorg.engine.errors import DecompositionError
+from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
+from tests.unit.engine._decomposition_doubles import (
+    make_content_response,
+    make_tool_call_response,
+    valid_plan_args,
+)
+
+pytestmark = pytest.mark.unit
+
+
+class TestParseToolCallResponse:
+    """Tests for parse_tool_call_response."""
+
+    def test_valid_tool_call(self) -> None:
+        """Parse valid tool call arguments into DecompositionPlan."""
+        args = valid_plan_args()
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-llm-1")
+
+        assert isinstance(plan, DecompositionPlan)
+        assert plan.parent_task_id == "task-llm-1"
+        assert len(plan.subtasks) == 2
+        # The parser remaps the model-assigned subtask ids ("sub-0"/"sub-1")
+        # to fresh UUIDs, preserving the sibling dependency edge between them.
+        assert str(UUID(plan.subtasks[0].id)) == plan.subtasks[0].id
+        assert str(UUID(plan.subtasks[1].id)) == plan.subtasks[1].id
+        assert plan.subtasks[1].dependencies == (plan.subtasks[0].id,)
+        assert plan.task_structure is TaskStructure.SEQUENTIAL
+        assert plan.coordination_topology is CoordinationTopology.AUTO
+
+    def test_no_tool_calls_raises(self) -> None:
+        """Response with no tool calls raises DecompositionError."""
+        response = make_content_response("some text")
+        with pytest.raises(DecompositionError, match="No tool call"):
+            parse_tool_call_response(response, "task-llm-1")
+
+    def test_complexity_mapping(self) -> None:
+        """String complexity values map to Complexity enum."""
+        args = valid_plan_args(subtask_count=1)
+        cast("list[dict[str, object]]", args["subtasks"])[0]["estimated_complexity"] = (
+            "simple"
+        )
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].estimated_complexity is Complexity.SIMPLE
+
+    def test_unrecognized_complexity_defaults_medium(self) -> None:
+        """Unrecognized complexity string defaults to MEDIUM."""
+        args = valid_plan_args(subtask_count=1)
+        cast("list[dict[str, object]]", args["subtasks"])[0]["estimated_complexity"] = (
+            "ultra-hard"
+        )
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
+
+    def test_optional_fields_use_defaults(self) -> None:
+        """Missing optional fields use sensible defaults.
+
+        ``acceptance_criteria`` and ``expected_artifacts`` are not optional for
+        a work item (it must define done and name a deliverable), so both are
+        supplied; the genuinely optional fields still default.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "Minimal fields",
+                    "acceptance_criteria": ["it works"],
+                    "expected_artifacts": ["src/only.py"],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+
+        assert plan.subtasks[0].dependencies == ()
+        assert plan.subtasks[0].estimated_complexity is Complexity.MEDIUM
+        assert plan.subtasks[0].stakes is Stakes.NORMAL
+        assert plan.subtasks[0].required_skills == ()
+        assert plan.subtasks[0].required_role is None
+        assert plan.subtasks[0].expected_artifacts == ("src/only.py",)
+        assert plan.subtasks[0].acceptance_criteria == ("it works",)
+        assert plan.task_structure is TaskStructure.AUTO
+        assert plan.coordination_topology is CoordinationTopology.AUTO
+
+    def test_missing_expected_artifacts_raises(self) -> None:
+        """A work subtask with no expected_artifacts is rejected, not defaulted.
+
+        The zero-artifact guard on the dispatched task keys off this list, so an
+        empty one silently disarms it; the parse fails with a correctable error
+        the planning session can resubmit against instead.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "No deliverable named",
+                    "acceptance_criteria": ["it works"],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="expected artifact"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_missing_acceptance_criteria_raises(self) -> None:
+        """A subtask with no acceptance_criteria is rejected, not defaulted.
+
+        Every plan item must state a verifiable definition of done, so an
+        empty (or absent) ``acceptance_criteria`` is a correctable error the
+        planning session can resubmit against, not a silent empty tuple.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "No criteria supplied",
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="acceptance_criteria"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_stakes_mapping(self) -> None:
+        """String stakes values map to the Stakes enum; unknown defaults."""
+        args = valid_plan_args(subtask_count=1)
+        subtasks = cast("list[dict[str, object]]", args["subtasks"])
+        subtasks[0]["stakes"] = "critical"
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].stakes is Stakes.CRITICAL
+
+    def test_artifacts_and_acceptance_threaded(self) -> None:
+        """expected_artifacts + acceptance_criteria parse onto the subtask."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build board renderer",
+                    "description": "Render the Tetris grid",
+                    "expected_artifacts": ["src/board.tsx", "tests/board.test.tsx"],
+                    "acceptance_criteria": ["grid renders 10x20", "cells recolour"],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].expected_artifacts == (
+            "src/board.tsx",
+            "tests/board.test.tsx",
+        )
+        assert plan.subtasks[0].acceptance_criteria == (
+            "grid renders 10x20",
+            "cells recolour",
+        )
+
+    def test_satisfies_parses_onto_the_subtask(self) -> None:
+        """The objective-criteria a subtask advances parse onto ``satisfies``."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build board renderer",
+                    "description": "Render the Tetris grid",
+                    "acceptance_criteria": ["grid renders 10x20"],
+                    "expected_artifacts": ["src/board.tsx"],
+                    "satisfies": ["Playable board", "Score tracking"],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(
+            response,
+            "task-1",
+            objective_criteria=(
+                NotBlankStr("Playable board"),
+                NotBlankStr("Score tracking"),
+            ),
+        )
+        assert plan.subtasks[0].satisfies == ("Playable board", "Score tracking")
+
+    def test_satisfies_defaults_to_empty_when_absent(self) -> None:
+        """A subtask without ``satisfies`` parses to an empty tuple, not an error."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Support task",
+                    "description": "Housekeeping",
+                    "acceptance_criteria": ["tidy"],
+                    "expected_artifacts": ["docs/housekeeping.md"],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].satisfies == ()
+
+    def test_decision_kind_and_options_parse_onto_the_subtask(self) -> None:
+        """A ``decision`` subtask with options parses into a DECISION item."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Choose the rendering stack",
+                    "description": "Canvas or DOM",
+                    "acceptance_criteria": ["decision recorded"],
+                    "kind": "decision",
+                    "options": [
+                        {
+                            "id": "canvas",
+                            "title": "Canvas",
+                            "summary": "Fast, lower-level",
+                            "recommended": True,
+                        },
+                        {
+                            "id": "dom",
+                            "title": "DOM",
+                            "summary": "Simple, slower",
+                            "recommended": False,
+                        },
+                    ],
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        subtask = plan.subtasks[0]
+        assert subtask.kind is PlanItemKind.DECISION
+        assert [o.id for o in subtask.options] == ["canvas", "dom"]
+
+    def test_unknown_kind_defaults_to_work(self) -> None:
+        """An unrecognised ``kind`` string defaults to WORK, not an error."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build",
+                    "description": "Do it",
+                    "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/build.py"],
+                    "kind": "mystery",
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].kind is PlanItemKind.WORK
+
+    def test_open_questions_and_assumptions_parse_onto_the_plan(self) -> None:
+        """Plan-level open_questions + assumptions parse off the tool arguments."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build",
+                    "description": "Do it",
+                    "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/build.py"],
+                }
+            ],
+            "open_questions": ["Which backend?"],
+            "assumptions": ["Single-player only"],
+        }
+        response = make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.open_questions == ("Which backend?",)
+        assert plan.assumptions == ("Single-player only",)
+
+    def test_non_array_expected_artifacts_raises(self) -> None:
+        """Non-array expected_artifacts field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "expected_artifacts": "src/board.tsx",
+                },
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_missing_required_subtask_field_raises(self) -> None:
+        """Subtask missing a required field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    # missing "title" and "description"
+                }
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="missing required field"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_non_array_dependencies_raises(self) -> None:
+        """Non-array dependencies field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "dependencies": "sub-1",
+                },
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_unknown_dependency_raises(self) -> None:
+        """A dependency naming an undefined subtask raises DecompositionError.
+
+        A hallucinated dependency id is rejected at parse time with a
+        correctable error, rather than passing through to fail opaquely at
+        DAG validation.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "Do it",
+                    "dependencies": ["ghost-subtask"],
+                    "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/only.py"],
+                },
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="unknown subtask"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_non_array_required_skills_raises(self) -> None:
+        """Non-array required_skills field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "required_skills": "python",
+                },
+            ],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_subtasks_not_list_raises(self) -> None:
+        """Non-array subtasks field raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": "not-a-list",
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_subtask_not_dict_raises(self) -> None:
+        """Non-object subtask entry raises DecompositionError."""
+        args: dict[str, object] = {
+            "subtasks": ["not-a-dict"],
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="object"):
+            parse_tool_call_response(response, "task-1")
+
+    def test_duplicate_subtask_id_raises(self) -> None:
+        """Duplicate LLM subtask ids raise rather than collapse to one UUID."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-dup",
+                    "title": "First",
+                    "description": "Do step 1",
+                    "dependencies": [],
+                    "acceptance_criteria": ["done 1"],
+                },
+                {
+                    "id": "sub-dup",
+                    "title": "Second",
+                    "description": "Do step 2",
+                    "dependencies": [],
+                    "acceptance_criteria": ["done 2"],
+                },
+            ],
+            "task_structure": "sequential",
+            "coordination_topology": "auto",
+        }
+        response = make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="Duplicate subtask id"):
+            parse_tool_call_response(response, "task-1")
+
+
+class TestParseContentResponse:
+    """Tests for parse_content_response."""
+
+    def test_valid_json_content(self) -> None:
+        """Parse valid JSON from content into DecompositionPlan."""
+        args = valid_plan_args()
+        content = json.dumps(args)
+        response = make_content_response(content)
+        plan = parse_content_response(response, "task-1")
+
+        assert isinstance(plan, DecompositionPlan)
+        assert plan.parent_task_id == "task-1"
+        assert len(plan.subtasks) == 2
+
+    def test_json_in_markdown_fence(self) -> None:
+        """Parse JSON wrapped in markdown code fence."""
+        args = valid_plan_args(subtask_count=1)
+        content = f"```json\n{json.dumps(args)}\n```"
+        response = make_content_response(content)
+        plan = parse_content_response(response, "task-1")
+
+        assert isinstance(plan, DecompositionPlan)
+        assert len(plan.subtasks) == 1
+
+    def test_malformed_json_raises(self) -> None:
+        """Malformed JSON content raises DecompositionError."""
+        response = make_content_response("{invalid json")
+        with pytest.raises(DecompositionError, match="parse"):
+            parse_content_response(response, "task-1")
+
+    def test_no_content_raises(self) -> None:
+        """Response with None content raises DecompositionError."""
+        response = CompletionResponse(
+            tool_calls=(
+                ToolCall(
+                    id="tc-1",
+                    name="other_tool",
+                    arguments={},
+                ),
+            ),
+            finish_reason=FinishReason.TOOL_USE,
+            usage=TokenUsage(
+                input_tokens=10,
+                output_tokens=5,
+                cost=0.001,
+            ),
+            model="test-model-001",
+        )
+        with pytest.raises(DecompositionError, match="content"):
+            parse_content_response(response, "task-1")

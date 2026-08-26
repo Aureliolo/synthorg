@@ -425,6 +425,23 @@ class RecursionDepthSpendRepairEmptyError(EvalError):
     default_message: ClassVar[str] = "Spend repair attributed no calls to any unit"
 
 
+class RecursionDepthSpendAlreadyAdoptedError(EvalError):
+    """Raised when a repair would overwrite a recording's own raw ledger.
+
+    A second repair reads the ledger the first one wrote, so adopting it again
+    would move REPAIRED figures on top of the raw journal that was kept
+    precisely so a reader could check the claim. The rows under it are real
+    spend and cannot be re-derived from the log, which produces repaired
+    figures by construction. Refusing names the file, because the operator who
+    meant the second repair can move it aside and the one who did not has just
+    been told what they were about to destroy.
+    """
+
+    default_message: ClassVar[str] = (
+        "This recording's spend column was already repaired"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 

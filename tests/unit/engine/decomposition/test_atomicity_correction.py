@@ -80,10 +80,20 @@ def _task() -> Task:
 def _last_level() -> DecompositionContext:
     """A context carrying the size signal, as the last level is planned under.
 
+    Carries the objective's criteria too, because that is what a real run is
+    handed: ``stamp_objective_criteria`` fills them from the task before the
+    first strategy call, and a level answerable for nothing refuses every claim
+    these units make.
+
     Returns:
         The context.
     """
-    return DecompositionContext(max_subtasks=10, max_depth=1, atomicity=_POLICY)
+    return DecompositionContext(
+        max_subtasks=10,
+        max_depth=1,
+        atomicity=_POLICY,
+        objective_criteria=(NotBlankStr(_CRITERION),),
+    )
 
 
 def _plan_args(*, artifacts_per_unit: int, units: int = 2) -> dict[str, object]:
@@ -178,7 +188,12 @@ class TestTheSingleShotLoopReAsks:
         strategy = _strategy([_tool_call(_plan_args(artifacts_per_unit=9))])
 
         plan = await strategy.decompose(
-            _task(), DecompositionContext(max_subtasks=10, max_depth=3)
+            _task(),
+            DecompositionContext(
+                max_subtasks=10,
+                max_depth=3,
+                objective_criteria=(NotBlankStr(_CRITERION),),
+            ),
         )
 
         assert len(plan.subtasks) == 2
@@ -252,6 +267,9 @@ class TestTheSessionToolAnswersTheSameWay:
             parent_task_id=sid("objective"),
             capture=capture,
             atomicity=_POLICY,
+            # What the level is answerable for, as a real run supplies it. A
+            # tool built without it refuses every claim these units make.
+            objective_criteria=(NotBlankStr(_CRITERION),),
         )
 
     async def test_an_oversized_level_is_refused_and_recorded_as_declining(

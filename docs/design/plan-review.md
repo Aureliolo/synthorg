@@ -130,9 +130,26 @@ The objective's criteria reach the parser from the decomposition CONTEXT rather
 than off the task in front of it. Below the root the two differ: the task's own
 criteria are the prose the level above wrote about that unit, while the context
 carries the objective's criteria narrowed to what the parent unit claimed. See
-[recursive-decomposition.md](recursive-decomposition.md#the-size-signal). An
-empty tuple skips both rules: an objective declaring no criteria has no coverage
-to claim, and neither has a subtree whose parent claimed none.
+[recursive-decomposition.md](recursive-decomposition.md#the-size-signal).
+
+The two rules answer an EMPTY vocabulary differently, and the asymmetry is
+load-bearing. Nothing to cover means the plan-level rule has no question to ask,
+so it is skipped. Nothing to claim means the per-item rule refuses everything,
+because a level answerable for no criterion cannot advance one. Skipping both
+was the tempting reading and it left a whole subtree unchecked: a pure-support
+unit is judged oversized on its ARTIFACT count, with `satisfies` never entering
+the decision, so it is recursed into with an empty vocabulary, and its
+descendants could then claim anything at all. Those claims persisted into the
+plan and were refused later by the operator's own edit boundary, which reads the
+ROOT criteria, leaving a 422 on items the system itself generated.
+
+Refusing there is also what makes every level's vocabulary a SUBSET of the
+root's: `matched_criteria` narrows to members of the parent's own list, and
+empty admits nothing. That subset property is why the automatic replan path
+needs no second check. Its items come from a decomposition the parse boundary
+already held to this rule, against the objective task's live criteria, while the
+plan carries a denormalised copy taken when it was opened; asking the shared
+function there would hold generated items to the older of two answers.
 
 ### Open questions are asked, not filed
 

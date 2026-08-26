@@ -48,7 +48,7 @@ export interface PlanCoverage {
  * stricter one would leave a criterion the backend accepted reading as
  * uncovered.
  */
-function coverageKey(text: string): string {
+export function coverageKey(text: string): string {
   return text.trim().toLowerCase().split(/\s+/).join(' ')
 }
 
@@ -62,9 +62,9 @@ function addUnique(index: Map<string, string[]>, key: string, value: string): vo
 /**
  * Map each objective acceptance criterion to the plan items that advance it
  * (via their ``satisfies`` tags), so the review surface can flag any criterion
- * nothing covers. Matching is trim + case-insensitive so a verbatim-ish copy
- * still aligns. Returns an empty coverage when the objective declared no
- * criteria (nothing to check).
+ * nothing covers. Matching is `coverageKey`'s: trim, case-insensitive, and
+ * whitespace-collapsed, so a verbatim-ish copy still aligns. Returns an empty
+ * coverage when the objective declared no criteria (nothing to check).
  */
 export function derivePlanCoverage(
   objectiveCriteria: readonly string[],

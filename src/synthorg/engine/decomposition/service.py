@@ -561,12 +561,12 @@ class DecompositionService:
                 unsplit[subtask_def.id] = decision.reason
                 continue
             step = SubtreeStep(title=str(subtask_def.title), position=position)
+            child_ctx = child_context(
+                context, step=step, satisfied=subtask_def.satisfies
+            )
             try:
                 child = await self._do_decompose(
-                    child_task,
-                    child_context(context, step=step, satisfied=subtask_def.satisfies),
-                    budget,
-                    ledger=ledger,
+                    child_task, child_ctx, budget, ledger=ledger
                 )
             except DecompositionUnsplittableError as exc:
                 # The one child failure this level can answer. Its own plan is
@@ -602,6 +602,12 @@ class DecompositionService:
                 subtask_count=len(child.created_tasks),
                 leaf_count=len(child.leaf_tasks),
                 sessions_remaining=ledger.remaining,
+                # What the level below is answerable for, and what it claimed
+                # to get there. A subtree narrowing to zero is the shape that
+                # ends coverage checking for everything under it, and it is
+                # otherwise only visible by reading the plan afterwards.
+                claimed_count=len(subtask_def.satisfies),
+                covers_count=len(child_ctx.objective_criteria),
             )
         return SplitOutcome(
             children=tuple(children), unsplit=unsplit, assemblies=assemblies

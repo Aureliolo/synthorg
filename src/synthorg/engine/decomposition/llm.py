@@ -265,7 +265,10 @@ class LlmDecompositionStrategy:
         self._check_depth(context)
 
         messages = self._build_initial_messages(task, context)
-        tool_def = build_decomposition_tool(context.available_roles)
+        tool_def = build_decomposition_tool(
+            context.available_roles,
+            covers_objective=bool(context.objective_criteria),
+        )
         comp_config = CompletionConfig(
             temperature=self._config.temperature,
             max_tokens=await self._max_output_tokens(),
@@ -485,7 +488,10 @@ class LlmDecompositionStrategy:
             List of initial chat messages.
         """
         return [
-            build_system_message(context.available_roles),
+            build_system_message(
+                context.available_roles,
+                covers_objective=bool(context.objective_criteria),
+            ),
             build_task_message(task, context),
         ]
 

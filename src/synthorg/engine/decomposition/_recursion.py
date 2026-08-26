@@ -29,6 +29,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_CEILING_UNREADABLE,
     DECOMPOSITION_FAILED,
+    DECOMPOSITION_SESSIONS_EXHAUSTED,
 )
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -75,6 +76,12 @@ class TreeSessionLedger:
             tree's budget is spent.
         """
         if self.remaining <= 0:
+            # Logged where it FLIPS, not where it is read: the reason a unit
+            # went unsplit names the backstop, but which node exhausted the
+            # whole tree's budget is otherwise only recoverable by counting
+            # unsplit reasons backwards.
+            if not self.exhausted:
+                logger.info(DECOMPOSITION_SESSIONS_EXHAUSTED)
             self.exhausted = True
             return False
         self.remaining -= 1
@@ -163,12 +170,13 @@ def child_context(
 ) -> DecompositionContext:
     """Return *context* one level deeper, under *step*.
 
-    The only place ``current_depth``, ``address`` and ``objective_criteria``
-    are written. The first was declared, read by three strategies and by the
-    planning prompt, and set by nothing, so every decomposition the product
-    ever ran believed it was at the root; the second is written here for the
-    same reason, so a level cannot disagree with its parent about where in the
-    tree it sits.
+    The only place ``current_depth`` and ``address`` are written, and the only
+    place ``objective_criteria`` is written once
+    :func:`stamp_objective_criteria` has filled it at the root. The first was
+    declared, read by three strategies and by the planning prompt, and set by
+    nothing, so every decomposition the product ever ran believed it was at the
+    root; the second is written here for the same reason, so a level cannot
+    disagree with its parent about where in the tree it sits.
 
     The third is what makes the size signal self-terminating rather than
     merely documented as such: the child is answerable for exactly the criteria

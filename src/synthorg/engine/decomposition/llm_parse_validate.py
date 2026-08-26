@@ -75,7 +75,7 @@ def validate_coverage(
     Two rules, and they are different claims about the same field.
 
     **The plan advances something.** ``satisfies`` exists so success-criteria
-    coverage can be CHECKED, and for a while nothing checked it. The prompt
+    coverage can be CHECKED, and nothing checked it. The prompt
     states the contract, the schema leaves the field out of the required list,
     and its description invites omission per item ("Omit only for pure-support
     items"). A planner that reads every item as pure support therefore produces
@@ -109,22 +109,32 @@ def validate_coverage(
     :func:`validate_graph` records: a session that regenerates its whole plan
     on each rejection cannot converge while it is told one at a time.
 
+    The two rules answer an empty vocabulary differently, and the asymmetry is
+    the point. Nothing to cover means the first rule has no question to ask, so
+    it is skipped. Nothing to claim means the second rule refuses EVERYTHING,
+    because a level answerable for no criterion cannot advance one. Skipping
+    both instead left every descendant of a pure-support unit unchecked, since
+    such a unit is judged oversized on its artifact count alone and is recursed
+    into with an empty vocabulary.
+
     Args:
         subtasks: The parsed subtasks.
         objective_criteria: The criteria this level is answerable for. Empty
-            skips both rules, because an objective that declares no criteria
-            has no coverage to claim and neither has a subtree whose parent
-            claimed none.
+            skips the coverage rule and tightens the claim rule to admit
+            nothing.
 
     Raises:
-        DecompositionError: The level declares criteria and either no subtask
-            claims any of them, or a subtask claims one they do not include.
+        DecompositionError: The level declares criteria and no subtask claims
+            any of them, or a subtask claims something the level does not
+            state.
     """
-    if not objective_criteria:
-        return
     detail = combine_graph_violations(
         (
-            *_uncovered_objective(subtasks, objective_criteria),
+            *(
+                _uncovered_objective(subtasks, objective_criteria)
+                if objective_criteria
+                else ()
+            ),
             *describe_unnamed_claims(subtasks, objective=objective_criteria),
         )
     )

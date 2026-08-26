@@ -33,8 +33,14 @@ from synthorg.engine.errors import (
     DecompositionUnsplittableError,
 )
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, sid
+from tests.unit.engine.decomposition._doubles import (
+    Bounds,
+    ScriptedStrategy,
+)
+from tests.unit.engine.decomposition._doubles import (
+    config_resolver as scripted_resolver,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -60,42 +66,14 @@ _MAX_SUBTASKS = 10
 _MAX_TREE_SESSIONS = 40
 
 
-def _resolver(
-    *,
-    recursion_enabled: bool = True,
-    tree_sessions: int = _MAX_TREE_SESSIONS,
-    bool_error: Exception | None = None,
-) -> MagicMock:
-    """Build a settings resolver answering every key the service reads.
-
-    Every key, including the ones a given case does not care about: an
-    unscripted one answers with the mock itself, which reaches an arithmetic
-    comparison and fails as a TypeError rather than as the behaviour under test.
-
-    Args:
-        recursion_enabled: What the recursion switch answers.
-        tree_sessions: The whole-tree planning-session budget.
-        bool_error: Raised instead of answering the switch. The two faults
-            the SETTING can carry leave recursion off; anything else is the
-            store rather than the setting and surfaces.
-
-    Returns:
-        The scripted resolver.
-    """
-    resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-    resolver.get_float.return_value = _A_GENEROUS_CEILING
-    if bool_error is None:
-        resolver.get_bool.return_value = recursion_enabled
-    else:
-        resolver.get_bool.side_effect = bool_error
-    resolver.get_int.side_effect = lambda _namespace, key: {
-        "subtask_max_artifacts": _MAX_ARTIFACTS,
-        "subtask_max_criteria": _MAX_CRITERIA,
-        "decomposition_max_depth": _MAX_DEPTH,
-        "decomposition_max_subtasks": _MAX_SUBTASKS,
-        "decomposition_tree_max_sessions": tree_sessions,
-    }[key]
-    return resolver
+_BOUNDS = Bounds(
+    ceiling=_A_GENEROUS_CEILING,
+    artifacts=_MAX_ARTIFACTS,
+    criteria=_MAX_CRITERIA,
+    depth=_MAX_DEPTH,
+    subtasks=_MAX_SUBTASKS,
+    tree_sessions=_MAX_TREE_SESSIONS,
+)
 
 
 def _task(label: str) -> Task:
@@ -146,59 +124,9 @@ def _plan(parent: str, subtasks: tuple[SubtaskDefinition, ...]) -> Decomposition
     )
 
 
-class _ScriptedStrategy:
-    """Answers with a different plan per parent task, and records its contexts.
-
-    A recursion test needs a planner that can be asked twice about two
-    different tasks, which the manual strategy cannot be: it holds one plan and
-    rejects any parent but its own.
-    """
-
-    def __init__(self, plans: dict[str, DecompositionPlan]) -> None:
-        self._plans = plans
-        self.seen_depths: list[int] = []
-
-    async def decompose(
-        self, task: Task, context: DecompositionContext
-    ) -> DecompositionPlan:
-        """Return the plan scripted for *task*.
-
-        Returns:
-            The scripted plan.
-
-        Raises:
-            AssertionError: The strategy was asked about a task no case
-                scripted, which means the recursion walked somewhere the test
-                did not intend rather than that the planner failed.
-        """
-        self.seen_depths.append(context.current_depth)
-        plan = self._plans.get(str(task.id))
-        if plan is None:
-            msg = f"strategy asked for an unscripted task {task.id!r}"
-            raise AssertionError(msg)
-        return plan
-
-    def plans_any_task(self) -> bool:
-        """Answer for a strategy that holds a plan per parent.
-
-        Returns:
-            ``True``: it is keyed by parent, so it plans any task it was given
-            a plan for, which is what a recursion test needs.
-        """
-        return True
-
-    def get_strategy_name(self) -> str:
-        """Name this strategy for the service's logs.
-
-        Returns:
-            The strategy name.
-        """
-        return "scripted"
-
-
 def _two_level_service(
     *, recursion_enabled: bool, tree_sessions: int = _MAX_TREE_SESSIONS
-) -> tuple[DecompositionService, _ScriptedStrategy]:
+) -> tuple[DecompositionService, ScriptedStrategy]:
     """Build a service over a root plan whose first unit is oversized.
 
     Returns:
@@ -218,12 +146,12 @@ def _two_level_service(
             _subtask("big-b", artifacts=_MAX_ARTIFACTS),
         ),
     )
-    strategy = _ScriptedStrategy({str(as_uuid("root")): root, sid("big"): below})
+    strategy = ScriptedStrategy({str(as_uuid("root")): root, sid("big"): below})
     service = DecompositionService(
         strategy,
         TaskStructureClassifier(),
-        config_resolver=_resolver(
-            recursion_enabled=recursion_enabled, tree_sessions=tree_sessions
+        config_resolver=scripted_resolver(
+            _BOUNDS, recursion_enabled=recursion_enabled, tree_sessions=tree_sessions
         ),
     )
     return service, strategy
@@ -438,7 +366,7 @@ class TestAStrategyThatPlansOneTaskIsNotRecursedInto:
         service = DecompositionService(
             ManualDecompositionStrategy(plan),
             TaskStructureClassifier(),
-            config_resolver=_resolver(recursion_enabled=True),
+            config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
         )
 
         result = await service.decompose_task(
@@ -490,7 +418,8 @@ class TestRecursionStops:
         # A switch whose own definition cannot answer is unreadable for as
         # long as it stays that way, so off is the only reading that cannot
         # spend a planning session per node on an instruction nobody gave.
-        resolver = _resolver(
+        resolver = scripted_resolver(
+            _BOUNDS,
             bool_error=SettingNotFoundError(
                 "coordination/recursive_decomposition_enabled"
             ),
@@ -510,7 +439,9 @@ class TestRecursionStops:
         # level for as long as the store stays down, with one WARNING per
         # decomposition and no other sign. A store that is momentarily
         # unreachable is a fact about the moment, not about the setting.
-        resolver = _resolver(bool_error=RuntimeError("settings backend is gone"))
+        resolver = scripted_resolver(
+            _BOUNDS, bool_error=RuntimeError("settings backend is gone")
+        )
         service = self._service_over(resolver)
 
         with pytest.raises(RuntimeError, match="settings backend is gone"):
@@ -529,7 +460,7 @@ class TestRecursionStops:
             (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
         )
         return DecompositionService(
-            _ScriptedStrategy({str(as_uuid("root")): root}),
+            ScriptedStrategy({str(as_uuid("root")): root}),
             TaskStructureClassifier(),
             config_resolver=resolver,
         )
@@ -542,7 +473,7 @@ class TestRecursionStops:
             (_subtask("big", artifacts=_MAX_ARTIFACTS + 5),),
         )
         service = DecompositionService(
-            _ScriptedStrategy({str(as_uuid("root")): root}),
+            ScriptedStrategy({str(as_uuid("root")): root}),
             TaskStructureClassifier(),
         )
 
@@ -631,7 +562,7 @@ class TestTheTreeBudgetStopsGracefully:
         assert DEPTH_BACKSTOP in reason
 
 
-class _RefusingStrategy(_ScriptedStrategy):
+class _RefusingStrategy(ScriptedStrategy):
     """Plans the root, then fails every child level with *failure*."""
 
     def __init__(
@@ -675,7 +606,7 @@ def _service_whose_child_level_fails(failure: Exception) -> DecompositionService
     return DecompositionService(
         _RefusingStrategy({str(as_uuid("root")): root}, failure=failure),
         TaskStructureClassifier(),
-        config_resolver=_resolver(recursion_enabled=True),
+        config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
     )
 
 
@@ -759,11 +690,11 @@ class TestASmallObjectiveStaysSmall:
                 _subtask("two", artifacts=_MAX_ARTIFACTS),
             ),
         )
-        strategy = _ScriptedStrategy({str(as_uuid("root")): root})
+        strategy = ScriptedStrategy({str(as_uuid("root")): root})
         service = DecompositionService(
             strategy,
             TaskStructureClassifier(),
-            config_resolver=_resolver(recursion_enabled=True),
+            config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
         )
 
         result = await service.decompose_task(

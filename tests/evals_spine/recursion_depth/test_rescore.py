@@ -15,13 +15,18 @@ from pathlib import Path
 import pytest
 from scripts.record_recursion_depth import _previous_caveats, _rescore
 
-from evals.errors import RecursionDepthSpendRepairEmptyError
+from evals.errors import (
+    RecursionDepthSpendAlreadyAdoptedError,
+    RecursionDepthSpendRepairEmptyError,
+)
 from evals.harness.journal import open_journal
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import REPORT_JSON_NAME
 from evals.recursion_depth.journal import (
+    JOURNAL_NAME,
     RAW_JOURNAL_NAME,
     SPEC,
+    adopt_repaired_spend,
     matrix_identity,
     read_recorded_cells,
 )
@@ -160,6 +165,23 @@ class TestWhichCaveatsSurvive:
         assert CEILING_CAVEAT in caveats
 
 
+def _repairable(out_dir: Path) -> Path:
+    """Write a recording whose journalled spend a log can repair.
+
+    Returns:
+        The log to repair from.
+    """
+    _recorded(out_dir)
+    log = out_dir / "run.log"
+    log.write_text(
+        f"cost.recorded call_category=productive task_id={_LEAF_TASK} "
+        f"input_tokens=40 output_tokens=2\n"
+        f"evals.harness.record_journalled cell=d1-gated-r0/{_LEAF_TASK}\n",
+        encoding="utf-8",
+    )
+    return log
+
+
 class TestARepairBecomesTheLedger:
     """A repair applied only at scoring time is not reproducible by anyone.
 
@@ -168,26 +190,10 @@ class TestARepairBecomesTheLedger:
     a column the report's own caveat calls scrambled.
     """
 
-    def _repairable(self, out_dir: Path) -> Path:
-        """Write a recording whose journalled spend a log can repair.
-
-        Returns:
-            The log to repair from.
-        """
-        _recorded(out_dir)
-        log = out_dir / "run.log"
-        log.write_text(
-            f"cost.recorded call_category=productive task_id={_LEAF_TASK} "
-            f"input_tokens=40 output_tokens=2\n"
-            f"evals.harness.record_journalled cell=d1-gated-r0/{_LEAF_TASK}\n",
-            encoding="utf-8",
-        )
-        return log
-
     def test_the_repaired_column_is_written_back_to_the_journal(
         self, tmp_path: Path
     ) -> None:
-        log = self._repairable(tmp_path)
+        log = _repairable(tmp_path)
 
         _rescore(tmp_path, repair_from=log)
 
@@ -196,7 +202,7 @@ class TestARepairBecomesTheLedger:
 
     def test_the_journalled_figures_are_kept_beside_it(self, tmp_path: Path) -> None:
         """Real spend, so the ledger it replaced is moved rather than dropped."""
-        log = self._repairable(tmp_path)
+        log = _repairable(tmp_path)
 
         _rescore(tmp_path, repair_from=log)
 
@@ -204,7 +210,7 @@ class TestARepairBecomesTheLedger:
 
     def test_a_later_rescore_keeps_the_repaired_column(self, tmp_path: Path) -> None:
         """The whole point: nobody needs the log a second time."""
-        log = self._repairable(tmp_path)
+        log = _repairable(tmp_path)
         _rescore(tmp_path, repair_from=log)
 
         _rescore(tmp_path, repair_from=None)
@@ -215,7 +221,7 @@ class TestARepairBecomesTheLedger:
     def test_the_repair_is_claimed_by_the_data_rather_than_the_flag(
         self, tmp_path: Path
     ) -> None:
-        log = self._repairable(tmp_path)
+        log = _repairable(tmp_path)
         _rescore(tmp_path, repair_from=log)
 
         _rescore(tmp_path, repair_from=None)
@@ -232,6 +238,83 @@ class TestARepairBecomesTheLedger:
         payload = json.loads((tmp_path / REPORT_JSON_NAME).read_text(encoding="utf-8"))
         assert payload["provenance"]["spend_source"] == SpendSource.JOURNALLED.value
         assert SPEND_REPAIRED_CAVEAT not in payload["caveats"]
+
+
+class TestASecondRepairIsRefused:
+    """The raw ledger is the one thing a repair cannot re-derive.
+
+    A second repair reads what the first one WROTE, so adopting it again moves
+    repaired figures on top of the journal kept precisely so a reader could
+    check the claim. Trying the repair again after fixing an incomplete log is
+    an ordinary operator move, and the log produces repaired figures by
+    construction, so the original is gone for good.
+    """
+
+    def test_repairing_twice_raises(self, tmp_path: Path) -> None:
+        log = _repairable(tmp_path)
+        _rescore(tmp_path, repair_from=log)
+
+        with pytest.raises(RecursionDepthSpendAlreadyAdoptedError):
+            _rescore(tmp_path, repair_from=log)
+
+    def test_the_original_figures_survive_the_refusal(self, tmp_path: Path) -> None:
+        log = _repairable(tmp_path)
+        _rescore(tmp_path, repair_from=log)
+        before = (tmp_path / RAW_JOURNAL_NAME).read_text(encoding="utf-8")
+
+        with pytest.raises(RecursionDepthSpendAlreadyAdoptedError):
+            _rescore(tmp_path, repair_from=log)
+
+        assert (tmp_path / RAW_JOURNAL_NAME).read_text(encoding="utf-8") == before
+
+    def test_the_refusal_names_the_file_to_move(self, tmp_path: Path) -> None:
+        log = _repairable(tmp_path)
+        _rescore(tmp_path, repair_from=log)
+
+        with pytest.raises(RecursionDepthSpendAlreadyAdoptedError) as caught:
+            _rescore(tmp_path, repair_from=log)
+
+        assert RAW_JOURNAL_NAME in str(caught.value)
+
+
+class TestTheLedgerIsNeverAbsent:
+    """No instant of the adoption leaves the directory unreadable.
+
+    Writing the replacement over a journal that had already been renamed away
+    left a window where a crash meant no ledger at all, which reads exactly
+    like a recording that was never taken.
+    """
+
+    def test_a_failed_adoption_leaves_the_original_in_place(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _recorded(tmp_path)
+        provenance, cells = read_recorded_cells(tmp_path)
+        before = (tmp_path / JOURNAL_NAME).read_text(encoding="utf-8")
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr("evals.recursion_depth.journal.copy2", _boom)
+        with pytest.raises(OSError, match="No space left"):
+            adopt_repaired_spend(tmp_path, provenance=provenance, cells=cells)
+
+        assert (tmp_path / JOURNAL_NAME).read_text(encoding="utf-8") == before
+
+    def test_a_failed_adoption_leaves_no_staging_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _recorded(tmp_path)
+        provenance, cells = read_recorded_cells(tmp_path)
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr("evals.recursion_depth.journal.copy2", _boom)
+        with pytest.raises(OSError, match="No space left"):
+            adopt_repaired_spend(tmp_path, provenance=provenance, cells=cells)
+
+        assert not [p for p in tmp_path.iterdir() if p.name.startswith(".adopt-")]
 
 
 class TestReadingThePreviousReport:

@@ -132,17 +132,17 @@ class TestAPlanMustAdvanceItsObjective:
         assert len(plan.subtasks) == 1
 
     def test_an_objective_with_no_criteria_has_no_coverage_to_claim(self) -> None:
-        # Empty skips the check, matching how `available_roles` behaves in the
-        # same parser: an objective declaring nothing cannot be under-covered.
+        # An objective declaring nothing cannot be under-covered, so this rule
+        # has no question to ask. Its sibling still refuses a claim there.
         args = _args(_subtask("alpha"))
 
         plan = args_to_decomposition_plan(args, "task-1", (), ())
 
         assert len(plan.subtasks) == 1
 
-    def test_the_check_is_off_by_default(self) -> None:
-        # Every existing caller that passes no criteria keeps its behaviour, so
-        # this cannot break a decomposition that was previously accepted.
+    def test_a_caller_naming_no_criteria_is_held_to_neither_rule(self) -> None:
+        # A plan whose items claim nothing, planned against an objective that
+        # states nothing, is coherent and stays accepted.
         args = _args(_subtask("alpha"))
 
         plan = args_to_decomposition_plan(args, "task-1")
@@ -222,9 +222,37 @@ class TestAnItemMayNotInventACriterion:
         assert "Build alpha" in detail
         assert "Build beta" in detail
 
-    def test_an_objective_with_no_criteria_refuses_nothing(self) -> None:
+
+class TestALevelAnswerableForNothing:
+    """Where the two rules answer an empty vocabulary differently.
+
+    Nothing to COVER means the plan-level rule has no question to ask. Nothing
+    to CLAIM means the per-item rule refuses everything. A pure-support unit is
+    judged oversized on its artifact count with ``satisfies`` never entering the
+    decision, so it IS recursed into, and skipping both rules there left every
+    descendant free to claim whatever it liked.
+    """
+
+    def test_a_claim_is_refused_when_the_level_states_no_criteria(self) -> None:
         args = _args(_subtask("alpha", satisfies=["invented"]))
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), ())
+
+        assert "Build alpha" in str(caught.value)
+
+    def test_a_plan_claiming_nothing_is_accepted(self) -> None:
+        """The coverage rule is skipped: there is nothing to be uncovered."""
+        args = _args(_subtask("alpha"), _subtask("beta"))
 
         plan = args_to_decomposition_plan(args, "task-1", (), ())
 
-        assert len(plan.subtasks) == 1
+        assert len(plan.subtasks) == 2
+
+    def test_the_refusal_says_there_is_nothing_to_claim(self) -> None:
+        args = _args(_subtask("alpha", satisfies=["invented"]))
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), ())
+
+        assert "answerable for no objective criterion" in str(caught.value)

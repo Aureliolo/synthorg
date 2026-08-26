@@ -13,8 +13,6 @@ they assert that a claim made below the root is still a ROOT criterion,
 verbatim, and that a unit claiming one criterion ends its own branch.
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from synthorg.core.plan_tree import SubtreeStep
@@ -33,8 +31,14 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, sid
+from tests.unit.engine.decomposition._doubles import (
+    Bounds,
+    ScriptedStrategy,
+)
+from tests.unit.engine.decomposition._doubles import (
+    config_resolver as scripted_resolver,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -59,23 +63,14 @@ _MAX_SUBTASKS = 10
 _MAX_TREE_SESSIONS = 40
 
 
-def _resolver() -> MagicMock:
-    """Build a settings resolver answering every key the service reads.
-
-    Returns:
-        The scripted resolver, with recursion on.
-    """
-    resolver: MagicMock = mock_of[ConfigResolverProtocol]()
-    resolver.get_float.return_value = _A_GENEROUS_CEILING
-    resolver.get_bool.return_value = True
-    resolver.get_int.side_effect = lambda _namespace, key: {
-        "subtask_max_artifacts": _MAX_ARTIFACTS,
-        "subtask_max_criteria": _MAX_CRITERIA,
-        "decomposition_max_depth": _MAX_DEPTH,
-        "decomposition_max_subtasks": _MAX_SUBTASKS,
-        "decomposition_tree_max_sessions": _MAX_TREE_SESSIONS,
-    }[key]
-    return resolver
+_BOUNDS = Bounds(
+    ceiling=_A_GENEROUS_CEILING,
+    artifacts=_MAX_ARTIFACTS,
+    criteria=_MAX_CRITERIA,
+    depth=_MAX_DEPTH,
+    subtasks=_MAX_SUBTASKS,
+    tree_sessions=_MAX_TREE_SESSIONS,
+)
 
 
 def _task(label: str, *, criteria: tuple[NotBlankStr, ...]) -> Task:
@@ -104,7 +99,7 @@ def _subtask(label: str, *, satisfies: tuple[NotBlankStr, ...]) -> SubtaskDefini
 
     Its own acceptance criteria are deliberately the planner's own prose,
     naming no objective criterion, because that is what a real planner writes
-    and what used to become the next level's whole vocabulary.
+    and what a level with no inherited criteria would hand its own children.
 
     Returns:
         The definition.
@@ -130,48 +125,6 @@ def _plan(parent: str, subtasks: tuple[SubtaskDefinition, ...]) -> Decomposition
         subtasks=subtasks,
         task_structure=TaskStructure.PARALLEL,
     )
-
-
-class _ScriptedStrategy:
-    """Answers with a plan per parent task, recording the contexts it saw."""
-
-    def __init__(self, plans: dict[str, DecompositionPlan]) -> None:
-        self._plans = plans
-        self.seen: list[tuple[int, tuple[NotBlankStr, ...]]] = []
-
-    async def decompose(
-        self, task: Task, context: DecompositionContext
-    ) -> DecompositionPlan:
-        """Return the plan scripted for *task*.
-
-        Returns:
-            The scripted plan.
-
-        Raises:
-            AssertionError: The recursion walked somewhere unscripted.
-        """
-        self.seen.append((context.current_depth, context.objective_criteria))
-        plan = self._plans.get(str(task.id))
-        if plan is None:
-            msg = f"strategy asked for an unscripted task {task.id!r}"
-            raise AssertionError(msg)
-        return plan
-
-    def plans_any_task(self) -> bool:
-        """Answer for a strategy keyed by parent.
-
-        Returns:
-            ``True``.
-        """
-        return True
-
-    def get_strategy_name(self) -> str:
-        """Name this strategy for the service's logs.
-
-        Returns:
-            The strategy name.
-        """
-        return "scripted"
 
 
 def _claims(result: DecompositionResult) -> dict[int, set[str]]:
@@ -280,7 +233,7 @@ class TestTheInductionHolds:
                 _subtask("nulls", satisfies=(_ROOT_CRITERIA[3],)),
             ),
         )
-        strategy = _ScriptedStrategy(
+        strategy = ScriptedStrategy(
             {
                 str(as_uuid("root")): root,
                 sid("ingest"): ingest,
@@ -288,7 +241,9 @@ class TestTheInductionHolds:
             }
         )
         service = DecompositionService(
-            strategy, TaskStructureClassifier(), config_resolver=_resolver()
+            strategy,
+            TaskStructureClassifier(),
+            config_resolver=scripted_resolver(_BOUNDS),
         )
 
         result = await service.decompose_task(
@@ -309,18 +264,21 @@ class TestTheInductionHolds:
                 _subtask("ints", satisfies=(_ROOT_CRITERIA[1],)),
             ),
         )
-        strategy = _ScriptedStrategy(
-            {str(as_uuid("root")): root, sid("ingest"): ingest}
-        )
+        strategy = ScriptedStrategy({str(as_uuid("root")): root, sid("ingest"): ingest})
         service = DecompositionService(
-            strategy, TaskStructureClassifier(), config_resolver=_resolver()
+            strategy,
+            TaskStructureClassifier(),
+            config_resolver=scripted_resolver(_BOUNDS),
         )
 
         await service.decompose_task(
             _task("root", criteria=_ROOT_CRITERIA), DecompositionContext()
         )
 
-        assert strategy.seen == [
+        assert [
+            (context.current_depth, context.objective_criteria)
+            for context in strategy.seen
+        ] == [
             (0, _ROOT_CRITERIA),
             (1, _ROOT_CRITERIA[:2]),
         ]
@@ -343,16 +301,16 @@ class TestTheInductionHolds:
                 _subtask("ints", satisfies=(_ROOT_CRITERIA[1],)),
             ),
         )
-        strategy = _ScriptedStrategy(
-            {str(as_uuid("root")): root, sid("ingest"): ingest}
-        )
+        strategy = ScriptedStrategy({str(as_uuid("root")): root, sid("ingest"): ingest})
         service = DecompositionService(
-            strategy, TaskStructureClassifier(), config_resolver=_resolver()
+            strategy,
+            TaskStructureClassifier(),
+            config_resolver=scripted_resolver(_BOUNDS),
         )
 
         result = await service.decompose_task(
             _task("root", criteria=_ROOT_CRITERIA), DecompositionContext()
         )
 
-        assert [depth for depth, _ in strategy.seen] == [0, 1]
+        assert strategy.seen_depths == [0, 1]
         assert result.children[0].children == ()

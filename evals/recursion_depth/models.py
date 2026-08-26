@@ -169,6 +169,19 @@ UNRESOLVED_CLAIMS_CAVEAT: Final[str] = (
     "reporting a regression rather than a known gap."
 )
 
+#: The complement of the line above, for a cell this harness stopped rather
+#: than deflated. It rides the caption because an unmeasured cell is otherwise
+#: invisible on the chart: it lowers a histogram bar and says nothing, and this
+#: particular reason means the product's own write boundary let a claim through
+#: rather than that a sample was unlucky.
+UNRESOLVABLE_CLAIM_CELLS_CAVEAT: Final[str] = (
+    "{cells} cell(s) were stopped before any leaf ran because a planner claim "
+    "named no requirement this specification defines. That claim should have "
+    "been refused where it was written, so these cells are evidence of a "
+    "regression in the product rather than of a difficult sample; the depths "
+    "they would have reached are missing from every curve below."
+)
+
 
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.
@@ -448,7 +461,12 @@ class CellProgressRecord(BaseModel):
 
 
 class DepthPoint(BaseModel):
-    """One point on the survival curve.
+    """One point on the specification-satisfaction curve.
+
+    The PRIMARY curve, and not the same question as
+    :class:`SurvivalPoint`: this one asks how much of the specification the
+    merged tree satisfies, against a denominator fixed by the specification
+    that cannot empty.
 
     Attributes:
         depth: The depth this point bins, in levels rather than zero-based, so

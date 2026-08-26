@@ -382,6 +382,12 @@ class PlanController(Controller):
         # live criteria, while the plan carries a denormalised copy taken when
         # it was opened. Asking the shared function would hold generated items
         # to the older of two answers.
+        #
+        # That holds because every level's vocabulary is a SUBSET of the root's:
+        # `matched_criteria` narrows to members of the parent's own list, and a
+        # level narrowed to empty admits no claim rather than every claim. So a
+        # decomposed item can never carry a claim this check would refuse, and
+        # the two boundaries cannot disagree about one.
         reject_unnamed_claims(items, existing.objective_criteria)
         successor = await replan_initiative(
             state.app_state,

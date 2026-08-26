@@ -164,6 +164,10 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
     Returns:
         The brief.
     """
+    # Resolves a second time, after the tree-wide pre-check the runner makes
+    # before any leaf session opens. Cannot raise here by construction; kept
+    # rather than threaded so this function needs only the definition it is
+    # already handed.
     claimed = [
         f"- {identifier}: {spec.titles[identifier]}"
         for identifier in requirement_ids_of(

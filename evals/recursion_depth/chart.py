@@ -2,19 +2,20 @@
 """The deliverable: one chart, emitted as a self-contained SVG.
 
 Hand-emitted rather than plotted by a library. The repository carries no
-plotting dependency, a two-series six-point line chart with a cost panel does
-not justify adding one, and a committed SVG diffs, renders in the docs and can
-be read without running anything.
+plotting dependency, three stacked panels of a two-series six-point line do not
+justify adding one, and a committed SVG diffs, renders in the docs and can be
+read without running anything.
 
 The palette is declared for both themes and the page paints its own background,
 because an SVG with no background renders as light-on-light for half its
 readers.
 
-The caption is part of the chart rather than prose beside it. Three things must
-travel with the curve wherever it is pasted: how many runs actually reached each
-depth, that unit sizing was the planner's own, and what independence the judge
-had. A number separated from its caveats gets over-read, which is the failure
-this whole experiment exists downstream of.
+The caption is part of the chart rather than prose beside it. Four things must
+travel with the curve wherever it is pasted: what each of the two curves
+measures, how many runs actually reached each depth, that unit sizing was the
+planner's own, and what independence the judge had. A number separated from its
+caveats gets over-read, which is the failure this whole experiment exists
+downstream of.
 """
 
 from collections.abc import Iterable
@@ -213,25 +214,43 @@ def _fraction_panel(
             f'<text class="tick" x="{x:.1f}" y="{top + _PLOT_HEIGHT + 20:.1f}" '
             f'text-anchor="middle">{depth}</text>'
         )
-    for arm, values in (secondary or {}).items():
-        if not values:
-            continue
-        colour, dash = _ARM_STYLE[arm]
-        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        points = _polyline(values, xs, top=top, height=_PLOT_HEIGHT, ceiling=1.0)
-        parts.append(
-            f'<polyline class="series secondary" points="{points}" '
-            f'stroke="{colour}"{dash_attr}/>'
-        )
+    parts.extend(_fraction_lines(secondary or {}, xs, top=top, primary=False))
+    parts.extend(_fraction_lines(series, xs, top=top, primary=True))
+    return parts
+
+
+def _fraction_lines(
+    series: dict[Arm, list[tuple[int, float]]],
+    xs: dict[int, float],
+    *,
+    top: float,
+    primary: bool,
+) -> list[str]:
+    """Draw one set of arm lines onto a fraction panel.
+
+    Args:
+        series: Each arm's points, keyed by arm.
+        xs: Where each depth sits horizontally.
+        top: The panel's top edge.
+        primary: Whether these are the panel's own curve, which carries its
+            point markers, or the faint one drawn behind it.
+
+    Returns:
+        The SVG fragments.
+    """
+    parts: list[str] = []
     for arm, values in series.items():
         if not values:
             continue
         colour, dash = _ARM_STYLE[arm]
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         points = _polyline(values, xs, top=top, height=_PLOT_HEIGHT, ceiling=1.0)
+        css = "series" if primary else "series secondary"
         parts.append(
-            f'<polyline class="series" points="{points}" stroke="{colour}"{dash_attr}/>'
+            f'<polyline class="{css}" points="{points}" stroke="{colour}"{dash_attr}/>'
         )
+        if not primary:
+            continue
         parts.extend(
             f'<circle cx="{xs[depth]:.1f}" '
             f'cy="{top + _PLOT_HEIGHT - value * _PLOT_HEIGHT:.1f}" '

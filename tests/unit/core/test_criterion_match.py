@@ -102,6 +102,10 @@ class TestWhatNamedNothing:
             == ()
         )
 
+    def test_an_empty_objective_leaves_every_claim_unmatched(self) -> None:
+        """A level answerable for nothing is one where any claim names it."""
+        assert unmatched_claims(("a", "b"), objective=()) == ("a", "b")
+
 
 class TestTheRefusal:
     def test_a_clean_plan_produces_no_message(self) -> None:
@@ -118,17 +122,37 @@ class TestTheRefusal:
     def test_the_message_names_the_item_and_what_it_invented(self) -> None:
         units = (_Unit("Ingest", (str(_OBJECTIVE[0]), "Tests pass")),)
 
-        (message,) = describe_unnamed_claims(units, objective=_OBJECTIVE)
+        message = describe_unnamed_claims(units, objective=_OBJECTIVE)[0]
 
         assert "Ingest" in message
         assert "Tests pass" in message
 
-    def test_the_message_quotes_the_criteria_to_copy_from(self) -> None:
+    def test_the_item_message_does_not_carry_the_criteria_list(self) -> None:
+        """It rides the tail instead, once, however many items offend."""
         units = (_Unit("Ingest", ("Tests pass",)),)
 
-        (message,) = describe_unnamed_claims(units, objective=_OBJECTIVE)
+        message = describe_unnamed_claims(units, objective=_OBJECTIVE)[0]
 
-        assert str(_OBJECTIVE[0]) in message
+        assert str(_OBJECTIVE[0]) not in message
+
+    def test_the_criteria_to_copy_from_are_quoted_in_full(self) -> None:
+        """Every one of them: a partial list is one the planner cannot use."""
+        units = (_Unit("Ingest", ("Tests pass",)),)
+
+        tail = describe_unnamed_claims(units, objective=_OBJECTIVE)[-1]
+
+        assert all(str(criterion) in tail for criterion in _OBJECTIVE)
+
+    def test_the_criteria_are_stated_once_however_many_items_offend(self) -> None:
+        """The list is one list. Repeating it per item multiplies it by the
+        item count, and a plan may carry a thousand items.
+        """
+        units = tuple(_Unit(f"Item {index}", ("Ship it",)) for index in range(6))
+
+        messages = describe_unnamed_claims(units, objective=_OBJECTIVE)
+
+        quoting = [m for m in messages if str(_OBJECTIVE[0]) in m]
+        assert len(quoting) == 1
 
     def test_one_message_per_offending_item(self) -> None:
         units = (
@@ -139,11 +163,37 @@ class TestTheRefusal:
 
         messages = describe_unnamed_claims(units, objective=_OBJECTIVE)
 
-        assert len(messages) == 2
+        assert len(messages) == 3
         assert "Ingest" in messages[0]
         assert "Parser" in messages[1]
 
-    def test_an_objective_with_no_criteria_refuses_nothing(self) -> None:
-        units = (_Unit("Ingest", ("Tests pass",)),)
+
+class TestALevelAnswerableForNothing:
+    """The case that left a whole subtree unchecked.
+
+    A pure-support unit is judged oversized on its artifact count, with
+    ``satisfies`` never entering the decision, so it is recursed into with an
+    empty vocabulary. Skipping the check there let its descendants claim
+    anything at all.
+    """
+
+    def test_a_claim_is_refused_when_the_level_states_no_criteria(self) -> None:
+        units = (_Unit("Ingest", ("R01: something",)),)
+
+        messages = describe_unnamed_claims(units, objective=())
+
+        assert messages
+        assert "Ingest" in messages[0]
+
+    def test_the_refusal_says_there_is_nothing_to_claim(self) -> None:
+        units = (_Unit("Ingest", ("R01: something",)),)
+
+        tail = describe_unnamed_claims(units, objective=())[-1]
+
+        assert "answerable for no objective criterion" in tail
+
+    def test_an_item_claiming_nothing_is_still_accepted(self) -> None:
+        """The subtree advances nothing and says so, which is honest."""
+        units = (_Unit("Scaffold", ()), _Unit("Wire", ()))
 
         assert describe_unnamed_claims(units, objective=()) == ()

@@ -410,6 +410,64 @@ class TestPlanController:
 
         assert resp.status_code == 200, resp.text
 
+    async def test_edit_accepts_a_claim_differing_only_in_case_and_spacing(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # Forgiving about spelling and unforgiving about content, asserted at
+        # the wire rather than only at the matcher: a stricter rule here would
+        # refuse a plan over a trailing space.
+        await _seed(async_test_client, _plan(objective_criteria=("board scaffolded",)))
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Reworked scaffold",
+                        "description": "New scope for the board",
+                        "owner": "engineering",
+                        "acceptance_criteria": ["board scaffolded"],
+                        "expected_artifacts": ["src/board.py"],
+                        "satisfies": ["  BOARD   scaffolded "],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 200, resp.text
+
+    async def test_replan_refuses_a_claim_the_objective_does_not_state(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # The other operator-facing writer of `satisfies`. Refusing on the edit
+        # path alone leaves this one free to write a claim naming nothing.
+        await _seed(async_test_client, _plan(objective_criteria=("board scaffolded",)))
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.post(
+            f"/api/v1/plans/{plan_id}/replan",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Reworked scaffold",
+                        "description": "New scope for the board",
+                        "owner": "engineering",
+                        "acceptance_criteria": ["board scaffolded"],
+                        "expected_artifacts": ["src/board.py"],
+                        "satisfies": ["the game is fun"],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert "the game is fun" in resp.text
+
     async def test_edit_refuses_an_owner_the_org_does_not_staff(
         self,
         async_test_client: LoopAsyncClient,

@@ -162,12 +162,25 @@ and went unreported for a whole run. A session that took turns and recorded
 nothing is spend that happened and was never written down, and these rows are
 the only ledger there is."""
 EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repaired"
-EVALS_RECURSION_SPEND_ADOPTED: Final[str] = "evals.recursion_depth.spend_adopted"
 """A recording's spend column was rebuilt from its own per-call log.
 
 Re-scoring an old recording whose per-session ledger was scrambled by
 concurrency. Logged because a repaired figure is a provenance claim: a token
 column silently reconstructed is worse than the fault it corrects."""
+EVALS_RECURSION_SPEND_ADOPTING: Final[str] = "evals.recursion_depth.spend_adopting"
+"""A rebuilt spend column is about to replace a recording's journal.
+
+Emitted BEFORE the first write, because the operation moves a file holding real
+spend and a failure part-way leaves a state somebody has to read. Without this
+line an interrupted adoption is indistinguishable from one that never
+started."""
+EVALS_RECURSION_SPEND_ADOPTED: Final[str] = "evals.recursion_depth.spend_adopted"
+"""A rebuilt spend column became the recording's own journal.
+
+The repair above computes the figures; this records that they were WRITTEN
+BACK, superseding the journalled ones. Logged separately because it is the step
+that makes the artefact reproducible from the repository alone, and the step
+that moves a file holding real spend."""
 EVALS_RECURSION_SPEND_UNCLAIMED: Final[str] = "evals.recursion_depth.spend_unclaimed"
 """The repair found calls that no journalled unit claimed.
 

@@ -91,7 +91,9 @@ def unmatched_claims(
 
     Returns:
         The offending claims exactly as written, in the order written, so a
-        refusal quotes back what its author can search for.
+        refusal quotes back what its author can search for. An empty
+        *objective* states nothing, so every claim is unmatched: a level
+        answerable for no criterion is one where any claim names nothing.
     """
     stated = {criterion_key(criterion) for criterion in objective}
     return tuple(claim for claim in claims if criterion_key(claim) not in stated)
@@ -108,35 +110,52 @@ def describe_unnamed_claims(
     objective never states, which reads as coverage to every consumer and is
     coverage to none.
 
+    An empty *objective* is not an exemption, it is the strictest case: a level
+    answerable for nothing admits no claim at all. Skipping it instead left a
+    whole subtree unchecked, because a pure-support unit is judged oversized on
+    its artifact count with ``satisfies`` never entering the decision, so its
+    descendants planned against an empty vocabulary and could claim anything.
+    Refusing here is also what keeps every level's vocabulary a subset of the
+    root's, which is the invariant the operator's edit boundary relies on to
+    never refuse an item decomposition produced.
+
     One message per offending unit, because a session that regenerates its
     whole plan on each rejection cannot converge while it is told one violation
-    at a time.
+    at a time. The criteria to copy from are stated ONCE, at the end: repeating
+    them per unit multiplies one list by the item count, and a plan may carry a
+    thousand items against a hundred criteria.
 
     Args:
         units: The units as submitted.
-        objective: The criteria the level is answerable for. Empty skips the
-            check: an objective declaring none has no coverage to claim, and
-            neither has a subtree whose parent claimed none.
+        objective: The criteria the level is answerable for. Empty admits no
+            claim, which is what an objective declaring none and a parent
+            claiming none both amount to.
 
     Returns:
-        A message per offending unit, in submission order; empty when every
-        claim names something.
+        A message per offending unit in submission order, followed by one
+        naming what may be claimed; empty when every claim names something.
     """
-    if not objective:
+    messages = [
+        f"{unit.title!r} claims {', '.join(repr(claim) for claim in invented)}, "
+        f"which the objective does not state, so nothing can tell what it "
+        f"advances."
+        for unit in units
+        if (invented := unmatched_claims(unit.satisfies, objective=objective))
+    ]
+    if not messages:
         return ()
-    stated = ", ".join(repr(str(criterion)) for criterion in objective)
-    messages: list[str] = []
-    for unit in units:
-        invented = unmatched_claims(unit.satisfies, objective=objective)
-        if not invented:
-            continue
-        quoted = ", ".join(repr(claim) for claim in invented)
-        messages.append(
-            f"{unit.title!r} claims {quoted}, which the objective does not "
-            f"state, so nothing can tell what it advances. Copy the criteria "
-            f"it advances verbatim from: {stated}"
+    if not objective:
+        nothing_to_claim = (
+            "This level is answerable for no objective criterion, so no item "
+            "here may claim one: either the objective declared none, or the "
+            "unit this level decomposes claimed none."
         )
-    return tuple(messages)
+        return (*messages, nothing_to_claim)
+    stated = ", ".join(repr(str(criterion)) for criterion in objective)
+    return (
+        *messages,
+        f"Copy the criteria an item advances verbatim from: {stated}",
+    )
 
 
 __all__ = [

@@ -145,11 +145,11 @@ class TestEveryClaimResolves:
         assert claimed_requirements(tree, known=_KNOWN)[sid("choose")] == ()
 
     def test_an_unresolvable_claim_below_the_root_raises(self) -> None:
-        """The level the shipped map used to lose, so this is the case.
+        """The level a root-only check cannot see.
 
-        A root plan echoing the objective's criteria resolved perfectly and
-        every level below it invented a fresh vocabulary, so a check that
-        looked only at the root would have passed a whole broken sweep.
+        A root plan echoing the objective's criteria resolves perfectly while
+        every level below it invents a fresh vocabulary, so a check that looked
+        only at the root would pass a whole broken sweep.
         """
         below = _level(
             sid("ingest"),

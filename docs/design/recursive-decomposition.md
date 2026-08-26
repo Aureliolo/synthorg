@@ -103,31 +103,41 @@ it, and the tree stops once every unit advances exactly one thing. Depth
 therefore tracks the objective's own criterion count: less if it needs less,
 more if it needs more.
 
-The induction rests on the criteria DESCENDING with the recursion, and for a
-while they did not. A child task is built from its subtask's own
-`acceptance_criteria`, which is the planner's per-item prose, and every level
-re-read the objective's criteria off the task in front of it, so each level
-minted a fresh vocabulary out of what the level above happened to write. A
-claim made below the root then named nothing the objective had ever stated, the
-claim count was bounded by `subtask_max_criteria` rather than by what the parent
-held, and the recursion-depth sweep dropped 143 claims it could attribute to
-nothing.
+The induction rests on the criteria DESCENDING with the recursion. Re-read per
+level instead, each level mints a fresh vocabulary out of what the level above
+happened to write: a child task is built from its subtask's own
+`acceptance_criteria`, which is the planner's per-item prose. A claim made below
+the root then names nothing the objective ever stated, the claim count is
+bounded by `subtask_max_criteria` rather than by what the parent held, and the
+recursion-depth sweep dropped 143 claims it could attribute to nothing.
 
 `DecompositionContext.objective_criteria` is what descends. It is stamped once
 at the root from the objective's own criteria (`stamp_objective_criteria`,
 beside the bounds resolve, so one tree is never planned against two
 vocabularies) and narrowed by `child_context` to exactly the criteria the
-parent unit claimed. `child_context` is its only writer, the same way it is
-`current_depth`'s. The narrowed tuple carries the OBJECTIVE's spelling rather
-than the claim's: matching is forgiving about case and spacing, and handing the
-claim's text down instead would move the vocabulary one normalisation step per
-level until a deep claim matched nothing at all.
+parent unit claimed. Once stamped, `child_context` is its only writer, the same
+way it is `current_depth`'s. The narrowed tuple carries the OBJECTIVE's spelling
+rather than the claim's: matching is forgiving about case and spacing, and
+handing the claim's text down instead would move the vocabulary one
+normalisation step per level until a deep claim matched nothing at all.
 
 The child task keeps its own `acceptance_criteria` as the local definition of
-done, so the planning message carries two lists and says which is which:
-`Acceptance Criteria` is when THIS unit is finished, and
+done, so below the root the planning message carries two lists and says which is
+which: `Acceptance Criteria` is when THIS unit is finished, and
 `Objective criteria to cover` is what the objective the whole tree serves is
-still waiting for. An item's `satisfies` is copied out of the second.
+still waiting for. An item's `satisfies` is copied out of the second. At the
+root the two coincide and one list is rendered, under the heading the submit
+tool's schema names. BOTH planners render it, because either can run: the
+single-shot decomposer builds it in `build_task_message`, the agent-session one
+in `planning_brief`, and a strategy whose schema names a heading its own prompt
+omits is judged on a list it was never shown.
+
+A level narrowed to NOTHING admits no claim at all rather than admitting every
+claim. That case is reachable and not rare: a pure-support unit is judged
+oversized on its artifact count with `satisfies` never entering the decision, so
+it is recursed into, and letting its descendants claim freely put text into a
+plan that the operator's own edit boundary then refused. Refusing there is what
+keeps every level's vocabulary a subset of the root's.
 
 The backstops below are still not redundant. A planner can under-tag, which
 does not break the induction but flattens the tree (a unit claiming nothing is

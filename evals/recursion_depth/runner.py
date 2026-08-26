@@ -1020,7 +1020,12 @@ async def _build_tree_units(
     # tree whose claims name nothing has no measurement to produce whatever it
     # spends. Raises, so the cell is recorded unavailable with the reason
     # rather than being scored against a denominator that cannot fill.
-    claimed_requirements(tree, known=context.spec.requirement_ids)
+    #
+    # Called for the raise, not the map. Each leaf re-resolves its own two or
+    # three claims from the definition it already holds, which is a set lookup
+    # per claim; threading this through to save that would put `_leaf_record`
+    # over the positional-argument cap for no measurable gain.
+    _ = claimed_requirements(tree, known=context.spec.requirement_ids)
     parents: dict[str, Task] = {str(root.id): root}
     for node in merge_nodes(tree):
         parents.update({str(task.id): task for task in node.created_tasks})
