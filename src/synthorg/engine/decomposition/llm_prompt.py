@@ -375,6 +375,41 @@ def build_system_message(
     return ChatMessage(role=MessageRole.SYSTEM, content=content)
 
 
+def criteria_lines(
+    task: Task, context: DecompositionContext, *, own_heading: str
+) -> list[str]:
+    """Render the criteria block a planning message carries.
+
+    Two criteria lists, and below the root they are different things: one says
+    when THIS unit is done, the other what the objective the whole tree serves
+    is still waiting for. At the root they are the same list, so it is rendered
+    once, under the heading the submit tool's schema names.
+
+    Shared by both planners rather than written per prompt. A schema pointing
+    at a heading one of them does not render is the defect this exists to
+    close, and two copies of the rule is two chances to reintroduce it on one
+    side only.
+
+    Args:
+        task: The unit being decomposed.
+        context: What this level is answerable for.
+        own_heading: What to call the unit's OWN criteria, which the two
+            prompts capitalise differently.
+
+    Returns:
+        The block, ready to join into the fenced content.
+    """
+    lines: list[str] = []
+    own = tuple(c.description for c in task.acceptance_criteria)
+    if own and own != tuple(context.objective_criteria):
+        lines.append(own_heading)
+        lines.extend(f"  - {description}" for description in own)
+    if context.objective_criteria:
+        lines.append(OBJECTIVE_CRITERIA_LABEL)
+        lines.extend(f"  - {criterion}" for criterion in context.objective_criteria)
+    return lines
+
+
 def build_task_message(
     task: Task,
     context: DecompositionContext,
@@ -400,19 +435,9 @@ def build_task_message(
         f"Title: {task.title}",
         f"Description: {task.description}",
     ]
-    own = tuple(c.description for c in task.acceptance_criteria)
-    # Two criteria lists, and below the root they are different things: one
-    # says when THIS unit is done, the other what the objective the whole tree
-    # serves is still waiting for. At the root they are the same list, so it is
-    # rendered once, under the heading the schema tells the planner to copy
-    # from. Fenced with the rest, because a criterion is operator-authored at
-    # the root and agent-authored below it.
-    if own and own != tuple(context.objective_criteria):
-        inner.append("Acceptance Criteria:")
-        inner.extend(f"  - {description}" for description in own)
-    if context.objective_criteria:
-        inner.append(OBJECTIVE_CRITERIA_LABEL)
-        inner.extend(f"  - {criterion}" for criterion in context.objective_criteria)
+    # Fenced with the rest, because a criterion is operator-authored at the
+    # root and agent-authored below it.
+    inner.extend(criteria_lines(task, context, own_heading="Acceptance Criteria:"))
 
     parts = [
         wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),

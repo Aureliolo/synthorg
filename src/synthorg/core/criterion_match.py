@@ -151,7 +151,7 @@ def describe_unnamed_claims(
             "unit this level decomposes claimed none."
         )
         return (*messages, nothing_to_claim)
-    stated = ", ".join(repr(str(criterion)) for criterion in objective)
+    stated = ", ".join(repr(criterion) for criterion in objective)
     return (
         *messages,
         f"Copy the criteria an item advances verbatim from: {stated}",

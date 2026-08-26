@@ -14,8 +14,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import DecompositionContext, width_budget
 from synthorg.engine.decomposition.llm_prompt import (
     DECOMPOSITION_FENCES,
-    OBJECTIVE_CRITERIA_LABEL,
     coverage_guidance,
+    criteria_lines,
     foundation_lines,
     safe_roles,
 )
@@ -99,17 +99,10 @@ def planning_brief(
         The user-message brief driving the planning session.
     """
     inner = [f"Title: {task.title}", f"Description: {task.description}"]
-    own = tuple(c.description for c in task.acceptance_criteria)
     # The submit tool validates ``satisfies`` against the level's inherited
     # vocabulary, so the brief has to render it or the planner is judged on a
-    # list it was never shown. At the root the two coincide and it is rendered
-    # once, under the heading the tool schema names.
-    if own and own != tuple(context.objective_criteria):
-        inner.append("Acceptance criteria:")
-        inner.extend(f"  - {description}" for description in own)
-    if context.objective_criteria:
-        inner.append(OBJECTIVE_CRITERIA_LABEL)
-        inner.extend(f"  - {criterion}" for criterion in context.objective_criteria)
+    # list it was never shown.
+    inner.extend(criteria_lines(task, context, own_heading="Acceptance criteria:"))
     return "\n".join(
         [
             "You are the accountable owner planning this objective. Produce",
