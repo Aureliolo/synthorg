@@ -436,8 +436,8 @@ this describes a run, it does not revise a plan.
 
 The engine reaches it through `DecompositionProgressReporter`, a one-method
 seam wired at the worker assembly. The service holds no repository, so a
-harness plans without persistence at zero cost, and publishing is best-effort
-by contract (`_progress_publish.py`): a reporter that raises is logged and
+harness plans without persistence at zero cost, and publishing is allowed to
+fail by contract (`_progress_publish.py`): a reporter that raises is logged and
 dropped, because losing the progress line costs an operator a refresh while
 losing the tree costs the run.
 
