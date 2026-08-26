@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -27,6 +27,13 @@ export interface TaskListViewProps {
   /** When defined, every row carries a selection checkbox. */
   onToggleSelect?: ((taskId: string) => void) | undefined
   selectedIds?: ReadonlySet<string> | undefined
+  /**
+   * What to show with no rows. The page supplies it, because only the page
+   * knows whether a filter emptied the list or the org has no tasks at all,
+   * and telling an operator with no filters set to adjust their filters names
+   * something they cannot act on.
+   */
+  emptyNode?: ReactNode
 }
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
@@ -96,6 +103,7 @@ function TaskListViewInner({
   onSelectTask,
   onToggleSelect,
   selectedIds,
+  emptyNode,
 }: TaskListViewProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>('asc')
@@ -115,11 +123,12 @@ function TaskListViewInner({
   )
 
   if (tasks.length === 0) {
+    if (emptyNode !== undefined) return <>{emptyNode}</>
     return (
       <EmptyState
         icon={Inbox}
-        title="No tasks found"
-        description="Try adjusting your filters or create a new task."
+        title="No tasks yet"
+        description="Create a task or let the org generate work to populate the board."
       />
     )
   }

@@ -214,10 +214,11 @@ function BoardToggles({
   )
 }
 
-function TaskBoardKanbanEmptyState({ ctrl }: TaskBoardCtrlProps) {
-  // TaskListView renders its own empty state; the Kanban path did not, so an
-  // empty board rendered bare columns with no explanation. Distinguish "no
-  // tasks at all" from "filters narrowed to zero".
+function TaskBoardEmptyState({ ctrl }: TaskBoardCtrlProps) {
+  // Both view modes, because both got it wrong in different ways: the Kanban
+  // path rendered bare columns with no explanation, and the list path told an
+  // operator with no filters set to adjust their filters. One derivation
+  // answers "why is this empty" for the page rather than per view.
   const props = useEmptyStateProps({
     filteredCount: ctrl.filteredTasks.length,
     totalCount: ctrl.data.tasks.length,
@@ -247,11 +248,12 @@ function TaskBoardContent({
         onSelectTask={ctrl.handleSelectTask}
         onToggleSelect={selection.toggle}
         selectedIds={selection.visibleSelected}
+        emptyNode={<TaskBoardEmptyState ctrl={ctrl} />}
       />
     )
   }
   if (ctrl.filteredTasks.length === 0) {
-    return <TaskBoardKanbanEmptyState ctrl={ctrl} />
+    return <TaskBoardEmptyState ctrl={ctrl} />
   }
   const visibleColumns = ctrl.showTerminal
     ? KANBAN_COLUMNS

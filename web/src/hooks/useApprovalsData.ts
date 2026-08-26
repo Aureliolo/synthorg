@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useApprovalsStore } from '@/stores/approvals'
+import { selectInboxApprovals } from '@/stores/approvals/selectors'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
@@ -46,10 +47,7 @@ export function useApprovalsData(): UseApprovalsDataReturn {
   // generic Approvals inbox excludes them from the list, counts, and batch
   // selection. Filtered here, after the raw store read, so the reference stays
   // stable across renders.
-  const approvals = useMemo(
-    () => rawApprovals.filter((a) => a.source !== 'plan_review'),
-    [rawApprovals],
-  )
+  const approvals = useMemo(() => selectInboxApprovals(rawApprovals), [rawApprovals])
   const selectedApproval = useApprovalsStore((s) => s.selectedApproval)
   // The store's ``total`` counts every source; the generic inbox excludes plan
   // reviews, so its total is the filtered row count (the full set is loaded via

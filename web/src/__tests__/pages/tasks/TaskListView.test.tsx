@@ -58,6 +58,23 @@ describe('TaskListView', () => {
 
   it('renders empty state when no tasks', () => {
     render(<TaskListView tasks={[]} onSelectTask={() => {}} />)
-    expect(screen.getByText('No tasks found')).toBeInTheDocument()
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument()
+    // Nothing here knows whether a filter emptied the list, so it must not
+    // name filters: with none set, "adjust your filters" points an operator at
+    // something they cannot act on.
+    expect(screen.queryByText(/filters/i)).not.toBeInTheDocument()
+  })
+
+  it('defers to the page when it knows why the list is empty', () => {
+    render(
+      <TaskListView
+        tasks={[]}
+        onSelectTask={() => {}}
+        emptyNode={<p>No tasks match your filters</p>}
+      />,
+    )
+
+    expect(screen.getByText('No tasks match your filters')).toBeInTheDocument()
+    expect(screen.queryByText('No tasks yet')).not.toBeInTheDocument()
   })
 })

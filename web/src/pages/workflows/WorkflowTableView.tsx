@@ -32,8 +32,11 @@ export function WorkflowTableView({
     return (
       <EmptyState
         icon={Workflow}
-        title="No workflows found"
-        description="Try adjusting your filters or create a new workflow."
+        title="No workflows yet"
+        // Reached only with NO workflows: the page renders its own
+        // filtered-to-nothing state first, so naming filters here pointed an
+        // operator with none set at something they cannot adjust.
+        description="Create a workflow to give the org a repeatable sequence of steps to run."
       />
     )
   }
