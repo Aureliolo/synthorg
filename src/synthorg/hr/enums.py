@@ -12,6 +12,19 @@ class HiringRequestStatus(StrEnum):
     INSTANTIATED = "instantiated"
 
 
+class HiringDecision(StrEnum):
+    """What an operator can decide about a hiring request.
+
+    An enum rather than two string constants because which statuses admit
+    which decision is decided from this value: typed as a bare ``str`` the
+    checker cannot see a caller's own spelling, and an unrecognised decision
+    reads as one nothing admits, silently losing the withdrawal hop.
+    """
+
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
 class FiringReason(StrEnum):
     """Reason for agent termination."""
 

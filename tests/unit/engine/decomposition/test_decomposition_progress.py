@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.plan import DecompositionProgress
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.engine.decomposition._recursion import TreeSessionLedger
 
 pytestmark = pytest.mark.unit

@@ -4,26 +4,19 @@ from typing import Final
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
-from psycopg.types.json import Jsonb
+from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import (
-    DecompositionProgress,
-    Plan,
-    PlanItem,
-    PlanVersionSnapshot,
-)
+from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_review import PlanReview
-from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
@@ -36,66 +29,23 @@ from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared._task_filters import live_task_predicate
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
 from synthorg.persistence.postgres._integrity import raise_constraint_violation
+from synthorg.persistence.postgres._plan_marshalling import (
+    COLUMNS,
+    INSERT_PLACEHOLDERS,
+    UPDATE_SET,
+    UPSERT_SET,
+    row_params,
+    row_to_plan,
+    serialise_progress,
+)
 
 logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: Final[int] = 10_000
-
-_COLUMNS = (
-    "id, project, project_name, objective_id, objective_title, parent_task_id, items, "
-    "task_structure, coordination_topology, status, failure_reason, forecast_id, "
-    "review, open_questions, assumptions, objective_criteria, version_history, "
-    "replan_generation, version, created_at, updated_at, planning_strategy, "
-    "review_absent_reason, decomposition_progress"
-)
-_COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
-# Derive placeholders + SET clauses from the single column list so the arity can
-# never drift from ``_row_params`` (the sqlite repo drift-proofs the same way).
-_INSERT_PLACEHOLDERS = "(" + ", ".join("%s" for _ in _COLUMN_NAMES) + ")"
-_UPDATE_SET = ", ".join(f"{name}=%s" for name in _COLUMN_NAMES if name != "id")
-_UPSERT_SET = ", ".join(
-    f"{name}=EXCLUDED.{name}" for name in _COLUMN_NAMES if name != "id"
-)
-
-
-def _row_to_plan(row: DictRow) -> Plan:
-    """Reconstruct a ``Plan`` from a Postgres dict_row.
-
-    ``items`` arrives as a Python list of dicts (JSONB auto-deserialized by
-    psycopg); ``created_at`` / ``updated_at`` arrive as aware ``datetime``
-    values from their ``TIMESTAMPTZ`` columns. ``dict_row`` yields a fresh
-    mutable ``dict`` per row, so the coercions rewrite it in place.
-
-    Returns:
-        Validated ``Plan`` model instance.
-    """
-    row["items"] = tuple(PlanItem.model_validate(item) for item in (row["items"] or []))
-    row["task_structure"] = TaskStructure(row["task_structure"])
-    row["coordination_topology"] = CoordinationTopology(row["coordination_topology"])
-    row["status"] = PlanStatus(row["status"])
-    forecast_id = row["forecast_id"]
-    row["forecast_id"] = UUID(forecast_id) if forecast_id else None
-    review = row["review"]
-    row["review"] = PlanReview.model_validate(review) if review else None
-    row["open_questions"] = tuple(row["open_questions"] or [])
-    row["assumptions"] = tuple(row["assumptions"] or [])
-    row["objective_criteria"] = tuple(row["objective_criteria"] or [])
-    row["version_history"] = tuple(
-        PlanVersionSnapshot.model_validate(snapshot)
-        for snapshot in (row["version_history"] or [])
-    )
-    progress = row["decomposition_progress"]
-    row["decomposition_progress"] = (
-        DecompositionProgress.model_validate(progress) if progress else None
-    )
-    row["created_at"] = coerce_row_timestamp(row["created_at"])
-    row["updated_at"] = coerce_row_timestamp(row["updated_at"])
-    return Plan.model_validate(row)
 
 
 class PostgresPlanRepository:
@@ -107,44 +57,6 @@ class PostgresPlanRepository:
 
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
-
-    @staticmethod
-    def _row_params(plan: Plan) -> tuple[object, ...]:
-        """Serialise a plan into positional SQL params in column order.
-
-        Returns:
-            Scalar param values for INSERT/UPDATE in the fixed column order.
-        """
-        return (
-            str(plan.id),
-            plan.project,
-            plan.project_name,
-            plan.objective_id,
-            plan.objective_title,
-            plan.parent_task_id,
-            Jsonb([item.model_dump(mode="json") for item in plan.items]),
-            plan.task_structure.value,
-            plan.coordination_topology.value,
-            plan.status.value,
-            plan.failure_reason,
-            str(plan.forecast_id) if plan.forecast_id is not None else None,
-            Jsonb(plan.review.model_dump(mode="json")) if plan.review else None,
-            Jsonb(list(plan.open_questions)),
-            Jsonb(list(plan.assumptions)),
-            Jsonb(list(plan.objective_criteria)),
-            Jsonb([snap.model_dump(mode="json") for snap in plan.version_history]),
-            plan.replan_generation,
-            plan.version,
-            plan.created_at,
-            plan.updated_at,
-            plan.planning_strategy,
-            plan.review_absent_reason,
-            (
-                Jsonb(plan.decomposition_progress.model_dump(mode="json"))
-                if plan.decomposition_progress
-                else None
-            ),
-        )
 
     async def create(self, plan: Plan) -> None:
         """Insert a new plan, failing if the id already exists.
@@ -161,9 +73,9 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- fixed columns
-                    f"VALUES {_INSERT_PLACEHOLDERS}",
-                    self._row_params(plan),
+                    f"INSERT INTO plans ({COLUMNS}) "  # noqa: S608 -- fixed columns
+                    f"VALUES {INSERT_PLACEHOLDERS}",
+                    row_params(plan),
                 )
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
@@ -202,7 +114,7 @@ class PostgresPlanRepository:
             RecordNotFoundError: No plan with this id exists.
             QueryError: If the database operation fails.
         """
-        params: list[object] = [*self._row_params(plan)[1:], str(plan.id)]
+        params: list[object] = [*row_params(plan)[1:], str(plan.id)]
         guard = ""
         if expected_version is not None:
             guard = " AND version=%s"
@@ -211,7 +123,7 @@ class PostgresPlanRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     # ``_UPDATE_SET`` + guard are fixed literals; values parameterized.
-                    f"UPDATE plans SET {_UPDATE_SET} WHERE id=%s{guard}",  # noqa: S608
+                    f"UPDATE plans SET {UPDATE_SET} WHERE id=%s{guard}",  # noqa: S608
                     params,
                 )
                 rowcount = cur.rowcount
@@ -289,10 +201,10 @@ class PostgresPlanRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     # Fixed columns + derived SET; values fully parameterized.
-                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
-                    f"VALUES {_INSERT_PLACEHOLDERS} "
-                    f"ON CONFLICT(id) DO UPDATE SET {_UPSERT_SET}",
-                    self._row_params(plan),
+                    f"INSERT INTO plans ({COLUMNS}) "  # noqa: S608
+                    f"VALUES {INSERT_PLACEHOLDERS} "
+                    f"ON CONFLICT(id) DO UPDATE SET {UPSERT_SET}",
+                    row_params(plan),
                 )
                 await conn.commit()
         except psycopg.errors.IntegrityError as exc:
@@ -342,7 +254,7 @@ class PostgresPlanRepository:
             logger.debug(PERSISTENCE_PLAN_FETCHED, plan_id=plan_id, found=False)
             return None
         try:
-            plan = _row_to_plan(row)
+            plan = row_to_plan(row)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize plan {plan_id!r}"
             logger.warning(
@@ -445,7 +357,7 @@ class PostgresPlanRepository:
             )
             raise QueryError(msg) from exc
         try:
-            plans = tuple(_row_to_plan(row) for row in rows)
+            plans = tuple(row_to_plan(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize plans"
             logger.warning(
@@ -510,6 +422,43 @@ class PostgresPlanRepository:
             )
             raise QueryError(msg) from exc
         return deleted
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: NotBlankStr,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> bool:
+        """Stamp decomposition progress on the objective's ``PLANNING`` shell.
+
+        Returns:
+            ``True`` when a shell took the stamp.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        msg = f"Failed to record decomposition progress for {parent_task_id!r}"
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE plans SET decomposition_progress=%s "
+                    "WHERE parent_task_id=%s AND status=%s",
+                    (
+                        serialise_progress(progress),
+                        parent_task_id,
+                        PlanStatus.PLANNING.value,
+                    ),
+                )
+                return cur.rowcount > 0
+        except psycopg.Error as exc:
+            logger.warning(
+                PERSISTENCE_PLAN_SAVE_FAILED,
+                parent_task_id=parent_task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete_if_no_live_tasks(
         self,

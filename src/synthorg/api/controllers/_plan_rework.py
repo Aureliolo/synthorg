@@ -37,7 +37,8 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     ValidationError,
 )
-from synthorg.core.plan import Plan, PlanItem, PlanPremises
+from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan_premises import PlanPremises
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import (

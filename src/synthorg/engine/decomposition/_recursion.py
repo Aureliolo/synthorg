@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Final
 
 from synthorg.core.criterion_match import matched_criteria, unique_criteria
-from synthorg.core.plan import DecompositionProgress
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -76,7 +76,10 @@ class TreeSessionLedger:
             other route to it: every level below the root is handed its own
             child task, so a progress report raised at depth three would
             otherwise name the subtask rather than the objective whose plan
-            row carries the answer. Blank in a harness that reports nothing.
+            row carries the answer. ``None`` in a harness that reports
+            nothing, rather than a blank string: absence is a state, and
+            spelling it as an empty value makes the guard a truthiness test
+            that any other falsy id would also satisfy.
         exhausted: Whether the ceiling has been reached, so the reason a unit
             went unsplit can name which backstop bound.
         deepest_level: Deepest level reached so far, zero-based, so a tree
@@ -87,7 +90,7 @@ class TreeSessionLedger:
 
     remaining: int
     limit: int = 0
-    objective_task_id: str = ""
+    objective_task_id: str | None = None
     exhausted: bool = False
     deepest_level: int = 0
     units_planned: int = 0

@@ -15,6 +15,7 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.deleted_entity import DeletedEntity
 from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.persistence_errors import (
@@ -26,6 +27,7 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.plan import Plan
 from synthorg.core.plan_comment import PlanItemComment
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
@@ -1588,6 +1590,34 @@ class FakePlanRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._plans.pop(entity_id, None) is not None
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: NotBlankStr,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> bool:
+        """Stamp progress on the objective's planning shell.
+
+        Conditional on the status the same way the real backends are, so a
+        test that moves the plan out of ``PLANNING`` under an in-flight
+        decomposition sees the stamp refused rather than reviving the row.
+
+        Returns:
+            ``True`` when a shell took the stamp.
+        """
+        stamped = False
+        for plan_id, plan in self._plans.items():
+            if (
+                plan.parent_task_id == parent_task_id
+                and plan.status is PlanStatus.PLANNING
+            ):
+                self._plans[plan_id] = plan.model_copy(
+                    update={"decomposition_progress": progress}
+                )
+                stamped = True
+        return stamped
 
     async def delete_if_no_live_tasks(
         self,

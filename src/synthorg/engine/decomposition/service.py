@@ -9,11 +9,10 @@ import asyncio
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan_tree import SubtreeStep
-from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.assembly import Assembly, build_assembly
-from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ceilings import (
     DEFAULT_SESSION_CEILING_SECONDS,
     DEFAULT_TREE_CEILING_SECONDS,
@@ -22,7 +21,7 @@ from synthorg.engine.decomposition._ceilings import (
     tree_session_budget,
 )
 from synthorg.engine.decomposition._child_failure import absorbed_child_reason
-from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
+from synthorg.engine.decomposition._progress_publish import publish_progress
 from synthorg.engine.decomposition._recursion import (
     RecursionBudget,
     TreeSessionLedger,
@@ -38,15 +37,14 @@ from synthorg.engine.decomposition._split_decision import (
     assembled_task,
     decide_split,
 )
+from synthorg.engine.decomposition._subtask_build import task_from_subtask
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.dag import DependencyGraph
 from synthorg.engine.decomposition.models import (
-    DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.decomposition.progress_protocol import (
     DecompositionProgressReporter,
 )
@@ -63,7 +61,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
-    DECOMPOSITION_PROGRESS_UNRECORDED,
     DECOMPOSITION_RECURSED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
@@ -94,50 +91,6 @@ def _held_to_size(
     if not budget.enabled or budget.has_room(context):
         return context
     return context.model_copy(update={"atomicity": budget.policy})
-
-
-def _task_from_subtask(
-    parent: Task,
-    plan: DecompositionPlan,
-    subtask_def: SubtaskDefinition,
-) -> Task:
-    """Build the executable task one subtask definition describes.
-
-    Args:
-        parent: The task being decomposed.
-        plan: The plan the definition came from, for its plan-level facts.
-        subtask_def: The definition to realise.
-
-    Returns:
-        The child :class:`Task`.
-    """
-    return Task(
-        id=_subtask_uuid(subtask_def.id),
-        title=subtask_def.title,
-        description=NotBlankStr(
-            with_plan_context(
-                subtask_def.description,
-                assumptions=plan.assumptions,
-                open_questions=plan.open_questions,
-            )
-        ),
-        type=parent.type,
-        priority=parent.priority,
-        project=parent.project,
-        created_by=parent.created_by,
-        parent_task_id=str(parent.id),
-        delegation_chain=parent.delegation_chain,
-        dependencies=subtask_def.dependencies,
-        acceptance_criteria=tuple(
-            AcceptanceCriterion(description=c) for c in subtask_def.acceptance_criteria
-        ),
-        artifacts_expected=tuple(
-            expected_artifact_from_spec(a) for a in subtask_def.expected_artifacts
-        ),
-        status=TaskStatus.CREATED,
-        estimated_complexity=subtask_def.estimated_complexity,
-        stakes=subtask_def.stakes,
-    )
 
 
 class DecompositionService:
@@ -177,28 +130,10 @@ class DecompositionService:
         self._clock = clock or SystemClock()
 
     async def _report_progress(self, ledger: TreeSessionLedger) -> None:
-        """Publish how far the tree has got, without ever failing it.
-
-        Best-effort by contract: a decomposition is minutes to hours of real
-        provider spend, and losing the progress line costs an operator a
-        refresh while losing the tree costs the run. So a reporter that raises
-        is logged and dropped here rather than at each call site.
-        """
-        if self._progress_reporter is None or not ledger.objective_task_id:
-            return
-        try:
-            await self._progress_reporter.report(
-                objective_task_id=ledger.objective_task_id,
-                progress=ledger.progress(now=self._clock.now()),
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- describing a run must not fail it
-            reraise_critical(exc)
-            logger.warning(
-                DECOMPOSITION_PROGRESS_UNRECORDED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        """Publish how far the tree has got, without ever failing it."""
+        await publish_progress(
+            ledger, reporter=self._progress_reporter, clock=self._clock
+        )
 
     async def _grounded(
         self, task: Task, context: DecompositionContext
@@ -463,7 +398,7 @@ class DecompositionService:
         # agent that does the work.
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
-            child_task = _task_from_subtask(task, plan, subtask_def)
+            child_task = task_from_subtask(task, plan, subtask_def)
             created_tasks.append(child_task)
             logger.debug(
                 DECOMPOSITION_SUBTASK_CREATED,

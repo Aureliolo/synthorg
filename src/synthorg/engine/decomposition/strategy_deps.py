@@ -31,6 +31,15 @@ from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.providers.protocol import ProviderSelector
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
+#: Refusal for the one dependency the bundle cannot type as required. Worded
+#: here, beside the accessor that raises it, so the factory and the registry
+#: cannot drift into two accounts of the same wiring fault.
+_NO_SELECTOR_MESSAGE: Final[str] = (
+    "The owner-run agent-session decomposition requires a provider_selector: "
+    "each owner dispatches on its own bound (provider, model), never a shared "
+    "default. The single-shot 'llm' strategy needs no selector."
+)
+
 #: Fallback for a config built without resolved settings; the operator-facing
 #: default lives on ``coordination.decomposition_agent_cost_ceiling``.
 _DEFAULT_CEILINGS: Final[SessionCeilings] = SessionCeilings(
@@ -145,3 +154,22 @@ class DecompositionStrategyDeps:
     config_resolver: ConfigResolverProtocol | None = None
     agent_states: AgentStateRepositoryProvider | None = None
     progress_reporter: DecompositionProgressReporter | None = None
+
+    def require_provider_selector(self) -> ProviderSelector:
+        """Return the selector, refusing the one field that is not optional.
+
+        Every field here is typed optional because the registry builds each
+        strategy from one uniform bundle, and the single-shot strategy needs
+        no selector. The agent-session strategy does, so the requirement is
+        this accessor rather than the type: named once, it cannot become two
+        guards that drift into two accounts of the same wiring fault.
+
+        Returns:
+            The bound provider selector.
+
+        Raises:
+            ValueError: No selector was wired.
+        """
+        if self.provider_selector is None:
+            raise ValueError(_NO_SELECTOR_MESSAGE)
+        return self.provider_selector

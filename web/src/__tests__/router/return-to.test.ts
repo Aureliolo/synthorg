@@ -58,6 +58,42 @@ describe('readReturnTo', () => {
   it('refuses the login screen even with a query string on it', () => {
     expect(readReturnTo(search('/login?next=/plans'))).toBe('/')
   })
+
+  it.each([
+    ['/..//elsewhere.example', 'dot segments resolving to a scheme-relative host'],
+    ['/foo/../..//elsewhere.example', 'the same, buried under a real-looking path'],
+    ['/.%2f%2felsewhere.example', 'the same, with the slashes percent-encoded'],
+  ])('refuses %s (%s)', (next) => {
+    // Every one of these starts with a single slash, so a prefix check passes
+    // it, and every one normalises to `//elsewhere.example` by the time the
+    // browser resolves it. This is why the guard parses instead of matching.
+    expect(readReturnTo(search(next))).toBe('/')
+  })
+
+  it.each([
+    ['/\t/elsewhere.example', 'tab'],
+    ['/\n/elsewhere.example', 'newline'],
+    ['/\r/elsewhere.example', 'carriage return'],
+  ])('refuses a %s the URL parser strips before parsing (%s)', (next) => {
+    // The WHATWG parser removes these from its input, so the value a prefix
+    // check reads is not the value the browser resolves.
+    expect(readReturnTo(search(next))).toBe('/')
+  })
+
+  it('refuses the login screen reached through a dot segment', () => {
+    // The loop check has to run on the resolved path, or `/./login` skips it.
+    expect(readReturnTo(search('/./login'))).toBe('/')
+  })
+
+  it('normalises the path it returns rather than echoing the input', () => {
+    // What travels on is what the guard actually judged. Handing back the raw
+    // text would mean the browser resolves something nothing checked.
+    expect(readReturnTo(search('/plans/./abc'))).toBe('/plans/abc')
+  })
+
+  it('keeps a fragment, which is part of where they were', () => {
+    expect(readReturnTo(search('/plans/abc#items'))).toBe('/plans/abc#items')
+  })
 })
 
 describe('wasInterrupted', () => {

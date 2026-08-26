@@ -16,8 +16,8 @@ question.
 
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.plan import DecompositionProgress
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
 

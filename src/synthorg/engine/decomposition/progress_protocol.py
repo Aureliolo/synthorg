@@ -20,7 +20,7 @@ progress line is cheap and losing an hour of planning is not.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.plan import DecompositionProgress
+from synthorg.core.decomposition_progress import DecompositionProgress
 
 
 @runtime_checkable

@@ -23,20 +23,20 @@ from synthorg.api.services.plan_service_deletion import PlanDeletionMixin
 from synthorg.api.services.plan_service_writes import PlanWriteRecorderMixin
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.domain_errors import (
     ConflictError,
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import (
-    DecompositionProgress,
     Plan,
     PlanItem,
-    PlanPremises,
 )
 from synthorg.core.plan_enums import (
     PlanStatus,
 )
+from synthorg.core.plan_premises import PlanPremises
 from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -447,35 +447,42 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         a task and a context, and the shell belongs to the wiring layer that
         opened it.
 
+        One conditional statement, not a read then a write. The ``PLANNING``
+        condition has to hold when the row is WRITTEN, not when it was read:
+        a plan can be failed under a live decomposition (the recovery sweep
+        does exactly that to a shell it reads as unfillable), and a whole-row
+        write from a snapshot taken before that would revive the plan, clear
+        the reason somebody recorded, and roll the version back over a writer
+        that was relying on it.
+
         No status moves and no version is asserted. The status is unchanged by
         construction, so there is no transition for the ledger to carry, and
-        the plan is ``PLANNING`` with exactly one writer: asserting a version
-        here would turn every report into a chance to fail a run it is only
-        describing. ``updated_at`` is left alone for the same reason: a
-        progress line is not a revision of the plan, and the snapshot carries
-        its own timestamp.
+        the version must NOT move: the decomposition ends by claiming this
+        shell at the version it started from, so a progress line that bumped
+        it would fail the very write it exists to describe. ``updated_at`` is
+        left alone for the same reason: a progress line is not a revision of
+        the plan, and the snapshot carries its own timestamp.
 
-        A plan that is no longer ``PLANNING`` is skipped rather than written:
-        the decomposition has already been recorded over the shell by then,
-        and a late report would put a stale in-flight snapshot on a finished
-        plan.
+        A plan that is no longer ``PLANNING`` takes no stamp: the
+        decomposition has already been recorded over the shell by then, and a
+        late report would put a stale in-flight snapshot on a finished plan.
 
         Args:
             parent_task_id: The objective the tree is being planned for.
             progress: How far it has got.
 
         Raises:
-            QueryError: Repository read or write failure.
+            QueryError: Repository write failure.
         """
-        matches = await self._repo.query(
-            PlanFilterSpec(parent_task_id=parent_task_id, status=PlanStatus.PLANNING),
-            limit=1,
+        stamped = await self._repo.record_decomposition_progress(
+            parent_task_id, progress=progress
         )
-        if not matches:
-            return
-        await self._repo.update(
-            matches[0].model_copy(update={"decomposition_progress": progress})
-        )
+        if not stamped:
+            logger.debug(
+                API_PLAN_UPDATED,
+                parent_task_id=parent_task_id,
+                note="no planning shell took the progress stamp",
+            )
 
     async def record_decomposed(self, decomposed: Plan, *, shell: Plan | None) -> None:
         """Persist a decomposed plan over its planning shell.

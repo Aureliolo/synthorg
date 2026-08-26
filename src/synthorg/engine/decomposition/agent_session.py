@@ -14,6 +14,7 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Final, override
@@ -25,6 +26,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.agent_state_recording import (
+    make_runtime_state_observer,
     mark_agent_idle,
     mark_agent_running,
 )
@@ -62,6 +64,7 @@ from synthorg.engine.errors import (
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
+    TurnObserver,
 )
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.stagnation.factory import create_stagnation_detector
@@ -449,6 +452,19 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 )
             return result
 
+    def _state_observer(self) -> TurnObserver | None:
+        """Build the per-turn live-state writer, or ``None`` with no repository.
+
+        Returns:
+            The observer, or ``None`` when nothing durable can hold the row.
+        """
+        if self._agent_states is None:
+            return None
+        return make_runtime_state_observer(
+            repository_provider=self._agent_states,
+            currency=resolve_tracker_currency(self._cost_tracker),
+        )
+
     @asynccontextmanager
     async def _recorded_as_running(self, ctx: AgentContext) -> AsyncIterator[None]:
         """Hold the owner's live agent-state row for the planning session.
@@ -470,6 +486,17 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         the ordinary case here because recursion runs a session per subtree and
         one owner can hold several.
 
+        The claim is INSIDE the ``try`` and the clear is SHIELDED, because a
+        row left behind here is not merely stale: the write is a compare-and-set
+        on execution ownership, so the agent's next session presents a
+        different execution id, is refused, and is refused for ever. Nothing
+        reaps an ``EXECUTING`` row, and the row is durable, so one lost clear
+        costs that agent every future live-state read across restarts. Both
+        ceilings this session runs under (per-session and whole-tree) can fire
+        moments apart, and an unshielded ``await`` in a ``finally`` is exactly
+        what the second one interrupts. The shield lets the cancellation
+        propagate while the write still lands.
+
         Yields:
             Nothing; the row is the effect.
         """
@@ -477,19 +504,21 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             yield
             return
         currency = resolve_tracker_currency(self._cost_tracker)
-        await mark_agent_running(
-            repository_provider=self._agent_states,
-            context=ctx,
-            currency=currency,
-        )
         try:
+            await mark_agent_running(
+                repository_provider=self._agent_states,
+                context=ctx,
+                currency=currency,
+            )
             yield
         finally:
-            await mark_agent_idle(
-                repository_provider=self._agent_states,
-                agent_id=str(ctx.identity.id),
-                execution_id=ctx.execution_id,
-                currency=currency,
+            await asyncio.shield(
+                mark_agent_idle(
+                    repository_provider=self._agent_states,
+                    agent_id=str(ctx.identity.id),
+                    execution_id=ctx.execution_id,
+                    currency=currency,
+                )
             )
 
     def _resume_unsubmitted(
@@ -559,9 +588,19 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         # one. Wired here, the loop injects its correction first and only
         # terminates on STAGNATION when that fails, which the child-failure
         # backstop already absorbs.
+        # The live row is claimed once at session entry, and everything reading
+        # it treats what it carries as current: the cockpit renders the turn
+        # count and the accumulated spend from it, and derives STUCK from its
+        # last-activity stamp against a ten-minute cutoff. Written once, a
+        # 54-minute planning session therefore reports turn 0, zero spend, and
+        # reads STUCK for 44 of those minutes: a different wrong answer, not
+        # the right one. The engine advances the row per turn through this same
+        # observer, and so does this loop, which also self-heals a claim that
+        # was refused or dropped rather than leaving the session invisible.
         loop = ReactLoop(
             approval_gate=None,
             stagnation_detector=create_stagnation_detector(self._config.stagnation),
+            turn_observer=self._state_observer(),
         )
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,

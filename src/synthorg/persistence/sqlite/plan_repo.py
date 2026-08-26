@@ -8,21 +8,15 @@ from uuid import UUID
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import (
-    DecompositionProgress,
-    Plan,
-    PlanItem,
-    PlanVersionSnapshot,
-)
+from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_review import PlanReview
-from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
@@ -35,11 +29,19 @@ from synthorg.observability.events.persistence.plan import (
     PERSISTENCE_PLAN_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared._task_filters import live_task_predicate
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
 from synthorg.persistence.sqlite._integrity import raise_constraint_violation
+from synthorg.persistence.sqlite._plan_marshalling import (
+    COLUMNS,
+    INSERT_PLACEHOLDERS,
+    UPDATE_SET,
+    UPSERT_SET,
+    row_params,
+    row_to_plan,
+    serialise_progress,
+)
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -48,56 +50,6 @@ from synthorg.persistence.sqlite._shared import (
 logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: Final[int] = 10_000
-
-_COLUMNS = (
-    "id, project, project_name, objective_id, objective_title, parent_task_id, items, "
-    "task_structure, coordination_topology, status, failure_reason, forecast_id, "
-    "review, open_questions, assumptions, objective_criteria, version_history, "
-    "replan_generation, version, created_at, updated_at, planning_strategy, "
-    "review_absent_reason, decomposition_progress"
-)
-
-_COLUMN_NAMES = tuple(_COLUMNS.split(", "))
-_INSERT_PLACEHOLDERS = "(" + ", ".join("?" for _ in _COLUMN_NAMES) + ")"
-#: Every column except the ``id`` primary key, in ``_COLUMNS`` order. The UPDATE
-#: binds ``_row_params(plan)[1:]`` in this same order, so the two stay aligned
-#: from one list instead of three hand-maintained column enumerations.
-_WRITABLE_COLUMNS = tuple(col for col in _COLUMN_NAMES if col != "id")
-_UPDATE_SET = ", ".join(f"{col}=?" for col in _WRITABLE_COLUMNS)
-_UPSERT_SET = ", ".join(f"{col}=excluded.{col}" for col in _WRITABLE_COLUMNS)
-
-
-def _row_to_plan(row: aiosqlite.Row) -> Plan:
-    """Reconstruct a ``Plan`` from a database row.
-
-    Returns:
-        Validated ``Plan`` model instance.
-    """
-    data = dict(row)
-    data["items"] = tuple(
-        PlanItem.model_validate(item) for item in json.loads(data["items"])
-    )
-    data["task_structure"] = TaskStructure(data["task_structure"])
-    data["coordination_topology"] = CoordinationTopology(data["coordination_topology"])
-    data["status"] = PlanStatus(data["status"])
-    forecast_id = data["forecast_id"]
-    data["forecast_id"] = UUID(forecast_id) if forecast_id else None
-    review = data["review"]
-    data["review"] = PlanReview.model_validate(json.loads(review)) if review else None
-    data["open_questions"] = tuple(json.loads(data["open_questions"]))
-    data["assumptions"] = tuple(json.loads(data["assumptions"]))
-    data["objective_criteria"] = tuple(json.loads(data["objective_criteria"]))
-    data["version_history"] = tuple(
-        PlanVersionSnapshot.model_validate(snapshot)
-        for snapshot in json.loads(data["version_history"])
-    )
-    progress = data["decomposition_progress"]
-    data["decomposition_progress"] = (
-        DecompositionProgress.model_validate(json.loads(progress)) if progress else None
-    )
-    data["created_at"] = coerce_row_timestamp(data["created_at"])
-    data["updated_at"] = coerce_row_timestamp(data["updated_at"])
-    return Plan.model_validate(data)
 
 
 class SQLitePlanRepository:
@@ -119,44 +71,6 @@ class SQLitePlanRepository:
         self._db = db
         self._write_context = write_context
 
-    @staticmethod
-    def _row_params(plan: Plan) -> tuple[object, ...]:
-        """Serialise a plan into positional SQL params in ``_COLUMNS`` order.
-
-        Returns:
-            Scalar param values for INSERT/UPDATE, aligned with ``_COLUMNS``.
-        """
-        return (
-            str(plan.id),
-            plan.project,
-            plan.project_name,
-            plan.objective_id,
-            plan.objective_title,
-            plan.parent_task_id,
-            json.dumps([item.model_dump(mode="json") for item in plan.items]),
-            plan.task_structure.value,
-            plan.coordination_topology.value,
-            plan.status.value,
-            plan.failure_reason,
-            str(plan.forecast_id) if plan.forecast_id is not None else None,
-            json.dumps(plan.review.model_dump(mode="json")) if plan.review else None,
-            json.dumps(list(plan.open_questions)),
-            json.dumps(list(plan.assumptions)),
-            json.dumps(list(plan.objective_criteria)),
-            json.dumps([snap.model_dump(mode="json") for snap in plan.version_history]),
-            plan.replan_generation,
-            plan.version,
-            format_iso_utc(plan.created_at),
-            format_iso_utc(plan.updated_at),
-            plan.planning_strategy,
-            plan.review_absent_reason,
-            (
-                json.dumps(plan.decomposition_progress.model_dump(mode="json"))
-                if plan.decomposition_progress
-                else None
-            ),
-        )
-
     async def create(self, plan: Plan) -> None:
         """Insert a new plan, failing if the id already exists.
 
@@ -171,9 +85,9 @@ class SQLitePlanRepository:
         async with self._write_context():
             try:
                 await self._db.execute(
-                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
-                    f"VALUES {_INSERT_PLACEHOLDERS}",
-                    self._row_params(plan),
+                    f"INSERT INTO plans ({COLUMNS}) "  # noqa: S608
+                    f"VALUES {INSERT_PLACEHOLDERS}",
+                    row_params(plan),
                 )
                 await self._db.commit()
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
@@ -226,7 +140,7 @@ class SQLitePlanRepository:
             RecordNotFoundError: No plan with this id exists.
             QueryError: If the database operation fails.
         """
-        params: list[object] = [*self._row_params(plan)[1:], str(plan.id)]
+        params: list[object] = [*row_params(plan)[1:], str(plan.id)]
         guard = ""
         if expected_version is not None:
             guard = " AND version=?"
@@ -234,7 +148,7 @@ class SQLitePlanRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(
-                    f"UPDATE plans SET {_UPDATE_SET} WHERE id=?{guard}",  # noqa: S608 -- clauses are fixed literals, values parameterized
+                    f"UPDATE plans SET {UPDATE_SET} WHERE id=?{guard}",  # noqa: S608 -- clauses are fixed literals, values parameterized
                     params,
                 ) as cursor:
                     await self._db.commit()
@@ -307,10 +221,10 @@ class SQLitePlanRepository:
             msg = f"Failed to save plan {plan.id!r}"
             try:
                 await self._db.execute(
-                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- clauses are fixed literals, values parameterized
-                    f"VALUES {_INSERT_PLACEHOLDERS} "
-                    f"ON CONFLICT(id) DO UPDATE SET {_UPSERT_SET}",
-                    self._row_params(plan),
+                    f"INSERT INTO plans ({COLUMNS}) "  # noqa: S608 -- clauses are fixed literals, values parameterized
+                    f"VALUES {INSERT_PLACEHOLDERS} "
+                    f"ON CONFLICT(id) DO UPDATE SET {UPSERT_SET}",
+                    row_params(plan),
                 )
                 await self._db.commit()
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
@@ -360,7 +274,7 @@ class SQLitePlanRepository:
             logger.debug(PERSISTENCE_PLAN_FETCHED, plan_id=plan_id, found=False)
             return None
         try:
-            plan = _row_to_plan(row)
+            plan = row_to_plan(row)
         except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
             msg = f"Failed to deserialize plan {plan_id!r}"
             logger.warning(
@@ -452,7 +366,7 @@ class SQLitePlanRepository:
             )
             raise QueryError(msg) from exc
         try:
-            plans = tuple(_row_to_plan(row) for row in rows)
+            plans = tuple(row_to_plan(row) for row in rows)
         except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
             msg = "Failed to deserialize plans"
             logger.warning(
@@ -517,6 +431,45 @@ class SQLitePlanRepository:
                 )
                 raise QueryError(msg) from exc
             return rowcount > 0
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: NotBlankStr,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> bool:
+        """Stamp decomposition progress on the objective's ``PLANNING`` shell.
+
+        Returns:
+            ``True`` when a shell took the stamp.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "UPDATE plans SET decomposition_progress=? "
+                    "WHERE parent_task_id=? AND status=?",
+                    (
+                        serialise_progress(progress),
+                        parent_task_id,
+                        PlanStatus.PLANNING.value,
+                    ),
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._safe_rollback()
+                msg = f"Failed to record decomposition progress for {parent_task_id!r}"
+                logger.warning(
+                    PERSISTENCE_PLAN_SAVE_FAILED,
+                    parent_task_id=parent_task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return cursor.rowcount > 0
 
     async def delete_if_no_live_tasks(
         self,

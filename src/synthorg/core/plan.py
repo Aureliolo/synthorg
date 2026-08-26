@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.plan_tree_validation import describe_malformed_tree
@@ -248,34 +249,6 @@ class PlanItem(BaseModel):
         return match
 
 
-class PlanPremises(BaseModel):
-    """What a plan revision rests on, carried beside the items that rest on it.
-
-    Assumptions and open questions belong to the pass that derived them, and a
-    live run showed what happens when they do not travel with it: a re-plan
-    replaced every item with "build the engine from scratch" while the plan
-    went on asserting the engine already existed, because the rework path
-    carried the superseded plan's premises forward. The plan contradicted
-    itself, and the false assumption the operator had just refuted was the one
-    left standing.
-
-    Attributes:
-        assumptions: What the revision takes as given.
-        open_questions: What it could not settle and needs a human for.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    assumptions: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="What this revision takes as given",
-    )
-    open_questions: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="What this revision could not settle",
-    )
-
-
 class PlanVersionSnapshot(BaseModel):
     """A frozen snapshot of a plan's items at a prior version, for diffing.
 
@@ -295,45 +268,6 @@ class PlanVersionSnapshot(BaseModel):
     )
     captured_at: AwareDatetime = Field(
         description="When the snapshot was taken (tz-aware UTC)",
-    )
-
-
-class DecompositionProgress(BaseModel):
-    """How far the decomposition writing a plan has got.
-
-    A recursive decomposition persists its tree once, at the end, so a plan is
-    ``PLANNING`` with zero items for as long as the planning runs. That is
-    correct, and it left the operator with nothing: a live run sat at zero for
-    54 minutes while the page promised "items appear as they are written", and
-    the only way to tell a working decomposition from a hung one was the
-    backend log. The session ledger bounding the run knows all of this and
-    knew it only in memory.
-
-    A snapshot, not a log: it is overwritten each time the decomposition
-    reaches a new node, because the question it answers is "where is this now",
-    and the run's own history is the event stream's job.
-
-    Attributes:
-        sessions_spent: Planning sessions the tree has consumed so far.
-        sessions_limit: What it may spend in total
-            (``coordination.decomposition_tree_max_sessions``), so the number
-            beside it is readable as progress rather than as a bare count.
-        deepest_level: The deepest level reached, zero-based, so a tree still
-            widening its first level is distinguishable from one recursing.
-        units_planned: Subtasks written across every level so far.
-        updated_at: When this snapshot was taken (tz-aware UTC). What makes a
-            working decomposition distinguishable from a stalled one, which is
-            the whole question an operator has while the count reads zero.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    sessions_spent: int = Field(ge=0, description="Planning sessions consumed")
-    sessions_limit: int = Field(ge=0, description="Planning sessions allowed")
-    deepest_level: int = Field(ge=0, description="Deepest level reached, zero-based")
-    units_planned: int = Field(ge=0, description="Subtasks written so far")
-    updated_at: AwareDatetime = Field(
-        description="When this snapshot was taken (tz-aware UTC)",
     )
 
 

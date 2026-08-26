@@ -213,7 +213,8 @@ class TestSharedStoreReachesEveryRetrievalPath:
 
         Returns:
             The strategy, wired to a reformulator that widens once then
-            settles so both the round-0 and per-round reads happen.
+            settles, so both the initial read and the reformulated one
+            happen.
         """
         reformulator = AsyncMock(spec=QueryReformulator)
         reformulator.reformulate = AsyncMock(
@@ -241,6 +242,6 @@ class TestSharedStoreReachesEveryRetrievalPath:
         result = await _search(strategy)
 
         assert "the org playbook" in result
-        # Round 0 plus the reformulated round: a fused round 0 that then
-        # narrowed back to personal would still pass on the result alone.
+        # The initial read plus the reformulated one: a fused first read that
+        # then narrowed back to personal would still pass on the result alone.
         assert store.search_shared.await_count >= 2

@@ -15,6 +15,7 @@ from typing import Final, NamedTuple
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._running_agents import running_agent_ids
 from synthorg.api.state import AppState
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -29,14 +30,12 @@ from synthorg.budget.trends import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task import Task
 from synthorg.core.task_activity import busy_agent_ids
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_HORIZON_DAYS: Final[int] = 14
@@ -297,40 +296,6 @@ async def _resolve_budget_context(
         used_percent=used_pct,
         measurability=measurability,
     )
-
-
-async def running_agent_ids(app_state: AppState) -> frozenset[str] | None:
-    """Return the agents holding a live run, or ``None`` when unreadable.
-
-    The one query that knows an agent is working right now, and until this
-    read it had no caller anywhere: every surface answering "is the org
-    working" derived it from task status instead, which cannot see a run whose
-    task is not ``IN_PROGRESS``.
-
-    ``None`` rather than an empty set on a failure, because the two are
-    different claims and the caller degrades on one and counts the other. An
-    unconnected backend is not an idle org.
-
-    Returns:
-        The busy agent ids, or ``None`` when persistence cannot answer.
-    """
-    try:
-        backend = persistence_of(app_state)
-    except ServiceUnavailableError:
-        return None
-    try:
-        states = await backend.agent_states.get_active()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="analytics.running_agent_ids",
-            reason="agent_state_query_failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
-    return frozenset(str(state.agent_id) for state in states)
 
 
 async def _resolve_agent_counts(

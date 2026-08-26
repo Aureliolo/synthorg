@@ -5,6 +5,7 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
+import asyncio
 from collections.abc import Callable
 from contextlib import ExitStack
 from typing import TYPE_CHECKING, override
@@ -779,12 +780,22 @@ class AgentEngine(
             # for the life of the process. Naming the execution keeps the
             # clear from blanking a sibling dispatch's live row: the row is
             # keyed by agent, and one agent can hold two.
-            await mark_agent_idle(
-                repository_provider=self._agent_state_repository_provider,
-                agent_id=agent_id,
-                execution_id=request.ctx.execution_id,
-                currency=resolve_tracker_currency(self._cost_tracker),
-                clock=self._clock,
+            #
+            # Shielded, because an ``await`` in a ``finally`` is not: a
+            # cancellation arriving mid-write aborts it, and the row that
+            # survives is not merely stale. The write is a compare-and-set on
+            # execution ownership, so every later dispatch by this agent
+            # presents a different execution id and is refused, permanently
+            # and across restarts, with nothing anywhere reaping the row. The
+            # shield lets the cancellation propagate while the write lands.
+            await asyncio.shield(
+                mark_agent_idle(
+                    repository_provider=self._agent_state_repository_provider,
+                    agent_id=agent_id,
+                    execution_id=request.ctx.execution_id,
+                    currency=resolve_tracker_currency(self._cost_tracker),
+                    clock=self._clock,
+                )
             )
 
     async def _execute_span(self, request: AgentExecuteRequest) -> AgentRunResult:

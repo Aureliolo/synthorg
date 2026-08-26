@@ -14,7 +14,7 @@ different promises and only one of them is obvious from the call site.
 
 import pytest
 
-from synthorg.core.plan import DecompositionProgress
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr

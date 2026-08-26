@@ -232,26 +232,6 @@ def build_coordinator(  # noqa: PLR0913
             :class:`DecompositionStrategyDeps`. ``None`` builds the strategy on
             its own defaults, which the ``agent-session`` path refuses because
             it has no provider selector to dispatch each owner on.
-        decomposition_cost_tracker: Optional cost tracker; when wired, the
-            agent-session planner records its provider spend against it under
-            the owner + objective task.
-        agent_session_config: Optional operator-tuned config for the
-            agent-session planning loop: its turn cap
-            (``coordination.decomposition_agent_max_turns``), both spend
-            bounds (``coordination.decomposition_agent_cost_ceiling`` and
-            ``budget.session_token_ceiling``) and its memory-digest budget
-            (``memory.planning_memory_digest_budget``). ``None`` uses the
-            strategy defaults. One object rather than loose scalars so a
-            wiring path cannot carry the money bound and drop the token one,
-            which would leave the session unbounded against a provider that
-            bills by flat subscription.
-        planning_memory: Optional injection strategy that pre-seeds the
-            org/retro memory digest into the owner-run planning brief; ``None``
-            plans without a digest.
-        decomposition_config_resolver: Optional resolver the decomposition
-            strategy reads its output-token ceiling from, once per call so a
-            raised ceiling applies to the next decomposition rather than the
-            next rebuild; ``None`` uses the strategy defaults.
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.

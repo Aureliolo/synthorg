@@ -20,6 +20,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical_unwrapped
+from synthorg.core.pagination import collect_all
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -234,7 +235,11 @@ class CockpitService:
 
         activities.extend(
             await self._runs_without_an_active_task(
-                covered={a.agent_id for a in activities},
+                # Keyed by EXECUTION, not by agent. One agent can hold a task
+                # and a planning session at once, and keying by agent drops the
+                # session the moment its owner also has work: the row is only
+                # already shown if this exact execution is the one shown.
+                covered={a.execution_id for a in activities if a.execution_id},
                 stuck_cutoff=stuck_cutoff,
             )
         )
@@ -292,31 +297,50 @@ class CockpitService:
         Returns:
             One row per live run whose agent is not already in *covered*.
         """
-        if self._agent_states is None:
+        repository = self._agent_states
+        if repository is None:
             return ()
-        states = await self._agent_states.get_active()
-        rows: list[AgentActivity] = []
-        for state in states:
-            if state.agent_id in covered:
-                continue
-            task = await self._task_for(state.task_id)
-            rows.append(
-                AgentActivity(
-                    agent_id=NotBlankStr(state.agent_id),
-                    task_id=(
-                        None if state.task_id is None else NotBlankStr(state.task_id)
-                    ),
-                    task_title=None if task is None else NotBlankStr(task.title),
-                    execution_id=NotBlankStr(state.execution_id),
-                    status=None if task is None else task.status,
-                    turn_count=state.turn_count,
-                    cost=state.accumulated_cost,
-                    last_active=state.last_activity_at,
-                    is_stuck=state.last_activity_at < stuck_cutoff,
-                    is_runaway=False,
-                )
-            )
-        return tuple(rows)
+        # Drained, not paged: this is the whole live set, and a page would stop
+        # counting at its limit and report the truncation as the answer.
+        states = await collect_all(
+            lambda limit, offset: repository.get_active(limit=limit, offset=offset)
+        )
+        pending = [s for s in states if s.execution_id not in covered]
+        if not pending:
+            return ()
+        # Fanned out for the same reason the task scan above is: this backs a
+        # snapshot the dashboard polls every few seconds, and a serial read per
+        # live agent makes its latency the sum of them.
+        async with asyncio.TaskGroup() as tg:
+            handles = [tg.create_task(self._task_for(s.task_id)) for s in pending]
+        return tuple(
+            self._taskless_row(state, handle.result(), stuck_cutoff)
+            for state, handle in zip(pending, handles, strict=True)
+        )
+
+    def _taskless_row(
+        self,
+        state: AgentRuntimeState,
+        task: Task | None,
+        stuck_cutoff: datetime,
+    ) -> AgentActivity:
+        """Build one row from a live agent-state row.
+
+        Returns:
+            The activity row for *state*.
+        """
+        return AgentActivity(
+            agent_id=NotBlankStr(state.agent_id),
+            task_id=None if state.task_id is None else NotBlankStr(state.task_id),
+            task_title=None if task is None else NotBlankStr(task.title),
+            execution_id=NotBlankStr(state.execution_id),
+            status=None if task is None else task.status,
+            turn_count=state.turn_count,
+            cost=state.accumulated_cost,
+            last_active=state.last_activity_at,
+            is_stuck=state.last_activity_at < stuck_cutoff,
+            is_runaway=False,
+        )
 
     async def _task_for(self, task_id: str | None) -> Task | None:
         """Read the task a live row names, or ``None`` when it names none.

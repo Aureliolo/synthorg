@@ -30,14 +30,31 @@ const NOT_A_DESTINATION: ReadonlySet<string> = new Set<string>([
 ])
 
 /**
+ * Origin the candidate is resolved against.
+ *
+ * A constant rather than `window.location.origin`, because the decision is
+ * "does this stay on whatever origin serves the dashboard", which is the same
+ * decision on every deployment and in a test. A reserved TLD, so a value that
+ * escapes cannot name anything reachable.
+ */
+const RESOLUTION_BASE = 'https://return-to.invalid'
+
+/**
  * Read the destination out of a query string, refusing anything off-site.
  *
  * The value reaches this from a URL, so it is attacker-supplied by
  * construction: a link with `?next=https://elsewhere/` would otherwise turn
  * the login screen into an open redirect, which is the classic way a
- * credential prompt gets rehosted. Only a single-slash absolute path is
- * accepted, which excludes an absolute URL, a scheme-relative `//host` and a
- * backslash the browser normalises into one.
+ * credential prompt gets rehosted.
+ *
+ * Judged on the parse the browser will perform, never on the raw text, and the
+ * PARSED path is what travels on. Deciding by string prefix reads a different
+ * value from the one that eventually reaches `history.replaceState`, and the
+ * gap between them is the whole vulnerability: `/..//host` clears every prefix
+ * check and normalises to the scheme-relative `//host`, and the URL parser
+ * strips tab, newline and carriage return before parsing, so `/%09/host` does
+ * too. Resolving first collapses both families, along with percent-encoded
+ * slashes, backslashes and absolute URLs, into one question with one answer.
  *
  * @param search - The login page's query string.
  * @returns A same-origin path to return to, or the dashboard.
@@ -45,10 +62,18 @@ const NOT_A_DESTINATION: ReadonlySet<string> = new Set<string>([
 export function readReturnTo(search: string): string {
   const raw = new URLSearchParams(search).get(RETURN_TO_PARAM)
   if (raw === null || !raw.startsWith('/')) return DEFAULT_DESTINATION
-  if (raw.startsWith('//') || raw.startsWith('/\\')) return DEFAULT_DESTINATION
-  const path = raw.split('?')[0] ?? ''
-  if (NOT_A_DESTINATION.has(path)) return DEFAULT_DESTINATION
-  return raw
+  let resolved: URL
+  try {
+    resolved = new URL(raw, RESOLUTION_BASE)
+  } catch {
+    return DEFAULT_DESTINATION
+  }
+  if (resolved.origin !== RESOLUTION_BASE) return DEFAULT_DESTINATION
+  // A path that is itself scheme-relative: what `/..//host` collapses to once
+  // the dot segments are resolved, on an origin that still reads as ours.
+  if (resolved.pathname.startsWith('//')) return DEFAULT_DESTINATION
+  if (NOT_A_DESTINATION.has(resolved.pathname)) return DEFAULT_DESTINATION
+  return resolved.pathname + resolved.search + resolved.hash
 }
 
 /**

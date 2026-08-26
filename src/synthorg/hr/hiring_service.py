@@ -13,7 +13,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.role_catalog import role_is_gate_role
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import AgentStatus, HiringRequestStatus
+from synthorg.hr.enums import AgentStatus, HiringDecision, HiringRequestStatus
 from synthorg.hr.errors import (
     HiringAlreadyInFlightError,
     HiringError,
@@ -43,12 +43,7 @@ from synthorg.hr.hiring_request_queries import (
     by_approval_id,
     in_flight_for_role,
 )
-from synthorg.hr.hiring_transitions import (
-    APPROVE,
-    REJECT,
-    validate_decidable,
-    validate_instantiable,
-)
+from synthorg.hr.hiring_transitions import validate_decidable, validate_instantiable
 from synthorg.hr.models import HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
@@ -623,7 +618,7 @@ class HiringService:
         """
         async with self._request_locks.acquire(request_id):
             request = self._get_request(request_id)
-            validate_decidable(request, decision=APPROVE)
+            validate_decidable(request, decision=HiringDecision.APPROVE)
             if request.selected_candidate_id is None:
                 msg = (
                     f"Hiring request {request_id!r} carries no selected "
@@ -671,7 +666,7 @@ class HiringService:
         """
         async with self._request_locks.acquire(request_id):
             request = self._get_request(request_id)
-            validate_decidable(request, decision=REJECT)
+            validate_decidable(request, decision=HiringDecision.REJECT)
             updated = request.model_copy(
                 update={"status": HiringRequestStatus.REJECTED},
             )

@@ -7,7 +7,7 @@ separate from :mod:`synthorg.engine.coordination.factory` so the coordinator
 assembly and the strategy-selection logic each stay within their size budget.
 """
 
-from typing import Final, override
+from typing import override
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.registry import StrategyRegistry
@@ -25,15 +25,6 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
-
-#: Refusal shared by the entry point's pre-check and the builder's own guard.
-#: Both can be reached (the registry builds by name), and one wording keeps the
-#: two from drifting into two different accounts of the same wiring fault.
-_NO_SELECTOR_MESSAGE: Final[str] = (
-    "The owner-run agent-session decomposition requires a provider_selector: "
-    "each owner dispatches on its own bound (provider, model), never a shared "
-    "default. The single-shot 'llm' strategy needs no selector."
-)
 
 
 class _NoProviderDecompositionStrategy(DecompositionStrategy):
@@ -154,10 +145,8 @@ def _build_agent_session_strategy(
         AgentSessionDecompositionStrategy,
     )
 
-    if deps.provider_selector is None:
-        raise ValueError(_NO_SELECTOR_MESSAGE)
     return AgentSessionDecompositionStrategy(
-        provider_selector=deps.provider_selector,
+        provider_selector=deps.require_provider_selector(),
         fallback=_llm_strategy(
             provider=provider,
             decomposition_model=decomposition_model,
@@ -200,8 +189,11 @@ def build_decomposition_strategy(
         StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:
-        if strategy_name == "agent-session" and deps.provider_selector is None:
-            raise ValueError(_NO_SELECTOR_MESSAGE)
+        if strategy_name == "agent-session":
+            # Refused here as well as in the builder, because the registry
+            # builds by name and both doors are reachable. One owner answers
+            # for both.
+            deps.require_provider_selector()
         return _DECOMPOSITION_STRATEGY_REGISTRY.build(
             strategy_name,
             provider=provider,

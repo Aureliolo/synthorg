@@ -15,6 +15,7 @@ from typing import Final, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api._running_agents import running_agent_ids
 from synthorg.api.api_core_state import analytics_read_service_of
 from synthorg.api.controllers._department_health_outcomes import (
     health_from_outcomes,
@@ -563,7 +564,18 @@ async def assemble_department_health(
     )
 
     inprogress_tasks, utilization_degraded = t_tasks.result()
-    active_count = len(busy_agent_ids(inprogress_tasks, t_ids.result()))
+    # The same two inputs the org overview counts from. Read from the board
+    # alone, this card reports an agent mid-decomposition as idle and the
+    # department as under-utilised, while the overview reports it working: one
+    # question, two answers, and the quieter surface is the one that says
+    # nothing is happening. A read that could not be answered degrades the
+    # utilisation claim rather than silently lowering the count.
+    running = await running_agent_ids(app_state)
+    if running is None:
+        utilization_degraded = True
+    active_count = len(
+        busy_agent_ids(inprogress_tasks, t_ids.result(), running=running)
+    )
 
     return _build_health_from_data(
         dept_name=dept_name,
