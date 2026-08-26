@@ -20,6 +20,7 @@ from synthorg.engine.decomposition._ceilings import (
     timeout_failure,
     tree_session_budget,
 )
+from synthorg.engine.decomposition._child_failure import absorbed_child_reason
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
 from synthorg.engine.decomposition._recursion import (
     RecursionBudget,
@@ -36,11 +37,6 @@ from synthorg.engine.decomposition._split_decision import (
     assembled_task,
     decide_split,
 )
-from synthorg.engine.decomposition.atomicity import (
-    PLANNER_DECLINED,
-    SESSION_CEILING_BACKSTOP,
-    unsplit_reason,
-)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.dag import DependencyGraph
@@ -56,19 +52,13 @@ from synthorg.engine.decomposition.protocol import (
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.decomposition.status_rollup import SubtaskStatusRollup
-from synthorg.engine.errors import (
-    DecompositionError,
-    DecompositionTimeoutError,
-    DecompositionUnsplittableError,
-)
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
-    DECOMPOSITION_CHILD_CEILING_ABSORBED,
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
-    DECOMPOSITION_PLANNER_DECLINED,
     DECOMPOSITION_RECURSED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
@@ -531,6 +521,11 @@ class DecompositionService:
         Returns:
             The child results, and the reason each unit that stayed oversized
             went unsplit.
+
+        Raises:
+            DecompositionError: A child failed in a way this level's plan
+                cannot describe. The two it can are recorded on the unit
+                instead; see :mod:`._child_failure`.
         """
         if not budget.enabled:
             # Nothing here can act on an oversized subtask, so assessing them
@@ -577,56 +572,21 @@ class DecompositionService:
                 child = await self._do_decompose(
                     child_task, child_ctx, budget, ledger=ledger
                 )
-            except DecompositionUnsplittableError as exc:
-                # The first of the two child failures this level can answer.
-                # Its own plan is valid and its other units are dispatchable,
-                # so the unit the planner could not divide goes out carrying
-                # the reason rather than taking the whole tree above it down
-                # with it. Every other decomposition failure still propagates:
-                # a transport that kept mangling replies is not something an
-                # operator fixes by reading a note on one item.
-                unsplit[subtask_def.id] = unsplit_reason(
-                    budget.policy.assess(subtask_def), backstop=PLANNER_DECLINED
-                )
-                logger.warning(
-                    DECOMPOSITION_PLANNER_DECLINED,
+            except DecompositionError as exc:
+                # Two child failures leave this level's plan usable, so the
+                # unit dispatches carrying a reason rather than discarding
+                # every level already paid for. Which two, and why nothing
+                # else, lives in `_child_failure`.
+                reason = absorbed_child_reason(
+                    exc,
+                    assessment=budget.policy.assess(subtask_def),
                     task_id=str(child_task.id),
                     subtask_id=subtask_def.id,
                     current_depth=context.current_depth,
-                    error=safe_error_description(exc),
                 )
-                continue
-            except DecompositionTimeoutError as exc:
-                # The second, and the same shape reached by a different route.
-                # The per-session ceiling bounds ONE node so a level waiting on
-                # a provider that never answers cannot hold the tree; letting
-                # it propagate hands every node an independent chance to
-                # destroy every other node's work instead, which is the
-                # opposite of what it is for. A live run reached
-                # `sessions_remaining=2` of forty after thirty-nine sessions
-                # and discarded the lot because one of them ran 599.7 seconds
-                # against a six-hundred-second ceiling.
-                #
-                # Absorbing it is safe here and only here: this level holds a
-                # valid plan to carry the unit, so the outcome is the same one
-                # the graceful session budget produces. At the root there is no
-                # plan above to carry anything, no handler, and the breach
-                # still fails the decomposition. The two remaining bounds are
-                # untouched, so a tree cannot buy unbounded time this way: the
-                # session budget still caps how many ceilings can be paid, and
-                # the whole-tree ceiling still fires as a bare TimeoutError
-                # that no handler here catches.
-                unsplit[subtask_def.id] = unsplit_reason(
-                    budget.policy.assess(subtask_def),
-                    backstop=SESSION_CEILING_BACKSTOP,
-                )
-                logger.warning(
-                    DECOMPOSITION_CHILD_CEILING_ABSORBED,
-                    task_id=str(child_task.id),
-                    subtask_id=subtask_def.id,
-                    current_depth=context.current_depth,
-                    error=safe_error_description(exc),
-                )
+                if reason is None:
+                    raise
+                unsplit[subtask_def.id] = reason
                 continue
             children.append(child)
             assemblies[subtask_def.id] = build_assembly(
