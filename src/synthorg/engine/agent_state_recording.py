@@ -313,7 +313,17 @@ async def release_agent_row(
     wrong: the shield re-raises into the caller the moment the cancellation
     lands, leaving the write running with nothing waiting on it, so a
     shutdown that closes the loop next takes it with it. The task is
-    therefore HELD and awaited again on the way out.
+    therefore HELD and re-awaited until it is genuinely done.
+
+    Re-awaiting it BARE is the same defect one cancellation further out.
+    ``await release`` is an await on the task itself, so a second
+    cancellation cancels ``release`` rather than the waiting, and the write
+    is abandoned exactly as it would have been with no shield at all. A
+    shutdown delivers more than one cancellation as a matter of course
+    (the wave's cancel, then the task group's), so this is the ordinary
+    path rather than a corner. Every cancellation therefore goes back
+    through the shield, and the first one seen is the one re-raised, so
+    the caller is told what it was told the first time.
 
     One owner, because two hand-written copies of this is two chances to keep
     the shield and drop the second await, and the defect that produces is
@@ -338,14 +348,19 @@ async def release_agent_row(
             clock=clock,
         )
     )
-    try:
-        await asyncio.shield(release)
-    except asyncio.CancelledError:
-        # Uncancellable by construction: `release` was never the task
-        # cancelled, so this returns once the write is durable and the
-        # cancellation then propagates as it should.
-        await release
-        raise
+    cancellation: asyncio.CancelledError | None = None
+    # Keyed on the task being DONE rather than on a flag, so a `release`
+    # that ended cancelled (nothing here does that, but the loop must not
+    # depend on that staying true) exits instead of shielding a finished
+    # task forever.
+    while not release.done():
+        try:
+            await asyncio.shield(release)
+        except asyncio.CancelledError as exc:
+            if cancellation is None:
+                cancellation = exc
+    if cancellation is not None:
+        raise cancellation
 
 
 __all__ = [

@@ -14,6 +14,13 @@ one: breadth spent where depth ran out. Both strategies converge on a
 ``DecompositionError`` raised while the submitted plan is parsed, so both
 inherit this by reaching the same function.
 
+The level's WIDTH is corrected here too, and for the same reason: splitting
+to atomicity is what pushes a level past its cap, so a level whose every unit
+is now one agent's work is exactly the one likeliest to be over it. The
+post-session guard refuses such a level outright, so a gate that only spoke
+about size spent the session and then failed the level with the planner never
+told what was wrong.
+
 Bounded by ``coordination.decomposition_max_retries`` like every other
 correction. A plan that still cannot comply once those are spent raises
 ``DecompositionUnsplittableError``, typed apart from every other decomposition
@@ -56,12 +63,14 @@ def describe_unsplittable(
             limit cannot be asked to widen at all.
 
     Returns:
-        The correction to hand back, or ``None`` when every unit is already
-        one agent's worth of work, or when widening is not available.
+        The correction to hand back, or ``None`` when the level is within its
+        width and every unit is already one agent's worth of work, or when
+        widening is not available.
     """
     if policy is None:
         return None
-    if len(subtasks) == width_limit:
+    count = len(subtasks)
+    if count == width_limit:
         # Nowhere left to go: no depth below, no width beside. Asking anyway
         # is asking for a plan the width cap then refuses, which is what
         # killed a twenty-one-session tree: the planner widened to eleven
@@ -76,6 +85,7 @@ def describe_unsplittable(
         # cap and says to merge or drop, which is the one thing that can
         # still save it, so it is exactly the level that needs to hear it.
         return None
+    over_cap = count > width_limit
     offenders = [
         (subtask, assessment)
         for subtask in subtasks
@@ -86,25 +96,40 @@ def describe_unsplittable(
         if subtask.kind is PlanItemKind.WORK
         and (assessment := policy.assess(subtask)).is_oversized
     ]
-    if not offenders:
+    # Either condition alone earns a correction. A level over the cap whose
+    # units are each atomic is the case the size check cannot see at all, and
+    # it is not hypothetical: splitting to atomicity is precisely what pushes
+    # a level past its width. Silent, the session is spent and the guard then
+    # refuses the level for a reason the planner was never given.
+    if not offenders and not over_cap:
         return None
-    named = ", ".join(
-        f"{subtask.title!r} ({assessment.condition} is {assessment.observed}, "
-        f"limit {assessment.limit})"
-        for subtask, assessment in offenders[:_MAX_NAMED]
+    oversized = ""
+    if offenders:
+        named = ", ".join(
+            f"{subtask.title!r} ({assessment.condition} is {assessment.observed}, "
+            f"limit {assessment.limit})"
+            for subtask, assessment in offenders[:_MAX_NAMED]
+        )
+        more = len(offenders) - _MAX_NAMED
+        suffix = f", and {more} more" if more > 0 else ""
+        oversized = (
+            f"These units are still more than one agent's work: {named}"
+            f"{suffix}. Split them into more units AT THIS LEVEL rather than "
+            f"leaving them large, so that each unit produces at most "
+            f"{policy.max_expected_artifacts} deliverable(s), defines at most "
+            f"{policy.max_acceptance_criteria} acceptance criteria, and "
+            f"advances at most one of the objective's success criteria. "
+        )
+    width = (
+        f"This level submits {count} units, and the whole level must come to "
+        f"at most {width_limit} units, so merge or drop what does not fit."
+        if over_cap
+        else f"The whole level must still come to at most {width_limit} units, "
+        f"so merge or drop what does not fit rather than exceeding it."
     )
-    more = len(offenders) - _MAX_NAMED
-    suffix = f", and {more} more" if more > 0 else ""
     return (
         f"This is the last level of planning available, so nothing here can "
-        f"be broken down further later. These units are still more than one "
-        f"agent's work: {named}{suffix}. Split them into more units AT THIS "
-        f"LEVEL rather than leaving them large, so that each unit produces at "
-        f"most {policy.max_expected_artifacts} deliverable(s), defines at "
-        f"most {policy.max_acceptance_criteria} acceptance criteria, and "
-        f"advances at most one of the objective's success criteria. "
-        f"The whole level must still come to at most {width_limit} units, "
-        f"so merge or drop what does not fit rather than exceeding it."
+        f"be broken down further later. {oversized}{width}"
     )
 
 

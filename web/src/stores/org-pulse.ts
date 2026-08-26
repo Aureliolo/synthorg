@@ -219,9 +219,12 @@ export const useOrgPulseStore = create<OrgPulseState>((set, get) => ({
   fetchOrgPulse: () => fetchOrgPulseImpl(set, get),
   fetchSubsystems: () => fetchSubsystemsImpl(set),
   reset: () => {
-    // The revision counter is module state, so it outlives the store's own
-    // fields and would carry one test's in-flight reads into the next.
-    subsystemRevision = 0
+    // INCREMENTED, not zeroed. The counter is module state that outlives the
+    // store's own fields, so a reset has to invalidate whatever is in flight
+    // rather than restart the numbering: zeroed, a read that claimed
+    // revision 1 before the reset matches the next read's revision 1 after
+    // it, and the stale response applies to the fresh state.
+    claimSubsystemRead()
     set({ ...INITIAL })
   },
 }))

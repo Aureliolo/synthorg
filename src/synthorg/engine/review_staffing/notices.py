@@ -189,5 +189,6 @@ __all__ = [
     "DispatcherSource",
     "hire_request_reason",
     "notify_hire_waiting",
+    "notify_hire_withdrawn",
     "notify_standing_gap",
 ]

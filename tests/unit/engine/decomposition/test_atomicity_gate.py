@@ -166,6 +166,27 @@ class TestDescribeUnsplittable:
         assert "at most 6 units" in detail
         assert "merge or drop" in detail
 
+    def test_an_over_cap_level_of_atomic_units_is_still_corrected(self) -> None:
+        # The case a size-only gate cannot see at all, and the likeliest one:
+        # splitting to atomicity is precisely what pushes a level past its
+        # width, so the level that finally complies on size is the one most
+        # likely to breach the cap. Every unit here is one agent's work, so
+        # there are no offenders to name, and the post-session width guard
+        # still refuses the plan. Silent, the session is spent and the level
+        # fails for a reason the planner was never given.
+        detail = describe_unsplittable(
+            tuple(_subtask(f"n{index}") for index in range(9)),
+            policy=_POLICY,
+            width_limit=6,
+        )
+
+        assert detail is not None
+        assert "submits 9 units" in detail
+        assert "at most 6 units" in detail
+        assert "merge or drop" in detail
+        # Nothing is oversized, so it must not claim otherwise.
+        assert "more than one agent's work" not in detail
+
     def test_summarises_past_the_naming_cap(self) -> None:
         detail = describe_unsplittable(
             tuple(_subtask(f"n{i}", artifacts=4) for i in range(9)),

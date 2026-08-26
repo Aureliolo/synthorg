@@ -23,6 +23,7 @@ from synthorg.engine.agent_state_recording import (
     make_runtime_state_observer,
     mark_agent_idle,
     mark_agent_running,
+    release_agent_row,
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TurnProgress
@@ -38,6 +39,19 @@ _EUR = CurrencyCode("EUR")
 
 class _PublishFailedError(RuntimeError):
     """Stands in for a listener's own fault, whatever its cause."""
+
+
+async def _settle() -> None:
+    """Run every callback the loop already has scheduled.
+
+    A cancellation is delivered through a scheduled callback rather than at
+    the ``cancel()`` call, so an assertion made straight afterwards reads the
+    state before it arrived. Yields rather than sleeps: on a single-threaded
+    loop this is deterministic, where any wall-clock wait would be a race
+    dressed up as a pause.
+    """
+    for _ in range(5):
+        await asyncio.sleep(0)
 
 
 def _context(
@@ -278,6 +292,64 @@ class TestTheAgentStopsReadingAsBusy:
             execution_id="exec-mine",
             currency=_EUR,
         )
+
+
+class TestTheClearOutlivesEveryCancellation:
+    """A shutdown delivers more than one cancellation, so one shield is not enough.
+
+    The row is claimed by a compare-and-set on execution ownership, so a clear
+    that is abandoned is not a stale row that later corrects itself: every
+    later run by that agent presents a different execution id and is refused,
+    permanently and across restarts, with nothing anywhere reaping it.
+    """
+
+    async def test_two_cancellations_still_leave_the_row_cleared(self) -> None:
+        started = asyncio.Event()
+        release_write = asyncio.Event()
+        cleared: list[AgentRuntimeState] = []
+
+        async def _write(state: AgentRuntimeState, **_: object) -> bool:
+            started.set()
+            # Held open so both cancellations land while the write is in
+            # flight, which is the only window the defect lives in: an
+            # instant fake completes inside the step that starts it and
+            # tests nothing.
+            await release_write.wait()
+            cleared.append(state)
+            return True
+
+        repository = mock_of[AgentStateRepository](
+            save_if_execution=AsyncMock(side_effect=_write),
+        )
+        releasing = asyncio.ensure_future(
+            release_agent_row(
+                repository_provider=lambda: repository,
+                agent_id="agent-1",
+                execution_id="exec-1",
+                currency=_EUR,
+                clock=FakeClock(start=_NOW),
+            )
+        )
+        await started.wait()
+
+        releasing.cancel()
+        await _settle()
+        releasing.cancel()
+        await _settle()
+
+        # Neither cancellation may have taken the write with it. Awaiting a
+        # bare `release` in the handler is what let the second one cancel the
+        # task rather than the waiting.
+        assert not releasing.done()
+        assert not cleared
+
+        release_write.set()
+        with pytest.raises(asyncio.CancelledError):
+            await releasing
+
+        assert len(cleared) == 1
+        assert cleared[0].status is ExecutionStatus.IDLE
+        assert cleared[0].agent_id == "agent-1"
 
 
 class TestARunIsVisibleBeforeItsFirstTurnEnds:

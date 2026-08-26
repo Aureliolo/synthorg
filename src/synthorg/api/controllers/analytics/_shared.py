@@ -363,7 +363,13 @@ async def _resolve_agent_counts(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return 0, config_agent_count
+        # The same fallback as the no-registry branch, for the same reason:
+        # a failed registry read costs the PAYROLL, not the answer to who is
+        # working, which the task board and the live rows already carry.
+        # Reporting zero active here made a transient HR fault look like an
+        # idle org while tasks were in progress and sessions were running.
+        active = len(busy_agent_ids(tasks, running=running))
+        return active, max(config_agent_count - active, 0)
 
     employed_ids = {str(agent.id) for agent in employed}
     active = len(busy_agent_ids(tasks, employed_ids, running=running))

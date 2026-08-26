@@ -17,7 +17,7 @@ from synthorg.engine.coordination.section_config import (
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.decomposition.strategy_deps import DecompositionStrategyDeps
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import DecompositionError, DecompositionUnwiredError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.shutdown import ShutdownManager
@@ -152,12 +152,17 @@ class TestBuildCoordinator:
             )
 
     def test_provider_and_model_without_selector_raises(self) -> None:
-        """Provider + model but no provider_selector raises ValueError.
+        """Provider + model but no selector raises the typed wiring error.
 
         The owner-run session dispatches each owner on its own bound provider,
         so a selector is mandatory when a provider is configured.
+
+        Typed rather than ``ValueError``: a wiring fault and a malformed
+        argument want opposite responses (fix the deployment, versus retry
+        with different input), and a bare ``ValueError`` from an accessor
+        reads to every caller as the second.
         """
-        with pytest.raises(ValueError, match="provider_selector"):
+        with pytest.raises(DecompositionUnwiredError, match="provider_selector"):
             build_coordinator(
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),

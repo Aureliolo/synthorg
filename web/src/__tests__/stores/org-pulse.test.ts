@@ -32,6 +32,33 @@ function subsystemsHandler(phase: 'active' | 'blocked' = 'active') {
   )
 }
 
+/**
+ * A subsystems read held open until the test lets it answer.
+ *
+ * The hazard needs one read still in flight across a reset AND a later read,
+ * which no instant handler can produce.
+ */
+function heldSubsystems(gate: Promise<void>) {
+  return http.get('/api/v1/subsystems', async () => {
+    await gate
+    return HttpResponse.json(
+      successFor<typeof getSubsystems>({
+        subsystems: [
+          { name: 'memory_backend', phase: 'blocked', waiting_on: [], detail: null },
+        ],
+        active: 0,
+        degraded: 0,
+        waiting: 0,
+        unreachable: 0,
+        rebuilding: 0,
+        blocked: 1,
+        failed: 0,
+        disabled: 0,
+      }),
+    )
+  })
+}
+
 function failingSubsystems() {
   return http.get('/api/v1/subsystems', () =>
     HttpResponse.json(apiError('subsystem read failed'), { status: 500 }),
@@ -185,5 +212,27 @@ describe('useOrgPulseStore', () => {
     expect(state.loading).toBe(false)
     // Reset means never read, so the next fetch is a first read again.
     expect(state.loaded).toBe(false)
+  })
+
+  it('drops a pre-reset read once the reset has been followed by a new one', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(heldSubsystems(gate), emptyTasks())
+    const stale = useOrgPulseStore.getState().fetchOrgPulse()
+
+    useOrgPulseStore.getState().reset()
+    server.use(subsystemsHandler('active'), emptyTasks())
+    await useOrgPulseStore.getState().fetchOrgPulse()
+
+    release()
+    await stale
+
+    // The counter is module state, so it outlives the store's fields. Zeroed
+    // on reset, the pre-reset read is handed the very number the post-reset
+    // read claims, matches on it, and puts a verdict from before the clear
+    // back on the always-mounted health pill.
+    expect(useOrgPulseStore.getState().subsystems[0]?.phase).toBe('active')
   })
 })
