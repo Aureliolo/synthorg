@@ -6,7 +6,11 @@ from ``decompose()``, validating against context limits.
 
 from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.task import Task
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    depth_budget,
+    width_budget,
+)
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import (
     DecompositionDepthError,
@@ -63,17 +67,17 @@ class ManualDecompositionStrategy:
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionError(msg)
 
-        if context.current_depth >= context.max_depth:
+        if context.current_depth >= depth_budget(context):
             msg = (
                 f"Decomposition depth {context.current_depth} "
-                f"exceeds max depth {context.max_depth}"
+                f"exceeds max depth {depth_budget(context)}"
             )
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionDepthError(msg)
 
-        if len(self._plan.subtasks) > context.max_subtasks:
+        if len(self._plan.subtasks) > width_budget(context):
             over_limit = DecompositionSubtaskLimitError(
-                produced=len(self._plan.subtasks), limit=context.max_subtasks
+                produced=len(self._plan.subtasks), limit=width_budget(context)
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,

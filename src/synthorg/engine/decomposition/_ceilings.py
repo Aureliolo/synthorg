@@ -1,14 +1,25 @@
 # module-kind: code
-"""The wall-clock ceilings a decomposition runs under: reading, and classifying.
+"""The bounds a decomposition runs under: reading them, and classifying a hit.
 
-Two settings bound a decomposition, one per planning session and one for the
-whole recursive call, and both are read live so an operator raising either
-applies to the next decomposition rather than the next restart. Both fire as
-``TimeoutError``, which is also what a call INSIDE can raise on its own, and
-telling those apart decides whether a caller may usefully retry. Both halves
-live here because they are the same concern seen from its two ends: what the
-bound is, and what it means when it is reached.
+Three settings bound a decomposition: a wall-clock ceiling per planning
+session, a wall-clock ceiling for the whole recursive call, and how many
+planning sessions that call may open. All three are read live so an operator
+raising one applies to the next decomposition rather than the next restart,
+and all three fall back to the definition's own default when the setting
+cannot answer, because a bound nobody can read is not a licence to spend.
+
+The two ceilings fire as ``TimeoutError``, which is also what a call INSIDE
+can raise on its own, and telling those apart decides whether a caller may
+usefully retry. Both halves live here because they are the same concern seen
+from its two ends: what the bound is, and what it means when it is reached.
+
+The session budget is the one that stops GRACEFULLY, which is why it exists
+beside the ceilings rather than instead of one: running out of sessions
+returns the tree as far as it got and leaves the units it could not split
+saying so, while a ceiling raises and discards every level already paid for.
 """
+
+from typing import Final
 
 from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
 from synthorg.observability import get_logger, safe_error_description
@@ -20,6 +31,49 @@ from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+#: Mirrors ``coordination.decomposition_timeout_seconds``. Held here because a
+#: harness runs with no settings at all, and the bound has to stand there too.
+DEFAULT_SESSION_CEILING_SECONDS: Final[float] = 600.0
+
+#: Mirrors ``coordination.decomposition_tree_timeout_seconds``, for the same
+#: reason.
+DEFAULT_TREE_CEILING_SECONDS: Final[float] = 14400.0
+
+#: Mirrors ``coordination.decomposition_tree_max_sessions``, for the same
+#: reason.
+DEFAULT_TREE_MAX_SESSIONS: Final[int] = 40
+
+
+async def tree_session_budget(resolver: ConfigResolverProtocol | None) -> int:
+    """Read how many planning sessions one whole tree may spend.
+
+    The bound in the unit that costs money: recursion is a planning session
+    per node, so this composes with the per-session token ceiling into a real
+    token bound on a tree of unknown shape.
+
+    Args:
+        resolver: The live settings reader, or ``None`` in a harness.
+
+    Returns:
+        The number of planning sessions available to the tree.
+    """
+    if resolver is None:
+        return DEFAULT_TREE_MAX_SESSIONS
+    try:
+        return await resolver.get_int("coordination", "decomposition_tree_max_sessions")
+    except (SettingNotFoundError, ValueError) as exc:
+        # lint-allow: swallow-ok -- a budget the setting cannot answer for is
+        # the definition's default by construction, and a bound still stands,
+        # so the runaway this exists to catch is caught either way
+        logger.warning(
+            DECOMPOSITION_CEILING_UNREADABLE,
+            setting="decomposition_tree_max_sessions",
+            fallback_sessions=DEFAULT_TREE_MAX_SESSIONS,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return DEFAULT_TREE_MAX_SESSIONS
 
 
 async def ceiling_seconds(
@@ -106,4 +160,11 @@ def timeout_failure(
     return DecompositionTimeoutError(msg) if expired else DecompositionError(msg)
 
 
-__all__ = ["ceiling_seconds", "timeout_failure"]
+__all__ = [
+    "DEFAULT_SESSION_CEILING_SECONDS",
+    "DEFAULT_TREE_CEILING_SECONDS",
+    "DEFAULT_TREE_MAX_SESSIONS",
+    "ceiling_seconds",
+    "timeout_failure",
+    "tree_session_budget",
+]

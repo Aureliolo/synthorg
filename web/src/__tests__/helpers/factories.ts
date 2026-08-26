@@ -281,6 +281,8 @@ export function makePlanItem(id: string, overrides?: Partial<PlanItem>): PlanIte
     id,
     title: `Item ${id}`,
     description: `Description for ${id}`,
+    parent_id: null,
+    unsplit_reason: null,
     dependencies: [],
     owner: null,
     owner_name: null,

@@ -5,11 +5,13 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { StatusPill } from '@/components/ui/status-pill'
 import { planSolicitsReview } from '@/utils/plan-status'
+import { buildPlanTree, placedByTree } from '@/utils/planTree'
 import { type PlanItemFlag, itemFlags, planItemAnchorId } from '@/utils/plans'
 
 interface FlaggedEntry {
   readonly item: PlanItem
-  readonly index: number
+  /** Its position in the tree, so a row names the same thing its card does. */
+  readonly label: string
   readonly flags: readonly PlanItemFlag[]
 }
 
@@ -18,10 +20,10 @@ function collectFlagged(
   criticalPath: ReadonlySet<string>,
   roster: ReadonlySet<string> | undefined,
 ): readonly FlaggedEntry[] {
-  return items
-    .map((item, index) => ({
+  return placedByTree(buildPlanTree(items))
+    .map(({ item, label }) => ({
       item,
-      index,
+      label,
       flags: itemFlags(item, { onCriticalPath: criticalPath.has(item.id), roster }),
     }))
     .filter((entry) => entry.flags.length > 0)
@@ -36,7 +38,7 @@ function FlaggedItemRow({ entry }: { entry: FlaggedEntry }) {
       >
         <div className="min-w-0 flex-1 space-y-1.5">
           <span className="block truncate text-sm font-medium text-foreground">
-            {entry.index + 1}. {entry.item.title}
+            {entry.label}. {entry.item.title}
           </span>
           <div className="flex flex-wrap gap-1.5">
             {entry.flags.map((flag) => (

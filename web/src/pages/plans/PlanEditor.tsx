@@ -2,14 +2,28 @@ import { useCallback, useState } from 'react'
 
 import { Plus, Trash2 } from 'lucide-react'
 
-import type { EditPlanRequest, Plan, PlanItem } from '@/api/types/plans'
+import type { Plan } from '@/api/types/plans'
 import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enums'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { Pagination } from '@/components/ui/pagination'
 import type { SelectOption } from '@/components/ui/select-field'
 import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
 import { isUnroutableOwner } from '@/utils/plans'
+
+import { usePlanEditorRows } from './PlanEditor.paging'
+import {
+  acceptanceText,
+  artifactsText,
+  isComplete,
+  isComplexity,
+  isStakes,
+  nonBlankCriteria,
+  toPayload,
+  useDraftItems,
+} from './PlanEditor.drafts'
+import type { GradingProps, RowProps } from './PlanEditor.types'
 
 const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
 const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
@@ -18,133 +32,8 @@ const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
 // over-count edit is caught in the browser rather than after a 422 round trip.
 const TITLE_MAX = 256
 const TEXT_MAX = 8192
-const MAX_ITEMS = 50
+const MAX_ITEMS = 1000
 const MAX_CRITERIA = 50
-
-function isComplexity(value: string): value is PlanItem['estimated_complexity'] {
-  return (COMPLEXITY_VALUES as readonly string[]).includes(value)
-}
-
-function isStakes(value: string): value is PlanItem['stakes'] {
-  return (STAKES_VALUES as readonly string[]).includes(value)
-}
-
-function nonBlankCriteria(criteria: readonly string[]): readonly string[] {
-  return criteria.map((c) => c.trim()).filter((c) => c !== '')
-}
-
-interface DraftItem {
-  id: string
-  title: string
-  description: string
-  owner: string
-  dependencies: readonly string[]
-  acceptanceCriteria: readonly string[]
-  expectedArtifacts: readonly string[]
-  requiredSkills: readonly string[]
-  requiredTags: readonly string[]
-  complexity: PlanItem['estimated_complexity']
-  stakes: PlanItem['stakes']
-  // Preserved verbatim so editing a plan that holds a decision item does not
-  // strip its options and fail the decision validator on save, and so a rework
-  // keeps each item's objective-criteria coverage.
-  kind: PlanItem['kind']
-  options: PlanItem['options']
-  chosenOptionId: PlanItem['chosen_option_id']
-  satisfies: PlanItem['satisfies']
-}
-
-function toDraft(item: PlanItem): DraftItem {
-  return {
-    id: item.id,
-    title: item.title,
-    description: item.description,
-    owner: item.owner ?? '',
-    dependencies: item.dependencies,
-    acceptanceCriteria: item.acceptance_criteria,
-    expectedArtifacts: item.expected_artifacts,
-    requiredSkills: item.required_skills,
-    requiredTags: item.required_tags,
-    complexity: item.estimated_complexity,
-    stakes: item.stakes,
-    kind: item.kind,
-    options: item.options,
-    chosenOptionId: item.chosen_option_id,
-    satisfies: item.satisfies,
-  }
-}
-
-function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
-  const owner = draft.owner.trim()
-  return {
-    id: draft.id,
-    title: draft.title,
-    description: draft.description,
-    owner: owner === '' ? null : owner,
-    dependencies: draft.dependencies,
-    acceptance_criteria: nonBlankCriteria(draft.acceptanceCriteria),
-    expected_artifacts: draft.expectedArtifacts,
-    required_skills: draft.requiredSkills,
-    required_tags: draft.requiredTags,
-    estimated_complexity: draft.complexity,
-    stakes: draft.stakes,
-    kind: draft.kind,
-    options: draft.options,
-    chosen_option_id: draft.chosenOptionId,
-    satisfies: draft.satisfies,
-  }
-}
-
-function acceptanceText(draft: DraftItem): string {
-  return draft.acceptanceCriteria.join('\n')
-}
-
-function artifactsText(draft: DraftItem): string {
-  return draft.expectedArtifacts.join('\n')
-}
-
-/** Whether a draft carries everything the backend requires of its kind. */
-function isComplete(draft: DraftItem): boolean {
-  const nonBlank = (lines: readonly string[]) =>
-    lines.some((line) => line.trim().length > 0)
-  if (!draft.title.trim() || !nonBlank(draft.acceptanceCriteria)) return false
-  return draft.kind !== 'work' || nonBlank(draft.expectedArtifacts)
-}
-
-function newDraft(): DraftItem {
-  return {
-    id: crypto.randomUUID(),
-    title: '',
-    description: '',
-    owner: '',
-    dependencies: [],
-    acceptanceCriteria: [],
-    expectedArtifacts: [],
-    requiredSkills: [],
-    requiredTags: [],
-    complexity: 'medium',
-    stakes: 'normal',
-    kind: 'work',
-    options: [],
-    chosenOptionId: null,
-    satisfies: [],
-  }
-}
-
-interface RowProps {
-  index: number
-  draft: DraftItem
-  canRemove: boolean
-  roster: ReadonlySet<string> | undefined
-  onChange: (index: number, patch: Partial<DraftItem>) => void
-  onRemove: (index: number) => void
-}
-
-interface GradingProps {
-  index: number
-  draft: DraftItem
-  onChange: (index: number, patch: Partial<DraftItem>) => void
-}
 
 /** The message for an owner the org cannot route to, or null when it can. */
 function ownerError(
@@ -157,6 +46,31 @@ function ownerError(
 }
 
 const UNASSIGNED_OWNER: SelectOption = { value: '', label: 'Unassigned' }
+
+/**
+ * What this item belongs to.
+ *
+ * Containment says what an item is part of and never when it runs, which
+ * dependencies alone decide. Moving an item under another makes that other one
+ * an assembly of it: it stops being dispatched as work and starts assembling
+ * what sits below it instead.
+ */
+function ParentField({
+  index,
+  draft,
+  options,
+  onChange,
+}: GradingProps & { options: readonly SelectOption[] }) {
+  return (
+    <SelectField
+      label="Belongs to"
+      options={options}
+      value={draft.parentId}
+      hint="An item with children is assembled from them rather than done directly."
+      onChange={(value) => onChange(index, { parentId: value })}
+    />
+  )
+}
 
 /**
  * The owning role for an item.
@@ -226,6 +140,7 @@ function PlanEditorRow({
   draft,
   canRemove,
   roster,
+  parentChoices,
   onChange,
   onRemove,
 }: RowProps) {
@@ -287,6 +202,12 @@ function PlanEditorRow({
         }
       />
       <OwnerField index={index} draft={draft} roster={roster} onChange={onChange} />
+      <ParentField
+        index={index}
+        draft={draft}
+        options={parentChoices}
+        onChange={onChange}
+      />
       <ItemGradingFields index={index} draft={draft} onChange={onChange} />
     </div>
   )
@@ -301,24 +222,8 @@ export interface PlanEditorProps {
 
 /** Editable form for reworking a plan's items, producing a new revision. */
 export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
-  const [drafts, setDrafts] = useState<readonly DraftItem[]>(() =>
-    plan.items.map(toDraft),
-  )
+  const { drafts, change, remove, add } = useDraftItems(plan)
   const [saving, setSaving] = useState(false)
-
-  const handleChange = useCallback((index: number, patch: Partial<DraftItem>) => {
-    setDrafts((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, ...patch } : d)),
-    )
-  }, [])
-
-  const handleRemove = useCallback((index: number) => {
-    setDrafts((prev) => prev.filter((_, i) => i !== index))
-  }, [])
-
-  const handleAdd = useCallback(() => {
-    setDrafts((prev) => [...prev, newDraft()])
-  }, [])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -329,10 +234,17 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
     if (result) onDone()
   }, [plan.id, drafts, onDone])
 
+  const { shown, choices, firstShown, pager, addAndFollow } = usePlanEditorRows(
+    drafts,
+    add,
+  )
+
   // The backend requires every item to carry a title, at least one acceptance
   // criterion (capped at MAX_CRITERIA), a dispatchable owner or none, and, for
   // a work item, at least one expected deliverable. Gate the save on all of
-  // them rather than surfacing the 422 after a round trip.
+  // them rather than surfacing the 422 after a round trip. Read over every
+  // draft rather than the page: an item the operator has paged away from still
+  // 422s the save, and a gate that could not see it would let them try.
   const canSave =
     drafts.length > 0 &&
     drafts.length <= MAX_ITEMS &&
@@ -345,22 +257,24 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
 
   return (
     <div className="space-y-3">
-      {drafts.map((draft, index) => (
+      {shown.map((draft, offset) => (
         <PlanEditorRow
           key={draft.id}
-          index={index}
+          index={firstShown + offset}
           draft={draft}
           canRemove={drafts.length > 1}
           roster={roster}
-          onChange={handleChange}
-          onRemove={handleRemove}
+          parentChoices={choices[offset] ?? []}
+          onChange={change}
+          onRemove={remove}
         />
       ))}
+      {pager !== undefined && <Pagination {...pager} />}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={handleAdd}
+          onClick={addAndFollow}
           disabled={drafts.length >= MAX_ITEMS}
         >
           <Plus aria-hidden="true" />

@@ -357,7 +357,12 @@ class PlanReviewApprovalGate:
                 nothing an operator can still act on.
         """
         await self._require_parent(task, plan_id)
-        detail = plan_detail([s.title for s in plan.plan.subtasks])
+        # The top level names the workstreams; the count is the whole tree,
+        # because approving commits every level under them.
+        detail = plan_detail(
+            [s.title for s in plan.plan.subtasks],
+            total_units=len(plan.all_subtasks),
+        )
         now = self._clock.now()
         shell = await self._plans.get(NotBlankStr(str(plan_id)))
         filled = plan_from_decomposition(
@@ -390,6 +395,7 @@ class PlanReviewApprovalGate:
         approval = plan_approval_item(
             plan_id=str(durable_plan.id),
             titles=[s.title for s in plan.plan.subtasks],
+            total_units=len(plan.all_subtasks),
             objective_title=str(task.title),
             project=str(work_item.project),
             task_id=NotBlankStr(str(task.id)),
@@ -467,7 +473,7 @@ class PlanReviewApprovalGate:
         return PlanReviewHandoff(
             approval_id=NotBlankStr(str(approval_id)),
             plan_id=NotBlankStr(str(durable_plan.id)),
-            subtask_count=len(plan.plan.subtasks),
+            subtask_count=len(plan.all_subtasks),
             detail=NotBlankStr(detail),
         )
 

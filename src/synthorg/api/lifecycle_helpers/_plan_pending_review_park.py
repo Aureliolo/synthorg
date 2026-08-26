@@ -36,6 +36,7 @@ from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.plan import Plan
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.types import NotBlankStr
 
 #: ``ApprovalItem.metadata`` key carrying the project the plan belongs to.
@@ -46,6 +47,7 @@ def plan_approval_item(
     *,
     plan_id: str,
     titles: Sequence[str],
+    total_units: int,
     objective_title: str,
     project: str,
     task_id: NotBlankStr,
@@ -56,8 +58,9 @@ def plan_approval_item(
 
     Args:
         plan_id: The durable plan the approval decides.
-        titles: One title per item the plan proposes, for the summary and the
-            risk scale.
+        titles: One title per workstream the plan proposes, for the summary.
+        total_units: How many units the whole plan holds, which is what the
+            risk scale reads: the approval commits every level, not the top.
         objective_title: What the plan is for, as the operator reads it.
         project: The project the plan belongs to.
         task_id: The objective task, which the approvals surface links by.
@@ -71,9 +74,9 @@ def plan_approval_item(
         id=uuid4(),
         action_type=NotBlankStr(PLAN_APPROVAL_ACTION_TYPE),
         title=NotBlankStr(f"Approve plan for: {objective_title}"),
-        description=NotBlankStr(plan_detail(titles)),
+        description=NotBlankStr(plan_detail(titles, total_units=total_units)),
         requested_by=requested_by,
-        risk_level=plan_risk_level(titles),
+        risk_level=plan_risk_level(total_units),
         source=ApprovalSource.PLAN_REVIEW,
         status=ApprovalStatus.PENDING,
         created_at=now,
@@ -108,7 +111,8 @@ def review_approvals_for(
     task_id = NotBlankStr(str(plan.parent_task_id))
     approval = plan_approval_item(
         plan_id=str(plan.id),
-        titles=[str(item.title) for item in plan.items],
+        titles=[str(item.title) for item in PlanTree.of(plan.items).workstreams],
+        total_units=len(plan.items),
         objective_title=str(plan.objective_title),
         project=str(plan.project),
         task_id=task_id,

@@ -37,7 +37,11 @@ from synthorg.engine.decomposition.agent_session_submit import (
     PlanCapture,
     SubmitDecompositionPlanTool,
 )
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    depth_budget,
+    width_budget,
+)
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
@@ -45,6 +49,7 @@ from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
     DecompositionSubtaskLimitError,
+    DecompositionUnsplittableError,
 )
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
@@ -398,18 +403,22 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 termination_detail=detail,
             )
             self._reject_empty_session(
-                task, owner_id=str(owner.id), result=result, detail=detail
+                task,
+                owner_id=str(owner.id),
+                result=result,
+                detail=detail,
+                declined_to_split=capture.declined_to_split,
             )
             return await self._fallback_plan(task, context)
 
-        if len(plan.subtasks) > context.max_subtasks:
+        if len(plan.subtasks) > width_budget(context):
             # The owner researched this plan across turns with read-only
             # tools; the single-shot fallback would produce a thinner one the
             # operator never sees. Refusing surfaces the real plan's size on
             # the durable Plan as a failure reason instead, the same as every
             # other strategy does.
             over_limit = DecompositionSubtaskLimitError(
-                produced=len(plan.subtasks), limit=context.max_subtasks
+                produced=len(plan.subtasks), limit=width_budget(context)
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,
@@ -443,6 +452,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         owner_id: str,
         result: ExecutionResult,
         detail: str | None,
+        declined_to_split: bool,
     ) -> None:
         """Refuse to substitute a blind plan for a session that just ran.
 
@@ -457,9 +467,20 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         (:func:`_stopped_short`), so this is the exhausted case, not the
         discouraged one.
 
+        Args:
+            task: The objective the session was planning.
+            owner_id: Who ran it, for the log line.
+            result: How the session ended.
+            detail: What its last error said, already scrubbed.
+            declined_to_split: Whether its last refusal was the size
+                correction, which is the one condition the level that asked
+                for this one can act on.
+
         Raises:
+            DecompositionUnsplittableError: When the session ran out of turns
+                still unable to widen a level with no depth below it.
             DecompositionError: When the session terminated normally with
-                no plan submitted.
+                no plan submitted for any other reason.
         """
         if not _ran_without_submitting(result.termination_reason):
             return
@@ -476,6 +497,8 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             termination=result.termination_reason.value,
             error=msg,
         )
+        if declined_to_split:
+            raise DecompositionUnsplittableError(msg)
         raise DecompositionError(msg)
 
     async def _fallback_plan(
@@ -656,6 +679,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 NotBlankStr(criterion.description)
                 for criterion in task.acceptance_criteria
             ),
+            atomicity=context.atomicity,
         )
         planning_tools = self._planning_tools(task, owner)
         tools: list[BaseTool] = [submit_tool, *planning_tools]
@@ -806,10 +830,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             DecompositionDepthError: If current depth meets or exceeds max
                 depth.
         """
-        if context.current_depth >= context.max_depth:
+        if context.current_depth >= depth_budget(context):
             msg = (
                 f"Decomposition depth {context.current_depth} "
-                f"meets or exceeds max depth {context.max_depth}"
+                f"meets or exceeds max depth {depth_budget(context)}"
             )
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionDepthError(msg)

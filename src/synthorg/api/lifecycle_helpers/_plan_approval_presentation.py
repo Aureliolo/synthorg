@@ -26,35 +26,46 @@ _LOW_RISK_MAX_SUBTASKS: Final[int] = 3
 _MEDIUM_RISK_MAX_SUBTASKS: Final[int] = 8
 
 
-def plan_risk_level(titles: Sequence[str]) -> ApprovalRiskLevel:
+def plan_risk_level(total_units: int) -> ApprovalRiskLevel:
     """Scale plan-approval risk with the size of the plan.
 
+    Counted over the whole tree rather than its top level. What the approval
+    commits is every unit under it, so a plan of two workstreams holding
+    ninety units is not a small plan, and reading the top level alone would
+    grade the largest plans the product can produce as its lowest risk.
+
     Args:
-        titles: One title per item the plan proposes.
+        total_units: How many units the whole plan holds, every level counted.
 
     Returns:
         ``LOW`` for a small plan, ``MEDIUM`` for a mid-sized one, ``HIGH``
         for a large plan (more items commit more work in one approval).
     """
-    if len(titles) <= _LOW_RISK_MAX_SUBTASKS:
+    if total_units <= _LOW_RISK_MAX_SUBTASKS:
         return ApprovalRiskLevel.LOW
-    if len(titles) <= _MEDIUM_RISK_MAX_SUBTASKS:
+    if total_units <= _MEDIUM_RISK_MAX_SUBTASKS:
         return ApprovalRiskLevel.MEDIUM
     return ApprovalRiskLevel.HIGH
 
 
-def plan_detail(titles: Sequence[str]) -> str:
+def plan_detail(titles: Sequence[str], *, total_units: int) -> str:
     """Human-readable one-line summary of a plan.
 
+    A plan is a tree, so the two numbers are different questions and the
+    summary answers both: *titles* names the coarse tracks the operator is
+    approving, while *total_units* is how much work sits under them. Reading
+    the preview's length as the size would report a hundred-unit plan as two.
+
     Args:
-        titles: One title per item the plan proposes.
+        titles: One title per workstream the plan proposes.
+        total_units: How many units the whole plan holds, every level counted.
 
     Returns:
-        A ``"<n> subtask(s): title, title, ..."`` summary.
+        A ``"<n> workstream(s), <m> unit(s): title, title, ..."`` summary.
     """
     preview = ", ".join(titles[:_PREVIEW_SUBTASKS])
     suffix = ", ..." if len(titles) > _PREVIEW_SUBTASKS else ""
-    head = f"{len(titles)} subtask(s)"
+    head = f"{len(titles)} workstream(s), {total_units} unit(s)"
     return f"{head}: {preview}{suffix}" if preview else f"{head} awaiting approval"
 
 

@@ -37,12 +37,23 @@ carries only the plan's `plan_id`.
   `FAILED` status (present iff FAILED). A malformed plan is caught at construction
   rather than as a dispatch failure.
 - **`PlanItem`**: `id` (a canonical UUID string, because dispatch rebuilds each
-  child task from it), `title`, `description`, `dependencies`, `owner`,
-  `acceptance_criteria`, `expected_artifacts`, `required_skills`, `required_tags`,
-  `estimated_complexity`, `stakes`, `kind` (`WORK` or `DECISION`), `options` and
-  `chosen_option_id` (decision items), and `satisfies` (the objective criteria this
-  item advances). A validator rejects a non-UUID id, a self-dependency, or duplicate
-  dependencies.
+  child task from it), `title`, `description`, `parent_id`, `dependencies`,
+  `owner`, `acceptance_criteria`, `expected_artifacts`, `required_skills`,
+  `required_tags`, `estimated_complexity`, `stakes`, `kind` (`WORK` or
+  `DECISION`), `options` and `chosen_option_id` (decision items), `satisfies`
+  (the objective criteria this item advances), and `unsplit_reason`. A validator
+  rejects a non-UUID id, a self-dependency, duplicate dependencies, or an item
+  naming itself as its parent.
+- **The containment tree**: `parent_id` is the item this one was split out of,
+  or `None` for a **workstream** (an item nothing contains). It is structure
+  only: what an item belongs to, never when it runs, which `dependencies` alone
+  decides. `Plan` refuses an unresolvable parent, a containment cycle, a
+  decision as a parent, and a dependency naming a unit at another level. Every
+  derived question is answered by `core/plan_tree.py::PlanTree`, so nothing
+  re-derives one; the invariants live in `core/plan_tree_validation.py`. An item
+  WITH children is not dispatched as work: it is the assembly of the work below
+  it, and carries its own assembly brief. See
+  [recursive-decomposition.md](recursive-decomposition.md).
 
 ### A plan must advance the objective it decomposes
 
@@ -453,12 +464,20 @@ tool schema was not in the shipped org template, and the planner reproduced it.
 API, and the resume path stay in step:
 
 - `plan_from_decomposition()` builds a durable `Plan` from an executed
-  `DecompositionResult` (subtasks become plan items).
-- `decomposition_from_plan()` rebuilds a dispatchable `DecompositionResult` from a
-  (possibly operator-edited) durable plan, so the tree that builds on approval is
-  exactly the plan under review. Each child task carries the item's acceptance
-  criteria and expected artifacts, so the fail-loud zero-artifact guard engages on
-  the plan-review dispatch path.
+  `DecompositionResult`. It walks the WHOLE tree: every level's subtasks become
+  plan items, and each carries the id of the subtask it was split out of as its
+  `parent_id`, read off the tree rather than derived a second way.
+- `decomposition_from_plan()` rebuilds a dispatchable, NESTED
+  `DecompositionResult` from the persisted parent links of a (possibly
+  operator-edited) durable plan, so the tree that builds on approval is exactly
+  the plan under review, edits included. A nested item's task hangs off its
+  CONTAINER's task rather than the objective's, which is what makes
+  `tasks.parent_task_id` a durable record of the tree. Each child task carries
+  the item's acceptance criteria and expected artifacts, so the fail-loud
+  zero-artifact guard engages on the plan-review dispatch path.
+- `engine/decomposition/_item_tasks.py` owns the one item: whether it is work to
+  do or the assembly of the work below it, and what that changes about the task
+  minted from it.
 
 ## Conversational entry
 
@@ -637,8 +656,22 @@ The Plan Review workspace (`web/src/pages/PlansPage.tsx`, `PlanDetailPage.tsx`, 
 every cursor page so the review inbox can filter and sort across the whole set, and
 writes every change through the API. The detail page reworks items (title,
 description, owner, complexity, stakes) or sends the plan back for changes, and
-surfaces a disconnected-updates banner when the WebSocket drops. Beyond the item
-list, it renders review panels derived from the plan (no extra persisted state):
+surfaces a disconnected-updates banner when the WebSocket drops.
+
+**The item list is workstream-led.** A plan that recursed keeps almost all of
+its work below the top, so the page reads the containment tree
+(`web/src/utils/planTree.ts`, the mirror of the backend's `PlanTree`) and
+renders each workstream immediately followed by the subtree it assembles,
+indented and numbered by tree position (`2.1.3`). A container is marked as an
+assembly with its child count rather than as a work item, and the section
+heading names the tracks as well as the units, because "12 items" over a
+hundred-node tree misstates what is being approved. A flat plan renders exactly
+as it always did. The editor's **Belongs to** field moves an item under
+another (or promotes it to a workstream), offering only parents the backend
+would accept, and removing a container promotes its children to where it sat.
+
+Beyond the item list, it renders review panels derived from the plan (no extra
+persisted state):
 
 - **Decomposition failure** (`PlanFailureBanner`): shown only for a `FAILED` plan,
   surfacing its `failure_reason` so the operator can see why the run failed and
@@ -662,12 +695,21 @@ list, it renders review panels derived from the plan (no extra persisted state):
 - **Staffing** (`PlanStaffingPanel`): per-owner item load derived from item owners,
   flagging bottlenecks and unassigned work.
 - **Success-criteria coverage** (`PlanCoveragePanel`): each objective criterion and
-  the items that advance it, flagging any criterion nothing covers.
+  the items that advance it, flagging any criterion nothing covers. On a tree it
+  names the WORKSTREAMS those items sit under: nine leaf titles under two tracks
+  is a wall of text that says less than the two names do.
 - **Stakeholder review** (`PlanReviewPanel`): the panel's consolidated verdict and
   each lead's findings.
 - **Changes since last revision** (`PlanVersionDiff`): items added / removed /
   modified versus the last version snapshot.
 - **Timeline** (`PlanTimeline`): execution waves derived from the dependency DAG.
+  It reads the same augmented view the dispatcher does, so a container appears
+  after the subtree it assembles rather than beside it.
+- **Needs your attention** (`PlanAttentionPanel`): every item carrying a risk or
+  gap, each linking to its card. A unit that reached the plan still oversized
+  flags here carrying its `unsplit_reason`, which names the bound that stopped
+  the split, because raising that bound and narrowing the objective are both
+  the reviewer's to do.
 - **Decision options and discussion** (`PlanItemCard`): each decision item's options
   (pick recorded via `PATCH /plans/{id}`) and a per-item comment thread that updates
   live over the `plans` channel.

@@ -19,6 +19,8 @@ function buildItem(overrides: Partial<PlanItem> = {}): PlanItem {
     id: 'item-1',
     title: 'Scaffold the board',
     description: 'Set up the game grid',
+    parent_id: null,
+    unsplit_reason: null,
     dependencies: [],
     owner: null,
     owner_name: null,

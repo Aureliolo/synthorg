@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from synthorg.core.plan_reference_validation import (
+    describe_unstated_reference,
+    describe_unstated_references,
+)
 from synthorg.core.plan_validation import (
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
     describe_undecidable_criterion,
-    describe_unstated_reference,
-    describe_unstated_references,
 )
 
 pytestmark = pytest.mark.unit

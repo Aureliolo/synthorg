@@ -420,7 +420,7 @@ async def _prepare_dispatch(
         # happened. Before rather than after so a dispatch that dies partway
         # still leaves the tree it was working on, which is what an operator
         # needs to see to know anything was attempted at all.
-        await _file_child_tasks(app_state, decomposition.created_tasks)
+        await _file_child_tasks(app_state, decomposition.all_tasks)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx

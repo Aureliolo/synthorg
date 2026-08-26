@@ -9662,11 +9662,8 @@ export type components = {
             readonly fail_fast?: boolean | null;
             /** @description Override for the maximum agents run concurrently per wave. */
             readonly max_concurrency_per_wave?: number | null;
-            /**
-             * @description Maximum number of subtasks the decomposition may produce.
-             * @default 10
-             */
-            readonly max_subtasks: number;
+            /** @description Subtasks one level may produce; unset takes the setting. */
+            readonly max_subtasks?: number | null;
         };
         /** CoordinationEfficiency */
         readonly CoordinationEfficiency: {
@@ -12278,16 +12275,10 @@ export type components = {
         /** ManualDecomposeRequest */
         readonly ManualDecomposeRequest: {
             readonly coordination_topology?: components["schemas"]["CoordinationTopology"];
-            /**
-             * @description Maximum nesting depth
-             * @default 3
-             */
-            readonly max_depth: number;
-            /**
-             * @description Maximum number of subtasks allowed
-             * @default 10
-             */
-            readonly max_subtasks: number;
+            /** @description Levels of planning allowed; unset takes the setting */
+            readonly max_depth?: number | null;
+            /** @description Subtasks one level may produce; unset takes the setting */
+            readonly max_subtasks?: number | null;
             /** @description Hand-authored subtask specifications */
             readonly subtasks: readonly components["schemas"]["ManualSubtaskSpec"][];
         };
@@ -14026,6 +14017,8 @@ export type components = {
             readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []
@@ -14044,6 +14037,8 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
+            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about */
+            readonly unsplit_reason: string | null;
         };
         /** PlanItemComment */
         readonly PlanItemComment: {
@@ -14119,6 +14114,8 @@ export type components = {
             readonly options: readonly components["schemas"]["PlanOption"][];
             /** @description Role or agent that owns this item */
             readonly owner?: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id?: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []
@@ -14169,6 +14166,8 @@ export type components = {
             readonly owner: string | null;
             /** @description Display name of the item's owner, when the owner has one */
             readonly owner_name: string | null;
+            /** @description The item this one was split out of; None for a workstream */
+            readonly parent_id: string | null;
             /**
              * @description Skill IDs the routing scorer matches against
              * @default []
@@ -14187,6 +14186,8 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
+            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about */
+            readonly unsplit_reason: string | null;
         };
         /** PlanOption */
         readonly PlanOption: {
@@ -17158,6 +17159,8 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short subtask title */
             readonly title: string;
+            /** @description Why this unit reached the plan still oversized, when a backstop stopped the split; None when it is one agent's work */
+            readonly unsplit_reason: string | null;
         };
         /** SubworkflowSummary */
         readonly SubworkflowSummary: {

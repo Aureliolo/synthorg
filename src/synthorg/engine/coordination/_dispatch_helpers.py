@@ -75,7 +75,7 @@ def validate_routing_against_decomposition(
     Raises:
         CoordinationError: If a routed subtask has no created task.
     """
-    created_ids = {str(t.id) for t in decomposition_result.created_tasks}
+    created_ids = {str(t.id) for t in decomposition_result.all_tasks}
     for decision in routing_result.decisions:
         if decision.subtask_id not in created_ids:
             msg = (

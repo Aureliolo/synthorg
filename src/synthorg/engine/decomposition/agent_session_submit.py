@@ -17,15 +17,21 @@ from typing import Final, cast, override
 from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._atomicity_gate import describe_unsplittable
 from synthorg.engine.decomposition._mangled_arguments import (
     mangled_serialisation_hint,
 )
+from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
 from synthorg.engine.decomposition.models import DecompositionPlan
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.errors import (
+    DecompositionError,
+    DecompositionUnsplittableError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
     DECOMPOSITION_SESSION_ARGUMENTS_MANGLED,
     DECOMPOSITION_SESSION_DIGEST_FALLBACK,
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
@@ -62,7 +68,14 @@ class PlanCapture:
         parent_task_id: The objective being planned, for the duplicate warning.
     """
 
-    __slots__ = ("_lock", "_mangled", "_parent_task_id", "_plan", "_refused")
+    __slots__ = (
+        "_lock",
+        "_mangled",
+        "_parent_task_id",
+        "_plan",
+        "_refused",
+        "_unsplittable",
+    )
 
     def __init__(self, parent_task_id: NotBlankStr) -> None:
         self._plan: DecompositionPlan | None = None
@@ -70,11 +83,24 @@ class PlanCapture:
         self._lock = asyncio.Lock()
         self._refused: dict[str, int] = {}
         self._mangled = 0
+        self._unsplittable = False
 
     @property
     def plan(self) -> DecompositionPlan | None:
         """The plan submitted so far, or ``None`` while none has been."""
         return self._plan
+
+    @property
+    def declined_to_split(self) -> bool:
+        """Whether the session's last refusal was one it could not comply with.
+
+        The level that asked for this one acts on that and on nothing else: a
+        session it could not widen leaves a valid parent plan standing, while
+        a session that failed on anything else has to surface. Tracked here
+        because the session ends with no plan either way, and by then the
+        condition is otherwise a substring of an error message.
+        """
+        return self._unsplittable
 
     async def set(self, plan: DecompositionPlan) -> None:
         """Accept *plan*, reporting it when it supersedes another.
@@ -92,7 +118,7 @@ class PlanCapture:
                 )
             self._plan = plan
 
-    async def record_refusal(self, digest: str) -> int:
+    async def record_refusal(self, digest: str, *, unsplittable: bool) -> int:
         """Count this refused submission and answer how often it has arrived.
 
         Under the same lock as :meth:`set` and for the same reason: a turn may
@@ -102,12 +128,16 @@ class PlanCapture:
 
         Args:
             digest: What the submitted arguments hash to.
+            unsplittable: Whether this refusal was the size correction. Latest
+                wins rather than sticky: a session that fixed its sizing and
+                then submitted malformed arguments did not decline to split.
 
         Returns:
             How many times this exact submission has now been refused, so one
             means it is new.
         """
         async with self._lock:
+            self._unsplittable = unsplittable
             seen = self._refused.pop(digest, 0) + 1
             # Bounded by eviction rather than by refusing to record, so the
             # cap costs the OLDEST answer instead of every answer after it: a
@@ -129,6 +159,13 @@ class PlanCapture:
             How many calls this session has now lost to the transport.
         """
         async with self._lock:
+            # Same latest-wins rule :meth:`record_refusal` applies, and for the
+            # same reason: a call the transport mangled carried no plan at all,
+            # so it says nothing about whether the unit can be split. Left set,
+            # it makes the empty session raise the unsplittable error and the
+            # recursive caller read a transport failure as a deliberate refusal
+            # to split.
+            self._unsplittable = False
             self._mangled += 1
             return self._mangled
 
@@ -150,6 +187,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         capture: PlanCapture,
         available_roles: tuple[NotBlankStr, ...] = (),
         objective_criteria: tuple[NotBlankStr, ...] = (),
+        atomicity: SubtaskAtomicityPolicy | None = None,
     ) -> None:
         super().__init__(
             name="submit_decomposition_plan",
@@ -169,6 +207,7 @@ class SubmitDecompositionPlanTool(BaseTool):
         self._capture = capture
         self._available_roles = available_roles
         self._objective_criteria = objective_criteria
+        self._atomicity = atomicity
 
     @override
     async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:
@@ -215,6 +254,18 @@ class SubmitDecompositionPlanTool(BaseTool):
             )
         except DecompositionError as exc:
             return await self._refuse(arguments, exc)
+        # Asked here rather than after the session, because this IS the
+        # session's correction channel: at the last level there is nowhere to
+        # split into, so the plan is handed back for a wider one instead.
+        oversized = describe_unsplittable(plan.subtasks, policy=self._atomicity)
+        if oversized is not None:
+            logger.info(
+                DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
+                parent_task_id=self._parent_task_id,
+            )
+            return await self._refuse(
+                arguments, DecompositionUnsplittableError(oversized)
+            )
         await self._capture.set(plan)
         return ToolExecutionResult(
             content=(
@@ -242,7 +293,10 @@ class SubmitDecompositionPlanTool(BaseTool):
             The refusal the agent reads.
         """
         reason = safe_error_description(exc)
-        seen = await self._capture.record_refusal(_submission_digest(arguments))
+        seen = await self._capture.record_refusal(
+            _submission_digest(arguments),
+            unsplittable=isinstance(exc, DecompositionUnsplittableError),
+        )
         # Logged as well as returned: the rejection the agent reads is one tool
         # result, and the question an expensive session raises later is whether
         # it was handed the same one repeatedly, which only the log can answer.

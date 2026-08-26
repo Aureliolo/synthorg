@@ -17,6 +17,7 @@ import { usePlanCommentsStore } from '@/stores/planComments'
 import { usePlansStore } from '@/stores/plans'
 import { planIsRunning, planSolicitsReview } from '@/utils/plan-status'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import { buildPlanTree, type PlacedItem, placedByTree } from '@/utils/planTree'
 import {
   criticalPathFor,
   derivePlanStats,
@@ -43,6 +44,19 @@ import { PlanTimeline } from './plans/PlanTimeline'
 import { PlanVersionDiff } from './plans/PlanVersionDiff'
 
 type Mode = 'view' | 'edit' | 'request-changes'
+
+/**
+ * Name the section by what the plan actually is.
+ *
+ * A flat plan is a list of items and says so; a recursive one is workstreams
+ * with work beneath them, and reading "12 items" over a hundred-node tree is
+ * how a reviewer misjudges what they are approving.
+ */
+function itemsTitle(placed: readonly PlacedItem[]): string {
+  const workstreams = placed.filter((entry) => entry.depth === 0).length
+  if (workstreams === placed.length) return 'Plan items'
+  return `Plan items: ${workstreams} workstreams, ${placed.length} units`
+}
 
 /**
  * View mode that resets to 'view' whenever the plan id changes. react-router
@@ -204,6 +218,10 @@ function PlanReviewView({ plan, roles, setMode }: {
     [plan.items, criticalPath, roles],
   )
   const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
+  // The reading order for a recursive plan: each workstream, then the subtree
+  // it assembles, indented beneath it. A flat list of a hundred rows says
+  // nothing about which track a row belongs to.
+  const placed = useMemo(() => placedByTree(buildPlanTree(plan.items)), [plan.items])
   const editable = planSolicitsReview(plan.status)
   const comments = usePlanItemComments(plan.id)
   const chooseOption = useCallback(
@@ -249,13 +267,15 @@ function PlanReviewView({ plan, roles, setMode }: {
       <PlanHistoryPanel planId={plan.id} />
       <PlanVersionDiff plan={plan} />
       <PlanTimeline items={plan.items} />
-      <SectionCard title="Plan items" icon={ListTree}>
+      <SectionCard title={itemsTitle(placed)} icon={ListTree}>
         <div className="flex flex-col gap-2">
-          {plan.items.map((item, index) => (
+          {placed.map(({ item, depth, childCount, label }) => (
             <PlanItemCard
               key={item.id}
               item={item}
-              index={index}
+              label={label}
+              depth={depth}
+              childCount={childCount}
               onCriticalPath={criticalPath.has(item.id)}
               titleById={titleById}
               comments={comments.byItem.get(item.id) ?? []}

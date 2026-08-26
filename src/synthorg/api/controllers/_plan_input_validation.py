@@ -19,19 +19,50 @@ from collections.abc import Sequence
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.plan import PlanItem
+from synthorg.core.plan_reference_validation import describe_unstated_references
 from synthorg.core.plan_role_validation import describe_unroutable_role
+from synthorg.core.plan_tree_validation import describe_malformed_tree
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
-    describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
 from synthorg.engine.decomposition.context import roster_from_agents
 from synthorg.hr.state import HrStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 
-__all__ = ["reject_undecidable_graph", "reject_unroutable_owners"]
+logger = get_logger(__name__)
+
+__all__ = [
+    "reject_malformed_tree",
+    "reject_undecidable_graph",
+    "reject_unroutable_owners",
+]
+
+
+def reject_malformed_tree(items: Sequence[PlanItem]) -> None:
+    """Refuse hand-authored items whose containment links are not a tree.
+
+    Kept apart from :func:`reject_undecidable_graph` because the two read
+    different graphs over the same items and answer in different vocabularies:
+    that one is about what an item WAITS FOR, this one about what an item
+    BELONGS TO. ``Plan`` refuses both at construction, so this exists to
+    answer the operator with a 422 naming the offending items rather than a
+    500 from a model validator they cannot see.
+
+    Args:
+        items: The revised items, as the operator wrote them.
+
+    Raises:
+        ValidationError: The parent links do not form a tree.
+    """
+    detail = combine_graph_violations(describe_malformed_tree(items))
+    if detail is not None:
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
+        raise ValidationError(detail)
 
 
 def reject_undecidable_graph(
@@ -75,6 +106,7 @@ def reject_undecidable_graph(
             )
         )
     if detail is not None:
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
         raise ValidationError(detail)
 
 
@@ -108,6 +140,7 @@ async def reject_unroutable_owners(
     registry = app_state.slice(HrStateSlice).agent_registry
     if registry is None:
         msg = "Owner validation is unavailable: the agent registry is not wired."
+        logger.error(API_VALIDATION_FAILED, error=msg, items=len(items))
         raise ServiceUnavailableError(msg)
     roster = roster_from_agents(await registry.list_active())
     details = [
@@ -123,4 +156,6 @@ async def reject_unroutable_owners(
         is not None
     ]
     if details:
-        raise ValidationError("; ".join(details))
+        detail = "; ".join(details)
+        logger.warning(API_VALIDATION_FAILED, error=detail, items=len(items))
+        raise ValidationError(detail)

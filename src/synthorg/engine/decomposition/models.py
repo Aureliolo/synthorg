@@ -103,6 +103,11 @@ class SubtaskDefinition(BaseModel):
         default=(),
         description="For a DECISION subtask, the options to choose among",
     )
+    unsplit_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why this unit reached the plan still oversized, when a "
+        "backstop stopped the split; None when it is one agent's work",
+    )
 
     @model_validator(mode="after")
     def _validate_subtask(self) -> Self:
@@ -309,6 +314,59 @@ class DecompositionResult(BaseModel):
         )
 
     @property
+    def all_subtasks(self) -> tuple[SubtaskDefinition, ...]:
+        """Every unit in the tree, split containers included.
+
+        The definition-side counterpart of :attr:`all_tasks`, for the readers
+        that ask what the plan CONTAINS (routing, the rollup, the park that
+        needs a unit's declared role) rather than what waits on what.
+
+        Returns:
+            This level's subtasks, then each child's, recursively.
+        """
+        return self.plan.subtasks + tuple(
+            subtask for child in self.children for subtask in child.all_subtasks
+        )
+
+    @property
+    def dispatch_subtasks(self) -> tuple[SubtaskDefinition, ...]:
+        """Every node of the tree, as one flat DAG a dispatcher can run.
+
+        A container is the assembly of the work below it, so it is ready only
+        once that work has delivered. The wave builder and the dependency gate
+        already ask exactly that question of ``dependencies``, so the answer
+        is supplied by adding a container's children to its edges HERE, in the
+        one derived view, rather than by threading a second containment map
+        through four call sites and a parallel branch inside the gate.
+
+        The augmentation never leaves this view. The planner's own
+        ``SubtaskDefinition``, the durable ``PlanItem.dependencies`` and the
+        persisted ``Task.dependencies`` are untouched, so no declared edge is
+        overwritten and ``dependencies`` keeps sole ownership of what the plan
+        SAYS about order; containment is a fact it never states. A container
+        cannot carry the edge itself either: ``DecompositionPlan`` requires a
+        dependency to resolve within its own level, and its children are a
+        level below.
+
+        Splitting a unit must not drop what that unit was waiting for. A
+        container's own edges keep it ordered, but a container is only the
+        ASSEMBLY: the work moved down to its children, and a child that
+        inherited nothing is ready immediately, so a subtask declared to run
+        after another could have its actual work scheduled alongside it. The
+        prerequisites therefore travel down to the subtree's entry nodes, and
+        only those: anything with a declared edge of its own already waits on
+        an entry node transitively, so repeating them there would add edges
+        the plan never stated and say nothing new.
+
+        Returns:
+            Every unit of :attr:`all_subtasks`, with each split one carrying
+            its children as extra edges and each subtree's entry nodes
+            carrying what the unit above them waits on. Identical to
+            ``plan.subtasks`` for a tree that never split.
+        """
+        return _dispatch_after(self, ())
+
+    @property
     def max_depth_reached(self) -> int:
         """The deepest level this tree actually reached.
 
@@ -405,3 +463,44 @@ class DecompositionResult(BaseModel):
                     f"{child.depth}, expected {self.depth + 1}"
                 )
                 raise ValueError(msg)
+
+
+def _dispatch_after(
+    result: DecompositionResult, inherited: tuple[NotBlankStr, ...]
+) -> tuple[SubtaskDefinition, ...]:
+    """*result*'s whole subtree flattened, gated behind *inherited*.
+
+    A function rather than a method because it recurses over the CHILDREN, and
+    a method reaching into a sibling instance is a private access however it
+    is spelled.
+
+    Args:
+        result: The subtree to flatten.
+        inherited: What the unit this subtree was split out of waits on, empty
+            at the root, which was split out of nothing.
+
+    Returns:
+        This level's units followed by each child subtree's, in plan order.
+    """
+    contained_by = {
+        child.plan.parent_task_id: tuple(s.id for s in child.plan.subtasks)
+        for child in result.children
+    }
+    # An entry node is one with no declared edge at this level, so it is
+    # exactly what the level's inherited prerequisites have to gate.
+    waits_on = {
+        subtask.id: subtask.dependencies or inherited
+        for subtask in result.plan.subtasks
+    }
+    own = tuple(
+        subtask.model_copy(update={"dependencies": edges})
+        if (edges := (*waits_on[subtask.id], *contained_by.get(subtask.id, ())))
+        != subtask.dependencies
+        else subtask
+        for subtask in result.plan.subtasks
+    )
+    return own + tuple(
+        node
+        for child in result.children
+        for node in _dispatch_after(child, waits_on.get(child.plan.parent_task_id, ()))
+    )

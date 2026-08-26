@@ -140,6 +140,53 @@ describe('PlanDetailPage', () => {
     ).toBeInTheDocument()
   })
 
+  describe('a plan that recursed', () => {
+    function renderTree() {
+      hookReturn = {
+        ...defaultHookReturn,
+        plan: makePlan('plan-1', {
+          objective_title: 'Ship the Tetris game',
+          items: [
+            makePlanItem('engine', { title: 'Game engine' }),
+            makePlanItem('ui', { title: 'Interface' }),
+            makePlanItem('board', { title: 'Board model', parent_id: 'engine' }),
+            makePlanItem('rotation', { title: 'Rotation rules', parent_id: 'engine' }),
+            makePlanItem('grid', { title: 'Grid renderer', parent_id: 'board' }),
+          ],
+        }),
+      }
+      return renderPage()
+    }
+
+    it('says how many tracks the plan has, not just how many rows', () => {
+      // "4 items" over a tree tells a reviewer nothing about what they are
+      // approving; two workstreams is the shape of the commitment.
+      renderTree()
+
+      expect(screen.getByText(/2 workstreams, 5 units/)).toBeInTheDocument()
+    })
+
+    it('numbers each unit by where it sits in the tree', () => {
+      renderTree()
+
+      expect(
+        screen.getByRole('heading', { name: '1.1.1. Grid renderer' }),
+      ).toBeInTheDocument()
+    })
+
+    it('reads a split item as the assembly of what it was split into', () => {
+      renderTree()
+
+      expect(screen.getByText('Assembles 2')).toBeInTheDocument()
+    })
+
+    it('keeps a flat plan reading as a plain list of items', () => {
+      renderPage()
+
+      expect(screen.getByRole('heading', { name: 'Plan items' })).toBeInTheDocument()
+    })
+  })
+
   describe('a plan the org is already running', () => {
     function renderExecuting() {
       hookReturn = {

@@ -93,12 +93,13 @@ class _StopStrategy:
 
     The multi-agent coordinator's decomposition stage invokes the LLM
     with a ``submit_decomposition_plan`` tool definition; the strategy
-    returns a structured single-subtask plan so the decomposer parses
-    a valid response. An agent-execution turn calls one tool and then
-    answers, so the worker execution service drives the subtask past
-    ASSIGNED to a delivered post-execution status: a run that declares
-    deliverables and calls nothing is a silent no-op the engine fails
-    on purpose.
+    returns a structured plan of one item per objective criterion so the
+    decomposer parses a valid response and every item is already one
+    agent's worth of work. An agent-execution turn calls one tool and
+    then answers, so the worker execution service drives each subtask
+    past ASSIGNED to a delivered post-execution status: a run that
+    declares deliverables and calls nothing is a silent no-op the engine
+    fails on purpose.
     """
 
     def next_response(
@@ -123,34 +124,51 @@ class _StopStrategy:
                         arguments={
                             "task_structure": "sequential",
                             "coordination_topology": "centralized",
+                            # One item per objective criterion, which is the
+                            # size signal recursion reads: an item claiming
+                            # both would be two units by the plan's own
+                            # account, so it would be decomposed again and
+                            # this scripted plan would be re-submitted against
+                            # a child whose criteria it does not name.
                             "subtasks": [
                                 {
-                                    "id": "sub-research",
-                                    "title": "Research release scope",
+                                    "id": "sub-release",
+                                    "title": "Cut the release",
                                     "description": (
-                                        "Investigate the work the objective describes."
+                                        "Cut the release the objective describes."
                                     ),
                                     "stakes": "normal",
                                     "required_role": "developer",
                                     "required_skills": [_RESEARCH_SKILL],
                                     "acceptance_criteria": [
-                                        "The release scope is documented.",
+                                        "The release is cut.",
                                     ],
-                                    # The single item carries BOTH, because a
-                                    # one-subtask plan is the whole objective:
-                                    # tagging one criterion would say the
-                                    # other reaches no item at all.
-                                    "satisfies": [
-                                        _RELEASE_CRITERION,
-                                        _NOTES_CRITERION,
-                                    ],
+                                    "satisfies": [_RELEASE_CRITERION],
                                     # Prose, not a path: this harness runs no
                                     # real editor, and the artifact probe asks
                                     # the workspace only about path-shaped
                                     # declarations.
-                                    "expected_artifacts": [
-                                        "a documented release scope"
+                                    "expected_artifacts": ["a cut release"],
+                                },
+                                {
+                                    "id": "sub-notes",
+                                    "title": "Write the release notes",
+                                    "description": (
+                                        "Summarise the user-facing changes."
+                                    ),
+                                    "stakes": "normal",
+                                    "required_role": "developer",
+                                    "required_skills": [_RESEARCH_SKILL],
+                                    "acceptance_criteria": [
+                                        "The release notes are written.",
                                     ],
+                                    "satisfies": [_NOTES_CRITERION],
+                                    # Ordered against the cut, which is what
+                                    # the declared sequential structure means:
+                                    # a plan declaring an order and no edge at
+                                    # all is refused at parse time.
+                                    "dependencies": ["sub-release"],
+                                    "expected_artifacts": ["written release notes"],
                                 },
                             ],
                         },

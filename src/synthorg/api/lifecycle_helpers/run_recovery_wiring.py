@@ -177,9 +177,7 @@ async def _start_drive(app_state: AppState, plan: Plan) -> bool:
     # exist and are NOT re-filed: writing them again would reset the status of
     # every subtask that had already finished.
     decomposition = decomposition_from_plan(plan, parent_task=task)
-    await _file_missing_children(
-        app_state, decomposition.created_tasks, plan_id=plan_id
-    )
+    await _file_missing_children(app_state, decomposition.all_tasks, plan_id=plan_id)
     agents = await agent_registry_of(app_state).list_active()
     background = asyncio.create_task(
         _run_drive(

@@ -19,7 +19,11 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr, flatten_label
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    depth_budget,
+    width_budget,
+)
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,
@@ -494,9 +498,9 @@ def build_task_message(
         *foundation_lines(context.workspace_summary),
         "",
         "Constraints:",
-        f"  max_subtasks: {context.max_subtasks}",
+        f"  max_subtasks: {width_budget(context)}",
         f"  current_depth: {context.current_depth}",
-        f"  max_depth: {context.max_depth}",
+        f"  max_depth: {depth_budget(context)}",
     ]
     content = "\n".join(parts)
     return ChatMessage(role=MessageRole.USER, content=content)

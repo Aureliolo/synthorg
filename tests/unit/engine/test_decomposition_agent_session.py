@@ -436,10 +436,14 @@ class TestSubmitDecompositionPlanTool:
         """
         capture = PlanCapture(sid("obj-1"))
         for index in range(_REMEMBERED_REFUSALS):
-            assert await capture.record_refusal(f"exhausted-{index}") == 1
+            seen = await capture.record_refusal(
+                f"exhausted-{index}", unsplittable=False
+            )
+            assert seen == 1
 
-        assert await capture.record_refusal("the plan that comes back") == 1
-        assert await capture.record_refusal("the plan that comes back") == 2
+        again = "the plan that comes back"
+        assert await capture.record_refusal(again, unsplittable=False) == 1
+        assert await capture.record_refusal(again, unsplittable=False) == 2
 
     async def test_an_unserialisable_submission_still_gets_a_digest(self) -> None:
         """A digest that cannot be computed must not collide with a real one.
@@ -454,8 +458,8 @@ class TestSubmitDecompositionPlanTool:
 
         digest = submit_module._submission_digest
         with structlog.testing.capture_logs() as cap:
-            first = await capture.record_refusal(digest(circular))
-            second = await capture.record_refusal(digest(circular))
+            first = await capture.record_refusal(digest(circular), unsplittable=False)
+            second = await capture.record_refusal(digest(circular), unsplittable=False)
 
         assert (first, second) == (1, 2)
         assert [
@@ -504,6 +508,25 @@ class TestSubmitDecompositionPlanTool:
         assert "JSON array" in detail
         assert "serialisation fault" in detail
         assert capture.plan is None
+
+    async def test_a_mangled_call_clears_an_earlier_unsplittable_refusal(
+        self,
+    ) -> None:
+        """A call the transport lost says nothing about whether it can split.
+
+        Left set, a session that refused an oversized plan and then lost its
+        correction to the transport ends empty carrying the unsplittable
+        verdict, and the level above reads a transport failure as a deliberate
+        refusal to split.
+        """
+        capture = PlanCapture(sid("obj-1"))
+
+        await capture.record_refusal("digest-1", unsplittable=True)
+        assert capture.declined_to_split
+
+        await capture.record_mangled()
+
+        assert not capture.declined_to_split
 
     async def test_the_collapse_is_answered_before_the_schema_refuses_it(
         self,

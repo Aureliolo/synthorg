@@ -521,10 +521,15 @@ class TestDecompositionContext:
 
     @pytest.mark.unit
     def test_default_values(self) -> None:
-        """Default context is depth=0, max_depth=3, max_subtasks=10."""
+        """A default context declares neither backstop, so the operator's bind.
+
+        Blank is the normal value: ``DecompositionService`` resolves both once
+        at the root and stamps them, so a context that arrived carrying a
+        number would be a second answer to a question settled from settings.
+        """
         ctx = DecompositionContext()
-        assert ctx.max_subtasks == 10
-        assert ctx.max_depth == 3
+        assert ctx.max_subtasks is None
+        assert ctx.max_depth is None
         assert ctx.current_depth == 0
 
     @pytest.mark.unit

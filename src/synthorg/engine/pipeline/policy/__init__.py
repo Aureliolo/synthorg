@@ -13,6 +13,7 @@ from synthorg.engine.pipeline.policy.llm_judged import LlmJudgedRoutingPolicy
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.policy.threshold import LeafThresholdRoutingPolicy
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 ROUTING_POLICY_LEAF_THRESHOLD: Final[str] = "leaf-threshold"
 ROUTING_POLICY_ALWAYS_TEAM: Final[str] = "always-team"
@@ -44,16 +45,19 @@ def build_work_routing_policy(
     provider: CompletionProvider | None = None,
     model: str | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> WorkRoutingPolicy:
     """Construct the configured routing policy.
 
     Args:
         discriminator: One of :data:`VALID_ROUTING_POLICIES`.
-        threshold: Leaf-threshold value (also used as the
-            ``llm-judged`` deterministic fallback threshold).
+        threshold: Leaf-threshold value in force when there is no resolver
+            (also the ``llm-judged`` deterministic fallback threshold).
         provider: Completion provider (required for ``llm-judged``).
         model: Model identifier (required for ``llm-judged``).
         cost_tracker: Optional cost tracker for ``llm-judged``.
+        config_resolver: The live settings resolver, so the threshold applies
+            to the next objective rather than the next restart.
 
     Returns:
         The constructed :class:`WorkRoutingPolicy`.
@@ -63,7 +67,9 @@ def build_work_routing_policy(
             or ``llm-judged`` is selected without a provider + model.
     """
     if discriminator == ROUTING_POLICY_LEAF_THRESHOLD:
-        return LeafThresholdRoutingPolicy(threshold=threshold)
+        return LeafThresholdRoutingPolicy(
+            threshold=threshold, config_resolver=config_resolver
+        )
     if discriminator == ROUTING_POLICY_ALWAYS_TEAM:
         return AlwaysTeamRoutingPolicy()
     if discriminator == ROUTING_POLICY_LLM_JUDGED:
@@ -76,7 +82,9 @@ def build_work_routing_policy(
         return LlmJudgedRoutingPolicy(
             provider=provider,
             model=model,
-            fallback=LeafThresholdRoutingPolicy(threshold=threshold),
+            fallback=LeafThresholdRoutingPolicy(
+                threshold=threshold, config_resolver=config_resolver
+            ),
             cost_tracker=cost_tracker,
         )
     msg = (

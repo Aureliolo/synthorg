@@ -655,8 +655,8 @@ rather than dispatched whole, which makes a decomposition a tree rather than a
 list. The recursion point, the size signal that drives it, and the experiment
 measuring whether verifying at every merge holds off aggregation collapse as
 that tree deepens are in
-[Recursive Decomposition](recursive-decomposition.md). It ships off, for a
-reason that page states.
+[Recursive Decomposition](recursive-decomposition.md), which owns what bounds
+the tree and what a bound reports when it binds.
 
 Empirical research on agent scaling
 ([Kim et al., 2025](https://arxiv.org/abs/2512.08296); 180 controlled
@@ -833,12 +833,24 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    writer moved are released; a subtask another wave already owns was returned
    untouched, and rewriting it would block a run that is executing.
 
+   The DAG is built over the WHOLE tree. A plan that recursed carries its
+   levels in `children`, and `DecompositionResult.dispatch_subtasks` states
+   containment as edges the DAG already knows how to order: a container's
+   dependencies are augmented with its children's ids, so it lands in a
+   strictly later topological level than the subtree it assembles while
+   independent subtrees stay in the same wave. A per-subtree loop walked
+   deepest-first would have serialised those. The augmentation exists only in
+   that derived view: `PlanItem.dependencies` and `Task.dependencies` keep sole
+   ownership of the order the plan DECLARED, and containment is a decision
+   neither of them makes.
+
    The DAG decides **when** a subtask runs; whether it **should**, given that
    its declared inputs may have died, is a separate decision with one owner
    (`_dependency_gate.py`, reached through `gate_wave`). Every wave is
    narrowed to the subtasks whose dependencies actually delivered, and each
    one dropped parks `BLOCKED` under `dependency_failed`, naming what it
-   waited on.
+   waited on. That reads honestly for a container too: the assembly did wait
+   on the child that died.
 
    A dependency parked on a reason a **person or a sweep** will still end is
    the third outcome, not the second. `ATTENDED_BLOCKED_REASONS`

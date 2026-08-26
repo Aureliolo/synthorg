@@ -36,13 +36,18 @@ class TestCoordinationContext:
 
     @pytest.mark.unit
     def test_default_decomposition_context(self) -> None:
-        """Default decomposition context is created."""
+        """Default decomposition context is created, declaring no backstop.
+
+        A coordination context that filled these in would decide the shape of
+        every tree it hands over, ahead of the operator whose settings the
+        decomposition service resolves them from.
+        """
         ctx = CoordinationContext(
             task=make_assignment_task(),
             available_agents=(make_assignment_agent("alice"),),
         )
-        assert ctx.decomposition_context.max_subtasks == 10
-        assert ctx.decomposition_context.max_depth == 3
+        assert ctx.decomposition_context.max_subtasks is None
+        assert ctx.decomposition_context.max_depth is None
 
     @pytest.mark.unit
     def test_default_config(self) -> None:

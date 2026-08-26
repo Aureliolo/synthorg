@@ -16,13 +16,13 @@ transport (tool call, JSON content, markdown fence) they are both reached
 through.
 """
 
+from synthorg.core.plan_reference_validation import describe_unstated_references
 from synthorg.core.plan_role_validation import describe_unroutable_role
 from synthorg.core.plan_validation import (
     ORDERED_STRUCTURES,
     combine_graph_violations,
     describe_structureless_graph,
     describe_undecidable_criteria,
-    describe_unstated_references,
 )
 from synthorg.core.task_enums import TaskStructure
 from synthorg.core.types import NotBlankStr

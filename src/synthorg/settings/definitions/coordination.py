@@ -473,11 +473,13 @@ _r.register(
         type=SettingType.INTEGER,
         default="1",
         description=(
-            "Maximum expected-artifact count for work to still belong to a"
-            " single agent. Read twice: the 'leaf-threshold' routing policy"
-            " applies it to a whole objective, and recursive decomposition"
-            " applies it to each planned subtask, splitting one that declares"
-            " more deliverables than an agent can own."
+            "Maximum expected-artifact count for a whole OBJECTIVE to belong"
+            " to a single agent, which is what the 'leaf-threshold' routing"
+            " policy decides. Per-subtask sizing reads"
+            " 'subtask_max_artifacts' instead: the two used to share this"
+            " number and want opposite values, since an objective declaring"
+            " two deliverables is a team's work while a subtask declaring two"
+            " is one agent's."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
@@ -489,14 +491,37 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="subtask_max_artifacts",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Maximum expected-artifact count for a planned subtask to still"
+            " be one agent's worth of work. A loose guard rather than the"
+            " rule that decides a split: artifact count tracks how verbosely"
+            " a planner declares, so the operative signal is how many of the"
+            " objective's own success criteria a unit claims (fixed at one)."
+            " Set this to catch a unit that is obviously too large, not to"
+            " shape the tree."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="subtask_max_criteria",
         type=SettingType.INTEGER,
-        default="5",
+        default="10",
         description=(
             "Maximum acceptance-criteria count for a planned subtask to still"
-            " be one agent's worth of work. A subtask declaring more ways of"
-            " being done is decomposed again when recursive decomposition is"
-            " enabled and the depth budget allows."
+            " be one agent's worth of work. The same kind of guard as"
+            " 'subtask_max_artifacts' and read the same way: a unit declaring"
+            " more ways of being done than this is split when recursive"
+            " decomposition is enabled and the depth budget allows."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
@@ -510,16 +535,17 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_tree_timeout_seconds",
         type=SettingType.FLOAT,
-        default="3600.0",
+        default="14400.0",
         description=(
-            "Whole-tree ceiling for one decomposition call, across every level"
-            " it recurses into. Distinct from"
+            "Catastrophic wall-clock backstop for one decomposition call,"
+            " across every level it recurses into. Distinct from"
             " 'decomposition_timeout_seconds', which bounds a single planning"
             " session: sessions scale with the node count rather than the"
             " depth, so no multiple of the per-session number bounds a tree."
-            " Two of the four callers are request handlers, and this is what"
-            " keeps a deep recursion from occupying one for as long as the"
-            " tree keeps branching."
+            " What bounds a tree in the unit that costs money is"
+            " 'decomposition_tree_max_sessions', which stops gracefully;"
+            " breaching this one discards every level already paid for, so it"
+            " is set well above a real tree rather than at it."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
@@ -531,15 +557,81 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="decomposition_tree_max_sessions",
+        type=SettingType.INTEGER,
+        default="40",
+        description=(
+            "How many planning sessions one decomposition may spend across"
+            " the whole tree. A session per node is what recursion costs, so"
+            " this is the money bound, and it stops GRACEFULLY: past it no"
+            " further level is planned, the tree returns what it has, and the"
+            " units left unsplit say so on the plan. Composes with"
+            " 'budget.session_token_ceiling', which bounds each session."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=500,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_depth",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "How many levels of planning one decomposition may use. A runaway"
+            " backstop, NOT a target: what decides a split is whether a unit"
+            " is one agent's worth of work, so a small objective stops at one"
+            " level on its own and a large one goes as deep as it needs."
+            " Reaching this is reported on the plan, because a unit that is"
+            " still oversized when the levels run out is one the planner was"
+            " asked to widen instead and could not."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=8,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="decomposition_max_subtasks",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "How many units one level of planning may produce. The width"
+            " backstop beside 'decomposition_max_depth': a plan over it is"
+            " refused with both counts named rather than silently thinned."
+            " Bounded well inside the 11-to-25 coherent-unit ceiling, because"
+            " above that there is no evidence a planner holds a level"
+            " together at all; breadth past it is bought through depth."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=25,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="recursive_decomposition_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Decompose an oversized subtask again instead of dispatching it"
-            " whole, up to the decomposition's depth budget. Ships off: a"
-            " recursive plan is a tree, and the durable plan model is still"
-            " flat, so only a caller that reads the decomposition tree"
-            " directly (the recursion-depth harness) can act on the result."
+            " whole, so a plan is a tree and each level is assembled by the"
+            " unit that owns it. On by default on the evidence: a controlled"
+            " sweep measured one wide fan-in at the top delivering nothing in"
+            " both arms, and the narrow fan-ins one level down delivering 36"
+            " of 42 requirements. Off, every objective is planned at one"
+            " level, which is the shape that scored zero."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

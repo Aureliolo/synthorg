@@ -3,16 +3,22 @@ import { CircleCheck, Target, TriangleAlert } from 'lucide-react'
 import type { Plan } from '@/api/types/plans'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusPill } from '@/components/ui/status-pill'
-import { derivePlanCoverage } from '@/utils/plans'
+import { derivePlanCoverage } from '@/utils/planCoverage'
 
 function CoverageRow({
   criterion,
   coveredBy,
+  coveredByWorkstream,
 }: {
   criterion: string
   coveredBy: readonly string[]
+  coveredByWorkstream: readonly string[]
 }) {
   const covered = coveredBy.length > 0
+  // Named by track once the plan is a tree: nine leaf titles under two
+  // workstreams is a wall of text that says less than the two names do.
+  const named =
+    coveredByWorkstream.length < coveredBy.length ? coveredByWorkstream : coveredBy
   return (
     <li className="space-y-1 rounded-md border border-border p-2">
       <div className="flex items-start gap-1.5">
@@ -31,7 +37,7 @@ function CoverageRow({
       </div>
       {covered ? (
         <p className="pl-5 text-xs text-text-secondary">
-          Advanced by {coveredBy.join(', ')}
+          Advanced by {named.join(', ')}
         </p>
       ) : (
         <p className="pl-5 text-xs text-warning">No item advances this criterion.</p>
@@ -66,6 +72,7 @@ export function PlanCoveragePanel({ plan }: { plan: Plan }) {
             key={entry.criterion}
             criterion={entry.criterion}
             coveredBy={entry.coveredBy}
+            coveredByWorkstream={entry.coveredByWorkstream}
           />
         ))}
       </ul>

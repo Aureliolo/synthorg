@@ -51,6 +51,7 @@ export const decompositionHandlers = [
               expected_artifacts: ['docs/design.md'],
               acceptance_criteria: ['the design is reviewed'],
               satisfies: [],
+              unsplit_reason: null,
               kind: 'work',
               options: [],
             },

@@ -166,6 +166,7 @@ describe('TaskDecomposeResult', () => {
             expected_artifacts: [],
             acceptance_criteria: [],
             satisfies: [],
+            unsplit_reason: null,
             kind: 'work',
             options: [],
           },

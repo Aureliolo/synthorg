@@ -10,6 +10,7 @@ import type { Complexity, Stakes, TaskStructure } from '@/api/types/enums'
 import type { PlanItem, PlanItemPayload } from '@/api/types/plans'
 import type { StatusPillTone } from '@/components/ui/status-pill'
 import { ROUTES } from '@/router/routes'
+import { dispatchDependencies } from '@/utils/planTree'
 
 /** Deep-link to a plan's review workspace. */
 export function planDetailPath(planId: string): string {
@@ -26,6 +27,9 @@ export function planItemToPayload(item: PlanItem): PlanItemPayload {
     id: item.id,
     title: item.title,
     description: item.description,
+    // Carried, or every targeted edit that round-trips the untouched items
+    // (recording a decision's chosen option) would flatten the whole tree.
+    parent_id: item.parent_id,
     owner: item.owner,
     dependencies: item.dependencies,
     acceptance_criteria: item.acceptance_criteria,
@@ -175,6 +179,17 @@ export function itemFlags(item: PlanItem, ctx: ItemFlagContext): readonly PlanIt
       detail: 'Nothing defines when this item is done.',
     })
   }
+  if (item.unsplit_reason !== null) {
+    // A flag rather than a panel of its own, so it reaches the reviewer's
+    // worklist by the same route every other gap does, and the two remedies
+    // it names (raise the bound, narrow the objective) are read at the gate.
+    flags.push({
+      key: 'still-oversized',
+      label: 'Still oversized',
+      tone: 'warning',
+      detail: item.unsplit_reason,
+    })
+  }
   if (ctx.onCriticalPath) {
     flags.push({
       key: 'critical-path',
@@ -214,6 +229,10 @@ export function dependencyTitles(
  */
 export function computeCriticalPath(items: readonly PlanItem[]): ReadonlySet<string> {
   const byId = new Map(items.map((item) => [item.id, item]))
+  // The chain runs through containment as well as through declared order: an
+  // assembly genuinely cannot start until the subtree below it lands, so a
+  // slip in the deepest leaf of the longest subtree slips delivery.
+  const waitsOn = dispatchDependencies(items)
   const chainLength = new Map<string, number>()
   const predecessor = new Map<string, string | null>()
   const visiting = new Set<string>()
@@ -223,10 +242,9 @@ export function computeCriticalPath(items: readonly PlanItem[]): ReadonlySet<str
     if (cached !== undefined) return cached
     if (visiting.has(id)) return 1 // defensive cycle guard; the backend rejects cycles
     visiting.add(id)
-    const item = byId.get(id)
     let best = 0
     let bestPred: string | null = null
-    for (const dep of item?.dependencies ?? []) {
+    for (const dep of waitsOn.get(id) ?? []) {
       if (!byId.has(dep)) continue // ignore dangling dependency ids
       const depLength = longestChainEndingAt(dep)
       if (depLength > best) {
@@ -294,9 +312,14 @@ export interface PlanWave {
  * the work that unlocks once the previous one lands. Items within a wave have no
  * dependency between them, so they run in parallel. This is the legible form of
  * the plan's parallelism, derived from the DAG (no persisted structure).
+ *
+ * Read off `dispatchDependencies`, the same augmented view the backend
+ * dispatches from, so a container appears after the subtree it assembles
+ * rather than beside it.
  */
 export function computeWaves(items: readonly PlanItem[]): readonly PlanWave[] {
   const byId = new Map(items.map((item) => [item.id, item]))
+  const waitsOn = dispatchDependencies(items)
   const depthCache = new Map<string, number>()
   const visiting = new Set<string>()
 
@@ -305,9 +328,8 @@ export function computeWaves(items: readonly PlanItem[]): readonly PlanWave[] {
     if (cached !== undefined) return cached
     if (visiting.has(id)) return 0 // defensive cycle guard; backend rejects cycles
     visiting.add(id)
-    const item = byId.get(id)
     let depth = 0
-    for (const dep of item?.dependencies ?? []) {
+    for (const dep of waitsOn.get(id) ?? []) {
       if (byId.has(dep)) depth = Math.max(depth, depthOf(dep) + 1)
     }
     visiting.delete(id)
@@ -325,122 +347,6 @@ export function computeWaves(items: readonly PlanItem[]): readonly PlanWave[] {
   return [...waves.entries()]
     .sort(([a], [b]) => a - b)
     .map(([index, waveItems]) => ({ index, items: waveItems }))
-}
-
-// ── Success-criteria coverage ──────────────────────────────────────────────
-
-export interface CoverageEntry {
-  /** An objective acceptance criterion. */
-  readonly criterion: string
-  /** Titles of the plan items that advance it (empty when uncovered). */
-  readonly coveredBy: readonly string[]
-}
-
-export interface PlanCoverage {
-  /** One entry per objective criterion, in objective order. */
-  readonly entries: readonly CoverageEntry[]
-  /** Criteria at least one item advances. */
-  readonly covered: number
-  /** Total objective criteria. */
-  readonly total: number
-  /** Criteria no item advances (the gaps a reviewer must close). */
-  readonly uncovered: readonly string[]
-}
-
-/** Normalise a criterion for matching (trim + case-fold) so near-copies align. */
-function coverageKey(text: string): string {
-  return text.trim().toLowerCase()
-}
-
-/**
- * Map each objective acceptance criterion to the plan items that advance it
- * (via their ``satisfies`` tags), so the review surface can flag any criterion
- * nothing covers. Matching is trim + case-insensitive so a verbatim-ish copy
- * still aligns. Returns an empty coverage when the objective declared no
- * criteria (nothing to check).
- */
-export function derivePlanCoverage(
-  objectiveCriteria: readonly string[],
-  items: readonly PlanItem[],
-): PlanCoverage {
-  const coveringTitles = new Map<string, string[]>()
-  for (const item of items) {
-    for (const tag of item.satisfies) {
-      const key = coverageKey(tag)
-      const bucket = coveringTitles.get(key) ?? []
-      if (!bucket.includes(item.title)) bucket.push(item.title)
-      coveringTitles.set(key, bucket)
-    }
-  }
-  const entries: CoverageEntry[] = objectiveCriteria.map((criterion) => ({
-    criterion,
-    coveredBy: coveringTitles.get(coverageKey(criterion)) ?? [],
-  }))
-  const uncovered = entries
-    .filter((entry) => entry.coveredBy.length === 0)
-    .map((entry) => entry.criterion)
-  return {
-    entries,
-    covered: entries.length - uncovered.length,
-    total: entries.length,
-    uncovered,
-  }
-}
-
-// ── Open questions the plan already answers ────────────────────────────────
-
-export interface QuestionAnswer {
-  /** The open question as the planner wrote it. */
-  readonly question: string
-  /** Title of the item whose acceptance criteria settle it, if any. */
-  readonly settledBy: string | null
-}
-
-/**
- * Words carried by nearly every question, so matching on them would settle a
- * question against any criterion at all.
- */
-const QUESTION_NOISE: ReadonlySet<string> = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for',
-  'from', 'has', 'have', 'how', 'in', 'is', 'it', 'of', 'on', 'or', 'should',
-  'so', 'that', 'the', 'this', 'to', 'we', 'what', 'when', 'where', 'which',
-  'who', 'why', 'will', 'with',
-])
-
-/** The distinctive words of a phrase: lower-cased, punctuation-free, no noise. */
-function contentWords(text: string): readonly string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length > 1 && !QUESTION_NOISE.has(word))
-}
-
-/**
- * Pair every open question with the plan item whose acceptance criteria already
- * settle it, matching when the criteria carry every distinctive word of the
- * question.
- *
- * The result separates rather than hides: a question the plan answers stops
- * demanding input, but the operator can still see it and the item it was
- * matched against, because a wrong match must cost attention rather than a
- * question they never got to answer.
- */
-export function answeredQuestions(
-  questions: readonly string[],
-  items: readonly PlanItem[],
-): readonly QuestionAnswer[] {
-  const criteria = items.map((item) => ({
-    title: item.title,
-    words: new Set(contentWords(item.acceptance_criteria.join(' '))),
-  }))
-  return questions.map((question) => {
-    const words = contentWords(question)
-    const match =
-      words.length === 0
-        ? undefined
-        : criteria.find((item) => words.every((word) => item.words.has(word)))
-    return { question, settledBy: match?.title ?? null }
-  })
 }
 
 // ── Staffing / team summary ────────────────────────────────────────────────

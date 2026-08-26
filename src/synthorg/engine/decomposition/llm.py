@@ -18,12 +18,17 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._atomicity_gate import describe_unsplittable
 from synthorg.engine.decomposition._llm_retry import (
     ask_for_plan,
     mangled_reply_hint,
     with_retry_context,
 )
-from synthorg.engine.decomposition.context import DecompositionContext
+from synthorg.engine.decomposition.context import (
+    DecompositionContext,
+    depth_budget,
+    width_budget,
+)
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
     parse_tool_call_response,
@@ -39,9 +44,11 @@ from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
     DecompositionSubtaskLimitError,
+    DecompositionUnsplittableError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
     DECOMPOSITION_LLM_ARGUMENTS_MANGLED,
@@ -72,6 +79,35 @@ _MAX_RETRIES_KEY: Final[str] = "decomposition_max_retries"
 #: is a broken provider, and paying the whole retry ladder to establish that
 #: would cost exactly what this exists to save.
 _MAX_MANGLED_ROUNDS: Final[int] = 2
+
+
+def _reject_unsplittable(
+    plan: DecompositionPlan, context: DecompositionContext, *, task_id: str
+) -> None:
+    """Hand a too-coarse last level back to the session to widen.
+
+    Args:
+        plan: The plan as submitted.
+        context: The level it was planned under, carrying the size signal
+            only where there is no depth left to split into.
+        task_id: The task being decomposed, for the log line.
+
+    Raises:
+        DecompositionUnsplittableError: Some unit is still more than one
+            agent's work and no further level is available, so the correction
+            is to produce more units at this one. Typed apart from every other
+            parse failure so the level that asked for this one can tell a plan
+            it must abandon from one it can dispatch with a note.
+    """
+    oversized = describe_unsplittable(plan.subtasks, policy=context.atomicity)
+    if oversized is None:
+        return
+    logger.info(
+        DECOMPOSITION_ATOMICITY_CORRECTION_REQUESTED,
+        task_id=task_id,
+        current_depth=context.current_depth,
+    )
+    raise DecompositionUnsplittableError(oversized)
 
 
 class LlmDecompositionConfig(BaseModel):
@@ -219,6 +255,10 @@ class LlmDecompositionStrategy:
             DecompositionBudgetExhaustedError: The model stopped at its token
                 ceiling before writing content; raised on the first attempt,
                 because every later one truncates at the same place.
+            DecompositionUnsplittableError: The retries were spent still
+                unable to widen a level with no depth below it, which is the
+                one exhaustion the level that asked for this one can answer
+                by dispatching the unit with a note instead.
             DecompositionError: If all retries are exhausted or
                 the plan violates constraints.
         """
@@ -236,6 +276,7 @@ class LlmDecompositionStrategy:
         attempts = 1 + await self._max_retries()
         attempt = 0
         mangled_rounds = 0
+        unsplittable = False
 
         # See docs/reference/retry-patterns.md: Pattern B -- semantic
         # self-correction. Each attempt re-prompts the LLM with prior-
@@ -294,6 +335,24 @@ class LlmDecompositionStrategy:
                         for criterion in task.acceptance_criteria
                     ),
                 )
+                # Width first, because a plan can be both too wide and too
+                # coarse and only one of the two errors carries numbers the
+                # caller can act on: the ceiling refusal names the produced
+                # count and the limit, so an operator can raise the limit to
+                # what was actually planned, while the unsplittable refusal
+                # names neither and the caller treats it as a dispatchable
+                # reason not to split at all.
+                self._validate_plan(plan, context)
+                # Asked here rather than after the loop, so a level that came
+                # back too coarse is corrected on the channel that already
+                # re-prompts, spending breadth where depth has run out.
+                _reject_unsplittable(plan, context, task_id=str(task.id))
+            except DecompositionSubtaskLimitError:
+                # Propagates rather than retrying, for the reason the budget
+                # ceiling below propagates: the limit is the same on the next
+                # attempt, and catching it as a retryable parse failure would
+                # replace both numbers with a bare retries-exhausted error.
+                raise
             except DecompositionBudgetExhaustedError:
                 # Not retried: the ceiling is the same on the next attempt, so
                 # every further call truncates at the same place and the run
@@ -302,6 +361,11 @@ class LlmDecompositionStrategy:
                 # retries-exhausted error that says only that parsing failed.
                 raise
             except DecompositionError as exc:
+                # Which condition the LAST attempt failed on, so exhaustion
+                # can re-raise the one its caller can act on. Reset on every
+                # other failure, because a level that corrected its sizing and
+                # then returned malformed JSON did not decline to split.
+                unsplittable = isinstance(exc, DecompositionUnsplittableError)
                 mangled = mangled_reply_hint(response)
                 if mangled is not None and mangled_rounds < _MAX_MANGLED_ROUNDS:
                     # Not an attempt: the reply never carried a plan, and the
@@ -374,6 +438,8 @@ class LlmDecompositionStrategy:
             mangled_rounds=mangled_rounds,
             error=last_error,
         )
+        if unsplittable:
+            raise DecompositionUnsplittableError(msg)
         raise DecompositionError(msg)
 
     def get_strategy_name(self) -> str:
@@ -399,10 +465,10 @@ class LlmDecompositionStrategy:
             DecompositionDepthError: If current depth meets or
                 exceeds max depth.
         """
-        if context.current_depth >= context.max_depth:
+        if context.current_depth >= depth_budget(context):
             msg = (
                 f"Decomposition depth {context.current_depth} "
-                f"meets or exceeds max depth {context.max_depth}"
+                f"meets or exceeds max depth {depth_budget(context)}"
             )
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionDepthError(msg)
@@ -493,9 +559,9 @@ class LlmDecompositionStrategy:
         Raises:
             DecompositionSubtaskLimitError: If subtask count exceeds limit.
         """
-        if len(plan.subtasks) > context.max_subtasks:
+        if len(plan.subtasks) > width_budget(context):
             over_limit = DecompositionSubtaskLimitError(
-                produced=len(plan.subtasks), limit=context.max_subtasks
+                produced=len(plan.subtasks), limit=width_budget(context)
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,

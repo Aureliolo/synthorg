@@ -304,13 +304,17 @@ async def _collect_subtask_statuses(
     subtasks, so they run concurrently rather than as a hundred sequential
     round trips on the observer's critical path.
 
+    Every level, not this one: a decomposition that recursed holds most of
+    its work below the root, and reading only the top level would derive the
+    parent's status from a fraction of what ran.
+
     Returns:
         One ``TaskStatus`` per expected subtask, in plan order.
     """
     async with asyncio.TaskGroup() as group:
         reads = [
             group.create_task(task_engine.get_task(subtask.id))
-            for subtask in decomp_result.plan.subtasks
+            for subtask in decomp_result.all_subtasks
         ]
     return tuple(_status_of(read.result()) for read in reads)
 

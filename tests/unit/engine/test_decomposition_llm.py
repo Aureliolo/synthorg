@@ -15,6 +15,7 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
@@ -411,6 +412,49 @@ class TestLlmDecompositionStrategy:
 
         assert excinfo.value.produced == 5
         assert excinfo.value.limit == 3
+        assert provider.call_count == 1
+
+    @pytest.mark.unit
+    async def test_a_plan_both_too_wide_and_too_coarse_is_refused_on_width(
+        self,
+    ) -> None:
+        """Two faults at once, and only one of the errors carries numbers.
+
+        A final level can come back over the ceiling AND holding a unit no
+        single agent could take. Judged on atomicity first, the retry ladder
+        exhausts and re-raises the unsplittable error, which the caller reads
+        as a dispatchable reason not to split at all, so the produced count
+        and the ceiling an operator could have raised are both gone.
+        """
+        args = _valid_plan_args(subtask_count=5)
+        subtasks = cast("list[dict[str, JsonValue]]", args["subtasks"])
+        # One unit over the artifact ceiling, which is what makes the same
+        # plan unsplittable as well as over-wide.
+        subtasks[0]["expected_artifacts"] = ["src/step_0.py", "src/step_0_extra.py"]
+        provider = MockCompletionProvider(
+            [_make_tool_call_response(args) for _ in range(3)]
+        )
+        strategy = LlmDecompositionStrategy(
+            provider=provider,
+            model="test-model-001",
+            config=LlmDecompositionConfig(max_retries=2),
+        )
+        ctx = DecompositionContext(
+            max_subtasks=3,
+            max_depth=3,
+            current_depth=0,
+            atomicity=SubtaskAtomicityPolicy(
+                max_expected_artifacts=1, max_acceptance_criteria=1
+            ),
+        )
+
+        with pytest.raises(DecompositionSubtaskLimitError) as excinfo:
+            await strategy.decompose(_make_task(), ctx)
+
+        assert excinfo.value.produced == 5
+        assert excinfo.value.limit == 3
+        # Refused on the first reply rather than after the retry ladder, which
+        # is the whole point: neither fault can be corrected by asking again.
         assert provider.call_count == 1
 
     @pytest.mark.unit

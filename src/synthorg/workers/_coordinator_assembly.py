@@ -35,6 +35,7 @@ from synthorg.engine.pipeline.factory import (
     build_solo_assignment_service,
     build_work_pipeline,
 )
+from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.state import task_engine_of
@@ -574,11 +575,17 @@ async def _build_runtime_work_pipeline(
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
         roster=roster,
-        routing_discriminator=routing_policy,
-        leaf_threshold=leaf_threshold,
+        # Built here rather than inside the factory: the threshold is re-read
+        # per routing decision, so the policy needs the live resolver, which
+        # this assembly holds and the factory does not.
+        routing_policy=build_work_routing_policy(
+            routing_policy,
+            threshold=leaf_threshold,
+            provider=provider,
+            model=decomposition_model,
+            cost_tracker=cost_tracker,
+            config_resolver=resolver,
+        ),
         assignment_service=assignment_service,
-        provider=provider,
-        decomposition_model=decomposition_model,
-        cost_tracker=cost_tracker,
         clock=app_state.clock,
     )

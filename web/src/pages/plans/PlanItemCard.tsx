@@ -11,11 +11,23 @@ import {
   ChipRow,
   DecisionOptions,
   ItemPills,
+  UnsplitNote,
 } from './PlanItemCard.parts'
+
+/**
+ * Spacing steps a subtree is indented per level. Four steps reads as nesting
+ * without pushing a level-three card off a narrow viewport.
+ */
+const SUBTREE_INDENT_STEPS = 4
 
 export interface PlanItemCardProps {
   item: PlanItem
-  index: number
+  /** Position in the tree, such as `2.3`. */
+  label: string
+  /** Levels above this item, which is how far its card is indented. */
+  depth: number
+  /** Items it was split into; above zero it is an assembly, not work. */
+  childCount: number
   onCriticalPath: boolean
   titleById: ReadonlyMap<string, string>
   /**
@@ -39,7 +51,9 @@ export interface PlanItemCardProps {
 /** Read-only review card for a single plan item, surfacing its review signals. */
 export function PlanItemCard({
   item,
-  index,
+  label,
+  depth,
+  childCount,
   onCriticalPath,
   titleById,
   onChooseOption,
@@ -53,6 +67,10 @@ export function PlanItemCard({
     <section
       id={planItemAnchorId(item.id)}
       aria-labelledby={headingId}
+      // Indented by margin rather than nested markup: every card stays a
+      // sibling, so the anchor the attention panel jumps to is reachable at
+      // any depth and a collapsed ancestor cannot hide it.
+      style={{ marginLeft: `calc(var(--spacing) * ${depth * SUBTREE_INDENT_STEPS})` }}
       className={cn(
         'scroll-mt-4 space-y-3 rounded-md border p-card',
         onCriticalPath ? ACCENT_HIGHLIGHT : 'border-border',
@@ -61,14 +79,15 @@ export function PlanItemCard({
     >
       <div className="flex items-baseline justify-between gap-2">
         <h3 id={headingId} className="text-sm font-medium text-foreground">
-          {index + 1}. {item.title}
+          {label}. {item.title}
         </h3>
         {item.owner_name !== null && (
           <span className="shrink-0 text-xs text-text-secondary">{item.owner_name}</span>
         )}
       </div>
-      <ItemPills item={item} onCriticalPath={onCriticalPath} />
+      <ItemPills item={item} onCriticalPath={onCriticalPath} childCount={childCount} />
       <p className="text-sm text-text-secondary">{item.description}</p>
+      <UnsplitNote reason={item.unsplit_reason} />
       <DecisionOptions item={item} onChooseOption={onChooseOption} />
       <AcceptanceCriteria criteria={item.acceptance_criteria} />
       <ChipRow label="Delivers" icon={Package} values={item.expected_artifacts} />

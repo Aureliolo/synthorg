@@ -55,9 +55,7 @@ logger = get_logger(__name__)
 _MAX_LABEL_LENGTH: Final[int] = 128
 _MAX_TITLE_LENGTH: Final[int] = 200
 _MAX_DESCRIPTION_LENGTH: Final[int] = 5000
-_DEFAULT_MAX_SUBTASKS: Final[int] = 10
 _MAX_SUBTASKS_CAP: Final[int] = 100
-_DEFAULT_MAX_DEPTH: Final[int] = 3
 _MAX_DEPTH_CAP: Final[int] = 10
 _MAX_ARTIFACTS_PER_SUBTASK: Final[int] = 50
 _MAX_CRITERIA_PER_SUBTASK: Final[int] = 50
@@ -133,8 +131,10 @@ class ManualDecomposeRequest(BaseModel):
 
     Attributes:
         subtasks: Hand-authored subtask specs (at least one).
-        max_subtasks: Maximum number of subtasks the plan may contain.
-        max_depth: Maximum nesting depth for the decomposition context.
+        max_subtasks: Maximum subtasks per level, or ``None`` to take the
+            operator's ``coordination.decomposition_max_subtasks``.
+        max_depth: Levels of planning allowed, or ``None`` to take the
+            operator's ``coordination.decomposition_max_depth``.
         coordination_topology: Selected coordination topology hint.
     """
 
@@ -145,17 +145,17 @@ class ManualDecomposeRequest(BaseModel):
         max_length=_MAX_SUBTASKS_CAP,
         description="Hand-authored subtask specifications",
     )
-    max_subtasks: int = Field(
-        default=_DEFAULT_MAX_SUBTASKS,
+    max_subtasks: int | None = Field(
+        default=None,
         ge=1,
         le=_MAX_SUBTASKS_CAP,
-        description="Maximum number of subtasks allowed",
+        description="Subtasks one level may produce; unset takes the setting",
     )
-    max_depth: int = Field(
-        default=_DEFAULT_MAX_DEPTH,
+    max_depth: int | None = Field(
+        default=None,
         ge=1,
         le=_MAX_DEPTH_CAP,
-        description="Maximum nesting depth",
+        description="Levels of planning allowed; unset takes the setting",
     )
     coordination_topology: CoordinationTopology = Field(
         default=CoordinationTopology.AUTO,
