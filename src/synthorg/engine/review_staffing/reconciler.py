@@ -476,7 +476,8 @@ class ReviewStaffingReconciler:
                 not recorded as a hydration failure.
         """
         return await finish_approved_hires(
-            self._hiring() if self._hiring is not None else None
+            self._hiring() if self._hiring is not None else None,
+            notifications=self._notifications,
         )
 
     async def _sweep(self, reason: BlockedReason, role: str) -> tuple[int, int]:

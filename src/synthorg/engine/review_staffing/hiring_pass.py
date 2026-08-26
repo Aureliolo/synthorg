@@ -10,6 +10,7 @@ otherwise.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
@@ -19,8 +20,9 @@ from synthorg.engine.review_staffing.notices import (
     DispatcherSource,
     hire_request_reason,
     notify_hire_waiting,
+    notify_hire_withdrawn,
 )
-from synthorg.hr.errors import HRError
+from synthorg.hr.errors import HiringUnbindableError, HRError
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger, safe_error_description
@@ -30,16 +32,74 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
     REVIEW_STAFFING_HIRE_REQUEST_FAILED,
     REVIEW_STAFFING_HIRE_REQUESTED,
+    REVIEW_STAFFING_HIRE_WITHDRAWN,
 )
 
 logger = get_logger(__name__)
 
+#: Recorded as the decider on a withdrawal, so the audit trail separates a
+#: hire the operator ended from one the sweep ended on their behalf.
+WITHDRAWN_BY: Final[str] = "review-staffing-reconciler"
 
-async def finish_approved_hires(hiring: HiringService | None) -> int:
+
+async def _withdraw(
+    hiring: HiringService,
+    request: HiringRequest,
+    exc: HiringUnbindableError,
+    *,
+    notifications: DispatcherSource,
+) -> None:
+    """End an approved hire no pass can ever complete, and say so.
+
+    The withdrawal itself is the exit the request did not have. Failing to
+    persist it is reported and left for the next pass rather than raised: the
+    other approved requests in this sweep are unaffected by it, and the state
+    it leaves behind is the one the pass started in.
+
+    Args:
+        hiring: The live hiring pipeline.
+        request: The approved request that cannot be instantiated.
+        exc: Why it cannot, carried into the reason and the notice.
+        notifications: Where the operator is told.
+    """
+    reason = safe_error_description(exc)
+    try:
+        await hiring.reject_request(
+            str(request.id),
+            decided_by=WITHDRAWN_BY,
+            reason=reason,
+        )
+    except (HRError, ServiceUnavailableError) as withdrawal_exc:
+        logger.warning(
+            REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
+            request_id=str(request.id),
+            role=str(request.role),
+            error_type=type(withdrawal_exc).__name__,
+            error=safe_error_description(withdrawal_exc),
+            note="uncompletable hire could not be withdrawn; retrying next pass",
+        )
+        return
+    logger.warning(
+        REVIEW_STAFFING_HIRE_WITHDRAWN,
+        request_id=str(request.id),
+        role=str(request.role),
+        error_type=type(exc).__name__,
+        error=reason,
+    )
+    await notify_hire_withdrawn(notifications, str(request.role), reason=reason)
+
+
+async def finish_approved_hires(
+    hiring: HiringService | None,
+    *,
+    notifications: DispatcherSource = None,
+) -> int:
     """Instantiate every request a human approved but nobody hired.
 
     Args:
         hiring: The live hiring pipeline, or ``None`` on a boot without one.
+        notifications: Where the operator is told about a hire this pass
+            withdrew because no pass could ever complete it.
 
     Returns:
         How many approved requests became registered agents.
@@ -75,10 +135,19 @@ async def finish_approved_hires(hiring: HiringService | None) -> int:
     for request in hiring.find_approved_requests():
         try:
             identity = await hiring.instantiate_agent(request)
+        except HiringUnbindableError as exc:
+            # Nothing a later pass does changes this one: the request names no
+            # pair, or names one the organisation no longer has. Retried as
+            # though it were transient, one such request re-failed on every
+            # sweep for seven days, appeared on no dashboard page, and had no
+            # exit any pass could reach. Withdrawing it gives it one, and the
+            # operator is told rather than left to read the log.
+            await _withdraw(hiring, request, exc, notifications=notifications)
+            continue
         except (HRError, ServiceUnavailableError) as exc:
-            # Deliberately not fatal to the pass: one request blocked on its
-            # own condition (an unbound new-hire pair) must not stop the
-            # others, and the next pass retries this one anyway.
+            # Deliberately not fatal to the pass: one request blocked on a
+            # condition that may clear (wiring still coming up, a registry
+            # outage) must not stop the others, and the next pass retries it.
             logger.warning(
                 REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
                 request_id=str(request.id),

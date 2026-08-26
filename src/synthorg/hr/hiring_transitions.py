@@ -6,6 +6,8 @@ message naming the status it is actually in rather than failing later on a
 missing field.
 """
 
+from typing import Final
+
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import (
     HiringApprovalRequiredError,
@@ -18,6 +20,12 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_HIRING_REQUEST_INVALID
 
 logger = get_logger(__name__)
+
+#: The two decisions, named here because which statuses admit which is decided
+#: here too. A caller passing its own spelling would read as an unknown
+#: decision and lose the withdrawal hop without saying so.
+APPROVE: Final[str] = "approve"
+REJECT: Final[str] = "reject"
 
 
 def _refuse(request: HiringRequest, msg: str) -> None:
@@ -39,16 +47,31 @@ def _refuse(request: HiringRequest, msg: str) -> None:
 
 
 def validate_decidable(request: HiringRequest, *, decision: str) -> None:
-    """Refuse a decision on a request that is not awaiting one.
+    """Refuse a decision on a request that is not open to it.
+
+    PENDING admits either decision. APPROVED additionally admits a rejection,
+    which is a WITHDRAWAL: the hire was authorised and no agent was ever built
+    from it, so the operator is still the one who decides whether it happens,
+    and nothing has been done that a rejection would have to undo. Refusing
+    that hop is what left a live deployment holding a request reading approved
+    behind an approval its operator had rejected, retried every sweep for
+    seven days by a pass that could never complete it.
+
+    INSTANTIATED admits neither: the agent is on the roster, and removing one
+    is firing, which is its own decision with its own approval. REJECTED
+    admits neither either, because re-approving a refusal silently is the same
+    override in the other direction; a changed mind opens a fresh request.
 
     Args:
         request: The request being decided.
         decision: The decision being attempted, for the message.
 
     Raises:
-        HiringError: If the request has already been decided or run.
+        HiringError: If the request is not open to *decision*.
     """
     if request.status is HiringRequestStatus.PENDING:
+        return
+    if request.status is HiringRequestStatus.APPROVED and decision == REJECT:
         return
     msg = (
         f"Cannot {decision} hiring request {request.id!r}: it is "
@@ -88,4 +111,4 @@ def validate_instantiable(request: HiringRequest) -> None:
         raise InvalidCandidateError(msg)
 
 
-__all__ = ["validate_decidable", "validate_instantiable"]
+__all__ = ["APPROVE", "REJECT", "validate_decidable", "validate_instantiable"]

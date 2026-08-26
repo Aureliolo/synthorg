@@ -29,22 +29,31 @@ from synthorg.security.autonomy.enums import ActionType
 
 logger = get_logger(__name__)
 
-#: Statuses a decision has already been applied to, so re-applying one is
-#: not a retry but a refusal. APPROVED belongs here even though no agent
-#: exists yet: `approve_request` persists it before instantiation runs, so an
+#: Which statuses mean THIS decision has already been applied, keyed by the
+#: decision itself. Keyed, because the answer differs by decision and reading
+#: it as one set conflated "this decision landed" with "a decision landed":
+#: an operator rejecting a hire that was approved but never instantiated was
+#: answered "already settled", the rejection was never applied, and the
+#: deployment was left holding a request reading approved behind an approval
+#: its operator had rejected.
+#:
+#: APPROVED counts as settled FOR AN APPROVAL even though no agent exists yet:
+#: ``approve_request`` persists it before instantiation runs, so an
 #: instantiation that fails leaves the decision landed and the hire queued for
-#: the staffing reconciler. Without it, the decision rollback that failure
+#: the staffing reconciler. Without that, the decision rollback such a failure
 #: triggers put the approval back to PENDING while the request stayed
-#: APPROVED, and every operator retry then fell through to `approve_request`,
-#: which refuses a request that is not awaiting a decision: a 500 on each
-#: press until the reconciler happened to finish the hire.
-_SETTLED_HIRING_STATUSES: Final[frozenset[HiringRequestStatus]] = frozenset(
-    {
-        HiringRequestStatus.APPROVED,
-        HiringRequestStatus.INSTANTIATED,
-        HiringRequestStatus.REJECTED,
-    }
-)
+#: APPROVED, and every operator retry then fell through to ``approve_request``,
+#: which refuses a request that is not awaiting a decision: a 500 on each press
+#: until the reconciler happened to finish the hire.
+_SETTLED_BY_DECISION: Final[dict[bool, frozenset[HiringRequestStatus]]] = {
+    True: frozenset({HiringRequestStatus.APPROVED, HiringRequestStatus.INSTANTIATED}),
+    # An INSTANTIATED hire is not settled for a rejection, it is UNDECIDABLE:
+    # the agent is on the roster and removing one is firing, its own decision
+    # with its own approval. Falling through hands it to `reject_request`,
+    # which refuses it and says so, rather than reporting a rejection that
+    # removed nobody.
+    False: frozenset({HiringRequestStatus.REJECTED}),
+}
 
 
 async def try_org_hire_resume(
@@ -85,8 +94,8 @@ async def try_org_hire_resume(
         logger.error(HR_HIRING_REQUEST_NOT_FOUND, approval_id=approval_id, error=msg)
         raise HiringError(msg)
 
-    if request.status in _SETTLED_HIRING_STATUSES:
-        # The decision already landed. This is the crash-recovery drain
+    if request.status in _SETTLED_BY_DECISION[approved]:
+        # THIS decision already landed. This is the crash-recovery drain
         # re-dispatching a marker that outlived the work it bracketed (the
         # process died between hiring the agent and clearing the marker).
         # Answering "owned, and finished" lets the outbox retire the marker;
