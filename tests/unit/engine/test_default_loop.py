@@ -24,9 +24,10 @@ from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.loop_controls import LoopControls
 from synthorg.engine.loop_protocol import TurnObserver, TurnProgress
 from synthorg.engine.quality.classifier import StepQualityClassifier
-from synthorg.engine.react_loop import LoopControls, ReactLoop
+from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -210,9 +211,10 @@ class TestCheckpointRebuild:
         Two ways it would not. Naming ``ReactLoop`` in the rebuild returns the
         base, so a resumed run silently loses whatever the subclass added; and
         reaching ``type(self)`` with only the base controls meets a
-        ``TypeError`` for a subclass whose constructor takes more. The seam is
-        what lets such a loop answer for its own construction, and it reads
-        the base half back rather than restating it.
+        ``TypeError`` for a subclass whose constructor takes more. Overriding
+        the rebuild is what lets such a loop answer for its own construction,
+        and ``rebuild_controls`` is what lets it do so without restating the
+        base half.
         """
 
         class _SpecialisedLoop(ReactLoop):
@@ -230,7 +232,7 @@ class TestCheckpointRebuild:
                 self.marker = marker
 
             @override
-            def rebuild_with_checkpoint_callback(
+            def with_checkpoint_callback(
                 self, callback: CheckpointCallback
             ) -> _SpecialisedLoop:
                 return _SpecialisedLoop(
