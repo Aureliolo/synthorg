@@ -11,6 +11,11 @@ and real wall-clock, and it is the only way to see failures that no unit test
 reaches: nothing here is mocked, and every stage runs against the same
 configuration an operator would have.
 
+Every run so far, how far it got and why it stopped, is recorded in
+[the loop round log](../reference/loop-round-log.md). Read it before starting:
+it carries the brief verbatim, and a round that changes the brief cannot be
+compared with any other.
+
 ## Which arm proves which half
 
 Two arms, and each proves exactly one of the two claims. Running only one and

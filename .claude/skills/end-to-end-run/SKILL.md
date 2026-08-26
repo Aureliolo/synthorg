@@ -26,6 +26,9 @@ CLAUDE.md's MANDATORY rules.
 
 Design contract: [initiative-tail.md](../../../docs/design/initiative-tail.md#what-proves-the-tail-ran).
 Operator runbook: [end-to-end-run.md](../../../docs/guides/end-to-end-run.md).
+Prior rounds: [loop-round-log.md](../../../docs/reference/loop-round-log.md),
+which carries the brief verbatim and every round's stop reason. Read it first
+and add this round's row when it stops.
 
 ## What a run must prove
 
