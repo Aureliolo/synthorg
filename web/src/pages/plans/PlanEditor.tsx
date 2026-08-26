@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { Plus, Trash2 } from 'lucide-react'
 
@@ -9,11 +9,10 @@ import { InputField } from '@/components/ui/input-field'
 import { Pagination } from '@/components/ui/pagination'
 import type { SelectOption } from '@/components/ui/select-field'
 import { SelectField } from '@/components/ui/select-field'
-import { useListPagination } from '@/hooks/use-list-pagination'
 import { usePlansStore } from '@/stores/plans'
 import { isUnroutableOwner } from '@/utils/plans'
 
-import { childIndex, parentChoices } from './PlanEditor.containment'
+import { usePlanEditorRows } from './PlanEditor.paging'
 import {
   acceptanceText,
   artifactsText,
@@ -35,11 +34,6 @@ const TITLE_MAX = 256
 const TEXT_MAX = 8192
 const MAX_ITEMS = 1000
 const MAX_CRITERIA = 50
-
-// Rows held on screen at once. Not a backend bound: a row is a whole form and
-// its container picker offers every item in the plan, so this is what keeps
-// the browser's work a function of the page rather than of the plan.
-const ROWS_PER_PAGE = 20
 
 /** The message for an owner the org cannot route to, or null when it can. */
 function ownerError(
@@ -240,34 +234,10 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
     if (result) onDone()
   }, [plan.id, drafts, onDone])
 
-  // A page of rows, not the whole plan. Every row is a full form carrying four
-  // inputs and three selects, one of which offers every item in the plan as a
-  // container: rendered for all of them at the thousand items the backend
-  // accepts, that is around a million option elements before the operator
-  // types anything. Paged, what the browser holds is bounded by the page size
-  // whatever the plan's size, and the draft list stays whole in memory so the
-  // save gate, the payload and containment all still see every item.
-  const {
-    page,
-    pageSize,
-    totalItems,
-    paginatedItems: shown,
-    setPage,
-    setPageSize,
-  } = useListPagination({
-    items: drafts,
-    namespace: 'planItems',
-    defaultPageSize: ROWS_PER_PAGE,
-  })
-  const firstShown = (page - 1) * pageSize
-
-  const handleAdd = useCallback(() => {
-    // The new row is appended, which on a paged list is usually not the page
-    // being read. Following it is what keeps "Add item" meaning the same thing
-    // at a thousand items as at ten, rather than appearing to do nothing.
-    add()
-    setPage(Math.floor(drafts.length / pageSize) + 1)
-  }, [add, setPage, drafts.length, pageSize])
+  const { shown, choices, firstShown, pager, addAndFollow } = usePlanEditorRows(
+    drafts,
+    add,
+  )
 
   // The backend requires every item to carry a title, at least one acceptance
   // criterion (capped at MAX_CRITERIA), a dispatchable owner or none, and, for
@@ -275,12 +245,6 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
   // them rather than surfacing the 422 after a round trip. Read over every
   // draft rather than the page: an item the operator has paged away from still
   // 422s the save, and a gate that could not see it would let them try.
-  const children = useMemo(() => childIndex(drafts), [drafts])
-  const choices = useMemo(
-    () => parentChoices(drafts, children, shown),
-    [drafts, children, shown],
-  )
-
   const canSave =
     drafts.length > 0 &&
     drafts.length <= MAX_ITEMS &&
@@ -305,23 +269,12 @@ export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
           onRemove={remove}
         />
       ))}
-      {/* Only where it does something: most plans fit on one page, and a
-          pager offering nowhere to go is a control that reads as broken. */}
-      {totalItems > pageSize && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-          ariaLabel="Plan item pages"
-        />
-      )}
+      {pager !== undefined && <Pagination {...pager} />}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={handleAdd}
+          onClick={addAndFollow}
           disabled={drafts.length >= MAX_ITEMS}
         >
           <Plus aria-hidden="true" />
