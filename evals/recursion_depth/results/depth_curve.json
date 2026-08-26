@@ -1,7 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "provenance": {
-    "generated_at": "2026-08-25T17:44:52.751944Z",
+    "generated_at": "2026-08-26T11:06:27.419237Z",
     "git_commit": "d67bdae46526e7826c61b08561da5bd9ff89c35f",
     "git_dirty": false,
     "manifest_sha256": "sha256:f721d6c1725dc7c290bb0e246595455c6922c48c824170bcdb7b4b804d6c9694",
@@ -19,7 +19,8 @@
       "capability": "expert",
       "family": "example-family-b"
     },
-    "independence": "cross_family"
+    "independence": "cross_family",
+    "spend_source": "repaired"
   },
   "cells": [
     {
@@ -7212,6 +7213,106 @@
       "fraction": 0.8333333333333334
     }
   ],
+  "survival_by_achieved_depth": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "delivered_claims": 9,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": 0.0
+    },
+    {
+      "depth": 1,
+      "arm": "ungated",
+      "delivered_claims": 12,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": 0.0
+    },
+    {
+      "depth": 2,
+      "arm": "gated",
+      "delivered_claims": 9,
+      "surviving_claims": 7,
+      "cells": 1,
+      "fraction": 0.7777777777777778
+    },
+    {
+      "depth": 2,
+      "arm": "ungated",
+      "delivered_claims": 0,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": null
+    },
+    {
+      "depth": 3,
+      "arm": "gated",
+      "delivered_claims": 23,
+      "surviving_claims": 20,
+      "cells": 1,
+      "fraction": 0.8695652173913043
+    },
+    {
+      "depth": 3,
+      "arm": "ungated",
+      "delivered_claims": 0,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": null
+    }
+  ],
+  "survival_by_depth_cap": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "delivered_claims": 9,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": 0.0
+    },
+    {
+      "depth": 1,
+      "arm": "ungated",
+      "delivered_claims": 12,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": 0.0
+    },
+    {
+      "depth": 2,
+      "arm": "gated",
+      "delivered_claims": 9,
+      "surviving_claims": 7,
+      "cells": 1,
+      "fraction": 0.7777777777777778
+    },
+    {
+      "depth": 2,
+      "arm": "ungated",
+      "delivered_claims": 0,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": null
+    },
+    {
+      "depth": 3,
+      "arm": "gated",
+      "delivered_claims": 23,
+      "surviving_claims": 20,
+      "cells": 1,
+      "fraction": 0.8695652173913043
+    },
+    {
+      "depth": 3,
+      "arm": "ungated",
+      "delivered_claims": 0,
+      "surviving_claims": 0,
+      "cells": 1,
+      "fraction": null
+    }
+  ],
   "achieved_depth_histogram": {
     "cap=1 gated reached=1": 1,
     "cap=1 ungated reached=1": 1,
@@ -7221,10 +7322,11 @@
     "cap=3 ungated reached=3": 1
   },
   "caveats": [
-    "The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the share of leaf work surviving the merge, which is the question this sweep set out to ask. Leaf-level attribution proved too sparse to carry a rate and produced no point at all for whole cells. The two coincide only where the merge adds nothing of its own, so a tree scoring well because the merging agent rebuilt it reads here exactly like one whose leaves survived.",
+    "Two curves, and they answer different questions. SPECIFICATION is the share of the specification's own requirements the merged tree satisfies: a denominator every cell shares, which cannot empty, and which says nothing about where the work came from, so a tree scoring well because the merging agent rebuilt it reads there exactly like one whose leaves survived. SURVIVAL is the share of the requirements DELIVERED leaves claimed that the merged tree still satisfies: the question this sweep was built around, on a denominator that is leaf work and can be empty, in which case the point is absent rather than zero. The two coming apart IS the finding.",
     "Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'. Separating them needs an agent that has read the code deciding its own split, which no published system has.",
     "The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it.",
-    "143 planner claim(s) named no requirement this specification defines and were dropped before scoring. A handful is one planner inventing a requirement; a large share means the criterion template and the id pattern have drifted apart. The curve divides by the specification rather than by these claims, so it is unaffected, but the per-unit attribution is.",
+    "2 bucket(s) carry no survival point: their delivered leaves claimed no requirement between them, so the ratio has an empty denominator and is reported as absent rather than as zero. A planner may legitimately leave a subtree claiming nothing; a whole arm reading this way means the plans stopped tagging what they advance.",
+    "143 planner claim(s) named no requirement this specification defines and were dropped before scoring, so the per-unit attribution in this recording is not trustworthy. A claim naming nothing is now refused where the planner writes it, and one reaching the harness ends its cell before any leaf is paid for, so a later recording carrying this line is reporting a regression rather than a known gap.",
     "The token column was rebuilt from the recorder's per-call log. This recording's sessions shared one process-wide cost sink swapped per session, so concurrent leaves could journal zero while a neighbour absorbed their records. The repair attributes each call from the log, which is written per call and cannot be scrambled by that swap, cutting a repeated task id into intervals at the point each unit was journalled. The money column is untouched: every connection here is flat-rate, so it reads zero throughout. Session and attempt counts were never affected."
   ],
   "total_cost": 0.0,

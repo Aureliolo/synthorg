@@ -16,7 +16,7 @@ allowed, and a planner that stops splitting at three produces identical trees at
 caps four, five and six.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -28,7 +28,11 @@ from evals.errors import (
     RecursionDepthCeilingUndeclaredError,
     RecursionDepthPlannerSubstitutedError,
 )
-from evals.recursion_depth.claims import RequirementId, criterion_for
+from evals.recursion_depth.claims import (
+    RequirementId,
+    criterion_for,
+    requirement_ids_of,
+)
 from evals.recursion_depth.oracle import (
     declared,
     entry_field,
@@ -390,7 +394,11 @@ def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
         created_by=NotBlankStr(created_by),
         status=TaskStatus.CREATED,
         acceptance_criteria=tuple(
-            AcceptanceCriterion(description=NotBlankStr(criterion_for(identifier)))
+            AcceptanceCriterion(
+                description=NotBlankStr(
+                    criterion_for(identifier, brief.titles[identifier])
+                )
+            )
             for identifier in brief.requirement_ids
         ),
     )
@@ -578,6 +586,41 @@ def unit_definitions(
     return pairs
 
 
+def claimed_requirements(
+    result: DecompositionResult, *, known: Sequence[RequirementId]
+) -> dict[str, tuple[RequirementId, ...]]:
+    """Resolve every unit's claims, at every level, to the requirements they name.
+
+    Asked once on the tree the planner produced and BEFORE any leaf session
+    opens, because a leaf is minutes of real spend and a cell is tens of them:
+    a tree whose map is broken then costs its planning sessions rather than its
+    whole leaf budget followed by a denominator nothing can divide.
+
+    The level below the root is the one that matters. A root plan echoing the
+    objective's own criteria resolved perfectly in a recorded sweep while every
+    level under it invented a fresh vocabulary, so a check reading only the top
+    would have passed the broken run it was meant to catch.
+
+    Args:
+        result: The decomposition tree.
+        known: Every requirement id the specification defines.
+
+    Returns:
+        Subtask id to the requirements it claims, for every level.
+
+    Raises:
+        RecursionDepthClaimUnresolvableError: A unit claims something naming no
+            requirement the specification defines.
+    """
+    return {
+        definition.id: requirement_ids_of(
+            definition.satisfies, known=known, unit=str(definition.title)
+        )
+        for node in merge_nodes(result)
+        for definition in node.plan.subtasks
+    }
+
+
 def merge_nodes(result: DecompositionResult) -> tuple[DecompositionResult, ...]:
     """Every level of the tree, deepest first.
 
@@ -600,6 +643,7 @@ __all__ = [
     "achieved_levels",
     "arm_recursion",
     "build_tree",
+    "claimed_requirements",
     "load_spec_brief",
     "merge_nodes",
     "objective_task",

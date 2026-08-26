@@ -342,9 +342,12 @@ disable gating for the control arm; per-level instrumentation.
 **Output**: one chart. Depth 1-6 on the x-axis, fraction of leaf work surviving to a
 correct merged result on the y-axis. Two lines: one gated, one ungated.
 
-The recorded sweep plots the share of the specification a merged tree satisfies
-instead: leaf-level claims proved too sparse to divide by, and whole cells came
-out with no point at all. See
+The harness now plots both: the share of the specification a merged tree
+satisfies, and beside it, on the same axis, the share of the delivered leaves'
+own claims the merge kept. The recorded sweep predates the second being
+measurable (its claims below the root named criteria the level above had
+invented, so 143 attributed to nothing), and #2844 is the recording that carries
+it. See
 [recursive-decomposition.md](../design/recursive-decomposition.md#the-metric).
 
 ---

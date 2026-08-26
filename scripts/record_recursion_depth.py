@@ -61,7 +61,7 @@ from evals.recursion_depth.emit import (
     write_report,
 )
 from evals.recursion_depth.grading import SandboxUnitGrader
-from evals.recursion_depth.journal import read_recorded_cells
+from evals.recursion_depth.journal import adopt_repaired_spend, read_recorded_cells
 from evals.recursion_depth.manifest import (
     ModelPair,
     RecursionDepthManifest,
@@ -83,11 +83,7 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import SessionLimits, SweepDeps
-from evals.recursion_depth.spend_repair import (
-    SPEND_REPAIRED_CAVEAT,
-    repair_cell_spend,
-    tokens_by_unit,
-)
+from evals.recursion_depth.spend_repair import repair_cell_spend, tokens_by_unit
 from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
@@ -1102,34 +1098,40 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
     # stopped. Matching on the declared set rather than on "anything I do not
     # recognise" is what stops a retired sentence living for ever.
     #
-    # The repair caveat is deliberately in neither group. The journal holds the
-    # RAW figures and the repair is applied at scoring time, so a re-score
-    # without the flag emits unrepaired numbers and inheriting the sentence
-    # saying they were repaired would make the report state the opposite of
-    # what it holds.
-    caveats = [
-        METRIC_CAVEAT,
-        SIZING_CAVEAT,
-        ORACLE_CAVEAT,
-        *derived_caveats(cells),
-        *(
-            caveat
-            for caveat in dict.fromkeys(_previous_caveats(out_dir))
-            if caveat in RUN_STATE_CAVEATS
-        ),
-    ]
+    # The repair caveat is in neither group either, and for a different reason
+    # from the two above: it is DERIVED, off the provenance the journal itself
+    # carries. Stated instead by whoever typed the flag, it says nothing at all
+    # on a later re-score of the same journal, or the opposite of what that
+    # journal holds.
     if repair_from is not None:
         attributed = tokens_by_unit(repair_from)
         if not attributed:
-            # The caveat is a provenance claim, so appending it beside figures
+            # The claim is a provenance claim, so recording it beside figures
             # nothing touched is the worse outcome of the two.
             msg = (
                 f"{repair_from} attributed no calls to any unit; the log is "
                 f"not this recording's, or its rendering no longer parses"
             )
             raise RecursionDepthSpendRepairEmptyError(msg)
-        cells = repair_cell_spend(cells, attributed)
-        caveats.append(SPEND_REPAIRED_CAVEAT)
+        # Written back to the journal, not just to the report. A repair applied
+        # at scoring time leaves the artefact reproducible only by whoever
+        # still has the log, and the log is not a committed thing: the next
+        # re-score silently regresses the column to figures this recording's
+        # own caveat calls scrambled.
+        provenance, cells = adopt_repaired_spend(
+            out_dir, provenance=provenance, cells=repair_cell_spend(cells, attributed)
+        )
+    caveats = [
+        METRIC_CAVEAT,
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+        *derived_caveats(cells, spend_source=provenance.spend_source),
+        *(
+            caveat
+            for caveat in dict.fromkeys(_previous_caveats(out_dir))
+            if caveat in RUN_STATE_CAVEATS
+        ),
+    ]
     report = assemble_report(
         provenance=provenance,
         cells=cells,

@@ -269,6 +269,24 @@ class OracleUnusableError(EvalError):
     default_message: ClassVar[str] = "The held-out oracle could not be run"
 
 
+class RecursionDepthClaimUnresolvableError(EvalError):
+    """Raised when a planner claim names no requirement the specification has.
+
+    The backstop rather than the primary refusal: the product's own parse
+    boundary rejects such a claim where the planning session can still correct
+    it, so one reaching the harness means that boundary regressed. Raised
+    rather than dropped because dropping is what a recorded sweep did 143
+    times, which deflated the ratio it was measuring at both ends and read on
+    the chart as a gate that does not help.
+
+    Per cell rather than per sweep: the tree one planner produced is the thing
+    at fault, and asked before any leaf runs, so the cell costs its planning
+    sessions rather than its whole leaf budget.
+    """
+
+    default_message: ClassVar[str] = "A planner claim named no known requirement"
+
+
 class RecursionDepthNoCellsMeasuredError(EvalError):
     """Raised when a completed recursion-depth sweep measured no cell.
 

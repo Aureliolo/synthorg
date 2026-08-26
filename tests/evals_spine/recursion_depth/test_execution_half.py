@@ -50,6 +50,7 @@ from evals.recursion_depth.journal import (
     progress_by_cell,
 )
 from evals.recursion_depth.manifest import (
+    SHARED_FAMILY_CAVEAT,
     Arm,
     Independence,
     ModelPair,
@@ -1818,7 +1819,11 @@ class TestTheMatrix:
         self, tmp_path: Path, assembled_trees: None
     ) -> None:
         # The three standing caveats always hold; the independence one is a
-        # statement about a weakness this manifest does not have.
+        # statement about a weakness this manifest does not have. Asserted by
+        # ABSENCE rather than by an exact set, because the derived caveats are
+        # facts about the cells and this sweep's stubbed leaves legitimately
+        # produce one: a rule reading "these three and nothing else" would fail
+        # on an accurate sentence about a different subject.
         del assembled_trees
         planner = _ScriptedPlanner(answer=_Plan(result=_tree(), cost=1.0, sessions=1))
         context = await _context(
@@ -1832,7 +1837,8 @@ class TestTheMatrix:
 
         report = await _swept(context, tmp_path)
 
-        assert set(report.caveats) == {METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT}
+        assert {METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT} <= set(report.caveats)
+        assert SHARED_FAMILY_CAVEAT not in report.caveats
 
     async def test_a_depleted_account_stops_the_sweep_instead_of_shredding_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

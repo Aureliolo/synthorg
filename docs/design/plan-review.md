@@ -85,18 +85,54 @@ a tool error the agent fixes on its next turn, where the same fault found at
 dispatch has already been approved by an operator who was told nothing was
 wrong.
 
-Two boundaries of the rule are deliberate. It is checked at PLAN level rather
+One boundary of that rule is deliberate. It is checked at PLAN level rather
 than per item, because the field's own semantics allow a genuine pure-support
 item to claim nothing; what cannot hold is that every item is pure support,
-since then nothing builds the objective. And it is FULL coverage that is
-documented but not enforced: partial coverage stays a plan worth having, while
-zero coverage is the degenerate case with no reading at all. Enforcing every
-criterion would put a rule the planner keeps re-breaking in front of the retry
-ladder, which is how the em-dash style rule once took 18 of 25 planning calls.
+since then nothing builds the objective.
 
-The objective's criteria reach the parser the same way `available_roles` does,
-threaded from the two call sites that hold the parent task, and an empty tuple
-skips the check: an objective declaring no criteria has no coverage to claim.
+### A claim must name something
+
+A separate rule about the same field, and a narrower one: every `satisfies`
+entry must name a criterion the objective states. An item may still claim
+NOTHING, and FULL coverage is still documented and not enforced, because
+partial coverage stays a plan worth having and enforcing every criterion would
+put a rule the planner keeps re-breaking in front of the retry ladder, which is
+how the em-dash style rule once took 18 of 25 planning calls. Naming a
+criterion verbatim is a different order of demand: the list to copy from is in
+the message, and the refusal quotes it back.
+
+A claim carrying a sentence the objective never states reads as coverage on
+every surface that shows the field and is coverage to none of them. The
+recursion-depth sweep dropped 143 of them at SCORING time, which deflated both
+halves of the ratio it was measuring and read on its chart like a gate that does
+not help. The boundary that WRITES a claim is where that has a fix.
+
+`satisfies` has exactly two writers and both ask it. The planner's parse asks
+it in `validate_coverage`, beside the plan-level rule and reported in ONE
+message with it, for the reason `validate_graph` records: a session that
+regenerates its whole plan on each rejection cannot converge while it is told
+one violation at a time. The operator's own item list asks it in
+`_plan_input_validation.py::reject_unnamed_claims`, against the plan's
+denormalised `objective_criteria`, which is also what the review surface's
+coverage map reads, so an item that passes is an item that map can place.
+
+Matching is one function, `core/criterion_match.py`, and it is forgiving about
+SPELLING and unforgiving about CONTENT: trim, lowercase, collapse internal
+whitespace runs. A model copying a ninety-character sentence gets the capital
+and the spacing wrong, not the sentence, and refusing a plan over a trailing
+space spends a planning attempt on a character. Inventing a sentence is the
+defect and nothing forgives it. `web/src/utils/planCoverage.ts::coverageKey`
+mirrors the same rule, because a looser match there would place a claim the
+backend rejected and a stricter one would show a criterion it accepted as
+uncovered.
+
+The objective's criteria reach the parser from the decomposition CONTEXT rather
+than off the task in front of it. Below the root the two differ: the task's own
+criteria are the prose the level above wrote about that unit, while the context
+carries the objective's criteria narrowed to what the parent unit claimed. See
+[recursive-decomposition.md](recursive-decomposition.md#the-size-signal). An
+empty tuple skips both rules: an objective declaring no criteria has no coverage
+to claim, and neither has a subtree whose parent claimed none.
 
 ### Open questions are asked, not filed
 

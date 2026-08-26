@@ -72,6 +72,19 @@ class DecompositionContext(BaseModel):
             cousins would namespace their evidence into one directory and
             overwrite each other. ``child_context`` is its only writer, the
             same way it is ``current_depth``'s.
+        objective_criteria: The criteria this level is answerable for, drawn
+            from the objective the whole tree is planned from and narrowed at
+            each recursion to what the parent unit claimed. This is the
+            vocabulary an item's ``satisfies`` is copied out of, and it
+            descends rather than being re-read per level: read off each level's
+            own task it was the planner's own per-item prose, so every level
+            minted a fresh vocabulary and a claim made below the root named
+            nothing the objective had ever stated. ``child_context`` is its
+            only writer once :func:`stamp_objective_criteria` has filled it at
+            the root, the same way it is ``current_depth``'s. Empty means this
+            subtree advances no objective criterion, which is what an objective
+            declaring none and a parent claiming none both amount to, so the
+            coverage check skips either identically.
         atomicity: The size signal this level is held to at PARSE time, set
             only where no further level is available so an oversized unit
             cannot be delegated downward. ``None`` everywhere else, which is
@@ -130,6 +143,11 @@ class DecompositionContext(BaseModel):
     available_roles: tuple[PersonaLabelStr, ...] = Field(
         default=(),
         description="Roles the org staffs, which an owner must be drawn from",
+    )
+    objective_criteria: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Criteria this level is answerable for, narrowed from the "
+        "objective's own at each recursion",
     )
     atomicity: SubtaskAtomicityPolicy | None = Field(
         default=None,

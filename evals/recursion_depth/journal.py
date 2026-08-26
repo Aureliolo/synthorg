@@ -25,7 +25,7 @@ reason it failed, so it is attempted again. Resuming an unavailable cell would
 hand back the same broken report the operator restarted to escape.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,12 +43,23 @@ from evals.recursion_depth.models import (
     CellRecord,
     PlannedTreeRecord,
     Provenance,
+    SpendSource,
     UnitRecord,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_SPEND_ADOPTED
+
+logger = get_logger(__name__)
 
 #: The file a sweep appends finished cells to, beside the report it will
 #: eventually write.
 JOURNAL_NAME: str = "cells.jsonl"
+
+#: Where the journalled figures go when a per-call repair replaces them as the
+#: recording's ledger. Kept rather than discarded: the records under it are
+#: real spend, and a repair is a claim about them that a reader may want to
+#: check.
+RAW_JOURNAL_NAME: str = "cells.raw.jsonl"
 
 #: The file a sweep appends every finished SESSION to, so a cell killed
 #: part-way leaves what it built rather than nothing.
@@ -434,16 +445,62 @@ def read_recorded_cells(out_dir: Path) -> tuple[Provenance, list[CellRecord]]:
     return provenance, cells
 
 
+def adopt_repaired_spend(
+    out_dir: Path, *, provenance: Provenance, cells: Sequence[CellRecord]
+) -> tuple[Provenance, list[CellRecord]]:
+    """Make a repaired spend column the recording's own ledger.
+
+    A repair applied at scoring time leaves the report reproducible only by
+    whoever still holds the recorder log, which is not a committed thing: the
+    next re-score reads the journal, finds the raw figures, and silently
+    publishes a column this recording's own caveat calls scrambled. Writing the
+    repaired cells back is what makes the artefact reproducible from the
+    repository alone, which is most of what a provenance block is for.
+
+    The raw journal is MOVED rather than overwritten, for the reason
+    :func:`evals.harness.journal.open_journal` refuses to open onto one: the
+    records under it are real spend, and this is not the place to decide they
+    are worthless. It keeps its name plus ``.raw``, beside the ledger that
+    replaced it.
+
+    Args:
+        out_dir: Where the recording wrote its journal.
+        provenance: What this recording is measured against.
+        cells: The cells carrying the repaired figures.
+
+    Returns:
+        The provenance now declaring a repaired column, and the cells, so a
+        caller passes on what the journal holds rather than what it was handed.
+    """
+    stamped = provenance.model_copy(update={"spend_source": SpendSource.REPAIRED})
+    (out_dir / JOURNAL_NAME).replace(out_dir / RAW_JOURNAL_NAME)
+    journal, _ = open_journal(
+        out_dir, SPEC, identity=matrix_identity(stamped), resume=False
+    )
+    for cell in cells:
+        journal.record(cell)
+    journal.close()
+    logger.info(
+        EVALS_RECURSION_SPEND_ADOPTED,
+        journal=str(out_dir / JOURNAL_NAME),
+        superseded=str(out_dir / RAW_JOURNAL_NAME),
+        cells=len(cells),
+    )
+    return stamped, list(cells)
+
+
 __all__ = [
     "JOURNAL_KIND",
     "JOURNAL_NAME",
     "PROGRESS_KIND",
     "PROGRESS_NAME",
     "PROGRESS_SPEC",
+    "RAW_JOURNAL_NAME",
     "SPEC",
     "CellProgress",
     "CellUnits",
     "ResumedProgress",
+    "adopt_repaired_spend",
     "cell_key",
     "matrix_identity",
     "open_cell_journal",

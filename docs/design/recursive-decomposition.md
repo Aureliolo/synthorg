@@ -96,18 +96,44 @@ conditions, any of which makes it oversized:
 
 The third is the operative one and it is not configurable: a unit advancing
 several of the objective's own success criteria is several units, whatever its
-artifact count says. It terminates on its own **while the planner honours the
-contract**, which is what makes depth emergent rather than a number somebody
-picked: a unit claiming one criterion becomes a task with one acceptance
-criterion, so its own children can claim at most that one, and the tree stops
-once every unit advances exactly one thing. Depth therefore tracks the
-objective's own criterion count: less if it needs less, more if it needs more.
+artifact count says. It terminates on its own, which is what makes depth
+emergent rather than a number somebody picked: a unit claiming one criterion
+hands its children a vocabulary of exactly that one, so they can claim at most
+it, and the tree stops once every unit advances exactly one thing. Depth
+therefore tracks the objective's own criterion count: less if it needs less,
+more if it needs more.
 
-That conditional is why the backstops below are not redundant. Nothing forces a
-child to claim only what its parent held, so a planner that widens what it
-claims at each level breaks the induction and the tree does not converge. The
-depth and session backstops are what stops that being unbounded, and the
-last-level correction is what asks the planner to fix it first.
+The induction rests on the criteria DESCENDING with the recursion, and for a
+while they did not. A child task is built from its subtask's own
+`acceptance_criteria`, which is the planner's per-item prose, and every level
+re-read the objective's criteria off the task in front of it, so each level
+minted a fresh vocabulary out of what the level above happened to write. A
+claim made below the root then named nothing the objective had ever stated, the
+claim count was bounded by `subtask_max_criteria` rather than by what the parent
+held, and the recursion-depth sweep dropped 143 claims it could attribute to
+nothing.
+
+`DecompositionContext.objective_criteria` is what descends. It is stamped once
+at the root from the objective's own criteria (`stamp_objective_criteria`,
+beside the bounds resolve, so one tree is never planned against two
+vocabularies) and narrowed by `child_context` to exactly the criteria the
+parent unit claimed. `child_context` is its only writer, the same way it is
+`current_depth`'s. The narrowed tuple carries the OBJECTIVE's spelling rather
+than the claim's: matching is forgiving about case and spacing, and handing the
+claim's text down instead would move the vocabulary one normalisation step per
+level until a deep claim matched nothing at all.
+
+The child task keeps its own `acceptance_criteria` as the local definition of
+done, so the planning message carries two lists and says which is which:
+`Acceptance Criteria` is when THIS unit is finished, and
+`Objective criteria to cover` is what the objective the whole tree serves is
+still waiting for. An item's `satisfies` is copied out of the second.
+
+The backstops below are still not redundant. A planner can under-tag, which
+does not break the induction but flattens the tree (a unit claiming nothing is
+atomic by this rule and is never split), and a level can still be refused for
+reasons of its own. The depth and session backstops bound the walk, and the
+last-level correction asks the planner to spend breadth first.
 
 The first two are loose "obviously too large" guards rather than the
 discriminator. At one artifact, an item that writes a module plus its test read
@@ -419,12 +445,12 @@ anything, and `make recursion-depth-record` to measure for real.
 
 ### The metric
 
-The question wants leaf work in the denominator: of what the leaves delivered,
-how much survived the merge. The harness plots something else, and the
-substitution is the single most important thing to know about the chart.
+Two curves, on one axis, from one grading. They answer different questions and
+the pair coming apart is the finding; `evals/recursion_depth/score.py` owns
+both.
 
-**What is plotted.** After the root merge the held-out oracle runs over the
-whole specification, and:
+**SPECIFICATION.** After the root merge the held-out oracle runs over the whole
+specification, and:
 
 ```text
         | requirements the merged tree satisfies |
@@ -433,29 +459,50 @@ whole specification, and:
 ```
 
 The denominator is fixed at 42 for every cell, so every run produces a point
-and the two arms are comparable at every depth. `DepthPoint.fraction` sums both
-operands per `(depth, arm)` bucket; `evals/recursion_depth/score.py` owns it.
+and the two arms are comparable at every depth, including where a cell's leaves
+all failed. `DepthPoint.fraction` sums both operands per `(depth, arm)` bucket.
+What it does not say is where the work came from.
 
-**Why the intended denominator was not usable.** Leaf work is claimed through
-`SubtaskDefinition.satisfies`, which carries the root objective's
-acceptance-criterion TEXT rather than requirement ids, because that is what the
-planner is given and echoes back, so the harness resolves each claim to the id
-it names before anything counts it (`recursion_depth/claims.py` owns both
-directions). Measured on a live run that population is too sparse to divide by:
-a leaf must pass its own suite to be counted at all and 62 of 183 did, a
-delivered leaf at depth 2 or deeper often claims nothing, and 143 claims named
-no requirement the specification defines. Whole cells came out with an empty
-denominator and therefore no point at all, the ungated arm among them at depths
-2 and 3, which deletes the arm comparison the sweep exists for.
+**SURVIVAL.** The question the programme was built around:
 
-**What the substitution costs.** Attribution. A tree scoring well because the
-merging agent rebuilt the work itself and one scoring well because its leaves'
-work survived are the same number here, so the curve answers whether depth
-survives, not whether leaf work does. The per-unit records still carry the
-claim-level figures, so the narrower question can still be asked once the claim
-mapping is trustworthy; that is issue #2843. Every emitted artefact carries
-`METRIC_CAVEAT` saying so, because the chart and the JSON travel without this
-page.
+```text
+        | requirements DELIVERED leaves claimed that the merged tree satisfies |
+    y = ----------------------------------------------------------------------
+        |          requirements DELIVERED leaves claimed                       |
+```
+
+`SurvivalPoint.fraction`, binned on the same axis so the two read off one
+chart. Delivery rather than standalone correctness gates the denominator: at
+depth a unit is one function and nothing above it exists yet, so a leaf's own
+tree usually cannot run the spec oracle at all and requiring a standalone pass
+would empty the denominator exactly where the curve is most interesting. This
+denominator IS leaf work, so it can empty, and an empty one is an ABSENT point
+rather than a zero: nothing was measured there, and a zero says everything was
+lost.
+
+**How a claim reaches a requirement.** Leaf work is claimed through
+`SubtaskDefinition.satisfies`, which carries criterion TEXT rather than
+requirement ids, because text is what the planner is given and copies back. The
+root objective is filed with one criterion per requirement, `"R03: A decimal
+column reads as a float"`, and the criteria descend with the recursion (see
+[The size signal](#the-size-signal)), so a claim at any depth still names one of
+them and `recursion_depth/claims.py` resolves it on the id token it carries.
+The criterion carries the requirement's title as well as its id because at
+depth the specification prose is gone: the child task describes the unit, not
+the spec, and an id alone is not something a planner can allocate against.
+
+The map is checked once, on the tree the planner produced and BEFORE the first
+leaf session opens (`tree.claimed_requirements`, called from
+`_build_tree_units`). A claim naming no requirement raises there, so the cell is
+recorded unavailable having spent its planning sessions rather than its whole
+leaf budget. That is the backstop; the product refuses such a claim at the
+boundary the planner writes it, where the session can still correct it.
+
+**What the pair buys.** A tree scoring well because the merging agent rebuilt
+the work and one scoring well because its leaves' work survived are the same
+number on the specification curve and different numbers on the survival one.
+Every emitted artefact carries `METRIC_CAVEAT` stating both, because the chart
+and the JSON travel without this page.
 
 ### What delivery is decided by, and what it is not
 
@@ -741,9 +788,10 @@ explored, not with how badly a run went.
 
 `evals/recursion_depth/results/` holds the recording: `chart.svg`,
 `depth_curve.json` and `depth_curve.md`, beside the `cells.jsonl` and
-`progress.jsonl` the run journalled as it went. Six cells, caps 1 to 3, one
-repetition each, both arms, 240 units across 482 agent sessions, no cell
-unavailable.
+`progress.jsonl` the run journalled as it went, plus the `cells.raw.jsonl` the
+first of those replaced when its per-call spend repair became the recording's
+own ledger. Six cells, caps 1 to 3, one repetition each, both arms, 240 units
+across 482 agent sessions, no cell unavailable.
 
 | achieved depth | gated | ungated |
 |---|---|---|
@@ -799,13 +847,16 @@ included, the gated arm used 1.73 sessions against 2.58, and its cell cost 1.15M
 tokens per leaf against 1.13M. The gate changes how the work converges; whether
 it changes the result is unmeasured.
 
-### The metric measures the adjacent question
+### This run's own attribution is not trustworthy
 
-The y-axis is the share of the SPECIFICATION the merged tree satisfies, not the
-share of leaf work surviving the merge, so this run answers whether depth
-survives rather than whether leaf work does. [The metric](#the-metric) above
-states the substitution and what forced it; the figures below are read under it
-throughout.
+The figures below are the SPECIFICATION curve, which is the share of the
+specification the merged tree satisfies rather than the share of leaf work
+surviving the merge. This recording has a survival curve too, re-scored from
+its own journal, but it reads `n/a` for the ungated arm at depths 2 and 3:
+every claim that arm's planner made below the root named a criterion it had
+invented one level up, so 143 of them attributed to nothing. That is the defect
+[The metric](#the-metric) above describes and the recording predates its fix, so
+the figures here are read on the specification curve throughout.
 
 ### Reading the verdicts, which are easy to read wrongly
 

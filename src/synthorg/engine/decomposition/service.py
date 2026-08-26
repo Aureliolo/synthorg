@@ -27,6 +27,7 @@ from synthorg.engine.decomposition._recursion import (
     child_context,
     resolve_decomposition_bounds,
     resolve_recursion_budget,
+    stamp_objective_criteria,
 )
 from synthorg.engine.decomposition._split_decision import (
     SplitOutcome,
@@ -230,7 +231,9 @@ class DecompositionService:
         # Resolved once, at the root, and stamped onto the context every level
         # below plans under: one tree is never planned under two budgets, and
         # a caller that declared its own shape (the manual endpoints) keeps it.
-        context = await resolve_decomposition_bounds(context, self._config_resolver)
+        context = stamp_objective_criteria(
+            task, await resolve_decomposition_bounds(context, self._config_resolver)
+        )
         # The outer of the two ceilings, and the only one that bounds a
         # CALLER. The inner one below bounds a planning session, and a
         # recursion runs one per node, so the number of sessions is the
@@ -560,7 +563,10 @@ class DecompositionService:
             step = SubtreeStep(title=str(subtask_def.title), position=position)
             try:
                 child = await self._do_decompose(
-                    child_task, child_context(context, step=step), budget, ledger=ledger
+                    child_task,
+                    child_context(context, step=step, satisfied=subtask_def.satisfies),
+                    budget,
+                    ledger=ledger,
                 )
             except DecompositionUnsplittableError as exc:
                 # The one child failure this level can answer. Its own plan is

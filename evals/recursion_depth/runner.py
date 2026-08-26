@@ -101,6 +101,7 @@ from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
     achieved_levels,
+    claimed_requirements,
     merge_nodes,
     objective_task,
     unit_definitions,
@@ -587,7 +588,7 @@ async def run_sweep(
             ):
                 break
         cells = records.cells
-    caveats.extend(derived_caveats(cells))
+    caveats.extend(derived_caveats(cells, spend_source=provenance.spend_source))
     return assemble_report(
         provenance=provenance,
         cells=cells,
@@ -1015,6 +1016,11 @@ async def _build_tree_units(
         The workspace holding the root's assembled tree.
     """
     definitions = unit_definitions(tree)
+    # Before the first leaf session opens, because a cell is tens of them and a
+    # tree whose claims name nothing has no measurement to produce whatever it
+    # spends. Raises, so the cell is recorded unavailable with the reason
+    # rather than being scored against a denominator that cannot fill.
+    claimed_requirements(tree, known=context.spec.requirement_ids)
     parents: dict[str, Task] = {str(root.id): root}
     for node in merge_nodes(tree):
         parents.update({str(task.id): task for task in node.created_tasks})
@@ -1335,26 +1341,25 @@ def _leaf_record(
     """Record what one leaf did.
 
     The planner's ``satisfies`` carries criterion TEXT, and every consumer of
-    this record wants the requirement id, so the translation happens here,
-    once, rather than in each of them. What did NOT translate is counted onto
-    the record rather than only warned about, because the survival metric is a
-    ratio over what does.
+    this record wants the requirement id, so the translation happens here.
+    It cannot fail by the time it runs: the whole tree was resolved before the
+    first leaf session opened, and a claim naming nothing ended the cell there.
+    ``unresolved_claims`` therefore takes its default of zero, which is what a
+    recording made under that guarantee means.
 
     Returns:
         The unit record.
     """
-    resolved = requirement_ids_of(
-        definition.satisfies,
-        known=spec.requirement_ids,
-        unit=str(task.title),
-    )
     return UnitRecord(
         unit_id=NotBlankStr(str(task.id)),
         title=NotBlankStr(str(task.title)),
         kind=LEAF,
         depth=node.depth,
-        claimed=resolved.ids,
-        unresolved_claims=resolved.unresolved,
+        claimed=requirement_ids_of(
+            definition.satisfies,
+            known=spec.requirement_ids,
+            unit=str(task.title),
+        ),
         delivered=leaf.delivered,
         attempts=leaf.attempts,
         turns=leaf.turns,

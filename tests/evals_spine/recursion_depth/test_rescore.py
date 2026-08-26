@@ -17,8 +17,14 @@ from scripts.record_recursion_depth import _previous_caveats, _rescore
 
 from evals.errors import RecursionDepthSpendRepairEmptyError
 from evals.harness.journal import open_journal
+from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import REPORT_JSON_NAME
-from evals.recursion_depth.journal import SPEC, matrix_identity
+from evals.recursion_depth.journal import (
+    RAW_JOURNAL_NAME,
+    SPEC,
+    matrix_identity,
+    read_recorded_cells,
+)
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
 from evals.recursion_depth.models import (
     CEILING_CAVEAT,
@@ -28,8 +34,10 @@ from evals.recursion_depth.models import (
     SIZING_CAVEAT,
     CellRecord,
     Provenance,
+    SpendSource,
     UnitRecord,
 )
+from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
 from synthorg.core.types import NotBlankStr
 from tests._shared import sid
 
@@ -71,7 +79,12 @@ def _provenance() -> Provenance:
 
 
 def _recorded(out_dir: Path) -> None:
-    """Write one measured cell into a journal at *out_dir*."""
+    """Write one measured cell into a journal at *out_dir*.
+
+    Its leaf delivers and claims, so the survival curve has a point and this
+    file's cases are about caveat WORDING rather than about a bucket with an
+    empty denominator, which derives a caveat of its own.
+    """
     journal, _ = open_journal(
         out_dir, SPEC, identity=matrix_identity(_provenance()), resume=False
     )
@@ -87,9 +100,12 @@ def _recorded(out_dir: Path) -> None:
                     title=NotBlankStr("a"),
                     kind=LEAF,
                     depth=0,
+                    claimed=(RequirementId("R01"),),
+                    delivered=True,
                     tokens=7,
                 ),
             ),
+            merged_passing=(RequirementId("R01"),),
         )
     )
     journal.close()
@@ -142,6 +158,80 @@ class TestWhichCaveatsSurvive:
             "caveats"
         ]
         assert CEILING_CAVEAT in caveats
+
+
+class TestARepairBecomesTheLedger:
+    """A repair applied only at scoring time is not reproducible by anyone.
+
+    The recorder log it reads is not a committed thing, so the next re-score of
+    the same recording reads the journal, finds the raw figures, and publishes
+    a column the report's own caveat calls scrambled.
+    """
+
+    def _repairable(self, out_dir: Path) -> Path:
+        """Write a recording whose journalled spend a log can repair.
+
+        Returns:
+            The log to repair from.
+        """
+        _recorded(out_dir)
+        log = out_dir / "run.log"
+        log.write_text(
+            f"cost.recorded call_category=productive task_id={_LEAF_TASK} "
+            f"input_tokens=40 output_tokens=2\n"
+            f"evals.harness.record_journalled cell=d1-gated-r0/{_LEAF_TASK}\n",
+            encoding="utf-8",
+        )
+        return log
+
+    def test_the_repaired_column_is_written_back_to_the_journal(
+        self, tmp_path: Path
+    ) -> None:
+        log = self._repairable(tmp_path)
+
+        _rescore(tmp_path, repair_from=log)
+
+        _, cells = read_recorded_cells(tmp_path)
+        assert [unit.tokens for cell in cells for unit in cell.units] == [42]
+
+    def test_the_journalled_figures_are_kept_beside_it(self, tmp_path: Path) -> None:
+        """Real spend, so the ledger it replaced is moved rather than dropped."""
+        log = self._repairable(tmp_path)
+
+        _rescore(tmp_path, repair_from=log)
+
+        assert (tmp_path / RAW_JOURNAL_NAME).exists()
+
+    def test_a_later_rescore_keeps_the_repaired_column(self, tmp_path: Path) -> None:
+        """The whole point: nobody needs the log a second time."""
+        log = self._repairable(tmp_path)
+        _rescore(tmp_path, repair_from=log)
+
+        _rescore(tmp_path, repair_from=None)
+
+        payload = json.loads((tmp_path / REPORT_JSON_NAME).read_text(encoding="utf-8"))
+        assert payload["total_tokens"] == 42
+
+    def test_the_repair_is_claimed_by_the_data_rather_than_the_flag(
+        self, tmp_path: Path
+    ) -> None:
+        log = self._repairable(tmp_path)
+        _rescore(tmp_path, repair_from=log)
+
+        _rescore(tmp_path, repair_from=None)
+
+        payload = json.loads((tmp_path / REPORT_JSON_NAME).read_text(encoding="utf-8"))
+        assert payload["provenance"]["spend_source"] == SpendSource.REPAIRED.value
+        assert SPEND_REPAIRED_CAVEAT in payload["caveats"]
+
+    def test_an_unrepaired_recording_claims_nothing(self, tmp_path: Path) -> None:
+        _recorded(tmp_path)
+
+        _rescore(tmp_path, repair_from=None)
+
+        payload = json.loads((tmp_path / REPORT_JSON_NAME).read_text(encoding="utf-8"))
+        assert payload["provenance"]["spend_source"] == SpendSource.JOURNALLED.value
+        assert SPEND_REPAIRED_CAVEAT not in payload["caveats"]
 
 
 class TestReadingThePreviousReport:

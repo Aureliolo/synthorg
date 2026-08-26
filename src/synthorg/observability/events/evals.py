@@ -103,7 +103,6 @@ EVALS_RECURSION_RECORD_START: Final[str] = "evals.recursion_depth.record_start"
 EVALS_RECURSION_REPORT_EMITTED: Final[str] = "evals.recursion_depth.report_emitted"
 EVALS_RECURSION_SESSION_CEILING: Final[str] = "evals.recursion_depth.session_ceiling"
 EVALS_RECURSION_QUOTA_EXHAUSTED: Final[str] = "evals.recursion_depth.quota_exhausted"
-EVALS_RECURSION_CLAIM_UNRESOLVED: Final[str] = "evals.recursion_depth.claim_unresolved"
 EVALS_RECURSION_NO_CELLS: Final[str] = "evals.recursion_depth.no_cells_measured"
 EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_failure"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
@@ -163,6 +162,7 @@ and went unreported for a whole run. A session that took turns and recorded
 nothing is spend that happened and was never written down, and these rows are
 the only ledger there is."""
 EVALS_RECURSION_SPEND_REPAIRED: Final[str] = "evals.recursion_depth.spend_repaired"
+EVALS_RECURSION_SPEND_ADOPTED: Final[str] = "evals.recursion_depth.spend_adopted"
 """A recording's spend column was rebuilt from its own per-call log.
 
 Re-scoring an old recording whose per-session ledger was scrambled by

@@ -14,7 +14,10 @@ explains.
 from dataclasses import dataclass
 from typing import Final
 
+from synthorg.core.criterion_match import matched_criteria
 from synthorg.core.plan_tree import SubtreeStep
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.atomicity import SubtaskAtomicityPolicy
 from synthorg.engine.decomposition.context import (
     DEFAULT_MAX_DEPTH,
@@ -122,21 +125,69 @@ def flat_budget() -> RecursionBudget:
     )
 
 
+def stamp_objective_criteria(
+    task: Task, context: DecompositionContext
+) -> DecompositionContext:
+    """Fill *context*'s undeclared claim vocabulary from the objective.
+
+    An ordered precedence ladder with one resolver, on the same seam as
+    :func:`resolve_decomposition_bounds` and called from the same place: a
+    caller that declared its own vocabulary keeps it, and an undeclared one
+    takes the objective's own criteria. Every level below descends from the
+    stamped value, so one tree is never planned against two vocabularies.
+
+    Args:
+        task: The objective being decomposed.
+        context: The root context, as the caller built it.
+
+    Returns:
+        The context with its vocabulary resolved.
+    """
+    if context.objective_criteria:
+        return context
+    return context.model_copy(
+        update={
+            "objective_criteria": tuple(
+                NotBlankStr(criterion.description)
+                for criterion in task.acceptance_criteria
+            )
+        }
+    )
+
+
 def child_context(
-    context: DecompositionContext, *, step: SubtreeStep
+    context: DecompositionContext,
+    *,
+    step: SubtreeStep,
+    satisfied: tuple[NotBlankStr, ...],
 ) -> DecompositionContext:
     """Return *context* one level deeper, under *step*.
 
-    The only place ``current_depth`` and ``address`` are written. The first was
-    declared, read by three strategies and by the planning prompt, and set by
-    nothing, so every decomposition the product ever ran believed it was at the
-    root; the second is written here for the same reason, so a level cannot
-    disagree with its parent about where in the tree it sits.
+    The only place ``current_depth``, ``address`` and ``objective_criteria``
+    are written. The first was declared, read by three strategies and by the
+    planning prompt, and set by nothing, so every decomposition the product
+    ever ran believed it was at the root; the second is written here for the
+    same reason, so a level cannot disagree with its parent about where in the
+    tree it sits.
+
+    The third is what makes the size signal self-terminating rather than
+    merely documented as such: the child is answerable for exactly the criteria
+    its parent unit claimed, so a unit claiming one hands down a vocabulary of
+    one and its own children can claim at most that one.
+
+    The narrowed tuple carries the OBJECTIVE's spelling rather than the claim's.
+    A claim differing only in case or spacing matches, but handing the claim's
+    text down would move the vocabulary one normalisation step per level until
+    a deep claim named nothing at all, which is the defect this descent closes.
 
     Args:
         context: The level being decomposed now.
         step: The unit being descended into: its title and its position among
             its siblings at this level.
+        satisfied: What the unit being descended into claimed to advance. An
+            unmatched claim is not refused here: the parse boundary owns that
+            refusal, and the one strategy that does not pass through it refuses
+            recursion outright.
 
     Returns:
         The context the child level plans under.
@@ -145,6 +196,9 @@ def child_context(
         update={
             "current_depth": context.current_depth + 1,
             "address": (*context.address, step),
+            "objective_criteria": matched_criteria(
+                satisfied, objective=context.objective_criteria
+            ),
         }
     )
 
@@ -286,4 +340,5 @@ __all__ = [
     "flat_budget",
     "resolve_decomposition_bounds",
     "resolve_recursion_budget",
+    "stamp_objective_criteria",
 ]

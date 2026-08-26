@@ -38,6 +38,14 @@ from synthorg.providers.models import (
 
 TOOL_NAME = "submit_decomposition_plan"
 
+#: Heading of the list an item's ``satisfies`` is copied out of.
+#:
+#: One constant because the block and the field that points at it are two
+#: halves of one instruction: a schema naming a heading the message does not
+#: render tells the planner to copy from a list it cannot find, and below the
+#: root there is a second criteria list right there to copy instead.
+OBJECTIVE_CRITERIA_LABEL: Final[str] = "Objective criteria to cover:"
+
 
 #: Every fence tag a decomposition prompt can emit, whichever strategy builds
 #: it. One tuple because the system message's directive and the user message's
@@ -214,10 +222,14 @@ _SUBTASK_PROPERTIES: Final[dict[str, JsonValue]] = {
         "type": "array",
         "items": {"type": "string"},
         "description": (
-            "Which of the objective's acceptance criteria (copied "
-            "verbatim) this item advances, so success-criteria coverage "
-            "can be checked. Omit only for pure-support items that "
-            "advance no objective criterion directly."
+            f"Which entries of '{OBJECTIVE_CRITERIA_LABEL.rstrip(':')}' "
+            "this item advances, copied verbatim from that list, so "
+            "success-criteria coverage can be checked. The plan is "
+            "REJECTED for an entry that is not on it: a criterion this "
+            "item defines for itself belongs in acceptance_criteria, and "
+            "one nobody stated names nothing anything can check. Omit "
+            "only for pure-support items that advance no objective "
+            "criterion directly."
         ),
     },
     "kind": {
@@ -434,9 +446,11 @@ def build_system_message(
         "those of the items it depends on. A criterion naming a file another "
         "item produces later can never pass, and the plan is REJECTED for it: "
         "either declare that dependency or judge the item on what it builds.\n"
-        "- Tag each item with the objective acceptance criteria it advances "
-        "(satisfies, copied verbatim) so coverage is checkable. Between them, "
-        "the items must cover every objective criterion.\n"
+        f"- Tag each item with the entries of "
+        f"'{OBJECTIVE_CRITERIA_LABEL.rstrip(':')}' it advances (satisfies, "
+        "copied verbatim from that list) so coverage is checkable. Between "
+        "them, the items must cover every one of them. A criterion that is "
+        "not on that list is REJECTED, whoever wrote it.\n"
         "- Where the plan hinges on a real choice (stack, architecture), surface "
         "a decision item (kind 'decision') with 2-4 options and a recommended "
         "one, rather than silently deciding; its criterion is that the decision "
@@ -491,6 +505,13 @@ def build_task_message(
     if task.acceptance_criteria:
         inner.append("Acceptance Criteria:")
         inner.extend(f"  - {c.description}" for c in task.acceptance_criteria)
+    # Two criteria lists, and below the root they are different things: the one
+    # above says when THIS unit is done, this one says what the objective the
+    # whole tree serves is still waiting for. Fenced with the rest, because a
+    # criterion is operator-authored at the root and agent-authored below it.
+    if context.objective_criteria:
+        inner.append(OBJECTIVE_CRITERIA_LABEL)
+        inner.extend(f"  - {criterion}" for criterion in context.objective_criteria)
 
     parts = [
         wrap_untrusted(TAG_TASK_DATA, "\n".join(inner)),

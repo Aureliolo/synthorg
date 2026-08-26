@@ -120,14 +120,12 @@ class TestAPlanMustAdvanceItsObjective:
 
         assert "invented criterion" in str(caught.value)
 
-    def test_partial_overlap_is_still_a_plan_worth_having(self) -> None:
-        # FULL coverage is documented and deliberately not enforced: an item
-        # may claim one real criterion alongside its own wording, and a rule
+    def test_partial_coverage_is_still_a_plan_worth_having(self) -> None:
+        # FULL coverage is documented and deliberately not enforced: a plan
+        # may leave a criterion for a later item or a later plan, and a rule
         # the planner keeps re-breaking in front of the retry ladder is how
         # the em-dash style rule once took 18 of 25 planning calls.
-        args = _args(
-            _subtask("alpha", satisfies=["R01 is satisfied", "some support work"]),
-        )
+        args = _args(_subtask("alpha", satisfies=["R01 is satisfied"]))
 
         plan = args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
 
@@ -148,5 +146,85 @@ class TestAPlanMustAdvanceItsObjective:
         args = _args(_subtask("alpha"))
 
         plan = args_to_decomposition_plan(args, "task-1")
+
+        assert len(plan.subtasks) == 1
+
+
+class TestAnItemMayNotInventACriterion:
+    """The narrower half: a claim that names nothing is refused per item.
+
+    Distinct from the plan-level rule above and from full coverage. An item
+    may still claim NOTHING, and a plan may still leave a criterion uncovered.
+    What has no reading at all is a claim naming a sentence the objective never
+    stated: it reads as coverage on every surface that shows the field and is
+    coverage to none of them, which is how 143 claims came to be dropped at
+    scoring time in a recorded sweep rather than refused where they were
+    written.
+    """
+
+    def test_an_item_claiming_one_real_and_one_invented_is_refused(self) -> None:
+        args = _args(
+            _subtask("alpha", satisfies=["R01 is satisfied", "some support work"]),
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        detail = str(caught.value)
+        assert "Build alpha" in detail
+        assert "some support work" in detail
+
+    def test_the_refusal_quotes_the_criteria_to_copy_from(self) -> None:
+        args = _args(
+            _subtask("alpha", satisfies=["R01 is satisfied"]),
+            _subtask("beta", satisfies=["invented"]),
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        assert "R02 is satisfied" in str(caught.value)
+
+    def test_an_item_claiming_nothing_is_still_pure_support(self) -> None:
+        args = _args(
+            _subtask("alpha", satisfies=["R01 is satisfied"]),
+            _subtask("beta", satisfies=[]),
+        )
+
+        plan = args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        assert len(plan.subtasks) == 2
+
+    def test_a_claim_differing_only_in_case_and_spacing_is_accepted(self) -> None:
+        # A model copying a long sentence gets the capital and the spacing
+        # wrong, not the sentence. Refusing that spends a planning attempt on
+        # a character.
+        args = _args(_subtask("alpha", satisfies=["  r01  IS satisfied "]))
+
+        plan = args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        assert len(plan.subtasks) == 1
+
+    def test_both_faults_arrive_in_one_message(self) -> None:
+        # A session that regenerates its whole plan on each rejection cannot
+        # converge while it is told one violation at a time: it resolves the
+        # one it was given and manufactures another.
+        args = _args(
+            _subtask("alpha", satisfies=["invented"]),
+            _subtask("beta", satisfies=["also invented"]),
+        )
+
+        with pytest.raises(DecompositionError) as caught:
+            args_to_decomposition_plan(args, "task-1", (), _CRITERIA)
+
+        detail = str(caught.value)
+        assert "advances none of the objective" in detail
+        assert "Build alpha" in detail
+        assert "Build beta" in detail
+
+    def test_an_objective_with_no_criteria_refuses_nothing(self) -> None:
+        args = _args(_subtask("alpha", satisfies=["invented"]))
+
+        plan = args_to_decomposition_plan(args, "task-1", (), ())
 
         assert len(plan.subtasks) == 1

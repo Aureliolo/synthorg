@@ -330,10 +330,7 @@ class LlmDecompositionStrategy:
                     response,
                     str(task.id),
                     context.available_roles,
-                    tuple(
-                        NotBlankStr(criterion.description)
-                        for criterion in task.acceptance_criteria
-                    ),
+                    context.objective_criteria,
                 )
                 # Width first, because a plan can be both too wide and too
                 # coarse and only one of the two errors carries numbers the

@@ -25,6 +25,7 @@ from synthorg.engine.decomposition.llm_parse import (
     parse_tool_call_response,
 )
 from synthorg.engine.decomposition.llm_prompt import (
+    OBJECTIVE_CRITERIA_LABEL,
     build_decomposition_tool,
     build_retry_message,
     build_system_message,
@@ -67,12 +68,14 @@ def _make_context(
     max_subtasks: int = 10,
     max_depth: int = 3,
     current_depth: int = 0,
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> DecompositionContext:
     """Create a decomposition context."""
     return DecompositionContext(
         max_subtasks=max_subtasks,
         max_depth=max_depth,
         current_depth=current_depth,
+        objective_criteria=objective_criteria,
     )
 
 
@@ -381,6 +384,73 @@ class TestBuildTaskMessage:
         assert "5" in msg.content  # max_subtasks
         assert "1" in msg.content  # current_depth
         assert "3" in msg.content  # max_depth
+
+
+class TestTheCoverageVocabulary:
+    """The list a plan item's ``satisfies`` is copied out of.
+
+    Below the root the criteria a level is answerable for and the criteria of
+    the task in front of it are different lists: the second is the prose the
+    level above wrote about this unit. Rendering only one of them is how a
+    planner came to copy the wrong one.
+    """
+
+    def test_the_criteria_to_cover_are_named_as_their_own_block(self) -> None:
+        task = _make_task(criteria=(AcceptanceCriterion(description="Login works"),))
+        ctx = _make_context(
+            current_depth=1,
+            objective_criteria=(NotBlankStr("R01: A session is issued a token"),),
+        )
+
+        msg = build_task_message(task, ctx)
+
+        assert msg.content is not None
+        assert OBJECTIVE_CRITERIA_LABEL in msg.content
+        assert "R01: A session is issued a token" in msg.content
+
+    def test_the_task_keeps_its_own_criteria_beside_them(self) -> None:
+        task = _make_task(criteria=(AcceptanceCriterion(description="Login works"),))
+        ctx = _make_context(
+            current_depth=1,
+            objective_criteria=(NotBlankStr("R01: A session is issued a token"),),
+        )
+
+        msg = build_task_message(task, ctx)
+
+        assert msg.content is not None
+        assert "Login works" in msg.content
+
+    def test_the_criteria_to_cover_stay_inside_the_fence(self) -> None:
+        """Operator-authored or agent-authored prose, so it is untrusted."""
+        task = _make_task()
+        ctx = _make_context(objective_criteria=(NotBlankStr("R01: A token is issued"),))
+
+        msg = build_task_message(task, ctx)
+
+        assert msg.content is not None
+        opened = msg.content.index("<task-data>")
+        closed = msg.content.index("</task-data>")
+        assert opened < msg.content.index(OBJECTIVE_CRITERIA_LABEL) < closed
+
+    def test_a_level_answerable_for_nothing_renders_no_block(self) -> None:
+        task = _make_task(criteria=(AcceptanceCriterion(description="Login works"),))
+
+        msg = build_task_message(task, _make_context())
+
+        assert msg.content is not None
+        assert OBJECTIVE_CRITERIA_LABEL not in msg.content
+
+    def test_the_schema_points_at_the_block_by_its_own_label(self) -> None:
+        """One label, so the field cannot name a heading nothing renders."""
+        schema = cast("dict[str, object]", build_decomposition_tool().parameters_schema)
+        props = cast("dict[str, object]", schema["properties"])
+        items = cast("dict[str, object]", props["subtasks"])["items"]
+        sub_props = cast(
+            "dict[str, object]", cast("dict[str, object]", items)["properties"]
+        )
+        satisfies = cast("dict[str, object]", sub_props["satisfies"])
+
+        assert OBJECTIVE_CRITERIA_LABEL.rstrip(":") in str(satisfies["description"])
 
 
 class TestBuildTaskMessageInjectionDefense:
