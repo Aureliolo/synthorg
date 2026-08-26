@@ -4,8 +4,7 @@
 ``satisfies`` has two writers: the planner's parse and the item list an
 operator submits. Refusing an invented claim at one of them leaves the other
 free to write a claim that reads as coverage on every surface showing the
-field and is coverage to none of them, which is how a recorded sweep came to
-drop 143 of them at scoring time.
+field and is coverage to none of them, so both boundaries are covered here.
 """
 
 import pytest

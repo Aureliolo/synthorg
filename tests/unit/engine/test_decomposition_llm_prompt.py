@@ -38,6 +38,24 @@ from tests.unit.engine._decomposition_doubles import (
 pytestmark = pytest.mark.unit
 
 
+def _satisfies_schema(*, covers_objective: bool) -> dict[str, object]:
+    """Dig the subtask ``satisfies`` fragment out of the built tool schema.
+
+    Returns:
+        The fragment the planner's provider enforces.
+    """
+    schema = cast(
+        "dict[str, object]",
+        build_decomposition_tool(covers_objective=covers_objective).parameters_schema,
+    )
+    props = cast("dict[str, object]", schema["properties"])
+    items = cast("dict[str, object]", props["subtasks"])["items"]
+    sub_props = cast(
+        "dict[str, object]", cast("dict[str, object]", items)["properties"]
+    )
+    return cast("dict[str, object]", sub_props["satisfies"])
+
+
 class TestBuildDecompositionTool:
     """Tests for build_decomposition_tool."""
 
@@ -320,15 +338,30 @@ class TestTheCoverageVocabulary:
 
     def test_the_schema_points_at_the_block_by_its_own_label(self) -> None:
         """One label, so the field cannot name a heading nothing renders."""
-        schema = cast("dict[str, object]", build_decomposition_tool().parameters_schema)
-        props = cast("dict[str, object]", schema["properties"])
-        items = cast("dict[str, object]", props["subtasks"])["items"]
-        sub_props = cast(
-            "dict[str, object]", cast("dict[str, object]", items)["properties"]
-        )
-        satisfies = cast("dict[str, object]", sub_props["satisfies"])
+        satisfies = _satisfies_schema(covers_objective=True)
 
         assert OBJECTIVE_CRITERIA_LABEL.rstrip(":") in str(satisfies["description"])
+
+    def test_a_level_answerable_for_nothing_names_no_block(self) -> None:
+        """No heading is rendered, so the field must not point at one."""
+        satisfies = _satisfies_schema(covers_objective=False)
+
+        assert OBJECTIVE_CRITERIA_LABEL.rstrip(":") not in str(satisfies["description"])
+        assert "Leave empty" in str(satisfies["description"])
+
+    def test_a_level_answerable_for_nothing_cannot_emit_an_entry(self) -> None:
+        """Absolute in prose is absolute in the schema, as ``required_role`` is."""
+        assert _satisfies_schema(covers_objective=False)["maxItems"] == 0
+
+    def test_a_level_answerable_for_something_caps_no_entries(self) -> None:
+        assert "maxItems" not in _satisfies_schema(covers_objective=True)
+
+    def test_the_system_prompt_states_the_same_rule(self) -> None:
+        message = build_system_message(covers_objective=False)
+
+        assert message.content is not None
+        assert "Leave satisfies empty on every item" in message.content
+        assert OBJECTIVE_CRITERIA_LABEL.rstrip(":") not in message.content
 
 
 class TestBuildTaskMessageInjectionDefense:

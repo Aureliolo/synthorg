@@ -692,8 +692,8 @@ class RecursionDepthReport(BaseModel):
         schema_version: Bumped only as a deliberate breaking change.
         provenance: What the sweep ran against.
         cells: Every run, measured or unavailable.
-        by_achieved_depth: The primary curve, binned on the depth leaves
-            actually sat at.
+        by_achieved_depth: The primary curve, binned on the depth each tree
+            actually reached.
         by_depth_cap: The secondary curve, binned on the cap the run was
             allowed. Kept because the cap is the manipulated variable and a
             reader needs to see how much of the sweep the planner used.

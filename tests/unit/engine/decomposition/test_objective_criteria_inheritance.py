@@ -168,6 +168,15 @@ class TestTheRootStamp:
 
         assert stamped.objective_criteria == ()
 
+    def test_an_explicitly_empty_vocabulary_stays_empty(self) -> None:
+        """Empty is a decision the field gives a meaning to, not an absence."""
+        task = _task("root", criteria=_ROOT_CRITERIA)
+        declared = DecompositionContext(objective_criteria=())
+
+        stamped = stamp_objective_criteria(task, declared)
+
+        assert stamped.objective_criteria == ()
+
 
 class TestTheNarrowing:
     def test_a_child_takes_exactly_what_its_parent_claimed(self) -> None:

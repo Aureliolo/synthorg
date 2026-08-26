@@ -14030,7 +14030,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Which of the plan's objective_criteria this item advances, copied verbatim; both write boundaries refuse an entry naming none of them, and an item may claim nothing
+             * @description Which of the plan's objective_criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; both write boundaries refuse an entry naming none of them, and an item may claim nothing
              * @default []
              */
             readonly satisfies: readonly string[];
@@ -14127,7 +14127,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Which of the plan's objective criteria this item advances, copied verbatim; an entry naming none of them is refused
+             * @description Which of the plan's objective criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; an entry naming none of them is refused
              * @default []
              */
             readonly satisfies: readonly string[];
@@ -14179,7 +14179,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Which of the plan's objective_criteria this item advances, copied verbatim; both write boundaries refuse an entry naming none of them, and an item may claim nothing
+             * @description Which of the plan's objective_criteria this item advances, copied from them and matched ignoring case and surrounding or repeated whitespace; both write boundaries refuse an entry naming none of them, and an item may claim nothing
              * @default []
              */
             readonly satisfies: readonly string[];

@@ -522,6 +522,7 @@ def adopt_repaired_spend(
         cells=len(cells),
     )
     staging = Path(mkdtemp(dir=out_dir, prefix=".adopt-"))
+    swapped = False
     try:
         journal, _ = open_journal(
             staging, SPEC, identity=matrix_identity(stamped), resume=False
@@ -531,7 +532,14 @@ def adopt_repaired_spend(
         journal.close()
         copy2(out_dir / JOURNAL_NAME, raw)
         (staging / JOURNAL_NAME).replace(out_dir / JOURNAL_NAME)
+        swapped = True
     finally:
+        # The raw journal is the sentinel the guard above reads, so a copy that
+        # outlives a swap that never happened says a repair completed when the
+        # ledger is still the untouched one, and every later attempt is refused
+        # on a state nothing produced.
+        if not swapped:
+            raw.unlink(missing_ok=True)
         rmtree(staging, ignore_errors=True)
     logger.info(
         EVALS_RECURSION_SPEND_ADOPTED,

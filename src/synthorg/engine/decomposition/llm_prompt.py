@@ -160,6 +160,11 @@ def _satisfies_field(*, covers_objective: bool) -> dict[str, JsonValue]:
         return {
             "type": "array",
             "items": {"type": "string"},
+            # The same reason `_role_field` puts an `enum` on `required_role`:
+            # the rule is absolute, so a schema-enforcing provider should be
+            # unable to break it rather than merely told not to. Stated in
+            # prose alone, an entry costs the whole planning attempt at parse.
+            "maxItems": 0,
             "description": (
                 "Leave empty. This level is answerable for no objective "
                 "criterion, because the unit it decomposes claimed none, so "

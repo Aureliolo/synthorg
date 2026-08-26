@@ -3,8 +3,8 @@
 
 The property the whole recursion rests on is asserted first: a match answers
 with the OBJECTIVE's text rather than the claim's. Answering with the claim's
-drifts the vocabulary by one normalisation step per level, which is the defect
-this module exists to close.
+drifts the vocabulary by one normalisation step per level, until a level deep
+enough matches nothing the objective ever stated.
 """
 
 import pytest

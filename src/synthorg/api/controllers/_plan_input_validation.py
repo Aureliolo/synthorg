@@ -71,8 +71,8 @@ def reject_unnamed_claims(
     Args:
         items: The revised items, as the operator wrote them.
         objective_criteria: The criteria the plan's objective declares. Empty
-            skips the check, because an objective declaring none has no
-            coverage to claim.
+            is the strictest case rather than an exemption: a plan answerable
+            for no criterion admits only items that claim nothing.
 
     Raises:
         ValidationError: One or more items claim something unstated. Every

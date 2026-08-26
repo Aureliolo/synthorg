@@ -258,7 +258,7 @@ def _curve_sections(report: RecursionDepthReport) -> list[str]:
         "## Specification satisfied by depth reached",
         "",
         "What share of the specification the merged tree satisfies. Binned on",
-        "the depth each leaf actually sat at, not on the cap its run was",
+        "the depth each tree actually reached, not on the cap its run was",
         "allowed: sweeping the cap does not sweep depth. This denominator is",
         "the same for every cell and cannot empty, so every run has a point,",
         "and it says nothing about where the work came from.",

@@ -127,6 +127,41 @@ class TestWhatARescoreRefuses:
         with pytest.raises(RecursionDepthSpendRepairEmptyError):
             _rescore(tmp_path, repair_from=log)
 
+    def test_another_recordings_log_raises(self, tmp_path: Path) -> None:
+        """Parses fully, names nothing here, and would still stamp REPAIRED."""
+        _recorded(tmp_path)
+        other = sid("elsewhere")
+        log = tmp_path / "run.log"
+        log.write_text(
+            f"cost.recorded call_category=productive task_id={other} "
+            f"input_tokens=40 output_tokens=2\n"
+            f"evals.harness.record_journalled cell=d9-ungated-r3/{other}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecursionDepthSpendRepairEmptyError):
+            _rescore(tmp_path, repair_from=log)
+
+    def test_another_recordings_log_leaves_the_column_journalled(
+        self, tmp_path: Path
+    ) -> None:
+        _recorded(tmp_path)
+        other = sid("elsewhere")
+        log = tmp_path / "run.log"
+        log.write_text(
+            f"cost.recorded call_category=productive task_id={other} "
+            f"input_tokens=40 output_tokens=2\n"
+            f"evals.harness.record_journalled cell=d9-ungated-r3/{other}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecursionDepthSpendRepairEmptyError):
+            _rescore(tmp_path, repair_from=log)
+
+        provenance, cells = read_recorded_cells(tmp_path)
+        assert provenance.spend_source is SpendSource.JOURNALLED
+        assert [unit.tokens for cell in cells for unit in cell.units] == [7]
+
 
 class TestWhichCaveatsSurvive:
     """Rebuilt by default, carried only by declaration."""
@@ -315,6 +350,40 @@ class TestTheLedgerIsNeverAbsent:
             adopt_repaired_spend(tmp_path, provenance=provenance, cells=cells)
 
         assert not [p for p in tmp_path.iterdir() if p.name.startswith(".adopt-")]
+
+    def test_a_swap_that_fails_after_the_copy_leaves_no_sentinel(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The raw journal is the guard's sentinel, so a half-done swap is a trap."""
+        _recorded(tmp_path)
+        provenance, cells = read_recorded_cells(tmp_path)
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(Path, "replace", _boom)
+        with pytest.raises(OSError, match="No space left"):
+            adopt_repaired_spend(tmp_path, provenance=provenance, cells=cells)
+        monkeypatch.undo()
+
+        assert not (tmp_path / RAW_JOURNAL_NAME).exists()
+
+    def test_a_repair_can_be_retried_after_a_failed_swap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = _repairable(tmp_path)
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(Path, "replace", _boom)
+        with pytest.raises(OSError, match="No space left"):
+            _rescore(tmp_path, repair_from=log)
+        monkeypatch.undo()
+
+        assert _rescore(tmp_path, repair_from=log) == 0
+        _, cells = read_recorded_cells(tmp_path)
+        assert [unit.tokens for cell in cells for unit in cell.units] == [42]
 
 
 class TestReadingThePreviousReport:

@@ -5,15 +5,15 @@
 so "is this the same criterion" is a string question, and it is asked in four
 places: the two boundaries that WRITE a claim (the planner's parse and the
 operator's plan edit), the recursion that narrows an objective's criteria for
-the level below, and the dashboard's coverage map. Four copies of that answer
-is four chances to disagree, and disagreeing is what a claim naming nothing
-looked like for a whole recorded sweep.
+the level below, and the dashboard's coverage map. One answer for all four,
+because four copies of it are four chances to disagree, and a disagreement
+between any two of them reads exactly like a claim naming nothing.
 
 Matching is forgiving about SPELLING and unforgiving about CONTENT. A model
 copying a ninety-character sentence gets the capital and the spacing wrong, not
-the sentence, and refusing a plan over a trailing space is how a style rule once
-cost 18 of 25 planning calls. Inventing a sentence the objective never states is
-the defect, and nothing here forgives it.
+the sentence, so refusing a plan over a trailing space costs the planning call
+and buys nothing. Inventing a sentence the objective never states is the
+defect, and nothing here forgives it.
 
 :func:`matched_criteria` answers with the OBJECTIVE's own text rather than the
 claim's, which is the property recursion rests on: the level below is handed

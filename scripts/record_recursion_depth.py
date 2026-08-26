@@ -86,7 +86,11 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import SessionLimits, SweepDeps
-from evals.recursion_depth.spend_repair import repair_cell_spend, tokens_by_unit
+from evals.recursion_depth.spend_repair import (
+    placed_units,
+    repair_cell_spend,
+    tokens_by_unit,
+)
 from evals.recursion_depth.staffing import build_roster
 from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
@@ -1144,15 +1148,19 @@ def _repaired(
         The provenance declaring a repaired column, and the repaired cells.
 
     Raises:
-        RecursionDepthSpendRepairEmptyError: The log placed nothing, so the
-            claim would sit beside figures nothing touched, which is the worse
-            outcome of the two.
+        RecursionDepthSpendRepairEmptyError: The log placed nothing on THIS
+            recording, so the claim would sit beside figures nothing touched,
+            which is the worse outcome of the two.
     """
     attributed = tokens_by_unit(log)
-    if not attributed:
+    # Against the recording's own units rather than against the attribution
+    # alone: a log from a DIFFERENT recording parses perfectly and names cells
+    # and units this one does not have, so it rewrites nothing while reading as
+    # a full account of somebody's spend.
+    if not placed_units(cells, attributed):
         msg = (
-            f"{log} attributed no calls to any unit; the log is "
-            f"not this recording's, or its rendering no longer parses"
+            f"{log} attributed no calls to any unit of this recording; the log "
+            f"is not this recording's, or its rendering no longer parses"
         )
         raise RecursionDepthSpendRepairEmptyError(msg)
     return adopt_repaired_spend(

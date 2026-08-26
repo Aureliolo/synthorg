@@ -130,7 +130,8 @@ class PlanItemPayload(BaseModel):
         default=(),
         max_length=_MAX_CRITERIA,
         description="Which of the plan's objective criteria this item "
-        "advances, copied verbatim; an entry naming none of them is refused",
+        "advances, copied from them and matched ignoring case and surrounding "
+        "or repeated whitespace; an entry naming none of them is refused",
     )
 
     @model_validator(mode="after")

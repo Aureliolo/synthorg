@@ -143,6 +143,13 @@ def stamp_objective_criteria(
     takes the objective's own criteria. Every level below descends from the
     stamped value, so one tree is never planned against two vocabularies.
 
+    DECLARED is read off which fields the caller set, not off whether the
+    value is non-empty. An empty vocabulary is a decision the field's own
+    semantics give a meaning to (this level advances no objective criterion
+    and admits no claim at all), so reading it as "unset" hands a caller that
+    asked for exactly that the objective's whole criteria list instead, and
+    every level below then accepts claims the caller meant to refuse.
+
     Args:
         task: The objective being decomposed.
         context: The root context, as the caller built it.
@@ -150,7 +157,7 @@ def stamp_objective_criteria(
     Returns:
         The context with its vocabulary resolved.
     """
-    if context.objective_criteria:
+    if "objective_criteria" in context.model_fields_set:
         return context
     return context.model_copy(
         update={

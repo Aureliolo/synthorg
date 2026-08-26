@@ -583,18 +583,21 @@ class _RefusingStrategy(ScriptedStrategy):
         Raises:
             Exception: The configured failure, for any unscripted task.
         """
-        self.seen_depths.append(context.current_depth)
+        self.seen.append(context)
         plan = self._plans.get(str(task.id))
         if plan is None:
             raise self._failure
         return plan
 
 
-def _service_whose_child_level_fails(failure: Exception) -> DecompositionService:
+def _service_whose_child_level_fails(
+    failure: Exception,
+) -> tuple[DecompositionService, _RefusingStrategy]:
     """Build a service whose root splits and whose child planning fails.
 
     Returns:
-        The service.
+        The service and the strategy behind it, which records every context it
+        was asked at.
     """
     root = _plan(
         str(as_uuid("root")),
@@ -603,10 +606,14 @@ def _service_whose_child_level_fails(failure: Exception) -> DecompositionService
             _subtask("small", artifacts=_MAX_ARTIFACTS),
         ),
     )
-    return DecompositionService(
-        _RefusingStrategy({str(as_uuid("root")): root}, failure=failure),
-        TaskStructureClassifier(),
-        config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
+    strategy = _RefusingStrategy({str(as_uuid("root")): root}, failure=failure)
+    return (
+        DecompositionService(
+            strategy,
+            TaskStructureClassifier(),
+            config_resolver=scripted_resolver(_BOUNDS, recursion_enabled=True),
+        ),
+        strategy,
     )
 
 
@@ -620,7 +627,7 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
     """
 
     async def test_the_level_that_asked_keeps_its_plan(self) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionUnsplittableError("still three deliverables")
         )
 
@@ -634,7 +641,7 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
         }
 
     async def test_the_unit_says_the_planner_declined(self) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionUnsplittableError("still three deliverables")
         )
 
@@ -649,7 +656,7 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
     async def test_a_unit_that_was_never_oversized_still_carries_no_reason(
         self,
     ) -> None:
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionUnsplittableError("still three deliverables")
         )
 
@@ -659,11 +666,25 @@ class TestAPlannerThatCannotComplyEndsOnThePlan:
 
         assert _definition(sid("small"), result).unsplit_reason is None
 
+    async def test_the_oversized_unit_was_actually_taken_to_a_child_level(
+        self,
+    ) -> None:
+        """The decline has to come from a level that ran, not from one skipped."""
+        service, strategy = _service_whose_child_level_fails(
+            DecompositionUnsplittableError("still three deliverables")
+        )
+
+        await service.decompose_task(
+            _task("root"), DecompositionContext(max_depth=_MAX_DEPTH)
+        )
+
+        assert strategy.seen_depths == [0, 1]
+
     async def test_every_other_child_failure_still_surfaces(self) -> None:
         # The type is what keeps the catch above from being a swallow: a
         # transport that kept mangling replies is fixed at the provider, and
         # filing it as a note on one plan item hides an outage.
-        service = _service_whose_child_level_fails(
+        service, _ = _service_whose_child_level_fails(
             DecompositionError("retries exhausted: malformed JSON")
         )
 
