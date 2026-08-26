@@ -172,6 +172,53 @@ class TestGetAggregationCounts:
         assert agg.success_count == 2
         assert agg.failure_count == 1
 
+    async def test_the_success_rate_is_over_the_calls_that_reported_one(
+        self,
+    ) -> None:
+        """A call that reported nothing is not a failure.
+
+        Dividing successes by every call reported them as one: a live run
+        showed 40% beside zero failures over 293 calls, none of which had
+        failed, because 177 had simply not said.
+        """
+        records = (
+            _record(success=True),
+            _record(success=True),
+            _record(success=None),
+            _record(success=None),
+            _record(success=None),
+        )
+        service = _make_service(records)
+
+        agg = await service.get_aggregation()
+
+        assert agg.failure_count == 0
+        assert agg.unreported_count == 3
+        assert agg.success_rate == pytest.approx(1.0)
+
+    async def test_a_failure_moves_the_rate_off_one(self) -> None:
+        # The complement, so the case above cannot pass by always answering 1.
+        records = (
+            _record(success=True),
+            _record(success=False, finish_reason=FinishReason.ERROR),
+            _record(success=None),
+        )
+        service = _make_service(records)
+
+        agg = await service.get_aggregation()
+
+        assert agg.success_rate == pytest.approx(0.5)
+
+    async def test_no_reported_outcome_is_no_rate_rather_than_zero(self) -> None:
+        # Zero would read as "every call failed", which is the opposite of
+        # what an unreported outcome means.
+        service = _make_service((_record(success=None), _record(success=None)))
+
+        agg = await service.get_aggregation()
+
+        assert agg.success_rate is None
+        assert agg.unreported_count == 2
+
     async def test_retry_count_and_rate(self) -> None:
         """retry_count = calls with >=1 retry; retry_rate = retry_count / total."""
         records = (

@@ -22,6 +22,7 @@ type Story = StoryObj<typeof meta>
 const BASE_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
+  persistence_backend: 'sqlite',
   message_bus: true,
   providers: 'ok' as const,
   telemetry: 'disabled' as const,
@@ -74,6 +75,7 @@ export const Down: Story = {
           ...BASE_PAYLOAD,
           status: 'unavailable',
           persistence: false,
+          persistence_backend: 'sqlite',
           message_bus: false,
         }),
       ),

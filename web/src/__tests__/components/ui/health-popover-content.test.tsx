@@ -30,6 +30,7 @@ const HEALTHY_STATES: DerivedSubsystemStates = {
   apiState: 'ok',
   wsState: 'ok',
   persistenceState: 'ok',
+  persistenceDetail: 'sqlite',
   busState: 'ok',
   providersState: 'ok',
   memoryState: 'ok',
@@ -47,6 +48,7 @@ const LOAD_STATE: LoadState = {
   data: {
     status: 'ok',
     persistence: true,
+    persistence_backend: 'sqlite',
     message_bus: true,
     providers: 'ok',
     telemetry: 'disabled',

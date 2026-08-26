@@ -40,6 +40,7 @@ function healthBody(overrides: Partial<HealthStatus> = {}) {
   return successFor<typeof getHealthDetail>({
     status: 'ok',
     persistence: true,
+    persistence_backend: 'sqlite',
     message_bus: true,
     providers: 'ok',
     telemetry: 'disabled',

@@ -6412,8 +6412,30 @@ export type components = {
             readonly retry_rate: number;
             /** @description Calls with success=True. */
             readonly success_count: number;
+            /**
+             * @description Successes over the calls that REPORTED an outcome.
+             *
+             *     Not over every call. A provider that returns no outcome flag leaves
+             *     ``success`` unset, and dividing by the total then reports those as
+             *     failures: a live run showed "40% success rate" beside "0 failures"
+             *     over 293 calls, none of which had failed, because 177 of them had
+             *     simply not said. The same page's own per-purpose table, computed over
+             *     the judged calls, read 100% on every row.
+             *
+             *     Returns:
+             *         The rate in ``[0, 1]``, or ``None`` when nothing reported an
+             *         outcome, which is a different fact from a rate of zero.
+             */
+            readonly success_rate: number | null;
             /** @description Total LLM calls recorded. */
             readonly total_calls: number;
+            /**
+             * @description Calls that recorded no outcome either way.
+             *
+             *     Returns:
+             *         ``total_calls`` less the calls that reported one.
+             */
+            readonly unreported_count: number;
         };
         /** AnomalyDetectionResult */
         readonly AnomalyDetectionResult: {
@@ -15361,6 +15383,8 @@ export type components = {
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
             readonly persistence: boolean | null;
+            /** @description Name of the connected persistence backend */
+            readonly persistence_backend: string | null;
             /**
              * @description Worst provider verdict: ok/degraded/down (None if unwired)
              * @enum {string|null}

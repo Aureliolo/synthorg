@@ -34,6 +34,7 @@ export const healthHandlers = [
       successFor<typeof getHealthDetail>({
         status: 'ok',
         persistence: true,
+        persistence_backend: 'sqlite',
         message_bus: true,
         providers: 'ok',
         telemetry: 'disabled',

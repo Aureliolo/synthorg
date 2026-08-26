@@ -54,6 +54,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_HEALTH_CHECK
+from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.health import ProviderReachability
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -139,6 +140,12 @@ class ReadinessStatus(BaseModel):
             endpoint, so gating readiness on it would drain them all at
             once and take down the dashboard an operator repoints a
             broken provider from.
+        persistence_backend: Which backend is actually CONNECTED, read off
+            the assembled backend rather than the config, because the two
+            can differ and the operator needs to know which one is serving.
+            The dashboard card named SQLite unconditionally, so a Postgres
+            deployment was told the wrong backend and could not learn the
+            right one from the product at all.
         telemetry: Project telemetry delivery state.
         backup: Backup coverage for this boot, and the cause when there is
             none. Deliberately excluded from the ``status`` roll-up: a
@@ -154,6 +161,10 @@ class ReadinessStatus(BaseModel):
     status: ReadinessOutcome = Field(description="Overall readiness outcome")
     persistence: bool | None = Field(
         description="Persistence backend healthy (None if not configured)",
+    )
+    persistence_backend: str | None = Field(
+        default=None,
+        description="Name of the connected persistence backend",
     )
     message_bus: bool | None = Field(
         description="Message bus running (None if not configured)",
@@ -176,6 +187,20 @@ class ReadinessStatus(BaseModel):
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
+
+
+def _connected_backend_name(app_state: AppState) -> str | None:
+    """Name the persistence backend this process actually connected to.
+
+    Read off the assembled backend rather than the config: the two can
+    disagree (the backup factory logs exactly that case), and the operator
+    asking which store their data is in wants the one that is serving.
+
+    Returns:
+        The backend's discriminator, or ``None`` before one is connected.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return None if backend is None else backend.kind.value
 
 
 def _unavailable_status(app_state: AppState) -> ReadinessStatus:
@@ -203,6 +228,9 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
     return ReadinessStatus(
         status=ReadinessOutcome.UNAVAILABLE,
         persistence=None,
+        # Which backend is connected is a wiring fact the failed probe did
+        # not touch, so it stays reportable even when its health is unknown.
+        persistence_backend=_connected_backend_name(app_state),
         message_bus=None,
         providers=None,
         telemetry=resolve_telemetry_status(app_state),
@@ -467,6 +495,7 @@ def _readiness_from_probes(
     return ReadinessStatus(
         status=outcome,
         persistence=persistence_ok,
+        persistence_backend=_connected_backend_name(app_state),
         message_bus=bus_ok,
         providers=providers_reachability,
         telemetry=telemetry_status,

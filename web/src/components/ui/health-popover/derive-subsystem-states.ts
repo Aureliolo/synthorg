@@ -58,6 +58,11 @@ export interface DerivedSubsystemStates {
   readonly apiState: SubsystemState
   readonly wsState: SubsystemState
   readonly persistenceState: SubsystemState
+  /**
+   * Which backend is actually connected, so the card names it instead of
+   * naming SQLite whatever a deployment runs. Undefined before one is.
+   */
+  readonly persistenceDetail: string | undefined
   readonly busState: SubsystemState
   readonly providersState: SubsystemState
   readonly memoryState: SubsystemState
@@ -218,6 +223,7 @@ type BackendStates = Pick<
   DerivedSubsystemStates,
   | 'apiState'
   | 'persistenceState'
+  | 'persistenceDetail'
   | 'busState'
   | 'providersState'
   | 'memoryState'
@@ -245,6 +251,7 @@ function _settledStates(snapshot: HealthSnapshot): BackendStates {
   return {
     apiState: 'ok',
     persistenceState: _probeState(health.persistence),
+    persistenceDetail: health.persistence_backend ?? undefined,
     busState: _probeState(health.message_bus),
     providersState: _providersState(health.providers),
     memoryState: _MEMORY_STATES[health.memory.state],
@@ -275,6 +282,7 @@ function _backendStatesOf(
     // exactly what it reports.
     apiState: loadState.state === 'error' ? 'down' : pending,
     persistenceState: pending,
+    persistenceDetail: undefined,
     busState: pending,
     providersState: pending,
     memoryState: pending,
