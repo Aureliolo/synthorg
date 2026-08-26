@@ -62,7 +62,7 @@ def _frame(
 def _live(
     *,
     agent: str,
-    task_id: str,
+    task_id: str | None,
     turns: int,
     cost: float,
     last_active: datetime,
@@ -71,8 +71,8 @@ def _live(
 ) -> AgentRuntimeState:
     return AgentRuntimeState(
         agent_id=NotBlankStr(agent),
-        execution_id=NotBlankStr(f"live-exec-{task_id}"),
-        task_id=NotBlankStr(task_id),
+        execution_id=NotBlankStr(f"live-exec-{task_id or agent}"),
+        task_id=None if task_id is None else NotBlankStr(task_id),
         status=status,
         turn_count=turns,
         accumulated_cost=cost,
@@ -86,11 +86,19 @@ def _service(
     tasks: tuple[Task, ...],
     repo: FakeFlightRecorderFrameRepository,
     live: AgentRuntimeState | None = None,
+    running: tuple[AgentRuntimeState, ...] = (),
+    get_task: Task | None = None,
 ) -> CockpitService:
     task_engine = mock_of[TaskEngine](
         list_tasks=AsyncMock(side_effect=[(tasks, len(tasks)), ((), 0)]),
+        get_task=AsyncMock(return_value=get_task),
     )
-    states = mock_of[AgentStateRepository](get=AsyncMock(return_value=live))
+    states = mock_of[AgentStateRepository](
+        get=AsyncMock(return_value=live),
+        # The snapshot's second pass: every agent holding a live row, which is
+        # what catches work whose task the status scan above cannot see.
+        get_active=AsyncMock(return_value=running),
+    )
     return CockpitService(
         task_engine,
         repo,
@@ -566,3 +574,155 @@ class TestRunawaySpendIsSeenWhileItIsHappening:
         )
         assert snapshot.agents[0].cost == pytest.approx(1.6)
         assert snapshot.agents[0].is_runaway is True
+
+
+class TestRunsTheTaskScanCannotSee:
+    """Work in flight that no ``IN_PROGRESS`` or ``BLOCKED`` task names.
+
+    The scan is keyed on task status, so it answers "which tasks are being
+    worked" and the snapshot then presents that as "what is running". A
+    decomposition planning session is the counter-example that shipped: it runs
+    as a staffed roster agent for turns at a time against a real provider bill
+    and moves no task, because the objective it is planning stays at
+    ``CREATED`` until dispatch. A live run planned for 54 minutes under the
+    heading "Nothing is running".
+    """
+
+    async def test_a_run_with_no_task_still_appears(self) -> None:
+        service = _service(
+            (),
+            FakeFlightRecorderFrameRepository(),
+            running=(
+                _live(
+                    agent="planner",
+                    task_id=None,
+                    turns=3,
+                    cost=0.42,
+                    last_active=_NOW - timedelta(seconds=30),
+                ),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        assert snapshot.active_count == 1
+        activity = snapshot.agents[0]
+        assert activity.agent_id == "planner"
+        assert activity.task_id is None
+        assert activity.status is None
+        assert activity.turn_count == 3
+        assert activity.cost == pytest.approx(0.42)
+
+    async def test_a_run_whose_task_the_scan_missed_is_named(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        # A live row naming a task the status scan did not return still says
+        # WHAT is being worked, not only who: the title is read for the row.
+        assigned = sample_task_with_criteria.model_copy(
+            update={"id": NotBlankStr("t9"), "title": NotBlankStr("Ship the thing")},
+        )
+        service = _service(
+            (),
+            FakeFlightRecorderFrameRepository(),
+            running=(
+                _live(
+                    agent="carol",
+                    task_id="t9",
+                    turns=1,
+                    cost=0.1,
+                    last_active=_NOW - timedelta(seconds=5),
+                ),
+            ),
+            get_task=assigned,
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        assert snapshot.agents[0].task_title == "Ship the thing"
+        assert snapshot.agents[0].task_id == "t9"
+
+    async def test_an_agent_the_scan_already_covered_is_not_duplicated(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        # The complement: without this the same agent would appear twice, once
+        # per source, and the active count would double-report the org.
+        repo = FakeFlightRecorderFrameRepository()
+        await repo.append(
+            _frame(task_id="t1", turn=2, cost=0.4, ts=_NOW - timedelta(minutes=1)),
+        )
+        task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=0.0)
+        service = _service(
+            (task,),
+            repo,
+            running=(
+                _live(
+                    agent="alice",
+                    task_id="t1",
+                    turns=2,
+                    cost=0.4,
+                    last_active=_NOW - timedelta(minutes=1),
+                ),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        assert snapshot.active_count == 1
+
+    async def test_a_taskless_run_is_never_flagged_runaway(self) -> None:
+        # Runaway compares spend against the TASK's budget. With no task there
+        # is no bound, and inventing one would mark healthy work as
+        # overspending on whatever default was chosen.
+        service = _service(
+            (),
+            FakeFlightRecorderFrameRepository(),
+            running=(
+                _live(
+                    agent="planner",
+                    task_id=None,
+                    turns=9,
+                    cost=999.0,
+                    last_active=_NOW - timedelta(seconds=1),
+                ),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        assert snapshot.agents[0].is_runaway is False
+        assert snapshot.runaway_agents == ()
+
+    async def test_an_idle_taskless_run_is_still_flagged_stuck(self) -> None:
+        service = _service(
+            (),
+            FakeFlightRecorderFrameRepository(),
+            running=(
+                _live(
+                    agent="planner",
+                    task_id=None,
+                    turns=1,
+                    cost=0.1,
+                    last_active=_NOW - timedelta(minutes=45),
+                ),
+            ),
+        )
+
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
+
+        assert snapshot.agents[0].is_stuck is True
+        assert snapshot.stuck_agents == ("planner",)

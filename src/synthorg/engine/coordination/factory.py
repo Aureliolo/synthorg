@@ -4,10 +4,9 @@ Constructs the decomposition, routing, execution, and workspace
 dependency tree from config and runtime services.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.decomposition_strategy_factory import (
     build_decomposition_strategy,
@@ -16,13 +15,9 @@ from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
-)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
-from synthorg.engine.loop_protocol import ShutdownChecker
+from synthorg.engine.decomposition.strategy_deps import DecompositionStrategyDeps
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing.service import TaskRoutingService
@@ -31,13 +26,11 @@ from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_backend import GitBackend
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
-from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
 )
-from synthorg.providers.protocol import CompletionProvider, ProviderSelector
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     # config.schema would cycle here (it pulls api -> engine); the concrete
@@ -186,13 +179,8 @@ def build_coordinator(  # noqa: PLR0913
     task_assignment_config: TaskAssignmentConfig,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
-    provider_selector: ProviderSelector | None = None,
     decomposition_strategy: str = "agent-session",
-    decomposition_tool_provider: DecompositionToolProvider | None = None,
-    decomposition_cost_tracker: CostTrackerProtocol | None = None,
-    agent_session_config: AgentSessionDecompositionConfig | None = None,
-    planning_memory: MemoryInjectionStrategy | None = None,
-    decomposition_config_resolver: ConfigResolverProtocol | None = None,
+    decomposition: DecompositionStrategyDeps | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
@@ -234,18 +222,16 @@ def build_coordinator(  # noqa: PLR0913
             fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
-        provider_selector: Resolves the completion client for an owner's own
-            ``identity.model.provider``; required only for the ``agent-session``
-            strategy when *provider* is given, so the owner-run session
-            dispatches on the owner's bound provider rather than the boot
-            default. The single-shot ``llm`` strategy needs no selector.
         decomposition_strategy: Which decomposer to build -- ``"agent-session"``
             (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
             from ``coordination.decomposition_strategy`` at boot.
-        decomposition_tool_provider: Optional builder of the read/research
-            tools granted to the agent-session planner; ``None`` runs the
-            session with only its terminal submit tool. Any non-read-only
-            tool the provider returns is dropped before the session runs.
+        decomposition: Everything the chosen strategy is wired with beyond its
+            model: the owner's provider selector, the planning tool provider,
+            the cost tracker, the session config, the memory digest, the
+            settings resolver and the live agent-state repository. See
+            :class:`DecompositionStrategyDeps`. ``None`` builds the strategy on
+            its own defaults, which the ``agent-session`` path refuses because
+            it has no provider selector to dispatch each owner on.
         decomposition_cost_tracker: Optional cost tracker; when wired, the
             agent-session planner records its provider spend against it under
             the owner + objective task.
@@ -296,30 +282,33 @@ def build_coordinator(  # noqa: PLR0913
         A fully constructed ``MultiAgentCoordinator``.
     """
     classifier = TaskStructureClassifier()
+    decomposition = decomposition or DecompositionStrategyDeps()
     # The agent-session planner halts at a turn boundary when a graceful
     # shutdown begins; the coordinator already holds the manager for the
-    # executor, so derive the loop's checker from it here.
-    session_shutdown_checker: ShutdownChecker | None = (
-        shutdown_manager.is_shutting_down if shutdown_manager is not None else None
-    )
+    # executor, so the loop's checker is derived here rather than asked of the
+    # caller, and it replaces whatever the deps arrived carrying.
     strategy = build_decomposition_strategy(
         provider,
         decomposition_model,
         strategy_name=decomposition_strategy,
-        tool_provider=decomposition_tool_provider,
-        provider_selector=provider_selector,
-        cost_tracker=decomposition_cost_tracker,
-        shutdown_checker=session_shutdown_checker,
-        agent_session_config=agent_session_config,
-        planning_memory=planning_memory,
-        config_resolver=decomposition_config_resolver,
+        deps=replace(
+            decomposition,
+            shutdown_checker=(
+                shutdown_manager.is_shutting_down
+                if shutdown_manager is not None
+                else None
+            ),
+        ),
     )
     # The workspace service doubles as the planner's inventory: it is the only
     # thing here that knows where a project's files actually are, and a plan
     # written without that fact is written against whatever org-wide recall
     # happens to surface, which spans every project the org has ever run.
     decomposition_service = DecompositionService(
-        strategy, classifier, workspace_inventory=project_workspace_service
+        strategy,
+        classifier,
+        workspace_inventory=project_workspace_service,
+        progress_reporter=decomposition.progress_reporter,
     )
 
     routing = routing or CoordinatorRoutingDeps()

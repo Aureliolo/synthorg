@@ -18,12 +18,15 @@ import pytest
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
 )
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.errors import (
     DecompositionStagnationError,
     DecompositionTurnBudgetError,
@@ -165,10 +168,12 @@ def _strategy(
     return AgentSessionDecompositionStrategy(
         provider_selector=lambda _identity: _repeating_provider(),
         fallback=_UnusedFallback(),
-        tool_provider=_EmptyToolProvider(),
-        config=AgentSessionDecompositionConfig(
-            max_turns=_MAX_TURNS,
-            stagnation=stagnation,
+        deps=DecompositionStrategyDeps(
+            tool_provider=_EmptyToolProvider(),
+            agent_session_config=AgentSessionDecompositionConfig(
+                max_turns=_MAX_TURNS,
+                stagnation=stagnation,
+            ),
         ),
     )
 

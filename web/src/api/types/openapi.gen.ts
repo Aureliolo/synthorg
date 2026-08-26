@@ -6083,9 +6083,13 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_active: string | null;
-            readonly status: components["schemas"]["TaskStatus"];
-            /** @description Task being worked */
-            readonly task_id: string;
+            /**
+             * @description Current task status; ``None`` when the run drives no task
+             * @enum {string|null}
+             */
+            readonly status: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
+            /** @description Task being worked, or ``None`` for a run that is not a task. A decomposition planning session runs as a staffed agent against a real bill and drives no task row: the objective it is planning stays at CREATED until dispatch */
+            readonly task_id: string | null;
             /** @description Title of the task being worked */
             readonly task_title: string | null;
             /** @description Turns recorded so far */
@@ -10427,6 +10431,22 @@ export type components = {
             readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
             readonly task_structure: components["schemas"]["TaskStructure"];
         };
+        /** DecompositionProgress */
+        readonly DecompositionProgress: {
+            /** @description Deepest level reached, zero-based */
+            readonly deepest_level: number;
+            /** @description Planning sessions allowed */
+            readonly sessions_limit: number;
+            /** @description Planning sessions consumed */
+            readonly sessions_spent: number;
+            /** @description Subtasks written so far */
+            readonly units_planned: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+        };
         /** DecompositionResult */
         readonly DecompositionResult: {
             /**
@@ -12743,7 +12763,7 @@ export type components = {
         readonly OrgRole: "owner" | "department_admin" | "editor" | "viewer";
         /** OverviewMetrics */
         readonly OverviewMetrics: {
-            /** @description Agents currently executing an in-progress task */
+            /** @description Agents working right now: holding an in-progress task, or running a live session that drives no task (a planning session does) */
             readonly active_agents_count: number;
             /**
              * @description Daily roster size for the last 7 days
@@ -12762,7 +12782,7 @@ export type components = {
              * @default USD
              */
             readonly currency: string;
-            /** @description Employed agents not currently executing a task */
+            /** @description Employed agents not working right now */
             readonly idle_agents_count: number;
             /**
              * @description Daily approval requests raised for the last 7 days
@@ -14334,6 +14354,8 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
+            /** @description How far the decomposition writing this plan has got, so a PLANNING plan with no items can say whether it is working; None before the first node and on a plan nothing is decomposing */
+            readonly decomposition_progress: components["schemas"]["DecompositionProgress"] | null;
             /** @description Why decomposition failed, set when status is FAILED so the review surface shows a visible reason instead of an empty plan */
             readonly failure_reason: string | null;
             /**

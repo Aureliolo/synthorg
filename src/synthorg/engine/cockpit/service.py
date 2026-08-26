@@ -111,7 +111,15 @@ class AgentActivity(BaseModel):
         description="Display name of the working agent, resolved at the read"
         " boundary; ``None`` when the roster does not cover them",
     )
-    task_id: NotBlankStr = Field(description="Task being worked")
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Task being worked, or ``None`` for a run that is not a task. A"
+            " decomposition planning session runs as a staffed agent against a"
+            " real bill and drives no task row: the objective it is planning"
+            " stays at CREATED until dispatch"
+        ),
+    )
     task_title: NotBlankStr | None = Field(
         default=None,
         description="Title of the task being worked",
@@ -120,7 +128,10 @@ class AgentActivity(BaseModel):
         default=None,
         description="Execution id of the latest recorded turn, when any",
     )
-    status: TaskStatus = Field(description="Current task status")
+    status: TaskStatus | None = Field(
+        default=None,
+        description="Current task status; ``None`` when the run drives no task",
+    )
     turn_count: int = Field(ge=0, description="Turns recorded so far")
     cost: float = Field(ge=0.0, description="Accumulated cost for the task")
     last_active: AwareDatetime | None = Field(
@@ -221,6 +232,13 @@ class CockpitService:
                 cause = _snapshot_cause(eg, status=status)
                 raise cause from eg
 
+        activities.extend(
+            await self._runs_without_an_active_task(
+                covered={a.agent_id for a in activities},
+                stuck_cutoff=stuck_cutoff,
+            )
+        )
+
         stuck = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_stuck)
         runaway = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_runaway)
         snapshot = LiveActivitySnapshot(
@@ -242,6 +260,74 @@ class CockpitService:
         for agent_id in runaway:
             logger.warning(COCKPIT_RUNAWAY_DETECTED, agent_id=agent_id)
         return snapshot
+
+    async def _runs_without_an_active_task(
+        self,
+        *,
+        covered: set[str],
+        stuck_cutoff: datetime,
+    ) -> tuple[AgentActivity, ...]:
+        """Build rows for live runs the task scan above cannot reach.
+
+        The scan is keyed on task status, so it sees an agent only while a task
+        it holds reads ``IN_PROGRESS`` or ``BLOCKED``. Two kinds of real work
+        fall outside that and both were invisible: a decomposition planning
+        session, which runs as a staffed agent for turns at a time and drives
+        no task row at all (the objective stays ``CREATED`` until dispatch),
+        and a dispatch whose task has not reached ``IN_PROGRESS`` yet. A live
+        run showed the org planning for 54 minutes under the heading "Nothing
+        is running".
+
+        The live row is the whole answer for these: it carries the turn count,
+        the accumulated spend and the last activity, written per turn. Where it
+        names a task, the title is read so the row says what is being worked
+        rather than only who is working; a task that cannot be read is left
+        unnamed rather than costing the row.
+
+        Runaway is not flagged here. It compares spend against the TASK's
+        budget, and these rows either have no task or have one the scan did not
+        return, so there is no bound to compare to and a fabricated one would
+        mark healthy work as overspending.
+
+        Returns:
+            One row per live run whose agent is not already in *covered*.
+        """
+        if self._agent_states is None:
+            return ()
+        states = await self._agent_states.get_active()
+        rows: list[AgentActivity] = []
+        for state in states:
+            if state.agent_id in covered:
+                continue
+            task = await self._task_for(state.task_id)
+            rows.append(
+                AgentActivity(
+                    agent_id=NotBlankStr(state.agent_id),
+                    task_id=(
+                        None if state.task_id is None else NotBlankStr(state.task_id)
+                    ),
+                    task_title=None if task is None else NotBlankStr(task.title),
+                    execution_id=NotBlankStr(state.execution_id),
+                    status=None if task is None else task.status,
+                    turn_count=state.turn_count,
+                    cost=state.accumulated_cost,
+                    last_active=state.last_activity_at,
+                    is_stuck=state.last_activity_at < stuck_cutoff,
+                    is_runaway=False,
+                )
+            )
+        return tuple(rows)
+
+    async def _task_for(self, task_id: str | None) -> Task | None:
+        """Read the task a live row names, or ``None`` when it names none.
+
+        Returns:
+            The task, or ``None`` when the row carries no task id or the read
+            found nothing.
+        """
+        if task_id is None:
+            return None
+        return await self._task_engine.get_task(task_id)
 
     async def _recorded_cost_for(self, task: Task, execution_id: str | None) -> float:
         """Return what the frame store already holds for one execution.

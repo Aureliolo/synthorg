@@ -15,7 +15,12 @@ from synthorg.core.persistence_errors import (
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
+from synthorg.core.plan import (
+    DecompositionProgress,
+    Plan,
+    PlanItem,
+    PlanVersionSnapshot,
+)
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
@@ -46,7 +51,7 @@ _COLUMNS = (
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
     "replan_generation, version, created_at, updated_at, planning_strategy, "
-    "review_absent_reason"
+    "review_absent_reason, decomposition_progress"
 )
 _COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
 # Derive placeholders + SET clauses from the single column list so the arity can
@@ -83,6 +88,10 @@ def _row_to_plan(row: DictRow) -> Plan:
     row["version_history"] = tuple(
         PlanVersionSnapshot.model_validate(snapshot)
         for snapshot in (row["version_history"] or [])
+    )
+    progress = row["decomposition_progress"]
+    row["decomposition_progress"] = (
+        DecompositionProgress.model_validate(progress) if progress else None
     )
     row["created_at"] = coerce_row_timestamp(row["created_at"])
     row["updated_at"] = coerce_row_timestamp(row["updated_at"])
@@ -130,6 +139,11 @@ class PostgresPlanRepository:
             plan.updated_at,
             plan.planning_strategy,
             plan.review_absent_reason,
+            (
+                Jsonb(plan.decomposition_progress.model_dump(mode="json"))
+                if plan.decomposition_progress
+                else None
+            ),
         )
 
     async def create(self, plan: Plan) -> None:

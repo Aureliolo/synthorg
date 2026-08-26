@@ -14,21 +14,22 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Final, override
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.session_budget import (
-    SessionCeilings,
-    build_session_budget_checker,
-)
-from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_state_recording import (
+    mark_agent_idle,
+    mark_agent_running,
+)
 from synthorg.engine.context import AgentContext
+from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.decomposition._session_exhaustion import (
     raise_session_exhaustion,
     ran_without_submitting,
@@ -49,7 +50,10 @@ from synthorg.engine.decomposition.context import (
 )
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionSubtaskLimitError,
@@ -58,12 +62,9 @@ from synthorg.engine.errors import (
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
-    ShutdownChecker,
 )
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.stagnation.factory import create_stagnation_detector
-from synthorg.engine.stagnation.models import StagnationDetectionConfig
-from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import (
     get_logger,
@@ -122,59 +123,6 @@ _READ_ONLY_ACTION_TYPES: Final[frozenset[ActionType]] = frozenset(
 )
 
 
-#: Fallback for a config built without resolved settings; the operator-facing
-#: default lives on ``coordination.decomposition_agent_cost_ceiling``.
-_DEFAULT_CEILINGS: Final[SessionCeilings] = SessionCeilings(
-    cost_ceiling=2.0, token_ceiling=0
-)
-
-
-class AgentSessionDecompositionConfig(BaseModel):
-    """Configuration for the agent-session decomposition strategy.
-
-    Attributes:
-        max_turns: Hard turn cap for the planning session.
-        temperature: Sampling temperature for the planning turns.
-        ceilings: Both spend bounds on the planning session. One field, not
-            two, so a wiring path that resolves the money bound cannot leave
-            the token bound at its default in silence: money measures nothing
-            against a provider that bills by flat subscription, where cost
-            never rises.
-        stagnation: Which intra-loop stagnation detector the planning session
-            runs. It travels HERE, with the other session bounds, rather than
-            as a loose constructor argument, for the reason ``ceilings`` gives:
-            a wiring path that resolves some of them cannot leave the rest at
-            their defaults in silence. The deployment's
-            ``config.stagnation`` remains the one owner of the VALUE; this is a
-            second reader of it, because the work loop and the planning loop
-            are different loops and each needs its own detector instance.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    max_turns: int = Field(default=12, ge=1, le=50, description="Planning turn cap")
-    temperature: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature",
-    )
-    ceilings: SessionCeilings = Field(
-        default=_DEFAULT_CEILINGS,
-        description="Per-session money + token bounds",
-    )
-    memory_digest_budget: int = Field(
-        default=1000,
-        ge=0,
-        description="Token cap for the org/retro memory digest injected into "
-        "the planning brief; 0 injects nothing (the tool grant still applies)",
-    )
-    stagnation: StagnationDetectionConfig = Field(
-        default_factory=StagnationDetectionConfig,
-        description="Intra-loop stagnation detector for the planning session",
-    )
-
-
 class AgentSessionDecompositionStrategy(DecompositionStrategy):
     """Decomposition strategy that plans via a bounded owner-run agent session.
 
@@ -185,6 +133,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     """
 
     __slots__ = (
+        "_agent_states",
         "_config",
         "_cost_tracker",
         "_fallback",
@@ -199,13 +148,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         *,
         provider_selector: ProviderSelector,
         fallback: DecompositionStrategy,
-        tool_provider: DecompositionToolProvider | None = None,
-        config: AgentSessionDecompositionConfig | None = None,
-        cost_tracker: CostTrackerProtocol | None = None,
-        shutdown_checker: ShutdownChecker | None = None,
-        planning_memory: MemoryInjectionStrategy | None = None,
+        deps: DecompositionStrategyDeps | None = None,
     ) -> None:
         """Initialise the agent-session decomposition strategy.
+
+        *provider_selector* stays a parameter of its own rather than being read
+        off *deps*, where it is optional: the session dispatches each owner on
+        its own bound pair and has no shared default to degrade to, so the
+        requirement belongs in the type rather than in a runtime check.
 
         Args:
             provider_selector: Resolves the completion client for the owner's
@@ -214,29 +164,21 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             fallback: Single-shot strategy used when no owner is staffed, the
                 owner's provider is unresolvable, or the session submits no
                 usable plan (a greenlight is never blocked on the session).
-            tool_provider: Optional builder of the owner's read/research
-                planning tools; ``None`` runs the session with only the
-                terminal submit tool. Any non-read-only tool it returns is
-                dropped before the session runs.
-            config: Optional session configuration (turn cap, temperature,
-                cost ceiling). Uses defaults when omitted.
-            cost_tracker: Optional cost tracker; when wired the session's
-                provider calls record against it under the owner + task.
-            shutdown_checker: Optional callback returning ``True`` when a
-                graceful shutdown is in progress; the planning loop halts at
-                the next turn boundary when it fires.
-            planning_memory: Optional injection strategy that pre-seeds a
-                compact org-playbook / past-retro digest into the planning
-                brief, so the plan carries prior learnings even if the owner
-                never calls the recall tool. ``None`` skips the digest.
+            deps: The session's config and optional collaborators: its
+                planning tools, cost tracker, shutdown checker, memory digest
+                and live agent-state repository. ``None`` runs on the defaults.
         """
+        resolved = deps or DecompositionStrategyDeps()
         self._provider_selector = provider_selector
         self._fallback = fallback
-        self._tool_provider = tool_provider
-        self._config = config or AgentSessionDecompositionConfig()
-        self._cost_tracker = cost_tracker
-        self._shutdown_checker = shutdown_checker
-        self._planning_memory = planning_memory
+        self._tool_provider = resolved.tool_provider
+        self._config = (
+            resolved.agent_session_config or AgentSessionDecompositionConfig()
+        )
+        self._cost_tracker = resolved.cost_tracker
+        self._shutdown_checker = resolved.shutdown_checker
+        self._planning_memory = resolved.planning_memory
+        self._agent_states = resolved.agent_states
 
     @override
     def get_strategy_name(self) -> str:
@@ -494,15 +436,61 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             granted_tools=len(granted),
             max_turns=self._config.max_turns,
         )
-        result = await self._run_segment(task, owner, ctx, invoker, provider)
-        resumes = 0
-        while capture.plan is None:
-            resumed = self._resume_unsubmitted(task, owner, result, resumes)
-            if resumed is None:
-                return result
-            resumes += 1
-            result = await self._run_segment(task, owner, resumed, invoker, provider)
-        return result
+        async with self._recorded_as_running(ctx):
+            result = await self._run_segment(task, owner, ctx, invoker, provider)
+            resumes = 0
+            while capture.plan is None:
+                resumed = self._resume_unsubmitted(task, owner, result, resumes)
+                if resumed is None:
+                    return result
+                resumes += 1
+                result = await self._run_segment(
+                    task, owner, resumed, invoker, provider
+                )
+            return result
+
+    @asynccontextmanager
+    async def _recorded_as_running(self, ctx: AgentContext) -> AsyncIterator[None]:
+        """Hold the owner's live agent-state row for the planning session.
+
+        A planning session is the org working: it runs as a staffed roster
+        agent, for turns, against a real provider bill. Every surface that
+        answers "is the org working" reads the live rows, and this session
+        builds its loop directly rather than through
+        :class:`~synthorg.engine.agent_engine.AgentEngine`, so it was the one
+        agent run that claimed no row. A live run spent 54 minutes planning
+        while the header read ``0 active | 12 idle``, mission control read
+        ``ACTIVE AGENTS 0`` and the pulse panel read "Nothing is running",
+        beside a Live Activity feed listing the planner's API calls.
+
+        The clear is in a ``finally`` for the reason the engine's is: a session
+        that died still has to stop reading as busy, or a row left EXECUTING
+        makes the owner look occupied for the life of the process. It names the
+        execution so a sibling planning session's row is left alone, which is
+        the ordinary case here because recursion runs a session per subtree and
+        one owner can hold several.
+
+        Yields:
+            Nothing; the row is the effect.
+        """
+        if self._agent_states is None:
+            yield
+            return
+        currency = resolve_tracker_currency(self._cost_tracker)
+        await mark_agent_running(
+            repository_provider=self._agent_states,
+            context=ctx,
+            currency=currency,
+        )
+        try:
+            yield
+        finally:
+            await mark_agent_idle(
+                repository_provider=self._agent_states,
+                agent_id=str(ctx.identity.id),
+                execution_id=ctx.execution_id,
+                currency=currency,
+            )
 
     def _resume_unsubmitted(
         self,

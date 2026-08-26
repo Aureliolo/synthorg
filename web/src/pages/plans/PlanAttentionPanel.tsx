@@ -1,6 +1,6 @@
 import { AlertTriangle, ChevronRight, FileQuestion, ShieldCheck } from 'lucide-react'
 
-import type { PlanItem, PlanStatus } from '@/api/types/plans'
+import type { DecompositionProgress, PlanItem, PlanStatus } from '@/api/types/plans'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -63,19 +63,57 @@ interface EmptyCopy {
 }
 
 /**
+ * Say how far the decomposition has got, in the operator's terms.
+ *
+ * The count of items cannot answer this: a recursive decomposition writes its
+ * whole tree at the end, so the plan holds zero items for the entire run.
+ * These four numbers are what the run itself is bounded by, and without them
+ * a working decomposition and a hung one look identical for an hour.
+ *
+ * @param progress - The latest snapshot the decomposition published.
+ * @returns A sentence naming where it is, or `null` before the first report.
+ */
+function progressLine(progress: DecompositionProgress | null): string | null {
+  if (progress === null) return null
+  const level =
+    progress.deepest_level === 0
+      ? 'the first level'
+      : `level ${progress.deepest_level + 1}`
+  const units =
+    progress.units_planned === 1 ? '1 unit' : `${progress.units_planned} units`
+  return (
+    `Planning is on ${level}, ${units} written so far, ` +
+    `${progress.sessions_spent} of ${progress.sessions_limit} planning sessions used.`
+  )
+}
+
+/**
  * Say WHICH of the two reasons an item-less plan has no items.
  *
  * The plan's own status distinguishes "still being written" from "planning
  * failed" exactly, and asserting both in one sentence left an operator unable
  * to tell whether to wait or to act.
  *
+ * The running case used to promise "items appear as they are written", which
+ * the product does not do and cannot: the tree is persisted once, at the end.
+ * A live run held an operator at zero items for 54 minutes under that
+ * sentence. It now says what is true and reports the progress the
+ * decomposition publishes, so waiting is an informed choice.
+ *
  * @returns The heading and explanation for this plan's empty state.
  */
-function emptyCopy(status: PlanStatus | undefined): EmptyCopy {
+function emptyCopy(
+  status: PlanStatus | undefined,
+  progress: DecompositionProgress | null,
+): EmptyCopy {
   if (status === 'planning') {
+    const line = progressLine(progress)
     return {
       title: 'Planning is still running',
-      body: 'The org is still drafting this plan. Items appear as they are written, so there is nothing to review yet.',
+      body:
+        line === null
+          ? 'The org is drafting this plan. The items are written in one pass at the end, so there is nothing to review until it finishes.'
+          : `${line} The items are written in one pass at the end, so there is nothing to review until it finishes.`,
     }
   }
   if (status === 'failed') {
@@ -104,14 +142,16 @@ export function PlanAttentionPanel({
   criticalPath,
   roster,
   status,
+  decompositionProgress,
 }: {
   items: readonly PlanItem[]
   criticalPath: ReadonlySet<string>
   roster: ReadonlySet<string> | undefined
   status: PlanStatus | undefined
+  decompositionProgress: DecompositionProgress | null
 }) {
   if (items.length === 0) {
-    const copy = emptyCopy(status)
+    const copy = emptyCopy(status, decompositionProgress)
     return (
       <SectionCard title={copy.title} icon={FileQuestion}>
         <p className="text-sm text-text-secondary">{copy.body}</p>

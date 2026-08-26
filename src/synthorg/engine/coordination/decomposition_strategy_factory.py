@@ -7,29 +7,33 @@ separate from :mod:`synthorg.engine.coordination.factory` so the coordinator
 assembly and the strategy-selection logic each stay within their size budget.
 """
 
-from typing import override
+from typing import Final, override
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
-from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
-)
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.decomposition.strategy_deps import DecompositionStrategyDeps
 from synthorg.engine.errors import DecompositionError
-from synthorg.engine.loop_protocol import ShutdownChecker
-from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_FAILED,
 )
-from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+#: Refusal shared by the entry point's pre-check and the builder's own guard.
+#: Both can be reached (the registry builds by name), and one wording keeps the
+#: two from drifting into two different accounts of the same wiring fault.
+_NO_SELECTOR_MESSAGE: Final[str] = (
+    "The owner-run agent-session decomposition requires a provider_selector: "
+    "each owner dispatches on its own bound (provider, model), never a shared "
+    "default. The single-shot 'llm' strategy needs no selector."
+)
 
 
 class _NoProviderDecompositionStrategy(DecompositionStrategy):
@@ -81,38 +85,22 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
         raise DecompositionError(msg)
 
 
-def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
+def _build_llm_strategy(
     *,
     provider: CompletionProvider,
     decomposition_model: str,
-    provider_selector: ProviderSelector | None = None,
-    tool_provider: DecompositionToolProvider | None = None,
-    cost_tracker: CostTrackerProtocol | None = None,
-    shutdown_checker: ShutdownChecker | None = None,
-    agent_session_config: AgentSessionDecompositionConfig | None = None,
-    planning_memory: MemoryInjectionStrategy | None = None,
-    config_resolver: ConfigResolverProtocol | None = None,
+    deps: DecompositionStrategyDeps,
 ) -> DecompositionStrategy:
     """Build the single-shot LLM decomposition strategy.
-
-    The agent-session-only deps (*provider_selector*, *tool_provider*,
-    *shutdown_checker*, *planning_memory*, the session config) are accepted so
-    the strategy registry can pass a uniform kwarg set to every builder; the
-    single-shot strategy ignores them. *cost_tracker* is NOT one of them: the
-    single-shot strategy opens its own ``cost_recording_scope`` around the
-    planning call, so dropping it here leaves every decomposition this path
-    runs attributed to nothing.
 
     Returns:
         An :class:`LlmDecompositionStrategy` over *provider* + *model*.
     """
-    del provider_selector, tool_provider, shutdown_checker
-    del agent_session_config, planning_memory
     return _llm_strategy(
         provider=provider,
         decomposition_model=decomposition_model,
-        cost_tracker=cost_tracker,
-        config_resolver=config_resolver,
+        cost_tracker=deps.cost_tracker,
+        config_resolver=deps.config_resolver,
     )
 
 
@@ -144,48 +132,39 @@ def _llm_strategy(
     )
 
 
-def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
+def _build_agent_session_strategy(
     *,
     provider: CompletionProvider,
     decomposition_model: str,
-    provider_selector: ProviderSelector,
-    tool_provider: DecompositionToolProvider | None = None,
-    cost_tracker: CostTrackerProtocol | None = None,
-    shutdown_checker: ShutdownChecker | None = None,
-    agent_session_config: AgentSessionDecompositionConfig | None = None,
-    planning_memory: MemoryInjectionStrategy | None = None,
-    config_resolver: ConfigResolverProtocol | None = None,
+    deps: DecompositionStrategyDeps,
 ) -> DecompositionStrategy:
     """Build the owner-run agent-session strategy over an LLM fallback.
 
-    The session's turn cap, spend bounds and memory-digest budget arrive as one
-    config rather than as loose scalars, for the reason the config's own
-    ``ceilings`` field gives for being one field instead of two: a wiring path
-    that resolves some of them cannot leave the rest at their defaults in
-    silence.
-
     Returns:
         An :class:`AgentSessionDecompositionStrategy` whose fallback is the
-        single-shot LLM strategy over the same *provider* + *model*;
-        *planning_memory* pre-seeds the org/retro digest into the brief.
+        single-shot LLM strategy over the same *provider* + *model*.
+
+    Raises:
+        ValueError: If *deps* carries no ``provider_selector``. The session
+            dispatches each owner on its own bound pair and has no shared
+            default to fall back on, so a missing selector is a wiring fault
+            rather than a degraded mode.
     """
     from synthorg.engine.decomposition.agent_session import (  # noqa: PLC0415
         AgentSessionDecompositionStrategy,
     )
 
+    if deps.provider_selector is None:
+        raise ValueError(_NO_SELECTOR_MESSAGE)
     return AgentSessionDecompositionStrategy(
-        provider_selector=provider_selector,
+        provider_selector=deps.provider_selector,
         fallback=_llm_strategy(
             provider=provider,
             decomposition_model=decomposition_model,
-            cost_tracker=cost_tracker,
-            config_resolver=config_resolver,
+            cost_tracker=deps.cost_tracker,
+            config_resolver=deps.config_resolver,
         ),
-        tool_provider=tool_provider,
-        config=agent_session_config or AgentSessionDecompositionConfig(),
-        cost_tracker=cost_tracker,
-        shutdown_checker=shutdown_checker,
-        planning_memory=planning_memory,
+        deps=deps,
     )
 
 
@@ -200,18 +179,12 @@ _DECOMPOSITION_STRATEGY_REGISTRY: StrategyRegistry[DecompositionStrategy] = (
 )
 
 
-def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
+def build_decomposition_strategy(
     provider: CompletionProvider | None,
     decomposition_model: str | None,
     *,
     strategy_name: str,
-    tool_provider: DecompositionToolProvider | None,
-    provider_selector: ProviderSelector | None = None,
-    cost_tracker: CostTrackerProtocol | None = None,
-    shutdown_checker: ShutdownChecker | None = None,
-    agent_session_config: AgentSessionDecompositionConfig | None = None,
-    planning_memory: MemoryInjectionStrategy | None = None,
-    config_resolver: ConfigResolverProtocol | None = None,
+    deps: DecompositionStrategyDeps,
 ) -> DecompositionStrategy:
     """Select the decomposition strategy from config and available deps.
 
@@ -222,30 +195,18 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
             is supplied -- both or neither must be given; or a provider is
-            given without a *provider_selector* (the agent session dispatches
+            given without a ``provider_selector`` (the agent session dispatches
             each owner on its own bound provider).
         StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:
-        if strategy_name == "agent-session" and provider_selector is None:
-            msg = (
-                "The owner-run agent-session decomposition requires a "
-                "provider_selector: each owner dispatches on its own bound "
-                "(provider, model), never a shared default. The single-shot "
-                "'llm' strategy needs no selector."
-            )
-            raise ValueError(msg)
+        if strategy_name == "agent-session" and deps.provider_selector is None:
+            raise ValueError(_NO_SELECTOR_MESSAGE)
         return _DECOMPOSITION_STRATEGY_REGISTRY.build(
             strategy_name,
             provider=provider,
             decomposition_model=decomposition_model,
-            provider_selector=provider_selector,
-            tool_provider=tool_provider,
-            cost_tracker=cost_tracker,
-            shutdown_checker=shutdown_checker,
-            agent_session_config=agent_session_config,
-            planning_memory=planning_memory,
-            config_resolver=config_resolver,
+            deps=deps,
         )
     if (provider is None) != (decomposition_model is None):
         given = "provider" if provider is not None else "decomposition_model"

@@ -28,7 +28,12 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan import Plan, PlanItem, PlanPremises
+from synthorg.core.plan import (
+    DecompositionProgress,
+    Plan,
+    PlanItem,
+    PlanPremises,
+)
 from synthorg.core.plan_enums import (
     PlanStatus,
 )
@@ -431,6 +436,46 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         """
         await self._repo.create(plan)
         await self._log_transition(None, plan)
+
+    async def record_progress(
+        self, *, parent_task_id: NotBlankStr, progress: DecompositionProgress
+    ) -> None:
+        """Stamp how far the decomposition writing a plan has got.
+
+        Addressed by the objective task rather than the plan id, because the
+        decomposition never learns which shell was opened for it: it is handed
+        a task and a context, and the shell belongs to the wiring layer that
+        opened it.
+
+        No status moves and no version is asserted. The status is unchanged by
+        construction, so there is no transition for the ledger to carry, and
+        the plan is ``PLANNING`` with exactly one writer: asserting a version
+        here would turn every report into a chance to fail a run it is only
+        describing. ``updated_at`` is left alone for the same reason: a
+        progress line is not a revision of the plan, and the snapshot carries
+        its own timestamp.
+
+        A plan that is no longer ``PLANNING`` is skipped rather than written:
+        the decomposition has already been recorded over the shell by then,
+        and a late report would put a stale in-flight snapshot on a finished
+        plan.
+
+        Args:
+            parent_task_id: The objective the tree is being planned for.
+            progress: How far it has got.
+
+        Raises:
+            QueryError: Repository read or write failure.
+        """
+        matches = await self._repo.query(
+            PlanFilterSpec(parent_task_id=parent_task_id, status=PlanStatus.PLANNING),
+            limit=1,
+        )
+        if not matches:
+            return
+        await self._repo.update(
+            matches[0].model_copy(update={"decomposition_progress": progress})
+        )
 
     async def record_decomposed(self, decomposed: Plan, *, shell: Plan | None) -> None:
         """Persist a decomposed plan over its planning shell.

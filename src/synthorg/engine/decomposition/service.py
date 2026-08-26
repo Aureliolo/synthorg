@@ -6,6 +6,7 @@ to decompose a parent task into executable subtasks.
 
 import asyncio
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task import AcceptanceCriterion, Task
@@ -46,6 +47,9 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.plan_context import with_plan_context
+from synthorg.engine.decomposition.progress_protocol import (
+    DecompositionProgressReporter,
+)
 from synthorg.engine.decomposition.protocol import (
     DecompositionStrategy,
     WorkspaceInventory,
@@ -59,6 +63,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
+    DECOMPOSITION_PROGRESS_UNRECORDED,
     DECOMPOSITION_RECURSED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
@@ -144,7 +149,9 @@ class DecompositionService:
 
     __slots__ = (
         "_classifier",
+        "_clock",
         "_config_resolver",
+        "_progress_reporter",
         "_stakes_assessor",
         "_strategy",
         "_workspace_inventory",
@@ -158,12 +165,40 @@ class DecompositionService:
         *,
         config_resolver: ConfigResolverProtocol | None = None,
         workspace_inventory: WorkspaceInventory | None = None,
+        progress_reporter: DecompositionProgressReporter | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._strategy = strategy
         self._classifier = classifier
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
         self._config_resolver = config_resolver
         self._workspace_inventory = workspace_inventory
+        self._progress_reporter = progress_reporter
+        self._clock = clock or SystemClock()
+
+    async def _report_progress(self, ledger: TreeSessionLedger) -> None:
+        """Publish how far the tree has got, without ever failing it.
+
+        Best-effort by contract: a decomposition is minutes to hours of real
+        provider spend, and losing the progress line costs an operator a
+        refresh while losing the tree costs the run. So a reporter that raises
+        is logged and dropped here rather than at each call site.
+        """
+        if self._progress_reporter is None or not ledger.objective_task_id:
+            return
+        try:
+            await self._progress_reporter.report(
+                objective_task_id=ledger.objective_task_id,
+                progress=ledger.progress(now=self._clock.now()),
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- describing a run must not fail it
+            reraise_critical(exc)
+            logger.warning(
+                DECOMPOSITION_PROGRESS_UNRECORDED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _grounded(
         self, task: Task, context: DecompositionContext
@@ -241,10 +276,16 @@ class DecompositionService:
         # request handlers.
         # The root's own planning session is claimed here, so the budget an
         # operator sets is a count of sessions rather than of recursions.
+        sessions = await tree_session_budget(self._config_resolver)
         ledger = TreeSessionLedger(
-            remaining=await tree_session_budget(self._config_resolver)
+            remaining=sessions, limit=sessions, objective_task_id=str(task.id)
         )
         ledger.take()
+        # Before the first node, so a plan says "planning is running" from the
+        # moment it starts rather than from the moment the first level lands.
+        # That first level is a whole planning session, which is the wait the
+        # operator most needs an answer during.
+        await self._report_progress(ledger)
         scope = asyncio.timeout(await self._tree_timeout_seconds())
         try:
             async with scope:
@@ -437,6 +478,14 @@ class DecompositionService:
             edges.extend(
                 (dep_id, subtask_def.id) for dep_id in subtask_def.dependencies
             )
+
+        # Recorded and published HERE, once the level's tasks exist and before
+        # recursing into them, so the count an operator watches climbs per node
+        # rather than once at the end. Reporting after the recursion instead
+        # would leave the deepest, slowest subtree silent for the whole of it,
+        # which is the wait the snapshot exists for.
+        ledger.record_level(depth=context.current_depth, units=len(plan.subtasks))
+        await self._report_progress(ledger)
 
         # 6. Split whatever is more than one agent's worth of work. Done after
         # the tasks exist because a child level decomposes the TASK, not the

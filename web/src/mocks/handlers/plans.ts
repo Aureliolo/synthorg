@@ -59,6 +59,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     // items, and a real panel reviewed them, so neither has anything to say.
     planning_strategy: null,
     review_absent_reason: null,
+    decomposition_progress: null,
     pending_decision: null,
     open_questions: [],
     assumptions: [],

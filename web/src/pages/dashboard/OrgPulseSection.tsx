@@ -28,16 +28,51 @@ export interface OrgPulseSectionProps {
   blockersLoading: boolean
 }
 
-/** One task being worked, named by its title and whoever is on it. */
+/** What a row says when the work it names is a task with no title. */
+const UNTITLED_TASK = 'Untitled task'
+
+/** What a row says when the work it names is not a task at all. */
+const WORK_WITHOUT_TASK = 'Working, no task assigned'
+
+/**
+ * Identify one activity row.
+ *
+ * Keyed on the task where there is one, because an agent can hold two at once
+ * and keying on the agent alone would collapse them. A run driving no task has
+ * only the agent, and the snapshot emits at most one such row per agent.
+ *
+ * @param activity - The row to identify.
+ * @returns A key unique within one snapshot.
+ */
+function activityKey(activity: AgentActivity): string {
+  return activity.task_id ?? activity.agent_id
+}
+
+/**
+ * Name the work a row is about.
+ *
+ * The backend resolves the title and sends null rather than the key it stands
+ * for, so the fallback wording is the dashboard's to choose. A missing title
+ * means one of two different things, and calling both "Untitled task" would
+ * claim a task where there is none: a planning session runs as a staffed agent
+ * while the objective it is planning is still at `created` and drives no task.
+ *
+ * @param activity - The row to name.
+ * @returns What to show in the row's title slot.
+ */
+function workName(activity: AgentActivity): string {
+  if (activity.task_title !== null) return activity.task_title
+  return activity.task_id === null ? WORK_WITHOUT_TASK : UNTITLED_TASK
+}
+
+/** One piece of work in flight, named by its title and whoever is on it. */
 const RunningRow = memo(function RunningRow({ activity }: { activity: AgentActivity }) {
   const turns = activity.turn_count === 1 ? '1 turn' : `${activity.turn_count} turns`
   return (
     <div className="flex items-baseline justify-between gap-3">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
-          {/* The backend resolves both, and sends null rather than the key it
-              stands for, so the fallback wording is the dashboard's to choose. */}
-          {activity.task_title ?? 'Untitled task'}
+          {workName(activity)}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {activity.agent_name ?? UNKNOWN_AGENT_NAME}
@@ -133,7 +168,7 @@ function ActivityRows({ rows }: { rows: readonly AgentActivity[] }) {
   return (
     <StaggerGroup className="space-y-1.5">
       {rows.map((activity) => (
-        <StaggerItem key={activity.agent_id}>
+        <StaggerItem key={activityKey(activity)}>
           <RunningRow activity={activity} />
         </StaggerItem>
       ))}

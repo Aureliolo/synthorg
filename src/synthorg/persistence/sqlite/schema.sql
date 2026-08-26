@@ -2703,6 +2703,21 @@ CREATE TABLE plans (
         review_absent_reason IS NULL
         OR LENGTH(TRIM(review_absent_reason)) > 0
     ),
+    -- Where the decomposition writing this plan has got to. A recursive
+    -- decomposition persists its tree once, at the end, so the row reads
+    -- PLANNING with zero items for the whole of a run that can last an hour,
+    -- and without this the only way to tell a working decomposition from a
+    -- hung one was the backend log. NULL is "nothing has reported", which is
+    -- a different claim from a zero snapshot, so there is deliberately no
+    -- DEFAULT.
+    decomposition_progress TEXT
+    CHECK (
+        decomposition_progress IS NULL
+        OR (
+            JSON_VALID(decomposition_progress)
+            AND JSON_TYPE(decomposition_progress) = 'object'
+        )
+    ),
     -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
     -- a reason (so Plan Review always shows why), and no other status may carry
     -- one. Mirrors the Plan model validator as the persistence-level backstop.

@@ -259,6 +259,7 @@ function PlanReviewView({ plan, roles, setMode }: {
         criticalPath={criticalPath}
         roster={roles}
         status={plan.status}
+        decompositionProgress={plan.decomposition_progress}
       />
       <PlanForecastPanel forecastId={plan.forecast_id} />
       <PlanStaffingPanel plan={plan} />

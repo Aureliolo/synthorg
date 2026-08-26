@@ -17,7 +17,6 @@ from synthorg.engine.decomposition._session_exhaustion import (
     stopped_short,
 )
 from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
 )
 from synthorg.engine.decomposition.agent_session_submit import (
@@ -28,6 +27,10 @@ from synthorg.engine.decomposition.agent_session_submit import (
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
     DecompositionDepthError,
@@ -239,7 +242,9 @@ def _strategy(
     return AgentSessionDecompositionStrategy(
         provider_selector=lambda _identity: provider,
         fallback=fallback,
-        config=AgentSessionDecompositionConfig(max_turns=_MAX_TURNS),
+        deps=DecompositionStrategyDeps(
+            agent_session_config=AgentSessionDecompositionConfig(max_turns=_MAX_TURNS),
+        ),
     )
 
 
@@ -332,7 +337,9 @@ class TestAgentSessionDecompose:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=_raise,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(max_turns=4),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=4),
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
@@ -620,7 +627,7 @@ class TestReadOnlyToolBoundary:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: ScriptedProvider([]),
             fallback=_SentinelFallback(),
-            tool_provider=provider,
+            deps=DecompositionStrategyDeps(tool_provider=provider),
         )
         kept = strategy._planning_tools(_task(), make_e2e_identity())
         assert [tool.name for tool in kept] == ["recall"]
@@ -661,8 +668,10 @@ class TestPlanningBriefMatchesTheGrant:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            tool_provider=_ListToolProvider(tools),
-            config=AgentSessionDecompositionConfig(max_turns=1),
+            deps=DecompositionStrategyDeps(
+                tool_provider=_ListToolProvider(tools),
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=1),
+            ),
         )
         resolved = context or DecompositionContext(
             max_subtasks=5, owner_identity=make_e2e_identity()
@@ -857,9 +866,11 @@ class TestAgentSessionGuards:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(
-                max_turns=8,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=8,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -875,9 +886,11 @@ class TestAgentSessionGuards:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(
-                max_turns=8,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=0),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=8,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=0),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -1037,9 +1050,11 @@ class TestUnsubmittedSessionsContinue:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(
-                max_turns=_MAX_TURNS,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=1000),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=_MAX_TURNS,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=1000),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -1059,7 +1074,9 @@ class TestUnsubmittedSessionsContinue:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(max_turns=1),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=1),
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 

@@ -298,6 +298,45 @@ class PlanVersionSnapshot(BaseModel):
     )
 
 
+class DecompositionProgress(BaseModel):
+    """How far the decomposition writing a plan has got.
+
+    A recursive decomposition persists its tree once, at the end, so a plan is
+    ``PLANNING`` with zero items for as long as the planning runs. That is
+    correct, and it left the operator with nothing: a live run sat at zero for
+    54 minutes while the page promised "items appear as they are written", and
+    the only way to tell a working decomposition from a hung one was the
+    backend log. The session ledger bounding the run knows all of this and
+    knew it only in memory.
+
+    A snapshot, not a log: it is overwritten each time the decomposition
+    reaches a new node, because the question it answers is "where is this now",
+    and the run's own history is the event stream's job.
+
+    Attributes:
+        sessions_spent: Planning sessions the tree has consumed so far.
+        sessions_limit: What it may spend in total
+            (``coordination.decomposition_tree_max_sessions``), so the number
+            beside it is readable as progress rather than as a bare count.
+        deepest_level: The deepest level reached, zero-based, so a tree still
+            widening its first level is distinguishable from one recursing.
+        units_planned: Subtasks written across every level so far.
+        updated_at: When this snapshot was taken (tz-aware UTC). What makes a
+            working decomposition distinguishable from a stalled one, which is
+            the whole question an operator has while the count reads zero.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    sessions_spent: int = Field(ge=0, description="Planning sessions consumed")
+    sessions_limit: int = Field(ge=0, description="Planning sessions allowed")
+    deepest_level: int = Field(ge=0, description="Deepest level reached, zero-based")
+    units_planned: int = Field(ge=0, description="Subtasks written so far")
+    updated_at: AwareDatetime = Field(
+        description="When this snapshot was taken (tz-aware UTC)",
+    )
+
+
 class Plan(BaseModel):
     """A durable, versioned, revisable plan for an objective.
 
@@ -323,6 +362,9 @@ class Plan(BaseModel):
         assumptions: Assumptions the plan rests on.
         planning_strategy: Which planner produced the items, when a fallback
             produced them instead of the strategy the operator configured.
+        decomposition_progress: How far the decomposition writing this plan
+            has got, so a PLANNING plan with no items can say whether it is
+            working. ``None`` before the first node lands.
         review_absent_reason: Why the plan carries no panel review, when a
             panel was seated and returned no verdict.
         version_history: Snapshots of prior submitted versions, for diffing.
@@ -390,6 +432,12 @@ class Plan(BaseModel):
         default=None,
         description="Why a seated review panel produced no verdict, so an "
         "unreviewed plan is visibly unreviewed rather than silently blank",
+    )
+    decomposition_progress: DecompositionProgress | None = Field(
+        default=None,
+        description="How far the decomposition writing this plan has got, so "
+        "a PLANNING plan with no items can say whether it is working; None "
+        "before the first node and on a plan nothing is decomposing",
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),

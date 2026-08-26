@@ -16,6 +16,7 @@ from synthorg.engine.coordination.section_config import (
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.decomposition.strategy_deps import DecompositionStrategyDeps
 from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
@@ -52,7 +53,9 @@ class TestBuildCoordinator:
             task_assignment_config=TaskAssignmentConfig(),
             provider=provider,
             decomposition_model="test-model-001",
-            provider_selector=lambda _identity: provider,
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: provider,
+            ),
         )
         assert isinstance(coordinator, MultiAgentCoordinator)
         # Verify LLM strategy is used (not the placeholder)
@@ -203,7 +206,9 @@ class TestDecompositionStrategySelection:
             task_assignment_config=TaskAssignmentConfig(),
             provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
-            provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            ),
         )
         strategy = coordinator._decomposition_service._strategy
         assert isinstance(strategy, AgentSessionDecompositionStrategy)
@@ -218,7 +223,9 @@ class TestDecompositionStrategySelection:
             provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
             decomposition_strategy="llm",
-            provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            ),
         )
         strategy = coordinator._decomposition_service._strategy
         assert isinstance(strategy, LlmDecompositionStrategy)
@@ -234,7 +241,9 @@ class TestDecompositionStrategySelection:
                 provider=mock_of[CompletionProvider](),
                 decomposition_model="test-model-001",
                 decomposition_strategy="nonexistent",
-                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+                decomposition=DecompositionStrategyDeps(
+                    provider_selector=lambda _identity: mock_of[CompletionProvider](),
+                ),
             )
 
 

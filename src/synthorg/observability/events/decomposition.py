@@ -171,6 +171,13 @@ Emitted once, where the ledger flips, so the node that ran the tree out is
 named. Every unit below it goes unsplit carrying that backstop as its reason,
 which says WHAT bound but not WHERE the budget went."""
 
+DECOMPOSITION_PROGRESS_UNRECORDED: Final[str] = "decomposition.progress_unrecorded"
+"""A progress snapshot could not be published to the plan it describes.
+
+Warning rather than a failure: a decomposition is minutes to hours of real
+provider spend, so losing the line an operator watches costs a refresh while
+failing the run over it costs the tree."""
+
 DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
 """No explicit provider + model pair is bound for decomposition.
 

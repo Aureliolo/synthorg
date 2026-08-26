@@ -14,7 +14,12 @@ from synthorg.core.persistence_errors import (
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
+from synthorg.core.plan import (
+    DecompositionProgress,
+    Plan,
+    PlanItem,
+    PlanVersionSnapshot,
+)
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
@@ -49,7 +54,7 @@ _COLUMNS = (
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
     "replan_generation, version, created_at, updated_at, planning_strategy, "
-    "review_absent_reason"
+    "review_absent_reason, decomposition_progress"
 )
 
 _COLUMN_NAMES = tuple(_COLUMNS.split(", "))
@@ -85,6 +90,10 @@ def _row_to_plan(row: aiosqlite.Row) -> Plan:
     data["version_history"] = tuple(
         PlanVersionSnapshot.model_validate(snapshot)
         for snapshot in json.loads(data["version_history"])
+    )
+    progress = data["decomposition_progress"]
+    data["decomposition_progress"] = (
+        DecompositionProgress.model_validate(json.loads(progress)) if progress else None
     )
     data["created_at"] = coerce_row_timestamp(data["created_at"])
     data["updated_at"] = coerce_row_timestamp(data["updated_at"])
@@ -141,6 +150,11 @@ class SQLitePlanRepository:
             format_iso_utc(plan.updated_at),
             plan.planning_strategy,
             plan.review_absent_reason,
+            (
+                json.dumps(plan.decomposition_progress.model_dump(mode="json"))
+                if plan.decomposition_progress
+                else None
+            ),
         )
 
     async def create(self, plan: Plan) -> None:

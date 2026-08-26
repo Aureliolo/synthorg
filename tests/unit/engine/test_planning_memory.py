@@ -13,13 +13,16 @@ if TYPE_CHECKING:
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
 )
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.recall_request import MemoryRecallRequest
@@ -160,8 +163,10 @@ class TestPlanningDigestInjection:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(max_turns=4),
-            planning_memory=memory,
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=4),
+                planning_memory=memory,
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
@@ -188,8 +193,12 @@ class TestPlanningDigestInjection:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(max_turns=4, memory_digest_budget=0),
-            planning_memory=memory,
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=4, memory_digest_budget=0
+                ),
+                planning_memory=memory,
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
