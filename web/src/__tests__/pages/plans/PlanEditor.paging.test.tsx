@@ -32,7 +32,7 @@ function draft(index: number): DraftItem {
     complexity: 'medium',
     stakes: 'normal',
     kind: 'work',
-    options: null,
+    options: [],
     chosenOptionId: null,
     satisfies: [],
   }
