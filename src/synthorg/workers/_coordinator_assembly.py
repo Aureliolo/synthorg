@@ -450,6 +450,10 @@ async def _build_runtime_coordinator(
             max_turns=agent_session_max_turns,
             ceilings=agent_session_ceilings,
             memory_digest_budget=planning.digest_budget,
+            # The same deployment config the work loop's detector is built
+            # from. Read twice rather than shared, because the two loops run
+            # concurrently and a detector carries per-loop state.
+            stagnation=app_state.config.stagnation,
         ),
         decomposition_config_resolver=config_resolver_of(app_state),
         planning_memory=planning.planning_memory,

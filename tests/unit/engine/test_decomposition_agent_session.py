@@ -12,11 +12,13 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition import agent_session_submit as submit_module
+from synthorg.engine.decomposition._session_exhaustion import (
+    ran_without_submitting,
+    stopped_short,
+)
 from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
-    _ran_without_submitting,
-    _stopped_short,
 )
 from synthorg.engine.decomposition.agent_session_submit import (
     _REMEMBERED_REFUSALS,
@@ -1092,7 +1094,7 @@ class TestTerminationClassification:
     def test_every_termination_reason_is_classified(
         self, reason: TerminationReason
     ) -> None:
-        assert isinstance(_ran_without_submitting(reason), bool)
+        assert isinstance(ran_without_submitting(reason), bool)
 
     @pytest.mark.parametrize(
         "reason",
@@ -1106,7 +1108,7 @@ class TestTerminationClassification:
     def test_a_session_prevented_from_producing_keeps_the_fallback(
         self, reason: TerminationReason
     ) -> None:
-        assert _ran_without_submitting(reason) is False
+        assert ran_without_submitting(reason) is False
 
     @pytest.mark.parametrize(
         "reason",
@@ -1121,13 +1123,13 @@ class TestTerminationClassification:
     def test_a_session_that_ran_and_produced_nothing_is_refused(
         self, reason: TerminationReason
     ) -> None:
-        assert _ran_without_submitting(reason) is True
+        assert ran_without_submitting(reason) is True
 
     @pytest.mark.parametrize("reason", list(TerminationReason))
     def test_every_termination_reason_decides_whether_to_carry_on(
         self, reason: TerminationReason
     ) -> None:
-        assert isinstance(_stopped_short(reason), bool)
+        assert isinstance(stopped_short(reason), bool)
 
     @pytest.mark.parametrize(
         "reason",
@@ -1136,7 +1138,7 @@ class TestTerminationClassification:
     def test_a_session_that_ended_its_own_turn_carries_on(
         self, reason: TerminationReason
     ) -> None:
-        assert _stopped_short(reason) is True
+        assert stopped_short(reason) is True
 
     @pytest.mark.parametrize(
         "reason",
@@ -1156,7 +1158,7 @@ class TestTerminationClassification:
         # The bounds are what refuse another turn, so spending one against
         # them would be the loop the bound exists to close; the outside stops
         # would fail again identically.
-        assert _stopped_short(reason) is False
+        assert stopped_short(reason) is False
 
 
 class TestAgentSessionConfig:

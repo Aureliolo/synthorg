@@ -14,7 +14,7 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import Final, assert_never, override
+from typing import Final, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,7 +29,11 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
-from synthorg.engine.decomposition._session_exhaustion import raise_session_exhaustion
+from synthorg.engine.decomposition._session_exhaustion import (
+    raise_session_exhaustion,
+    ran_without_submitting,
+    stopped_short,
+)
 from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
@@ -55,9 +59,10 @@ from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
-    TerminationReason,
 )
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.stagnation.factory import create_stagnation_detector
+from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import (
@@ -87,93 +92,6 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 _STRATEGY_NAME = "agent-session"
-
-
-def _ran_without_submitting(reason: TerminationReason) -> bool:
-    """Report whether a verdict-less session had a researched plan to lose.
-
-    Substituting a single-shot plan for a session that ran on its own terms
-    hands the operator a different plan than the one they asked for,
-    indistinguishable from the real thing at the approval gate. Where the
-    session could not run at all, nothing was lost and the fallback stands.
-
-    A ``match`` with :func:`assert_never` rather than a membership set: the
-    fallback is a safety decision per termination, so a newly-added
-    :class:`TerminationReason` must be classified deliberately, and this
-    makes omitting it a type error rather than a silent grant of the
-    fallback.
-
-    Returns:
-        ``True`` when the session ran and produced nothing.
-    """
-    match reason:
-        case (
-            TerminationReason.COMPLETED
-            | TerminationReason.NO_OP
-            | TerminationReason.MAX_TURNS
-            | TerminationReason.BUDGET_EXHAUSTED
-            | TerminationReason.STAGNATION
-        ):
-            return True
-        # ERROR never reached the model, SHUTDOWN lost the process under it,
-        # and PARKED / CANCELLED stopped the session by a decision taken
-        # outside it (an approval wait, an operator abort): in all four the
-        # session was prevented from producing rather than producing nothing.
-        case (
-            TerminationReason.ERROR
-            | TerminationReason.SHUTDOWN
-            | TerminationReason.PARKED
-            | TerminationReason.CANCELLED
-        ):
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _stopped_short(reason: TerminationReason) -> bool:
-    """Report whether the session ended its own turn with its work undone.
-
-    A planning session has exactly one deliverable, and the tools it delivers
-    through hand a rejection straight back, so an agent that ends its turn
-    holding a rejected plan is in the ordinary state of any coding loop: told
-    what is wrong, with turns left to fix it. Ending the session there is what
-    turned a punctuation rejection into a dead run; the answer is the same one
-    a coding agent gets, which is to be told it has not delivered and to carry
-    on.
-
-    Separate from :func:`_ran_without_submitting`, which answers a different
-    question (was there a researched plan to lose), and the same ``match`` with
-    :func:`assert_never` for the same reason: continuing to spend an agent's
-    turns is a decision per termination, so a new :class:`TerminationReason`
-    must be classified deliberately.
-
-    Returns:
-        ``True`` when the session stopped on its own while it could still
-        deliver.
-    """
-    match reason:
-        case TerminationReason.COMPLETED | TerminationReason.NO_OP:
-            return True
-        # MAX_TURNS and BUDGET_EXHAUSTED are the bounds themselves, so another
-        # turn is exactly what they refuse; STAGNATION means the loop is
-        # already repeating itself, and re-prompting is one more repetition.
-        # ERROR is the loop giving up rather than the agent doing so, whether
-        # the provider failed or the corrections for unusable turns ran out;
-        # either way the next turn fails the same way. SHUTDOWN, PARKED and
-        # CANCELLED stopped the session from outside it, and nothing here can
-        # hand it back.
-        case (
-            TerminationReason.MAX_TURNS
-            | TerminationReason.BUDGET_EXHAUSTED
-            | TerminationReason.STAGNATION
-            | TerminationReason.ERROR
-            | TerminationReason.SHUTDOWN
-            | TerminationReason.PARKED
-            | TerminationReason.CANCELLED
-        ):
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
 
 
 #: Handed to a session that stopped without submitting. It names the one
@@ -222,6 +140,14 @@ class AgentSessionDecompositionConfig(BaseModel):
             the token bound at its default in silence: money measures nothing
             against a provider that bills by flat subscription, where cost
             never rises.
+        stagnation: Which intra-loop stagnation detector the planning session
+            runs. It travels HERE, with the other session bounds, rather than
+            as a loose constructor argument, for the reason ``ceilings`` gives:
+            a wiring path that resolves some of them cannot leave the rest at
+            their defaults in silence. The deployment's
+            ``config.stagnation`` remains the one owner of the VALUE; this is a
+            second reader of it, because the work loop and the planning loop
+            are different loops and each needs its own detector instance.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -242,6 +168,10 @@ class AgentSessionDecompositionConfig(BaseModel):
         ge=0,
         description="Token cap for the org/retro memory digest injected into "
         "the planning brief; 0 injects nothing (the tool grant still applies)",
+    )
+    stagnation: StagnationDetectionConfig = Field(
+        default_factory=StagnationDetectionConfig,
+        description="Intra-loop stagnation detector for the planning session",
     )
 
 
@@ -464,7 +394,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
 
         Reached only once the session has nothing left to try: an agent that
         stops while it can still deliver is told so and continues
-        (:func:`_stopped_short`), so this is the exhausted case, not the
+        (:func:`stopped_short`), so this is the exhausted case, not the
         discouraged one.
 
         Args:
@@ -483,7 +413,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 other reason, typed by which bound it reached, if any
                 (see :mod:`._session_exhaustion`).
         """
-        if not _ran_without_submitting(result.termination_reason):
+        if not ran_without_submitting(result.termination_reason):
             return
         msg = (
             f"Planning session for task {task.id} terminated "
@@ -535,7 +465,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         that ends without a submitted plan while turns remain is told so and
         continues, exactly as a coding loop that has just been handed a failing
         check does. The bounds keep their meaning, because the only terminations
-        that re-enter are the ones the agent chose (:func:`_stopped_short`), and
+        that re-enter are the ones the agent chose (:func:`stopped_short`), and
         reaching either of those costs a turn: the loop records the turn before
         it can decide the response completed the run.
 
@@ -594,7 +524,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             session stopped for a reason another turn cannot answer, or has no
             turn left to answer it in.
         """
-        if not _stopped_short(result.termination_reason):
+        if not stopped_short(result.termination_reason):
             return None
         if not result.context.has_turns_remaining:
             return None
@@ -633,7 +563,18 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         Returns:
             The loop's execution result for this stretch.
         """
-        loop = ReactLoop(approval_gate=None)
+        # A planning session holds ONE terminal tool and a dozen turns, so a
+        # repeated identical read is not slow progress, it is no progress. A
+        # live run spent all twelve turns on one read tool that could not
+        # answer and never attempted a plan; nothing was watching, because the
+        # detector the operator configures reached the work loop and not this
+        # one. Wired here, the loop injects its correction first and only
+        # terminates on STAGNATION when that fails, which the child-failure
+        # backstop already absorbs.
+        loop = ReactLoop(
+            approval_gate=None,
+            stagnation_detector=create_stagnation_detector(self._config.stagnation),
+        )
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr(str(owner.id)),
