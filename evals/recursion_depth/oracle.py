@@ -44,6 +44,7 @@ from evals.recursion_depth.grading import (
     ORACLE_TREE_DIR,
     RUNNER_PROBE_ARGS,
     SandboxFactory,
+    SandboxReleaseHook,
     oracle_fingerprint,
     oracle_leftovers,
     refuse_without_a_runner,
@@ -89,6 +90,12 @@ _PYTEST_TESTS_FAILED: Final[int] = 1
 #: What runs the oracle inside the sandbox image, where the bare name is the
 #: only interpreter present and is the one the image was built around.
 _CONTAINER_INTERPRETER: Final[str] = "python"
+
+#: Prefixes the key the graded containers are filed under. Distinct from every
+#: session's execution id on purpose: these are the harness's own containers,
+#: and a key an agent session also holds would let that session's exit tear
+#: down the grading that judges it.
+_ORACLE_OWNER_PREFIX: Final[str] = "oracle:"
 
 #: What is never copied into the staged oracle in the first place. The deletion
 #: and the refusal are both allowlists and would catch these anyway; not staging
@@ -256,6 +263,7 @@ def node_ids(spec_dir: Path) -> dict[RequirementId, str]:
 async def run_oracle(
     *,
     build_sandbox: SandboxFactory,
+    release_sandboxes: SandboxReleaseHook | None = None,
     spec_dir: Path,
     tree: Path,
     only: frozenset[RequirementId] | None = None,
@@ -266,6 +274,9 @@ async def run_oracle(
     Args:
         build_sandbox: Builds the container backend the grading runs in, rooted
             at the scratch directory this assembles.
+        release_sandboxes: Reclaims the containers this grading opened, once it
+            is done with them. Without it they wait for the run's end, which is
+            one container per cell held for the length of a matrix.
         spec_dir: The specification directory.
         tree: The produced tree to grade.
         only: Restrict the run to these requirement ids. ``None`` runs all of
@@ -292,32 +303,45 @@ async def run_oracle(
     if not wanted:
         return OracleOutcome(results={}, report="")
     oracle_dir = spec_dir / str(declared(index, "oracle_dir", spec_dir=spec_dir))
-    with tempfile.TemporaryDirectory() as scratch:
-        root = Path(scratch)
-        await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
-        nonce, staged_before = await _arm_graded_root(
-            root, build_sandbox=build_sandbox, interpreter=interpreter
-        )
-        report_path = root / _REPORT_NAME
-        result = await build_sandbox(root).execute(
-            command=interpreter,
-            args=oracle_argv(nodes=nodes, wanted=wanted),
-            cwd=root,
-            env_overrides=GRADED_ENV,
-            timeout=_ORACLE_TIMEOUT_SECONDS,
-            category=ToolCategory.CODE_EXECUTION.value,
-        )
-        report = tail_of(result.stdout + result.stderr)
-        _refuse_unusable_run(result, tree=tree, report=report)
-        refuse_if_oracle_survived(root)
-        await asyncio.to_thread(refuse_if_oracle_inputs_changed, root, staged_before)
-        results = _read_report(
-            report_path,
-            nodes=nodes,
-            wanted=wanted,
-            returncode=result.returncode,
-            nonce=nonce,
-        )
+    # One owner for both containers this opens. Its own, never a session's: the
+    # probe and the graded run are the harness's, and a key shared with an
+    # agent session would let that session's exit tear the grading down.
+    owner = f"{_ORACLE_OWNER_PREFIX}{tree}"
+    try:
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
+            nonce, staged_before = await _arm_graded_root(
+                root,
+                build_sandbox=build_sandbox,
+                interpreter=interpreter,
+                owner=owner,
+            )
+            report_path = root / _REPORT_NAME
+            result = await build_sandbox(root, owner=owner).execute(
+                command=interpreter,
+                args=oracle_argv(nodes=nodes, wanted=wanted),
+                cwd=root,
+                env_overrides=GRADED_ENV,
+                timeout=_ORACLE_TIMEOUT_SECONDS,
+                category=ToolCategory.CODE_EXECUTION.value,
+            )
+            report = tail_of(result.stdout + result.stderr)
+            _refuse_unusable_run(result, tree=tree, report=report)
+            refuse_if_oracle_survived(root)
+            await asyncio.to_thread(
+                refuse_if_oracle_inputs_changed, root, staged_before
+            )
+            results = _read_report(
+                report_path,
+                nodes=nodes,
+                wanted=wanted,
+                returncode=result.returncode,
+                nonce=nonce,
+            )
+    finally:
+        if release_sandboxes is not None:
+            await release_sandboxes(owner)
     logger.info(
         EVALS_RECURSION_ORACLE_RUN,
         tree=str(tree),
@@ -328,7 +352,7 @@ async def run_oracle(
 
 
 async def _arm_graded_root(
-    root: Path, *, build_sandbox: SandboxFactory, interpreter: str
+    root: Path, *, build_sandbox: SandboxFactory, interpreter: str, owner: str
 ) -> tuple[str, str]:
     """Plant this run's token, fingerprint the suite, and prove pytest exists.
 
@@ -336,6 +360,8 @@ async def _arm_graded_root(
         root: The staged scratch directory the grading runs in.
         build_sandbox: Builds the container backend the probe runs in.
         interpreter: What runs ``-m pytest``.
+        owner: The key the probe's container is filed under, shared with the
+            graded run so one release reclaims both.
 
     Returns:
         ``(nonce, fingerprint)``: the token the report must carry back, and the
@@ -359,7 +385,7 @@ async def _arm_graded_root(
     # and the sweep would publish a curve of zeros that reads as a
     # catastrophic result rather than as a harness that never ran anything.
     refuse_without_a_runner(
-        await build_sandbox(root).execute(
+        await build_sandbox(root, owner=owner).execute(
             command=interpreter,
             args=RUNNER_PROBE_ARGS,
             cwd=root,

@@ -33,6 +33,7 @@ from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
+    graded,
     probe_artifacts,
     produced_nothing,
     run_session,
@@ -468,8 +469,10 @@ async def _undelivered_reason(
         produced_nothing, _attempt_task(plan, ()), plan.workspace, baseline
     ):
         return "no assembly attempt changed anything the node declared"
-    grader = deps.build_grader(plan.workspace)
-    passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
+    async with graded(
+        deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
+    ) as grader:
+        passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
     if not passed:
         return f"the merged tree's own tests did not pass: {report}"
     return ""

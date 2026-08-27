@@ -405,11 +405,11 @@ async def _release(
 ) -> None:
     """Give back what the sweep held, whether or not it finished.
 
-    Grading and the oracle open their own containers, and both run OUTSIDE the
-    session context whose exit drains the agent's. Left to that hook alone,
-    each grading container waits for the next unit's teardown and the last ones
-    are never reclaimed at all, which is the leak ``release_tool_sandboxes``
-    exists to prevent, reintroduced by a second producer.
+    Every container has an owner that releases it on the ordinary path: a
+    session releases its shell, a grading releases its suite runner, the oracle
+    releases both of its own. This is the sweep, for whatever a raise left
+    behind and for an owner whose release never ran because the failure landed
+    before it.
 
     Nested, so releasing the containers and reclaiming the trees are two
     independent obligations rather than a sequence where the first one failing
@@ -425,7 +425,7 @@ async def _release(
     """
     try:
         if binder is not None:
-            await binder.release_tool_sandboxes()
+            await binder.release_all_sandboxes()
     finally:
         await _reclaim_workspaces(run_work_root, keep=keep)
 
@@ -671,8 +671,8 @@ def _build_deps(
         # and unit N's graded run would see whatever unit N-1 left outside the
         # mount. owner_id pins the separation regardless, so that stays true
         # under a lifecycle this does not choose.
-        build_grader=lambda workspace: SandboxUnitGrader(
-            sandbox=binder.build_sandbox(workspace.root),
+        build_grader=lambda workspace, *, owner: SandboxUnitGrader(
+            sandbox=binder.build_sandbox(workspace.root, owner=owner),
             project_id=NotBlankStr(EVAL_TASK_PROJECT),
         ),
         build_sandbox=binder.build_sandbox,

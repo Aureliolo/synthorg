@@ -438,13 +438,13 @@ def _deps() -> SweepDeps:
     async def _no_provider(_binding: object) -> object:
         raise AssertionError
 
-    def _no_sandbox(_root: Path) -> object:
+    def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
     return SweepDeps(
         build_provider=_no_provider,  # type: ignore[arg-type]
-        build_tool_registry=lambda _workspace: None,
-        build_grader=lambda _workspace: _PassingGrader(),
+        build_tool_registry=lambda _workspace, *, owner: None,
+        build_grader=lambda _workspace, *, owner: _PassingGrader(),
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]
     )
 
@@ -1290,14 +1290,18 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 async def _scripted_oracle(
-    *, build_sandbox: object, spec_dir: Path, tree: Path
+    *,
+    build_sandbox: object,
+    release_sandboxes: object = None,
+    spec_dir: Path,
+    tree: Path,
 ) -> OracleOutcome:
     """Stand in for the held-out oracle, which needs a container to run.
 
     Returns:
         One passing requirement, which is enough for the matrix to score.
     """
-    del build_sandbox, spec_dir, tree
+    del build_sandbox, release_sandboxes, spec_dir, tree
     return OracleOutcome(results={RequirementId("R01"): True}, report="")
 
 

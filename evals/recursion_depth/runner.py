@@ -962,6 +962,7 @@ async def _run_cell(
     )
     merged = await run_oracle(
         build_sandbox=context.deps.build_sandbox,
+        release_sandboxes=context.deps.release_tools,
         spec_dir=context.spec_dir,
         tree=assembled.project_dir,
     )

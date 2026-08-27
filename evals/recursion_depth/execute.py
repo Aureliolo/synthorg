@@ -31,6 +31,7 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
     SweepDeps,
+    graded,
     probe_artifacts,
     produced_nothing,
     run_session,
@@ -390,8 +391,8 @@ async def _undelivered_reason(
         )
     if await asyncio.to_thread(produced_nothing, task, workspace, baseline):
         return "the session left every declared path exactly as it found it"
-    grader = deps.build_grader(workspace)
-    passed, report = await grader.own_tests_pass(workspace.project_dir)
+    async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
+        passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:
         return f"the unit's own tests did not pass: {report}"
     return ""

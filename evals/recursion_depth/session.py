@@ -21,6 +21,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import (
@@ -31,7 +32,11 @@ from evals.harness.stall_watch import (
 from evals.harness.transcript import TranscriptRecorder
 from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
 from evals.prompt_layers import bind_default_prompt_layers
-from evals.recursion_depth.grading import SandboxFactory, UnitGrader
+from evals.recursion_depth.grading import (
+    SandboxFactory,
+    SandboxReleaseHook,
+    UnitGrader,
+)
 from evals.recursion_depth.manifest import ModelPair
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -68,14 +73,45 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 ProviderFactory = Callable[[RunBinding], Awaitable[CompletionProvider]]
-ToolRegistryFactory = Callable[[CellWorkspace], ToolRegistry | None]
-#: Builds what grades a delivered tree, scoped to the workspace it sits in.
-GraderFactory = Callable[[CellWorkspace], UnitGrader]
-#: Releases whatever a unit's tools hold open. The deployment's sandbox
-#: lifecycle keeps a warm container per owner on a grace timer the strategy
-#: object owns, and every unit builds and discards its own, so a sweep of
-#: hundreds of units would otherwise leave one container behind per unit.
-ToolReleaseHook = Callable[[], Awaitable[None]]
+
+
+@runtime_checkable
+class ToolRegistryFactory(Protocol):
+    """Builds a unit's tools, scoped to its workspace."""
+
+    def __call__(
+        self, workspace: CellWorkspace, /, *, owner: str
+    ) -> ToolRegistry | None:
+        """Return the registry, filing what it holds open under *owner*.
+
+        The owner is the only key that may later release it. Units run
+        concurrently and a sandbox teardown latches, so a release naming no
+        owner takes a running sibling's shell and it never comes back.
+        """
+        ...
+
+
+@runtime_checkable
+class GraderFactory(Protocol):
+    """Builds what grades a delivered tree."""
+
+    def __call__(self, workspace: CellWorkspace, /, *, owner: str) -> UnitGrader:
+        """Return the grader, filing what it holds open under *owner*.
+
+        Grading runs after the session that produced the tree has closed, so it
+        takes an owner of its own: under the session's key it would be released
+        before it had run the suite it exists to run.
+        """
+        ...
+
+
+#: Releases whatever ONE owner holds open. The deployment's sandbox lifecycle
+#: keeps a warm container per owner on a grace timer the strategy object owns,
+#: and every unit builds and discards its own, so a sweep of hundreds of units
+#: would otherwise leave one container behind per unit. Owner-scoped because
+#: units run concurrently: a release naming no owner takes a running sibling's
+#: sandbox, which latches shut rather than reopening.
+ToolReleaseHook = SandboxReleaseHook
 LedgerFactory = Callable[[str], AbstractAsyncContextManager[ProgressTrackingLedger]]
 #: Called with ``(unit_label, idle_seconds)`` when a unit goes quiet.
 StallReporter = Callable[[str, float], None]
@@ -761,7 +797,7 @@ async def _build_engine(
     # at boot have to be bound explicitly or the sweep measures a prompt the
     # product never sends.
     bind_default_prompt_layers()
-    base = deps.build_tool_registry(workspace)
+    base = deps.build_tool_registry(workspace, owner=binding.execution_id)
     tools = _with_extra_tools(base, extra_tools)
     return AgentEngine(
         provider=await deps.build_provider(binding),
@@ -836,6 +872,17 @@ async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
     try would leave this session's containers to the grace timer the release
     exists to pre-empt.
 
+    The release names THIS session, so a sibling still running keeps the shell
+    it is working in. Unscoped, the first unit of a concurrent wave to finish
+    tore down every sandbox open at that moment, and the flag that teardown
+    sets never clears: the siblings spent the rest of their budget retrying a
+    command that could not succeed and were recorded as having built nothing.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        label: This session's execution id, which owns both the transcript and
+            whatever its tools hold open.
+
     Yields:
         Nothing; the unbind and the release run on the way out.
     """
@@ -844,7 +891,34 @@ async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
             yield
     finally:
         if deps.release_tools is not None:
-            await deps.release_tools()
+            await deps.release_tools(label)
+
+
+@contextlib.asynccontextmanager
+async def graded(
+    deps: SweepDeps, workspace: CellWorkspace, *, owner: str
+) -> AsyncIterator[UnitGrader]:
+    """Open a grader for *workspace* and release its container afterwards.
+
+    Grading opens a sandbox of its own and runs after the session that produced
+    the tree has closed, so it can be neither released by that session nor left
+    to the run's end: one container per graded unit, held for the length of a
+    matrix, is the leak the per-session release exists to prevent.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        workspace: The tree to grade.
+        owner: The key this grading's container is filed under. Distinct from
+            any session's, so nothing releases it out from under the suite.
+
+    Yields:
+        The grader, live for the length of the block.
+    """
+    try:
+        yield deps.build_grader(workspace, owner=owner)
+    finally:
+        if deps.release_tools is not None:
+            await deps.release_tools(owner)
 
 
 def ledger_scope(
@@ -887,6 +961,7 @@ __all__ = [
     "SweepDeps",
     "ToolRegistryFactory",
     "ToolReleaseHook",
+    "graded",
     "ledger_scope",
     "open_session",
     "probe_artifacts",

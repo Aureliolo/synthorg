@@ -600,7 +600,7 @@ def _recorded(
     host.__aenter__.return_value = host
     host.__aexit__.return_value = False
     binder = mock_of[HarnessBinder]()
-    binder.release_tool_sandboxes.side_effect = release
+    binder.release_all_sandboxes.side_effect = release
 
     async def _no_preflight(**_kwargs: object) -> None:
         return None

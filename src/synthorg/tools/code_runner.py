@@ -145,6 +145,11 @@ class CodeRunnerTool(BaseTool):
 
         Returns:
             A ``ToolExecutionResult`` with execution output.
+
+        Raises:
+            SandboxError: When the backend refuses on a condition no later run
+                can clear. Raised rather than returned so the session ends on
+                the infrastructure failure instead of retrying it.
         """
         # ``parse_typed`` validates ``language`` against the
         # ``CodeRunnerLanguage`` literal, so an out-of-set language is
@@ -208,7 +213,14 @@ class CodeRunnerTool(BaseTool):
                 language=language,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                retryable=exc.RETRYABLE,
             )
+            # A condition no later run can clear is not the agent's to act on,
+            # so it goes past the tool and ends the session as the
+            # infrastructure failure it is, rather than being retried to the
+            # budget ceiling against a sandbox that cannot answer.
+            if not exc.RETRYABLE:
+                raise
             return ToolExecutionResult(
                 content=f"Sandbox error: {agent_facing_message(exc)}",
                 is_error=True,

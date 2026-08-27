@@ -296,6 +296,9 @@ class ShellCommandTool(BaseTerminalTool):
 
         Raises:
             RuntimeError: If the operation fails at runtime.
+            SandboxError: When the backend refuses on a condition no later
+                command can clear. Raised rather than returned so the session
+                ends on the infrastructure failure instead of retrying it.
         """
         if self._sandbox is None:  # pragma: no cover -- guarded by caller
             msg = "_execute_sandboxed called without sandbox"
@@ -325,7 +328,15 @@ class ShellCommandTool(BaseTerminalTool):
                 command=command,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                retryable=exc.RETRYABLE,
             )
+            # A condition no later command can clear is not the agent's to act
+            # on, so it goes past the tool and ends the session as the
+            # infrastructure failure it is. Returned as a result it reads like
+            # a transient error, and the agent then spends its whole budget
+            # retrying a command that cannot succeed.
+            if not exc.RETRYABLE:
+                raise
             return ToolExecutionResult(
                 content=f"Sandbox error: {agent_facing_message(exc)}",
                 is_error=True,
