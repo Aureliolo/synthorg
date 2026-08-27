@@ -7,6 +7,24 @@ pass, turn an approved request into a registered agent. Both halves live here
 because both are about the hiring pipeline rather than about parked tasks, and
 because "exactly one open request per role" is an invariant with two readers
 otherwise.
+
+Boot survives a hydration failure so the pipeline comes up degraded rather than
+not at all, which leaves a request approved before the restart invisible.
+Nothing else re-reads the durable set, so this sweep is what makes that
+degradation temporary: a still-failing read is reported and the pass carries on
+against the in-memory set, because a hydration fault must not also cost the
+release half of the pass its cadence.
+
+One request's failure never stops the others. A condition that may clear (the
+provider catalogue still coming up, a registry outage) is logged and left for
+the next pass, and so is a status that moved out of APPROVED under the lock,
+which needs nothing at all because the next sweep's query no longer returns it.
+That catch is EVERY ``DomainError`` rather than the two the hiring layer raises
+directly: instantiation reaches the registry and the repositories under it, so
+a query error or a persistence refusal arrives typed and from somewhere no list
+here could name in advance. Caught as two, one such request took the whole pass
+down with it and every request after it in the batch waited for the next sweep
+to be abandoned the same way.
 """
 
 import asyncio
@@ -132,20 +150,13 @@ async def finish_approved_hires(
     """
     if hiring is None:
         return 0
-    # Boot survives a hydration failure so the pipeline comes up degraded
-    # rather than not at all, which leaves a request approved before the
-    # restart invisible. Nothing else re-reads the durable set, so the sweep
-    # is what makes that degradation temporary. A still-failing read is
-    # reported and the pass continues on the in-memory set: a hydration fault
-    # must not also cost the release half its cadence.
     try:
         await hiring.ensure_hydrated()
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- a durable read that is still failing must
-        # not also cost the release half of the pass its cadence; the gap is
-        # reported and the next pass retries it.
+        # lint-allow: swallow-ok -- see the module docstring: the pass carries
+        # on against the in-memory set rather than losing its cadence.
         reraise_critical(exc)
         logger.warning(
             REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
@@ -158,30 +169,13 @@ async def finish_approved_hires(
         try:
             identity = await hiring.instantiate_agent(request)
         except _UNCOMPLETABLE as exc:
-            # Nothing a later pass does changes this one: the request names no
-            # pair the organisation has, or its selected candidate card is not
-            # on the request. Retried as though it were transient it re-fails
-            # on every sweep, appears on no dashboard page and has no exit any
-            # pass could reach. Withdrawing it on the FIRST sweep that proves
-            # it uncompletable gives it one, and the operator is told rather
-            # than left to read the log.
+            # Withdrawn on the FIRST sweep that proves it uncompletable, which
+            # is the exit it otherwise never gets. See ``_UNCOMPLETABLE``.
             await _withdraw(hiring, request, exc, notifications=notifications)
             continue
         except DomainError as exc:
-            # Deliberately not fatal to the pass: one request blocked on a
-            # condition that may clear (wiring still coming up, a registry
-            # outage) must not stop the others, and the next pass retries it.
-            # A status that moved out of APPROVED under the lock lands here
-            # too and needs nothing: the next sweep's query no longer returns
-            # it, so it is not a state without an exit.
-            #
-            # Every DomainError, not the two the hiring layer raises directly.
-            # Instantiation reaches the registry and the repositories under
-            # it, so a QueryError or a persistence refusal arrives typed and
-            # from somewhere this list could not name in advance. Caught as
-            # two, one such request took the whole pass down with it and every
-            # request after it in the batch waited for the next sweep to be
-            # abandoned the same way.
+            # Left for the next pass, deliberately: see the module docstring
+            # for why this catches every DomainError rather than a named few.
             logger.warning(
                 REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
                 request_id=str(request.id),
